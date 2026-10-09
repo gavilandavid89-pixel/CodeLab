@@ -74,11 +74,9 @@ function resolveAiModel(requested, baseUrl) {
     };
     const key = m.toLowerCase();
     if (aliases[key]) m = aliases[key];
-    // Groq never uses provider/ prefix
-    if (m.includes('/')) {
-      m = m.split('/').pop();
-    }
-    if (!m) m = 'openai/gpt-oss-20b';
+    // Groq model IDs may include provider prefixes (e.g. openai/gpt-oss-120b).
+    // Preserve those IDs; stripping the prefix makes Groq reject valid models.
+    if (!m) m = 'openai/gpt-oss-120b';
     return m;
   }
 
