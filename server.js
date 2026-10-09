@@ -102,9 +102,7 @@ const AI_MODEL = resolveAiModel(_rawModel, AI_BASE_URL);
 const GROQ_FALLBACKS = [
   'openai/gpt-oss-20b',
   'openai/gpt-oss-120b',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'meta-llama/llama-4-scout-17b-16e-instruct'
+  'qwen/qwen3.8-27b'
 ];
 const aiRateMap = new Map();
 function checkAiRateLimit(ip) {
@@ -1256,6 +1254,12 @@ try {
 server.listen(PORT, () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
+  if (!process.env.CODELAB_DATA_DIR) {
+    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; en hosting con disco efímero los workspaces y sesiones pueden perderse tras un redeploy/reinicio.');
+  }
+  if (!process.env.CODELAB_WORKSPACE_SECRET) {
+    console.warn('WARNING: CODELAB_WORKSPACE_SECRET no está fijado; si se regenera el secreto, los tokens de workspace existentes dejarán de ser válidos.');
+  }
   const cfg = oauthConfigured();
   console.log('OAuth GitHub:', cfg.github ? 'enabled' : 'disabled');
   console.log('OAuth Google:', cfg.google ? 'enabled' : 'disabled');
