@@ -57,12 +57,12 @@ function resolveAiModel(requested, baseUrl) {
   if (groq) {
     // Map broken / short names to working Groq ids
     const aliases = {
-      '': 'openai/gpt-oss-20b',
+      '': 'openai/gpt-oss-120b',
       'llama-3': 'openai/gpt-oss-20b',
       'llama3': 'openai/gpt-oss-20b',
-      'llama-3.3': 'llama-3.3-70b-versatile',
-      'llama-3.3-70b': 'llama-3.3-70b-versatile',
-      'llama3.3': 'llama-3.3-70b-versatile',
+      'llama-3.3': 'openai/gpt-oss-120b',
+      'llama-3.3-70b': 'openai/gpt-oss-120b',
+      'llama3.3': 'openai/gpt-oss-120b',
       'llama-3.1': 'openai/gpt-oss-20b',
       'llama-3.1-8b': 'openai/gpt-oss-20b',
       'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
@@ -70,7 +70,8 @@ function resolveAiModel(requested, baseUrl) {
       'gpt-4o': 'openai/gpt-oss-20b',
       'openai/gpt-4o-mini': 'openai/gpt-oss-20b',
       'gpt-oss': 'openai/gpt-oss-20b',
-      'gpt-oss-20b': 'openai/gpt-oss-20b'
+      'gpt-oss-20b': 'openai/gpt-oss-20b',
+      'gpt-oss-120b': 'openai/gpt-oss-120b'
     };
     const key = m.toLowerCase();
     if (aliases[key]) m = aliases[key];
