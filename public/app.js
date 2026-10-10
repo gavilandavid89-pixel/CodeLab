@@ -2094,22 +2094,28 @@ function escapeHtml(str) {
     startY,
     initialLeft,
     initialTop;
-  consoleHeader.addEventListener('mousedown', e => {
+  consoleHeader.style.touchAction = 'none';
+  consoleHeader.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.target && e.target.closest && e.target.closest('button')) return;
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
     initialLeft = consoleModal.offsetLeft;
     initialTop = consoleModal.offsetTop;
+    if (consoleHeader.setPointerCapture) {
+      try { consoleHeader.setPointerCapture(e.pointerId); } catch (_) {}
+    }
   });
-  document.addEventListener('mousemove', e => {
+  document.addEventListener('pointermove', e => {
     if (!isDragging) return;
     consoleModal.style.left = initialLeft + (e.clientX - startX) + 'px';
     consoleModal.style.top = initialTop + (e.clientY - startY) + 'px';
     consoleModal.style.transform = 'none';
   });
-  document.addEventListener('mouseup', () => {
-    isDragging = false;
-  });
+  const stopConsoleDrag = () => { isDragging = false; };
+  document.addEventListener('pointerup', stopConsoleDrag);
+  document.addEventListener('pointercancel', stopConsoleDrag);
 
 })();
 
@@ -2360,8 +2366,9 @@ function setupSplitResize() {
   let startX = 0;
   let startY = 0;
 
-  divider.addEventListener('mousedown', e => {
-    if (e.button !== 0) return;
+  divider.style.touchAction = 'none';
+  divider.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     dragging = true;
     moved = false;
@@ -2369,10 +2376,13 @@ function setupSplitResize() {
     startY = e.clientY;
     document.body.style.cursor = window.innerWidth >= 768 ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
+    if (divider.setPointerCapture) {
+      try { divider.setPointerCapture(e.pointerId); } catch (_) {}
+    }
     closeSplitMenu();
   });
 
-  document.addEventListener('mousemove', e => {
+  document.addEventListener('pointermove', e => {
     if (!dragging) return;
     if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) moved = true;
     if (!moved) return;
@@ -2384,16 +2394,16 @@ function setupSplitResize() {
     applySplitRatio(pct);
   });
 
-  document.addEventListener('mouseup', e => {
+  const stopSplitDrag = () => {
     if (!dragging) return;
     dragging = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-    // Click without drag → open size menu (avoids accidental resize when scrolling nearby)
-    if (!moved) {
-      openSplitMenu(divider);
-    }
-  });
+    // Tap/click without drag → open size menu.
+    if (!moved) openSplitMenu(divider);
+  };
+  document.addEventListener('pointerup', stopSplitDrag);
+  document.addEventListener('pointercancel', stopSplitDrag);
 
   document.addEventListener('click', e => {
     const menu = document.getElementById('splitMenu');
