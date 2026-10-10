@@ -57,12 +57,12 @@ function resolveAiModel(requested, baseUrl) {
   if (groq) {
     // Map broken / short names to working Groq ids
     const aliases = {
-      '': 'openai/gpt-oss-20b',
+      '': 'openai/gpt-oss-120b',
       'llama-3': 'openai/gpt-oss-20b',
       'llama3': 'openai/gpt-oss-20b',
-      'llama-3.3': 'llama-3.3-70b-versatile',
-      'llama-3.3-70b': 'llama-3.3-70b-versatile',
-      'llama3.3': 'llama-3.3-70b-versatile',
+      'llama-3.3': 'openai/gpt-oss-120b',
+      'llama-3.3-70b': 'openai/gpt-oss-120b',
+      'llama3.3': 'openai/gpt-oss-120b',
       'llama-3.1': 'openai/gpt-oss-20b',
       'llama-3.1-8b': 'openai/gpt-oss-20b',
       'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
@@ -70,15 +70,14 @@ function resolveAiModel(requested, baseUrl) {
       'gpt-4o': 'openai/gpt-oss-20b',
       'openai/gpt-4o-mini': 'openai/gpt-oss-20b',
       'gpt-oss': 'openai/gpt-oss-20b',
-      'gpt-oss-20b': 'openai/gpt-oss-20b'
+      'gpt-oss-20b': 'openai/gpt-oss-20b',
+      'gpt-oss-120b': 'openai/gpt-oss-120b'
     };
     const key = m.toLowerCase();
     if (aliases[key]) m = aliases[key];
-    // Groq never uses provider/ prefix
-    if (m.includes('/')) {
-      m = m.split('/').pop();
-    }
-    if (!m) m = 'openai/gpt-oss-20b';
+    // Groq model IDs may include provider prefixes (e.g. openai/gpt-oss-120b).
+    // Preserve those IDs; stripping the prefix makes Groq reject valid models.
+    if (!m) m = 'openai/gpt-oss-120b';
     return m;
   }
 
@@ -104,9 +103,7 @@ const AI_MODEL = resolveAiModel(_rawModel, AI_BASE_URL);
 const GROQ_FALLBACKS = [
   'openai/gpt-oss-20b',
   'openai/gpt-oss-120b',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'meta-llama/llama-4-scout-17b-16e-instruct'
+  'qwen/qwen3.8-27b'
 ];
 const aiRateMap = new Map();
 function checkAiRateLimit(ip) {
@@ -1258,6 +1255,12 @@ try {
 server.listen(PORT, () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
+  if (!process.env.CODELAB_DATA_DIR) {
+    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; en hosting con disco efímero los workspaces y sesiones pueden perderse tras un redeploy/reinicio.');
+  }
+  if (!process.env.CODELAB_WORKSPACE_SECRET) {
+    console.warn('WARNING: CODELAB_WORKSPACE_SECRET no está fijado; si se regenera el secreto, los tokens de workspace existentes dejarán de ser válidos.');
+  }
   const cfg = oauthConfigured();
   console.log('OAuth GitHub:', cfg.github ? 'enabled' : 'disabled');
   console.log('OAuth Google:', cfg.google ? 'enabled' : 'disabled');

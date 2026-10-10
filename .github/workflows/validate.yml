@@ -1,0 +1,41 @@
+name: Validate CodeLab
+
+on:
+  push:
+    branches: ["main", "fix/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check JavaScript syntax
+        run: |
+          node --check server.js
+          node --check public/app.js
+      - name: Smoke test API and Groq model normalization
+        shell: bash
+        run: |
+          export PORT=3187
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-secret-for-ci"
+          export AI_BASE_URL="https://api.groq.com/openai/v1"
+          export AI_MODEL="openai/gpt-oss-120b"
+          node server.js > "$RUNNER_TEMP/codelab.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:3187/api/health > "$RUNNER_TEMP/health.json"; then
+              break
+            fi
+            sleep 1
+          done
+          test -s "$RUNNER_TEMP/health.json"
+          node -e "const h=require(process.env.RUNNER_TEMP + '/health.json'); if (!h.ok) process.exit(1); if (h.ai.model !== 'openai/gpt-oss-120b') { console.error('Unexpected AI model:', h.ai.model); process.exit(1); } console.log('Health OK; Groq model ID preserved:', h.ai.model);"
