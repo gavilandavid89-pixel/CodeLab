@@ -16,4 +16,9 @@ assert.match(source, /lsSet\(aiSettingsStorageKey\(\), JSON\.stringify\(aiSettin
 assert.match(source, /loadAiSettings\(\);\s*updateAuthUI\(\);[\s\S]*?showToast\('Sesión cerrada\.'/,
   'logging out must reload the anonymous settings instead of retaining the previous account key in memory');
 
-console.log('AI settings isolation checks passed.');
+assert.match(source, /async function logoutAuth\(\)[\s\S]*?workspaceToken = '';[\s\S]*?lsRemove\(STORAGE_KEY_WORKSPACE_TOKEN\);[\s\S]*?loadAiSettings\(\);/,
+  'logout must drop the prior workspace bearer token and reload account-isolated AI settings');
+assert.match(source, /if \(currentUser && currentUser\.real\) \{\s*const saved = await persistWorkspace\(\);\s*if \(!saved\) \{\s*storePendingLocalImport\(projects\);/,
+  'logout must preserve unsynced account projects if the server save fails');
+
+console.log('AI settings and logout isolation checks passed.');
