@@ -731,7 +731,9 @@ async function resolvePublicProviderTarget(urlString) {
   if (target.protocol !== 'https:' || target.username || target.password || target.hash) {
     throw Object.assign(new Error('AI provider URL must use HTTPS without embedded credentials or fragments.'), { status: 400 });
   }
-  const hostname = target.hostname.replace(/^\\[|\\]$/g, '');
+  const hostname = target.hostname.startsWith('[') && target.hostname.endsWith(']')
+    ? target.hostname.slice(1, -1)
+    : target.hostname;
   let records;
   try { records = await dns.lookup(hostname, { all: true, verbatim: true }); }
   catch (_) { throw Object.assign(new Error('AI provider hostname could not be resolved.'), { status: 400 }); }
