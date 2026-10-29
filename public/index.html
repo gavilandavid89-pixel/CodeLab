@@ -378,11 +378,11 @@
           <button onclick="toggleDesignGrid()" id="designGridBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar cuadrícula"><i class="fa-solid fa-border-all mr-1"></i> Rejilla</button>
           <div class="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="Alinear elemento seleccionado">
 <button onclick="alignDesignElement('left')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la izquierda" aria-label="Alinear izquierda"><i class="fa-solid fa-align-left"></i></button>
-<button onclick="alignDesignElement('center-x')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar horizontalmente" aria-label="Centrar horizontal"><i class="fa-solid fa-arrows-left-right-to-line"></i></button>
+<button onclick="alignDesignElement('center-x')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar horizontalmente" aria-label="Centrar horizontal"><i class="fa-solid fa-arrows-left-right"></i></button>
 <button onclick="alignDesignElement('right')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la derecha" aria-label="Alinear derecha"><i class="fa-solid fa-align-right"></i></button>
 <span class="mx-0.5 h-5 border-l border-slate-700"></span>
 <button onclick="alignDesignElement('top')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear arriba" aria-label="Alinear arriba"><i class="fa-solid fa-arrow-up"></i></button>
-<button onclick="alignDesignElement('center-y')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar verticalmente" aria-label="Centrar vertical"><i class="fa-solid fa-arrows-up-down-to-line"></i></button>
+<button onclick="alignDesignElement('center-y')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar verticalmente" aria-label="Centrar vertical"><i class="fa-solid fa-arrows-up-down"></i></button>
 <button onclick="alignDesignElement('bottom')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear abajo" aria-label="Alinear abajo"><i class="fa-solid fa-arrow-down"></i></button>
 </div>
           <label class="flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Color de fondo del marco">Fondo <input id="designBackgroundColor" type="color" value="#ffffff" onchange="setDesignBackground(this.value)" class="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"></label>
@@ -396,7 +396,7 @@
             <button onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"><i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> Crear web</button>
           </div>
         </div>
-        <div class="flex flex-1 min-h-0 overflow-hidden">
+        <div class="flex flex-1 min-h-0 overflow-hidden flex-col sm:flex-row">
           <aside class="hidden sm:flex w-48 lg:w-56 flex-col border-r border-slate-800 bg-slate-900/80 shrink-0">
             <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Capas</div>
             <div id="designLayers" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
@@ -410,7 +410,7 @@
               </div>
             </div>
           </div>
-          <aside class="w-44 sm:w-56 lg:w-64 border-l border-slate-800 bg-slate-900/90 shrink-0 overflow-y-auto">
+          <aside class="w-full sm:w-56 lg:w-64 max-h-48 sm:max-h-none border-t sm:border-t-0 sm:border-l border-slate-800 bg-slate-900/90 shrink-0 overflow-y-auto">
             <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Propiedades</div>
             <div id="designProperties" class="p-3 space-y-3 text-xs">
               <p class="text-slate-500 leading-relaxed">Selecciona un elemento para editar su contenido, posición, tamaño y color.</p>
