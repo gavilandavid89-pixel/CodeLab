@@ -106,3 +106,7 @@ Las pruebas automáticas cubren los cálculos de contraste, generación de token
 ## Capturas para IA
 
 Los proyectos de diseño pueden exportar PNG 2× + JSON de elementos y estilos. Los proyectos web pueden generar una captura renderizada de HTML/CSS para escritorio, tablet o móvil, junto con JSON que incluye código fuente y metadatos. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
+
+## Biblioteca de componentes reutilizables
+
+Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML autónomas: navegación, hero de landing, tarjetas de características, métricas, precios, formulario de contacto, panel de proyecto y pie de página. Permite buscar y filtrar por categoría, previsualizar el HTML en un iframe aislado, copiar el fragmento, exportar una página HTML adaptable e insertar el fragmento seleccionado en el HTML del proyecto web activo. Los componentes incluyen sus estilos en un bloque local para funcionar sin una librería CSS externa. La inserción conserva el HTML existente y solo está disponible desde proyectos web, no desde proyectos de diseño.
