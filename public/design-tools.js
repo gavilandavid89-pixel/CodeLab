@@ -496,6 +496,49 @@
       downloadText('codelab-design-system.json', JSON.stringify(buildDesignTokens(settings), null, 2), 'application/json;charset=utf-8');
       announce('Sistema visual JSON descargado.');
     });
+    if (get('importDesignSystemJson') && get('designSystemJsonFile')) {
+      get('importDesignSystemJson').addEventListener('click', () => get('designSystemJsonFile').click());
+      get('designSystemJsonFile').addEventListener('change', async event => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        try {
+          if (file.size > 1024 * 1024) throw new Error('El archivo supera el límite de 1 MB.');
+          const imported = JSON.parse(await file.text());
+          if (!imported || imported.format !== 'codelab-design-system' || imported.version !== 1 ||
+              !imported.colors || !imported.typography || !imported.accessibility) {
+            throw new Error('El archivo no es un sistema visual CodeLab compatible.');
+          }
+          const scale = Array.isArray(imported.typography.scale) ? imported.typography.scale : [];
+          const baseStep = scale.find(item => item && item.name === 'base');
+          settings = sanitizeSettings({
+            name: imported.name,
+            primary: imported.colors.primary,
+            secondary: imported.colors.secondary,
+            accent: imported.colors.accent,
+            surface: imported.colors.surface,
+            background: imported.colors.background,
+            text: imported.colors.text,
+            contrastForeground: imported.accessibility.foreground,
+            contrastBackground: imported.accessibility.background,
+            baseFont: imported.typography.baseFontPx || (baseStep && baseStep.px),
+            typeRatio: imported.typography.ratio,
+            baseSpacing: Array.isArray(imported.spacing) && imported.spacing[0] ? imported.spacing[0].px : undefined,
+            baseRadius: Array.isArray(imported.radius) && imported.radius.find(item => item && item.name === 'radius-lg')
+              ? imported.radius.find(item => item && item.name === 'radius-lg').px : undefined
+          });
+          fillForm();
+          renderAll();
+          const saved = saveSettings(settings);
+          announce(saved ? 'Sistema visual importado y guardado en este navegador.' : 'Sistema visual importado en esta sesión; no se pudo guardar en este navegador.');
+          if (typeof window.showToast === 'function') window.showToast('Sistema visual importado.');
+        } catch (error) {
+          announce('No se pudo importar: ' + (error && error.message ? error.message : 'archivo inválido.'));
+          if (typeof window.showToast === 'function') window.showToast('No se pudo importar el sistema visual.', 'warn');
+        } finally {
+          event.target.value = '';
+        }
+      });
+    }
     if (get('copyDesignSystemCss')) get('copyDesignSystemCss').addEventListener('click', async () => {
       settings = readForm();
       const css = toCssVariables(settings);
