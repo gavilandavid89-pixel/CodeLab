@@ -149,21 +149,29 @@ if (!SERVER_SECRET) {
   try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
   if (!SERVER_SECRET) {
     const generatedSecret = crypto.randomBytes(32).toString('hex');
+    const tempSecretFile = SECRET_FILE + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
     try {
-      // Exclusive creation prevents two instances sharing a disk from silently
-      // replacing one another's HMAC key during concurrent startup.
-      fs.writeFileSync(SECRET_FILE, generatedSecret, {
+      // Write the full secret privately first, then atomically publish it with a
+      // no-overwrite hard link. Concurrent instances can never observe a partial key.
+      fs.writeFileSync(tempSecretFile, generatedSecret, {
         encoding: 'utf8',
         mode: 0o600,
         flag: 'wx'
       });
-      SERVER_SECRET = generatedSecret;
-    } catch (error) {
-      if (error.code === 'EEXIST') {
-        try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
-      } else {
-        throw new Error('CODELAB_WORKSPACE_SECRET is required when the secret file cannot be persisted: ' + error.message);
+      try {
+        fs.linkSync(tempSecretFile, SECRET_FILE);
+        SERVER_SECRET = generatedSecret;
+      } catch (error) {
+        if (error.code === 'EEXIST') {
+          try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
+        } else {
+          throw error;
+        }
       }
+    } catch (error) {
+      throw new Error('CODELAB_WORKSPACE_SECRET is required when the secret file cannot be persisted: ' + error.message);
+    } finally {
+      try { fs.unlinkSync(tempSecretFile); } catch (_) {}
     }
   }
   if (!SERVER_SECRET) {
