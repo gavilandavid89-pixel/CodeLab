@@ -150,7 +150,10 @@
     const viewport = Math.max(320, Math.min(1920, Number(input.viewport) || 1280));
     const scale = [1, 2, 3, 4].includes(Number(input.scale)) ? Number(input.scale) : 2;
     const title = (html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || project.name || 'Página sin título';
-    const description = (html.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>/i) || [])[1] || '';
+    const descriptionTag = (html.match(/<meta\b[^>]*>/gi) || []).find(function (tag) {
+      return /\bname\s*=\s*["']description["']/i.test(tag);
+    }) || '';
+    const description = (descriptionTag.match(/\bcontent\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
     const headings = [];
     const headingPattern = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi;
     let match;
@@ -161,7 +164,9 @@
     const linkCount = (html.match(/<a\b/gi) || []).length;
     const buttonCount = (html.match(/<button\b/gi) || []).length;
     const formCount = (html.match(/<form\b/gi) || []).length;
-    const externalCss = (html.match(/<link\b[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi) || []).length;
+    const externalCss = (html.match(/<link\b[^>]*>/gi) || []).filter(function (tag) {
+      return /\brel\s*=\s*["'][^"']*\bstylesheet\b[^"']*["']/i.test(tag);
+    }).length;
     return {
       format: 'codelab-ai-web-capture',
       version: 2,
