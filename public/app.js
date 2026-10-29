@@ -2903,6 +2903,36 @@ function renderDesignWorkspace() {
     if (el.type === 'heading') node.style.lineHeight = '1.1';
     if (el.type === 'image') renderDesignImageContent(node, el);
     else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    if (el.id === selectedDesignElementId) {
+      const resizeHandle = document.createElement('span');
+      resizeHandle.dataset.designResizeHandle = el.id;
+      resizeHandle.setAttribute('role', 'slider');
+      resizeHandle.setAttribute('aria-label', 'Redimensionar ' + (el.label || el.type));
+      resizeHandle.setAttribute('aria-valuetext', Math.round(Number(el.width)||120) + ' por ' + Math.round(Number(el.height)||48) + ' píxeles');
+      resizeHandle.tabIndex = 0;
+      resizeHandle.style.cssText = 'position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
+      resizeHandle.addEventListener('pointerdown', ev => {
+        if (ev.button !== 0) return;
+        ev.preventDefault(); ev.stopPropagation();
+        selectedDesignElementId = el.id;
+        recordDesignHistory();
+        const rect = canvas.getBoundingClientRect();
+        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: Number(el.width)||120, height: Number(el.height)||48, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+        try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
+      });
+      resizeHandle.addEventListener('keydown', ev => {
+        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
+        ev.preventDefault(); ev.stopPropagation();
+        recordDesignHistory();
+        const step = ev.shiftKey ? 10 : 1;
+        if (ev.key === 'ArrowLeft') el.width = Math.max(20, (Number(el.width)||120) - step);
+        if (ev.key === 'ArrowRight') el.width = Math.min(4000, (Number(el.width)||120) + step);
+        if (ev.key === 'ArrowUp') el.height = Math.max(20, (Number(el.height)||48) - step);
+        if (ev.key === 'ArrowDown') el.height = Math.min(4000, (Number(el.height)||48) + step);
+        renderDesignWorkspace(); saveProjectsToStorage();
+      });
+      node.appendChild(resizeHandle);
+    }
     node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type); node.tabIndex = 0;
     node.addEventListener('click', ev => { ev.stopPropagation(); if (selectedDesignElementId !== el.id) { selectedDesignElementId = el.id; renderDesignWorkspace(); } });
     node.addEventListener('pointerdown', ev => {
@@ -2977,10 +3007,16 @@ function bindDesignCanvasEvents() {
     if (!designDragState) return;
     const el = selectedDesignElement(); if (!el || el.id !== designDragState.id) return;
     const dx = (ev.clientX - designDragState.startX) / (designDragState.scaleX || 1);
-    const dy = (ev.clientY - designDragState.startY) / (designZoom || 1);
-    el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
-    const node = document.querySelector('[data-design-id="' + el.id + '"]');
-    if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
+    const dy = (ev.clientY - designDragState.startY) / (designDragState.scaleX || 1);
+    const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
+    if (designDragState.mode === 'resize') {
+      el.width = Math.max(20, Math.min(4000, Math.round(designDragState.width + dx)));
+      el.height = Math.max(20, Math.min(4000, Math.round(designDragState.height + dy)));
+      if (node) { node.style.width = el.width + 'px'; node.style.height = el.height + 'px'; }
+    } else {
+      el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
+      if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
+    }
   });
   const finishDesignDrag = () => {
     if (!designDragState) return;
@@ -2988,8 +3024,13 @@ function bindDesignCanvasEvents() {
     const el = selectedDesignElement();
     if (p && el && p.design.snapToGrid) {
       const step = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
-      el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
-      el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
+      if (designDragState.mode === 'resize') {
+        el.width = Math.max(20, Math.round((Number(el.width) || 120) / step) * step);
+        el.height = Math.max(20, Math.round((Number(el.height) || 48) / step) * step);
+      } else {
+        el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
+        el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
+      }
     }
     const selectedId = selectedDesignElementId;
     designDragState = null;
