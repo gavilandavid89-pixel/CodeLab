@@ -767,8 +767,8 @@ function serveStatic(req, res, urlPath) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end('Not Found');
     }
-    fs.readFile(realPath, (err, data) => {
-      if (err) {
+    fs.stat(realPath, (statError, stat) => {
+      if (statError || !stat.isFile()) {
         setSecurityHeaders(res);
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         return res.end('Not Found');
@@ -777,7 +777,7 @@ function serveStatic(req, res, urlPath) {
       setSecurityHeaders(res);
       const headers = {
         'Content-Type': MIME[ext] || 'application/octet-stream',
-        'Content-Length': data.length
+        'Content-Length': stat.size
       };
       // HTML references stable asset URLs; force revalidation so deployments cannot leave
       // users running stale application logic for a full day after a release.
@@ -785,9 +785,19 @@ function serveStatic(req, res, urlPath) {
         headers['Cache-Control'] = 'no-cache';
       }
       res.writeHead(200, headers);
-      // HEAD returns the same representation metadata as GET without transferring
-      // the asset body, as required by HTTP semantics.
-      res.end(req.method === 'HEAD' ? undefined : data);
+      // HEAD needs only metadata; GET streams the file so large static assets do not
+      // have to be fully buffered in memory for every concurrent client.
+      if (req.method === 'HEAD') return res.end();
+      const stream = fs.createReadStream(realPath);
+      stream.on('error', error => {
+        console.error('static_asset_stream_failed', ext, error.message);
+        if (res.headersSent) res.destroy();
+        else {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Not Found');
+        }
+      });
+      stream.pipe(res);
     });
   });
 }
