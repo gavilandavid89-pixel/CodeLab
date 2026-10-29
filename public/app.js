@@ -1321,16 +1321,29 @@ function maybeOfferLocalImport() {
       return;
     }
     const existingIds = new Set(projects.map(project => project.id));
-    const imported = local.filter(project => project && typeof project === 'object').map((project, index) => ({
+    const availableSlots = Math.max(0, maxProjects - projects.length);
+    const candidates = local.filter(project => project && typeof project === 'object').map((project, index) => ({
       ...project,
       id: typeof project.id === 'string' && project.id ? project.id : 'proj_import_' + Date.now() + '_' + index,
+      name: typeof project.name === 'string' && project.name.trim() ? project.name.trim().slice(0, 200) : 'Proyecto importado',
+      type: project.type === 'design' ? 'design' : 'web',
       code: normalizeCode(project.code)
-    })).filter(project => !existingIds.has(project.id));
+    })).filter(project => !existingIds.has(project.id) && !existingIds.has(String(project.id)));
+    // Imports must obey the same server-configured project cap as creation and duplication.
+    // Otherwise the client immediately enters a state the server will reject on every save.
+    const imported = candidates.slice(0, availableSlots);
+    const skipped = candidates.length - imported.length;
     projects = imported.concat(projects);
     clearPendingLocalImport();
     saveProjectsToStorage();
     renderProjectsList();
-    showToast(imported.length ? imported.length + ' proyecto(s) local(es) importados a tu cuenta.' : 'Los proyectos locales ya estaban presentes en tu cuenta.');
+    if (skipped > 0) {
+      showToast(imported.length
+        ? imported.length + ' proyecto(s) importados. ' + skipped + ' omitido(s): se alcanzó el límite de ' + maxProjects + '.'
+        : 'No se importaron proyectos: se alcanzó el límite de ' + maxProjects + '.', 'warn');
+    } else {
+      showToast(imported.length ? imported.length + ' proyecto(s) local(es) importados a tu cuenta.' : 'Los proyectos locales ya estaban presentes en tu cuenta.');
+    }
   } catch (_) {}
 }
 function updateDashboardStatus() {
