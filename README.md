@@ -131,4 +131,6 @@ Los proyectos de diseño y web permiten elegir captura PNG a 1×, 2×, 3× o 4×
 
 ## Biblioteca de componentes reutilizables
 
+La acción **Convertir a web** conserva las capas de imagen incrustadas, las elipses, los estilos y los enlaces seguros de los botones; la página generada ajusta el marco al ancho de pantalla y recalcula la escala al redimensionar la ventana.
+
 Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML autónomas: navegación, hero de landing, tarjetas de características, métricas, precios, formulario de contacto, panel de proyecto y pie de página. Permite buscar y filtrar por categoría, previsualizar el HTML en un iframe aislado, copiar el fragmento, exportar una página HTML adaptable e insertar el fragmento seleccionado en el HTML del proyecto web activo. Los componentes incluyen sus estilos en un bloque local para funcionar sin una librería CSS externa. La inserción conserva el HTML existente y solo está disponible desde proyectos web, no desde proyectos de diseño.
