@@ -829,7 +829,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#projectsGrid > div').filter({
       has: page.locator('h4').getByText(PROJECT_NAME, { exact: true })
     }).locator('button[data-action="open"]').click();
-    await page.waitForFunction(() => getCurrentProject()?.name === PROJECT_NAME && getCurrentProject()?.type === 'design');
+    await page.waitForFunction(name => getCurrentProject()?.name === name && getCurrentProject()?.type === 'design', PROJECT_NAME);
 
     // 7. Verify recovery of newer local edits and an offline deletion after reload.
     await page.selectOption('#designFrameSize', 'desktop');
