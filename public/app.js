@@ -2592,6 +2592,7 @@ function setDesignBackground(color) {
 }
 function distributeDesignElements(axis = 'horizontal') {
   const p = activeDesignProject();
+  if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
   const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   recordDesignHistory();
@@ -2615,6 +2616,7 @@ function distributeDesignElements(axis = 'horizontal') {
 function alignDesignElement(mode = 'center-x') {
   const p = activeDesignProject(), el = selectedDesignElement();
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
+  if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
   if (selected.length > 1) {
     const left = Math.min(...selected.map(item => Number(item.x) || 0));
