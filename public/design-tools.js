@@ -137,6 +137,15 @@
     return lines.join('\n');
   }
 
+  function injectTokenBlock(existingCss, tokensCss) {
+    const startMarker = '/* CodeLab Design Tokens START */';
+    const endMarker = '/* CodeLab Design Tokens END */';
+    const block = startMarker + '\n' + String(tokensCss || '').trim() + '\n' + endMarker;
+    const source = String(existingCss || '');
+    const pattern = /\/\* CodeLab Design Tokens START \*\/[\s\S]*?\/\* CodeLab Design Tokens END \*\//;
+    return pattern.test(source) ? source.replace(pattern, block) : block + (source.trim() ? '\n\n' + source.replace(/^\s+/, '') : '\n');
+  }
+
   function loadSavedSettings() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -350,6 +359,20 @@
       renderAll();
       announce('Valores predeterminados restaurados. Guarda para conservarlos.');
     });
+    if (get('applyDesignTokens')) get('applyDesignTokens').addEventListener('click', () => {
+      settings = readForm();
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function' || typeof window.setEditorValue !== 'function') {
+        announce('Abre un proyecto web en el editor para aplicar estos tokens.');
+        if (typeof window.showToast === 'function') window.showToast('Abre un proyecto web en el editor para aplicar los tokens.', 'warn');
+        return;
+      }
+      const nextCss = injectTokenBlock(window.getEditorValue('css') || '', toCssVariables(settings));
+      window.setEditorValue('css', nextCss);
+      if (typeof window.updatePreview === 'function') window.updatePreview();
+      announce('Tokens aplicados al CSS del proyecto web.');
+      if (typeof window.showToast === 'function') window.showToast('Sistema visual aplicado al proyecto web.');
+    });
     if (get('exportDesignSystemCss')) get('exportDesignSystemCss').addEventListener('click', () => {
       settings = readForm();
       downloadText('codelab-design-tokens.css', toCssVariables(settings), 'text/css;charset=utf-8');
@@ -385,6 +408,7 @@
     generatePalette: generatePalette,
     buildDesignTokens: buildDesignTokens,
     toCssVariables: toCssVariables,
+    injectTokenBlock: injectTokenBlock,
     sanitizeSettings: sanitizeSettings,
     init: init
   };
