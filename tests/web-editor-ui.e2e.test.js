@@ -3,6 +3,8 @@ const { chromium } = require('playwright');
 
 const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const name = 'Web editor UI ' + Date.now();
+const renamed = name + ' renombrado';
+const branchHtml = "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>";
 const html = '<main id="editor-check"><h1>CodeLab listo</h1><button id="preview-action">Acción</button></main>';
 const css = '#editor-check { color: rgb(1, 2, 3); } #preview-action { background: rgb(4, 5, 6); }';
 const js = 'document.getElementById("preview-action").addEventListener("click", () => console.log("action-ok")); console.log("preview-ok");';
@@ -25,16 +27,6 @@ async function setCode(page, lang, value) {
     await page.keyboard.press('Backspace');
     await page.keyboard.type(value);
   }
-  console.log('Editor input probe:', JSON.stringify(await page.evaluate(language => ({
-    language,
-    useMonaco,
-    editorReady: !!editors[language],
-    editorValue: getEditorValue(language).slice(0, 180),
-    fallbackVisible: !!document.getElementById('fallback-' + language) &&
-      !document.getElementById('fallback-' + language).classList.contains('hidden'),
-    fallbackValue: document.getElementById('fallback-' + language)?.value?.slice(0, 180),
-    activeElement: document.activeElement?.className || document.activeElement?.id || document.activeElement?.tagName
-  }), lang)));
   await page.waitForFunction(({ lang, value }) => getEditorValue(lang).trim() === value.trim(),
     { lang, value }, { timeout: 10000 });
 }
@@ -78,8 +70,42 @@ async function setCode(page, lang, value) {
       return project?.code?.html === expected.html && project?.code?.css === expected.css && project?.code?.js === expected.js;
     }, { name, html, css, js }, { timeout: 15000 });
 
+    // Create a branch from the real editor, keep main isolated, then merge and undo.
+    await page.locator('#desktopProjectActions button[onclick="duplicateProject()"]').click();
+    await page.waitForFunction(() => document.getElementById('toggleCopyBranchBtn')?.disabled === false,
+      null, { timeout: 10000 });
+    await page.locator('#toggleCopyBranchBtn').click();
+    await page.locator('#copyAlertBanner').waitFor({ state: 'visible' });
+    await setCode(page, 'html', branchHtml);
+    await page.locator('button[onclick="saveInCopyBranch()"]').click();
+    await page.locator('#toggleCopyBranchBtn').click();
+    await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>CodeLab listo</h1><button id=\"preview-action\">Acción</button></main>".trim(),
+      null, { timeout: 10000 });
+    await page.locator('#toggleCopyBranchBtn').click();
+    await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>".trim(),
+      null, { timeout: 10000 });
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('button[onclick="mergeToMainProject()"]').click();
+    await page.waitForFunction(() => document.getElementById('undoMergeBtn')?.disabled === false,
+      null, { timeout: 15000 });
+    await page.locator('#toggleCopyBranchBtn').click();
+    await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>".trim(),
+      null, { timeout: 10000 });
+    await page.locator('#undoMergeBtn').click();
+    await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>CodeLab listo</h1><button id=\"preview-action\">Acción</button></main>".trim(),
+      null, { timeout: 10000 });
+
+    page.once('dialog', dialog => dialog.accept(renamed));
+    await page.locator('#studioView button[onclick="editCurrentProjectName()"]').click();
+    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent === expected,
+      renamed, { timeout: 10000 });
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#desktopProjectActions button[onclick="downloadProject()"]').click();
+    const download = await downloadPromise;
+    assert.match(download.suggestedFilename(), /\\.html?$/i, 'project export should download HTML');
+
     assert.deepEqual(errors, [], 'web editor should not produce uncaught browser errors');
-    console.log('Web editor UI E2E passed: create project, edit HTML/CSS/JS, execute preview, bridge console output, and persist the code to the workspace.');
+    console.log('Web editor UI E2E passed: create project, edit HTML/CSS/JS, live preview/console, workspace persistence, isolated branch, merge/undo, rename, and HTML export.');
   } finally {
     await browser.close();
   }
