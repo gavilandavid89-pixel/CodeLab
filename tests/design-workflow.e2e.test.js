@@ -294,6 +294,35 @@ async function waitForPersistedProject(page, projectName) {
     }, { timeout: 10000 });
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 0,
       'new design project should start with an empty canvas');
+
+    // The second creation choice must open the code editor, not the design studio.
+    // Then return to the dashboard and reopen the original design without mixing state.
+    await page.evaluate(() => returnToDashboard());
+    await page.waitForSelector('#welcomeDashboard:not(.hidden)');
+    await page.locator('button[onclick="openNewProjectModal()"]').click();
+    await page.locator('#newProjectNameInput').fill('Flujo integral web E2E');
+    await page.locator('input[name="newProjectType"][value="web"]').check();
+    await page.locator('button[onclick="createNewProjectConfirm()"]').click();
+    await page.waitForFunction(() => {
+      const studio = document.getElementById('studioView');
+      const editor = document.getElementById('editorPanel');
+      const design = document.getElementById('designStudioPanel');
+      return studio && !studio.classList.contains('hidden') &&
+        editor && !editor.classList.contains('hidden') &&
+        design && design.classList.contains('hidden') &&
+        getCurrentProject()?.type === 'web';
+    }, null, { timeout: 10000 });
+    assert.equal(await page.locator('#newProjectModal').evaluate(node => node.classList.contains('hidden')), true,
+      'creation modal should close after the save attempt settles');
+    await page.evaluate(() => returnToDashboard());
+    await page.waitForSelector('#welcomeDashboard:not(.hidden)');
+    await page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME }).locator('button[data-action="open"]').click();
+    await page.waitForFunction(() => {
+      const design = document.getElementById('designStudioPanel');
+      return design && !design.classList.contains('hidden') &&
+        getCurrentProject()?.type === 'design';
+    }, null, { timeout: 10000 });
+
     const layerLimitCheck = await page.evaluate(() => {
       const project = window.activeDesignProject();
       project.design = [];
