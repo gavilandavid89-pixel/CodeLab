@@ -73,6 +73,15 @@ assert.equal(webContext.page.title, 'Demo Page');
 assert.equal(webContext.page.description, 'A test page');
 assert.deepEqual(webContext.page.headings, [{ level: 1, text: 'Welcome' }, { level: 2, text: 'Features' }]);
 assert.deepEqual(webContext.page.counts, { images: 1, links: 1, buttons: 1, forms: 1, externalStylesheets: 0 });
+const reorderedAttributesContext = capture.buildWebCaptureContext({
+  project: { name: 'Attribute order' },
+  html: '<html><head><meta content="Reordered description" name="description"><link href="/theme.css" rel="stylesheet"></head><body></body></html>',
+  css: '', js: ''
+});
+assert.equal(reorderedAttributesContext.page.description, 'Reordered description',
+  'Description metadata must be read regardless of HTML attribute order');
+assert.equal(reorderedAttributesContext.page.counts.externalStylesheets, 1,
+  'Stylesheet metadata must be counted regardless of HTML attribute order');
 assert.equal(webContext.viewport.width, 390);
 assert.equal(webContext.viewport.scale, 3, 'Capture context must preserve selected resolution scale');
 const maximumResolutionContext = capture.buildWebCaptureContext({
