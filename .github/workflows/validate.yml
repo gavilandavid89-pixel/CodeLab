@@ -35,6 +35,7 @@ jobs:
           npx playwright install chromium
           node tests/capture-browser.test.js
           node tests/design-tools-browser.test.js
+          node tests/component-library-browser.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
