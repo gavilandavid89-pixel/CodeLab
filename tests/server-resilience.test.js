@@ -11,9 +11,12 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-server-resilience-'));
   const sessionsDir = path.join(dataDir, 'sessions');
   await fs.mkdir(sessionsDir, { recursive: true });
-  const staleSessionPath = path.join(sessionsDir, 'expired-regression.json');
+  const staleSessionPaths = Array.from({ length: 201 }, (_, index) =>
+    path.join(sessionsDir, 'expired-regression-' + String(index).padStart(3, '0') + '.json'));
   const unrelatedSessionTempPath = path.join(sessionsDir, '000-unrelated.tmp');
-  await fs.writeFile(staleSessionPath, JSON.stringify({ expiresAt: Date.now() - 1000 }));
+  for (const stalePath of staleSessionPaths) {
+    await fs.writeFile(stalePath, JSON.stringify({ expiresAt: Date.now() - 1000 }));
+  }
   await fs.writeFile(unrelatedSessionTempPath, 'keep this unrelated file');
   let server = spawn(process.execPath, ['server.js'], {
     cwd: process.cwd(),
@@ -22,6 +25,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       PORT: String(PORT),
       CODELAB_DATA_DIR: dataDir,
       CODELAB_WORKSPACE_SECRET: '',
+      CODELAB_SESSION_CLEANUP_INTERVAL_MS: '3000',
       CODELAB_MAX_BODY_BYTES: '-1',
       CODELAB_MAX_PROJECTS: '-1',
       CODELAB_TRUSTED_PROXY_HOPS: '2',
@@ -49,8 +53,17 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
-    await assert.rejects(fs.stat(staleSessionPath), { code: 'ENOENT' },
-      'Expired session records should be removed during startup cleanup');
+    const expiredAfterStartup = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
+    assert.equal(expiredAfterStartup.length, 1,
+      'Startup cleanup should process one bounded batch of 200 expired sessions');
+    const cleanupDeadline = Date.now() + 6000;
+    let remainingExpiredSessions = expiredAfterStartup;
+    while (remainingExpiredSessions.length && Date.now() < cleanupDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      remainingExpiredSessions = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
+    }
+    assert.equal(remainingExpiredSessions.length, 0,
+      'Rotating cleanup batches must eventually reach expired sessions beyond the first 200 files');
     assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
       'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
     const healthConfigResponse = await fetch(BASE_URL + '/api/health');
