@@ -266,7 +266,11 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#openDesignTools').click();
     await page.locator('#designToolsModal').waitFor({ state: 'visible' });
     await page.locator('#systemName').fill('Sistema integral E2E');
-    await page.locator('#colorPrimary').fill('#123abc');
+    await page.locator('#colorPrimary').evaluate(input => {
+      input.value = '#123abc';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     await page.locator('#saveDesignSystem').click();
     await page.waitForFunction(async expected => {
       const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
