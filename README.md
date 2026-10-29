@@ -33,7 +33,7 @@ Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así p
 | `CODELAB_DATA_DIR` | `/var/data` con Persistent Disk |
 | `CODELAB_WORKSPACE_SECRET` | Cadena aleatoria larga |
 | `CODELAB_TRUSTED_PROXY_HOPS` | Saltos de proxy inverso confiables que agregan X-Forwarded-For (default 1; ajusta a la cadena real del hosting) |
-| `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 2 MiB) |
+| `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 10 MiB) |
 | `CODELAB_MAX_PROJECTS` | Máximo de proyectos por workspace (default 50) |
 | `NODE_ENV` | `production` |
 
