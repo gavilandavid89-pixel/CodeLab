@@ -831,6 +831,10 @@ function serveStatic(req, res, urlPath) {
       // have to be fully buffered in memory for every concurrent client.
       if (req.method === 'HEAD') return res.end();
       const stream = fs.createReadStream(realPath);
+      res.on('close', () => {
+        // Stop disk reads when a client disconnects before the asset finishes.
+        if (!res.writableEnded) stream.destroy();
+      });
       stream.on('error', error => {
         console.error('static_asset_stream_failed', ext, error.message);
         if (res.headersSent) res.destroy();
