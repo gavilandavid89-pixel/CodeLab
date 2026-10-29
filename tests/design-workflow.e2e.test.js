@@ -178,7 +178,8 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /<!doctype html>/i, 'HTML export should contain a standalone document');
     assert.match(exportedHtml, /class="design-viewport"/, 'HTML export should use a viewport wrapper');
     assert.match(exportedHtml, /addEventListener\("resize",fit/, 'HTML export should recalculate scale on resize');
-    assert.match(exportedHtml, /transform:"scale\("\+s\+"\)"/, 'HTML export should scale the fixed design canvas to smaller screens');
+    assert.match(exportedHtml, /f\.style\.transform/, 'HTML export should apply a visual scale to the fixed design canvas');
+    assert.match(exportedHtml, /window\.innerWidth\/w/, 'HTML export should calculate scale from the current viewport width');
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
