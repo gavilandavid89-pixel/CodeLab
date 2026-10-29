@@ -790,6 +790,38 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(projectBackup.project.design.elements.find(item => item.type === 'image')?.alt, 'E2E sample image',
       'JSON backup should preserve image metadata');
 
+    // The exported backup must be restorable as a separate project, including
+    // image metadata and remapped internal prototype links.
+    await page.locator('#designProjectJsonFile').setInputFiles({
+      name: 'design-backup.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(projectBackup))
+    });
+    await page.waitForFunction(name => {
+      const project = getCurrentProject();
+      return project && project.type === 'design' && project.name === name + ' (Importado)' &&
+        Array.isArray(project.design?.elements) && project.design.elements.length === 4;
+    }, PROJECT_NAME, { timeout: 10000 });
+    const restoredBackupCheck = await page.evaluate(() => {
+      const project = getCurrentProject();
+      const button = project.design.elements.find(item => item.type === 'button');
+      const targetId = /^#layer-(.+)$/.exec(button?.href || '')?.[1];
+      return {
+        imageAlt: project.design.elements.find(item => item.type === 'image')?.alt,
+        internalLinkRestored: !!targetId && project.design.elements.some(item => item.id === targetId),
+        sourceProjectStillExists: projects.some(item => item.name === project.name.replace(/ \(Importado\)$/, ''))
+      };
+    });
+    assert.equal(restoredBackupCheck.imageAlt, 'E2E sample image', 'backup import must preserve image metadata');
+    assert.equal(restoredBackupCheck.internalLinkRestored, true, 'backup import must remap internal prototype links to the imported layer IDs');
+    assert.equal(restoredBackupCheck.sourceProjectStillExists, true, 'restoring a backup must create a separate project, not overwrite the source');
+
+    // Return to the original project before testing recovery after reload.
+    await page.evaluate(() => returnToDashboard());
+    await page.waitForSelector('#welcomeDashboard:not(.hidden)');
+    await page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME }).first().locator('button[data-action="open"]').click();
+    await page.waitForFunction(() => getCurrentProject()?.name === PROJECT_NAME && getCurrentProject()?.type === 'design');
+
     // 7. Verify recovery of newer local edits and an offline deletion after reload.
     await page.selectOption('#designFrameSize', 'desktop');
     await waitForPersistedProject(page, PROJECT_NAME);
