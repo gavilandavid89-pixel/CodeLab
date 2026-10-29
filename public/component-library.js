@@ -175,7 +175,7 @@
       try { await navigator.clipboard.writeText(item.html); status('Código de ' + item.name + ' copiado.'); }
       catch (_) { get('componentLibraryCode').focus(); get('componentLibraryCode').select(); status('Selecciona el código y cópialo manualmente.'); }
     }
-    function insertIntoProject() {
+    async function insertIntoProject() {
       const item = getComponent(selectedId);
       if (!item) { status('Selecciona un componente antes de insertarlo.'); return; }
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
@@ -196,9 +196,17 @@
         return;
       }
       window.setEditorValue('html', next);
-      window.saveCurrentCodeToActiveProject(true);
       if (typeof window.updatePreview === 'function') window.updatePreview();
-      status('Componente insertado en el HTML del proyecto.');
+      try {
+        const saved = await window.saveCurrentCodeToActiveProject(true);
+        if (saved === true) {
+          status('Componente insertado y guardado; sincronización confirmada.');
+        } else {
+          status('Componente insertado en el editor, pero no se confirmó el guardado/sincronización. Revisa el estado de guardado.');
+        }
+      } catch (_) {
+        status('Componente insertado en el editor, pero el guardado falló. Revisa el estado de guardado e inténtalo de nuevo.');
+      }
     }
     get('openComponentLibrary').addEventListener('click', open);
     get('closeComponentLibrary').addEventListener('click', close);
