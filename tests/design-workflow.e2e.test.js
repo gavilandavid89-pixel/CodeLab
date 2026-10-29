@@ -191,6 +191,17 @@ async function waitForPersistedProject(page, projectName) {
       'column Auto Layout should apply configured spacing between layers');
     assert.equal(autoLayoutPositions[2].top - autoLayoutPositions[1].top - autoLayoutPositions[1].height, 24,
       'column Auto Layout should apply configured spacing consistently');
+    await page.selectOption('#designFrameSize', 'mobile');
+    await page.locator('#designLayoutDirection').selectOption('row');
+    const rowLayoutPositions = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes =>
+      nodes.map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width) }))
+        .filter(item => item.width === 100).sort((a, b) => a.left - b.left));
+    assert.deepEqual(rowLayoutPositions.map(item => item.left), [20, 144, 268],
+      'row Auto Layout should wrap the oversized heading and pack the three smaller layers into the mobile frame');
+    assert.equal(rowLayoutPositions[0].top, rowLayoutPositions[2].top,
+      'layers fitting on the same row should share a top position');
+    await page.selectOption('#designFrameSize', 'desktop');
+    await page.locator('#designLayoutDirection').selectOption('column');
     await page.locator('button[onclick="deleteDesignElement()"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
     await element.click();
