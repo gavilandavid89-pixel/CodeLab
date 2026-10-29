@@ -640,6 +640,7 @@ function httpsRequest(urlStr, options, body) {
     const u = new URL(urlStr);
     const opts = {
       hostname: u.hostname,
+      port: u.port ? Number(u.port) : 443,
       path: u.pathname + u.search,
       method: options.method || 'GET',
       headers: options.headers || {},
