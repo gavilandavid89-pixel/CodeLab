@@ -68,6 +68,18 @@
       .replace(/<base\b[^>]*>/gi, '');
   }
 
+  function buildCaptureDocument(input) {
+    const html = sanitizeForCapture(input.html || '');
+    const css = String(input.css || '').replace(/<\/style/gi, '<\\/style');
+    const viewport = Math.max(320, Math.min(1920, Number(input.viewport) || 1280));
+    const headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head\s*>/i);
+    const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body\s*>/i);
+    const head = headMatch ? headMatch[1] : '';
+    let body = bodyMatch ? bodyMatch[1] : html;
+    if (!bodyMatch) body = body.replace(/<!doctype[^>]*>|<\/?html\b[^>]*>|<\/?head\b[^>]*>|<\/?body\b[^>]*>/gi, '');
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=' + viewport + ', initial-scale=1">' + head + '<style>' + css + '</style></head><body>' + body + '</body></html>';
+  }
+
   function buildWebCaptureContext(input) {
     const project = input.project || {};
     const html = String(input.html || '');
@@ -93,7 +105,7 @@
       project: String(project.name || 'Página sin título'),
       projectId: project.id || null,
       capturedAt: new Date().toISOString(),
-      viewport: { width: viewport, height: Math.min(Math.max(Number(input.height) || 900, 320), 12000), scale: 2 },
+      viewport: { width: viewport, height: Math.min(Math.max(Number(input.height) || 900, 320), 6000), scale: 2 },
       page: {
         title: title.replace(/<[^>]+>/g, '').trim().slice(0, 300),
         description: String(description).slice(0, 500),
@@ -165,9 +177,7 @@
     iframe.setAttribute('aria-hidden', 'true');
     iframe.tabIndex = -1;
     iframe.style.cssText = 'position:fixed;left:-100000px;top:0;width:' + viewport + 'px;height:900px;border:0;visibility:hidden;pointer-events:none;';
-    const safeHtml = sanitizeForCapture(code.html);
-    const styleTag = '<style>' + code.css.replace(/<\/style/gi, '<\\/style') + '</style>';
-    const source = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=' + viewport + ', initial-scale=1">' + styleTag + '</head><body>' + safeHtml + '</body></html>';
+    const source = buildCaptureDocument({ html: code.html, css: code.css, viewport: viewport });
     const context = buildWebCaptureContext({ project: project, html: code.html, css: code.css, js: code.js, viewport: viewport, height: 900 });
     let captureDoc;
     let timeoutId;
@@ -183,7 +193,7 @@
       if (!captureDoc || !captureDoc.documentElement) throw new Error('No se pudo leer el render aislado.');
       const root = captureDoc.documentElement;
       const body = captureDoc.body;
-      const height = Math.min(12000, Math.max(900, body.scrollHeight, root.scrollHeight, body.offsetHeight, root.offsetHeight));
+      const height = Math.min(6000, Math.max(900, body.scrollHeight, root.scrollHeight, body.offsetHeight, root.offsetHeight));
       iframe.style.height = height + 'px';
       context.viewport.height = height;
       const headings = Array.from(captureDoc.querySelectorAll('h1,h2,h3,h4,h5,h6')).slice(0, 80).map(function (node) {
@@ -212,7 +222,7 @@
         width: viewport,
         windowWidth: viewport,
         height: height,
-        windowHeight: Math.min(height, 12000),
+        windowHeight: Math.min(height, 6000),
         scrollX: 0,
         scrollY: 0
       });
