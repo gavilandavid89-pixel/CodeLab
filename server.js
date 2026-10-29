@@ -403,6 +403,8 @@ function readSession(sid) {
 }
 
 function destroySession(sid) {
+  // Logout cookies are untrusted input; only generated session IDs may map to files.
+  if (typeof sid !== 'string' || !/^[a-f0-9]{48}$/.test(sid)) return;
   try { fs.unlinkSync(sessionPath(sid)); } catch (_) {}
 }
 
