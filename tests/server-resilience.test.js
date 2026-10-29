@@ -64,6 +64,19 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     }
     assert.equal(remainingExpiredSessions.length, 0,
       'Rotating cleanup batches must eventually reach expired sessions beyond the first 200 files');
+    const corruptSessionPath = path.join(sessionsDir, 'corrupt-session-regression.json');
+    await fs.writeFile(corruptSessionPath, '{"truncated":');
+    const corruptSessionDeadline = Date.now() + 5000;
+    let corruptSessionExists = true;
+    while (corruptSessionExists && Date.now() < corruptSessionDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      try { await fs.stat(corruptSessionPath); } catch (error) {
+        if (error.code === 'ENOENT') corruptSessionExists = false;
+        else throw error;
+      }
+    }
+    assert.equal(corruptSessionExists, false,
+      'Malformed session JSON must be removed by periodic cleanup instead of accumulating forever');
     assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
       'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
     const healthConfigResponse = await fetch(BASE_URL + '/api/health');
