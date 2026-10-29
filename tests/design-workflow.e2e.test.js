@@ -860,7 +860,9 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(deletedDefaultId, 'fixture should include the starter project and design project');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
-    const projectCard = page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME });
+    const projectCard = page.locator('#projectsGrid > div').filter({
+      has: page.locator('h4').getByText(PROJECT_NAME, { exact: true })
+    });
     await projectCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(() => {
       const design = document.getElementById('designStudioPanel');
