@@ -19,6 +19,7 @@ const { chromium } = require('playwright');
     await page.addScriptTag({ path: 'public/capture.js' });
     await page.waitForSelector('#webCaptureBtn');
     await page.selectOption('#webCaptureViewport', '768');
+    await page.selectOption('#webCaptureScale', '3');
     const downloads = [];
     const downloadsPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Expected PNG and JSON downloads, received: ' + downloads.map(d => d.suggestedFilename()).join(', '))), 45000);
@@ -37,11 +38,14 @@ const { chromium } = require('playwright');
     const png = await fs.readFile(pngPath);
     assert.ok(png.length > 500, 'PNG output must contain rendered image data');
     assert.deepEqual(Array.from(png.subarray(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10], 'Downloaded image must have a valid PNG signature');
+    assert.equal(png.readUInt32BE(16), 768 * 3, 'PNG pixel width must match selected 3× scale');
+    assert.equal(png.readUInt32BE(20), 900 * 3, 'PNG pixel height must match selected 3× scale');
 
     const jsonPath = await jsonDownload.path();
     const context = JSON.parse(await fs.readFile(jsonPath, 'utf8'));
     assert.equal(context.format, 'codelab-ai-web-capture');
     assert.equal(context.viewport.width, 768);
+    assert.equal(context.viewport.scale, 3, 'AI context must document the selected image scale');
     assert.equal(context.page.title, 'Browser Fixture');
     assert.match(context.sourceCode.javascript, /not-executed-in-capture/);
     assert.equal(context.page.javascriptIncludedInScreenshot, false);
