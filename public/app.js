@@ -234,6 +234,8 @@ async function loadProjectsFromStorage() {
       ...p,
       id: typeof p.id === 'string' ? p.id : 'proj_' + Date.now(),
       name: typeof p.name === 'string' && p.name.trim() ? p.name : 'Sin título',
+      type: p.type === 'design' ? 'design' : 'web',
+      design: p.design && typeof p.design === 'object' ? { ...p.design, elements: Array.isArray(p.design.elements) ? p.design.elements : [], frame: p.design.frame || 'desktop', background: p.design.background || '#ffffff' } : (p.type === 'design' ? { elements: [], frame: 'desktop', background: '#ffffff' } : undefined),
       updatedAt: p.updatedAt || new Date().toISOString(),
       code: normalizeCode(p.code),
       branch: p.branch && typeof p.branch === 'object'
@@ -488,7 +490,7 @@ function renderProjectsList() {
     card.innerHTML =
       '<div class="space-y-2">' +
       '<div class="flex items-center justify-between gap-2">' +
-      '<span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 font-mono border border-cyan-500/20">HTML / CSS / JS</span>' +
+      '<span class="text-[10px] px-2 py-0.5 rounded-full ' + (p.type === 'design' ? 'bg-violet-500/10 text-violet-300 border-violet-500/20' : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20') + ' font-mono border">' + (p.type === 'design' ? 'DISEÑO · PROTOTIPO' : 'HTML / CSS / JS') + '</span>' +
       (hasBranch
         ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">Rama</span>'
         : '') +
@@ -552,11 +554,15 @@ function closeNewProjectModal() {
 
 function createNewProjectConfirm() {
   const name = document.getElementById('newProjectNameInput').value.trim() || 'Proyecto sin título';
+  const selectedType = document.querySelector('input[name="newProjectType"]:checked');
+  const type = selectedType && selectedType.value === 'design' ? 'design' : 'web';
   const newProj = {
     id: 'proj_' + crypto.randomUUID(),
     name: name,
+    type,
     updatedAt: new Date().toISOString(),
-    code: { ...defaultTemplate }
+    code: { ...defaultTemplate },
+    ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff' } } : {})
   };
   projects.unshift(newProj);
   saveProjectsToStorage();
@@ -587,8 +593,10 @@ function duplicateProjectFromDashboard(id, e) {
   const dup = {
     id: 'proj_' + crypto.randomUUID(),
     name: orig.name + ' (Copia)',
+    type: orig.type === 'design' ? 'design' : 'web',
     updatedAt: new Date().toISOString(),
-    code: JSON.parse(JSON.stringify(orig.code))
+    code: JSON.parse(JSON.stringify(orig.code)),
+    ...(orig.design ? { design: JSON.parse(JSON.stringify(orig.design)) } : {})
   };
   projects.unshift(dup);
   saveProjectsToStorage();
@@ -630,11 +638,23 @@ function openProject(id) {
   if (banner) banner.classList.add('hidden');
   document.getElementById('welcomeDashboard').classList.add('hidden');
   document.getElementById('studioView').classList.remove('hidden');
+  const isDesignProject = proj.type === 'design';
+  document.getElementById('editorPanel').classList.toggle('hidden', isDesignProject);
+  document.getElementById('splitDivider').classList.toggle('hidden', isDesignProject);
+  document.getElementById('previewPanel').classList.toggle('hidden', isDesignProject);
+  document.getElementById('designStudioPanel').classList.toggle('hidden', !isDesignProject);
+  document.getElementById('designStudioPanel').classList.toggle('flex', isDesignProject);
+  document.getElementById('mainSplit').classList.toggle('md:flex-row', !isDesignProject);
+  document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
   setMobileStudioMode('code');
   // Layout after studio is visible
   requestAnimationFrame(() => {
-    initMonacoOrFallback(proj.code);
-    switchTab(activeTab || 'html');
+    if (isDesignProject) {
+      initializeDesignProject(proj);
+    } else {
+      initMonacoOrFallback(proj.code);
+      switchTab(activeTab || 'html');
+    }
   });
   setSyncStatus(serverReady ? 'synced' : 'offline', serverReady ? 'Sincronizado' : 'Solo local');
 }
@@ -658,6 +678,13 @@ async function returnToDashboard() {
 
 function saveCurrentCodeToActiveProject(immediate) {
   if (!currentProjectId) return;
+  const active = projects.find(p => p.id === currentProjectId);
+  if (active && active.type === 'design') {
+    active.updatedAt = new Date().toISOString();
+    if (immediate) saveProjectsToStorage();
+    else scheduleAutosave();
+    return;
+  }
   const code = normalizeCode({
     html: getEditorValue('html'),
     css: getEditorValue('css'),
@@ -2194,6 +2221,216 @@ function setupKeyboardShortcuts() {
       }
     }
   });
+}
+
+
+/* ---------- CodeLab visual design workspace ---------- */
+let selectedDesignElementId = null;
+let designUndoStack = [];
+let designRedoStack = [];
+let designDragState = null;
+let designEventsBound = false;
+
+function activeDesignProject() {
+  const p = projects.find(item => item.id === currentProjectId);
+  if (!p || p.type !== 'design') return null;
+  if (!p.design || typeof p.design !== 'object') p.design = { elements: [], frame: 'desktop', background: '#ffffff' };
+  if (!Array.isArray(p.design.elements)) p.design.elements = [];
+  return p;
+}
+function designSnapshot() {
+  const p = activeDesignProject();
+  return p ? JSON.stringify(p.design) : null;
+}
+function recordDesignHistory() {
+  const snap = designSnapshot();
+  if (snap) {
+    designUndoStack.push(snap);
+    if (designUndoStack.length > 60) designUndoStack.shift();
+    designRedoStack = [];
+    updateDesignHistoryButtons();
+  }
+}
+function updateDesignHistoryButtons() {
+  const u = document.getElementById('designUndoBtn'), r = document.getElementById('designRedoBtn');
+  if (u) u.disabled = !designUndoStack.length;
+  if (r) r.disabled = !designRedoStack.length;
+}
+function designUndo() {
+  const p = activeDesignProject(); if (!p || !designUndoStack.length) return;
+  designRedoStack.push(JSON.stringify(p.design));
+  p.design = JSON.parse(designUndoStack.pop());
+  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+}
+function designRedo() {
+  const p = activeDesignProject(); if (!p || !designRedoStack.length) return;
+  designUndoStack.push(JSON.stringify(p.design));
+  p.design = JSON.parse(designRedoStack.pop());
+  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+}
+function initializeDesignProject(project) {
+  if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff' };
+  if (!Array.isArray(project.design.elements)) project.design.elements = [];
+  selectedDesignElementId = null; designUndoStack = []; designRedoStack = [];
+  const frame = document.getElementById('designFrameSize');
+  if (frame) frame.value = project.design.frame || 'desktop';
+  renderDesignWorkspace();
+  bindDesignCanvasEvents();
+  updateDesignHistoryButtons();
+}
+function setDesignFrame(frame) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  p.design.frame = ['desktop','tablet','mobile'].includes(frame) ? frame : 'desktop';
+  const canvas = document.getElementById('designCanvas');
+  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  if (canvas) canvas.style.width = widths[p.design.frame] + 'px';
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function addDesignElement(type) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  const defaults = {
+    heading: { label: 'Título', text: 'Título de tu diseño', x: 80, y: 70, width: 560, height: 76, color: '#111827', background: 'transparent', fontSize: 42, weight: 700, radius: 0 },
+    text: { label: 'Texto', text: 'Escribe aquí tu texto', x: 84, y: 165, width: 420, height: 64, color: '#475569', background: 'transparent', fontSize: 18, weight: 400, radius: 0 },
+    button: { label: 'Botón', text: 'Comenzar', x: 84, y: 250, width: 160, height: 48, color: '#ffffff', background: '#7c3aed', fontSize: 15, weight: 600, radius: 10 },
+    rectangle: { label: 'Rectángulo', text: '', x: 100, y: 340, width: 240, height: 150, color: '#ffffff', background: '#dbeafe', fontSize: 16, weight: 400, radius: 16 }
+  };
+  const d = defaults[type] || defaults.text;
+  const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), type, ...d };
+  p.design.elements.push(element); selectedDesignElementId = element.id;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function selectedDesignElement() {
+  const p = activeDesignProject();
+  return p && p.design.elements.find(el => el.id === selectedDesignElementId);
+}
+function selectDesignElement(id) {
+  selectedDesignElementId = id; renderDesignWorkspace();
+}
+function renderDesignWorkspace() {
+  const p = activeDesignProject(); if (!p) return;
+  const canvas = document.getElementById('designCanvas');
+  const layers = document.getElementById('designLayers');
+  const props = document.getElementById('designProperties');
+  const empty = document.getElementById('designCanvasEmpty');
+  if (!canvas || !layers || !props) return;
+  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
+  canvas.style.backgroundColor = p.design.background || '#ffffff';
+  canvas.replaceChildren();
+  if (empty && p.design.elements.length === 0) canvas.appendChild(empty);
+  const sorted = p.design.elements;
+  for (const el of sorted) {
+    const node = document.createElement('div');
+    node.dataset.designId = el.id;
+    node.className = 'absolute select-none cursor-move';
+    node.style.left = (Number(el.x) || 0) + 'px'; node.style.top = (Number(el.y) || 0) + 'px';
+    node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
+    node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
+    node.style.borderRadius = Math.max(0, Number(el.radius) || 0) + 'px';
+    node.style.display = 'flex'; node.style.alignItems = 'center';
+    node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
+    node.style.padding = el.type === 'rectangle' ? '0' : '4px';
+    node.style.whiteSpace = 'pre-wrap'; node.style.overflow = 'hidden';
+    node.style.outline = el.id === selectedDesignElementId ? '2px solid #8b5cf6' : '1px solid transparent';
+    node.style.outlineOffset = '2px';
+    if (el.type === 'heading') node.style.lineHeight = '1.1';
+    node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type);
+    node.addEventListener('click', ev => { ev.stopPropagation(); if (selectedDesignElementId !== el.id) { selectedDesignElementId = el.id; renderDesignWorkspace(); } });
+    node.addEventListener('pointerdown', ev => {
+      if (ev.button !== 0) return;
+      selectedDesignElementId = el.id;
+      const rect = canvas.getBoundingClientRect();
+      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+      node.setPointerCapture && node.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    });
+    canvas.appendChild(node);
+  }
+  layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
+    '<button type="button" onclick="selectDesignElement(\'' + escapeAttr(el.id) + '\')" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+  ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
+  const el = selectedDesignElement();
+  if (!el) {
+    props.innerHTML = '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
+    updateDesignHistoryButtons(); return;
+  }
+  const field = (label, key, type='number', extra='') => '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input ' + extra + ' type="' + type + '" value="' + escapeAttr(el[key] == null ? '' : String(el[key])) + '" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  props.innerHTML = '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
+    (el.type !== 'rectangle' ? field('Contenido','text','text') : '') +
+    field('Nombre de capa','label','text') +
+    '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + field('Ancho','width') + field('Alto','height') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
+    field('Tamaño de texto','fontSize') + field('Redondeado','radius');
+  updateDesignHistoryButtons();
+}
+function updateDesignProperty(key, value) {
+  const el = selectedDesignElement(); if (!el) return;
+  if (key === 'text' || key === 'label') el[key] = value;
+  else if (key === 'color' || key === 'background') el[key] = value;
+  else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
+  const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
+  // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
+  const node = document.querySelector('[data-design-id="' + el.id + '"]');
+  if (node) {
+    node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    node.style.left = (Number(el.x)||0)+'px'; node.style.top = (Number(el.y)||0)+'px';
+    node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
+    node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = Math.max(0,Number(el.radius)||0)+'px';
+  }
+  if (key === 'label') {
+    const layerButtons = document.querySelectorAll('#designLayers button');
+    layerButtons.forEach(b => { if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(el.id)) b.lastElementChild.textContent = el.label || el.type; });
+  }
+  scheduleAutosave();
+}
+function bindDesignCanvasEvents() {
+  if (designEventsBound) return; designEventsBound = true;
+  document.addEventListener('pointermove', ev => {
+    if (!designDragState) return;
+    const el = selectedDesignElement(); if (!el || el.id !== designDragState.id) return;
+    const dx = (ev.clientX - designDragState.startX) / (designDragState.scaleX || 1);
+    const dy = ev.clientY - designDragState.startY;
+    el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
+    const node = document.querySelector('[data-design-id="' + el.id + '"]');
+    if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
+  });
+  document.addEventListener('pointerup', () => {
+    if (!designDragState) return;
+    designDragState = null; renderDesignWorkspace(); saveProjectsToStorage();
+  });
+  document.getElementById('designCanvas')?.addEventListener('click', ev => {
+    if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; renderDesignWorkspace(); }
+  });
+}
+function duplicateDesignElement() {
+  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
+  recordDesignHistory();
+  const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
+  p.design.elements.push(copy); selectedDesignElementId = copy.id; renderDesignWorkspace(); saveProjectsToStorage();
+}
+function deleteDesignElement() {
+  const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
+  recordDesignHistory(); p.design.elements = p.design.elements.filter(el => el.id !== selectedDesignElementId);
+  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage();
+}
+function convertDesignToWeb() {
+  const p = activeDesignProject(); if (!p) return;
+  const elements = p.design.elements.map(el => {
+    const tag = el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
+    const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
+    const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
+    return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
+  }).join('\n');
+  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;overflow-x:auto}.design-frame{position:relative;width:'+width+'px;min-height:900px;background:'+(p.design.background||'#fff')+';margin:0 auto}@media(max-width:'+width+'px){.design-frame{transform-origin:top left;transform:scale(calc(100vw / '+width+'));margin-bottom:calc(900px * (100vw / '+width+' - 1))}}</style></head><body><main class="design-frame">'+elements+'</main></body></html>';
+  const next = { id: 'proj_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), name: p.name + ' · Web', type: 'web', updatedAt: new Date().toISOString(), code: { html, css: '', js: '' } };
+  projects.unshift(next); saveProjectsToStorage(); renderProjectsList(); openProject(next.id);
+  showToast('Página web creada a partir del diseño.');
 }
 
 function setupNewProjectModalKeys() {
