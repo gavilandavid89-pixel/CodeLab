@@ -1543,8 +1543,11 @@ async function waitForPersistedProject(page, projectName) {
     await originalDesignCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(name => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      const canvasCount = document.querySelectorAll('#designCanvas [data-design-id]').length;
+      const projectCount = Array.isArray(project?.design?.elements) ? project.design.elements.length : 0;
       return project && project.name === name && project.type === 'design' &&
-        !document.getElementById('designStudioPanel')?.classList.contains('hidden');
+        !document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
+        canvasCount === projectCount;
     }, PROJECT_NAME, { timeout: 15000 });
 
     const matrixBaselineCount = await page.locator('#designCanvas [data-design-id]').count();
