@@ -111,7 +111,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(snapped.left % 16, 0, 'snapped x coordinate should align to 16 px grid');
     assert.equal(snapped.top % 16, 0, 'snapped y coordinate should align to 16 px grid');
     await page.click('#designSnapBtn');
-    await element.click();
+    await element.focus();
 
     // 4b. Keyboard nudging and duplication shortcuts operate on the selected layer.
     const beforeNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
