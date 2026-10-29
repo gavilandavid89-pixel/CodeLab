@@ -262,10 +262,13 @@ function userWorkspaceId(user) {
 function validateProjects(projects) {
   if (!Array.isArray(projects)) return 'projects_not_array';
   if (projects.length > MAX_PROJECTS) return 'too_many_projects';
+  const projectIds = new Set();
   for (const p of projects) {
-    if (!p || typeof p !== 'object') return 'invalid_project';
-    if (typeof p.id !== 'string' || p.id.length > 80) return 'invalid_project_id';
-    if (typeof p.name !== 'string' || p.name.length > 200) return 'invalid_project_name';
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return 'invalid_project';
+    if (typeof p.id !== 'string' || !p.id.trim() || p.id.length > 80) return 'invalid_project_id';
+    if (projectIds.has(p.id)) return 'duplicate_project_id';
+    projectIds.add(p.id);
+    if (typeof p.name !== 'string' || !p.name.trim() || p.name.length > 200) return 'invalid_project_name';
     if (!p.code || typeof p.code !== 'object' || Array.isArray(p.code)) return 'invalid_project_code';
     for (const k of ['html', 'css', 'js']) {
       if (p.code[k] != null && typeof p.code[k] !== 'string') return 'invalid_code_field';
