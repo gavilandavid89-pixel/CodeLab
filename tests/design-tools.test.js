@@ -64,6 +64,8 @@ assert.ok(audit.summary.warnings >= 4);
 const goodAudit = tools.auditHtml('<html lang="es"><head><title>Bien</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><h1>Hola</h1><img src="decor.png" alt=""><label for="email">Correo</label><input id="email"><button>Enviar</button><a href="/docs">Documentación</a></main></body></html>');
 assert.equal(goodAudit.summary.errors, 0);
 assert.equal(goodAudit.issues.some(item => item.code === 'image-missing-alt'), false);
+const imageLinkAudit = tools.auditHtml('<html lang="es"><head><title>Imágenes enlazadas</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><a href="/inicio"><img src="logo.png" alt="Inicio"></a><a href="/decorativa"><img src="decor.png" alt=""></a></main></body></html>');
+assert.equal(imageLinkAudit.issues.filter(item => item.code === 'link-no-name').length, 1, 'A descriptive image alt should name its link, while a decorative alt should not');
 const partialLabelAudit = tools.auditHtml('<html lang="es"><head><title>Form</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><label>Nombre<input type="text"></label><input type="email"></body></html>');
 assert.equal(partialLabelAudit.issues.filter(item => item.code === 'field-no-label').length, 1, 'Only the field outside its own label should be flagged');
 
