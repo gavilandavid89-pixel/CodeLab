@@ -438,24 +438,27 @@
       aiInstructions: 'Analiza el PNG para evaluar la apariencia visual y usa este JSON para conocer posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue problemas observables de sugerencias y considera accesibilidad y adaptación móvil.'
     };
     downloadBlob(slug + '-contexto-ia.json', new Blob([JSON.stringify(context, null, 2)], { type: 'application/json;charset=utf-8' }));
+    let svgUrl = '';
     try {
-      const image = new Image();
-      const svgUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
-      await new Promise(function (resolve, reject) { image.onload = resolve; image.onerror = reject; image.src = svgUrl; });
       if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
+      const image = new Image();
+      svgUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
+      await new Promise(function (resolve, reject) { image.onload = resolve; image.onerror = reject; image.src = svgUrl; });
       const canvas = document.createElement('canvas');
       canvas.width = captured.width * scale; canvas.height = captured.height * scale;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.scale(scale, scale); ctx.drawImage(image, 0, 0, captured.width, captured.height); URL.revokeObjectURL(svgUrl);
+      ctx.scale(scale, scale); ctx.drawImage(image, 0, 0, captured.width, captured.height);
       const png = await new Promise(function (resolve, reject) { canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('No se pudo generar el PNG.')); }, 'image/png'); });
       downloadBlob(slug + '-captura-ia.png', png);
       toast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
     } catch (error) {
       downloadBlob(slug + '-captura-ia.svg', new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
       toast('El PNG falló; descargué SVG y contexto JSON.', 'warn');
+    } finally {
+      if (svgUrl) URL.revokeObjectURL(svgUrl);
     }
   }
 
