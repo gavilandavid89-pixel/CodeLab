@@ -324,6 +324,15 @@ async function runWorkspaceSync() {
             syncRetryTimer = setTimeout(() => {
               syncRetryTimer = null;
               if (!serverReady) return;
+              // A newer save may still be settling; don't lose the retry by starting
+              // while runWorkspaceSync() is locked.
+              if (syncRunning) {
+                syncRetryTimer = setTimeout(() => {
+                  syncRetryTimer = null;
+                  if (serverReady && !syncRunning) persistWorkspace();
+                }, 1000);
+                return;
+              }
               persistWorkspace();
             }, delay);
           }
