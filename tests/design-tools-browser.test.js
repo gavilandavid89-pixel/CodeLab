@@ -105,7 +105,7 @@ function extractDivById(html, id) {
     await page.click('#resetDesignSystem');
     assert.match(await page.locator('#designToolsStatus').innerText(), /predeterminados restaurados/i,
       'reset should explain that defaults are restored but not yet saved');
-    assert.equal(await page.locator('#colorPrimary').inputValue(), '#6366f1',
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#06b6d4',
       'reset should restore the documented default primary color');
 
     await page.evaluate(() => {
