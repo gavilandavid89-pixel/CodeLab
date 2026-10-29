@@ -1196,20 +1196,24 @@ const server = http.createServer(async (req, res) => {
         }
         const state = createOAuthState('github');
         const redirectUri = publicBaseUrl(req) + '/api/auth/github/callback';
+        const stateCookie = 'codelab_oauth_state_github=' + encodeURIComponent(state) +
+          '; Path=/api/auth/github/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
         const url =
           'https://github.com/login/oauth/authorize?client_id=' +
           encodeURIComponent(GITHUB_CLIENT_ID) +
           '&redirect_uri=' + encodeURIComponent(redirectUri) +
           '&scope=' + encodeURIComponent('read:user user:email') +
           '&state=' + encodeURIComponent(state);
-        return redirect(res, url);
+        return redirect(res, url, { 'Set-Cookie': stateCookie });
       }
 
       // GitHub callback
       if (req.method === 'GET' && pathname === '/api/auth/github/callback') {
         const code = searchParams.get('code');
-        const st = parseOAuthState(searchParams.get('state'));
-        if (!code || !st || st.provider !== 'github') {
+        const state = searchParams.get('state');
+        const cookies = parseCookies(req);
+        const st = parseOAuthState(state);
+        if (!code || !st || st.provider !== 'github' || !state || cookies.codelab_oauth_state_github !== state) {
           return redirect(res, '/?auth=error&reason=invalid_state');
         }
         try {
@@ -1234,6 +1238,8 @@ const server = http.createServer(async (req, res) => {
         }
         const state = createOAuthState('google');
         const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
+        const stateCookie = 'codelab_oauth_state_google=' + encodeURIComponent(state) +
+          '; Path=/api/auth/google/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
         const url =
           'https://accounts.google.com/o/oauth2/v2/auth?client_id=' +
           encodeURIComponent(GOOGLE_CLIENT_ID) +
@@ -1243,14 +1249,16 @@ const server = http.createServer(async (req, res) => {
           '&state=' + encodeURIComponent(state) +
           '&access_type=online' +
           '&prompt=select_account';
-        return redirect(res, url);
+        return redirect(res, url, { 'Set-Cookie': stateCookie });
       }
 
       // Google callback
       if (req.method === 'GET' && pathname === '/api/auth/google/callback') {
         const code = searchParams.get('code');
-        const st = parseOAuthState(searchParams.get('state'));
-        if (!code || !st || st.provider !== 'google') {
+        const state = searchParams.get('state');
+        const cookies = parseCookies(req);
+        const st = parseOAuthState(state);
+        if (!code || !st || st.provider !== 'google' || !state || cookies.codelab_oauth_state_google !== state) {
           return redirect(res, '/?auth=error&reason=invalid_state');
         }
         try {
