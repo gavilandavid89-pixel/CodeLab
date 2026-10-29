@@ -445,10 +445,18 @@
     const layout = getCaptureLayoutPositions(project.design);
     const elements = (project.design.elements || []).map(function (el, index) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+      const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
+      const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
+      const y = Math.max(-6000, Math.min(6000, finiteNumber(position.y, 0)));
+      const width = Math.max(20, Math.min(4000, finiteNumber(el.width, 120) || 120));
+      const height = Math.max(20, Math.min(4000, finiteNumber(el.height, 48) || 48));
+      const fontSize = Math.max(8, Math.min(256, finiteNumber(el.fontSize, 16) || 16));
+      const fontWeight = Math.max(100, Math.min(900, finiteNumber(el.weight, 400) || 400));
+      const radius = Math.max(0, Math.min(4000, finiteNumber(el.radius, 0)));
       return {
         order: index + 1, id: el.id || null, type: el.type || 'text', label: el.label || el.type || 'Elemento',
-        text: el.text || '', bounds: { x: Number(position.x) || 0, y: Number(position.y) || 0, width: Math.max(20, Number(el.width) || 120), height: Math.max(20, Number(el.height) || 48) },
-        style: { color: el.color || '#111827', background: el.background || 'transparent', fontSize: Number(el.fontSize) || 16, fontWeight: Number(el.weight) || 400, radius: Number(el.radius) || 0, textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left' },
+        text: el.text || '', bounds: { x: x, y: y, width: width, height: height },
+        style: { color: el.color || '#111827', background: el.background || 'transparent', fontSize: fontSize, fontWeight: fontWeight, radius: radius, textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left' },
         image: el.type === 'image' ? { alt: String(el.alt || el.label || '').slice(0, 300), source: String(el.src || '').startsWith('data:image/') ? '[imagen incrustada; visible en el PNG]' : safeImageSource(el.src), objectFit: ['contain','cover','fill'].includes(el.objectFit) ? el.objectFit : 'cover' } : null
       };
     });
