@@ -104,6 +104,19 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(nullWorkspaceUpdate.status, 400,
       'Null workspace updates should be rejected as invalid input, not crash into HTTP 500');
     assert.equal((await nullWorkspaceUpdate.json()).error, 'invalid_workspace');
+    const invalidCodeContainer = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 0,
+        projects: [{ id: 'bad-code', name: 'Invalid code container', code: [] }]
+      })
+    });
+    assert.equal(invalidCodeContainer.status, 400,
+      'Project code must be an object with HTML/CSS/JS fields, not an array');
+    const invalidCodeResult = await invalidCodeContainer.json();
+    assert.equal(invalidCodeResult.error, 'invalid_payload');
+    assert.equal(invalidCodeResult.detail, 'invalid_project_code');
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
