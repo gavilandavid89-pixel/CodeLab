@@ -20,6 +20,8 @@ const design = {
 const mobile = capture.captureDesignSvg(design);
 assert.equal(mobile.width, 390);
 assert.equal(mobile.height, 900);
+const tallFreeLayout = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [{ id: 'footer', type: 'text', text: 'Below fold', x: 12, y: 1200, width: 200, height: 48 }] } });
+assert.equal(tallFreeLayout.height, 1272, 'Free-layout captures must include elements below the initial 900px viewport');
 assert.match(mobile.svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
 assert.match(mobile.svg, /Hello &lt;AI&gt; &amp; &quot;friends&quot;/);
 assert.match(mobile.svg, /fill="#6d28d9"/);
