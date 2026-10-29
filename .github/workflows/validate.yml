@@ -30,8 +30,11 @@ jobs:
           node --check public/component-library.js
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
+          node --check tests/ai-settings-isolation.test.js
       - name: Check version metadata consistency
         run: node tests/version-consistency.test.js
+      - name: Check per-account AI settings isolation
+        run: node tests/ai-settings-isolation.test.js
       - name: Test server resilience and workspace persistence
         run: node tests/server-resilience.test.js
       - name: Test AI-ready design capture export
