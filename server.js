@@ -1375,7 +1375,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'PUT' && getMatch) {
         const id = safeId(getMatch[1]);
         const body = await readBody(req);
-        if (!id || !Array.isArray(body.projects) || !Number.isInteger(body.baseRevision)) {
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) ||
+            !Array.isArray(body.projects) || !Number.isInteger(body.baseRevision)) {
           return sendJson(res, 400, { error: 'invalid_workspace' });
         }
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
