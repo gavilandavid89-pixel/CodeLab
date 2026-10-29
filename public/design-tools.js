@@ -502,7 +502,7 @@
         const file = event.target.files && event.target.files[0];
         if (!file) return;
         try {
-          if (file.size > 1024 * 1024) throw new Error('El archivo supera el límite de 1 MB.');
+          if (file.size > 10 * 1024 * 1024) throw new Error('El archivo supera el límite de 10 MiB.');
           const imported = JSON.parse(await file.text());
           if (!imported || imported.format !== 'codelab-design-system' || imported.version !== 1 ||
               !imported.colors || !imported.typography || !imported.accessibility) {
