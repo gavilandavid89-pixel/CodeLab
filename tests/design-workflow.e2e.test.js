@@ -314,6 +314,48 @@ async function waitForPersistedProject(page, projectName) {
     }, null, { timeout: 10000 });
     assert.equal(await page.locator('#newProjectModal').evaluate(node => node.classList.contains('hidden')), true,
       'creation modal should close after the save attempt settles');
+
+    // AI-generated interfaces must await persistence and clearly distinguish a
+    // confirmed local save from a server sync that is still pending.
+    await page.evaluate(() => {
+      window.__e2eAiSaveOriginals = {
+        persistWorkspace,
+        aiCanUseRemote,
+        confirm: window.confirm
+      };
+      aiCanUseRemote = () => false;
+      window.confirm = () => true;
+      persistWorkspace = () => {
+        saveLocalProjectsSnapshot();
+        return Promise.resolve(false);
+      };
+      document.getElementById('aiPromptInput').value = 'landing';
+      processAiInstruction();
+    });
+    await page.waitForFunction(() =>
+      /guardado localmente; la sincronización queda pendiente/i.test(document.getElementById('aiChatHistory')?.textContent || ''),
+      null, { timeout: 10000 });
+    const generatedInterfaceSaveCheck = await page.evaluate(() => {
+      const project = getCurrentProject();
+      const snapshot = JSON.parse(localStorage.getItem(STORAGE_KEY_PROJECTS) || 'null');
+      const stored = Array.isArray(snapshot) && snapshot.find(item => item && item.id === project?.id);
+      const originals = window.__e2eAiSaveOriginals;
+      if (originals) {
+        persistWorkspace = originals.persistWorkspace;
+        aiCanUseRemote = originals.aiCanUseRemote;
+        window.confirm = originals.confirm;
+        delete window.__e2eAiSaveOriginals;
+      }
+      return {
+        generatedLanding: /Construye el Futuro/.test(project?.code?.html || ''),
+        localCopyMatches: /Construye el Futuro/.test(stored?.code?.html || ''),
+        honestFeedback: /guardado localmente; la sincronización queda pendiente/i.test(document.getElementById('aiChatHistory')?.textContent || '')
+      };
+    });
+    assert.equal(generatedInterfaceSaveCheck.generatedLanding, true, 'the local interface generator should apply its landing template');
+    assert.equal(generatedInterfaceSaveCheck.localCopyMatches, true, 'generated interface code must be present in the durable local snapshot');
+    assert.equal(generatedInterfaceSaveCheck.honestFeedback, true, 'the AI panel must not claim server synchronization when the save was local-only');
+
     await page.evaluate(() => returnToDashboard());
     await page.waitForSelector('#welcomeDashboard:not(.hidden)');
     await page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME }).locator('button[data-action="open"]').click();
