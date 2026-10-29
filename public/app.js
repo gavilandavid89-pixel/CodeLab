@@ -2792,6 +2792,7 @@ function safeDesignExportColor(value, fallback) {
 function exportDesignHtml() {
   const p = activeDesignProject();
   if (!p || !p.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
+  const layoutPositions = getDesignLayoutPositions(p.design).positions;
   const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
@@ -2799,8 +2800,9 @@ function exportDesignHtml() {
     const text = el.type === 'rectangle' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
     const color = safeDesignExportColor(el.color, '#111827');
     const background = safeDesignExportColor(el.background, 'transparent');
-    const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
-    const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+    const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const x = Number.isFinite(Number(position.x)) ? Number(position.x) : 0;
+    const y = Number.isFinite(Number(position.y)) ? Number(position.y) : 0;
     const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
     const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
     const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
@@ -3272,6 +3274,7 @@ function deleteDesignElement() {
 }
 function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
+  const layoutPositions = getDesignLayoutPositions(p.design).positions;
   const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
@@ -3279,8 +3282,9 @@ function convertDesignToWeb() {
     const text = el.type === 'rectangle' || el.type === 'ellipse' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
     const color = safeDesignExportColor(el.color, '#111827');
     const background = safeDesignExportColor(el.background, 'transparent');
-    const x = Math.max(0, Math.min(10000, Number(el.x) || 0));
-    const y = Math.max(0, Math.min(10000, Number(el.y) || 0));
+    const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
+    const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
     const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
     const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
     const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
