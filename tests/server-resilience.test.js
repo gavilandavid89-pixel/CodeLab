@@ -40,6 +40,11 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
 
+    const appAsset = await fetch(BASE_URL + '/app.js');
+    assert.equal(appAsset.status, 200, 'Main client script should be served');
+    assert.equal(appAsset.headers.get('cache-control'), 'no-cache',
+      'Client JavaScript must revalidate after deployment instead of remaining stale for 24 hours');
+
     const response = await fetch(BASE_URL + '/api/auth/status', {
       headers: { Cookie: 'codelab_sid=%E0%A4%A' }
     });
