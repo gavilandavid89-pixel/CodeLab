@@ -16,6 +16,8 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       PORT: String(PORT),
       CODELAB_DATA_DIR: dataDir,
       CODELAB_WORKSPACE_SECRET: '',
+      CODELAB_MAX_BODY_BYTES: '-1',
+      CODELAB_MAX_PROJECTS: '-1',
       CODELAB_TRUSTED_PROXY_HOPS: '2',
       GITHUB_CLIENT_ID: 'test-github-client',
       GITHUB_CLIENT_SECRET: 'test-github-secret',
@@ -41,6 +43,12 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
+    const healthConfigResponse = await fetch(BASE_URL + '/api/health');
+    const healthConfig = await healthConfigResponse.json();
+    assert.equal(healthConfig.maxBodyBytes, 10 * 1024 * 1024,
+      'Invalid body-size configuration must fall back to a safe default');
+    assert.equal(healthConfig.maxProjects, 50,
+      'Invalid project-count configuration must fall back to a safe default');
 
     const generatedSecretPath = path.join(dataDir, '.workspace-secret');
     const generatedSecret = await fs.readFile(generatedSecretPath, 'utf8');
