@@ -2492,7 +2492,7 @@ async function processAiInstruction() {
     }
   };
 
-  const applyGenerated = (generated, meta) => {
+  const applyGenerated = async (generated, meta) => {
     if (!stillValid()) {
       aiMsg.innerHTML =
         '<i class="fa-solid fa-ban text-slate-500 mt-0.5"></i><span class="text-slate-400">Cancelado: cambió el proyecto o la rama.</span>';
@@ -2502,21 +2502,36 @@ async function processAiInstruction() {
     setEditorValue('html', generated.html, { silent: true });
     setEditorValue('css', generated.css, { silent: true });
     setEditorValue('js', generated.js, { silent: true });
-    saveCurrentCodeToActiveProject(true);
+    let saveConfirmed = false;
+    try { saveConfirmed = await saveCurrentCodeToActiveProject(true) === true; } catch (_) {}
     updatePreview();
+    const localCopyMatches = (() => {
+      try {
+        const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+        const savedProject = Array.isArray(snapshot) && snapshot.find(project => project && project.id === targetProjectId);
+        const savedCode = targetInCopyBranch ? savedProject && savedProject.branch && savedProject.branch.code : savedProject && savedProject.code;
+        return !!savedCode && ['html','css','js'].every(key => String(savedCode[key] || '') === String(generated[key] || ''));
+      } catch (_) { return false; }
+    })();
     const via = (meta && meta.via) || (isApi ? 'IA' : 'plantilla');
-    aiMsg.className =
-      'bg-emerald-950/30 border border-emerald-500/30 p-3 rounded-xl text-emerald-100 text-xs leading-relaxed';
+    const status = saveConfirmed
+      ? 'Guardado y sincronizado.'
+      : localCopyMatches
+        ? 'Guardado localmente; la sincronización queda pendiente.'
+        : 'Aplicado al editor, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.';
+    aiMsg.className = saveConfirmed || localCopyMatches
+      ? 'bg-emerald-950/30 border border-emerald-500/30 p-3 rounded-xl text-emerald-100 text-xs leading-relaxed'
+      : 'bg-amber-950/30 border border-amber-500/30 p-3 rounded-xl text-amber-100 text-xs leading-relaxed';
     aiMsg.innerHTML =
       '<div class="flex items-start gap-2">' +
-      '<i class="fa-solid fa-check-circle text-emerald-400 mt-0.5"></i>' +
-      '<div><div class="font-semibold text-emerald-300 mb-0.5">Aplicado · ' +
-      escapeHtml(via) +
+      '<i class="fa-solid ' + (saveConfirmed || localCopyMatches ? 'fa-check-circle text-emerald-400' : 'fa-triangle-exclamation text-amber-400') + ' mt-0.5"></i>' +
+      '<div><div class="font-semibold mb-0.5">' +
+      escapeHtml(status) +
       '</div><div class="text-emerald-100/90">' +
       escapeHtml(generated.message || 'Cambios aplicados al editor.') +
       '</div></div></div>';
     history.scrollTop = history.scrollHeight;
-    showToast('Copiloto: cambios aplicados.');
+    showToast(status, saveConfirmed || localCopyMatches ? 'info' : 'warn');
     finish();
   };
 
@@ -2528,7 +2543,7 @@ async function processAiInstruction() {
         js: getEditorValue('js')
       });
       const generated = await callRemoteAi(prompt, code);
-      applyGenerated(generated, { via: serverAi.serverKey ? 'servidor' : 'API' });
+      await applyGenerated(generated, { via: serverAi.serverKey ? 'servidor' : 'API' });
       return;
     }
   } catch (e) {
@@ -2550,7 +2565,7 @@ async function processAiInstruction() {
   }
 
   // Local templates
-  setTimeout(() => {
+  setTimeout(async () => {
     if (!stillValid()) {
       aiMsg.innerHTML = '<span class="text-slate-400">Cancelado.</span>';
       finish();
@@ -2620,7 +2635,7 @@ async function processAiInstruction() {
         '\n.ai-box { background: #1e1b4b; border: 1px solid #6366f1; padding: 1rem; border-radius: 0.75rem; margin-top: 1rem; }';
       generated.message = 'Plantilla genérica. Configura IA en ⚙ para resultados reales.';
     }
-    applyGenerated(generated, { via: 'plantilla' });
+    await applyGenerated(generated, { via: 'plantilla' });
   }, 280);
 }
 
