@@ -1409,11 +1409,18 @@ const server = http.createServer(async (req, res) => {
             writeState(id, emptyState());
           }
         }
+        let state;
+        try {
+          state = readState(id);
+        } catch (error) {
+          console.error('workspace_corrupt', id, error.message);
+          return sendJson(res, 500, { error: 'workspace_corrupt' });
+        }
         return sendJson(res, 200, {
           ok: true,
           workspaceId: id,
           token: signWorkspace(id),
-          state: readState(id),
+          state: state,
           user: sessionUser || null
         });
       }
