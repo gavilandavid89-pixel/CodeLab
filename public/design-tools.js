@@ -663,12 +663,13 @@
       renderAll();
       announce('Valores predeterminados restaurados. Guarda para conservarlos.');
     });
-    if (get('applyDesignTokens')) get('applyDesignTokens').addEventListener('click', () => {
+    if (get('applyDesignTokens')) get('applyDesignTokens').addEventListener('click', async () => {
       settings = readForm();
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
-      if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function' || typeof window.setEditorValue !== 'function') {
-        announce('Abre un proyecto web en el editor para aplicar estos tokens.');
-        if (typeof window.showToast === 'function') window.showToast('Abre un proyecto web en el editor para aplicar los tokens.', 'warn');
+      if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function' ||
+          typeof window.setEditorValue !== 'function' || typeof window.saveCurrentCodeToActiveProject !== 'function') {
+        announce('Abre un proyecto web completamente cargado para aplicar estos tokens.');
+        if (typeof window.showToast === 'function') window.showToast('Abre un proyecto web completamente cargado para aplicar los tokens.', 'warn');
         return;
       }
       const nextCss = injectTokenBlock(window.getEditorValue('css') || '', toCssVariables(settings));
@@ -681,8 +682,19 @@
       }
       window.setEditorValue('css', nextCss);
       if (typeof window.updatePreview === 'function') window.updatePreview();
-      announce('Tokens aplicados al CSS del proyecto web.');
-      if (typeof window.showToast === 'function') window.showToast('Sistema visual aplicado al proyecto web.');
+      try {
+        const saved = await window.saveCurrentCodeToActiveProject(true);
+        if (saved === true) {
+          announce('Tokens aplicados y guardado/sincronización confirmados.');
+          if (typeof window.showToast === 'function') window.showToast('Tokens aplicados y proyecto guardado.');
+        } else {
+          announce('Tokens aplicados al editor, pero no se confirmó el guardado/sincronización. Revisa el estado de guardado.');
+          if (typeof window.showToast === 'function') window.showToast('Tokens aplicados; revisa el estado de guardado.', 'warn');
+        }
+      } catch (_) {
+        announce('Tokens aplicados al editor, pero el guardado falló. Revisa el estado de guardado e inténtalo de nuevo.');
+        if (typeof window.showToast === 'function') window.showToast('Tokens aplicados, pero el guardado falló.', 'warn');
+      }
     });
     if (get('exportDesignSystemCss')) get('exportDesignSystemCss').addEventListener('click', () => {
       settings = readForm();
