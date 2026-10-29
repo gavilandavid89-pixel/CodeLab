@@ -109,6 +109,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
 
     // 5. Duplicate and delete through the production layer controls.
+    await element.click();
     await page.locator('button[onclick="duplicateDesignElement()"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 2);
     await page.locator('button[onclick="deleteDesignElement()"]').click();
