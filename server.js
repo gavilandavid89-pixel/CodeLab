@@ -1384,6 +1384,7 @@ const server = http.createServer(async (req, res) => {
           baseUrl: cfg.serverKey ? cfg.baseUrl : null,
           groq: cfg.groq,
           openRouter: cfg.openRouter,
+          maxProjects: MAX_PROJECTS,
           modes: ['auto', 'api', 'local'],
           hint: cfg.serverKey
             ? (cfg.groq
