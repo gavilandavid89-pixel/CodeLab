@@ -88,6 +88,20 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const unauthorizedResponse = await fetch(designSystemUrl, { headers: { 'x-workspace-token': 'invalid-token' } });
     assert.equal(unauthorizedResponse.status, 401, 'Design-system settings must remain workspace-authorized');
 
+    const privateProviderResponse = await fetch(BASE_URL + '/api/ai/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'hello',
+        apiKey: 'test-only-key',
+        baseUrl: 'https://127.0.0.1:' + PORT,
+        model: 'test-model'
+      })
+    });
+    assert.equal(privateProviderResponse.status, 400,
+      'AI proxy must reject private-network provider URLs before opening an outbound connection');
+    assert.match((await privateProviderResponse.json()).message, /public IP addresses/i);
+
     let lastRateLimitStatus = 0;
     for (let index = 1; index <= 121; index++) {
       const response = await fetch(BASE_URL + '/api/health', {
