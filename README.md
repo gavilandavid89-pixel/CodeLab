@@ -86,3 +86,21 @@ node server.js
 - Proxy copiloto `POST /api/ai/complete` + `GET /api/ai/status`
 - Modo Auto / API / Local; key de servidor o del usuario
 - Rate limit dedicado para IA
+
+
+## Laboratorio de diseño visual
+
+Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. Incluye:
+
+- Paleta con colores primario, secundario, acento, superficie, fondo y texto, con generación automática de tonos 50–900.
+- Vista previa de componentes para revisar cómo conviven los colores antes de usarlos en una interfaz.
+- Comprobador de contraste basado en la fórmula WCAG: AA para texto normal (4.5:1), AA para texto grande (3:1) y AAA para texto normal (7:1).
+- Tokens ajustables para escala tipográfica, espaciado y radios de borde.
+- Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
+- Guardado local en el navegador actual. Para trasladar el sistema a otro dispositivo, exporta el JSON; este guardado no se sincroniza todavía con la cuenta ni con el servidor.
+
+Las pruebas automáticas cubren los cálculos de contraste, generación de tokens, exportaciones y una prueba de interacción en Chromium.
+
+## Capturas para IA
+
+Los proyectos de diseño pueden exportar PNG 2× + JSON de elementos y estilos. Los proyectos web pueden generar una captura renderizada de HTML/CSS para escritorio, tablet o móvil, junto con JSON que incluye código fuente y metadatos. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
