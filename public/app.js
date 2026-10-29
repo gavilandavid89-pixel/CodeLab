@@ -4,6 +4,8 @@
 // ==========================================
 const APP_VERSION = '2.6.0';
 const STORAGE_KEY_PROJECTS = 'codelab_xd_projects_v2';
+const STORAGE_KEY_PROJECTS_WORKSPACE = 'codelab_xd_projects_workspace_v1';
+const STORAGE_KEY_DELETED_PROJECTS = 'codelab_xd_deleted_projects_v1';
 const STORAGE_KEY_AUTH = 'codelab_xd_auth_v2';
 const STORAGE_KEY_WORKSPACE = 'codelab_xd_workspace_v4';
 const STORAGE_KEY_WORKSPACE_TOKEN = 'codelab_xd_workspace_token_v1';
@@ -14,6 +16,9 @@ const RECONNECT_INTERVAL_MS = 15000;
 const MAX_CONSOLE_LINES = 200;
 
 let workspaceId = null;
+let initialWorkspaceId = null;
+let pendingLocalImportProjects = null;
+let generatedDefaultProjectId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
 let serverSyncError = false;
@@ -69,6 +74,46 @@ function lsSet(key, value) {
 }
 function lsRemove(key) {
   try { localStorage.removeItem(key); } catch (_) {}
+}
+function saveLocalProjectsSnapshot() {
+  lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  if (workspaceId) lsSet(STORAGE_KEY_PROJECTS_WORKSPACE, workspaceId);
+}
+function loadDeletedProjectIds(forWorkspaceId) {
+  try {
+    const stored = JSON.parse(lsGet(STORAGE_KEY_DELETED_PROJECTS) || 'null');
+    if (stored && stored.workspaceId === forWorkspaceId && Array.isArray(stored.ids)) {
+      return new Set(stored.ids.filter(id => typeof id === 'string'));
+    }
+  } catch (_) {}
+  return new Set();
+}
+function recordDeletedProjectId(id) {
+  if (!workspaceId || !id) return;
+  const ids = loadDeletedProjectIds(workspaceId);
+  ids.add(id);
+  lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ workspaceId: workspaceId, ids: Array.from(ids) }));
+}
+function clearDeletedProjectIds() {
+  lsRemove(STORAGE_KEY_DELETED_PROJECTS);
+}
+function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
+  const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
+  const skipped = skipLocalIds instanceof Set ? skipLocalIds : new Set(skipLocalIds || []);
+  const merged = new Map();
+  const timestamp = project => {
+    const value = Date.parse(project && project.updatedAt || '');
+    return Number.isFinite(value) ? value : 0;
+  };
+  (Array.isArray(serverProjects) ? serverProjects : []).forEach(project => {
+    if (project && typeof project.id === 'string' && !deleted.has(project.id)) merged.set(project.id, project);
+  });
+  (Array.isArray(localProjects) ? localProjects : []).forEach(project => {
+    if (!project || typeof project.id !== 'string' || deleted.has(project.id) || skipped.has(project.id)) return;
+    const serverProject = merged.get(project.id);
+    if (!serverProject || timestamp(project) >= timestamp(serverProject)) merged.set(project.id, project);
+  });
+  return Array.from(merged.values()).sort((a, b) => timestamp(b) - timestamp(a));
 }
 function deepClone(obj) {
   try {
@@ -129,6 +174,7 @@ function setSyncStatus(state, text) {
 // ---------- Boot ----------
 window.addEventListener('DOMContentLoaded', () => {
   workspaceId = lsGet(STORAGE_KEY_WORKSPACE);
+  initialWorkspaceId = workspaceId;
   workspaceToken = lsGet(STORAGE_KEY_WORKSPACE_TOKEN) || '';
   loadAiSettings();
   setSyncStatus('saving', 'Conectando…');
@@ -194,7 +240,7 @@ window.addEventListener('beforeunload', () => {
         }
       }
     }
-    lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+    saveLocalProjectsSnapshot();
   } catch (_) {}
 });
 
@@ -223,7 +269,19 @@ async function loadProjectsFromStorage() {
     if (stored) {
       try { localProjects = JSON.parse(stored); } catch (_) { localProjects = []; }
     }
-    projects = serverProjects.length ? serverProjects : localProjects;
+    const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
+    const sameWorkspace = !!localWorkspaceMarker && localWorkspaceMarker === boot.workspaceId;
+    const mayMergeLocal = sameWorkspace || !currentUser || !currentUser.real;
+    if (currentUser && currentUser.real && localProjects.length && !sameWorkspace) {
+      // Never silently mix another browser workspace into an OAuth account.
+      // Keep it available for an explicit import after the account loads.
+      pendingLocalImportProjects = localProjects;
+    }
+    projects = mergeWorkspaceProjects(
+      serverProjects,
+      mayMergeLocal ? localProjects : [],
+      loadDeletedProjectIds(boot.workspaceId)
+    );
     workspaceRevision = Number.isInteger(data.revision) ? data.revision : 0;
     serverReady = true;
     setSyncStatus('synced', 'Sincronizado');
@@ -232,7 +290,16 @@ async function loadProjectsFromStorage() {
     console.warn('Servidor no disponible; usando copia local.', e);
     const stored = lsGet(STORAGE_KEY_PROJECTS);
     if (stored) {
-      try { projects = JSON.parse(stored); } catch (_) { projects = []; }
+      try {
+        const localProjects = JSON.parse(stored);
+        const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
+        if (!currentUser || !currentUser.real || localWorkspaceMarker === workspaceId) {
+          projects = mergeWorkspaceProjects([], localProjects, loadDeletedProjectIds(workspaceId));
+        } else {
+          pendingLocalImportProjects = Array.isArray(localProjects) ? localProjects : [];
+          projects = [];
+        }
+      } catch (_) { projects = []; }
     }
     setSyncStatus('offline', 'Solo local');
   }
@@ -259,19 +326,20 @@ async function loadProjectsFromStorage() {
   }).filter(Boolean);
 
   if (projects.length === 0) {
+    generatedDefaultProjectId = 'proj_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now());
     projects.push({
-      id: 'proj_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()),
+      id: generatedDefaultProjectId,
       name: 'Mi Primer Proyecto',
       updatedAt: new Date().toISOString(),
       code: normalizeCode(defaultTemplate)
     });
   }
   if (serverReady) await persistWorkspace();
-  else lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  else saveLocalProjectsSnapshot();
 }
 
 function persistWorkspace() {
-  lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  saveLocalProjectsSnapshot();
   // Do not cancel a scheduled retry while a previous request is still in flight:
   // runWorkspaceSync() may be unable to start a newer save until that request settles.
   if (syncRetryTimer && !syncRunning) {
@@ -357,6 +425,12 @@ async function runWorkspaceSync() {
         serverSyncError = false;
         workspacePayloadTooLarge = false;
         updateDashboardStatus();
+        if (syncGeneration === generationAtStart) {
+          clearDeletedProjectIds();
+          if (generatedDefaultProjectId && projects.some(project => project.id === generatedDefaultProjectId)) {
+            generatedDefaultProjectId = null;
+          }
+        }
         resolveSyncWaiters(true, generationAtStart);
         setSyncStatus(inCopyBranch ? 'branch' : 'synced', inCopyBranch ? 'Copia · Guardada' : 'Sincronizado');
         if (syncGeneration === generationAtStart) break;
@@ -399,7 +473,7 @@ async function refreshWorkspaceFromServer() {
     const data = await r.json();
     projects = Array.isArray(data.projects) ? data.projects : [];
     workspaceRevision = Number.isInteger(data.revision) ? data.revision : 0;
-    lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+    saveLocalProjectsSnapshot();
     return true;
   } catch (_) {
     return false;
@@ -435,8 +509,10 @@ function conflictTakeServer() {
   if (!pendingConflict) return;
   projects = Array.isArray(pendingConflict.projects) ? pendingConflict.projects : [];
   workspaceRevision = Number.isInteger(pendingConflict.revision) ? pendingConflict.revision : 0;
-  lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  saveLocalProjectsSnapshot();
+  clearDeletedProjectIds();
   pendingConflict = null;
+  clearDeletedProjectIds();
   closeConflictModal();
   serverSyncError = false;
   setSyncStatus('synced', 'Sincronizado');
@@ -623,6 +699,7 @@ function createNewProjectConfirm() {
 function deleteProject(id, e) {
   if (e) e.stopPropagation();
   if (!confirm('¿Eliminar este proyecto permanentemente?')) return;
+  recordDeletedProjectId(id);
   projects = projects.filter(p => p.id !== id);
   if (currentProjectId === id) {
     currentProjectId = null;
@@ -2766,15 +2843,13 @@ function startReconnectLoop() {
       workspaceToken = boot.token;
       lsSet(STORAGE_KEY_WORKSPACE, workspaceId);
       lsSet(STORAGE_KEY_WORKSPACE_TOKEN, workspaceToken);
-      if (Number.isInteger(boot.state && boot.state.revision)) {
-        // Only adopt server revision if we can; prefer local until explicit sync
-        if (!projects.length && Array.isArray(boot.state.projects) && boot.state.projects.length) {
-          projects = boot.state.projects;
-          workspaceRevision = boot.state.revision;
-        } else if (Number.isInteger(boot.state.revision)) {
-          workspaceRevision = boot.state.revision;
-        }
-      }
+      const remoteProjects = Array.isArray(boot.state && boot.state.projects) ? boot.state.projects : [];
+      const skipLocalIds = remoteProjects.length && generatedDefaultProjectId
+        ? new Set([generatedDefaultProjectId])
+        : new Set();
+      projects = mergeWorkspaceProjects(remoteProjects, projects, loadDeletedProjectIds(workspaceId), skipLocalIds);
+      if (skipLocalIds.size) generatedDefaultProjectId = null;
+      if (Number.isInteger(boot.state && boot.state.revision)) workspaceRevision = boot.state.revision;
       serverReady = true;
       setSyncStatus('synced', 'Reconectado');
       updateDashboardStatus();
