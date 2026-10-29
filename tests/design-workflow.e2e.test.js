@@ -237,13 +237,13 @@ async function waitForPersistedProject(page, projectName) {
     await page.evaluate(async () => { await window.persistWorkspace(); });
     await page.waitForFunction(() =>
       document.getElementById('dashSyncBadge')?.textContent.includes('Solo local')
-    , { timeout: 5000 });
+    , null, { timeout: 5000 });
     assert.equal(injectedWorkspaceTooLarge, true, 'E2E should inject one workspace payload-size response');
     allowWorkspaceTooLarge = false;
     await page.evaluate(async () => { await window.persistWorkspace(); });
     await page.waitForFunction(() =>
       !document.getElementById('dashSyncBadge')?.textContent.includes('Solo local')
-    , { timeout: 5000 });
+    , null, { timeout: 5000 });
 
     await page.unroute('**/api/workspace/**');
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
