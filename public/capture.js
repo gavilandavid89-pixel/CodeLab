@@ -25,6 +25,17 @@
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   }
 
+  function safeImageSource(value) {
+    const source = String(value || '').trim();
+    if (!source || source.length > 2800000) return '';
+    if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+    try {
+      const url = typeof window !== 'undefined' ? new URL(source, window.location.href) : new URL(source);
+      if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
+    } catch (_) {}
+    return '';
+  }
+
   function captureDesignSvg(project) {
     const design = project && project.design ? project.design : {};
     const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[design.frame] || 1440;
@@ -40,6 +51,12 @@
         ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + xmlEscape(background) + '"/>'
         : '';
       if (el.type === 'rectangle') return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      if (el.type === 'image') {
+        const source = safeImageSource(el.src);
+        const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
+        if (source) return rect + '<image href="' + xmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
+        return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+      }
       const lines = String(el.text || '').split(/\r?\n/);
       const align = el.type === 'button' ? 'center' : (['left', 'center', 'right'].includes(el.textAlign) ? el.textAlign : 'left');
       const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
@@ -264,7 +281,8 @@
       return {
         order: index + 1, id: el.id || null, type: el.type || 'text', label: el.label || el.type || 'Elemento',
         text: el.text || '', bounds: { x: Number(el.x) || 0, y: Number(el.y) || 0, width: Math.max(20, Number(el.width) || 120), height: Math.max(20, Number(el.height) || 48) },
-        style: { color: el.color || '#111827', background: el.background || 'transparent', fontSize: Number(el.fontSize) || 16, fontWeight: Number(el.weight) || 400, radius: Number(el.radius) || 0, textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left' }
+        style: { color: el.color || '#111827', background: el.background || 'transparent', fontSize: Number(el.fontSize) || 16, fontWeight: Number(el.weight) || 400, radius: Number(el.radius) || 0, textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left' },
+        image: el.type === 'image' ? { alt: String(el.alt || el.label || '').slice(0, 300), source: String(el.src || '').startsWith('data:image/') ? '[imagen incrustada; visible en el PNG]' : safeImageSource(el.src), objectFit: ['contain','cover','fill'].includes(el.objectFit) ? el.objectFit : 'cover' } : null
       };
     });
     const context = {
