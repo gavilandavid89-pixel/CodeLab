@@ -28,6 +28,8 @@ function extractDivById(html, id) {
     const fixtureHtml = '<!doctype html><html lang="es"><body class="bg-slate-950 text-white"><button id="openDesignTools">Herramientas</button>' + modal + '</body></html>';
     let remoteSettings = null;
     let remoteWrites = 0;
+    let delayNextPut = false;
+    let releaseDelayedPut = null;
     await page.route('http://codelab.test/**', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixtureHtml }));
     await page.route('http://codelab.test/api/workspace/**', async route => {
       const request = route.request();
@@ -36,8 +38,14 @@ function extractDivById(html, id) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ settings: remoteSettings }) });
       }
       if (request.method() === 'PUT') {
-        remoteSettings = request.postDataJSON().settings;
+        const incomingSettings = request.postDataJSON().settings;
         remoteWrites++;
+        if (delayNextPut) {
+          delayNextPut = false;
+          await page.evaluate(() => { window.__delayedPutStarted = true; });
+          await new Promise(resolve => { releaseDelayedPut = resolve; });
+        }
+        remoteSettings = incomingSettings;
         await page.evaluate(settings => { window.__remoteDesignSystem = settings; }, remoteSettings);
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, settings: remoteSettings }) });
       }
@@ -122,6 +130,27 @@ function extractDivById(html, id) {
     assert.equal(await page.locator('#baseRadius').inputValue(), '16');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#123456');
     await page.waitForFunction(() => window.__remoteDesignSystem?.primary === '#123456', null, { timeout: 5000 });
+
+    // Force two saves to overlap at the UI level: the first network write stalls,
+    // then a newer color is saved. The final server state must be the newer value.
+    delayNextPut = true;
+    await page.evaluate(() => {
+      const input = document.getElementById('colorPrimary');
+      input.value = '#111111';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.click('#saveDesignSystem');
+    await page.waitForFunction(() => window.__delayedPutStarted === true, null, { timeout: 5000 });
+    await page.evaluate(() => {
+      const input = document.getElementById('colorPrimary');
+      input.value = '#222222';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.click('#saveDesignSystem');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#222222');
+    releaseDelayedPut();
+    await page.waitForFunction(() => window.__remoteDesignSystem?.primary === '#222222', null, { timeout: 5000 });
+
     await page.locator('#designSystemJsonFile').setInputFiles({
       name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'other', version: 1 }))
     });
