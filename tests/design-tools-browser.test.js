@@ -37,6 +37,10 @@ function extractDivById(html, id) {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     assert.match(await page.locator('#designPalettePreview').innerText(), /#ff0000/i);
+    await page.click('#closeDesignTools');
+    await page.waitForSelector('#designToolsModal.hidden');
+    await page.click('#openDesignTools');
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#ff0000', 'unsaved edits should remain available when reopening the modal');
     await page.click('#designToolsTab-accessibility');
     await page.evaluate(() => {
       const fg = document.getElementById('contrastForeground');
