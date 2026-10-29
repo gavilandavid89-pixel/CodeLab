@@ -117,6 +117,8 @@ Atajos del lienzo: **Ctrl/Cmd + Z** deshacer, **Ctrl/Cmd + Shift + Z** o **Ctrl/
 
 La cuadrícula visual admite tamaños de **4, 8, 16 o 32 px** y puede activarse el ajuste magnético para alinear una capa al soltarla. El ajuste se guarda con el proyecto; la rejilla visual y el ajuste magnético se pueden controlar por separado.
 
+El lienzo también admite capas de imagen: subir PNG/JPEG/WebP/GIF de hasta **2 MB** o usar una URL HTTP(S), editar el texto alternativo y elegir si la imagen se cubre, contiene o estira. Las imágenes se guardan en el proyecto y se incluyen en las exportaciones HTML/SVG y en la captura visual para IA; el JSON de contexto describe la imagen sin duplicar el payload base64.
+
 ## Capturas para IA
 
 Los proyectos de diseño y web permiten elegir captura PNG a 1×, 2× o 3×, junto con JSON estructurado de elementos/código y estilos. Los proyectos web permiten además seleccionar escritorio, tablet o móvil. El contexto JSON registra la escala real y las dimensiones en píxeles correspondientes. Para evitar agotar la memoria del navegador, se bloquean capturas superiores a 32 millones de píxeles y se recomienda bajar la escala o el ancho si ocurre. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
