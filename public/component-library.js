@@ -98,6 +98,7 @@
     modal.dataset.componentLibraryInitialized = 'true';
     const get = id => document.getElementById(id);
     let selectedId = 'hero';
+    let bodyHadOverflowHidden = false;
     const status = message => {
       const target = get('componentLibraryStatus');
       if (target) target.textContent = message;
@@ -123,8 +124,18 @@
       }));
       if (results.length) renderSelected();
     }
-    function open() { modal.classList.remove('hidden'); document.body.classList.add('overflow-hidden'); renderList(); get('componentLibrarySearch').focus(); }
-    function close() { modal.classList.add('hidden'); document.body.classList.remove('overflow-hidden'); get('openComponentLibrary').focus(); }
+    function open() {
+      bodyHadOverflowHidden = document.body.classList.contains('overflow-hidden');
+      modal.classList.remove('hidden');
+      document.body.classList.add('overflow-hidden');
+      renderList();
+      get('componentLibrarySearch').focus();
+    }
+    function close() {
+      modal.classList.add('hidden');
+      if (!bodyHadOverflowHidden) document.body.classList.remove('overflow-hidden');
+      get('openComponentLibrary').focus();
+    }
     async function copyCode() {
       const item = getComponent(selectedId); if (!item) return;
       try { await navigator.clipboard.writeText(item.html); status('Código de ' + item.name + ' copiado.'); }
