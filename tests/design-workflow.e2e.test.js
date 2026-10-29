@@ -738,7 +738,7 @@ async function waitForPersistedProject(page, projectName) {
     allowWorkspaceValidationError = true;
     await page.evaluate(async () => { await window.persistWorkspace(); });
     await page.waitForFunction(() =>
-      document.getElementById('dashSyncBadge')?.textContent.includes('Datos no válidos')
+      document.getElementById('dashSyncBadge')?.textContent.includes('Sincronización pendiente')
     , null, { timeout: 5000 });
     assert.equal(injectedWorkspaceValidationError, true, 'E2E should inject one workspace validation response');
     allowWorkspaceValidationError = false;
