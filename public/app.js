@@ -395,7 +395,11 @@ async function loadProjectsFromStorage() {
       // Keep it available for an explicit import after the account loads. Do
       // not overwrite a pending snapshot already preserved for this account.
       if (!(Array.isArray(pendingLocalImportProjects) && pendingLocalImportProjects.length)) {
-        storePendingLocalImport(localProjects);
+        if (!storePendingLocalImport(localProjects)) {
+          // Keep the original cross-workspace snapshot intact if its recovery
+          // copy could not be persisted; startup's normal save must not replace it.
+          localProjectsSnapshotRecoveryFailed = true;
+        }
       }
     }
     projects = mergeWorkspaceProjects(
@@ -422,7 +426,10 @@ async function loadProjectsFromStorage() {
         if (!currentUser || !currentUser.real || localWorkspaceMarker === workspaceId) {
           projects = mergeWorkspaceProjects([], localProjects, loadDeletedProjectIds(workspaceId));
         } else {
-          storePendingLocalImport(Array.isArray(localProjects) ? localProjects : []);
+          if (!storePendingLocalImport(Array.isArray(localProjects) ? localProjects : [])) {
+            // In offline startup the source snapshot is the only durable copy.
+            localProjectsSnapshotRecoveryFailed = true;
+          }
           projects = [];
         }
       } catch (error) {
