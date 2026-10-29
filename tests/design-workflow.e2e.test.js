@@ -53,6 +53,16 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForTimeout(50);
     assert.equal(await page.locator('#consoleOutput').getByText('SPOOFED_CONSOLE_MESSAGE', { exact: true }).count(), 0,
       'The app must ignore console messages not sent by its own preview iframe');
+    await page.evaluate(() => updatePreview());
+    await page.frameLocator('#previewIframe').locator('body').waitFor();
+    await page.frameLocator('#previewIframe').locator('body').evaluate(() => {
+      window.parent.postMessage({
+        type: 'CONSOLE_LOG', logType: 'log', message: 'TRUSTED_PREVIEW_MESSAGE'
+      }, '*');
+    });
+    await page.waitForFunction(() =>
+      document.getElementById('consoleOutput')?.textContent.includes('TRUSTED_PREVIEW_MESSAGE')
+    , null, { timeout: 3000 });
 
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
