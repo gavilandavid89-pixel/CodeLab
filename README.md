@@ -117,6 +117,8 @@ Atajos del lienzo: **Ctrl/Cmd + Z** deshacer, **Ctrl/Cmd + Shift + Z** o **Ctrl/
 
 La cuadrícula visual admite tamaños de **4, 8, 16 o 32 px** y puede activarse el ajuste magnético para alinear una capa al soltarla. El ajuste se guarda con el proyecto; la rejilla visual y el ajuste magnético se pueden controlar por separado.
 
+El panel de propiedades también permite **enviar capas detrás o traerlas al frente**; el orden se refleja en el lienzo y se puede deshacer.
+
 El lienzo también admite capas de imagen: subir PNG/JPEG/WebP/GIF de hasta **2 MB** o usar una URL HTTP(S), editar el texto alternativo y elegir si la imagen se cubre, contiene o estira. Las imágenes se guardan en el proyecto y se incluyen en las exportaciones HTML/SVG y en la captura visual para IA; el JSON de contexto describe la imagen sin duplicar el payload base64.
 
 Incluye plantillas visuales para **landing de producto**, **panel de control** y **portfolio**. Si ya hay capas, el editor pide confirmación antes de reemplazarlas; la acción queda en el historial para poder deshacerla.
