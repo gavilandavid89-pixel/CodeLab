@@ -468,6 +468,22 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const unauthorizedResponse = await fetch(designSystemUrl, { headers: { 'x-workspace-token': 'invalid-token' } });
     assert.equal(unauthorizedResponse.status, 401, 'Design-system settings must remain workspace-authorized');
 
+    const oversizedClientKeyResponse = await fetch(BASE_URL + '/api/ai/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'hello', apiKey: 'x'.repeat(4097), baseUrl: 'https://provider.example/v1' })
+    });
+    assert.equal(oversizedClientKeyResponse.status, 400);
+    assert.equal((await oversizedClientKeyResponse.json()).error, 'invalid_api_key',
+      'Oversized client API keys should be rejected before constructing an upstream request');
+    const oversizedModelResponse = await fetch(BASE_URL + '/api/ai/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'hello', apiKey: 'test-only-key', baseUrl: 'https://provider.example/v1', model: 'm'.repeat(201) })
+    });
+    assert.equal(oversizedModelResponse.status, 400);
+    assert.equal((await oversizedModelResponse.json()).error, 'invalid_model',
+      'Unbounded model identifiers should be rejected before provider resolution');
     const privateProviderResponse = await fetch(BASE_URL + '/api/ai/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
