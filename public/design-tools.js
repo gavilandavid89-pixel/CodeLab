@@ -672,6 +672,13 @@
         return;
       }
       const nextCss = injectTokenBlock(window.getEditorValue('css') || '', toCssVariables(settings));
+      // The server validates each code field at 500,000 characters. Prevent a
+      // design-tool action from creating CSS that the workspace can no longer save.
+      if (nextCss.length > 500000) {
+        announce('No se aplicaron los tokens: el CSS superaría el límite de 500.000 caracteres. Reduce el CSS existente e inténtalo de nuevo.');
+        if (typeof window.showToast === 'function') window.showToast('No se aplicaron los tokens porque el CSS superaría el límite de 500.000 caracteres.', 'warn');
+        return;
+      }
       window.setEditorValue('css', nextCss);
       if (typeof window.updatePreview === 'function') window.updatePreview();
       announce('Tokens aplicados al CSS del proyecto web.');
