@@ -428,6 +428,18 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(documentationIpv6Response.status, 400,
       'AI proxy must reject reserved/documentation IPv6 ranges before connecting');
     assert.match((await documentationIpv6Response.json()).message, /public IP addresses/i);
+    const specialPurposeIpv6Response = await fetch(BASE_URL + '/api/ai/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'hello',
+        apiKey: 'test-only-key',
+        baseUrl: 'https://[2001:1::1]',
+        model: 'test-model'
+      })
+    });
+    assert.equal(specialPurposeIpv6Response.status, 400,
+      'AI proxy must reject reserved IPv6 special-purpose ranges inside 2001::/23');
 
     let lastRateLimitStatus = 0;
     for (let index = 1; index <= 121; index++) {
