@@ -331,8 +331,11 @@ async function loadProjectsFromStorage() {
     const mayMergeLocal = sameWorkspace || !currentUser || !currentUser.real;
     if (currentUser && currentUser.real && localProjects.length && !sameWorkspace) {
       // Never silently mix another browser workspace into an OAuth account.
-      // Keep it available for an explicit import after the account loads.
-      storePendingLocalImport(localProjects);
+      // Keep it available for an explicit import after the account loads. Do
+      // not overwrite a pending snapshot already preserved for this account.
+      if (!(Array.isArray(pendingLocalImportProjects) && pendingLocalImportProjects.length)) {
+        storePendingLocalImport(localProjects);
+      }
     }
     projects = mergeWorkspaceProjects(
       serverProjects,
