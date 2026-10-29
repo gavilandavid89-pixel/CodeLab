@@ -960,6 +960,47 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
+    // Branch creation must not announce server synchronization when persistence fails.
+    const branchCreationCheck = await page.evaluate(async () => {
+      const project = getCurrentProject();
+      if (!project) return { hasProject: false, toast: '' };
+      const saved = {
+        inCopyBranch, projectBranch: project.branch, copyBaseCode, copyProjectCode,
+        copyBranchId, isCopyBranchCreated,
+        saveCurrentCodeToActiveProject: window.saveCurrentCodeToActiveProject,
+        persistBranch: window.persistBranch,
+        updateBranchButtons: window.updateBranchButtons,
+        showToast: window.showToast
+      };
+      let toast = '', kind = '';
+      try {
+        inCopyBranch = false;
+        window.saveCurrentCodeToActiveProject = async () => true;
+        window.persistBranch = async () => false;
+        window.updateBranchButtons = () => {};
+        window.showToast = (message, severity) => { toast = message; kind = severity || ''; };
+        await duplicateProject();
+        return { hasProject: true, toast, kind };
+      } finally {
+        inCopyBranch = saved.inCopyBranch;
+        if (saved.projectBranch === undefined) delete project.branch;
+        else project.branch = saved.projectBranch;
+        copyBaseCode = saved.copyBaseCode;
+        copyProjectCode = saved.copyProjectCode;
+        copyBranchId = saved.copyBranchId;
+        isCopyBranchCreated = saved.isCopyBranchCreated;
+        window.saveCurrentCodeToActiveProject = saved.saveCurrentCodeToActiveProject;
+        window.persistBranch = saved.persistBranch;
+        window.updateBranchButtons = saved.updateBranchButtons;
+        window.showToast = saved.showToast;
+      }
+    });
+    assert.equal(branchCreationCheck.hasProject, true, 'branch-creation regression requires an active project');
+    assert.match(branchCreationCheck.toast, /no se confirmó la sincronización/i,
+      'branch creation should warn when server persistence is not confirmed');
+    assert.equal(branchCreationCheck.kind, 'warn',
+      'unconfirmed branch persistence should use warning severity');
+
     // A merge must stop if the branch could not be saved or the main workspace
     // could not be refreshed; otherwise a stale server snapshot can discard edits.
     const mergeGuard = await page.evaluate(async () => {
