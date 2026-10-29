@@ -3,6 +3,12 @@ const fs = require('node:fs');
 
 const source = fs.readFileSync('public/app.js', 'utf8');
 const designTools = fs.readFileSync('public/design-tools.js', 'utf8');
+const server = fs.readFileSync('server.js', 'utf8');
+
+assert.match(server, /const usingServerKey = !clientKey && !!AI_API_KEY;\s*const apiKey = clientKey \|\| AI_API_KEY;/,
+  'a user-provided AI key must take precedence as a pair with the user-selected provider URL; never send the server key to that URL');
+assert.match(server, /via: usingServerKey \? 'server' : 'client-key'/,
+  'AI responses must report the credential source actually used');
 
 assert.match(source, /function aiSettingsStorageKey\(\)[\s\S]*?return userKey \? STORAGE_KEY_AI \+ ':' \+ userKey : STORAGE_KEY_AI;/,
   'AI settings storage must be namespaced by the real account identity');
