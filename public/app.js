@@ -155,17 +155,19 @@ function preserveInvalidLocalMapSnapshot(raw, recoveryKey, reason) {
 function isValidDeletedProjectMapSnapshot(raw) {
   try {
     const stored = JSON.parse(raw);
-    return !!(stored && typeof stored === 'object' && !Array.isArray(stored) &&
-      ((stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace)) ||
-       (typeof stored.workspaceId === 'string' && Array.isArray(stored.ids)));
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
+    const modern = stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace);
+    const legacy = typeof stored.workspaceId === 'string' && Array.isArray(stored.ids);
+    return !!(modern || legacy);
   } catch (_) { return false; }
 }
 function isValidPendingLocalImportSnapshot(raw) {
   try {
     const stored = JSON.parse(raw);
-    return !!(stored && typeof stored === 'object' && !Array.isArray(stored) &&
-      ((stored.byUser && typeof stored.byUser === 'object' && !Array.isArray(stored.byUser)) ||
-       (typeof stored.userKey === 'string' && Array.isArray(stored.projects)));
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
+    const modern = stored.byUser && typeof stored.byUser === 'object' && !Array.isArray(stored.byUser);
+    const legacy = typeof stored.userKey === 'string' && Array.isArray(stored.projects);
+    return !!(modern || legacy);
   } catch (_) { return false; }
 }
 function readDeletedProjectMap() {
