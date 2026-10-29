@@ -161,11 +161,19 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     // OAuth state must be bound to the browser that started the flow, not just
     // signed by the server. A copied authorization URL without its cookie fails.
     for (const provider of ['github', 'google']) {
-      const start = await fetch(BASE_URL + '/api/auth/' + provider, { redirect: 'manual' });
+      const start = await fetch(BASE_URL + '/api/auth/' + provider, {
+        redirect: 'manual',
+        headers: { 'x-forwarded-host': 'attacker.example', 'x-forwarded-proto': 'https' }
+      });
       assert.equal(start.status, 302, provider + ' OAuth should start with a redirect');
       assert.equal(start.headers.get('cache-control'), 'no-store',
         provider + ' OAuth redirects must not be cached with transient state');
       const authorizeUrl = new URL(start.headers.get('location'));
+      const callbackUrl = new URL(authorizeUrl.searchParams.get('redirect_uri'));
+      assert.equal(callbackUrl.host, '127.0.0.1:' + PORT,
+        provider + ' OAuth callback origin must ignore an untrusted X-Forwarded-Host');
+      assert.equal(callbackUrl.protocol, 'https:',
+        provider + ' OAuth callback should respect secure proxy protocol detection');
       const state = authorizeUrl.searchParams.get('state');
       assert.ok(state, provider + ' OAuth redirect should include signed state');
       assert.match(start.headers.get('set-cookie') || '', new RegExp('codelab_oauth_state_' + provider));
