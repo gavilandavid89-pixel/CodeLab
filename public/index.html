@@ -376,7 +376,15 @@
           <button onclick="addDesignElement('button')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square-caret-right mr-1"></i> Botón</button>
           <button onclick="addDesignElement('rectangle')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square mr-1"></i> Rectángulo</button>
           <button onclick="toggleDesignGrid()" id="designGridBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar cuadrícula"><i class="fa-solid fa-border-all mr-1"></i> Rejilla</button>
-          <button onclick="alignDesignElement()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Centrar elemento seleccionado"><i class="fa-solid fa-align-center mr-1"></i> Centrar</button>
+          <div class="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="Alinear elemento seleccionado">
+<button onclick="alignDesignElement('left')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la izquierda" aria-label="Alinear izquierda"><i class="fa-solid fa-align-left"></i></button>
+<button onclick="alignDesignElement('center-x')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar horizontalmente" aria-label="Centrar horizontal"><i class="fa-solid fa-arrows-left-right-to-line"></i></button>
+<button onclick="alignDesignElement('right')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la derecha" aria-label="Alinear derecha"><i class="fa-solid fa-align-right"></i></button>
+<span class="mx-0.5 h-5 border-l border-slate-700"></span>
+<button onclick="alignDesignElement('top')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear arriba" aria-label="Alinear arriba"><i class="fa-solid fa-arrow-up"></i></button>
+<button onclick="alignDesignElement('center-y')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar verticalmente" aria-label="Centrar vertical"><i class="fa-solid fa-arrows-up-down-to-line"></i></button>
+<button onclick="alignDesignElement('bottom')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear abajo" aria-label="Alinear abajo"><i class="fa-solid fa-arrow-down"></i></button>
+</div>
           <label class="flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Color de fondo del marco">Fondo <input id="designBackgroundColor" type="color" value="#ffffff" onchange="setDesignBackground(this.value)" class="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"></label>
           <label class="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Zoom del lienzo"><i class="fa-solid fa-magnifying-glass"></i><input id="designZoom" type="range" min="50" max="150" step="10" value="100" oninput="setDesignZoom(this.value)" class="w-16 sm:w-20 accent-violet-500"><span id="designZoomLabel" class="w-8 text-right">100%</span></label>
           <button onclick="exportDesignHtml()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-download mr-1"></i> Exportar</button>
