@@ -2718,7 +2718,6 @@ function distributeDesignElements(axis = 'horizontal') {
   if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
   const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
-  recordDesignHistory();
   const horizontal = axis !== 'vertical';
   const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
   const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
@@ -2727,6 +2726,9 @@ function distributeDesignElements(axis = 'horizontal') {
   const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
   if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
+  // Record history only after validation; a rejected operation must not create
+  // a fake undo step for a state that never changed.
+  recordDesignHistory();
   let cursor = start;
   for (const el of ordered) {
     if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
@@ -3482,6 +3484,10 @@ function moveDesignLayer(direction) {
 }
 function duplicateDesignElement() {
   const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
+  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
+    return;
+  }
   recordDesignHistory();
   const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
   p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
