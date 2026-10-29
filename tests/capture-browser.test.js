@@ -17,6 +17,15 @@ const { chromium } = require('playwright');
       })[kind];
     });
     await page.addScriptTag({ path: 'public/capture.js' });
+    const pendingAssets = await page.evaluate(async () => {
+      const image = { loading: 'lazy', complete: false, naturalWidth: 0, addEventListener() {} };
+      return window.CodeLabCapture.waitForCaptureAssets({
+        images: [image],
+        fonts: { ready: Promise.resolve(), status: 'loaded' }
+      }, 250);
+    });
+    assert.equal(pendingAssets.imagesPending, 1, 'Capture diagnostics should report images still loading after timeout');
+    assert.equal(pendingAssets.timedOut, true, 'An image that never finishes should time out without hanging capture');
     await page.waitForSelector('#webCaptureBtn');
     await page.selectOption('#webCaptureViewport', '768');
     await page.selectOption('#webCaptureScale', '3');
@@ -50,6 +59,7 @@ const { chromium } = require('playwright');
     assert.equal(context.viewport.pixelHeight, 900 * 3, 'AI context must document the actual output pixel height');
     assert.equal(context.renderedPage.assetStatus.imagesTotal, 1, 'Capture should report the image assets it waited for');
     assert.equal(context.renderedPage.assetStatus.imagesLoaded, 1, 'Capture should wait for inline images before rendering');
+    assert.equal(context.renderedPage.assetStatus.imagesPending, 0, 'Capture context should report no pending images after successful readiness');
     assert.equal(context.renderedPage.assetStatus.timedOut, false, 'Capture assets should be ready before PNG rendering');
     assert.equal(context.page.title, 'Browser Fixture');
     assert.match(context.sourceCode.javascript, /not-executed-in-capture/);

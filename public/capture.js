@@ -235,6 +235,7 @@
       imagesTotal: images.length,
       imagesLoaded: images.filter(function (img) { return img.complete && img.naturalWidth > 0; }).length,
       imagesFailed: images.filter(function (img) { return img.complete && img.naturalWidth === 0; }).length,
+      imagesPending: images.filter(function (img) { return !img.complete; }).length,
       timedOut: !completed
     };
   }
