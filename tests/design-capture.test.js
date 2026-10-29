@@ -75,6 +75,8 @@ const maximumResolutionContext = capture.buildWebCaptureContext({
 assert.equal(maximumResolutionContext.viewport.scale, 4, 'Capture context must preserve the maximum 4× scale');
 assert.equal(maximumResolutionContext.viewport.width, 1280);
 assert.equal(maximumResolutionContext.viewport.height, 900);
+assert.equal(maximumResolutionContext.viewport.pixelWidth, 5120, '4× web capture should report its exact raster width');
+assert.equal(maximumResolutionContext.viewport.pixelHeight, 3600, '4× web capture should report its exact raster height');
 assert.equal(webContext.sourceCode.javascript, 'document.querySelector("button").textContent = "Changed";');
 assert.equal(webContext.page.javascriptIncludedInScreenshot, false);
 assert.match(webContext.aiInstructions, /JavaScript/);
