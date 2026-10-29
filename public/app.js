@@ -1097,6 +1097,7 @@ async function logoutAuth() {
   // Reload into a new anonymous workspace without the previous account's token.
   try {
     await loadProjectsFromStorage();
+    window.dispatchEvent(new Event('codelab-workspace-ready'));
     renderProjectsList();
     updateDashboardStatus();
   } catch (_) {}
