@@ -39,7 +39,7 @@ async function waitForPersistedProject(page, projectName) {
     page.on('pageerror', error => failures.push(error.message));
 
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await page.waitForSelector('#syncLoadingModal.hidden', { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
 
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
@@ -118,7 +118,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.selectOption('#designFrameSize', 'desktop');
     await waitForPersistedProject(page, PROJECT_NAME);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#syncLoadingModal.hidden', { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
     const projectCard = page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME });
     await projectCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(() => {
