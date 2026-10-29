@@ -22,6 +22,7 @@ let initialWorkspaceId = null;
 let pendingLocalImportProjects = null;
 let localProjectsSnapshotRecoveryFailed = false;
 let localProjectsSnapshotWriteBlocked = false;
+let localSnapshotBlockedWarningShown = false;
 let generatedDefaultProjectId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
@@ -82,33 +83,50 @@ function lsRemove(key) {
 }
 function preserveInvalidLocalProjectsSnapshot(raw, reason) {
   if (typeof raw !== 'string') return false;
-  const existing = lsGet(STORAGE_KEY_PROJECTS_RECOVERY);
+  const key = STORAGE_KEY_PROJECTS_RECOVERY;
+  const entry = { savedAt: new Date().toISOString(), reason: reason, raw: raw };
+  const existing = lsGet(key);
   if (existing) {
-    try {
-      const backup = JSON.parse(existing);
-      if (backup && backup.raw === raw) return true;
-    } catch (_) {}
-    // Keep the first recoverable copy rather than replacing it with another
-    // damaged snapshot on a later startup.
+    let backup;
+    try { backup = JSON.parse(existing); } catch (_) {
+      // An unreadable recovery slot may itself contain the only recoverable copy.
+      // Never overwrite it with a new backup we cannot safely merge.
+      return false;
+    }
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup)) return false;
+    const extras = Array.isArray(backup.backups) ? backup.backups : [];
+    if (backup.raw === raw || extras.some(item => item && item.raw === raw)) return true;
+    if (typeof backup.raw === 'string') {
+      // Preserve the first backup in its legacy top-level fields and append later
+      // damaged snapshots instead of permanently blocking all future local saves.
+      return lsSet(key, JSON.stringify({ ...backup, version: backup.version || 1, backups: extras.concat(entry) }));
+    }
+    if (Array.isArray(backup.backups)) {
+      return lsSet(key, JSON.stringify({ ...backup, backups: extras.concat(entry) }));
+    }
     return false;
   }
-  const backup = JSON.stringify({
+  return lsSet(key, JSON.stringify({
     version: 1,
-    savedAt: new Date().toISOString(),
-    reason: reason,
-    raw: raw
-  });
-  return lsSet(STORAGE_KEY_PROJECTS_RECOVERY, backup);
+    savedAt: entry.savedAt,
+    reason: entry.reason,
+    raw: entry.raw
+  }));
 }
 function saveLocalProjectsSnapshot() {
   // Never overwrite a damaged snapshot unless its exact contents were first
   // preserved successfully in the recovery slot.
   if (localProjectsSnapshotRecoveryFailed || localProjectsSnapshotWriteBlocked) {
     console.warn('Local project snapshot was not overwritten because recovery backup failed.');
+    if (!localSnapshotBlockedWarningShown && typeof showToast === 'function') {
+      localSnapshotBlockedWarningShown = true;
+      showToast('No se pudo asegurar la recuperación de la copia local. Mantén el servidor conectado y exporta tus proyectos antes de cerrar esta sesión.', 'warn');
+    }
     return false;
   }
   const saved = lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
   if (saved && workspaceId) lsSet(STORAGE_KEY_PROJECTS_WORKSPACE, workspaceId);
+  if (saved) localSnapshotBlockedWarningShown = false;
   return saved;
 }
 function readDeletedProjectMap() {
@@ -181,6 +199,7 @@ function storePendingLocalImport(localProjects) {
   // A durable account-scoped copy now exists, so the original snapshot may be
   // safely replaced by this workspace's own local state again.
   localProjectsSnapshotWriteBlocked = false;
+  localSnapshotBlockedWarningShown = false;
   return true;
 }
 function restorePendingLocalImport() {
@@ -198,6 +217,7 @@ function clearPendingLocalImport() {
   // The current workspace now owns the active snapshot; it is safe to resume
   // local saves after a previous cross-workspace recovery failure.
   localProjectsSnapshotWriteBlocked = false;
+  localSnapshotBlockedWarningShown = false;
 }
 function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
   const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
