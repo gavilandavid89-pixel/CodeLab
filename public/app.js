@@ -2514,6 +2514,22 @@ async function processAiInstruction() {
       finish();
       return;
     }
+    const codeFields = ['html', 'css', 'js'];
+    if (!generated || codeFields.some(key => typeof generated[key] !== 'string')) {
+      aiMsg.className = 'bg-red-950/40 border border-red-500/40 p-3 rounded-xl text-red-100 text-xs leading-relaxed';
+      aiMsg.textContent = 'La respuesta generada no contiene HTML, CSS y JS válidos. No se modificó el proyecto.';
+      showToast('Código generado inválido; no se aplicaron cambios.', 'error');
+      finish();
+      return;
+    }
+    const oversizedField = codeFields.find(key => generated[key].length > 500000);
+    if (oversizedField) {
+      aiMsg.className = 'bg-amber-950/30 border border-amber-500/40 p-3 rounded-xl text-amber-100 text-xs leading-relaxed';
+      aiMsg.textContent = 'El ' + oversizedField.toUpperCase() + ' generado supera el límite de 500000 caracteres. No se modificó el proyecto; reduce la solicitud e inténtalo de nuevo.';
+      showToast('Código generado demasiado grande; no se aplicaron cambios.', 'warn');
+      finish();
+      return;
+    }
     setEditorValue('html', generated.html, { silent: true });
     setEditorValue('css', generated.css, { silent: true });
     setEditorValue('js', generated.js, { silent: true });
