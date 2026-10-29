@@ -136,14 +136,32 @@ async function waitForPersistedProject(page, projectName) {
       const editor = document.getElementById('editorPanel');
       return design && design.classList.contains('hidden') && editor && !editor.classList.contains('hidden');
     }, { timeout: 10000 });
-    const generated = await page.evaluate(() => ({
-      title: document.getElementById('currentProjectTitle')?.textContent || '',
-      html: typeof window.getEditorValue === 'function' ? window.getEditorValue('html') : ''
-    }));
-    assert.match(generated.title, /Web/);
-    assert.match(generated.html, /Prueba integral CodeLab/,
+    const convertedHandle = await page.waitForFunction(async name => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !token) return false;
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId), {
+          headers: { 'x-workspace-token': token }
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return (data.projects || []).find(project =>
+          project.name === name + ' · Web' &&
+          project.type === 'web' &&
+          project.code &&
+          project.code.html.includes('Prueba integral CodeLab')
+        ) || false;
+      } catch (_) {
+        return false;
+      }
+    }, PROJECT_NAME, { timeout: 15000 });
+    const converted = await convertedHandle.jsonValue();
+    assert.equal(converted.type, 'web');
+    assert.match(converted.name, /Web/);
+    assert.match(converted.code.html, /Prueba integral CodeLab/,
       'converted web project should include the edited design content');
-    assert.match(generated.html, /name="viewport"/,
+    assert.match(converted.code.html, /name="viewport"/,
       'converted web project should include a responsive viewport meta tag');
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
