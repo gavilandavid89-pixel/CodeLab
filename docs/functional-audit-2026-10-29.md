@@ -79,3 +79,14 @@ The integrated E2E cannot mark these items complete because it runs against an i
 
 ## Deployment / merge
 PR remains open and draft. No merge or deployment was performed as part of this audit.
+
+
+## Follow-up coherence pass — editor tools and branch persistence
+
+- **Consistent save contract:** immediate editor saves now return the workspace persistence result and cancel a pending debounced autosave before sending the immediate save. This lets tools wait for the real save outcome instead of announcing success while a save is still pending.
+- **Component library retry safety:** insertion reports whether workspace synchronization was confirmed. If an insertion changed the editor but the save was not confirmed, pressing Insert again retries persistence for that exact pending insertion rather than duplicating the component. Browser regression covers failed-save → retry → exactly one inserted component.
+- **Design-token application:** CSS tokens now use the same immediate-save contract and distinguish confirmed persistence from an unconfirmed save. The existing code-size guard still rejects oversized CSS before mutating the editor; browser tests cover both save success and save failure.
+- **Branch save consistency:** saving a work copy uses the persistence promise from the branch update rather than starting a second redundant workspace write. Creating a branch waits for the save result before announcing confirmed synchronization.
+- **Merge safety:** merging is now blocked if the copy could not be saved or if the main workspace could not be refreshed. This prevents a stale server snapshot from overwriting local branch edits. The full-system E2E injects a failed branch save and verifies that merge does not refresh/replace the local state.
+- **Validation:** full GitHub Actions push validation passed on commit `b940bdbb8cf0e87e3e1d837475d8848a29474f84` ([push run](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/40929654293)); PR validation passed on the same commit ([PR run](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/40929663377)). These checks include JavaScript syntax, server/workspace resilience, design-token and component-library browser tests, AI web-capture browser tests, chained real-app E2E, and API/Groq smoke checks.
+- This remains source/CI validation against the local test server. It does not claim live Render or real OAuth/cross-device verification; those remain explicitly pending under the constraints above.
