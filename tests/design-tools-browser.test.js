@@ -79,6 +79,27 @@ function extractDivById(html, id) {
     const json = JSON.parse(await fs.readFile(filePath, 'utf8'));
     assert.equal(json.format, 'codelab-design-system');
     assert.equal(json.colors.primary, '#ff0000');
+    const importFixture = {
+      format: 'codelab-design-system', version: 1, name: 'Sistema importado',
+      colors: { primary: '#123456', secondary: '#234567', accent: '#345678', surface: '#456789', background: '#56789a', text: '#abcdef' },
+      typography: { baseFontPx: 20, ratio: 1.3, scale: [{ name: 'base', px: 20 }] },
+      spacing: [{ name: 'space-1', px: 8 }], radius: [{ name: 'radius-lg', px: 16 }],
+      accessibility: { foreground: '#ffffff', background: '#000000', contrastRatio: 21 }
+    };
+    await page.locator('#designSystemJsonFile').setInputFiles({
+      name: 'imported-design-system.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(importFixture))
+    });
+    assert.equal(await page.locator('#systemName').inputValue(), 'Sistema importado');
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#123456');
+    assert.equal(await page.locator('#baseFont').inputValue(), '20');
+    assert.equal(await page.locator('#baseSpacing').inputValue(), '8');
+    assert.equal(await page.locator('#baseRadius').inputValue(), '16');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#123456');
+    await page.locator('#designSystemJsonFile').setInputFiles({
+      name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'other', version: 1 }))
+    });
+    assert.match(await page.locator('#designToolsStatus').innerText(), /no es un sistema visual CodeLab compatible/i);
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#123456', 'invalid import must not overwrite the current system');
     await page.click('#designToolsTab-audit');
     await page.click('#runAccessibilityAudit');
     const auditText = await page.locator('#accessibilityAuditResults').innerText();
