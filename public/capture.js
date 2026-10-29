@@ -68,7 +68,8 @@
       }
     });
     const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
-    return { positions: positions, height: Math.max(900, contentBottom + padding) };
+    // Keep generated SVG dimensions bounded even for huge projects or corrupted layout metadata.
+    return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + padding)) };
   }
 
   function captureDesignSvg(project) {
