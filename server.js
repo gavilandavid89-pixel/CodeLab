@@ -224,12 +224,18 @@ function readDesignSystem(id) {
 function writeDesignSystem(id, settings) {
   const file = designSystemFile(id);
   const tmp = file + '.tmp.' + process.pid + '.' + Date.now();
-  fs.writeFileSync(tmp, JSON.stringify({
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    settings: settings
-  }), 'utf8');
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      settings: settings
+    }), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    // Keep failed settings writes from leaving sensitive workspace temp files behind.
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
 }
 function emptyState(owner) {
   return {
