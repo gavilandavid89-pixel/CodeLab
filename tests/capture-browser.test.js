@@ -19,16 +19,18 @@ const { chromium } = require('playwright');
     await page.addScriptTag({ path: 'public/capture.js' });
     await page.waitForSelector('#webCaptureBtn');
     await page.selectOption('#webCaptureViewport', '768');
-    const pngDownloadPromise = page.waitForEvent('download', { timeout: 45000 });
+    const downloadsPromise = Promise.all([
+      page.waitForEvent('download', { timeout: 45000 }),
+      page.waitForEvent('download', { timeout: 45000 })
+    ]);
     await page.click('#webCaptureBtn');
-    const pngDownload = await pngDownloadPromise;
+    const [pngDownload, jsonDownload] = await downloadsPromise;
     assert.match(pngDownload.suggestedFilename(), /\.png$/i, 'Browser capture must download a PNG');
     const pngPath = await pngDownload.path();
     const png = await fs.readFile(pngPath);
     assert.ok(png.length > 500, 'PNG output must contain rendered image data');
     assert.deepEqual(Array.from(png.subarray(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10], 'Downloaded image must have a valid PNG signature');
 
-    const jsonDownload = await page.waitForEvent('download', { timeout: 10000 });
     const jsonPath = await jsonDownload.path();
     const context = JSON.parse(await fs.readFile(jsonPath, 'utf8'));
     assert.equal(context.format, 'codelab-ai-web-capture');
