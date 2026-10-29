@@ -552,10 +552,10 @@ function serveStatic(req, res, urlPath) {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Content-Length': data.length
     };
-    if (ext === '.html') {
+    // HTML references stable asset URLs; force revalidation so deployments cannot leave
+    // users running stale application logic for a full day after a release.
+    if (ext === '.html' || ext === '.js' || ext === '.css') {
       headers['Cache-Control'] = 'no-cache';
-    } else if (ext === '.js' || ext === '.css') {
-      headers['Cache-Control'] = 'public, max-age=86400';
     }
     res.writeHead(200, headers);
     res.end(data);
