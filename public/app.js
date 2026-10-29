@@ -1089,7 +1089,7 @@ async function deleteProject(id, e) {
   showToast('No se pudo asegurar la eliminación; se conservó el proyecto para evitar que reaparezca o se pierda.', 'error');
 }
 
-function duplicateProjectFromDashboard(id, e) {
+async function duplicateProjectFromDashboard(id, e) {
   if (e) e.stopPropagation();
   if (projects.length >= maxProjects) {
     showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de duplicar.', 'warn');
@@ -1097,18 +1097,33 @@ function duplicateProjectFromDashboard(id, e) {
   }
   const orig = projects.find(p => p.id === id);
   if (!orig) return;
-  const dup = {
-    id: 'proj_' + crypto.randomUUID(),
-    name: String(orig.name || 'Proyecto').slice(0, 200 - ' (Copia)'.length) + ' (Copia)',
-    type: orig.type === 'design' ? 'design' : 'web',
-    updatedAt: new Date().toISOString(),
-    code: JSON.parse(JSON.stringify(orig.code)),
-    ...(orig.design ? { design: JSON.parse(JSON.stringify(orig.design)) } : {})
-  };
+  let dup;
+  try {
+    dup = {
+      id: 'proj_' + crypto.randomUUID(),
+      name: String(orig.name || 'Proyecto').slice(0, 200 - ' (Copia)'.length) + ' (Copia)',
+      type: orig.type === 'design' ? 'design' : 'web',
+      updatedAt: new Date().toISOString(),
+      code: JSON.parse(JSON.stringify(normalizeCode(orig.code))),
+      ...(orig.design ? { design: JSON.parse(JSON.stringify(orig.design)) } : {})
+    };
+  } catch (_) {
+    showToast('No se pudo preparar una copia válida de este proyecto.', 'error');
+    return;
+  }
   projects.unshift(dup);
-  saveProjectsToStorage();
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  let localContainsCopy = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    localContainsCopy = Array.isArray(snapshot) && snapshot.some(project => project && project.id === dup.id);
+  } catch (_) {}
   renderProjectsList();
-  showToast('Copia del proyecto creada.');
+  if (serverSaved) showToast('Copia del proyecto creada y sincronizada.');
+  else if (localSaved && localContainsCopy) showToast('Copia creada y guardada localmente; sincronización pendiente.', 'warn');
+  else showToast('La copia está en memoria, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
 function openProject(id) {
