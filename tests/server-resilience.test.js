@@ -70,6 +70,15 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
         provider + ' callback must reject a valid state copied without its browser cookie');
     }
 
+    const malformedJsonResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"broken":'
+    });
+    assert.equal(malformedJsonResponse.status, 400,
+      'Malformed JSON bodies should produce a client error rather than an internal server error');
+    assert.equal((await malformedJsonResponse.json()).error, 'invalid_json');
+
     const oversized = '{"padding":"' + 'x'.repeat(10 * 1024 * 1024) + '"}';
     const oversizedResponse = await fetch(BASE_URL + '/api/workspace/init', {
       method: 'POST',
