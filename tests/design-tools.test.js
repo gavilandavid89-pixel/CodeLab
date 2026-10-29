@@ -33,6 +33,15 @@ assert.match(css, /--font-size-base: 18px;/);
 assert.match(css, /--space-8: 48px;/);
 assert.match(css, /--radius-xl: 24px;/);
 
+const injected = tools.injectTokenBlock('.button { color: red; }', css);
+assert.match(injected, /\/\* CodeLab Design Tokens START \*\//);
+assert.match(injected, /--color-primary: #123456;/);
+assert.match(injected, /\.button \{ color: red; \}/);
+const updated = tools.injectTokenBlock(injected, ':root { --color-primary: #abcdef; }');
+assert.equal((updated.match(/CodeLab Design Tokens START/g) || []).length, 1);
+assert.match(updated, /--color-primary: #abcdef;/);
+assert.match(updated, /\.button \{ color: red; \}/);
+
 const clamped = tools.sanitizeSettings({ baseFont: 200, typeRatio: 3, baseSpacing: 0, baseRadius: -10 });
 assert.equal(clamped.baseFont, 32);
 assert.equal(clamped.typeRatio, 1.5);
