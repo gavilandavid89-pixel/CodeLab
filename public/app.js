@@ -1060,15 +1060,38 @@ function connectAuth(provider) {
 }
 
 async function logoutAuth() {
+  // Flush account work before dropping its bearer token. If the server cannot
+  // accept the latest snapshot, preserve it in that user's pending-import slot.
+  if (currentUser && currentUser.real) {
+    const saved = await persistWorkspace();
+    if (!saved) {
+      storePendingLocalImport(projects);
+      pendingLocalImportProjects = null;
+    }
+  }
   try {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
   } catch (_) {}
   currentUser = null;
   lsRemove(STORAGE_KEY_AUTH);
+  // The workspace token is a bearer credential independent of the session
+  // cookie, so logout must remove it and start a fresh anonymous workspace.
+  workspaceId = null;
+  initialWorkspaceId = null;
+  workspaceToken = '';
+  workspaceRevision = 0;
+  serverReady = false;
+  projects = [];
+  currentProjectId = null;
+  pendingLocalImportProjects = null;
+  lsRemove(STORAGE_KEY_WORKSPACE);
+  lsRemove(STORAGE_KEY_WORKSPACE_TOKEN);
+  lsRemove(STORAGE_KEY_PROJECTS);
+  lsRemove(STORAGE_KEY_PROJECTS_WORKSPACE);
   loadAiSettings();
   updateAuthUI();
   showToast('Sesión cerrada.');
-  // Reload workspace as anonymous
+  // Reload into a new anonymous workspace without the previous account's token.
   try {
     await loadProjectsFromStorage();
     renderProjectsList();
