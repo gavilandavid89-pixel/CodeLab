@@ -2470,6 +2470,23 @@ function bindDesignCanvasEvents() {
   document.getElementById('designCanvas')?.addEventListener('click', ev => {
     if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; renderDesignWorkspace(); }
   });
+  document.addEventListener('keydown', ev => {
+    const p = activeDesignProject();
+    if (!p) return;
+    const target = ev.target;
+    if (target && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName))) return;
+    const mod = ev.ctrlKey || ev.metaKey;
+    if (mod && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault();
+      if (ev.shiftKey) designRedo(); else designUndo();
+    } else if (mod && ev.key.toLowerCase() === 'y') {
+      ev.preventDefault(); designRedo();
+    } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedDesignElementId) {
+      ev.preventDefault(); deleteDesignElement();
+    } else if (ev.key === 'Escape' && selectedDesignElementId) {
+      selectedDesignElementId = null; renderDesignWorkspace();
+    }
+  });
 }
 function duplicateDesignElement() {
   const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
