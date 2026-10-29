@@ -3817,8 +3817,16 @@ function deleteDesignElement() {
   recordDesignHistory(); p.design.elements = p.design.elements.filter(el => !selectedDesignElementIds.includes(el.id) && el.id !== selectedDesignElementId);
   selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); saveProjectsToStorage();
 }
-function convertDesignToWeb() {
+async function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de crear la web.', 'warn');
+    return;
+  }
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de convertir el diseño.', 'warn');
+    return;
+  }
   const layout = getDesignLayoutPositions(p.design);
   const layoutPositions = layout.positions;
   const autoLayout = p.design.layoutMode === 'auto';
@@ -3854,9 +3862,34 @@ function convertDesignToWeb() {
   const frameClass = 'design-frame' + (autoLayout ? ' auto-layout' : '');
   const mobileCss = autoLayout ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}' : '';
   const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
-  const next = { id: 'proj_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), name: p.name + ' · Web', type: 'web', updatedAt: new Date().toISOString(), code: { html, css: '', js: '' } };
-  projects.unshift(next); saveProjectsToStorage(); renderProjectsList(); openProject(next.id);
-  showToast('Página web creada a partir del diseño.');
+  if (html.length > 500000) {
+    showToast('La web generada supera el límite de 500000 caracteres de HTML. Reduce las capas o imágenes y vuelve a intentarlo.', 'warn');
+    return;
+  }
+  creatingProjectInFlight = true;
+  const suffix = ' · Web';
+  const next = {
+    id: 'proj_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()),
+    name: String(p.name || 'Diseño').slice(0, 200 - suffix.length) + suffix,
+    type: 'web',
+    updatedAt: new Date().toISOString(),
+    code: { html, css: '', js: '' }
+  };
+  projects.unshift(next);
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  let localContainsProject = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    localContainsProject = Array.isArray(snapshot) && snapshot.some(project => project && project.id === next.id);
+  } catch (_) {}
+  creatingProjectInFlight = false;
+  renderProjectsList();
+  openProject(next.id);
+  if (serverSaved) showToast('Página web creada a partir del diseño y sincronizada.');
+  else if (localSaved && localContainsProject) showToast('Página web creada y guardada localmente; sincronización pendiente.', 'warn');
+  else showToast('La web se abrió, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
 function setupNewProjectModalKeys() {
