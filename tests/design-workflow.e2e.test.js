@@ -1589,10 +1589,17 @@ async function waitForPersistedProject(page, projectName) {
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
-    await page.waitForFunction(name => {
+    // The app intentionally returns to the dashboard after reload instead of
+    // persisting editor selection; reopen the design before checking durability.
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible', timeout: 10000 });
+    const reloadedDesignCard = page.locator('#projectsGrid > div').filter({
+      has: page.locator('h4').getByText(PROJECT_NAME, { exact: true })
+    });
+    await reloadedDesignCard.locator('button[data-action="open"]').click();
+    await page.waitForFunction(expected => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
-      return project && project.name === name.name && project.type === 'design' &&
-        document.querySelectorAll('#designCanvas [data-design-id]').length === name.count;
+      return project && project.name === expected.name && project.type === 'design' &&
+        document.querySelectorAll('#designCanvas [data-design-id]').length === expected.count;
     }, { name: PROJECT_NAME, count: matrixBaselineCount }, { timeout: 15000 });
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
