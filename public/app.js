@@ -976,6 +976,7 @@ function escapeAttr(str) {
 }
 
 let creatingProjectInFlight = false;
+const duplicatingProjectIds = new Set();
 function openNewProjectModal() {
   if (creatingProjectInFlight) return;
   document.getElementById('newProjectNameInput').value = '';
@@ -1091,12 +1092,18 @@ async function deleteProject(id, e) {
 
 async function duplicateProjectFromDashboard(id, e) {
   if (e) e.stopPropagation();
+  if (duplicatingProjectIds.has(id)) return;
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de duplicar.', 'warn');
+    return;
+  }
   if (projects.length >= maxProjects) {
     showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de duplicar.', 'warn');
     return;
   }
   const orig = projects.find(p => p.id === id);
   if (!orig) return;
+  duplicatingProjectIds.add(id);
   let dup;
   try {
     dup = {
@@ -1108,6 +1115,7 @@ async function duplicateProjectFromDashboard(id, e) {
       ...(orig.design ? { design: JSON.parse(JSON.stringify(orig.design)) } : {})
     };
   } catch (_) {
+    duplicatingProjectIds.delete(id);
     showToast('No se pudo preparar una copia válida de este proyecto.', 'error');
     return;
   }
@@ -1120,6 +1128,7 @@ async function duplicateProjectFromDashboard(id, e) {
     const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
     localContainsCopy = Array.isArray(snapshot) && snapshot.some(project => project && project.id === dup.id);
   } catch (_) {}
+  duplicatingProjectIds.delete(id);
   renderProjectsList();
   if (serverSaved) showToast('Copia del proyecto creada y sincronizada.');
   else if (localSaved && localContainsCopy) showToast('Copia creada y guardada localmente; sincronización pendiente.', 'warn');
