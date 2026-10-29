@@ -207,6 +207,9 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
         })
       });
     }
+    const arrayValuedDesignResponse = await submitDesignValidationProject([]);
+    assert.equal(arrayValuedDesignResponse.status, 400);
+    assert.equal((await arrayValuedDesignResponse.json()).detail, 'invalid_project_design');
     const malformedDesignResponse = await submitDesignValidationProject({ elements: 'not-an-array' });
     assert.equal(malformedDesignResponse.status, 400);
     assert.equal((await malformedDesignResponse.json()).detail, 'invalid_design_elements');
