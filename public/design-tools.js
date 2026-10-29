@@ -241,7 +241,7 @@
     }
   }
 
-  function saveSettings(input) {
+  function saveLocalSettings(input) {
     const s = sanitizeSettings(input);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
@@ -249,6 +249,44 @@
     } catch (_) {
       return false;
     }
+  }
+
+  function workspaceCredentials() {
+    if (typeof window === 'undefined' || !window.codelabWorkspaceReady) return null;
+    try {
+      const id = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      return id && token ? { id: id, token: token } : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function workspaceDesignSystemUrl(credentials) {
+    return '/api/workspace/' + encodeURIComponent(credentials.id) + '/design-system';
+  }
+
+  function saveSettings(input) {
+    const s = sanitizeSettings(input);
+    if (!saveLocalSettings(s)) return false;
+    const credentials = workspaceCredentials();
+    if (credentials && typeof fetch === 'function') {
+      fetch(workspaceDesignSystemUrl(credentials), {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-workspace-token': credentials.token
+        },
+        body: JSON.stringify({ settings: s })
+      }).then(response => {
+        if (!response.ok) throw new Error('workspace_design_system_save_failed');
+        if (typeof window.showToast === 'function') window.showToast('Sistema visual sincronizado con tu workspace.');
+      }).catch(() => {
+        if (typeof window.showToast === 'function') window.showToast('Sistema guardado en este navegador; no se pudo sincronizar con el workspace.', 'warn');
+      });
+    }
+    return true;
   }
 
   function downloadText(filename, text, mime) {
@@ -368,6 +406,42 @@
       if (status) status.textContent = message;
     }
 
+    async function syncSettingsFromWorkspace() {
+      const credentials = workspaceCredentials();
+      if (!credentials) return;
+      try {
+        const response = await fetch(workspaceDesignSystemUrl(credentials), {
+          credentials: 'same-origin',
+          headers: { 'x-workspace-token': credentials.token }
+        });
+        if (!response.ok) throw new Error('workspace_design_system_load_failed');
+        const data = await response.json();
+        if (data && data.settings) {
+          settings = sanitizeSettings(data.settings);
+          saveLocalSettings(settings);
+          fillForm();
+          renderAll();
+          announce('Sistema visual recuperado desde tu workspace.');
+          return;
+        }
+        // Migrate settings already saved in this browser the first time this
+        // workspace uses the design-system tool.
+        const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-workspace-token': credentials.token
+          },
+          body: JSON.stringify({ settings: settings })
+        });
+        if (!saveResponse.ok) throw new Error('workspace_design_system_migration_failed');
+        announce('Sistema visual local sincronizado con tu workspace.');
+      } catch (_) {
+        announce('No se pudo sincronizar el sistema visual; se conserva la copia local.');
+      }
+    }
+
     function fillForm() {
       const map = {
         systemName: 'name', colorPrimary: 'primary', colorSecondary: 'secondary', colorAccent: 'accent',
@@ -427,6 +501,9 @@
       if (button) button.addEventListener('click', () => showTab(tab));
     });
 
+    window.addEventListener('codelab-workspace-ready', syncSettingsFromWorkspace, { once: true });
+    if (window.codelabWorkspaceReady) syncSettingsFromWorkspace();
+
     if (get('openDesignTools')) get('openDesignTools').addEventListener('click', open);
     if (get('closeDesignTools')) get('closeDesignTools').addEventListener('click', close);
     if (get('designToolsCloseFooter')) get('designToolsCloseFooter').addEventListener('click', close);
@@ -464,7 +541,7 @@
     if (get('saveDesignSystem')) get('saveDesignSystem').addEventListener('click', () => {
       settings = readForm();
       const ok = saveSettings(settings);
-      announce(ok ? 'Sistema guardado en este navegador.' : 'No se pudo guardar; exporta el JSON para conservarlo.');
+      announce(ok ? 'Sistema guardado localmente; sincronizando con el workspace si está disponible.' : 'No se pudo guardar; exporta el JSON para conservarlo.');
     });
     if (get('resetDesignSystem')) get('resetDesignSystem').addEventListener('click', () => {
       settings = sanitizeSettings(DEFAULTS);
@@ -529,7 +606,7 @@
           fillForm();
           renderAll();
           const saved = saveSettings(settings);
-          announce(saved ? 'Sistema visual importado y guardado en este navegador.' : 'Sistema visual importado en esta sesión; no se pudo guardar en este navegador.');
+          announce(saved ? 'Sistema visual importado y guardado localmente; sincronizando con el workspace si está disponible.' : 'Sistema visual importado en esta sesión; no se pudo guardar en este navegador.');
           if (typeof window.showToast === 'function') window.showToast('Sistema visual importado.');
         } catch (error) {
           announce('No se pudo importar: ' + (error && error.message ? error.message : 'archivo inválido.'));
