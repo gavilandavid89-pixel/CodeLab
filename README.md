@@ -35,6 +35,7 @@ Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así p
 | `CODELAB_TRUSTED_PROXY_HOPS` | Saltos de proxy inverso confiables que agregan X-Forwarded-For (default 1; ajusta a la cadena real del hosting) |
 | `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 10 MiB) |
 | `CODELAB_MAX_PROJECTS` | Máximo de proyectos por workspace (default 50) |
+| `CODELAB_UPSTREAM_TIMEOUT_MS` | Tiempo máximo de inactividad para llamadas HTTPS a proveedores (default 60000; entre 1000 y 300000 ms) |
 | `NODE_ENV` | `production` |
 
 Si no configuras OAuth, la UI ofrece **perfil demo local** (sin login real).
