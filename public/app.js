@@ -2519,7 +2519,9 @@ const MAX_DESIGN_ELEMENTS = 500;
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
   if (!p || p.type !== 'design') return null;
-  if (!p.design || typeof p.design !== 'object') p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
+  if (!p.design || typeof p.design !== 'object' || Array.isArray(p.design)) {
+    p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
+  }
   if (p.design.grid == null) p.design.grid = true;
   if (!['free','auto'].includes(p.design.layoutMode)) p.design.layoutMode = 'free';
   if (!['row','column'].includes(p.design.layoutDirection)) p.design.layoutDirection = 'row';
