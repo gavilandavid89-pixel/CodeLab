@@ -2744,9 +2744,9 @@ async function captureDesignForAI() {
   const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+  const designLayout = getDesignLayoutPositions(project.design);
   const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
-    const layout = getDesignLayoutPositions(project.design);
-    const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const position = designLayout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
     const y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
