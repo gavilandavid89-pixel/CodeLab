@@ -178,6 +178,25 @@ function extractDivById(html, id) {
     await page.waitForFunction(() => /no es un sistema visual CodeLab compatible/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 5000 });
     assert.match(await page.locator('#designToolsStatus').innerText(), /no es un sistema visual CodeLab compatible/i);
     assert.equal(await page.locator('#colorPrimary').inputValue(), '#222222', 'invalid import must not overwrite the current system');
+    const invalidColorFixture = {
+      format: 'codelab-design-system', version: 1, name: 'No debe aplicarse',
+      colors: { primary: 'not-a-color', secondary: '#234567', accent: '#345678', surface: '#456789', background: '#56789a', text: '#abcdef' },
+      typography: { baseFontPx: 20, ratio: 1.3, scale: [{ name: 'base', px: 20 }] },
+      spacing: [{ name: 'space-1', px: 8 }], radius: [{ name: 'radius-lg', px: 16 }],
+      accessibility: { foreground: '#ffffff', background: '#000000', contrastRatio: 21 }
+    };
+    await page.locator('#designSystemJsonFile').setInputFiles({
+      name: 'invalid-color.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalidColorFixture))
+    });
+    await page.waitForFunction(() => /colores inválidos/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 5000 });
+    assert.equal(await page.locator('#systemName').inputValue(), 'Sistema importado', 'malformed color data must not partially replace settings');
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#222222', 'malformed color data must preserve the current system');
+    const outOfRangeFixture = { ...invalidColorFixture, name: 'Fuera de rango', colors: { ...invalidColorFixture.colors, primary: '#123456' }, typography: { baseFontPx: 99, ratio: 1.3, scale: [{ name: 'base', px: 99 }] } };
+    await page.locator('#designSystemJsonFile').setInputFiles({
+      name: 'out-of-range.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(outOfRangeFixture))
+    });
+    await page.waitForFunction(() => /fuera de rango/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 5000 });
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#222222', 'out-of-range token values must not be silently clamped during import');
     await page.click('#designToolsTab-audit');
     await page.click('#runAccessibilityAudit');
     const auditText = await page.locator('#accessibilityAuditResults').innerText();

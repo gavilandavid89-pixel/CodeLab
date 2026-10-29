@@ -559,6 +559,35 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(exportedTokens.name, 'Sistema integral E2E');
     assert.equal(exportedTokens.colors.primary, '#123abc');
 
+    // Verify export → edit → import round-trip through the actual UI and workspace.
+    await page.locator('#colorPrimary').evaluate(input => {
+      input.value = '#654321';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator('#designSystemJsonFile').setInputFiles({
+      name: 'codelab-design-system.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(exportedTokens))
+    });
+    await page.waitForFunction(() =>
+      document.getElementById('systemName')?.value === 'Sistema integral E2E' &&
+      document.getElementById('colorPrimary')?.value.toLowerCase() === '#123abc'
+    , null, { timeout: 10000 });
+    await page.waitForFunction(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !token) return false;
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/design-system', {
+          headers: { 'x-workspace-token': token }
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return data.settings && data.settings.primary === '#123abc';
+      } catch (_) { return false; }
+    }, null, { timeout: 15000 });
+
     await page.locator('#designToolsCloseFooter').click();
     // Remove the browser fallback so the next page load must recover these
     // values from the server-backed workspace design-system endpoint.
