@@ -169,7 +169,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
     await page.locator('#componentLibraryInsert').click();
     const insertedHtml = await page.evaluate(() => window.getEditorValue('html'));
-    assert.match(insertedHtml, /<section|<nav/i,
+    assert.match(insertedHtml, /cl-hero/,
       'component insertion should update the real HTML editor');
     await page.locator('#closeComponentLibrary').click();
     await page.waitForFunction(async name => {
@@ -183,7 +183,7 @@ async function waitForPersistedProject(page, projectName) {
         if (!response.ok) return false;
         const data = await response.json();
         const project = (data.projects || []).find(item => item.name === name + ' · Web');
-        return !!(project && project.code && project.code.html && /<section|<nav/i.test(project.code.html));
+        return !!(project && project.code && project.code.html && /cl-hero/.test(project.code.html));
       } catch (_) {
         return false;
       }
