@@ -34,4 +34,9 @@ assert.match(designTools, /window\.addEventListener\('codelab-workspace-ready', 
 assert.match(source, /window\.dispatchEvent\(new Event\('codelab-workspace-ready'\)\);[\s\S]*?renderProjectsList\(\);/,
   'workspace changes must trigger design-system reload');
 
+assert.match(designTools, /function isCurrentWorkspace\(credentials\)[\s\S]*?active\.id === credentials\.id && active\.token === credentials\.token/,
+  'design-system sync must confirm the active workspace before applying remote responses');
+assert.match(designTools, /Ignore stale responses if logout\/account switching changed the active workspace\.[\s\S]*?if \(!isCurrentWorkspace\(credentials\)\) return;/,
+  'late design-system responses must not overwrite settings after account switching');
+
 console.log('AI and design-system account isolation checks passed.');
