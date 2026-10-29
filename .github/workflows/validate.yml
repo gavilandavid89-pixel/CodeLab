@@ -2,7 +2,7 @@ name: Validate CodeLab
 
 on:
   push:
-    branches: ["main", "fix/**"]
+    branches: ["main", "fix/**", "feature/**"]
   pull_request:
     branches: ["main"]
 
@@ -30,7 +30,7 @@ jobs:
           export AI_MODEL="openai/gpt-oss-120b"
           node server.js > "$RUNNER_TEMP/codelab.log" 2>&1 &
           SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab server log ====="; cat "$RUNNER_TEMP/codelab.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
             if curl --silent --fail http://127.0.0.1:3187/api/health > "$RUNNER_TEMP/health.json"; then
               break
