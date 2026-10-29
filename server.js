@@ -19,8 +19,14 @@ const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PUBLIC_REAL_DIR = fs.realpathSync(PUBLIC_DIR);
 const SECRET_FILE = path.join(DATA_DIR, '.workspace-secret');
-const MAX_BODY_BYTES = Number(process.env.CODELAB_MAX_BODY_BYTES) || 10 * 1024 * 1024;
-const MAX_PROJECTS = Number(process.env.CODELAB_MAX_PROJECTS) || 50;
+const configuredMaxBodyBytes = Number.parseInt(process.env.CODELAB_MAX_BODY_BYTES || '', 10);
+const MAX_BODY_BYTES = Number.isInteger(configuredMaxBodyBytes)
+  ? Math.min(50 * 1024 * 1024, Math.max(1024, configuredMaxBodyBytes))
+  : 10 * 1024 * 1024;
+const configuredMaxProjects = Number.parseInt(process.env.CODELAB_MAX_PROJECTS || '', 10);
+const MAX_PROJECTS = Number.isInteger(configuredMaxProjects)
+  ? Math.min(500, Math.max(1, configuredMaxProjects))
+  : 50;
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
