@@ -1515,8 +1515,11 @@ function updatePreview() {
 }
 
 window.addEventListener('message', e => {
-  // Only accept messages from our own origin (srcdoc inherits parent origin in most browsers)
-  // or from null origin edge cases — reject foreign origins.
+  // Only the preview iframe may report console output. Its sandbox intentionally
+  // omits allow-same-origin, so its origin is opaque ("null") and cannot access
+  // the app's localStorage or authenticated workspace credentials.
+  const previewFrame = document.getElementById('previewIframe');
+  if (!previewFrame || e.source !== previewFrame.contentWindow) return;
   if (e.origin && e.origin !== 'null' && e.origin !== window.location.origin) return;
   if (!e.data || e.data.type !== 'CONSOLE_LOG') return;
   const out = document.getElementById('consoleOutput');
