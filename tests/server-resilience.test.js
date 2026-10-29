@@ -53,6 +53,18 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.doesNotMatch(await traversalResponse.text(), /createServer|SERVER_SECRET/,
       'Traversal response must not reveal server source');
 
+    const privateSymlinkPath = path.join(process.cwd(), 'public', '.test-private-link-' + process.pid);
+    try {
+      await fs.symlink(path.join(process.cwd(), 'server.js'), privateSymlinkPath);
+      const symlinkResponse = await fetch(BASE_URL + '/.test-private-link-' + process.pid);
+      assert.equal(symlinkResponse.status, 404,
+        'Static assets must not expose private files through a symlink inside public/');
+      assert.doesNotMatch(await symlinkResponse.text(), /createServer|SERVER_SECRET/,
+        'Symlink responses must not reveal server implementation details');
+    } finally {
+      await fs.rm(privateSymlinkPath, { force: true });
+    }
+
     const response = await fetch(BASE_URL + '/api/auth/status', {
       headers: { Cookie: 'codelab_sid=%E0%A4%A' }
     });
