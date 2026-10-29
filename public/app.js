@@ -2825,7 +2825,7 @@ function renderDesignWorkspace() {
     node.style.outlineOffset = '2px';
     if (el.type === 'heading') node.style.lineHeight = '1.1';
     node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
-    node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type);
+    node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type); node.tabIndex = 0;
     node.addEventListener('click', ev => { ev.stopPropagation(); if (selectedDesignElementId !== el.id) { selectedDesignElementId = el.id; renderDesignWorkspace(); } });
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
