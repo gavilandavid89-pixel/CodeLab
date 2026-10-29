@@ -22,7 +22,9 @@
 
   function safeColor(value) {
     const color = String(value || 'transparent').trim();
-    return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
+    // CSS hex colors only allow 3, 4, 6, or 8 hexadecimal digits.
+    // Reject other lengths rather than exporting values browsers will ignore.
+    return /^(#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   }
 
   const MAX_CAPTURE_DESIGN_ELEMENTS = 500;
