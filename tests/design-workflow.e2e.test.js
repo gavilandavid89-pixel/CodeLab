@@ -96,6 +96,18 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(moved.left >= 120, 'drag should update the element x coordinate');
     assert.ok(moved.top >= 95, 'drag should update the element y coordinate');
 
+    // 4b. Keyboard nudging and duplication shortcuts operate on the selected layer.
+    const beforeNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowDown');
+    const afterNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
+    assert.equal(afterNudge.left, beforeNudge.left + 1, 'ArrowRight should nudge the selected layer by one pixel');
+    assert.equal(afterNudge.top, beforeNudge.top + 10, 'Shift+ArrowDown should nudge the selected layer by ten pixels');
+    await page.keyboard.press('Control+d');
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 2);
+    await page.keyboard.press('Delete');
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
+
     // 5. Duplicate and delete through the production layer controls.
     await page.locator('button[onclick="duplicateDesignElement()"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 2);
