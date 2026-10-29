@@ -6,6 +6,7 @@ const APP_VERSION = '2.6.0';
 const STORAGE_KEY_PROJECTS = 'codelab_xd_projects_v2';
 const STORAGE_KEY_PROJECTS_WORKSPACE = 'codelab_xd_projects_workspace_v1';
 const STORAGE_KEY_DELETED_PROJECTS = 'codelab_xd_deleted_projects_v1';
+const STORAGE_KEY_PENDING_IMPORT = 'codelab_xd_pending_local_import_v1';
 const STORAGE_KEY_AUTH = 'codelab_xd_auth_v2';
 const STORAGE_KEY_WORKSPACE = 'codelab_xd_workspace_v4';
 const STORAGE_KEY_WORKSPACE_TOKEN = 'codelab_xd_workspace_token_v1';
@@ -96,6 +97,26 @@ function recordDeletedProjectId(id) {
 }
 function clearDeletedProjectIds() {
   lsRemove(STORAGE_KEY_DELETED_PROJECTS);
+}
+function currentRealUserKey() {
+  return currentUser && currentUser.real ? currentUser.provider + '_' + currentUser.id : null;
+}
+function storePendingLocalImport(localProjects) {
+  pendingLocalImportProjects = Array.isArray(localProjects) ? localProjects : [];
+  const userKey = currentRealUserKey();
+  if (userKey) lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ userKey: userKey, projects: pendingLocalImportProjects }));
+}
+function restorePendingLocalImport() {
+  try {
+    const saved = JSON.parse(lsGet(STORAGE_KEY_PENDING_IMPORT) || 'null');
+    if (saved && saved.userKey === currentRealUserKey() && Array.isArray(saved.projects)) {
+      pendingLocalImportProjects = saved.projects;
+    }
+  } catch (_) {}
+}
+function clearPendingLocalImport() {
+  pendingLocalImportProjects = null;
+  lsRemove(STORAGE_KEY_PENDING_IMPORT);
 }
 function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
   const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
@@ -245,6 +266,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 async function loadProjectsFromStorage() {
+  restorePendingLocalImport();
   setSyncStatus('saving', 'Conectando…');
   try {
     const init = await fetch('/api/workspace/init', {
@@ -275,7 +297,7 @@ async function loadProjectsFromStorage() {
     if (currentUser && currentUser.real && localProjects.length && !sameWorkspace) {
       // Never silently mix another browser workspace into an OAuth account.
       // Keep it available for an explicit import after the account loads.
-      pendingLocalImportProjects = localProjects;
+      storePendingLocalImport(localProjects);
     }
     projects = mergeWorkspaceProjects(
       serverProjects,
@@ -296,7 +318,7 @@ async function loadProjectsFromStorage() {
         if (!currentUser || !currentUser.real || localWorkspaceMarker === workspaceId) {
           projects = mergeWorkspaceProjects([], localProjects, loadDeletedProjectIds(workspaceId));
         } else {
-          pendingLocalImportProjects = Array.isArray(localProjects) ? localProjects : [];
+          storePendingLocalImport(Array.isArray(localProjects) ? localProjects : []);
           projects = [];
         }
       } catch (_) { projects = []; }
@@ -1106,7 +1128,7 @@ function maybeOfferLocalImport() {
     if (!Array.isArray(local) || local.length === 0) return;
     const flag = 'codelab_import_offered_' + (currentUser.provider + '_' + currentUser.id);
     if (lsGet(flag)) {
-      pendingLocalImportProjects = null;
+      clearPendingLocalImport();
       return;
     }
     lsSet(flag, '1');
@@ -1115,7 +1137,7 @@ function maybeOfferLocalImport() {
         ' proyecto(s) guardados en otro workspace de este navegador. ¿Importarlos a tu cuenta sin reemplazar los proyectos actuales?'
     );
     if (!ok) {
-      pendingLocalImportProjects = null;
+      clearPendingLocalImport();
       return;
     }
     const existingIds = new Set(projects.map(project => project.id));
@@ -1125,7 +1147,7 @@ function maybeOfferLocalImport() {
       code: normalizeCode(project.code)
     })).filter(project => !existingIds.has(project.id));
     projects = imported.concat(projects);
-    pendingLocalImportProjects = null;
+    clearPendingLocalImport();
     saveProjectsToStorage();
     renderProjectsList();
     showToast(imported.length ? imported.length + ' proyecto(s) local(es) importados a tu cuenta.' : 'Los proyectos locales ya estaban presentes en tu cuenta.');
