@@ -21,6 +21,7 @@ let workspaceId = null;
 let initialWorkspaceId = null;
 let pendingLocalImportProjects = null;
 let localProjectsSnapshotRecoveryFailed = false;
+let localProjectsSnapshotWriteBlocked = false;
 let generatedDefaultProjectId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
@@ -102,7 +103,7 @@ function preserveInvalidLocalProjectsSnapshot(raw, reason) {
 function saveLocalProjectsSnapshot() {
   // Never overwrite a damaged snapshot unless its exact contents were first
   // preserved successfully in the recovery slot.
-  if (localProjectsSnapshotRecoveryFailed) {
+  if (localProjectsSnapshotRecoveryFailed || localProjectsSnapshotWriteBlocked) {
     console.warn('Local project snapshot was not overwritten because recovery backup failed.');
     return false;
   }
@@ -177,6 +178,9 @@ function storePendingLocalImport(localProjects) {
     return false;
   }
   pendingLocalImportProjects = nextProjects;
+  // A durable account-scoped copy now exists, so the original snapshot may be
+  // safely replaced by this workspace's own local state again.
+  localProjectsSnapshotWriteBlocked = false;
   return true;
 }
 function restorePendingLocalImport() {
@@ -398,7 +402,7 @@ async function loadProjectsFromStorage() {
         if (!storePendingLocalImport(localProjects)) {
           // Keep the original cross-workspace snapshot intact if its recovery
           // copy could not be persisted; startup's normal save must not replace it.
-          localProjectsSnapshotRecoveryFailed = true;
+          localProjectsSnapshotWriteBlocked = true;
         }
       }
     }
@@ -428,7 +432,7 @@ async function loadProjectsFromStorage() {
         } else {
           if (!storePendingLocalImport(Array.isArray(localProjects) ? localProjects : [])) {
             // In offline startup the source snapshot is the only durable copy.
-            localProjectsSnapshotRecoveryFailed = true;
+            localProjectsSnapshotWriteBlocked = true;
           }
           projects = [];
         }
