@@ -61,6 +61,13 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(status.user, null, 'Malformed session cookie should be treated as unauthenticated');
     assert.equal(typeof status.demoFallback, 'boolean');
 
+    const invalidSessionIdResponse = await fetch(BASE_URL + '/api/auth/status', {
+      headers: { Cookie: 'codelab_sid=../../workspace-secret' }
+    });
+    assert.equal(invalidSessionIdResponse.status, 200,
+      'A non-hex session ID must be rejected safely before filesystem lookup');
+    assert.equal((await invalidSessionIdResponse.json()).user, null);
+
     // OAuth state must be bound to the browser that started the flow, not just
     // signed by the server. A copied authorization URL without its cookie fails.
     for (const provider of ['github', 'google']) {
