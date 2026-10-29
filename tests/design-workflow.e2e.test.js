@@ -54,7 +54,9 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.locator('#consoleOutput').getByText('SPOOFED_CONSOLE_MESSAGE', { exact: true }).count(), 0,
       'The app must ignore console messages not sent by its own preview iframe');
     await page.evaluate(() => updatePreview());
-    await page.frameLocator('#previewIframe').locator('body').waitFor();
+    // The preview iframe is inside a hidden studio panel during dashboard boot;
+    // wait for its document to attach, not for the hidden body to become visible.
+    await page.frameLocator('#previewIframe').locator('body').waitFor({ state: 'attached' });
     await page.frameLocator('#previewIframe').locator('body').evaluate(() => {
       window.parent.postMessage({
         type: 'CONSOLE_LOG', logType: 'log', message: 'TRUSTED_PREVIEW_MESSAGE'
