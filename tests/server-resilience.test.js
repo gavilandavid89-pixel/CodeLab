@@ -68,6 +68,15 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       'A non-hex session ID must be rejected safely before filesystem lookup');
     assert.equal((await invalidSessionIdResponse.json()).user, null);
 
+    const malformedLogoutResponse = await fetch(BASE_URL + '/api/auth/logout', {
+      method: 'POST',
+      headers: { Cookie: 'codelab_sid=../../workspace-secret' }
+    });
+    assert.equal(malformedLogoutResponse.status, 200,
+      'Logout must tolerate malformed session IDs without touching unrelated files');
+    assert.match(malformedLogoutResponse.headers.get('set-cookie') || '', /Max-Age=0/,
+      'Logout must clear the browser session cookie even when its value is malformed');
+
     // OAuth state must be bound to the browser that started the flow, not just
     // signed by the server. A copied authorization URL without its cookie fails.
     for (const provider of ['github', 'google']) {
