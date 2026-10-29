@@ -471,6 +471,20 @@ async function runWorkspaceSync() {
           }
           break;
         }
+        if (r.status === 400) {
+          // A validation error means the server is reachable. Keep the workspace
+          // online so a corrected next save can recover; do not misclassify this
+          // as a network outage and permanently disable sync for the page session.
+          let details = {};
+          try { details = await r.json(); } catch (_) {}
+          syncGeneration = 0;
+          serverSyncError = true;
+          resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
+          setSyncStatus('offline', 'Datos no válidos · solo local');
+          const reason = details.detail || details.error || 'invalid_payload';
+          showToast('El servidor rechazó los datos (' + reason + '). Tus cambios siguen guardados localmente; revisa los datos y vuelve a guardar.', 'warn');
+          break;
+        }
         if (r.status === 413) {
           // A newer save may already contain fewer projects or less code; try
           // that latest snapshot before deciding the workspace is too large.
