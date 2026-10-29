@@ -142,7 +142,7 @@ async function waitForPersistedProject(page, projectName) {
     // 4d. Multi-select three layers from the layer list and distribute them evenly.
     const distributionX = [100, 300, 800];
     for (const x of distributionX) {
-      await page.locator('button[onclick="addDesignElement(\\'rectangle\\')"]').click();
+      await page.locator('button[onclick="addDesignElement(\'rectangle\')"]').click();
       await page.locator('#designProperty-x').fill(String(x));
       await page.locator('#designProperty-y').fill('500');
       await page.locator('#designProperty-width').fill('100');
@@ -152,7 +152,7 @@ async function waitForPersistedProject(page, projectName) {
     await layerRows.nth(0).click();
     await layerRows.nth(1).click({ modifiers: ['Shift'] });
     await layerRows.nth(2).click({ modifiers: ['Shift'] });
-    await page.locator('button[onclick="distributeDesignElements(\\'horizontal\\')"]').click();
+    await page.locator('button[onclick="distributeDesignElements(\'horizontal\')"]').click();
     const distributed = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes =>
       nodes.map(node => ({ left: parseFloat(node.style.left), width: parseFloat(node.style.width) }))
         .filter(item => item.width === 100 && item.left >= 100 && item.left <= 900)
