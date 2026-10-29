@@ -185,6 +185,49 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(failedPendingImportCheck.warned, true,
       'Failed pending-import persistence must explain that the import was aborted');
 
+    // Logout must not erase the account snapshot if neither server sync nor the
+    // account-scoped recovery store can preserve unsynced work.
+    const failedLogoutRecoveryCheck = await page.evaluate(async () => {
+      const saved = {
+        currentUser, projects, pendingLocalImportProjects, persistWorkspace,
+        storePendingLocalImport, showToast, fetch: window.fetch
+      };
+      let toast = '';
+      let fetchCalls = 0;
+      try {
+        currentUser = { real: true, provider: 'e2e', id: 'logout-storage-failure' };
+        projects = [{ id: 'unsynced-project', name: 'No perder', code: { html: '<p>trabajo</p>' } }];
+        pendingLocalImportProjects = null;
+        persistWorkspace = async () => false;
+        storePendingLocalImport = () => false;
+        showToast = message => { toast = message; };
+        window.fetch = async () => { fetchCalls++; return { ok: true }; };
+        await logoutAuth();
+        return {
+          stillAuthenticated: !!currentUser && currentUser.real,
+          projectIds: projects.map(project => project.id),
+          fetchCalls,
+          warned: toast.includes('no se pudieron proteger')
+        };
+      } finally {
+        currentUser = saved.currentUser;
+        projects = saved.projects;
+        pendingLocalImportProjects = saved.pendingLocalImportProjects;
+        persistWorkspace = saved.persistWorkspace;
+        storePendingLocalImport = saved.storePendingLocalImport;
+        showToast = saved.showToast;
+        window.fetch = saved.fetch;
+      }
+    });
+    assert.equal(failedLogoutRecoveryCheck.stillAuthenticated, true,
+      'Logout must be aborted when unsynced work cannot be persisted for recovery');
+    assert.deepEqual(failedLogoutRecoveryCheck.projectIds, ['unsynced-project'],
+      'Logout must preserve the active in-memory project list on recovery failure');
+    assert.equal(failedLogoutRecoveryCheck.fetchCalls, 0,
+      'Logout must not invalidate the server session before recovery is secured');
+    assert.equal(failedLogoutRecoveryCheck.warned, true,
+      'Aborted logout must explain how to recover safely');
+
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
     await page.locator('#newProjectNameInput').fill(PROJECT_NAME);
