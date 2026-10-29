@@ -593,6 +593,20 @@ async function waitForPersistedProject(page, projectName) {
     // Exercise the real component-library integration on the converted web project.
     await page.locator('#openComponentLibrary').click();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
+    // A zero-result filter must not leave a stale component available to insert/export.
+    const htmlBeforeEmptyFilter = await page.evaluate(() => window.getEditorValue('html'));
+    await page.locator('#componentLibrarySearch').fill('no-such-component-should-match');
+    await page.waitForFunction(() => document.getElementById('componentLibraryCode')?.value === '');
+    for (const id of ['componentLibraryCopy', 'componentLibraryDownload', 'componentLibraryInsert']) {
+      assert.equal(await page.locator('#' + id).isDisabled(), true,
+        id + ' must be disabled when component search has no results');
+    }
+    assert.equal(await page.evaluate(() => window.getEditorValue('html')), htmlBeforeEmptyFilter,
+      'Searching for a missing component must not mutate the active project');
+    await page.locator('#componentLibrarySearch').fill('');
+    await page.waitForFunction(() => document.querySelectorAll('#componentLibraryList [data-component-id]').length === 8);
+    assert.equal(await page.locator('#componentLibraryInsert').isDisabled(), false,
+      'Restoring results should re-enable component insertion');
     // Simulate one server-side rate limit and verify the client retries the real save.
     let injectedWorkspaceRateLimit = false;
     let injectedWorkspaceTooLarge = false;
