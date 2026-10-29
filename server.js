@@ -553,10 +553,14 @@ function clientIp(req) {
     // Trust only the configured number of proxy-added hops. The default of one
     // matches a single trusted reverse proxy; deployments with a longer trusted
     // chain must set CODELAB_TRUSTED_PROXY_HOPS accordingly.
-    const addresses = String(forwarded).split(',').map(value => value.trim()).filter(value => net.isIP(value));
+    const addresses = String(forwarded).split(',').map(value => value.trim());
     const parsedHops = Number.parseInt(process.env.CODELAB_TRUSTED_PROXY_HOPS || '1', 10);
     const trustedHops = Number.isInteger(parsedHops) && parsedHops > 0 ? parsedHops : 1;
-    if (addresses.length >= trustedHops) return addresses[addresses.length - trustedHops];
+    // Preserve hop positions: filtering malformed entries first could shift the
+    // selected address and let a crafted header bypass the intended proxy trust.
+    if (addresses.length >= trustedHops && addresses.every(address => net.isIP(address))) {
+      return addresses[addresses.length - trustedHops];
+    }
   }
   return req.socket.remoteAddress || 'unknown';
 }
