@@ -56,7 +56,7 @@ Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, 
 
 ## Copiloto IA
 
-El cliente llama a **`POST /api/ai/complete`** (proxy en el servidor). Así se evita CORS y la ruta queda lista para cualquier API OpenAI-compatible.
+El cliente llama a **`POST /api/ai/complete`** (proxy en el servidor). Así se evita CORS y la ruta queda lista para APIs OpenAI-compatible. Por seguridad, las URLs de proveedores deben usar HTTPS y resolver exclusivamente a IP públicas; se bloquean destinos locales/privados y se fija la IP validada para reducir SSRF y DNS rebinding.
 
 | Variable | Descripción |
 |----------|-------------|
