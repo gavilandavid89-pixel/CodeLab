@@ -29,6 +29,7 @@ let currentProjectId = null;
 let currentUser = null;
 let aiSettings = { mode: 'auto', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '' };
 let serverAi = { serverKey: false, model: 'gpt-4o-mini', baseUrl: null, hint: '' };
+let maxProjects = 50;
 let pendingAuthProvider = null;
 let oauthConfig = { github: false, google: false, demoFallback: true };
 let mobileStudioMode = 'code';
@@ -778,6 +779,10 @@ function closeNewProjectModal() {
 }
 
 function createNewProjectConfirm() {
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de crear otro.', 'warn');
+    return;
+  }
   const name = document.getElementById('newProjectNameInput').value.trim() || 'Proyecto sin título';
   const selectedType = document.querySelector('input[name="newProjectType"]:checked');
   const type = selectedType && selectedType.value === 'design' ? 'design' : 'web';
@@ -814,6 +819,10 @@ function deleteProject(id, e) {
 
 function duplicateProjectFromDashboard(id, e) {
   if (e) e.stopPropagation();
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de duplicar.', 'warn');
+    return;
+  }
   const orig = projects.find(p => p.id === id);
   if (!orig) return;
   const dup = {
@@ -1867,6 +1876,9 @@ async function loadServerAiStatus() {
       baseUrl: data.baseUrl || null,
       hint: data.hint || ''
     };
+    if (Number.isInteger(data.maxProjects) && data.maxProjects > 0 && data.maxProjects <= 500) {
+      maxProjects = data.maxProjects;
+    }
     // Server has AI: force Auto unless user explicitly locked Local after seeing the new UI
     if (serverAi.serverKey) {
       const lockLocal = lsGet(aiForceLocalStorageKey()) === '1';
