@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 const source = fs.readFileSync('public/app.js', 'utf8');
+const designTools = fs.readFileSync('public/design-tools.js', 'utf8');
 
 assert.match(source, /function aiSettingsStorageKey\(\)[\s\S]*?return userKey \? STORAGE_KEY_AI \+ ':' \+ userKey : STORAGE_KEY_AI;/,
   'AI settings storage must be namespaced by the real account identity');
@@ -24,4 +25,13 @@ assert.match(source, /if \(currentUser && currentUser\.real\) \{\s*const saved =
 assert.match(source, /if \(!\(Array\.isArray\(pendingLocalImportProjects\) && pendingLocalImportProjects\.length\)\) \{\s*storePendingLocalImport\(localProjects\);/,
   'an existing account snapshot must not be overwritten by the anonymous workspace snapshot');
 
-console.log('AI settings and logout isolation checks passed.');
+assert.match(designTools, /function workspaceSettingsStorageKey\(credentials\)[\s\S]*?STORAGE_KEY \+ ':' \+ active\.id/,
+  'design-system local storage must be namespaced by OAuth workspace');
+assert.match(designTools, /if \(isAccountWorkspace\) \{[\s\S]*?localStorage\.removeItem\(STORAGE_KEY\)/,
+  'legacy global design-system settings must not be migrated into an OAuth account');
+assert.match(designTools, /window\.addEventListener\('codelab-workspace-ready', syncSettingsFromWorkspace\);/,
+  'design-system sync must react when logout switches to a fresh anonymous workspace');
+assert.match(source, /window\.dispatchEvent\(new Event\('codelab-workspace-ready'\)\);[\s\S]*?renderProjectsList\(\);/,
+  'workspace changes must trigger design-system reload');
+
+console.log('AI and design-system account isolation checks passed.');
