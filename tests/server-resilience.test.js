@@ -196,6 +196,31 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(duplicateProjectIdsResponse.status, 400,
       'A workspace update must not persist multiple projects with the same identity');
     assert.equal((await duplicateProjectIdsResponse.json()).detail, 'duplicate_project_id');
+
+    async function submitDesignValidationProject(design) {
+      return fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+        body: JSON.stringify({
+          baseRevision: 0,
+          projects: [{ id: 'design-validation', name: 'Design validation', code: {}, type: 'design', design }]
+        })
+      });
+    }
+    const malformedDesignResponse = await submitDesignValidationProject({ elements: 'not-an-array' });
+    assert.equal(malformedDesignResponse.status, 400);
+    assert.equal((await malformedDesignResponse.json()).detail, 'invalid_design_elements');
+    const duplicateDesignElementResponse = await submitDesignValidationProject({
+      elements: [{ id: 'same-layer', type: 'heading' }, { id: 'same-layer', type: 'text' }]
+    });
+    assert.equal(duplicateDesignElementResponse.status, 400);
+    assert.equal((await duplicateDesignElementResponse.json()).detail, 'duplicate_design_element_id');
+    const tooManyDesignElementsResponse = await submitDesignValidationProject({
+      elements: Array.from({ length: 501 }, (_, index) => ({ id: 'layer-' + index, type: 'heading' }))
+    });
+    assert.equal(tooManyDesignElementsResponse.status, 400);
+    assert.equal((await tooManyDesignElementsResponse.json()).detail, 'too_many_design_elements');
+
     const corruptInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
