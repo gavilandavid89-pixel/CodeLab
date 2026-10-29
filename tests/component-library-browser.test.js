@@ -34,7 +34,7 @@ function extractDivById(html, id) {
     assert.equal(await page.locator('[data-component-id]').count(), 8);
     await page.selectOption('#componentLibraryCategory', 'Tarjetas');
     assert.equal(await page.locator('[data-component-id]').count(), 2);
-    await page.fill('#componentLibrarySearch', 'dashboard');
+    await page.fill('#componentLibrarySearch', 'precios');
     assert.equal(await page.locator('[data-component-id]').count(), 0, 'category filter should combine with search');
     await page.selectOption('#componentLibraryCategory', 'Todas');
     await page.fill('#componentLibrarySearch', 'dashboard');
