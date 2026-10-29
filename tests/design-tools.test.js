@@ -47,4 +47,15 @@ assert.equal(clamped.baseFont, 32);
 assert.equal(clamped.typeRatio, 1.5);
 assert.equal(clamped.baseSpacing, 2);
 assert.equal(clamped.baseRadius, 0);
+
+const audit = tools.auditHtml('<!doctype html><html><head><title>Broken</title></head><body><h1>Title</h1><h3>Skipped level</h3><img src="hero.png"><button></button><input id="email"><a href="/next" target="_blank"></a><div id="duplicate"></div><span id="duplicate"></span></body></html>');
+assert.equal(audit.format, 'codelab-accessibility-audit');
+const codes = audit.issues.map(item => item.code);
+['missing-lang', 'missing-viewport', 'missing-main', 'heading-skip', 'image-missing-alt', 'button-no-name', 'field-no-label', 'link-no-name', 'blank-link-noopener', 'duplicate-id'].forEach(code => assert.ok(codes.includes(code), 'Expected audit issue ' + code));
+assert.ok(audit.summary.errors >= 3);
+assert.ok(audit.summary.warnings >= 4);
+const goodAudit = tools.auditHtml('<html lang="es"><head><title>Bien</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><h1>Hola</h1><img src="decor.png" alt=""><label for="email">Correo</label><input id="email"><button>Enviar</button><a href="/docs">Documentación</a></main></body></html>');
+assert.equal(goodAudit.summary.errors, 0);
+assert.equal(goodAudit.issues.some(item => item.code === 'image-missing-alt'), false);
+
 console.log('Design tools unit tests passed: WCAG contrast, palette generation, typography, spacing, radius and CSS token export.');
