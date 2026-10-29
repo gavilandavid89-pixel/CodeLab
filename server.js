@@ -1218,7 +1218,7 @@ const server = http.createServer(async (req, res) => {
             js: result.js,
             message: result.message,
             model: model,
-            via: AI_API_KEY && !clientKey ? 'server' : 'client-key'
+            via: usingServerKey ? 'server' : 'client-key'
           });
         } catch (e) {
           console.error('AI proxy error:', e.message, e.body || '');
