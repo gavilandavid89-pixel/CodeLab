@@ -115,7 +115,7 @@ El editor visual permite exportar el diseño como HTML adaptable, SVG vectorial 
 
 Atajos del lienzo: **Ctrl/Cmd + Z** deshacer, **Ctrl/Cmd + Shift + Z** o **Ctrl/Cmd + Y** rehacer, **Ctrl/Cmd + D** duplicar la capa seleccionada, **Supr/Backspace** eliminarla y las **flechas** moverla un píxel (con **Shift**, diez píxeles). Los atajos de movimiento no interceptan la escritura en campos de texto.
 
-La cuadrícula visual admite tamaños de **4, 8, 16 o 32 px** y puede activarse el ajuste magnético para alinear una capa al soltarla. El ajuste se guarda con el proyecto; la rejilla visual y el ajuste magnético se pueden controlar por separado.
+La cuadrícula visual admite tamaños de **4, 8, 16 o 32 px** y puede activarse el ajuste magnético para alinear una capa al soltarla. El ajuste se guarda con el proyecto; la rejilla visual y el ajuste magnético se pueden controlar por separado. Al seleccionar una capa aparece un tirador en la esquina inferior derecha para redimensionarla directamente con ratón o táctil; también acepta flechas del teclado (Shift mueve 10 px).
 
 El panel de propiedades también permite **enviar capas detrás o traerlas al frente**; el orden se refleja en el lienzo y se puede deshacer.
 
