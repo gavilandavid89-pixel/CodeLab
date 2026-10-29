@@ -95,6 +95,19 @@ function extractDivById(html, id) {
     await page.locator('#' + designFocusEnds.last).focus();
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.id), designFocusEnds.first, 'Tab from the last control should wrap to the first control');
+    // Exercise the visible palette action itself, not only direct form edits.
+    const firstPaletteColor = await page.locator('#designPalettePreview [data-palette-color]').first().getAttribute('data-palette-color');
+    await page.locator('#designPalettePreview [data-palette-color]').first().click();
+    assert.equal(await page.locator('#colorPrimary').inputValue(), firstPaletteColor,
+      'clicking a palette swatch should update the primary color control');
+    assert.match(await page.locator('#designToolsStatus').innerText(), /seleccionado/i,
+      'palette selection should provide visible feedback');
+    await page.click('#resetDesignSystem');
+    assert.match(await page.locator('#designToolsStatus').innerText(), /predeterminados restaurados/i,
+      'reset should explain that defaults are restored but not yet saved');
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#6366f1',
+      'reset should restore the documented default primary color');
+
     await page.evaluate(() => {
       const input = document.getElementById('colorPrimary');
       input.value = '#ff0000';
