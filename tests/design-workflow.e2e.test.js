@@ -358,6 +358,16 @@ async function waitForPersistedProject(page, projectName) {
 
     await page.evaluate(() => returnToDashboard());
     await page.waitForSelector('#welcomeDashboard:not(.hidden)');
+    const webProjectCard = page.locator('#projectsGrid > div').filter({ hasText: 'Flujo integral web E2E' }).first();
+    await webProjectCard.locator('button[data-action="dup"]').click();
+    await page.waitForFunction(() => {
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || '[]');
+      return Array.isArray(snapshot) && snapshot.some(project =>
+        project.name === 'Flujo integral web E2E (Copia)' &&
+        project.type === 'web' &&
+        /Construye el Futuro/.test(project.code?.html || '')
+      );
+    }, null, { timeout: 10000 });
     await page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME }).locator('button[data-action="open"]').click();
     await page.waitForFunction(() => {
       const design = document.getElementById('designStudioPanel');
