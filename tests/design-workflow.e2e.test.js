@@ -220,7 +220,7 @@ async function waitForPersistedProject(page, projectName) {
       }
       page.on('download', onCaptureDownload);
     });
-    await page.selectOption('#designCaptureScale', '3');
+    await page.selectOption('#designCaptureScale', '4');
     await page.locator('button[onclick="captureDesignForAI()"]').click();
     await captureDownloadsReady;
     const captureFiles = await Promise.all(captureDownloads.map(async download => ({
@@ -236,9 +236,9 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(captureContext.elementCount >= 1, 'capture context should include the canvas element');
     assert.ok(captureContext.elements.some(item => item.type === 'image' && item.image && item.image.alt === 'E2E sample image'),
       'AI context should preserve image alt text without embedding the base64 payload again');
-    assert.equal(captureContext.canvas.scale, 3, 'design capture context should record the selected 3× resolution');
-    assert.equal(captureContext.canvas.pixelWidth, captureContext.canvas.width * 3, 'context pixel width should match the selected scale');
-    assert.equal(captureContext.canvas.pixelHeight, captureContext.canvas.height * 3, 'context pixel height should match the selected scale');
+    assert.equal(captureContext.canvas.scale, 4, 'design capture context should record the selected maximum 4× resolution');
+    assert.equal(captureContext.canvas.pixelWidth, captureContext.canvas.width * 4, 'context pixel width should match the selected scale');
+    assert.equal(captureContext.canvas.pixelHeight, captureContext.canvas.height * 4, 'context pixel height should match the selected scale');
     assert.ok(captureContext.elements.some(item => item.text === 'Prueba integral CodeLab'),
       'capture context should preserve the actual edited element text');
     if (/\.png$/.test(imageFile.name)) {
