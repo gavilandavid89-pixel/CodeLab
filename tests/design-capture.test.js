@@ -48,6 +48,7 @@ const webContext = capture.buildWebCaptureContext({
   project: { id: 'p1', name: 'Landing Demo' },
   viewport: 390,
   height: 900,
+  scale: 3,
   html: '<!doctype html><html><head><title>Demo Page</title><meta name="description" content="A test page"></head><body><h1>Welcome</h1><h2>Features</h2><img alt="Preview" src="/preview.png"><a href="/docs">Docs</a><button>Start</button><form></form></body></html>',
   css: 'h1 { color: purple; }',
   js: 'document.querySelector("button").textContent = "Changed";'
@@ -60,6 +61,7 @@ assert.equal(webContext.page.description, 'A test page');
 assert.deepEqual(webContext.page.headings, [{ level: 1, text: 'Welcome' }, { level: 2, text: 'Features' }]);
 assert.deepEqual(webContext.page.counts, { images: 1, links: 1, buttons: 1, forms: 1, externalStylesheets: 0 });
 assert.equal(webContext.viewport.width, 390);
+assert.equal(webContext.viewport.scale, 3, 'Capture context must preserve selected resolution scale');
 assert.equal(webContext.sourceCode.javascript, 'document.querySelector("button").textContent = "Changed";');
 assert.equal(webContext.page.javascriptIncludedInScreenshot, false);
 assert.match(webContext.aiInstructions, /JavaScript/);
