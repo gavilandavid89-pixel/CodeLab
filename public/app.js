@@ -2621,6 +2621,12 @@ function captureDesignSvg(project) {
     if (el.type === 'rectangle') {
       return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
     }
+    if (el.type === 'image') {
+      const source = safeDesignImageSource(el.src);
+      const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
+      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
+      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+    }
     const raw = String(el.text || '').split(/\r?\n/);
     const maxChars = Math.max(1, Math.floor((w - 12) / (fontSize * 0.56)));
     const lines = [];
@@ -2721,8 +2727,9 @@ function exportDesignHtml() {
   const p = activeDesignProject();
   if (!p || !p.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
   const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
-    const tag = el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
-    const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
+    const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
+    const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
+    const text = el.type === 'rectangle' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
     const color = safeDesignExportColor(el.color, '#111827');
     const background = safeDesignExportColor(el.background, 'transparent');
     const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
@@ -2733,7 +2740,8 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = 'position:absolute;left:'+x+'px;top:'+y+'px;width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';border-radius:'+radius+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
+    const style = 'position:absolute;left:'+x+'px;top:'+y+'px;width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';border-radius:'+radius+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    if (el.type === 'image' && imageSource) return '<img src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
