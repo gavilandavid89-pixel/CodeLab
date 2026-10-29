@@ -325,7 +325,12 @@ async function loadProjectsFromStorage() {
     let localProjects = [];
     const stored = lsGet(STORAGE_KEY_PROJECTS);
     if (stored) {
-      try { localProjects = JSON.parse(stored); } catch (_) { localProjects = []; }
+      try {
+        const parsedLocalProjects = JSON.parse(stored);
+        // Old or manually edited browser storage must never make workspace
+        // bootstrap call array methods on an arbitrary JSON object.
+        localProjects = Array.isArray(parsedLocalProjects) ? parsedLocalProjects : [];
+      } catch (_) { localProjects = []; }
     }
     const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
     const sameWorkspace = !!localWorkspaceMarker && localWorkspaceMarker === boot.workspaceId;
@@ -352,7 +357,11 @@ async function loadProjectsFromStorage() {
     const stored = lsGet(STORAGE_KEY_PROJECTS);
     if (stored) {
       try {
-        const localProjects = JSON.parse(stored);
+        const parsedLocalProjects = JSON.parse(stored);
+        if (!Array.isArray(parsedLocalProjects)) {
+          throw new Error('local_projects_invalid');
+        }
+        const localProjects = parsedLocalProjects;
         const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
         if (!currentUser || !currentUser.real || localWorkspaceMarker === workspaceId) {
           projects = mergeWorkspaceProjects([], localProjects, loadDeletedProjectIds(workspaceId));
