@@ -164,6 +164,31 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(converted.code.html, /name="viewport"/,
       'converted web project should include a responsive viewport meta tag');
 
+    // 9. Exercise the real component-library integration on the converted web project.
+    await page.locator('#openComponentLibrary').click();
+    await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
+    await page.locator('#componentLibraryInsert').click();
+    const insertedHtml = await page.evaluate(() => window.getEditorValue('html'));
+    assert.match(insertedHtml, /<section|<nav/i,
+      'component insertion should update the real HTML editor');
+    await page.locator('#closeComponentLibrary').click();
+    await page.waitForFunction(async name => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !token) return false;
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId), {
+          headers: { 'x-workspace-token': token }
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        const project = (data.projects || []).find(item => item.name === name + ' · Web');
+        return !!(project && project.code && project.code.html && /<section|<nav/i.test(project.code.html));
+      } catch (_) {
+        return false;
+      }
+    }, PROJECT_NAME, { timeout: 15000 });
+
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full design workflow E2E passed: create → edit → undo/redo → drag → duplicate/delete → responsive presets → server persistence/reload → convert to web.');
   } finally {
