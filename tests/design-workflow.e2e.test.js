@@ -393,6 +393,7 @@ async function waitForPersistedProject(page, projectName) {
         /Construye el Futuro/.test(project.code?.html || '')
       );
     }, null, { timeout: 10000 });
+    await page.locator('#projectsGrid > div').filter({ hasText: 'Flujo integral web E2E (Copia)' }).waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME }).locator('button[data-action="open"]').click();
     await page.waitForFunction(() => {
       const design = document.getElementById('designStudioPanel');
