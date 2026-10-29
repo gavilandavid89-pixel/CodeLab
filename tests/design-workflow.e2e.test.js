@@ -1028,6 +1028,39 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(malformedMapChecks.pendingMapIsObject, true, 'pending-import map reader should reject array envelopes');
     assert.equal(malformedMapChecks.tombstonePersisted, true, 'a malformed deleted-project map must not make new tombstones disappear');
 
+    // Multiple malformed snapshots must each remain recoverable. Keep the first
+    // legacy backup in place and append subsequent raw snapshots without duplicates.
+    const multipleRecoveryBackups = await page.evaluate(() => {
+      const key = 'codelab_xd_projects_recovery_v1';
+      const oldRecovery = localStorage.getItem(key);
+      try {
+        localStorage.setItem(key, JSON.stringify({
+          version: 1, savedAt: '2026-10-01T00:00:00.000Z',
+          reason: 'first_invalid_json', raw: '{first-damaged}'
+        }));
+        const firstWrite = preserveInvalidLocalProjectsSnapshot('{second-damaged}', 'second_invalid_json');
+        const secondWrite = preserveInvalidLocalProjectsSnapshot('{second-damaged}', 'second_invalid_json');
+        const stored = JSON.parse(localStorage.getItem(key));
+        return {
+          firstWrite, secondWrite, primaryRaw: stored.raw,
+          backups: Array.isArray(stored.backups) ? stored.backups : []
+        };
+      } finally {
+        if (oldRecovery === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, oldRecovery);
+      }
+    });
+    assert.equal(multipleRecoveryBackups.firstWrite, true,
+      'a second malformed snapshot should be preserved without replacing the first recovery copy');
+    assert.equal(multipleRecoveryBackups.secondWrite, true,
+      're-preserving the same damaged snapshot should be idempotent');
+    assert.equal(multipleRecoveryBackups.primaryRaw, '{first-damaged}',
+      'the original recovery backup must remain byte-for-byte intact');
+    assert.equal(multipleRecoveryBackups.backups.length, 1,
+      'the second recovery snapshot should be stored once, without duplicates');
+    assert.equal(multipleRecoveryBackups.backups[0].raw, '{second-damaged}',
+      'the additional malformed snapshot must remain recoverable');
+
     // Corrupt local project snapshots must be backed up byte-for-byte before
     // normal startup replaces the active snapshot with an empty/default project.
     for (const damagedSnapshot of [
