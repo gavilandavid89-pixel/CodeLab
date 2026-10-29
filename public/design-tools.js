@@ -13,6 +13,9 @@
   'use strict';
 
   const STORAGE_KEY = 'codelab-design-system-v1';
+  // Serialize writes so a slow earlier request cannot overwrite a newer design system.
+  let workspaceSettingsSyncQueue = Promise.resolve();
+  let workspaceSettingsSyncSequence = 0;
   const DEFAULTS = Object.freeze({
     name: 'Mi sistema visual',
     primary: '#06b6d4',
@@ -270,20 +273,28 @@
     const s = sanitizeSettings(input);
     if (!saveLocalSettings(s)) return false;
     const credentials = workspaceCredentials();
+    const sequence = ++workspaceSettingsSyncSequence;
     if (credentials && typeof fetch === 'function') {
-      fetch(workspaceDesignSystemUrl(credentials), {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-workspace-token': credentials.token
-        },
-        body: JSON.stringify({ settings: s })
-      }).then(response => {
+      const url = workspaceDesignSystemUrl(credentials);
+      const payload = JSON.stringify({ settings: s });
+      workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+        const response = await fetch(url, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-workspace-token': credentials.token
+          },
+          body: payload
+        });
         if (!response.ok) throw new Error('workspace_design_system_save_failed');
-        if (typeof window.showToast === 'function') window.showToast('Sistema visual sincronizado con tu workspace.');
+        if (sequence === workspaceSettingsSyncSequence && typeof window.showToast === 'function') {
+          window.showToast('Sistema visual sincronizado con tu workspace.');
+        }
       }).catch(() => {
-        if (typeof window.showToast === 'function') window.showToast('Sistema guardado en este navegador; no se pudo sincronizar con el workspace.', 'warn');
+        if (sequence === workspaceSettingsSyncSequence && typeof window.showToast === 'function') {
+          window.showToast('Sistema guardado en este navegador; no se pudo sincronizar con el workspace.', 'warn');
+        }
       });
     }
     return true;
@@ -409,6 +420,7 @@
     async function syncSettingsFromWorkspace() {
       const credentials = workspaceCredentials();
       if (!credentials) return;
+      const sequenceAtStart = workspaceSettingsSyncSequence;
       try {
         const response = await fetch(workspaceDesignSystemUrl(credentials), {
           credentials: 'same-origin',
@@ -416,6 +428,21 @@
         });
         if (!response.ok) throw new Error('workspace_design_system_load_failed');
         const data = await response.json();
+        // A user save made while GET was in flight wins over the older snapshot.
+        if (sequenceAtStart !== workspaceSettingsSyncSequence) {
+          const latest = loadSavedSettings();
+          const payload = JSON.stringify({ settings: latest });
+          workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+            const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
+              method: 'PUT',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'x-workspace-token': credentials.token },
+              body: payload
+            });
+            if (!saveResponse.ok) throw new Error('workspace_design_system_save_failed');
+          }).catch(() => {});
+          return;
+        }
         if (data && data.settings) {
           settings = sanitizeSettings(data.settings);
           saveLocalSettings(settings);
@@ -424,18 +451,19 @@
           announce('Sistema visual recuperado desde tu workspace.');
           return;
         }
-        // Migrate settings already saved in this browser the first time this
-        // workspace uses the design-system tool.
-        const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
-          method: 'PUT',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-workspace-token': credentials.token
-          },
-          body: JSON.stringify({ settings: settings })
+        // Migrate local settings through the same serialized write queue.
+        const payload = JSON.stringify({ settings: settings });
+        workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+          if (sequenceAtStart !== workspaceSettingsSyncSequence) return;
+          const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'x-workspace-token': credentials.token },
+            body: payload
+          });
+          if (!saveResponse.ok) throw new Error('workspace_design_system_migration_failed');
         });
-        if (!saveResponse.ok) throw new Error('workspace_design_system_migration_failed');
+        await workspaceSettingsSyncQueue;
         announce('Sistema visual local sincronizado con tu workspace.');
       } catch (_) {
         announce('No se pudo sincronizar el sistema visual; se conserva la copia local.');
