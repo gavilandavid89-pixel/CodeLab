@@ -44,6 +44,24 @@ const { chromium } = require('playwright');
     assert.equal(pendingAssets.imagesPending, 1, 'Capture diagnostics should report images still loading after timeout');
     assert.equal(pendingAssets.timedOut, true, 'An image that never finishes should time out without hanging capture');
     await page.waitForSelector('#webCaptureBtn');
+    // Keep the browser test deterministic/offline: the real capture pipeline,
+    // iframe isolation, asset diagnostics, PNG serialization and download flow are
+    // exercised, while the third-party rasterizer is replaced with a tiny canvas
+    // renderer so a transient CDN outage cannot make this suite flaky.
+    await page.evaluate(() => {
+      window.html2canvas = async (root, options) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = options.width * options.scale;
+        canvas.height = options.height * options.scale;
+        const context = canvas.getContext('2d');
+        context.fillStyle = options.backgroundColor || '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = '#6d28d9';
+        context.font = (16 * options.scale) + 'px Arial';
+        context.fillText(String(root.textContent || '').trim().slice(0, 100), 12 * options.scale, 32 * options.scale);
+        return canvas;
+      };
+    });
     await page.selectOption('#webCaptureViewport', '768');
     await page.selectOption('#webCaptureScale', '3');
     const downloads = [];
@@ -85,7 +103,7 @@ const { chromium } = require('playwright');
     assert.match(context.sourceCode.javascript, /not-executed-in-capture/);
     assert.equal(context.page.javascriptIncludedInScreenshot, false);
     assert.match(await page.evaluate(() => window.__lastToast || ''), /Captura web lista/);
-    console.log('Browser capture passed: rendered HTML/CSS, valid PNG bytes, responsive viewport and AI context JSON.');
+    console.log('Browser capture pipeline passed: deterministic PNG serialization, responsive dimensions and AI context JSON.');
   } finally {
     await browser.close();
   }
