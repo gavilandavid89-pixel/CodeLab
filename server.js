@@ -294,6 +294,8 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+const MAX_DESIGN_ELEMENTS = 500;
+
 function validateProjects(projects) {
   if (!Array.isArray(projects)) return 'projects_not_array';
   if (projects.length > MAX_PROJECTS) return 'too_many_projects';
@@ -308,6 +310,20 @@ function validateProjects(projects) {
     for (const k of ['html', 'css', 'js']) {
       if (p.code[k] != null && typeof p.code[k] !== 'string') return 'invalid_code_field';
       if (typeof p.code[k] === 'string' && p.code[k].length > 500000) return 'code_too_large';
+    }
+    if (p.design != null) {
+      if (typeof p.design !== 'object' || Array.isArray(p.design)) return 'invalid_project_design';
+      if (p.design.elements != null && !Array.isArray(p.design.elements)) return 'invalid_design_elements';
+      if (Array.isArray(p.design.elements)) {
+        if (p.design.elements.length > MAX_DESIGN_ELEMENTS) return 'too_many_design_elements';
+        const elementIds = new Set();
+        for (const element of p.design.elements) {
+          if (!element || typeof element !== 'object' || Array.isArray(element)) return 'invalid_design_element';
+          if (typeof element.id !== 'string' || !element.id.trim() || element.id.length > 100) return 'invalid_design_element_id';
+          if (elementIds.has(element.id)) return 'duplicate_design_element_id';
+          elementIds.add(element.id);
+        }
+      }
     }
   }
   return null;
