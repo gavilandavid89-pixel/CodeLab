@@ -2361,7 +2361,7 @@ function renderDesignWorkspace() {
     props.innerHTML = '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
     updateDesignHistoryButtons(); return;
   }
-  const field = (label, key, type='number', extra='') => '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input ' + extra + ' type="' + type + '" value="' + escapeAttr(el[key] == null ? '' : String(el[key])) + '" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  const field = (label, key, type='number', extra='') => '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input ' + extra + ' type="' + type + '" value="' + escapeAttr(el[key] == null ? '' : String(el[key])) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
   props.innerHTML = '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' ? field('Contenido','text','text') : '') +
     field('Nombre de capa','label','text') +
