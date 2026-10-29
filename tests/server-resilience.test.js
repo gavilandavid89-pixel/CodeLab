@@ -42,7 +42,17 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const status = await response.json();
     assert.equal(status.user, null, 'Malformed session cookie should be treated as unauthenticated');
     assert.equal(typeof status.demoFallback, 'boolean');
-    console.log('Server resilience passed: malformed cookie encoding does not crash auth status.');
+
+    const oversized = '{"padding":"' + 'x'.repeat(2 * 1024 * 1024) + '"}';
+    const oversizedResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: oversized
+    });
+    assert.equal(oversizedResponse.status, 413, 'Oversized request should receive a proper HTTP 413 response');
+    const oversizedResult = await oversizedResponse.json();
+    assert.equal(oversizedResult.error, 'payload_too_large');
+    console.log('Server resilience passed: malformed cookies are safe and oversized bodies receive HTTP 413.');
   } finally {
     server.kill('SIGTERM');
     await new Promise(resolve => setTimeout(resolve, 100));
