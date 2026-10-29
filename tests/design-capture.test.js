@@ -68,6 +68,13 @@ assert.deepEqual(webContext.page.headings, [{ level: 1, text: 'Welcome' }, { lev
 assert.deepEqual(webContext.page.counts, { images: 1, links: 1, buttons: 1, forms: 1, externalStylesheets: 0 });
 assert.equal(webContext.viewport.width, 390);
 assert.equal(webContext.viewport.scale, 3, 'Capture context must preserve selected resolution scale');
+const maximumResolutionContext = capture.buildWebCaptureContext({
+  project: { id: 'p1', name: 'Maximum resolution' },
+  viewport: 1280, height: 900, scale: 4, html: '<main>Sharp capture</main>', css: '', js: ''
+});
+assert.equal(maximumResolutionContext.viewport.scale, 4, 'Capture context must preserve the maximum 4× scale');
+assert.equal(maximumResolutionContext.viewport.width, 1280);
+assert.equal(maximumResolutionContext.viewport.height, 900);
 assert.equal(webContext.sourceCode.javascript, 'document.querySelector("button").textContent = "Changed";');
 assert.equal(webContext.page.javascriptIncludedInScreenshot, false);
 assert.match(webContext.aiInstructions, /JavaScript/);
