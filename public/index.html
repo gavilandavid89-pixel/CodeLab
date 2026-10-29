@@ -113,6 +113,7 @@
             <button id="openDesignTools" type="button" class="touch-target flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs sm:text-sm border border-slate-700 transition">
               <i class="fa-solid fa-swatchbook"></i><span>Herramientas</span>
             </button>
+            <button id="openComponentLibrary" type="button" class="touch-target flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-violet-300 font-bold text-xs sm:text-sm border border-slate-700 transition"><i class="fa-solid fa-cubes"></i><span>Componentes</span></button>
             <button onclick="openNewProjectModal()" class="touch-target flex items-center justify-center gap-2 px-3 sm:px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-cyan-500/25 transition">
               <i class="fa-solid fa-plus"></i><span>Crear proyecto</span>
             </button>
@@ -804,9 +805,33 @@
   </div>
 
 
+
+  <!-- COMPONENT LIBRARY: searchable, reusable HTML sections -->
+  <div id="componentLibraryModal" role="dialog" aria-modal="true" aria-labelledby="componentLibraryTitle" class="hidden fixed inset-0 z-[75] bg-slate-950/85 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
+    <div class="w-full max-w-7xl max-h-[96dvh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-4 backdrop-blur">
+        <div class="min-w-0"><h2 id="componentLibraryTitle" class="text-base sm:text-lg font-black text-white"><i class="fa-solid fa-cubes mr-2 text-cyan-400"></i>Biblioteca de componentes</h2><p class="mt-1 text-[10px] sm:text-xs text-slate-400">Previsualiza, copia, exporta o inserta bloques reutilizables en tu web.</p></div>
+        <button id="closeComponentLibrary" type="button" class="touch-target shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 text-slate-300" aria-label="Cerrar biblioteca"><i class="fa-solid fa-xmark"></i></button>
+      </header>
+      <div class="p-3 sm:p-5 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_190px] gap-2"><label class="sr-only" for="componentLibrarySearch">Buscar componentes</label><input id="componentLibrarySearch" type="search" placeholder="Buscar navegación, hero, formulario..." class="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-white focus:border-cyan-500 focus:outline-none"><label class="sr-only" for="componentLibraryCategory">Filtrar categoría</label><select id="componentLibraryCategory" class="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-white"><option>Todas</option><option>Navegación</option><option>Secciones</option><option>Tarjetas</option><option>Formularios</option><option>Paneles</option></select></div>
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.5fr)] gap-4"><div id="componentLibraryList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2 content-start" aria-label="Componentes disponibles"></div>
+          <section class="min-w-0 rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-3"><div><h3 id="componentLibrarySelectedName" class="font-bold text-white text-sm">Hero de landing</h3><p id="componentLibrarySelectedDescription" class="text-xs text-slate-400 mt-1"></p></div>
+            <div class="rounded-xl border border-slate-800 bg-slate-800 p-2"><iframe id="componentLibraryPreview" title="Vista previa aislada del componente" sandbox="" loading="lazy" class="w-full min-h-[280px] sm:min-h-[320px] rounded-lg bg-slate-100"></iframe></div>
+            <label for="componentLibraryCode" class="block text-xs font-semibold text-slate-300">HTML del componente</label><textarea id="componentLibraryCode" readonly rows="8" spellcheck="false" class="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] text-cyan-100 focus:outline-none"></textarea>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2"><button id="componentLibraryCopy" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-3 text-xs font-bold text-slate-100"><i class="fa-regular fa-copy mr-1"></i>Copiar HTML</button><button id="componentLibraryDownload" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-3 text-xs font-bold text-slate-100"><i class="fa-solid fa-download mr-1"></i>Exportar página</button><button id="componentLibraryInsert" type="button" class="touch-target rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-3 text-xs font-bold text-white"><i class="fa-solid fa-plus mr-1"></i>Insertar en web</button></div>
+          </section>
+        </div>
+        <p id="componentLibraryStatus" role="status" aria-live="polite" class="min-h-5 text-xs text-cyan-300"></p>
+      </div>
+      <footer class="sticky bottom-0 flex justify-end border-t border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-3 backdrop-blur"><button id="componentLibraryCloseFooter" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-4 py-2 text-xs font-bold text-slate-200">Cerrar biblioteca</button></footer>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
   <script src="/design-tools.js"></script>
   <script src="/capture.js"></script>
+  <script src="/component-library.js"></script>
 </body>
 
 </html>
