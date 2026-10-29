@@ -269,6 +269,20 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       'AI proxy must reject private-network provider URLs before opening an outbound connection');
     assert.match((await privateProviderResponse.json()).message, /public IP addresses/i);
 
+    const documentationIpv6Response = await fetch(BASE_URL + '/api/ai/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'hello',
+        apiKey: 'test-only-key',
+        baseUrl: 'https://[3fff::1]',
+        model: 'test-model'
+      })
+    });
+    assert.equal(documentationIpv6Response.status, 400,
+      'AI proxy must reject reserved/documentation IPv6 ranges before connecting');
+    assert.match((await documentationIpv6Response.json()).message, /public IP addresses/i);
+
     let lastRateLimitStatus = 0;
     for (let index = 1; index <= 121; index++) {
       const response = await fetch(BASE_URL + '/api/health', {
