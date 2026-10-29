@@ -172,7 +172,7 @@
       const id = match[1] || match[2] || match[3];
       ids.set(id, (ids.get(id) || 0) + 1);
     }
-    ids.forEach((count, id) => { if (count > 1) add('duplicate-id', 'warning', 'Se repite un atributo id en el documento.', 'Usa un id único para cada elemento; revisa el identificador duplicado: ' + id.slice(0, 60) + '.'); });
+    ids.forEach((count, id) => { if (count > 1) add('duplicate-id', 'warning', 'Se repite un atributo id en el documento.', 'Usa un id único para cada elemento; hay un identificador repetido.'); });
 
     for (const match of source.matchAll(/<img\b[^>]*>/gi)) {
       if (attribute(match[0], 'alt') === null) add('image-missing-alt', 'error', 'Hay una imagen sin atributo alt.', 'Añade alt descriptivo o alt="" si la imagen es puramente decorativa.');
@@ -192,7 +192,10 @@
       const labelledBy = attribute(attrs, 'aria-labelledby');
       const ariaLabel = attribute(attrs, 'aria-label');
       const explicitLabel = id && Array.from(source.matchAll(/<label\b[^>]*>/gi)).some(labelMatch => attribute(labelMatch[0], 'for') === id);
-      const wrappedLabel = /<label\b[^>]*>[^<]{0,120}<(input|select|textarea)\b/i.test(source);
+      const wrappedLabel = Array.from(source.matchAll(/<label\b[^>]*>[\s\S]*?<\/label\s*>/gi)).some(labelMatch => {
+        const fieldTag = (labelMatch[0].match(/<(input|select|textarea)\b[^>]*>/i) || [''])[0];
+        return !!fieldTag && (!id || attribute(fieldTag, 'id') === id);
+      });
       if (!ariaLabel && !labelledBy && !explicitLabel && !wrappedLabel) add('field-no-label', 'error', 'Hay un campo de formulario sin etiqueta asociada detectable.', 'Añade <label for="id"> o un nombre accesible mediante aria-label/aria-labelledby.');
     }
     for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
