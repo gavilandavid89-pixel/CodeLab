@@ -251,6 +251,28 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const invalidCodeResult = await invalidCodeContainer.json();
     assert.equal(invalidCodeResult.error, 'invalid_payload');
     assert.equal(invalidCodeResult.detail, 'invalid_project_code');
+    const invalidBranchCodeResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 0,
+        projects: [{ id: 'bad-branch', name: 'Invalid branch', code: {}, branch: { code: [] } }]
+      })
+    });
+    assert.equal(invalidBranchCodeResponse.status, 400);
+    assert.equal((await invalidBranchCodeResponse.json()).detail, 'invalid_branch_code',
+      'Branch code containers must be objects, not arrays');
+    const invalidMergeHistoryResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 0,
+        projects: [{ id: 'bad-history', name: 'Invalid history', code: {}, mergeHistory: {} }]
+      })
+    });
+    assert.equal(invalidMergeHistoryResponse.status, 400);
+    assert.equal((await invalidMergeHistoryResponse.json()).detail, 'invalid_merge_history',
+      'Merge history must be an array before it is persisted');
     const duplicateProjectIdsResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
