@@ -85,6 +85,16 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(appAsset.status, 200, 'Main client script should be served');
     assert.equal(appAsset.headers.get('cache-control'), 'no-cache',
       'Client JavaScript must revalidate after deployment instead of remaining stale for 24 hours');
+    const staticPostResponse = await fetch(BASE_URL + '/app.js', { method: 'POST' });
+    assert.equal(staticPostResponse.status, 405,
+      'Static assets must not be served for methods other than GET or HEAD');
+    assert.match(staticPostResponse.headers.get('allow') || '', /GET, HEAD/);
+    const staticHeadResponse = await fetch(BASE_URL + '/app.js', { method: 'HEAD' });
+    assert.equal(staticHeadResponse.status, 200, 'Static assets should support HEAD metadata checks');
+    assert.equal(await staticHeadResponse.text(), '',
+      'HEAD requests must not transfer the static asset body');
+    assert.equal(staticHeadResponse.headers.get('content-length'), appAsset.headers.get('content-length'),
+      'HEAD should expose the same content length as GET');
 
     const traversalResponse = await fetch(BASE_URL + '/%252e%252e/server.js');
     assert.equal(traversalResponse.status, 404,
