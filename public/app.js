@@ -2878,6 +2878,8 @@ function bindDesignCanvasEvents() {
   document.getElementById('designCanvas')?.addEventListener('click', ev => {
     if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; renderDesignWorkspace(); }
   });
+  let nudgeHistoryActive = false;
+  const arrowKeys = ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'];
   document.addEventListener('keydown', ev => {
     const p = activeDesignProject();
     if (!p) return;
@@ -2889,11 +2891,30 @@ function bindDesignCanvasEvents() {
       if (ev.shiftKey) designRedo(); else designUndo();
     } else if (mod && ev.key.toLowerCase() === 'y') {
       ev.preventDefault(); designRedo();
+    } else if (mod && ev.key.toLowerCase() === 'd' && selectedDesignElementId) {
+      ev.preventDefault(); duplicateDesignElement();
     } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedDesignElementId) {
       ev.preventDefault(); deleteDesignElement();
+    } else if (arrowKeys.includes(ev.key) && selectedDesignElementId &&
+      (!target || target === document.body || target.id === 'designCanvas' || (target.closest && target.closest('#designCanvas')))) {
+      const el = selectedDesignElement();
+      if (!el) return;
+      ev.preventDefault();
+      if (!nudgeHistoryActive) recordDesignHistory();
+      nudgeHistoryActive = true;
+      const step = ev.shiftKey ? 10 : 1;
+      if (ev.key === 'ArrowLeft') el.x = Math.max(0, (Number(el.x) || 0) - step);
+      if (ev.key === 'ArrowRight') el.x = Math.max(0, (Number(el.x) || 0) + step);
+      if (ev.key === 'ArrowUp') el.y = Math.max(0, (Number(el.y) || 0) - step);
+      if (ev.key === 'ArrowDown') el.y = Math.max(0, (Number(el.y) || 0) + step);
+      renderDesignWorkspace();
+      saveProjectsToStorage();
     } else if (ev.key === 'Escape' && selectedDesignElementId) {
       selectedDesignElementId = null; renderDesignWorkspace();
     }
+  });
+  document.addEventListener('keyup', ev => {
+    if (arrowKeys.includes(ev.key)) nudgeHistoryActive = false;
   });
 }
 function duplicateDesignElement() {
