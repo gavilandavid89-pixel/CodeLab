@@ -92,8 +92,10 @@ async function waitForPersistedProject(page, projectName) {
         saveProjectsToStorage,
         renderProjectsList,
         showToast,
+        storePendingLocalImport,
+        lsRemove,
         confirm: window.confirm,
-        pendingStorage: localStorage.getItem('codelab_xd_pending_local_import_v1')
+        pendingStorage: localStorage.getItem('codelab_xd_pending_import_v1')
       };
       try {
         currentUser = { real: true, provider: 'e2e', id: 'import-limit' };
@@ -105,12 +107,15 @@ async function waitForPersistedProject(page, projectName) {
           { id: 'import-three', name: 'Tres', code: { html: '<p>3</p>' } }
         ];
         maxProjects = 3;
+        let preservedPending = [];
         saveProjectsToStorage = () => {};
         renderProjectsList = () => {};
         showToast = () => {};
+        storePendingLocalImport = value => { preservedPending = value; pendingLocalImportProjects = value; };
+        lsRemove = () => {};
         window.confirm = () => true;
         maybeOfferLocalImport();
-        return { count: projects.length, importedIds: projects.map(project => project.id) };
+        return { count: projects.length, importedIds: projects.map(project => project.id), preservedPending };
       } finally {
         currentUser = saved.currentUser;
         projects = saved.projects;
@@ -119,9 +124,11 @@ async function waitForPersistedProject(page, projectName) {
         saveProjectsToStorage = saved.saveProjectsToStorage;
         renderProjectsList = saved.renderProjectsList;
         showToast = saved.showToast;
+        storePendingLocalImport = saved.storePendingLocalImport;
+        lsRemove = saved.lsRemove;
         window.confirm = saved.confirm;
-        if (saved.pendingStorage === null) localStorage.removeItem('codelab_xd_pending_local_import_v1');
-        else localStorage.setItem('codelab_xd_pending_local_import_v1', saved.pendingStorage);
+        if (saved.pendingStorage === null) localStorage.removeItem('codelab_xd_pending_import_v1');
+        else localStorage.setItem('codelab_xd_pending_import_v1', saved.pendingStorage);
       }
     });
     assert.equal(importLimitCheck.count, 3,
@@ -130,6 +137,8 @@ async function waitForPersistedProject(page, projectName) {
       'Local OAuth import must preserve existing account projects');
     assert.equal(new Set(importLimitCheck.importedIds).size, importLimitCheck.importedIds.length,
       'Local OAuth import must deduplicate IDs within the imported snapshot');
+    assert.equal(importLimitCheck.preservedPending.length, 1,
+      'Projects omitted because of the cap must remain recoverable for a later import');
 
 
     // 1. Create and open a real design project through the production dashboard.
