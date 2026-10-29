@@ -1100,6 +1100,14 @@ async function waitForPersistedProject(page, projectName) {
         const persistedDeleted = JSON.parse(localStorage.getItem(deletedKey) || '{}');
         const deletedRecovery = JSON.parse(localStorage.getItem(deletedRecoveryKey) || 'null');
         const pendingRecovery = JSON.parse(localStorage.getItem(pendingRecoveryKey) || 'null');
+        localStorage.setItem(deletedKey, JSON.stringify({ byWorkspace: { 'broken-workspace': 'not-an-array', 'valid-workspace': ['keep-tombstone'] } }));
+        localStorage.setItem(pendingKey, JSON.stringify({ byUser: { 'broken-user': 'not-an-array', 'valid-user': [] } }));
+        const normalizedDeletedMap = readDeletedProjectMap();
+        const normalizedPendingMap = readPendingLocalImportMap();
+        const nestedDeletedMapNormalized = !('broken-workspace' in normalizedDeletedMap) &&
+          normalizedDeletedMap['valid-workspace']?.includes('keep-tombstone');
+        const nestedPendingMapNormalized = !('broken-user' in normalizedPendingMap) &&
+          Array.isArray(normalizedPendingMap['valid-user']);
         localStorage.setItem(deletedKey, malformedDeletedRaw);
         const deletedClearResult = clearDeletedProjectIds(workspaceId);
         const deletedKeyRemovedAfterBackup = localStorage.getItem(deletedKey) === null;
@@ -1113,6 +1121,7 @@ async function waitForPersistedProject(page, projectName) {
             persistedDeleted.byWorkspace[workspaceId].includes('malformed-map-test-id'),
           deletedRawPreserved: deletedRecovery && deletedRecovery.raw === malformedDeletedRaw,
           pendingRawPreserved: pendingRecovery && pendingRecovery.raw === malformedPendingRaw,
+          nestedDeletedMapNormalized, nestedPendingMapNormalized,
           deletedClearResult, deletedKeyRemovedAfterBackup, pendingClearResult, pendingKeyRemovedAfterBackup
         };
       } finally {
@@ -1130,6 +1139,8 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(malformedMapChecks.tombstonePersisted, true, 'a malformed deleted-project map must not make new tombstones disappear');
     assert.equal(malformedMapChecks.deletedRawPreserved, true, 'a malformed tombstone map must be backed up before replacement');
     assert.equal(malformedMapChecks.pendingRawPreserved, true, 'a malformed pending-import map must be backed up before replacement');
+    assert.equal(malformedMapChecks.nestedDeletedMapNormalized, true, 'invalid workspace tombstone entries should be removed after backing up the raw map');
+    assert.equal(malformedMapChecks.nestedPendingMapNormalized, true, 'invalid account import entries should be removed after backing up the raw map');
     assert.equal(malformedMapChecks.deletedClearResult, true, 'clearing malformed tombstones should succeed only after preserving the raw map');
     assert.equal(malformedMapChecks.deletedKeyRemovedAfterBackup, true, 'malformed tombstones may be cleared after a durable recovery backup exists');
     assert.equal(malformedMapChecks.pendingClearResult, true, 'clearing malformed pending imports should preserve the raw map first');
