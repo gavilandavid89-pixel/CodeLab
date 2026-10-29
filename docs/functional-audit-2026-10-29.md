@@ -4,7 +4,7 @@
 Audit of the changes in PR #2 on `feature/design-workspace`: visual design projects/canvas, AI capture exports, design-system laboratory, accessibility checker, reusable component library, and CI coverage. This is a source review plus GitHub Actions/Chromium tests; it is **not** a live deployed-site audit. No Render service was changed.
 
 ## Verified
-- The PR workflow has a passing run on the pre-audit head: syntax checks, capture unit tests, design-token/contrast/audit unit tests, component catalog tests, Chromium interaction tests for the design-tools and component-library modals, and API/Groq health smoke test.
+- The PR workflow validates syntax, capture unit tests, design-token/contrast/audit unit tests, component catalog tests, Chromium interaction tests, the full visual-design workflow E2E against the real app/server, and API/Groq health. The full workflow test covers create → edit → undo/redo → drag → duplicate/delete → responsive frame presets/mobile overflow → server persistence/reload → convert to web and verify generated HTML in persisted workspace.
 - Design capture builds SVG/PNG assets and a JSON context. Web capture removes scripts/embedded frames from its isolated capture document and reports that JavaScript is excluded from the screenshot.
 - Design-system utilities calculate contrast, generate palettes/tokens, export CSS/JSON, save settings in browser localStorage, and statically scan HTML.
 - Component library has 8 catalog entries, search/category filtering, sandboxed preview, HTML copy/download, and insertion into the active web project. Its browser test uses mocked project editor functions for insertion.
@@ -20,12 +20,12 @@ Audit of the changes in PR #2 on `feature/design-workspace`: visual design proje
 
 ## Remaining limitations / coverage gaps
 - The browser tests for the design-tools and component-library dialogs extract their modal markup and mock editor APIs. They validate interaction logic, but do not exercise the full production page, real autosave/network sync, OAuth, or deployed Render behavior.
-- No end-to-end browser test currently covers the entire visual design canvas workflow (create design project, drag, property editing, undo/redo, delete/duplicate, persistence, convert to web, and exports). Source review found the main handlers, but this workflow still needs a dedicated integration test.
+- The dedicated full visual-design workflow E2E now covers project creation, property editing, undo/redo, pointer dragging, duplication/deletion, desktop/tablet/mobile frame presets, document-level horizontal overflow on mobile, real server-backed persistence and reload, and conversion to web with generated HTML verified from the persisted workspace. It does not yet test PNG/JSON export inside the same workflow.
 - AI web screenshot capture depends on loading html2canvas from its external script source. If it cannot load, the feature intentionally falls back to exporting JSON context without PNG.
 - Design tokens are saved in localStorage, not synchronized to the user's account/workspace.
 - The accessibility audit is static regex-based HTML analysis. It does not execute JavaScript, inspect dynamic states, compute CSS contrast, or replace a full accessibility evaluation.
 - Component HTML insertion is tested with mocked editor APIs; save/preview behavior should still be confirmed in the full app.
-- Mobile layout has responsive classes and viewport options, but no screenshot-based regression test currently checks the full app at multiple viewport sizes.
+- The E2E checks mobile viewport dimensions, canvas frame sizing, and document-level horizontal overflow, but it is not yet a screenshot-based visual regression test across multiple device sizes.
 
 ## Deployment / merge
 PR remains open and draft. No merge or deployment was performed as part of this audit.
