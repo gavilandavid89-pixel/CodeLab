@@ -4284,7 +4284,6 @@ async function importDesignProjectJson(file) {
   }
   const allowedTypes = new Set(['heading','text','button','rectangle','ellipse','image']);
   const oldToNewId = new Map();
-  const seenIds = new Set();
   const makeId = () => 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2));
   const finite = (value, fallback, min, max) => {
     const n = Number(value);
@@ -4303,7 +4302,6 @@ async function importDesignProjectJson(file) {
     const oldId = typeof raw.id === 'string' ? raw.id : '';
     const id = makeId();
     if (oldId && !oldToNewId.has(oldId)) oldToNewId.set(oldId, id);
-    seenIds.add(id);
     let src = '';
     if (raw.type === 'image' && raw.src) {
       src = safeDesignImageSource(raw.src);
@@ -4345,6 +4343,16 @@ async function importDesignProjectJson(file) {
       if (targetId) elements[index].href = '#layer-' + targetId.replace(/[^a-z0-9_-]/gi, '').slice(0, 120);
     }
   });
+  // Recheck after asynchronous file reading so import cannot race a project
+  // creation or cross the workspace cap between validation and mutation.
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de importar.', 'warn');
+    return;
+  }
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de importar.', 'warn');
+    return;
+  }
   creatingProjectInFlight = true;
   const sourceName = String(source.name || 'Diseño').trim() || 'Diseño';
   const newProject = {
