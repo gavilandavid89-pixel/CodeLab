@@ -577,6 +577,8 @@ function readBody(req) {
   });
 }
 
+const MAX_UPSTREAM_RESPONSE_BYTES = 5 * 1024 * 1024;
+
 function httpsRequest(urlStr, options, body) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
@@ -587,18 +589,48 @@ function httpsRequest(urlStr, options, body) {
       headers: options.headers || {},
       ...(options.lookup ? { lookup: options.lookup } : {})
     };
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const succeed = value => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
     const req = https.request(opts, res => {
       const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        resolve({ status: res.statusCode, headers: res.headers, body: text });
+      let size = 0;
+      res.on('data', chunk => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > MAX_UPSTREAM_RESPONSE_BYTES) {
+          const error = Object.assign(new Error('upstream_response_too_large'), {
+            code: 'UPSTREAM_RESPONSE_TOO_LARGE'
+          });
+          fail(error);
+          req.destroy(error);
+          return;
+        }
+        chunks.push(chunk);
       });
+      res.on('end', () => {
+        const responseText = Buffer.concat(chunks).toString('utf8');
+        succeed({ status: res.statusCode, headers: res.headers, body: responseText });
+      });
+      res.on('aborted', () => {
+        fail(Object.assign(new Error('upstream_response_aborted'), { code: 'UPSTREAM_RESPONSE_ABORTED' }));
+      });
+      res.on('error', fail);
     });
     req.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-      req.destroy(Object.assign(new Error('upstream_timeout'), { code: 'UPSTREAM_TIMEOUT' }));
+      const error = Object.assign(new Error('upstream_timeout'), { code: 'UPSTREAM_TIMEOUT' });
+      fail(error);
+      req.destroy(error);
     });
-    req.on('error', reject);
+    req.on('error', fail);
     if (body) req.write(body);
     req.end();
   });
