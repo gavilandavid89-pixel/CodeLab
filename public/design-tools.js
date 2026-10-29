@@ -85,9 +85,9 @@
       s[key] = normalizeHex(s[key], DEFAULTS[key]);
     });
     s.name = String(s.name || DEFAULTS.name).trim().slice(0, 80) || DEFAULTS.name;
-    s.baseFont = Math.min(32, Math.max(10, Number(s.baseFont) || DEFAULTS.baseFont));
-    s.typeRatio = Math.min(1.5, Math.max(1.1, Number(s.typeRatio) || DEFAULTS.typeRatio));
-    s.baseSpacing = Math.min(16, Math.max(2, Number(s.baseSpacing) || DEFAULTS.baseSpacing));
+    s.baseFont = Math.min(32, Math.max(10, Number.isFinite(Number(s.baseFont)) ? Number(s.baseFont) : DEFAULTS.baseFont));
+    s.typeRatio = Math.min(1.5, Math.max(1.1, Number.isFinite(Number(s.typeRatio)) ? Number(s.typeRatio) : DEFAULTS.typeRatio));
+    s.baseSpacing = Math.min(16, Math.max(2, Number.isFinite(Number(s.baseSpacing)) ? Number(s.baseSpacing) : DEFAULTS.baseSpacing));
     s.baseRadius = Math.min(32, Math.max(0, Number(s.baseRadius) || 0));
     return s;
   }
