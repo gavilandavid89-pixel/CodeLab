@@ -318,7 +318,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /<img src="data:image\/png;base64,/, 'HTML export should include the embedded image asset');
     assert.match(exportedHtml, /alt="E2E sample image"/, 'HTML export should preserve the image alt text');
     assert.match(exportedHtml, /border-radius:50%/, 'HTML export should preserve ellipse geometry');
-    assert.match(exportedHtml, /href="https:\/\/example\.com\/docs\/" target="_blank" rel="noopener noreferrer"/,
+    assert.match(exportedHtml, /href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer"/,
       'HTML export should preserve the safe prototype destination with safe new-tab attributes');
     await page.locator('button[onclick="deleteDesignElement()"]').click();
     await page.waitForFunction(() => !Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).some(node => node.getAttribute('aria-label') === 'Botón'));
