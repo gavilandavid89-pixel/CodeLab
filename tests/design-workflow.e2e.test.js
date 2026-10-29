@@ -162,6 +162,35 @@ async function waitForPersistedProject(page, projectName) {
         'SVG fallback should contain an SVG document');
     }
 
+    // 6c. Verify the three explicit export formats through the real UI.
+    await page.click('#designExportMenuButton');
+    await page.waitForSelector('#designExportMenu:not(.hidden)');
+    const htmlExportReady = page.waitForEvent('download');
+    await page.locator('#designExportMenu [role="menuitem"]').filter({ hasText: 'HTML adaptable' }).click();
+    const htmlExport = await htmlExportReady;
+    assert.match(htmlExport.suggestedFilename(), /\\.html$/i, 'HTML export should have an HTML filename');
+    const htmlExportPath = await htmlExport.path();
+    assert.match(await fs.readFile(htmlExportPath, 'utf8'), /<!doctype html>/i, 'HTML export should contain a standalone document');
+
+    await page.click('#designExportMenuButton');
+    await page.waitForSelector('#designExportMenu:not(.hidden)');
+    const svgExportReady = page.waitForEvent('download');
+    await page.click('#exportDesignSvgOption');
+    const svgExport = await svgExportReady;
+    assert.match(svgExport.suggestedFilename(), /\\.svg$/i, 'SVG export should have an SVG filename');
+    assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<svg[\\s>]/i, 'SVG export should preserve vector markup');
+
+    await page.click('#designExportMenuButton');
+    await page.waitForSelector('#designExportMenu:not(.hidden)');
+    const jsonExportReady = page.waitForEvent('download');
+    await page.click('#exportDesignJsonOption');
+    const jsonExport = await jsonExportReady;
+    assert.match(jsonExport.suggestedFilename(), /-proyecto\\.json$/i, 'Project backup should have a JSON filename');
+    const projectBackup = JSON.parse(await fs.readFile(await jsonExport.path(), 'utf8'));
+    assert.equal(projectBackup.format, 'codelab-design-project');
+    assert.equal(projectBackup.project.type, 'design');
+    assert.ok(Array.isArray(projectBackup.project.design.elements), 'JSON backup should preserve editable design elements');
+
     // 7. Verify recovery of newer local edits and an offline deletion after reload.
     await page.selectOption('#designFrameSize', 'desktop');
     await waitForPersistedProject(page, PROJECT_NAME);
