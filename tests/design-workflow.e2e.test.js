@@ -179,9 +179,9 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#designLayoutMode').selectOption('auto');
     await page.locator('#designLayoutDirection').selectOption('column');
     await page.locator('#designLayoutGap').fill('24');
-    await page.locator('#designLayoutGap').press('Tab');
+    await page.locator('#designLayoutGap').dispatchEvent('change');
     await page.locator('#designLayoutPadding').fill('20');
-    await page.locator('#designLayoutPadding').press('Tab');
+    await page.locator('#designLayoutPadding').dispatchEvent('change');
     const autoLayoutPositions = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes =>
       nodes.map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) }))
         .filter(item => item.width === 100).sort((a, b) => a.top - b.top));
