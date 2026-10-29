@@ -119,12 +119,18 @@ async function waitForPersistedProject(page, projectName) {
     await waitForPersistedProject(page, PROJECT_NAME);
     const deletedDefaultId = await page.evaluate(name => {
       const projects = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || '[]');
-      const project = projects.find(item => item.name === name);
+      const storedProject = projects.find(item => item.name === name);
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : storedProject;
       const starter = projects.find(item => item.name === 'Mi Primer Proyecto');
       if (!project || !project.design || !project.design.elements.length || !starter) return null;
-      // Simulate an edit saved locally while the server was unreachable.
+      // Mutate both the live in-memory project and its local snapshot, so the
+      // page's beforeunload handler preserves the simulated offline edit.
       project.design.elements[0].text = 'Edición local recuperada';
       project.updatedAt = new Date().toISOString();
+      if (storedProject) {
+        storedProject.design = JSON.parse(JSON.stringify(project.design));
+        storedProject.updatedAt = project.updatedAt;
+      }
       localStorage.setItem('codelab_xd_projects_v2', JSON.stringify(projects));
       // Simulate a deletion that has not yet been confirmed by the server.
       localStorage.setItem('codelab_xd_deleted_project_id_for_e2e', starter.id);
