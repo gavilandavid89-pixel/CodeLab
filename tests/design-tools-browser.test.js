@@ -67,6 +67,7 @@ function extractDivById(html, id) {
     delayNextPut = true;
     await page.addScriptTag({ path: path.resolve('public/design-tools.js') });
     await page.waitForFunction(() => window.__delayedPutStarted === true, null, { timeout: 5000 });
+    while (typeof releaseDelayedPut !== 'function') await new Promise(resolve => setTimeout(resolve, 10));
     await page.evaluate(() => localStorage.setItem('codelab_xd_workspace_v4', 'ws_switched_fixture'));
     releaseDelayedPut();
     releaseDelayedPut = null;
