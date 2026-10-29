@@ -67,6 +67,7 @@ El cliente llama a **`POST /api/ai/complete`** (proxy en el servidor). Así se e
 | `AI_RATE_MAX` | Max peticiones IA / minuto / IP (default 20) |
 
 Sin key en el servidor, el usuario puede pegar la suya en **Ajustes del copiloto** (modo API). Sin ninguna key, se usan plantillas locales.
+Las claves y preferencias del copiloto se guardan en el navegador bajo una clave separada por cuenta OAuth. Las claves heredadas de versiones anteriores que usaban un único espacio global no se reutilizan al entrar en una cuenta real, para evitar mezclar credenciales entre usuarios del mismo dispositivo.
 
 Comprobar: `GET /api/ai/status` → `{ "serverKey": true, ... }`
 
