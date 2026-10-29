@@ -169,9 +169,10 @@
   }
 
   function init() {
-    if (typeof document === 'undefined' || document.getElementById('designToolsModal')) return;
+    if (typeof document === 'undefined') return;
     const modal = document.getElementById('designToolsModal');
-    if (!modal) return;
+    if (!modal || modal.dataset.designToolsInitialized === 'true') return;
+    modal.dataset.designToolsInitialized = 'true';
     let settings = loadSavedSettings();
     let activeTab = 'palette';
 
