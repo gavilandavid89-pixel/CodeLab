@@ -795,6 +795,32 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
+    // Corrupt local project snapshots must be backed up byte-for-byte before
+    // normal startup replaces the active snapshot with an empty/default project.
+    for (const damagedSnapshot of [
+      { raw: '{"projects":"not-an-array"}', reason: 'projects_not_array' },
+      { raw: '{"broken-json":', reason: 'invalid_json' }
+    ]) {
+      const recoveryContext = await browser.newContext({ viewport: { width: 900, height: 700 } });
+      const recoveryPage = await recoveryContext.newPage();
+      await recoveryPage.addInitScript(({ raw }) => {
+        localStorage.setItem('codelab_xd_projects_v2', raw);
+      }, damagedSnapshot);
+      await recoveryPage.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await recoveryPage.waitForFunction(() =>
+        document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+      const recovery = await recoveryPage.evaluate(() => {
+        const raw = localStorage.getItem('codelab_xd_projects_recovery_v1');
+        return raw ? JSON.parse(raw) : null;
+      });
+      assert.ok(recovery, 'damaged local project snapshot should have a recovery backup');
+      assert.equal(recovery.raw, damagedSnapshot.raw,
+        'recovery must preserve the exact original local snapshot');
+      assert.equal(recovery.reason, damagedSnapshot.reason,
+        'recovery should classify malformed snapshot data');
+      await recoveryContext.close();
+    }
+
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
   } finally {
