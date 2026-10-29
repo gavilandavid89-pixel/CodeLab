@@ -964,12 +964,15 @@ async function waitForPersistedProject(page, projectName) {
     // success while the workspace save is rejected.
     const keyboardSaveCheck = await page.evaluate(async () => {
       const saved = {
-        inCopyBranch,
+        inCopyBranch, currentProjectId,
         saveCurrentCodeToActiveProject: window.saveCurrentCodeToActiveProject,
         showToast: window.showToast
       };
       let toast = '', kind = '';
       try {
+        const activeProject = getCurrentProject() || projects[0];
+        if (!activeProject) return { toast: 'no active project', kind: 'error' };
+        currentProjectId = activeProject.id;
         inCopyBranch = false;
         window.saveCurrentCodeToActiveProject = async () => false;
         window.showToast = (message, severity) => { toast = message; kind = severity || ''; };
@@ -980,6 +983,7 @@ async function waitForPersistedProject(page, projectName) {
         return { toast, kind };
       } finally {
         inCopyBranch = saved.inCopyBranch;
+        currentProjectId = saved.currentProjectId;
         window.saveCurrentCodeToActiveProject = saved.saveCurrentCodeToActiveProject;
         window.showToast = saved.showToast;
       }
