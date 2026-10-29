@@ -111,7 +111,7 @@ Las pruebas automáticas cubren los cálculos de contraste, generación de token
 
 ## Capturas para IA
 
-Los proyectos de diseño pueden exportar PNG 2× + JSON de elementos y estilos. Los proyectos web pueden generar una captura renderizada de HTML/CSS para escritorio, tablet o móvil, junto con JSON que incluye código fuente y metadatos. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
+Los proyectos de diseño pueden exportar PNG 2× + JSON de elementos y estilos. Los proyectos web pueden generar una captura renderizada de HTML/CSS para escritorio, tablet o móvil, junto con JSON que incluye código fuente y metadatos. La captura web permite elegir resolución 1×, 2× o 3×; el contexto JSON registra la escala real y el PNG usa las dimensiones de píxeles correspondientes. Para evitar agotar la memoria del navegador, se bloquean capturas superiores a 32 millones de píxeles y se recomienda bajar la escala o el ancho si ocurre. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
 
 ## Biblioteca de componentes reutilizables
 
