@@ -139,6 +139,30 @@ async function waitForPersistedProject(page, projectName) {
     await page.keyboard.press('Delete');
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
 
+    // 4d. Multi-select three layers from the layer list and distribute them evenly.
+    const distributionX = [100, 300, 800];
+    for (const x of distributionX) {
+      await page.locator('button[onclick="addDesignElement(\\'rectangle\\')"]').click();
+      await page.locator('#designProperty-x').fill(String(x));
+      await page.locator('#designProperty-y').fill('500');
+      await page.locator('#designProperty-width').fill('100');
+      await page.locator('#designProperty-height').fill('60');
+    }
+    const layerRows = page.locator('#designLayers [data-design-select]');
+    await layerRows.nth(0).click();
+    await layerRows.nth(1).click({ modifiers: ['Shift'] });
+    await layerRows.nth(2).click({ modifiers: ['Shift'] });
+    await page.locator('button[onclick="distributeDesignElements(\\'horizontal\\')"]').click();
+    const distributed = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes =>
+      nodes.map(node => ({ left: parseFloat(node.style.left), width: parseFloat(node.style.width) }))
+        .filter(item => item.width === 100 && item.left >= 100 && item.left <= 900)
+        .map(item => item.left).sort((a, b) => a - b));
+    assert.deepEqual(distributed.slice(0, 3), [100, 450, 800],
+      'multi-select distribution should create equal gaps while preserving first/last bounds');
+    await page.locator('button[onclick="deleteDesignElement()"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
+    await element.click();
+
     // 5. Duplicate and delete through the production layer controls.
     await element.click();
     await page.locator('button[onclick="duplicateDesignElement()"]').click();
