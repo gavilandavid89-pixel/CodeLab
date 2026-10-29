@@ -20,7 +20,8 @@ Audit of the changes in PR #2 on `feature/design-workspace`: visual design proje
 - Capture sanitization neutralizes quoted and unquoted javascript: URLs in link, image, and form-action attributes.
 - Server request handling now tolerates malformed cookie encoding and returns a proper 413 for oversized bodies; rate-limit maps expire stale AI entries and forwarded-IP parsing supports an explicit trusted-proxy hop count.
 - Workspace recovery merges local/server projects by ID and update time, preserves pending deletions as per-workspace tombstones, keeps pending imports per account, and avoids false timestamp bumps on page unload.
-- A workspace-scoped design-system endpoint persists visual settings; localStorage remains the fallback and old local settings migrate on first use.
+- A workspace-scoped design-system endpoint persists visual settings; localStorage remains the fallback and old local settings migrate on first use. Design-system writes are serialized to prevent a slow earlier save from overwriting a newer value, and a stale workspace read cannot replace a local save made while it was in flight.
+- Forwarded-IP rate limiting preserves proxy-hop positions and rejects malformed chains instead of filtering invalid entries and accidentally shifting the trusted-hop selection; integration coverage uses a two-hop trust configuration.
 
 ## Remaining limitations / coverage gaps
 - The focused browser tests for the design-tools and component-library dialogs extract their modal markup and mock editor APIs. Design-system workspace sync is tested with a simulated API, and server persistence/auth is covered by an integration test; live OAuth cross-device behavior still requires a deployed environment.
