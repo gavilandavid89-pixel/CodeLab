@@ -362,6 +362,13 @@ function readState(id) {
   if (Object.prototype.hasOwnProperty.call(parsed, 'projects') && !Array.isArray(parsed.projects)) {
     throw new Error('workspace_projects_invalid');
   }
+  // Persisted JSON can be syntactically valid while containing project records
+  // the editor cannot safely consume. Reuse the same validator as writes so
+  // GET/init never leaks malformed state back to the client or masks it as empty.
+  if (Array.isArray(parsed.projects)) {
+    const projectError = validateProjects(parsed.projects);
+    if (projectError) throw new Error('workspace_projects_invalid:' + projectError);
+  }
   if (parsed.revision != null && (!Number.isInteger(parsed.revision) || parsed.revision < 0)) {
     throw new Error('workspace_revision_invalid');
   }
