@@ -72,6 +72,11 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       'Invalid body-size configuration must fall back to a safe default');
     assert.equal(healthConfig.maxProjects, 50,
       'Invalid project-count configuration must fall back to a safe default');
+    const healthHeadResponse = await fetch(BASE_URL + '/api/health', { method: 'HEAD' });
+    assert.equal(healthHeadResponse.status, 200);
+    assert.equal(await healthHeadResponse.text(), '', 'Health HEAD must not send a JSON body');
+    assert.equal(healthHeadResponse.headers.get('cache-control'), 'no-store',
+      'Health metadata must not be cached');
 
     const generatedSecretPath = path.join(dataDir, '.workspace-secret');
     const generatedSecret = await fs.readFile(generatedSecretPath, 'utf8');
