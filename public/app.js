@@ -1097,31 +1097,40 @@ function updateOauthDemoBanner() {
 function maybeOfferLocalImport() {
   try {
     if (!currentUser || !currentUser.real) return;
-    if (projects.length > 0) return;
-    const raw = lsGet(STORAGE_KEY_PROJECTS);
-    if (!raw) return;
-    const local = JSON.parse(raw);
+    let local = Array.isArray(pendingLocalImportProjects) ? pendingLocalImportProjects : null;
+    if (!local) {
+      const raw = lsGet(STORAGE_KEY_PROJECTS);
+      if (!raw) return;
+      local = JSON.parse(raw);
+    }
     if (!Array.isArray(local) || local.length === 0) return;
     const flag = 'codelab_import_offered_' + (currentUser.provider + '_' + currentUser.id);
-    if (lsGet(flag)) return;
+    if (lsGet(flag)) {
+      pendingLocalImportProjects = null;
+      return;
+    }
     lsSet(flag, '1');
     const ok = confirm(
-      'Tu workspace de cuenta está vacío, pero hay ' +
-        local.length +
-        ' proyecto(s) guardados en este navegador. ¿Importarlos a tu cuenta?'
+      'Hay ' + local.length +
+        ' proyecto(s) guardados en otro workspace de este navegador. ¿Importarlos a tu cuenta sin reemplazar los proyectos actuales?'
     );
-    if (!ok) return;
-    projects = local.map(p => ({
-      ...p,
-      code: normalizeCode(p.code),
-      id: typeof p.id === 'string' ? p.id : 'proj_' + Date.now()
-    }));
+    if (!ok) {
+      pendingLocalImportProjects = null;
+      return;
+    }
+    const existingIds = new Set(projects.map(project => project.id));
+    const imported = local.filter(project => project && typeof project === 'object').map((project, index) => ({
+      ...project,
+      id: typeof project.id === 'string' && project.id ? project.id : 'proj_import_' + Date.now() + '_' + index,
+      code: normalizeCode(project.code)
+    })).filter(project => !existingIds.has(project.id));
+    projects = imported.concat(projects);
+    pendingLocalImportProjects = null;
     saveProjectsToStorage();
     renderProjectsList();
-    showToast('Proyectos locales importados a tu cuenta.');
+    showToast(imported.length ? imported.length + ' proyecto(s) local(es) importados a tu cuenta.' : 'Los proyectos locales ya estaban presentes en tu cuenta.');
   } catch (_) {}
 }
-
 function updateDashboardStatus() {
   const badge = document.getElementById('dashSyncBadge');
   const wid = document.getElementById('dashWorkspaceId');
