@@ -2670,10 +2670,19 @@ function setupKeyboardShortcuts() {
         autosaveTimer = null;
       }
       if (inCopyBranch) {
-        saveInCopyBranch().then(() => showToast('Copia guardada.'));
+        // saveInCopyBranch owns its success/failure messaging.
+        saveInCopyBranch();
       } else {
-        saveCurrentCodeToActiveProject(true);
-        showToast('Proyecto guardado.');
+        saveCurrentCodeToActiveProject(true).then(ok => {
+          showToast(
+            ok === true
+              ? 'Proyecto guardado y sincronizado.'
+              : 'No se confirmó el guardado/sincronización del proyecto. Revisa el estado de guardado.',
+            ok === true ? 'info' : 'warn'
+          );
+        }).catch(() => {
+          showToast('Falló el guardado del proyecto. Revisa el estado de guardado e inténtalo de nuevo.', 'error');
+        });
       }
       return;
     }
