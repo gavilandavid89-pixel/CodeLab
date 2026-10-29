@@ -118,6 +118,8 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       headers: { Cookie: 'codelab_sid=%E0%A4%A' }
     });
     assert.equal(response.status, 200, 'Malformed cookie encoding must not cause an API 500');
+    assert.equal(response.headers.get('cache-control'), 'no-store',
+      'Authentication status must not be cached by the browser or an intermediary');
     const status = await response.json();
     assert.equal(status.user, null, 'Malformed session cookie should be treated as unauthenticated');
     assert.equal(typeof status.demoFallback, 'boolean');
@@ -194,6 +196,12 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     });
     assert.equal(initResponse.status, 200);
     const workspace = await initResponse.json();
+    const privateWorkspaceRead = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      headers: { 'x-workspace-token': workspace.token }
+    });
+    assert.equal(privateWorkspaceRead.status, 200);
+    assert.equal(privateWorkspaceRead.headers.get('cache-control'), 'no-store',
+      'Private workspace snapshots must never be cached');
     const nullWorkspaceUpdate = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
