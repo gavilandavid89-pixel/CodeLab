@@ -2819,8 +2819,9 @@ function exportDesignHtml() {
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
-    if (el.type === 'image' && imageSource) return '<img src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+(buttonHref?' href="'+escapeAttr(buttonHref)+'" target="_blank" rel="noopener noreferrer"':'')+' style="'+style+'">'+text+'</'+tag+'>';
+    const domId = designLayerDomId(el.id);
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
   const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
@@ -3103,7 +3104,19 @@ function renderDesignWorkspace() {
     if (el.type === 'button' && safeDesignLink(el.href)) node.title = 'Alt + clic para probar navegación';
     node.addEventListener('click', ev => {
       ev.stopPropagation();
-      if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { window.open(safeDesignLink(el.href), '_blank', 'noopener,noreferrer'); return; }
+      if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) {
+        const destination = safeDesignLink(el.href);
+        if (destination.startsWith('#layer-')) {
+          const target = Array.from(document.querySelectorAll('[data-design-id]')).find(item => designLayerDomId(item.dataset.designId) === destination.slice(1));
+          if (target) {
+            selectDesignElement(target.dataset.designId, false);
+            const selectedTarget = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === target.dataset.designId);
+            if (selectedTarget) { selectedTarget.focus(); selectedTarget.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            showToast('Destino interno del prototipo seleccionado.');
+          } else showToast('No se encontró la capa de destino.', 'warn');
+        } else window.open(destination, '_blank', 'noopener,noreferrer');
+        return;
+      }
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) selectDesignElement(el.id, true);
       else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
     });
@@ -3335,8 +3348,9 @@ function convertDesignToWeb() {
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
-    if (el.type === 'image' && imageSource) return '<img src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+(buttonHref?' href="'+escapeAttr(buttonHref)+'" target="_blank" rel="noopener noreferrer"':'')+' style="'+style+'">'+text+'</'+tag+'>';
+    const domId = designLayerDomId(el.id);
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
   const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
