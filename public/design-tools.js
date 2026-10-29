@@ -146,6 +146,79 @@
     return pattern.test(source) ? source.replace(pattern, block) : block + (source.trim() ? '\n\n' + source.replace(/^\s+/, '') : '\n');
   }
 
+  function auditHtml(html) {
+    const source = String(html || '');
+    const issues = [];
+    const add = (code, severity, message, fix) => issues.push({ code: code, severity: severity, message: message, fix: fix });
+    const attribute = (tag, name) => {
+      const match = String(tag || '').match(new RegExp('\\b' + name + '\\s*=\\s*(?:"([^"]*)"|\\'([^\\']*)\\'|([^\\s>]+))', 'i'));
+      return match ? (match[1] || match[2] || match[3] || '') : null;
+    };
+    if (!source.trim()) {
+      add('empty-html', 'error', 'El HTML del proyecto está vacío.', 'Añade la estructura principal de la página antes de ejecutar la auditoría.');
+      return { format: 'codelab-accessibility-audit', version: 1, checkedAt: new Date().toISOString(), summary: { errors: 1, warnings: 0, info: 0, total: 1 }, issues: issues, scope: 'Análisis estático del HTML; no ejecuta JavaScript ni calcula contraste CSS.' };
+    }
+    if (!/<html\b[^>]*\blang\s*=/i.test(source)) add('missing-lang', 'warning', 'No se encontró lang en la etiqueta html.', 'Define el idioma de la página, por ejemplo <html lang="es">.');
+    if (!/<title\b[^>]*>[\s\S]*?\S[\s\S]*?<\/title\s*>/i.test(source)) add('missing-title', 'warning', 'Falta un título de página no vacío.', 'Añade un <title> descriptivo dentro de <head>.');
+    if (!/<meta\b[^>]*name\s*=\s*["']viewport["']/i.test(source)) add('missing-viewport', 'warning', 'No se encontró la meta viewport.', 'Añade meta name="viewport" content="width=device-width, initial-scale=1" para dispositivos móviles.');
+    if (!/<main\b/i.test(source)) add('missing-main', 'info', 'No se encontró un landmark main.', 'Usa <main> para envolver el contenido principal único de la página.');
+
+    const ids = new Map();
+    for (const match of source.matchAll(/\bid\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi)) {
+      const id = match[1] || match[2] || match[3];
+      ids.set(id, (ids.get(id) || 0) + 1);
+    }
+    ids.forEach((count, id) => { if (count > 1) add('duplicate-id', 'warning', 'Se repite un atributo id en el documento.', 'Usa un id único para cada elemento; revisa el identificador duplicado: ' + id.slice(0, 60) + '.'); });
+
+    for (const match of source.matchAll(/<img\b[^>]*>/gi)) {
+      if (attribute(match[0], 'alt') === null) add('image-missing-alt', 'error', 'Hay una imagen sin atributo alt.', 'Añade alt descriptivo o alt="" si la imagen es puramente decorativa.');
+    }
+    for (const match of source.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button\s*>/gi)) {
+      const attrs = match[1] || '', body = match[2] || '';
+      const label = attribute(attrs, 'aria-label') || attribute(attrs, 'aria-labelledby');
+      const text = body.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/\s+/g, ' ').trim();
+      const imageTag = (body.match(/<img\b[^>]*>/i) || [''])[0];
+      if (!label && !text && attribute(imageTag, 'alt') === null) add('button-no-name', 'error', 'Hay un botón sin nombre accesible detectable.', 'Añade texto visible o aria-label con una acción clara.');
+    }
+    for (const match of source.matchAll(/<(input|select|textarea)\b([^>]*)>/gi)) {
+      const tag = match[0], attrs = match[2] || '';
+      const type = (attribute(attrs, 'type') || '').toLowerCase();
+      if (tag.toLowerCase().startsWith('<input') && ['hidden', 'submit', 'reset', 'button', 'image'].includes(type)) continue;
+      const id = attribute(attrs, 'id');
+      const labelledBy = attribute(attrs, 'aria-labelledby');
+      const ariaLabel = attribute(attrs, 'aria-label');
+      const explicitLabel = id && Array.from(source.matchAll(/<label\b[^>]*>/gi)).some(labelMatch => attribute(labelMatch[0], 'for') === id);
+      const wrappedLabel = /<label\b[^>]*>[^<]{0,120}<(input|select|textarea)\b/i.test(source);
+      if (!ariaLabel && !labelledBy && !explicitLabel && !wrappedLabel) add('field-no-label', 'error', 'Hay un campo de formulario sin etiqueta asociada detectable.', 'Añade <label for="id"> o un nombre accesible mediante aria-label/aria-labelledby.');
+    }
+    for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+      const attrs = match[1] || '', body = match[2] || '';
+      const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!attribute(attrs, 'aria-label') && !attribute(attrs, 'aria-labelledby') && !text) add('link-no-name', 'warning', 'Hay un enlace sin nombre accesible detectable.', 'Añade texto descriptivo o aria-label.');
+      if ((attribute(attrs, 'target') || '').toLowerCase() === '_blank') {
+        const rel = (attribute(attrs, 'rel') || '').toLowerCase().split(/\s+/);
+        if (!rel.includes('noopener') && !rel.includes('noreferrer')) add('blank-link-noopener', 'warning', 'Un enlace target="_blank" no declara noopener/noreferrer.', 'Añade rel="noopener noreferrer" al enlace externo.');
+      }
+    }
+    let previousHeading = 0;
+    for (const match of source.matchAll(/<h([1-6])\b[^>]*>/gi)) {
+      const level = Number(match[1]);
+      if (previousHeading && level > previousHeading + 1) add('heading-skip', 'warning', 'La jerarquía de encabezados salta un nivel.', 'Usa encabezados en orden lógico sin saltar niveles; el estilo visual se puede controlar con CSS.');
+      previousHeading = level;
+    }
+    const errors = issues.filter(item => item.severity === 'error').length;
+    const warnings = issues.filter(item => item.severity === 'warning').length;
+    const info = issues.filter(item => item.severity === 'info').length;
+    return {
+      format: 'codelab-accessibility-audit',
+      version: 1,
+      checkedAt: new Date().toISOString(),
+      summary: { errors: errors, warnings: warnings, info: info, total: issues.length },
+      issues: issues,
+      scope: 'Análisis estático del HTML. No ejecuta JavaScript, no inspecciona estados dinámicos ni calcula contraste de colores CSS; usa el comprobador de contraste por separado.'
+    };
+  }
+
   function loadSavedSettings() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -294,7 +367,7 @@
 
     function showTab(tab) {
       activeTab = tab;
-      ['palette', 'accessibility', 'tokens'].forEach(name => {
+      ['palette', 'accessibility', 'tokens', 'audit'].forEach(name => {
         const panel = get('designToolsPanel-' + name);
         const button = get('designToolsTab-' + name);
         if (panel) panel.classList.toggle('hidden', name !== activeTab);
@@ -337,7 +410,7 @@
       });
     });
 
-    ['palette', 'accessibility', 'tokens'].forEach(tab => {
+    ['palette', 'accessibility', 'tokens', 'audit'].forEach(tab => {
       const button = get('designToolsTab-' + tab);
       if (button) button.addEventListener('click', () => showTab(tab));
     });
@@ -348,6 +421,34 @@
     modal.addEventListener('click', event => { if (event.target === modal) close(); });
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.classList.contains('hidden')) close(); });
 
+    if (get('runAccessibilityAudit')) get('runAccessibilityAudit').addEventListener('click', () => {
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function') {
+        announce('Abre un proyecto web en el editor para auditar su HTML.');
+        if (typeof window.showToast === 'function') window.showToast('Abre un proyecto web en el editor para auditar el HTML.', 'warn');
+        return;
+      }
+      const report = auditHtml(window.getEditorValue('html') || '');
+      const output = get('accessibilityAuditResults');
+      if (output) {
+        const summary = report.summary;
+        output.innerHTML = '<div class="grid grid-cols-3 gap-2 mb-3">' +
+          '<div class="rounded-lg border border-rose-900 bg-rose-950/40 p-2"><strong class="block text-lg text-rose-300">' + summary.errors + '</strong><span class="text-[10px] text-slate-400">Errores</span></div>' +
+          '<div class="rounded-lg border border-amber-900 bg-amber-950/40 p-2"><strong class="block text-lg text-amber-300">' + summary.warnings + '</strong><span class="text-[10px] text-slate-400">Avisos</span></div>' +
+          '<div class="rounded-lg border border-slate-700 bg-slate-900 p-2"><strong class="block text-lg text-slate-200">' + summary.info + '</strong><span class="text-[10px] text-slate-400">Sugerencias</span></div></div>' +
+          (report.issues.length ? report.issues.map(item => '<article class="rounded-lg border border-slate-800 bg-slate-950/70 p-3 mb-2"><div class="flex flex-wrap items-center gap-2 mb-1"><span class="text-[9px] uppercase tracking-wider font-bold ' + (item.severity === 'error' ? 'text-rose-300' : item.severity === 'warning' ? 'text-amber-300' : 'text-slate-400') + '">' + item.severity + '</span><code class="text-[10px] text-cyan-300">' + item.code + '</code></div><p class="text-xs text-slate-200">' + item.message + '</p><p class="text-[10px] text-slate-400 mt-1">' + item.fix + '</p></article>').join('') : '<p class="rounded-lg border border-emerald-800 bg-emerald-950/30 p-3 text-xs text-emerald-300">No se encontraron problemas en las reglas estáticas incluidas. Esto no garantiza accesibilidad completa.</p>') +
+          '<p class="text-[10px] text-slate-500 mt-3">' + report.scope + '</p>';
+        output.dataset.report = JSON.stringify(report);
+      }
+      if (get('exportAccessibilityAudit')) get('exportAccessibilityAudit').disabled = false;
+      announce('Auditoría HTML terminada: ' + report.summary.errors + ' errores y ' + report.summary.warnings + ' avisos.');
+    });
+    if (get('exportAccessibilityAudit')) get('exportAccessibilityAudit').addEventListener('click', () => {
+      const output = get('accessibilityAuditResults');
+      if (!output || !output.dataset.report) { announce('Ejecuta la auditoría antes de exportar.'); return; }
+      downloadText('codelab-accessibility-audit.json', output.dataset.report, 'application/json;charset=utf-8');
+      announce('Informe de auditoría descargado.');
+    });
     if (get('saveDesignSystem')) get('saveDesignSystem').addEventListener('click', () => {
       settings = readForm();
       const ok = saveSettings(settings);
@@ -409,6 +510,7 @@
     buildDesignTokens: buildDesignTokens,
     toCssVariables: toCssVariables,
     injectTokenBlock: injectTokenBlock,
+    auditHtml: auditHtml,
     sanitizeSettings: sanitizeSettings,
     init: init
   };
