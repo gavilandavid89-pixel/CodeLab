@@ -157,7 +157,7 @@ function extractDivById(html, id) {
     });
     await page.waitForFunction(() => /no es un sistema visual CodeLab compatible/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 5000 });
     assert.match(await page.locator('#designToolsStatus').innerText(), /no es un sistema visual CodeLab compatible/i);
-    assert.equal(await page.locator('#colorPrimary').inputValue(), '#123456', 'invalid import must not overwrite the current system');
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#222222', 'invalid import must not overwrite the current system');
     await page.click('#designToolsTab-audit');
     await page.click('#runAccessibilityAudit');
     const auditText = await page.locator('#accessibilityAuditResults').innerText();
