@@ -26,9 +26,31 @@ function extractDivById(html, id) {
   try {
     const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 390, height: 844 } });
     const fixtureHtml = '<!doctype html><html lang="es"><body class="bg-slate-950 text-white"><button id="openDesignTools">Herramientas</button>' + modal + '</body></html>';
+    let remoteSettings = null;
+    let remoteWrites = 0;
     await page.route('http://codelab.test/**', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixtureHtml }));
+    await page.route('http://codelab.test/api/workspace/**', async route => {
+      const request = route.request();
+      if (!new URL(request.url()).pathname.endsWith('/design-system')) return route.continue();
+      if (request.method() === 'GET') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ settings: remoteSettings }) });
+      }
+      if (request.method() === 'PUT') {
+        remoteSettings = request.postDataJSON().settings;
+        remoteWrites++;
+        await page.evaluate(settings => { window.__remoteDesignSystem = settings; }, remoteSettings);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, settings: remoteSettings }) });
+      }
+      return route.fulfill({ status: 405, contentType: 'application/json', body: '{}' });
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('codelab_xd_workspace_v4', 'ws_browser_fixture');
+      localStorage.setItem('codelab_xd_workspace_token_v1', 'fixture-workspace-token');
+      window.codelabWorkspaceReady = true;
+    });
     await page.goto('http://codelab.test/');
     await page.addScriptTag({ path: path.resolve('public/design-tools.js') });
+    await page.waitForFunction(() => document.getElementById('designToolsStatus')?.textContent.includes('sincronizado con tu workspace'), null, { timeout: 5000 });
     await page.click('#openDesignTools');
     await page.waitForSelector('#designToolsModal:not(.hidden)');
     await page.evaluate(() => {
@@ -70,7 +92,10 @@ function extractDivById(html, id) {
     assert.match(applied, /\.existing \{ color: red; \}/);
     assert.equal(await page.evaluate(() => window.__previewUpdated), true);
     await page.click('#saveDesignSystem');
+    await page.waitForFunction(() => window.__remoteDesignSystem?.primary === '#ff0000', null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#ff0000');
+    assert.equal(await page.evaluate(() => window.__remoteDesignSystem.primary), '#ff0000');
+    assert.ok(remoteWrites >= 2, 'settings should migrate to the workspace and then save edits remotely');
     const downloadPromise = page.waitForEvent('download');
     await page.click('#exportDesignSystemJson');
     const download = await downloadPromise;
@@ -96,6 +121,7 @@ function extractDivById(html, id) {
     assert.equal(await page.locator('#baseSpacing').inputValue(), '8');
     assert.equal(await page.locator('#baseRadius').inputValue(), '16');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#123456');
+    await page.waitForFunction(() => window.__remoteDesignSystem?.primary === '#123456', null, { timeout: 5000 });
     await page.locator('#designSystemJsonFile').setInputFiles({
       name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'other', version: 1 }))
     });
@@ -116,7 +142,7 @@ function extractDivById(html, id) {
     assert.ok(auditJson.summary.errors >= 2);
     await page.keyboard.press('Escape');
     await page.waitForSelector('#designToolsModal.hidden');
-    console.log('Design tools browser test passed: modal interaction, live palette, WCAG contrast, token updates, local save, token application, accessibility audit and JSON exports.');
+    console.log('Design tools browser test passed: modal interaction, live palette, WCAG contrast, token updates, workspace sync, token application, accessibility audit and JSON exports.');
   } finally {
     await browser.close();
   }
