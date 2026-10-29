@@ -35,6 +35,10 @@ const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 120;
 const APP_VERSION = '2.6.6';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const configuredSessionCleanupInterval = Number.parseInt(process.env.CODELAB_SESSION_CLEANUP_INTERVAL_MS || '', 10);
+const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInterval) && configuredSessionCleanupInterval > 0
+  ? Math.min(60 * 60 * 1000, Math.max(1000, configuredSessionCleanupInterval))
+  : 15 * 60 * 1000;
 const COOKIE_NAME = 'codelab_sid';
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
@@ -250,7 +254,7 @@ function cleanupExpiredSessions() {
   } catch (_) {}
 }
 cleanupExpiredSessions();
-setInterval(cleanupExpiredSessions, 15 * 60 * 1000).unref();
+setInterval(cleanupExpiredSessions, SESSION_CLEANUP_INTERVAL_MS).unref();
 
 function safeId(value) {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
