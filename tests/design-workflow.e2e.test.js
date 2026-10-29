@@ -133,6 +133,26 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
     assert.equal(await page.locator('#designCanvas [data-design-id]').first().innerText(), 'Prueba integral CodeLab');
 
+    // 5b. Add a local image file, edit its alt text, and verify it renders as a real layer.
+    await page.locator('button[onclick="addDesignElement(\'image\')"]').click();
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/3XcAAAAASUVORK5CYII=';
+    await page.locator('#designImageFile').setInputFiles({
+      name: 'codelab-fixture.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(tinyPng, 'base64')
+    });
+    await page.waitForFunction(() => {
+      const image = document.querySelector('#designCanvas [data-design-id] img');
+      return image && image.complete && image.naturalWidth > 0;
+    }, null, { timeout: 10000 });
+    await page.locator('#designProperty-alt').fill('E2E sample image');
+    await page.waitForFunction(() => {
+      const image = document.querySelector('#designCanvas [data-design-id] img');
+      return image && image.alt === 'E2E sample image';
+    });
+    assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 2,
+      'image should be added as a separate editable layer');
+
     // 6. Exercise responsive frame presets and mobile overflow behavior.
     await page.selectOption('#designFrameSize', 'tablet');
     assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.width), '768px');
@@ -180,6 +200,8 @@ async function waitForPersistedProject(page, projectName) {
     const captureContext = JSON.parse(await fs.readFile(contextFile.path, 'utf8'));
     assert.equal(captureContext.format, 'codelab-ai-design-capture');
     assert.ok(captureContext.elementCount >= 1, 'capture context should include the canvas element');
+    assert.ok(captureContext.elements.some(item => item.type === 'image' && item.image && item.image.alt === 'E2E sample image'),
+      'AI context should preserve image alt text without embedding the base64 payload again');
     assert.equal(captureContext.canvas.scale, 3, 'design capture context should record the selected 3× resolution');
     assert.equal(captureContext.canvas.pixelWidth, captureContext.canvas.width * 3, 'context pixel width should match the selected scale');
     assert.equal(captureContext.canvas.pixelHeight, captureContext.canvas.height * 3, 'context pixel height should match the selected scale');
@@ -210,6 +232,8 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /addEventListener\("resize",fit/, 'HTML export should recalculate scale on resize');
     assert.match(exportedHtml, /f\.style\.transform/, 'HTML export should apply a visual scale to the fixed design canvas');
     assert.match(exportedHtml, /window\.innerWidth\/w/, 'HTML export should calculate scale from the current viewport width');
+    assert.match(exportedHtml, /<img src="data:image\/png;base64,/, 'HTML export should include the embedded image asset');
+    assert.match(exportedHtml, /alt="E2E sample image"/, 'HTML export should preserve the image alt text');
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
@@ -218,6 +242,7 @@ async function waitForPersistedProject(page, projectName) {
     const svgExport = await svgExportReady;
     assert.match(svgExport.suggestedFilename(), /\.svg$/i, 'SVG export should have an SVG filename');
     assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<svg[\s>]/i, 'SVG export should preserve vector markup');
+    assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<image href="data:image\/png;base64,/, 'SVG export should preserve the embedded image layer');
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
@@ -229,6 +254,8 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(projectBackup.format, 'codelab-design-project');
     assert.equal(projectBackup.project.type, 'design');
     assert.ok(Array.isArray(projectBackup.project.design.elements), 'JSON backup should preserve editable design elements');
+    assert.equal(projectBackup.project.design.elements.find(item => item.type === 'image')?.alt, 'E2E sample image',
+      'JSON backup should preserve image metadata');
 
     // 7. Verify recovery of newer local edits and an offline deletion after reload.
     await page.selectOption('#designFrameSize', 'desktop');
