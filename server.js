@@ -1196,11 +1196,11 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 413, { error: 'code_too_large' });
         }
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-        // A configured server credential must never be sent to a client-selected
-        // provider URL. When present, the server key and its provider endpoint are
-        // a single trusted configuration; client keys are only used without one.
-        const usingServerKey = !!AI_API_KEY;
-        const apiKey = usingServerKey ? AI_API_KEY : clientKey;
+        // A user-supplied credential belongs to that user's provider settings.
+        // Never combine it with the server key: the selected key and endpoint must
+        // come from the same source, or the server secret could be sent to a custom URL.
+        const usingServerKey = !clientKey && !!AI_API_KEY;
+        const apiKey = clientKey || AI_API_KEY;
         if (!apiKey) {
           return sendJson(res, 503, {
             error: 'ai_not_configured',
