@@ -31,8 +31,11 @@ jobs:
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
           node --check tests/ai-settings-isolation.test.js
+          node --check tests/interface-wiring.test.js
       - name: Check version metadata consistency
         run: node tests/version-consistency.test.js
+      - name: Audit static UI event wiring and IDs
+        run: node tests/interface-wiring.test.js
       - name: Check per-account AI settings isolation
         run: node tests/ai-settings-isolation.test.js
       - name: Test server resilience and workspace persistence
