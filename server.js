@@ -1438,6 +1438,9 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 413, { error: 'code_too_large' });
         }
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+        if (clientKey.length > 4096) {
+          return sendJson(res, 400, { error: 'invalid_api_key' });
+        }
         // A user-supplied credential belongs to that user's provider settings.
         // Never combine it with the server key: the selected key and endpoint must
         // come from the same source, or the server secret could be sent to a custom URL.
@@ -1464,6 +1467,8 @@ const server = http.createServer(async (req, res) => {
             model = body.model.trim();
           }
         }
+        if (baseUrl.length > 2048) return sendJson(res, 400, { error: 'invalid_provider_url' });
+        if (model.length > 200) return sendJson(res, 400, { error: 'invalid_model' });
         try {
           const messages = [
             { role: 'system', content: buildAiSystemPrompt(code) },
