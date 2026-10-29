@@ -27,6 +27,9 @@ assert.equal(oversizedAutoLayout.height, 6000, 'Auto-layout captures must cap to
 const malformedGeometry = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [{ id: 'bad', type: 'text', text: 'Bounded', x: Infinity, y: NaN, width: 99999999, height: 99999999, background: '#ffffff', fontSize: 9999, weight: 9999, radius: 99999 }] } });
 assert.doesNotMatch(malformedGeometry.svg, /Infinity|NaN|font-size="9999"|font-weight="9999"/, 'Capture SVG must not emit non-finite coordinates or unbounded typography');
 assert.match(malformedGeometry.svg, /width="4000" height="4000"/, 'Capture element dimensions must be clamped to safe bounds');
+const malformedElements = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [null, 'not-an-element', { id: 'valid', type: 'text', text: 'Still renders', x: 10, y: 10, width: 100, height: 40 }] } });
+assert.match(malformedElements.svg, /Still renders/,
+  'Capture should skip malformed entries while preserving valid design elements');
 assert.match(mobile.svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
 assert.match(mobile.svg, /Hello &lt;AI&gt; &amp; &quot;friends&quot;/);
 assert.match(mobile.svg, /fill="#6d28d9"/);
