@@ -339,6 +339,19 @@ async function waitForPersistedProject(page, projectName) {
 
     // 6c. Configure a safe button destination to exercise prototype navigation.
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
+    const internalTarget = await page.locator('#designPrototypeTarget option').nth(1).getAttribute('value');
+    assert.ok(internalTarget && internalTarget.startsWith('#layer-'), 'prototype editor should offer internal layer destinations');
+    await page.locator('#designPrototypeTarget').selectOption(internalTarget);
+    assert.equal(await page.evaluate(() => window.activeDesignProject().design.elements.find(item => item.type === 'button')?.href || ''),
+      internalTarget, 'choosing an internal target should update the prototype button');
+    await page.click('#designExportMenuButton');
+    await page.waitForSelector('#designExportMenu:not(.hidden)');
+    const internalHtmlReady = page.waitForEvent('download');
+    await page.locator('#designExportMenu [role="menuitem"]').filter({ hasText: 'HTML adaptable' }).click();
+    const internalHtmlDownload = await internalHtmlReady;
+    const internalHtml = await fs.readFile(await internalHtmlDownload.path(), 'utf8');
+    assert.ok(internalHtml.includes('href="' + internalTarget + '"'), 'HTML export should preserve internal layer navigation');
+    assert.ok(internalHtml.includes('id="' + internalTarget.slice(1) + '"'), 'HTML export should assign stable anchor IDs to target layers');
     await page.locator('#designProperty-href').fill('javascript:alert(1)');
     assert.equal(await page.evaluate(() => window.activeDesignProject().design.elements.find(item => item.type === 'button')?.href || ''),
       '', 'prototype destinations must reject javascript URLs');
