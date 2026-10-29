@@ -2494,6 +2494,10 @@ function activeDesignProject() {
   if (!p || p.type !== 'design') return null;
   if (!p.design || typeof p.design !== 'object') p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
   if (p.design.grid == null) p.design.grid = true;
+  if (!['free','auto'].includes(p.design.layoutMode)) p.design.layoutMode = 'free';
+  if (!['row','column'].includes(p.design.layoutDirection)) p.design.layoutDirection = 'row';
+  p.design.layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 16));
+  p.design.layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 24));
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
   return p;
 }
@@ -2914,6 +2918,62 @@ function importDesignImage(file) {
   };
   reader.readAsDataURL(file);
 }
+function getDesignLayoutPositions(design) {
+  const elements = Array.isArray(design && design.elements) ? design.elements : [];
+  const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
+  const positions = new Map();
+  if (mode === 'free') {
+    for (const el of elements) positions.set(el.id, { x: Number(el.x) || 0, y: Number(el.y) || 0 });
+    return { positions, height: 900, mode, frameWidth };
+  }
+  const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+  const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+  const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+  let x = padding, y = padding, rowHeight = 0;
+  for (const el of elements) {
+    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    if (direction === 'row') {
+      if (x > padding && x + width > frameWidth - padding) {
+        x = padding; y += rowHeight + gap; rowHeight = 0;
+      }
+      positions.set(el.id, { x, y });
+      x += width + gap; rowHeight = Math.max(rowHeight, height);
+    } else {
+      positions.set(el.id, { x: padding, y });
+      y += height + gap;
+    }
+  }
+  const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+  return { positions, height: Math.max(900, contentBottom + padding), mode, frameWidth, direction, gap, padding };
+}
+function setDesignLayoutMode(value) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  p.design.layoutMode = value === 'auto' ? 'auto' : 'free';
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignLayoutDirection(value) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  p.design.layoutDirection = value === 'column' ? 'column' : 'row';
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignLayoutGap(value) {
+  const p = activeDesignProject(); if (!p) return;
+  const gap = Number(value);
+  if (!Number.isFinite(gap)) return;
+  recordDesignHistory(); p.design.layoutGap = Math.max(0, Math.min(200, Math.round(gap)));
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignLayoutPadding(value) {
+  const p = activeDesignProject(); if (!p) return;
+  const padding = Number(value);
+  if (!Number.isFinite(padding)) return;
+  recordDesignHistory(); p.design.layoutPadding = Math.max(0, Math.min(200, Math.round(padding)));
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
 function renderDesignWorkspace() {
   const p = activeDesignProject(); if (!p) return;
   const canvas = document.getElementById('designCanvas');
@@ -2925,7 +2985,9 @@ function renderDesignWorkspace() {
   selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
   if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
   const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  const layout = getDesignLayoutPositions(p.design);
   canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
+  canvas.style.height = layout.height + 'px';
   canvas.style.zoom = String(designZoom);
   const zoomLabel = document.getElementById('designZoomLabel');
   if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
@@ -2953,7 +3015,8 @@ function renderDesignWorkspace() {
     node.className = 'absolute select-none cursor-move';
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
-    node.style.left = (Number(el.x) || 0) + 'px'; node.style.top = (Number(el.y) || 0) + 'px';
+    const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    node.style.left = layoutPosition.x + 'px'; node.style.top = layoutPosition.y + 'px';
     node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
@@ -3014,6 +3077,7 @@ function renderDesignWorkspace() {
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
+      if (activeDesignProject()?.design.layoutMode === 'auto') return;
       if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
       // A plain drag acts on one layer; Shift/Ctrl/Meta-click is reserved for multi-selection.
       selectedDesignElementId = el.id;
@@ -3070,7 +3134,8 @@ function updateDesignProperty(key, value) {
   if (node) {
     if (el.type === 'image') renderDesignImageContent(node, el);
     else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
-    node.style.left = (Number(el.x)||0)+'px'; node.style.top = (Number(el.y)||0)+'px';
+    const layoutPosition = getDesignLayoutPositions(p.design).positions.get(el.id) || { x: Number(el.x)||0, y: Number(el.y)||0 };
+    node.style.left = layoutPosition.x+'px'; node.style.top = layoutPosition.y+'px';
     node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
