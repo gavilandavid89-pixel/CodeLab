@@ -50,7 +50,7 @@ jobs:
           node tests/capture-browser.test.js
           node tests/design-tools-browser.test.js
           node tests/component-library-browser.test.js
-      - name: End-to-end visual design workflow in the real app
+      - name: Chained full-system E2E in the real app
         shell: bash
         run: |
           export PORT=3188
