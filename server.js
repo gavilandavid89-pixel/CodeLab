@@ -7,6 +7,7 @@ const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 
@@ -547,8 +548,14 @@ function serveStatic(req, res, urlPath) {
 }
 
 function clientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (fwd) return String(fwd).split(',')[0].trim();
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // Proxies append the address they observed to the right side of X-Forwarded-For.
+    // Use the rightmost valid address so a client-supplied leftmost value cannot
+    // trivially rotate rate-limit keys.
+    const addresses = String(forwarded).split(',').map(value => value.trim()).filter(value => net.isIP(value));
+    if (addresses.length) return addresses[addresses.length - 1];
+  }
   return req.socket.remoteAddress || 'unknown';
 }
 
