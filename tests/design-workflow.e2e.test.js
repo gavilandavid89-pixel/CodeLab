@@ -664,14 +664,22 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#openComponentLibrary').click();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
     // A zero-result filter must not leave a stale component available to insert/export.
-    const htmlBeforeEmptyFilter = await page.evaluate(() => window.getEditorValue('html'));
+    // The editor panel is hidden on the dashboard, so its current editor value
+    // may be stale/empty. Compare the active project's persisted code instead.
+    const htmlBeforeEmptyFilter = await page.evaluate(() => {
+      const project = window.getCurrentProject();
+      return project && project.code ? project.code.html : '';
+    });
     await page.locator('#componentLibrarySearch').fill('no-such-component-should-match');
     await page.waitForFunction(() => document.getElementById('componentLibraryCode')?.value === '');
     for (const id of ['componentLibraryCopy', 'componentLibraryDownload', 'componentLibraryInsert']) {
       assert.equal(await page.locator('#' + id).isDisabled(), true,
         id + ' must be disabled when component search has no results');
     }
-    assert.equal(await page.evaluate(() => window.getEditorValue('html')), htmlBeforeEmptyFilter,
+    assert.equal(await page.evaluate(() => {
+      const project = window.getCurrentProject();
+      return project && project.code ? project.code.html : '';
+    }), htmlBeforeEmptyFilter,
       'Searching for a missing component must not mutate the active project');
     await page.locator('#componentLibrarySearch').fill('');
     await page.waitForFunction(() => document.querySelectorAll('#componentLibraryList [data-component-id]').length === 8);
