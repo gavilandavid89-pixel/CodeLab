@@ -498,8 +498,8 @@ async function waitForPersistedProject(page, projectName) {
       'converted web project should include the edited design content');
     assert.match(converted.code.html, /name="viewport"/,
       'converted web project should include a responsive viewport meta tag');
-    assert.match(converted.code.html, /<img src="data:image\/png;base64,/,
-      'design-to-web conversion should preserve embedded image layers');
+    assert.match(converted.code.html, /<img\b[^>]*\bsrc="data:image\/png;base64,/,
+      'design-to-web conversion should preserve embedded image layers regardless of safe attribute ordering');
     assert.match(converted.code.html, /border-radius:50%/,
       'design-to-web conversion should preserve ellipse geometry');
     assert.match(converted.code.html, /addEventListener\("resize",fit/,
