@@ -104,6 +104,19 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const oversizedResult = await oversizedResponse.json();
     assert.equal(oversizedResult.error, 'payload_too_large');
 
+    // Anonymous workspaces must not be able to claim a deterministic ID that
+    // will later belong to a GitHub/Google OAuth user.
+    for (const provider of ['github', 'google']) {
+      const reservedWorkspaceResponse = await fetch(BASE_URL + '/api/workspace/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'ws_' + provider + '_123456789' })
+      });
+      assert.equal(reservedWorkspaceResponse.status, 400,
+        'Anonymous initialization must reject reserved ' + provider + ' user-workspace IDs');
+      assert.equal((await reservedWorkspaceResponse.json()).error, 'reserved_workspace_id');
+    }
+
     const initResponse = await fetch(BASE_URL + '/api/workspace/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
