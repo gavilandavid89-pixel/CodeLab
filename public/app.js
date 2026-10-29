@@ -2755,8 +2755,8 @@ async function captureDesignForAI() {
     const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
     const fontWeight = Math.max(100, Math.min(900, finite(el.weight, 400)));
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
-    return ({
-    order: index + 1,
+    return {
+      order: index + 1,
     id: el.id || null,
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
@@ -2769,7 +2769,8 @@ async function captureDesignForAI() {
       fontWeight,
       radius,
       textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
-    }
+      }
+    };
   });
   const context = {
     format: 'codelab-ai-design-capture',
