@@ -744,7 +744,7 @@ async function waitForPersistedProject(page, projectName) {
     allowWorkspaceValidationError = false;
     await page.evaluate(async () => { await window.persistWorkspace(); });
     await page.waitForFunction(() =>
-      !document.getElementById('dashSyncBadge')?.textContent.includes('Datos no válidos')
+      !document.getElementById('dashSyncBadge')?.textContent.includes('Sincronización pendiente')
     , null, { timeout: 5000 });
 
     await page.unroute('**/api/workspace/**');
