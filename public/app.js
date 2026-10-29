@@ -2396,6 +2396,8 @@ function renderDesignWorkspace() {
     const node = document.createElement('div');
     node.dataset.designId = el.id;
     node.className = 'absolute select-none cursor-move';
+    // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
+    node.style.touchAction = 'none';
     node.style.left = (Number(el.x) || 0) + 'px'; node.style.top = (Number(el.y) || 0) + 'px';
     node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
@@ -2473,10 +2475,12 @@ function bindDesignCanvasEvents() {
     const node = document.querySelector('[data-design-id="' + el.id + '"]');
     if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
   });
-  document.addEventListener('pointerup', () => {
+  const finishDesignDrag = () => {
     if (!designDragState) return;
     designDragState = null; renderDesignWorkspace(); saveProjectsToStorage();
-  });
+  };
+  document.addEventListener('pointerup', finishDesignDrag);
+  document.addEventListener('pointercancel', finishDesignDrag);
   document.getElementById('designCanvas')?.addEventListener('click', ev => {
     if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; renderDesignWorkspace(); }
   });
