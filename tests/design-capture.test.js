@@ -35,6 +35,15 @@ assert.doesNotMatch(safe, /<iframe\b/i, 'Embedded frames must be removed');
 assert.doesNotMatch(safe, /onclick\s*=/i, 'Inline event handlers must be removed');
 assert.doesNotMatch(safe, /javascript:/i, 'javascript: URLs must be neutralized');
 
+const captureDocument = capture.buildCaptureDocument({
+  viewport: 390,
+  html: '<!doctype html><html><head><title>Page</title><link rel="stylesheet" href="/theme.css"></head><body><main><h1>Real page</h1></main><script>window.evil = true;</script></body></html>',
+  css: 'main { color: purple; }'
+});
+assert.match(captureDocument, /<head>.*<title>Page<\/title>.*theme\.css.*<style>main \{ color: purple; \}<\/style>/s);
+assert.match(captureDocument, /<body><main><h1>Real page<\/h1><\/main><!-- JavaScript omitido durante la captura segura --><\/body>/);
+assert.doesNotMatch(captureDocument, /<html[^>]*>.*<body>.*<html/i, 'Full HTML documents must not be nested inside the body');
+
 const webContext = capture.buildWebCaptureContext({
   project: { id: 'p1', name: 'Landing Demo' },
   viewport: 390,
