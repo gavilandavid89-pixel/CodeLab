@@ -235,19 +235,28 @@
     };
   }
 
-  function loadSavedSettings() {
+  function workspaceSettingsStorageKey(credentials) {
+    const active = credentials || workspaceCredentials();
+    // OAuth workspaces have a stable account-bound ID. Keep their local visual
+    // systems separate; anonymous workspaces retain the legacy browser-local key.
+    return active && /^ws_(github|google)_/.test(active.id)
+      ? STORAGE_KEY + ':' + active.id
+      : STORAGE_KEY;
+  }
+
+  function loadSavedSettings(storageKey) {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(storageKey || workspaceSettingsStorageKey());
       return sanitizeSettings(saved ? JSON.parse(saved) : DEFAULTS);
     } catch (_) {
       return sanitizeSettings(DEFAULTS);
     }
   }
 
-  function saveLocalSettings(input) {
+  function saveLocalSettings(input, storageKey) {
     const s = sanitizeSettings(input);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      localStorage.setItem(storageKey || workspaceSettingsStorageKey(), JSON.stringify(s));
       return true;
     } catch (_) {
       return false;
@@ -271,8 +280,9 @@
 
   function saveSettings(input) {
     const s = sanitizeSettings(input);
-    if (!saveLocalSettings(s)) return false;
     const credentials = workspaceCredentials();
+    const localKey = workspaceSettingsStorageKey(credentials);
+    if (!saveLocalSettings(s, localKey)) return false;
     const sequence = ++workspaceSettingsSyncSequence;
     if (credentials && typeof fetch === 'function') {
       const url = workspaceDesignSystemUrl(credentials);
@@ -420,6 +430,13 @@
     async function syncSettingsFromWorkspace() {
       const credentials = workspaceCredentials();
       if (!credentials) return;
+      const localKey = workspaceSettingsStorageKey(credentials);
+      const isAccountWorkspace = /^ws_(github|google)_/.test(credentials.id);
+      if (isAccountWorkspace) {
+        // A legacy browser-wide setting has no trustworthy owner; never import it
+        // into an OAuth account's workspace.
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+      }
       const sequenceAtStart = workspaceSettingsSyncSequence;
       try {
         const response = await fetch(workspaceDesignSystemUrl(credentials), {
@@ -430,7 +447,7 @@
         const data = await response.json();
         // A user save made while GET was in flight wins over the older snapshot.
         if (sequenceAtStart !== workspaceSettingsSyncSequence) {
-          const latest = loadSavedSettings();
+          const latest = loadSavedSettings(localKey);
           const payload = JSON.stringify({ settings: latest });
           workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
             const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
@@ -445,13 +462,17 @@
         }
         if (data && data.settings) {
           settings = sanitizeSettings(data.settings);
-          saveLocalSettings(settings);
+          saveLocalSettings(settings, localKey);
           fillForm();
           renderAll();
           announce('Sistema visual recuperado desde tu workspace.');
           return;
         }
-        // Migrate local settings through the same serialized write queue.
+        // Initialize from this workspace's local copy, never from another
+        // OAuth account's legacy browser-wide settings.
+        settings = loadSavedSettings(localKey);
+        fillForm();
+        renderAll();
         const payload = JSON.stringify({ settings: settings });
         workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
           if (sequenceAtStart !== workspaceSettingsSyncSequence) return;
@@ -529,7 +550,7 @@
       if (button) button.addEventListener('click', () => showTab(tab));
     });
 
-    window.addEventListener('codelab-workspace-ready', syncSettingsFromWorkspace, { once: true });
+    window.addEventListener('codelab-workspace-ready', syncSettingsFromWorkspace);
     if (window.codelabWorkspaceReady) syncSettingsFromWorkspace();
 
     if (get('openDesignTools')) get('openDesignTools').addEventListener('click', open);
