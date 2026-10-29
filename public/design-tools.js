@@ -526,7 +526,7 @@
         renderAll();
         const payload = JSON.stringify({ settings: settings });
         workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
-          if (!isCurrentWorkspace(credentials) || sequenceAtStart !== workspaceSettingsSyncSequence) return;
+          if (!isCurrentWorkspace(credentials) || sequenceAtStart !== workspaceSettingsSyncSequence) return false;
           const saveResponse = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
             method: 'PUT',
             credentials: 'same-origin',
@@ -534,9 +534,16 @@
             body: payload
           });
           if (!saveResponse.ok) throw new Error('workspace_design_system_migration_failed');
+          // A workspace/account switch or newer local edit during the request
+          // means this response must not be presented as the current sync result.
+          return isCurrentWorkspace(credentials) && sequenceAtStart === workspaceSettingsSyncSequence;
         });
-        await workspaceSettingsSyncQueue;
-        announce('Sistema visual local sincronizado con tu workspace.');
+        const migrationSaved = await workspaceSettingsSyncQueue;
+        if (migrationSaved === true && isCurrentWorkspace(credentials) && sequenceAtStart === workspaceSettingsSyncSequence) {
+          announce('Sistema visual local sincronizado con tu workspace.');
+        } else {
+          announce('El workspace cambió durante la sincronización; se conserva la copia local y no se confirmó la sincronización.');
+        }
       } catch (_) {
         announce('No se pudo sincronizar el sistema visual; se conserva la copia local.');
       }
