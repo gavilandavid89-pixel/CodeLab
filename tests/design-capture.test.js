@@ -20,6 +20,12 @@ const design = {
 const mobile = capture.captureDesignSvg(design);
 assert.equal(mobile.width, 390);
 assert.equal(mobile.height, 900);
+assert.equal(capture.getCapturePixelCount(1280, 6000, 2), 30720000,
+  'Capture pixel budgeting should include both raster dimensions and scale');
+assert.equal(capture.getCapturePixelCount(1920, 6000, 4), 184320000,
+  'Capture pixel budgeting should expose oversized desktop captures before rasterization');
+assert.equal(capture.getCapturePixelCount(1920, 6000, 9), 11520000,
+  'Unsupported scales should fall back to a bounded scale');
 const tallFreeLayout = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [{ id: 'footer', type: 'text', text: 'Below fold', x: 12, y: 1200, width: 200, height: 48 }] } });
 assert.equal(tallFreeLayout.height, 1272, 'Free-layout captures must include elements below the initial 900px viewport');
 const oversizedAutoLayout = capture.captureDesignSvg({ design: { frame: 'mobile', layoutMode: 'auto', layoutDirection: 'column', layoutPadding: 20, layoutGap: 10, elements: Array.from({ length: 100 }, (_, i) => ({ id: 'auto-' + i, type: 'rectangle', width: 300, height: 100, background: '#ffffff' })) } });
