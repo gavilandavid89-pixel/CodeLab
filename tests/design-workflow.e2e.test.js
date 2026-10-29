@@ -96,6 +96,23 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(moved.left >= 120, 'drag should update the element x coordinate');
     assert.ok(moved.top >= 95, 'drag should update the element y coordinate');
 
+    // 4a. Snap-to-grid rounds the dragged layer to the configured grid size.
+    await page.selectOption('#designGridSize', '16');
+    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundSize), '16px 16px',
+      'visible grid spacing should match the selected grid size');
+    await page.click('#designSnapBtn');
+    const snapBefore = await element.boundingBox();
+    assert.ok(snapBefore, 'selected layer should be visible before snap drag');
+    await page.mouse.move(snapBefore.x + snapBefore.width / 2, snapBefore.y + snapBefore.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(snapBefore.x + snapBefore.width / 2 + 7, snapBefore.y + snapBefore.height / 2 + 9, { steps: 3 });
+    await page.mouse.up();
+    const snapped = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
+    assert.equal(snapped.left % 16, 0, 'snapped x coordinate should align to 16 px grid');
+    assert.equal(snapped.top % 16, 0, 'snapped y coordinate should align to 16 px grid');
+    await page.click('#designSnapBtn');
+    await element.click();
+
     // 4b. Keyboard nudging and duplication shortcuts operate on the selected layer.
     const beforeNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
     await page.keyboard.press('ArrowRight');
