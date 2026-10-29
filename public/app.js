@@ -2769,6 +2769,7 @@ function exportDesignHtml() {
   if (!p || !p.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
   const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
+    const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
     const text = el.type === 'rectangle' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
     const color = safeDesignExportColor(el.color, '#111827');
@@ -2783,7 +2784,7 @@ function exportDesignHtml() {
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     const style = 'position:absolute;left:'+x+'px;top:'+y+'px;width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     if (el.type === 'image' && imageSource) return '<img src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
+    return '<'+tag+(buttonHref?' href="'+escapeAttr(buttonHref)+'" target="_blank" rel="noopener noreferrer"':'')+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
   const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
@@ -2808,7 +2809,7 @@ function addDesignElement(type) {
   const defaults = {
     heading: { label: 'Título', text: 'Título de tu diseño', x: 80, y: 70, width: 560, height: 76, color: '#111827', background: 'transparent', fontSize: 42, weight: 700, radius: 0 },
     text: { label: 'Texto', text: 'Escribe aquí tu texto', x: 84, y: 165, width: 420, height: 64, color: '#475569', background: 'transparent', fontSize: 18, weight: 400, radius: 0 },
-    button: { label: 'Botón', text: 'Comenzar', x: 84, y: 250, width: 160, height: 48, color: '#ffffff', background: '#7c3aed', fontSize: 15, weight: 600, radius: 10 },
+    button: { label: 'Botón', text: 'Comenzar', x: 84, y: 250, width: 160, height: 48, color: '#ffffff', background: '#7c3aed', fontSize: 15, weight: 600, radius: 10, href: '' },
     rectangle: { label: 'Rectángulo', text: '', x: 100, y: 340, width: 240, height: 150, color: '#ffffff', background: '#dbeafe', fontSize: 16, weight: 400, radius: 16 },
     ellipse: { label: 'Elipse', text: '', x: 140, y: 340, width: 160, height: 160, color: '#ffffff', background: '#c4b5fd', fontSize: 16, weight: 400, radius: 9999 },
     image: { label: 'Imagen', text: '', x: 120, y: 420, width: 240, height: 160, color: '#111827', background: '#e2e8f0', fontSize: 16, weight: 400, radius: 8, src: '', alt: 'Imagen del diseño', objectFit: 'cover' }
@@ -2833,6 +2834,15 @@ function selectDesignElement(id, additive = false) {
     selectedDesignElementIds = id ? [id] : [];
   }
   renderDesignWorkspace();
+}
+function safeDesignLink(value) {
+  const source = String(value || '').trim();
+  if (!source || source.length > 2048) return '';
+  try {
+    const url = new URL(source);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
+  } catch (_) {}
+  return '';
 }
 function safeDesignImageSource(value) {
   const source = String(value || '').trim();
@@ -2969,14 +2979,17 @@ function renderDesignWorkspace() {
       node.appendChild(resizeHandle);
     }
     node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type); node.tabIndex = 0;
+    if (el.type === 'button' && safeDesignLink(el.href)) node.title = 'Alt + clic para probar navegación';
     node.addEventListener('click', ev => {
       ev.stopPropagation();
+      if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { window.open(safeDesignLink(el.href), '_blank', 'noopener,noreferrer'); return; }
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) selectDesignElement(el.id, true);
       else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
     });
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
+      if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
       // A plain drag acts on one layer; Shift/Ctrl/Meta-click is reserved for multi-selection.
       selectedDesignElementId = el.id;
       selectedDesignElementIds = [el.id];
@@ -3002,6 +3015,7 @@ function renderDesignWorkspace() {
     const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
     return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
   };
+  const buttonControls = el.type === 'button' ? field('Destino del botón (HTTP/S)','href','url','placeholder="https://ejemplo.com"') : '';
   const imageControls = el.type === 'image'
     ? '<label class="block space-y-1"><span class="text-slate-400">Archivo (máx. 2 MB)</span><input id="designImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="importDesignImage(this.files && this.files[0])" class="w-full text-[11px] text-slate-300"></label>' +
       field('URL de imagen','src','url','placeholder="URL HTTP(S) o sube un archivo"') + field('Texto alternativo','alt','text') +
@@ -3010,7 +3024,7 @@ function renderDesignWorkspace() {
   const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
   props.innerHTML = '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
-    field('Nombre de capa','label','text') + imageControls +
+    field('Nombre de capa','label','text') + buttonControls + imageControls +
     '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
     (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
@@ -3021,6 +3035,7 @@ function updateDesignProperty(key, value) {
   const el = selectedDesignElement(); if (!el) return;
   if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
   else if (key === 'src') el.src = safeDesignImageSource(value);
+  else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
@@ -3155,8 +3170,9 @@ function convertDesignToWeb() {
   const elements = p.design.elements.map(el => {
     const tag = el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
     const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
+    const href = el.type === 'button' ? safeDesignLink(el.href) : '';
     const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
-    return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
+    return '<'+tag+(href?' href="'+escapeAttr(href)+'" target="_blank" rel="noopener noreferrer"':'')+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
   const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;overflow-x:auto}.design-frame{position:relative;width:'+width+'px;min-height:900px;background:'+(p.design.background||'#fff')+';margin:0 auto}@media(max-width:'+width+'px){.design-frame{transform-origin:top left;transform:scale(calc(100vw / '+width+'));margin-bottom:calc(900px * (100vw / '+width+' - 1))}}</style></head><body><main class="design-frame">'+elements+'</main></body></html>';
