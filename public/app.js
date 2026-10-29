@@ -2912,10 +2912,13 @@ function renderDesignWorkspace() {
     props.innerHTML = '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
     updateDesignHistoryButtons(); return;
   }
-  const field = (label, key, type='number', extra='') => '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(el[key] == null ? '' : String(el[key])) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  const field = (label, key, type='number', extra='') => {
+    const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
+    return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  };
   const imageControls = el.type === 'image'
     ? '<label class="block space-y-1"><span class="text-slate-400">Archivo (máx. 2 MB)</span><input id="designImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="importDesignImage(this.files && this.files[0])" class="w-full text-[11px] text-slate-300"></label>' +
-      field('URL de imagen','src','url') + field('Texto alternativo','alt','text') +
+      field('URL de imagen','src','url','placeholder="URL HTTP(S) o sube un archivo"') + field('Texto alternativo','alt','text') +
       '<label class="block space-y-1"><span class="text-slate-400">Ajuste de imagen</span><select id="designProperty-objectFit" onchange="updateDesignProperty(\'objectFit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="cover" '+((el.objectFit||'cover')==='cover'?'selected':'')+'>Cubrir</option><option value="contain" '+(el.objectFit==='contain'?'selected':'')+'>Contener</option><option value="fill" '+(el.objectFit==='fill'?'selected':'')+'>Estirar</option></select></label>'
     : '';
   const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
