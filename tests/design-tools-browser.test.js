@@ -61,6 +61,19 @@ function extractDivById(html, id) {
     await page.waitForFunction(() => document.getElementById('designToolsStatus')?.textContent.includes('sincronizado con tu workspace'), null, { timeout: 5000 });
     await page.click('#openDesignTools');
     await page.waitForSelector('#designToolsModal:not(.hidden)');
+    const designFocusEnds = await page.evaluate(() => {
+      const modal = document.getElementById('designToolsModal');
+      const focusable = Array.from(modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),iframe:not([tabindex="-1"]),[tabindex]:not([tabindex="-1"])'))
+        .filter(element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden');
+      focusable[0].focus();
+      return { first: focusable[0].id, last: focusable[focusable.length - 1].id };
+    });
+    assert.ok(designFocusEnds.first && designFocusEnds.last, 'Design tools should expose visible focusable controls');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), designFocusEnds.last, 'Shift+Tab from the first control should wrap to the last control');
+    await page.locator('#' + designFocusEnds.last).focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), designFocusEnds.first, 'Tab from the last control should wrap to the first control');
     await page.evaluate(() => {
       const input = document.getElementById('colorPrimary');
       input.value = '#ff0000';

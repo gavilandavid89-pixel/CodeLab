@@ -31,6 +31,19 @@ function extractDivById(html, id) {
     await page.addScriptTag({ path: path.resolve('public/component-library.js') });
     await page.click('#openComponentLibrary');
     await page.waitForSelector('#componentLibraryModal:not(.hidden)');
+    const componentFocusEnds = await page.evaluate(() => {
+      const modal = document.getElementById('componentLibraryModal');
+      const focusable = Array.from(modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),iframe:not([tabindex="-1"]),[tabindex]:not([tabindex="-1"])'))
+        .filter(element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden');
+      focusable[0].focus();
+      return { first: focusable[0].id, last: focusable[focusable.length - 1].id };
+    });
+    assert.ok(componentFocusEnds.first && componentFocusEnds.last, 'Component library should expose visible focusable controls');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), componentFocusEnds.last, 'Shift+Tab from the first control should wrap to the last control');
+    await page.locator('#' + componentFocusEnds.last).focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), componentFocusEnds.first, 'Tab from the last control should wrap to the first control');
     assert.equal(await page.locator('[data-component-id]').count(), 8);
     await page.selectOption('#componentLibraryCategory', 'Tarjetas');
     assert.equal(await page.locator('[data-component-id]').count(), 2);

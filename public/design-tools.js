@@ -541,6 +541,19 @@
       });
     }
 
+    function trapModalFocus(event) {
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),iframe:not([tabindex="-1"]),[tabindex]:not([tabindex="-1"])'))
+        .filter(element => element.getClientRects().length > 0 && window.getComputedStyle(element).visibility !== 'hidden');
+      if (!focusable.length) { event.preventDefault(); return; }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    }
+
     function open() {
       fillForm();
       renderAll();
@@ -582,6 +595,7 @@
     if (get('closeDesignTools')) get('closeDesignTools').addEventListener('click', close);
     if (get('designToolsCloseFooter')) get('designToolsCloseFooter').addEventListener('click', close);
     modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    modal.addEventListener('keydown', trapModalFocus);
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.classList.contains('hidden')) close(); });
 
     if (get('runAccessibilityAudit')) get('runAccessibilityAudit').addEventListener('click', () => {
