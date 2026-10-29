@@ -4242,3 +4242,144 @@ function exportDesignProjectJson() {
   showToast('Respaldo JSON del proyecto exportado.');
 }
 
+async function importDesignProjectJson(file) {
+  if (!file) return;
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de importar.', 'warn');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('El respaldo supera el límite de 5 MB.', 'warn');
+    return;
+  }
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de importar.', 'warn');
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch (_) {
+    showToast('El archivo no contiene un JSON válido.', 'error');
+    return;
+  }
+  const source = payload && payload.format === 'codelab-design-project' &&
+    payload.version === 1 && payload.project && typeof payload.project === 'object' &&
+    !Array.isArray(payload.project) ? payload.project : null;
+  const sourceDesign = source && source.design;
+  if (!source || source.type !== 'design' || !sourceDesign ||
+      typeof sourceDesign !== 'object' || Array.isArray(sourceDesign) ||
+      !Array.isArray(sourceDesign.elements)) {
+    showToast('El archivo no es un respaldo de diseño CodeLab compatible.', 'error');
+    return;
+  }
+  if (sourceDesign.elements.length > MAX_DESIGN_ELEMENTS) {
+    showToast('El respaldo supera el límite de ' + MAX_DESIGN_ELEMENTS + ' capas.', 'warn');
+    return;
+  }
+  const code = normalizeCode(source.code);
+  if (['html','css','js'].some(key => code[key].length > 500000)) {
+    showToast('El código incluido supera el límite de 500000 caracteres por archivo.', 'warn');
+    return;
+  }
+  const allowedTypes = new Set(['heading','text','button','rectangle','ellipse','image']);
+  const oldToNewId = new Map();
+  const seenIds = new Set();
+  const makeId = () => 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2));
+  const finite = (value, fallback, min, max) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  };
+  const color = (value, fallback) => {
+    const text = String(value || '');
+    return /^#[0-9a-f]{3,8}$/i.test(text) || text === 'transparent' ? text : fallback;
+  };
+  const elements = [];
+  for (const raw of sourceDesign.elements) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !allowedTypes.has(raw.type)) {
+      showToast('El respaldo contiene una capa inválida o no compatible. No se importó nada.', 'error');
+      return;
+    }
+    const oldId = typeof raw.id === 'string' ? raw.id : '';
+    const id = makeId();
+    if (oldId && !oldToNewId.has(oldId)) oldToNewId.set(oldId, id);
+    seenIds.add(id);
+    let src = '';
+    if (raw.type === 'image' && raw.src) {
+      src = safeDesignImageSource(raw.src);
+      if (!src) {
+        showToast('El respaldo contiene una imagen no segura o demasiado grande. No se importó nada.', 'error');
+        return;
+      }
+    }
+    const hrefRaw = typeof raw.href === 'string' ? raw.href.trim() : '';
+    let href = safeDesignLink(hrefRaw);
+    const internal = /^#layer-([a-z0-9_-]{1,120})$/i.exec(hrefRaw);
+    if (internal) href = '';
+    elements.push({
+      id, type: raw.type,
+      label: String(raw.label || raw.type).slice(0, 300),
+      text: String(raw.text || '').slice(0, 10000),
+      x: finite(raw.x, 0, -6000, 6000),
+      y: finite(raw.y, 0, -6000, 6000),
+      width: finite(raw.width, 120, 20, 4000),
+      height: finite(raw.height, 48, 20, 4000),
+      color: color(raw.color, '#111827'),
+      background: color(raw.background, 'transparent'),
+      fontSize: finite(raw.fontSize, 16, 8, 200),
+      weight: finite(raw.weight, 400, 100, 900),
+      radius: finite(raw.radius, 0, 0, 500),
+      textAlign: ['left','center','right'].includes(raw.textAlign) ? raw.textAlign : 'left',
+      ...(raw.type === 'button' ? { href } : {}),
+      ...(raw.type === 'image' ? {
+        src, alt: String(raw.alt || raw.label || 'Imagen del diseño').slice(0, 300),
+        objectFit: ['contain','cover','fill'].includes(raw.objectFit) ? raw.objectFit : 'cover'
+      } : {})
+    });
+  }
+  // Restore internal prototype links only after all imported layer IDs are known.
+  sourceDesign.elements.forEach((raw, index) => {
+    const match = /^#layer-([a-z0-9_-]{1,120})$/i.exec(String(raw && raw.href || '').trim());
+    if (match && elements[index] && elements[index].type === 'button') {
+      const targetId = oldToNewId.get(match[1]);
+      if (targetId) elements[index].href = '#layer-' + targetId.replace(/[^a-z0-9_-]/gi, '').slice(0, 120);
+    }
+  });
+  creatingProjectInFlight = true;
+  const sourceName = String(source.name || 'Diseño').trim() || 'Diseño';
+  const newProject = {
+    id: 'proj_' + crypto.randomUUID(),
+    name: (sourceName.slice(0, 200 - ' (Importado)'.length) + ' (Importado)'),
+    type: 'design',
+    updatedAt: new Date().toISOString(),
+    code,
+    design: {
+      elements,
+      frame: ['desktop','tablet','mobile'].includes(sourceDesign.frame) ? sourceDesign.frame : 'desktop',
+      background: color(sourceDesign.background, '#ffffff'),
+      grid: sourceDesign.grid !== false,
+      gridSize: [4,8,16,32].includes(Number(sourceDesign.gridSize)) ? Number(sourceDesign.gridSize) : 8,
+      snapToGrid: !!sourceDesign.snapToGrid,
+      layoutMode: ['free','auto'].includes(sourceDesign.layoutMode) ? sourceDesign.layoutMode : 'free',
+      layoutDirection: ['row','column'].includes(sourceDesign.layoutDirection) ? sourceDesign.layoutDirection : 'row',
+      layoutGap: finite(sourceDesign.layoutGap, 16, 0, 200),
+      layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200)
+    }
+  };
+  projects.unshift(newProject);
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  let localContainsProject = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    localContainsProject = Array.isArray(snapshot) && snapshot.some(item => item && item.id === newProject.id);
+  } catch (_) {}
+  creatingProjectInFlight = false;
+  renderProjectsList();
+  openProject(newProject.id);
+  if (serverSaved) showToast('Respaldo importado como proyecto nuevo y sincronizado.');
+  else if (localSaved && localContainsProject) showToast('Respaldo importado y guardado localmente; sincronización pendiente.', 'warn');
+  else showToast('El respaldo se abrió, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
+}
+
