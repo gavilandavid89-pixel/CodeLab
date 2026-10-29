@@ -2760,7 +2760,8 @@ function addDesignElement(type) {
     heading: { label: 'Título', text: 'Título de tu diseño', x: 80, y: 70, width: 560, height: 76, color: '#111827', background: 'transparent', fontSize: 42, weight: 700, radius: 0 },
     text: { label: 'Texto', text: 'Escribe aquí tu texto', x: 84, y: 165, width: 420, height: 64, color: '#475569', background: 'transparent', fontSize: 18, weight: 400, radius: 0 },
     button: { label: 'Botón', text: 'Comenzar', x: 84, y: 250, width: 160, height: 48, color: '#ffffff', background: '#7c3aed', fontSize: 15, weight: 600, radius: 10 },
-    rectangle: { label: 'Rectángulo', text: '', x: 100, y: 340, width: 240, height: 150, color: '#ffffff', background: '#dbeafe', fontSize: 16, weight: 400, radius: 16 }
+    rectangle: { label: 'Rectángulo', text: '', x: 100, y: 340, width: 240, height: 150, color: '#ffffff', background: '#dbeafe', fontSize: 16, weight: 400, radius: 16 },
+    image: { label: 'Imagen', text: '', x: 120, y: 420, width: 240, height: 160, color: '#111827', background: '#e2e8f0', fontSize: 16, weight: 400, radius: 8, src: '', alt: 'Imagen del diseño', objectFit: 'cover' }
   };
   const d = defaults[type] || defaults.text;
   const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), type, ...d };
@@ -2773,6 +2774,55 @@ function selectedDesignElement() {
 }
 function selectDesignElement(id) {
   selectedDesignElementId = id; renderDesignWorkspace();
+}
+function safeDesignImageSource(value) {
+  const source = String(value || '').trim();
+  if (!source || source.length > 2800000) return '';
+  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+  try {
+    const url = new URL(source, window.location.href);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
+  } catch (_) {}
+  return '';
+}
+function renderDesignImageContent(node, el) {
+  node.replaceChildren();
+  const src = safeDesignImageSource(el.src);
+  if (src) {
+    const image = document.createElement('img');
+    image.src = src;
+    image.alt = String(el.alt || el.label || 'Imagen del diseño').slice(0, 300);
+    image.draggable = false;
+    image.style.width = '100%'; image.style.height = '100%';
+    image.style.objectFit = ['contain','cover','fill'].includes(el.objectFit) ? el.objectFit : 'cover';
+    image.style.display = 'block';
+    node.appendChild(image);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.textContent = 'Añade una URL o archivo de imagen';
+    placeholder.style.cssText = 'display:flex;width:100%;height:100%;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:12px;color:#475569;background:#e2e8f0;';
+    node.appendChild(placeholder);
+  }
+}
+function importDesignImage(file) {
+  const project = activeDesignProject(), element = selectedDesignElement();
+  if (!project || !element || element.type !== 'image' || !file) return;
+  const allowedTypes = ['image/png','image/jpeg','image/webp','image/gif'];
+  if (!allowedTypes.includes(file.type)) { showToast('Usa una imagen PNG, JPEG, WebP o GIF.', 'warn'); return; }
+  if (file.size > 2 * 1024 * 1024) { showToast('La imagen supera el límite de 2 MB. Reduce su tamaño e inténtalo de nuevo.', 'warn'); return; }
+  const reader = new FileReader();
+  reader.onerror = () => showToast('No se pudo leer el archivo de imagen.', 'warn');
+  reader.onload = () => {
+    const src = safeDesignImageSource(reader.result);
+    if (!src) { showToast('El archivo no produjo una imagen válida.', 'warn'); return; }
+    recordDesignHistory();
+    element.src = src;
+    if (!element.alt || element.alt === 'Imagen del diseño') element.alt = file.name.replace(/\.[^.]+$/, '').slice(0, 300);
+    project.updatedAt = new Date().toISOString();
+    renderDesignWorkspace(); saveProjectsToStorage();
+    showToast('Imagen añadida al diseño.');
+  };
+  reader.readAsDataURL(file);
 }
 function renderDesignWorkspace() {
   const p = activeDesignProject(); if (!p) return;
@@ -2819,12 +2869,13 @@ function renderDesignWorkspace() {
     node.style.display = 'flex'; node.style.alignItems = 'center';
     node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    node.style.padding = el.type === 'rectangle' ? '0' : '4px';
+    node.style.padding = (el.type === 'rectangle' || el.type === 'image') ? '0' : '4px';
     node.style.whiteSpace = 'pre-wrap'; node.style.overflow = 'hidden';
     node.style.outline = el.id === selectedDesignElementId ? '2px solid #8b5cf6' : '1px solid transparent';
     node.style.outlineOffset = '2px';
     if (el.type === 'heading') node.style.lineHeight = '1.1';
-    node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    if (el.type === 'image') renderDesignImageContent(node, el);
+    else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
     node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type); node.tabIndex = 0;
     node.addEventListener('click', ev => { ev.stopPropagation(); if (selectedDesignElementId !== el.id) { selectedDesignElementId = el.id; renderDesignWorkspace(); } });
     node.addEventListener('pointerdown', ev => {
@@ -2840,7 +2891,7 @@ function renderDesignWorkspace() {
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', () => selectDesignElement(button.getAttribute('data-design-select'))));
   const el = selectedDesignElement();
@@ -2848,25 +2899,33 @@ function renderDesignWorkspace() {
     props.innerHTML = '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
     updateDesignHistoryButtons(); return;
   }
-  const field = (label, key, type='number', extra='') => '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input ' + extra + ' type="' + type + '" value="' + escapeAttr(el[key] == null ? '' : String(el[key])) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  const field = (label, key, type='number', extra='') => '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(el[key] == null ? '' : String(el[key])) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  const imageControls = el.type === 'image'
+    ? '<label class="block space-y-1"><span class="text-slate-400">Archivo (máx. 2 MB)</span><input id="designImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="importDesignImage(this.files && this.files[0])" class="w-full text-[11px] text-slate-300"></label>' +
+      field('URL de imagen','src','url') + field('Texto alternativo','alt','text') +
+      '<label class="block space-y-1"><span class="text-slate-400">Ajuste de imagen</span><select id="designProperty-objectFit" onchange="updateDesignProperty(\'objectFit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="cover" '+((el.objectFit||'cover')==='cover'?'selected':'')+'>Cubrir</option><option value="contain" '+(el.objectFit==='contain'?'selected':'')+'>Contener</option><option value="fill" '+(el.objectFit==='fill'?'selected':'')+'>Estirar</option></select></label>'
+    : '';
   props.innerHTML = '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
-    (el.type !== 'rectangle' ? field('Contenido','text','text') : '') +
-    field('Nombre de capa','label','text') +
+    (el.type !== 'rectangle' && el.type !== 'image' ? field('Contenido','text','text') : '') +
+    field('Nombre de capa','label','text') + imageControls +
     '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
-    field('Tamaño de texto','fontSize') + field('Redondeado','radius') + (el.type !== 'rectangle' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '');
+    (el.type !== 'image' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '');
   updateDesignHistoryButtons();
 }
 function updateDesignProperty(key, value) {
   const el = selectedDesignElement(); if (!el) return;
-  if (key === 'text' || key === 'label') el[key] = value;
+  if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
+  else if (key === 'src') el.src = safeDesignImageSource(value);
+  else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
   const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
-  const node = document.querySelector('[data-design-id="' + el.id + '"]');
+  const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
   if (node) {
-    node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    if (el.type === 'image') renderDesignImageContent(node, el);
+    else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
     node.style.left = (Number(el.x)||0)+'px'; node.style.top = (Number(el.y)||0)+'px';
     node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
