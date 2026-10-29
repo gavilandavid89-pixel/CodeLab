@@ -25,6 +25,7 @@ let pendingLocalImportProjects = null;
 let localProjectsSnapshotRecoveryFailed = false;
 let localProjectsSnapshotWriteBlocked = false;
 let localSnapshotBlockedWarningShown = false;
+let localMapRecoveryWarningShown = false;
 let generatedDefaultProjectId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
@@ -152,6 +153,16 @@ function preserveInvalidLocalMapSnapshot(raw, recoveryKey, reason) {
     version: 1, savedAt: entry.savedAt, reason: entry.reason, raw: entry.raw
   }));
 }
+function preserveMalformedLocalMapSnapshot(raw, recoveryKey, reason) {
+  const preserved = preserveInvalidLocalMapSnapshot(raw, recoveryKey, reason);
+  if (!preserved && !localMapRecoveryWarningShown && typeof showToast === 'function') {
+    localMapRecoveryWarningShown = true;
+    showToast('CodeLab detectó datos locales dañados y no pudo crear una copia de recuperación. No se sobrescribirán esos datos; mantén la sesión abierta y el servidor conectado.', 'warn');
+  } else if (preserved) {
+    localMapRecoveryWarningShown = false;
+  }
+  return preserved;
+}
 function isValidDeletedProjectMapSnapshot(raw) {
   try {
     const stored = JSON.parse(raw);
@@ -176,7 +187,7 @@ function isValidPendingLocalImportSnapshot(raw) {
 function readDeletedProjectMap() {
   const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
   if (raw && !isValidDeletedProjectMapSnapshot(raw)) {
-    preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map');
+    preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map');
   }
   try {
     const stored = JSON.parse(raw || 'null');
@@ -200,7 +211,7 @@ function recordDeletedProjectId(id) {
   if (!workspaceId || !id) return false;
   const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
   if (raw && !isValidDeletedProjectMapSnapshot(raw) &&
-      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
     return false;
   }
   const byWorkspace = readDeletedProjectMap();
@@ -212,7 +223,7 @@ function recordDeletedProjectId(id) {
 function clearDeletedProjectIds(forWorkspaceId) {
   const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
   if (raw && !isValidDeletedProjectMapSnapshot(raw) &&
-      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
     return false;
   }
   const target = forWorkspaceId || workspaceId;
@@ -228,7 +239,7 @@ function currentRealUserKey() {
 function readPendingLocalImportMap() {
   const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
   if (raw && !isValidPendingLocalImportSnapshot(raw)) {
-    preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map');
+    preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map');
   }
   try {
     const saved = JSON.parse(raw || 'null');
@@ -247,7 +258,7 @@ function storePendingLocalImport(localProjects) {
   const nextProjects = Array.isArray(localProjects) ? localProjects : [];
   const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
   if (raw && !isValidPendingLocalImportSnapshot(raw) &&
-      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
     pendingLocalImportProjects = nextProjects;
     return false;
   }
@@ -279,7 +290,7 @@ function restorePendingLocalImport() {
 function clearPendingLocalImport() {
   const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
   if (raw && !isValidPendingLocalImportSnapshot(raw) &&
-      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
     return false;
   }
   const userKey = currentRealUserKey();
