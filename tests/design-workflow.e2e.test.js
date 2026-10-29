@@ -161,14 +161,14 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 11);
     assert.ok((await page.locator('#designCanvas').innerText()).includes('Panel de control'),
       'dashboard template should populate a complete starter layout');
-    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), '#f8fafc');
+    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), 'rgb(248, 250, 252)');
     await page.click('#designUndoBtn');
     await page.waitForFunction(() => {
       const nodes = Array.from(document.querySelectorAll('#designCanvas [data-design-id]'));
       return nodes.length === 2 && nodes.some(node => node.innerText === 'Prueba integral CodeLab') &&
         !!document.querySelector('#designCanvas [data-design-id] img[alt="E2E sample image"]');
     });
-    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), '#ffffff',
+    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), 'rgb(255, 255, 255)',
       'undo should restore the original background as well as the original layers');
 
     // 6. Exercise responsive frame presets and mobile overflow behavior.
