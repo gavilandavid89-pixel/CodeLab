@@ -157,7 +157,7 @@
       project: String(project.name || 'Página sin título'),
       projectId: project.id || null,
       capturedAt: new Date().toISOString(),
-      viewport: { width: viewport, height: Math.min(Math.max(Number(input.height) || 900, 320), 6000), scale: scale },
+      viewport: { width: viewport, height: Math.min(Math.max(Number(input.height) || 900, 320), 6000), scale: scale, pixelWidth: viewport * scale, pixelHeight: Math.min(Math.max(Number(input.height) || 900, 320), 6000) * scale },
       page: {
         title: title.replace(/<[^>]+>/g, '').trim().slice(0, 300),
         description: String(description).slice(0, 500),
@@ -207,6 +207,38 @@
     return window.html2canvas;
   }
 
+  async function waitForCaptureAssets(doc, timeoutMs) {
+    const images = Array.from(doc && doc.images ? doc.images : []);
+    images.forEach(function (img) { img.loading = 'eager'; });
+    const fontTask = doc && doc.fonts && doc.fonts.ready
+      ? Promise.resolve(doc.fonts.ready).catch(function () {})
+      : Promise.resolve();
+    const imageTasks = images.map(function (img) {
+      function decode() {
+        return typeof img.decode === 'function' ? img.decode().catch(function () {}) : Promise.resolve();
+      }
+      if (img.complete) return img.naturalWidth > 0 ? decode() : Promise.resolve();
+      return new Promise(function (resolve) {
+        img.addEventListener('load', function () { decode().then(resolve); }, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    });
+    let timer;
+    const timeout = new Promise(function (resolve) {
+      timer = setTimeout(function () { resolve(false); }, Math.max(250, Number(timeoutMs) || 5000));
+    });
+    const allReady = Promise.all([fontTask].concat(imageTasks)).then(function () { return true; });
+    const completed = await Promise.race([allReady, timeout]);
+    clearTimeout(timer);
+    return {
+      fontsReady: !doc || !doc.fonts || doc.fonts.status === 'loaded',
+      imagesTotal: images.length,
+      imagesLoaded: images.filter(function (img) { return img.complete && img.naturalWidth > 0; }).length,
+      imagesFailed: images.filter(function (img) { return img.complete && img.naturalWidth === 0; }).length,
+      timedOut: !completed
+    };
+  }
+
   function getProjectCode(project) {
     const html = typeof window.getEditorValue === 'function' ? window.getEditorValue('html') : project.code && project.code.html;
     const css = typeof window.getEditorValue === 'function' ? window.getEditorValue('css') : project.code && project.code.css;
@@ -250,6 +282,8 @@
       const height = Math.min(6000, Math.max(900, body.scrollHeight, root.scrollHeight, body.offsetHeight, root.offsetHeight));
       iframe.style.height = height + 'px';
       context.viewport.height = height;
+      context.viewport.pixelWidth = viewport * scale;
+      context.viewport.pixelHeight = height * scale;
       const headings = Array.from(captureDoc.querySelectorAll('h1,h2,h3,h4,h5,h6')).slice(0, 80).map(function (node) {
         return { tag: node.tagName.toLowerCase(), text: (node.innerText || node.textContent || '').trim().slice(0, 300) };
       });
@@ -265,8 +299,10 @@
       };
       context.page.javascriptIncludedInScreenshot = false;
       context.page.screenshotNote += ' Se eliminaron scripts, iframes y objetos incrustados y se neutralizaron manejadores inline durante la captura.';
+      const assetStatus = await waitForCaptureAssets(captureDoc, 6000);
+      context.renderedPage.assetStatus = assetStatus;
       const html2canvas = await loadHtml2Canvas();
-      await new Promise(function (resolve) { setTimeout(resolve, 250); });
+      await new Promise(function (resolve) { setTimeout(resolve, 50); });
       const pixelCount = viewport * height * scale * scale;
       if (pixelCount > 32000000) {
         throw new Error('La captura a ' + scale + '× ocuparía demasiada memoria. Elige una escala menor o un ancho de dispositivo más pequeño.');
@@ -274,13 +310,20 @@
       const canvas = await html2canvas(root, {
         backgroundColor: '#ffffff',
         scale: scale,
+        imageTimeout: 10000,
         useCORS: true,
         allowTaint: false,
         logging: false,
         width: viewport,
         windowWidth: viewport,
         height: height,
-        windowHeight: Math.min(height, 6000),
+        windowHeight: height,
+        onclone: function (clonedDocument) {
+          const style = clonedDocument.createElement('style');
+          style.setAttribute('data-codelab-capture-quality', 'true');
+          style.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;}';
+          (clonedDocument.head || clonedDocument.documentElement).appendChild(style);
+        },
         scrollX: 0,
         scrollY: 0
       });
@@ -369,6 +412,7 @@
     sanitizeForCapture: sanitizeForCapture,
     buildWebCaptureContext: buildWebCaptureContext,
     buildCaptureDocument: buildCaptureDocument,
+    waitForCaptureAssets: waitForCaptureAssets,
     captureDesignForAI: captureDesignForAI,
     captureWebForAI: captureWebForAI,
     installWebCaptureControls: installWebCaptureControls
