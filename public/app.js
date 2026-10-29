@@ -2496,8 +2496,8 @@ function activeDesignProject() {
   if (p.design.grid == null) p.design.grid = true;
   if (!['free','auto'].includes(p.design.layoutMode)) p.design.layoutMode = 'free';
   if (!['row','column'].includes(p.design.layoutDirection)) p.design.layoutDirection = 'row';
-  p.design.layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 16));
-  p.design.layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 24));
+  p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
+  p.design.layoutPadding = Number.isFinite(Number(p.design.layoutPadding)) ? Math.max(0, Math.min(200, Number(p.design.layoutPadding))) : 24;
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
   return p;
 }
