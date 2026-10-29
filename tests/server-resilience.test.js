@@ -96,6 +96,14 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     });
     assert.equal(initResponse.status, 200);
     const workspace = await initResponse.json();
+    const nullWorkspaceUpdate = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: 'null'
+    });
+    assert.equal(nullWorkspaceUpdate.status, 400,
+      'Null workspace updates should be rejected as invalid input, not crash into HTTP 500');
+    assert.equal((await nullWorkspaceUpdate.json()).error, 'invalid_workspace');
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
