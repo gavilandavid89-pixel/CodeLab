@@ -21,7 +21,7 @@ async function setCode(page, lang, value) {
     await editor.waitFor({ state: 'visible', timeout: 15000 });
     await editor.click({ position: { x: 80, y: 10 } });
     await page.keyboard.press('Control+A');
-    await page.keyboard.insertText(value);
+    await page.keyboard.type(value);
   }
   await page.waitForFunction(({ lang, value }) => getEditorValue(lang).trim() === value.trim(),
     { lang, value }, { timeout: 10000 });
