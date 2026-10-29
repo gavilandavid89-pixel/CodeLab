@@ -1193,7 +1193,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Workspace-scoped design-system settings, kept separate from project payloads.
-      const designSystemMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/design-system$/);
+      const designSystemMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/design-system$/);
       if (designSystemMatch && (req.method === 'GET' || req.method === 'PUT')) {
         const id = safeId(designSystemMatch[1]);
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
