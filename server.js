@@ -143,8 +143,13 @@ function checkRateLimit(ip) {
 }
 setInterval(() => {
   const now = Date.now();
+  // Both limiters are keyed by client IP. Expire stale entries in both maps so
+  // long-running servers do not retain every IP that has ever called the API.
   for (const [ip, entry] of rateMap) {
     if (now - entry.start > RATE_WINDOW_MS * 2) rateMap.delete(ip);
+  }
+  for (const [ip, entry] of aiRateMap) {
+    if (now - entry.start > RATE_WINDOW_MS * 2) aiRateMap.delete(ip);
   }
 }, 60 * 1000).unref();
 
