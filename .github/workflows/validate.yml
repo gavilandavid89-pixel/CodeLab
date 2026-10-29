@@ -23,6 +23,9 @@ jobs:
           node --check public/capture.js
           node --check public/design-tools.js
           node --check public/component-library.js
+          node --check tests/server-resilience.test.js
+      - name: Test server resilience with malformed cookies
+        run: node tests/server-resilience.test.js
       - name: Test AI-ready design capture export
         run: node tests/design-capture.test.js
       - name: Test design system tokens and contrast
