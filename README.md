@@ -121,6 +121,8 @@ El panel de propiedades también permite **enviar capas detrás o traerlas al fr
 
 El lienzo también admite capas de imagen: subir PNG/JPEG/WebP/GIF de hasta **2 MB** o usar una URL HTTP(S), editar el texto alternativo y elegir si la imagen se cubre, contiene o estira. Las imágenes se guardan en el proyecto y se incluyen en las exportaciones HTML/SVG y en la captura visual para IA; el JSON de contexto describe la imagen sin duplicar el payload base64.
 
+También puedes añadir **elipses y círculos**. La forma se mantiene al exportar a SVG y HTML, y forma parte de la captura para IA.
+
 Incluye plantillas visuales para **landing de producto**, **panel de control** y **portfolio**. Si ya hay capas, el editor pide confirmación antes de reemplazarlas; la acción queda en el historial para poder deshacerla.
 
 ## Capturas para IA
