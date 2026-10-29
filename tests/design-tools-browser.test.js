@@ -125,6 +125,7 @@ function extractDivById(html, id) {
     await page.locator('#designSystemJsonFile').setInputFiles({
       name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'other', version: 1 }))
     });
+    await page.waitForFunction(() => /no es un sistema visual CodeLab compatible/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 5000 });
     assert.match(await page.locator('#designToolsStatus').innerText(), /no es un sistema visual CodeLab compatible/i);
     assert.equal(await page.locator('#colorPrimary').inputValue(), '#123456', 'invalid import must not overwrite the current system');
     await page.click('#designToolsTab-audit');
