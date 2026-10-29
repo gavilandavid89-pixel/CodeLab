@@ -2482,6 +2482,7 @@ function setupKeyboardShortcuts() {
 
 /* ---------- CodeLab visual design workspace ---------- */
 let selectedDesignElementId = null;
+let selectedDesignElementIds = [];
 let designUndoStack = [];
 let designRedoStack = [];
 let designDragState = null;
@@ -2585,6 +2586,28 @@ function setDesignBackground(color) {
   recordDesignHistory(); p.design.background = color;
   renderDesignWorkspace(); saveProjectsToStorage();
 }
+function distributeDesignElements(axis = 'horizontal') {
+  const p = activeDesignProject();
+  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
+  recordDesignHistory();
+  const horizontal = axis !== 'vertical';
+  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
+  const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
+  const last = ordered[ordered.length - 1];
+  const end = (Number(horizontal ? last.x : last.y) || 0) + Math.max(20, Number(horizontal ? last.width : last.height) || (horizontal ? 120 : 48));
+  const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
+  const gap = (end - start - totalSize) / (ordered.length - 1);
+  if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
+  let cursor = start;
+  for (const el of ordered) {
+    if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
+    cursor += Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)) + gap;
+  }
+  renderDesignWorkspace(); saveProjectsToStorage();
+  showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
+}
+
 function alignDesignElement(mode = 'center-x') {
   const p = activeDesignProject(), el = selectedDesignElement();
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
@@ -2792,15 +2815,24 @@ function addDesignElement(type) {
   };
   const d = defaults[type] || defaults.text;
   const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), type, ...d };
-  p.design.elements.push(element); selectedDesignElementId = element.id;
+  p.design.elements.push(element); selectedDesignElementId = element.id; selectedDesignElementIds = [element.id];
   renderDesignWorkspace(); saveProjectsToStorage();
 }
 function selectedDesignElement() {
   const p = activeDesignProject();
   return p && p.design.elements.find(el => el.id === selectedDesignElementId);
 }
-function selectDesignElement(id) {
-  selectedDesignElementId = id; renderDesignWorkspace();
+function selectDesignElement(id, additive = false) {
+  if (additive) {
+    const current = selectedDesignElementIds.length ? selectedDesignElementIds.slice() : (selectedDesignElementId ? [selectedDesignElementId] : []);
+    selectedDesignElementIds = current.includes(id) ? current.filter(item => item !== id) : current.concat(id);
+    if (!selectedDesignElementIds.includes(selectedDesignElementId)) selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+    else if (!selectedDesignElementId) selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+  } else {
+    selectedDesignElementId = id;
+    selectedDesignElementIds = id ? [id] : [];
+  }
+  renderDesignWorkspace();
 }
 function safeDesignImageSource(value) {
   const source = String(value || '').trim();
@@ -2898,12 +2930,12 @@ function renderDesignWorkspace() {
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.padding = (el.type === 'rectangle' || el.type === 'image') ? '0' : '4px';
     node.style.whiteSpace = 'pre-wrap'; node.style.overflow = 'hidden';
-    node.style.outline = el.id === selectedDesignElementId ? '2px solid #8b5cf6' : '1px solid transparent';
+    node.style.outline = selectedDesignElementIds.includes(el.id) || (!selectedDesignElementIds.length && el.id === selectedDesignElementId) ? '2px solid #8b5cf6' : '1px solid transparent';
     node.style.outlineOffset = '2px';
     if (el.type === 'heading') node.style.lineHeight = '1.1';
     if (el.type === 'image') renderDesignImageContent(node, el);
     else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
-    if (el.id === selectedDesignElementId) {
+    if (el.id === selectedDesignElementId && selectedDesignElementIds.length <= 1) {
       const resizeHandle = document.createElement('span');
       resizeHandle.dataset.designResizeHandle = el.id;
       resizeHandle.setAttribute('role', 'slider');
@@ -2934,10 +2966,18 @@ function renderDesignWorkspace() {
       node.appendChild(resizeHandle);
     }
     node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type); node.tabIndex = 0;
-    node.addEventListener('click', ev => { ev.stopPropagation(); if (selectedDesignElementId !== el.id) { selectedDesignElementId = el.id; renderDesignWorkspace(); } });
+    node.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if (ev.shiftKey || ev.metaKey || ev.ctrlKey) selectDesignElement(el.id, true);
+      else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
+    });
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
-      selectedDesignElementId = el.id;
+      if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
+      if (!selectedDesignElementIds.includes(el.id) || selectedDesignElementIds.length <= 1) {
+        selectedDesignElementId = el.id;
+        selectedDesignElementIds = [el.id];
+      }
       node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
@@ -2950,7 +2990,7 @@ function renderDesignWorkspace() {
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
     '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
-  layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', () => selectDesignElement(button.getAttribute('data-design-select'))));
+  layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
   const el = selectedDesignElement();
   if (!el) {
     props.innerHTML = '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
@@ -3042,7 +3082,7 @@ function bindDesignCanvasEvents() {
   document.addEventListener('pointerup', finishDesignDrag);
   document.addEventListener('pointercancel', finishDesignDrag);
   document.getElementById('designCanvas')?.addEventListener('click', ev => {
-    if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; renderDesignWorkspace(); }
+    if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); }
   });
   let nudgeHistoryActive = false;
   const arrowKeys = ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'];
