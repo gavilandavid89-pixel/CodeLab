@@ -192,13 +192,18 @@ function readDeletedProjectMap() {
   try {
     const stored = JSON.parse(raw || 'null');
     if (stored && stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace)) {
-      // Arrays accept named properties in memory, but JSON.stringify drops them.
-      // Reject this malformed envelope so deletion tombstones remain durable.
-      return stored.byWorkspace;
+      // Preserve the raw envelope before this reader is reached, then ignore
+      // malformed workspace entries so they cannot poison every later write.
+      const normalized = {};
+      Object.keys(stored.byWorkspace).forEach(id => {
+        const ids = stored.byWorkspace[id];
+        if (Array.isArray(ids)) normalized[id] = ids.filter(value => typeof value === 'string');
+      });
+      return normalized;
     }
     // Read the original single-workspace format for migration.
     if (stored && typeof stored.workspaceId === 'string' && Array.isArray(stored.ids)) {
-      return { [stored.workspaceId]: stored.ids };
+      return { [stored.workspaceId]: stored.ids.filter(value => typeof value === 'string') };
     }
   } catch (_) {}
   return {};
@@ -246,7 +251,11 @@ function readPendingLocalImportMap() {
     if (saved && saved.byUser && typeof saved.byUser === 'object' && !Array.isArray(saved.byUser)) {
       // Named account keys on an array are omitted by JSON.stringify and would
       // silently discard pending imports on the next write.
-      return saved.byUser;
+      const normalized = {};
+      Object.keys(saved.byUser).forEach(userKey => {
+        if (Array.isArray(saved.byUser[userKey])) normalized[userKey] = saved.byUser[userKey];
+      });
+      return normalized;
     }
     if (saved && typeof saved.userKey === 'string' && Array.isArray(saved.projects)) {
       return { [saved.userKey]: saved.projects };
