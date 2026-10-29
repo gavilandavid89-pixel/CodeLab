@@ -300,6 +300,7 @@
     captureDesignSvg: captureDesignSvg,
     sanitizeForCapture: sanitizeForCapture,
     buildWebCaptureContext: buildWebCaptureContext,
+    buildCaptureDocument: buildCaptureDocument,
     captureDesignForAI: captureDesignForAI,
     captureWebForAI: captureWebForAI,
     installWebCaptureControls: installWebCaptureControls
