@@ -287,7 +287,7 @@ function writeState(id, state) {
     owner: state.owner || null
   };
   try {
-    fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8', { mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tmp, file);
   } catch (error) {
     // A failed atomic replace must not leave orphaned workspace temp files behind.
