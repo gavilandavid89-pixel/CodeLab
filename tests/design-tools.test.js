@@ -60,4 +60,7 @@ assert.equal(goodAudit.issues.some(item => item.code === 'image-missing-alt'), f
 const partialLabelAudit = tools.auditHtml('<html lang="es"><head><title>Form</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><label>Nombre<input type="text"></label><input type="email"></body></html>');
 assert.equal(partialLabelAudit.issues.filter(item => item.code === 'field-no-label').length, 1, 'Only the field outside its own label should be flagged');
 
+const duplicatedBlocks = tools.injectTokenBlock(injected + '\n\n' + injected, ':root { --color-primary: #abcdef; }');
+assert.equal((duplicatedBlocks.match(/CodeLab Design Tokens START/g) || []).length, 1, 'managed CSS token blocks should be deduplicated');
+assert.match(duplicatedBlocks, /--color-primary: #abcdef;/);
 console.log('Design tools unit tests passed: WCAG contrast, palette generation, typography, spacing, radius and CSS token export.');
