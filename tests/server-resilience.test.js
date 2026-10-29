@@ -86,7 +86,17 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
 
     const unauthorizedResponse = await fetch(designSystemUrl, { headers: { 'x-workspace-token': 'invalid-token' } });
     assert.equal(unauthorizedResponse.status, 401, 'Design-system settings must remain workspace-authorized');
-    console.log('Server resilience passed: malformed cookies, oversized bodies, and authorized design-system persistence.');
+
+    let lastRateLimitStatus = 0;
+    for (let index = 1; index <= 121; index++) {
+      const response = await fetch(BASE_URL + '/api/health', {
+        headers: { 'x-forwarded-for': '198.51.100.' + index + ', 203.0.113.7' }
+      });
+      lastRateLimitStatus = response.status;
+    }
+    assert.equal(lastRateLimitStatus, 429,
+      'Rate limiting should use the rightmost proxy-appended IP rather than spoofable leftmost values');
+    console.log('Server resilience passed: malformed cookies, oversized bodies, workspace settings auth/persistence, and forwarded-IP rate limiting.');
   } finally {
     server.kill('SIGTERM');
     await new Promise(resolve => setTimeout(resolve, 100));
