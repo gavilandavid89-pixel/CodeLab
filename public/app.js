@@ -80,23 +80,35 @@ function saveLocalProjectsSnapshot() {
   lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
   if (workspaceId) lsSet(STORAGE_KEY_PROJECTS_WORKSPACE, workspaceId);
 }
-function loadDeletedProjectIds(forWorkspaceId) {
+function readDeletedProjectMap() {
   try {
     const stored = JSON.parse(lsGet(STORAGE_KEY_DELETED_PROJECTS) || 'null');
-    if (stored && stored.workspaceId === forWorkspaceId && Array.isArray(stored.ids)) {
-      return new Set(stored.ids.filter(id => typeof id === 'string'));
+    if (stored && stored.byWorkspace && typeof stored.byWorkspace === 'object') return stored.byWorkspace;
+    // Read the original single-workspace format for migration.
+    if (stored && typeof stored.workspaceId === 'string' && Array.isArray(stored.ids)) {
+      return { [stored.workspaceId]: stored.ids };
     }
   } catch (_) {}
-  return new Set();
+  return {};
+}
+function loadDeletedProjectIds(forWorkspaceId) {
+  const byWorkspace = readDeletedProjectMap();
+  return new Set(Array.isArray(byWorkspace[forWorkspaceId]) ? byWorkspace[forWorkspaceId].filter(id => typeof id === 'string') : []);
 }
 function recordDeletedProjectId(id) {
   if (!workspaceId || !id) return;
-  const ids = loadDeletedProjectIds(workspaceId);
+  const byWorkspace = readDeletedProjectMap();
+  const ids = new Set(Array.isArray(byWorkspace[workspaceId]) ? byWorkspace[workspaceId] : []);
   ids.add(id);
-  lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ workspaceId: workspaceId, ids: Array.from(ids) }));
+  byWorkspace[workspaceId] = Array.from(ids);
+  lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
 }
-function clearDeletedProjectIds() {
-  lsRemove(STORAGE_KEY_DELETED_PROJECTS);
+function clearDeletedProjectIds(forWorkspaceId) {
+  const target = forWorkspaceId || workspaceId;
+  const byWorkspace = readDeletedProjectMap();
+  if (target) delete byWorkspace[target];
+  if (Object.keys(byWorkspace).length) lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
+  else lsRemove(STORAGE_KEY_DELETED_PROJECTS);
 }
 function currentRealUserKey() {
   return currentUser && currentUser.real ? currentUser.provider + '_' + currentUser.id : null;
@@ -448,7 +460,7 @@ async function runWorkspaceSync() {
         workspacePayloadTooLarge = false;
         updateDashboardStatus();
         if (syncGeneration === generationAtStart) {
-          clearDeletedProjectIds();
+          clearDeletedProjectIds(workspaceId);
           if (generatedDefaultProjectId && projects.some(project => project.id === generatedDefaultProjectId)) {
             generatedDefaultProjectId = null;
           }
@@ -534,7 +546,7 @@ function conflictTakeServer() {
   saveLocalProjectsSnapshot();
   clearDeletedProjectIds();
   pendingConflict = null;
-  clearDeletedProjectIds();
+  clearDeletedProjectIds(workspaceId);
   closeConflictModal();
   serverSyncError = false;
   setSyncStatus('synced', 'Sincronizado');
