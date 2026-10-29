@@ -141,6 +141,7 @@ function extractDivById(html, id) {
     });
     await page.click('#saveDesignSystem');
     await page.waitForFunction(() => window.__delayedPutStarted === true, null, { timeout: 5000 });
+    while (typeof releaseDelayedPut !== 'function') await new Promise(resolve => setTimeout(resolve, 10));
     await page.evaluate(() => {
       const input = document.getElementById('colorPrimary');
       input.value = '#222222';
