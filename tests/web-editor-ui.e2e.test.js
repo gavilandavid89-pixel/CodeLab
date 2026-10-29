@@ -17,9 +17,9 @@ async function setCode(page, lang, value) {
   if (await page.locator('#fallback-' + lang).isVisible()) {
     await page.locator('#fallback-' + lang).fill(value);
   } else {
-    const editor = page.locator('#monaco-' + lang + ' .monaco-editor').first();
+    const editor = page.locator('#monaco-' + lang + ' .view-lines').first();
     await editor.waitFor({ state: 'visible', timeout: 15000 });
-    await editor.click({ position: { x: 100, y: 20 } });
+    await editor.click({ position: { x: 80, y: 10 } });
     await page.keyboard.press('Control+A');
     await page.keyboard.insertText(value);
   }
