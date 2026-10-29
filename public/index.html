@@ -362,6 +362,53 @@
           </div>
         </div>
       </section>
+
+      <!-- ESPACIO DE DISEÑO VISUAL -->
+      <section id="designStudioPanel" class="hidden flex-1 min-h-0 bg-slate-950 text-slate-100 flex-col">
+        <div class="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
+          <div class="flex items-center gap-1">
+            <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
+            <button onclick="designRedo()" id="designRedoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
+          </div>
+          <span class="h-6 w-px bg-slate-700 mx-1"></span>
+          <button onclick="addDesignElement('heading')" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold"><i class="fa-solid fa-heading mr-1"></i> Título</button>
+          <button onclick="addDesignElement('text')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-font mr-1"></i> Texto</button>
+          <button onclick="addDesignElement('button')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square-caret-right mr-1"></i> Botón</button>
+          <button onclick="addDesignElement('rectangle')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square mr-1"></i> Rectángulo</button>
+          <div class="ml-auto flex items-center gap-2">
+            <label class="text-[11px] text-slate-400" for="designFrameSize">Marco</label>
+            <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
+              <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
+            </select>
+            <button onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"><i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> Crear web</button>
+          </div>
+        </div>
+        <div class="flex flex-1 min-h-0 overflow-hidden">
+          <aside class="hidden sm:flex w-48 lg:w-56 flex-col border-r border-slate-800 bg-slate-900/80 shrink-0">
+            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Capas</div>
+            <div id="designLayers" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+            <div class="px-3 py-2 border-t border-slate-800 text-[10px] text-slate-500">Selecciona una capa para editarla.</div>
+          </aside>
+          <div id="designCanvasScroll" class="flex-1 min-w-0 overflow-auto p-4 sm:p-8 bg-[#171923]">
+            <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Lienzo · arrastra elementos para moverlos</div>
+            <div id="designCanvas" class="relative mx-auto bg-white text-slate-900 shadow-2xl overflow-hidden" style="width:1440px;height:900px;max-width:none;background-color:#ffffff;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:20px 20px;touch-action:pan-x pan-y;">
+              <div id="designCanvasEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
+                <i class="fa-solid fa-pen-ruler text-4xl mb-3"></i><strong class="text-sm">Tu lienzo está listo</strong><span class="text-xs mt-1">Añade un elemento desde la barra superior.</span>
+              </div>
+            </div>
+          </div>
+          <aside class="w-44 sm:w-56 lg:w-64 border-l border-slate-800 bg-slate-900/90 shrink-0 overflow-y-auto">
+            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Propiedades</div>
+            <div id="designProperties" class="p-3 space-y-3 text-xs">
+              <p class="text-slate-500 leading-relaxed">Selecciona un elemento para editar su contenido, posición, tamaño y color.</p>
+            </div>
+            <div class="p-3 border-t border-slate-800 space-y-2">
+              <button onclick="duplicateDesignElement()" class="w-full px-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-copy mr-1"></i> Duplicar capa</button>
+              <button onclick="deleteDesignElement()" class="w-full px-2 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs"><i class="fa-solid fa-trash mr-1"></i> Eliminar capa</button>
+            </div>
+          </aside>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -465,6 +512,21 @@
           <i class="fa-solid fa-folder-plus text-cyan-400"></i> Crear Nuevo Proyecto
         </h3>
         <button onclick="closeNewProjectModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de proyecto</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="cursor-pointer rounded-xl border border-cyan-500/50 bg-cyan-500/10 p-3 flex flex-col gap-2 hover:bg-cyan-500/15">
+            <input type="radio" name="newProjectType" value="web" checked class="accent-cyan-400">
+            <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-solid fa-code text-cyan-300"></i> Página web</span>
+            <span class="text-[11px] leading-relaxed text-slate-400">Código, vista previa y ejecución.</span>
+          </label>
+          <label class="cursor-pointer rounded-xl border border-violet-500/50 bg-violet-500/10 p-3 flex flex-col gap-2 hover:bg-violet-500/15">
+            <input type="radio" name="newProjectType" value="design" class="accent-violet-400">
+            <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-solid fa-pen-ruler text-violet-300"></i> Diseño</span>
+            <span class="text-[11px] leading-relaxed text-slate-400">Lienzo visual, capas y prototipos.</span>
+          </label>
+        </div>
       </div>
       <div>
         <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Proyecto</label>
