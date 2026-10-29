@@ -113,22 +113,36 @@ function clearDeletedProjectIds(forWorkspaceId) {
 function currentRealUserKey() {
   return currentUser && currentUser.real ? currentUser.provider + '_' + currentUser.id : null;
 }
+function readPendingLocalImportMap() {
+  try {
+    const saved = JSON.parse(lsGet(STORAGE_KEY_PENDING_IMPORT) || 'null');
+    if (saved && saved.byUser && typeof saved.byUser === 'object') return saved.byUser;
+    if (saved && typeof saved.userKey === 'string' && Array.isArray(saved.projects)) {
+      return { [saved.userKey]: saved.projects };
+    }
+  } catch (_) {}
+  return {};
+}
 function storePendingLocalImport(localProjects) {
   pendingLocalImportProjects = Array.isArray(localProjects) ? localProjects : [];
   const userKey = currentRealUserKey();
-  if (userKey) lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ userKey: userKey, projects: pendingLocalImportProjects }));
+  if (!userKey) return;
+  const byUser = readPendingLocalImportMap();
+  byUser[userKey] = pendingLocalImportProjects;
+  lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }));
 }
 function restorePendingLocalImport() {
-  try {
-    const saved = JSON.parse(lsGet(STORAGE_KEY_PENDING_IMPORT) || 'null');
-    if (saved && saved.userKey === currentRealUserKey() && Array.isArray(saved.projects)) {
-      pendingLocalImportProjects = saved.projects;
-    }
-  } catch (_) {}
+  const byUser = readPendingLocalImportMap();
+  const userKey = currentRealUserKey();
+  if (userKey && Array.isArray(byUser[userKey])) pendingLocalImportProjects = byUser[userKey];
 }
 function clearPendingLocalImport() {
+  const userKey = currentRealUserKey();
+  const byUser = readPendingLocalImportMap();
+  if (userKey) delete byUser[userKey];
   pendingLocalImportProjects = null;
-  lsRemove(STORAGE_KEY_PENDING_IMPORT);
+  if (Object.keys(byUser).length) lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }));
+  else lsRemove(STORAGE_KEY_PENDING_IMPORT);
 }
 function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
   const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
