@@ -174,6 +174,23 @@ async function waitForPersistedProject(page, projectName) {
         .map(item => item.top));
     assert.deepEqual(alignedTops.slice(0, 3), [420, 420, 420],
       'multi-select alignment should align all selected layer tops to the shared selection edge');
+
+    // 4e. Auto Layout uses direction, spacing and padding to calculate live layer positions.
+    await page.locator('#designLayoutMode').selectOption('auto');
+    await page.locator('#designLayoutDirection').selectOption('column');
+    await page.locator('#designLayoutGap').fill('24');
+    await page.locator('#designLayoutGap').press('Tab');
+    await page.locator('#designLayoutPadding').fill('20');
+    await page.locator('#designLayoutPadding').press('Tab');
+    const autoLayoutPositions = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes =>
+      nodes.map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) }))
+        .filter(item => item.width === 100).sort((a, b) => a.top - b.top));
+    assert.equal(autoLayoutPositions.length, 3, 'Auto Layout should keep all selected layers in the flow');
+    assert.ok(autoLayoutPositions.every(item => item.left === 20), 'column Auto Layout should apply left padding');
+    assert.equal(autoLayoutPositions[1].top - autoLayoutPositions[0].top - autoLayoutPositions[0].height, 24,
+      'column Auto Layout should apply configured spacing between layers');
+    assert.equal(autoLayoutPositions[2].top - autoLayoutPositions[1].top - autoLayoutPositions[1].height, 24,
+      'column Auto Layout should apply configured spacing consistently');
     await page.locator('button[onclick="deleteDesignElement()"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
     await element.click();
