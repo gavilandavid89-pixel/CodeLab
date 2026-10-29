@@ -321,20 +321,18 @@ async function runWorkspaceSync() {
             const delay = SYNC_RETRY_DELAYS_MS[Math.min(syncRetryAttempt, SYNC_RETRY_DELAYS_MS.length - 1)];
             syncRetryAttempt = Math.min(syncRetryAttempt + 1, SYNC_RETRY_DELAYS_MS.length - 1);
             showToast('Límite de peticiones alcanzado. Se reintentará el guardado automáticamente.', 'warn');
-            syncRetryTimer = setTimeout(() => {
+            const retryWorkspaceSync = () => {
               syncRetryTimer = null;
               if (!serverReady) return;
               // A newer save may still be settling; don't lose the retry by starting
               // while runWorkspaceSync() is locked.
               if (syncRunning) {
-                syncRetryTimer = setTimeout(() => {
-                  syncRetryTimer = null;
-                  if (serverReady && !syncRunning) persistWorkspace();
-                }, 1000);
+                syncRetryTimer = setTimeout(retryWorkspaceSync, 1000);
                 return;
               }
               persistWorkspace();
-            }, delay);
+            };
+            syncRetryTimer = setTimeout(retryWorkspaceSync, delay);
           }
           break;
         }
