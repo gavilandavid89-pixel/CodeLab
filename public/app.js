@@ -281,9 +281,15 @@ window.addEventListener('beforeunload', () => {
         }
       } else {
         const proj = projects.find(p => p.id === currentProjectId);
-        if (proj) {
-          proj.code = code;
-          proj.updatedAt = new Date().toISOString();
+        // Design projects store their canvas in the design object, not in the code editor.
+        // Do not bump timestamps or replace their code when the page is merely closed.
+        if (proj && proj.type !== 'design') {
+          const existingCode = normalizeCode(proj.code);
+          const changed = code.html !== existingCode.html || code.css !== existingCode.css || code.js !== existingCode.js;
+          if (changed) {
+            proj.code = code;
+            proj.updatedAt = new Date().toISOString();
+          }
         }
       }
     }
