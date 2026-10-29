@@ -54,7 +54,7 @@ function extractDivById(html, id) {
     assert.match(await page.locator('#designTokensCss').inputValue(), /--font-size-base: 18px;/);
     await page.evaluate(() => {
       window.getCurrentProject = () => ({ id: 'web-fixture', name: 'Web Fixture', type: 'web' });
-      window.getEditorValue = () => '.existing { color: red; }';
+      window.getEditorValue = (kind) => kind === 'html' ? '<html><head><title>Broken</title></head><body><h1>Title</h1><h3>Skip</h3><img src="hero.png"><button></button></body></html>' : '.existing { color: red; }';
       window.setEditorValue = (lang, value) => { window.__appliedCss = value; };
       window.updatePreview = () => { window.__previewUpdated = true; };
       window.showToast = (message) => { window.__toolToast = message; };
@@ -75,9 +75,22 @@ function extractDivById(html, id) {
     const json = JSON.parse(await fs.readFile(filePath, 'utf8'));
     assert.equal(json.format, 'codelab-design-system');
     assert.equal(json.colors.primary, '#ff0000');
+    await page.click('#designToolsTab-audit');
+    await page.click('#runAccessibilityAudit');
+    const auditText = await page.locator('#accessibilityAuditResults').innerText();
+    assert.match(auditText, /image-missing-alt/);
+    assert.match(auditText, /button-no-name/);
+    assert.match(auditText, /missing-lang/);
+    const auditDownloadPromise = page.waitForEvent('download');
+    await page.click('#exportAccessibilityAudit');
+    const auditDownload = await auditDownloadPromise;
+    assert.equal(auditDownload.suggestedFilename(), 'codelab-accessibility-audit.json');
+    const auditJson = JSON.parse(await fs.readFile(await auditDownload.path(), 'utf8'));
+    assert.equal(auditJson.format, 'codelab-accessibility-audit');
+    assert.ok(auditJson.summary.errors >= 2);
     await page.keyboard.press('Escape');
     await page.waitForSelector('#designToolsModal.hidden');
-    console.log('Design tools browser test passed: modal interaction, live palette, WCAG contrast, token updates, local save and JSON export.');
+    console.log('Design tools browser test passed: modal interaction, live palette, WCAG contrast, token updates, local save, token application, accessibility audit and JSON exports.');
   } finally {
     await browser.close();
   }
