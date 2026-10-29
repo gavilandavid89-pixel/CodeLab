@@ -62,6 +62,21 @@ function extractDivById(html, id) {
       window.codelabWorkspaceReady = true;
     });
     await page.goto('http://codelab.test/');
+    // If the workspace changes while the initial migration PUT is in flight,
+    // the old response must not be announced as a successful sync for the new workspace.
+    delayNextPut = true;
+    await page.addScriptTag({ path: path.resolve('public/design-tools.js') });
+    await page.waitForFunction(() => window.__delayedPutStarted === true, null, { timeout: 5000 });
+    await page.evaluate(() => localStorage.setItem('codelab_xd_workspace_v4', 'ws_switched_fixture'));
+    releaseDelayedPut();
+    releaseDelayedPut = null;
+    await page.waitForFunction(() => /workspace cambió durante la sincronización/i.test(document.getElementById('designToolsStatus')?.textContent || ''), null, { timeout: 5000 });
+    assert.doesNotMatch(await page.locator('#designToolsStatus').textContent(), /sincronizado con tu workspace/i,
+      'a stale migration response must not report the switched workspace as synchronized');
+
+    // Start a clean workspace session for the remaining normal save/export tests.
+    remoteSettings = null;
+    await page.reload();
     await page.addScriptTag({ path: path.resolve('public/design-tools.js') });
     await page.waitForFunction(() => document.getElementById('designToolsStatus')?.textContent.includes('sincronizado con tu workspace'), null, { timeout: 5000 });
     await page.click('#openDesignTools');
