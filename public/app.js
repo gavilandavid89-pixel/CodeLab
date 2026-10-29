@@ -2890,6 +2890,9 @@ function renderDesignWorkspace() {
   const props = document.getElementById('designProperties');
   const empty = document.getElementById('designCanvasEmpty');
   if (!canvas || !layers || !props) return;
+  const validIds = new Set(p.design.elements.map(el => el.id));
+  selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
+  if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
   const widths = { desktop: 1440, tablet: 768, mobile: 390 };
   canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
   canvas.style.zoom = String(designZoom);
@@ -2988,7 +2991,7 @@ function renderDesignWorkspace() {
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
   const el = selectedDesignElement();
@@ -3141,12 +3144,12 @@ function duplicateDesignElement() {
   const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
   recordDesignHistory();
   const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
-  p.design.elements.push(copy); selectedDesignElementId = copy.id; renderDesignWorkspace(); saveProjectsToStorage();
+  p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
-  recordDesignHistory(); p.design.elements = p.design.elements.filter(el => el.id !== selectedDesignElementId);
-  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage();
+  recordDesignHistory(); p.design.elements = p.design.elements.filter(el => !selectedDesignElementIds.includes(el.id) && el.id !== selectedDesignElementId);
+  selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); saveProjectsToStorage();
 }
 function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
