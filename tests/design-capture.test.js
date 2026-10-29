@@ -32,6 +32,11 @@ assert.throws(
 const malformedGeometry = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [{ id: 'bad', type: 'text', text: 'Bounded', x: Infinity, y: NaN, width: 99999999, height: 99999999, background: '#ffffff', fontSize: 9999, weight: 9999, radius: 99999 }] } });
 assert.doesNotMatch(malformedGeometry.svg, /Infinity|NaN|font-size="9999"|font-weight="9999"/, 'Capture SVG must not emit non-finite coordinates or unbounded typography');
 assert.match(malformedGeometry.svg, /width="4000" height="4000"/, 'Capture element dimensions must be clamped to safe bounds');
+const invalidHexColor = capture.captureDesignSvg({
+  design: { frame: 'mobile', background: '#12345', elements: [{ id: 'bad-color', type: 'rectangle', x: 0, y: 0, width: 40, height: 40, background: '#12345' }] }
+});
+assert.doesNotMatch(invalidHexColor.svg, /fill="#12345"/,
+  'SVG capture must not emit malformed 5-digit hex colors that browsers ignore');
 const malformedElements = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [null, 'not-an-element', { id: 'valid', type: 'text', text: 'Still renders', x: 10, y: 10, width: 100, height: 40 }] } });
 assert.match(malformedElements.svg, /Still renders/,
   'Capture should skip malformed entries while preserving valid design elements');
