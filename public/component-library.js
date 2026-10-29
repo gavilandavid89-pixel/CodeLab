@@ -104,25 +104,44 @@
       if (target) target.textContent = message;
       if (typeof window.showToast === 'function') window.showToast(message);
     };
+    function setSelectionActionsEnabled(enabled) {
+      ['componentLibraryCopy', 'componentLibraryDownload', 'componentLibraryInsert'].forEach(id => {
+        const button = get(id);
+        if (button) button.disabled = !enabled;
+      });
+    }
+    function clearSelected() {
+      selectedId = null;
+      get('componentLibrarySelectedName').textContent = 'Sin selección';
+      get('componentLibrarySelectedDescription').textContent = 'Elige un componente para ver, copiar, exportar o insertar su HTML.';
+      get('componentLibraryPreview').srcdoc = '<!doctype html><html lang="es"><body style="font:14px system-ui;padding:24px;color:#475569">Selecciona un componente para ver su vista previa.</body></html>';
+      get('componentLibraryCode').value = '';
+      setSelectionActionsEnabled(false);
+    }
     function renderSelected() {
       const item = getComponent(selectedId);
-      if (!item) return;
+      if (!item) { clearSelected(); return; }
       get('componentLibrarySelectedName').textContent = item.name;
       get('componentLibrarySelectedDescription').textContent = item.description;
       get('componentLibraryPreview').srcdoc = '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;padding:12px;background:#e2e8f0;font-family:system-ui}*{box-sizing:border-box}</style></head><body>' + item.html + '</body></html>';
       get('componentLibraryCode').value = item.html;
+      setSelectionActionsEnabled(true);
     }
     function renderList() {
       const host = get('componentLibraryList');
       if (!host) return;
       const results = searchComponents(get('componentLibrarySearch').value, get('componentLibraryCategory').value);
-      if (!results.some(item => item.id === selectedId) && results.length) selectedId = results[0].id;
+      if (!results.length) {
+        host.innerHTML = '<p class="col-span-full p-5 text-center text-sm text-slate-400">No hay componentes que coincidan con la búsqueda.</p>';
+        clearSelected();
+        return;
+      }
+      if (!results.some(item => item.id === selectedId)) selectedId = results[0].id;
       host.innerHTML = results.map(item => '<button type="button" data-component-id="' + item.id + '" class="text-left rounded-xl border p-3 transition ' + (item.id === selectedId ? 'border-cyan-400 bg-cyan-500/10' : 'border-slate-800 bg-slate-950/50 hover:border-slate-600') + '"><span class="block text-xs font-bold text-slate-100">' + item.name + '</span><span class="block text-[10px] text-slate-400 mt-1">' + item.category + '</span><span class="block text-[11px] text-slate-400 mt-2">' + item.description + '</span></button>').join('');
-      if (!results.length) host.innerHTML = '<p class="col-span-full p-5 text-center text-sm text-slate-400">No hay componentes que coincidan con la búsqueda.</p>';
       host.querySelectorAll('[data-component-id]').forEach(button => button.addEventListener('click', () => {
         selectedId = button.dataset.componentId; renderList(); renderSelected();
       }));
-      if (results.length) renderSelected();
+      renderSelected();
     }
     function trapModalFocus(event) {
       if (event.key !== 'Tab') return;
@@ -150,16 +169,17 @@
       get('openComponentLibrary').focus();
     }
     async function copyCode() {
-      const item = getComponent(selectedId); if (!item) return;
+      const item = getComponent(selectedId); if (!item) { status('Selecciona un componente antes de copiar.'); return; }
       try { await navigator.clipboard.writeText(item.html); status('Código de ' + item.name + ' copiado.'); }
       catch (_) { get('componentLibraryCode').focus(); get('componentLibraryCode').select(); status('Selecciona el código y cópialo manualmente.'); }
     }
     function insertIntoProject() {
+      const item = getComponent(selectedId);
+      if (!item) { status('Selecciona un componente antes de insertarlo.'); return; }
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
       if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function' || typeof window.setEditorValue !== 'function') {
         status('Abre primero un proyecto web para insertar un componente.'); return;
       }
-      const item = getComponent(selectedId); if (!item) return;
       const html = String(window.getEditorValue('html') || '');
       const next = /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, item.html + '\n</body>') : html + '\n' + item.html;
       window.setEditorValue('html', next);
@@ -177,7 +197,8 @@
     get('componentLibraryCategory').addEventListener('change', renderList);
     get('componentLibraryCopy').addEventListener('click', copyCode);
     get('componentLibraryDownload').addEventListener('click', () => {
-      const item = getComponent(selectedId); if (!item) return;
+      const item = getComponent(selectedId);
+      if (!item) { status('Selecciona un componente antes de exportarlo.'); return; }
       const blob = new Blob([standaloneHtml(item)], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob); const link = document.createElement('a');
       link.href = url; link.download = 'codelab-' + item.id + '.html';

@@ -49,6 +49,11 @@ function extractDivById(html, id) {
     assert.equal(await page.locator('[data-component-id]').count(), 2);
     await page.fill('#componentLibrarySearch', 'precios');
     assert.equal(await page.locator('[data-component-id]').count(), 0, 'category filter should combine with search');
+    assert.equal(await page.locator('#componentLibraryCode').inputValue(), '', 'No-results search must clear the stale component source');
+    for (const id of ['componentLibraryCopy', 'componentLibraryDownload', 'componentLibraryInsert']) {
+      assert.equal(await page.locator('#' + id).isDisabled(), true, id + ' must be disabled when there is no selection');
+    }
+    assert.equal(await page.locator('#componentLibrarySelectedName').textContent(), 'Sin selección');
     await page.selectOption('#componentLibraryCategory', 'Todas');
     await page.fill('#componentLibrarySearch', 'proyecto');
     assert.equal(await page.locator('[data-component-id]').count(), 1);
