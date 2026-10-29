@@ -144,7 +144,7 @@ function checkAiRateLimit(ip) {
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
-let SERVER_SECRET = process.env.CODELAB_WORKSPACE_SECRET || '';
+let SERVER_SECRET = (process.env.CODELAB_WORKSPACE_SECRET || '').trim();
 if (!SERVER_SECRET) {
   try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
   if (!SERVER_SECRET) {
