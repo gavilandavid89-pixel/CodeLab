@@ -253,7 +253,15 @@ function cleanupExpiredSessions() {
       try {
         const sessionFile = path.join(SESSIONS_DIR, file);
         const raw = fs.readFileSync(sessionFile, 'utf8');
-        const session = JSON.parse(raw);
+        let session;
+        try {
+          session = JSON.parse(raw);
+        } catch (_) {
+          // A malformed session can never authenticate; remove it rather than
+          // retaining an orphan file forever after every cleanup pass.
+          fs.unlinkSync(sessionFile);
+          continue;
+        }
         if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) {
           fs.unlinkSync(sessionFile);
         }
