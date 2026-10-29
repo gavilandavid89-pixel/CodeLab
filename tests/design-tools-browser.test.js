@@ -25,7 +25,9 @@ function extractDivById(html, id) {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 390, height: 844 } });
-    await page.setContent('<!doctype html><html lang="es"><body class="bg-slate-950 text-white"><button id="openDesignTools">Herramientas</button>' + modal + '</body></html>');
+    const fixtureHtml = '<!doctype html><html lang="es"><body class="bg-slate-950 text-white"><button id="openDesignTools">Herramientas</button>' + modal + '</body></html>';
+    await page.route('http://codelab.test/**', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixtureHtml }));
+    await page.goto('http://codelab.test/');
     await page.addScriptTag({ path: path.resolve('public/design-tools.js') });
     await page.click('#openDesignTools');
     await page.waitForSelector('#designToolsModal:not(.hidden)');
