@@ -251,26 +251,37 @@
     }
     const backgroundImages = Array.from(backgroundSources).map(function (source) {
       const probe = view && typeof view.Image === 'function' ? new view.Image() : null;
-      if (probe) probe.src = source;
       return { source: source, image: probe };
     });
     const fontTask = doc && doc.fonts && doc.fonts.ready
       ? Promise.resolve(doc.fonts.ready).catch(function () {})
       : Promise.resolve();
-    function waitForImage(img) {
+    function waitForImage(img, source) {
       function decode() {
         return typeof img.decode === 'function' ? Promise.resolve(img.decode()).catch(function () {}) : Promise.resolve();
       }
-      if (img.complete) return img.naturalWidth > 0 ? decode() : Promise.resolve();
+      if (!source && img.complete) return img.naturalWidth > 0 ? decode() : Promise.resolve();
       return new Promise(function (resolve) {
-        img.addEventListener('load', function () { decode().then(resolve); }, { once: true });
-        img.addEventListener('error', resolve, { once: true });
+        let settled = false;
+        function finish() {
+          if (settled) return;
+          settled = true;
+          decode().then(resolve);
+        }
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', function () {
+          if (settled) return;
+          settled = true;
+          resolve();
+        }, { once: true });
+        if (source) img.src = source;
+        else if (img.complete) finish();
       });
     }
-    const imageTasks = images.map(waitForImage);
+    const imageTasks = images.map(function (img) { return waitForImage(img); });
     const backgroundTasks = backgroundImages.map(function (entry) {
       if (!entry.image) return Promise.resolve();
-      return waitForImage(entry.image);
+      return waitForImage(entry.image, entry.source);
     });
     let timer;
     const timeout = new Promise(function (resolve) {
