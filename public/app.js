@@ -356,6 +356,7 @@ async function runWorkspaceSync() {
         syncRetryAttempt = 0;
         serverSyncError = false;
         workspacePayloadTooLarge = false;
+        updateDashboardStatus();
         resolveSyncWaiters(true, generationAtStart);
         setSyncStatus(inCopyBranch ? 'branch' : 'synced', inCopyBranch ? 'Copia · Guardada' : 'Sincronizado');
         if (syncGeneration === generationAtStart) break;
