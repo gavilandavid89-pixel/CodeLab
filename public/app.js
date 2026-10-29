@@ -2309,11 +2309,19 @@ function setDesignBackground(color) {
   recordDesignHistory(); p.design.background = color;
   renderDesignWorkspace(); saveProjectsToStorage();
 }
-function alignDesignElement() {
-  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
+function alignDesignElement(mode = 'center-x') {
+  const p = activeDesignProject(), el = selectedDesignElement();
+  if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   recordDesignHistory();
   const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
-  el.x = Math.max(0, Math.round((width - (Number(el.width)||120)) / 2));
+  const height = 900;
+  const ew = Math.max(20, Number(el.width) || 120), eh = Math.max(20, Number(el.height) || 48);
+  if (mode === 'left') el.x = 0;
+  else if (mode === 'center-x') el.x = Math.max(0, Math.round((width - ew) / 2));
+  else if (mode === 'right') el.x = Math.max(0, width - ew);
+  else if (mode === 'top') el.y = 0;
+  else if (mode === 'center-y') el.y = Math.max(0, Math.round((height - eh) / 2));
+  else if (mode === 'bottom') el.y = Math.max(0, height - eh);
   renderDesignWorkspace(); saveProjectsToStorage();
 }
 function exportDesignHtml() {
