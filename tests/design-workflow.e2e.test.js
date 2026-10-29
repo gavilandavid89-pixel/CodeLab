@@ -315,6 +315,31 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.locator('#newProjectModal').evaluate(node => node.classList.contains('hidden')), true,
       'creation modal should close after the save attempt settles');
 
+    // AI output must obey the same per-file limit as manual tools/server saves.
+    await page.evaluate(() => {
+      window.__e2eOversizedAiOriginals = {
+        aiCanUseRemote,
+        callRemoteAi
+      };
+      window.__e2eOversizedAiBefore = getEditorValue('html');
+      aiCanUseRemote = () => true;
+      callRemoteAi = async () => ({ html: 'x'.repeat(500001), css: '', js: '', message: 'oversized fixture' });
+      document.getElementById('aiPromptInput').value = 'Genera una interfaz muy grande';
+      processAiInstruction();
+    });
+    await page.waitForFunction(() =>
+      /supera el límite de 500000 caracteres/i.test(document.getElementById('aiChatHistory')?.textContent || ''),
+      null, { timeout: 10000 });
+    const oversizedAiCheck = await page.evaluate(() => {
+      const unchanged = getEditorValue('html') === window.__e2eOversizedAiBefore;
+      aiCanUseRemote = window.__e2eOversizedAiOriginals.aiCanUseRemote;
+      callRemoteAi = window.__e2eOversizedAiOriginals.callRemoteAi;
+      delete window.__e2eOversizedAiOriginals;
+      delete window.__e2eOversizedAiBefore;
+      return { unchanged };
+    });
+    assert.equal(oversizedAiCheck.unchanged, true, 'oversized AI output must not mutate the active editor');
+
     // AI-generated interfaces must await persistence and clearly distinguish a
     // confirmed local save from a server sync that is still pending.
     await page.evaluate(() => {
