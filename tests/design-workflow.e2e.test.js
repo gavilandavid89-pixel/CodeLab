@@ -95,7 +95,7 @@ async function waitForPersistedProject(page, projectName) {
         storePendingLocalImport,
         lsRemove,
         confirm: window.confirm,
-        pendingStorage: localStorage.getItem('codelab_xd_pending_import_v1')
+        pendingStorage: localStorage.getItem('codelab_xd_pending_local_import_v1')
       };
       try {
         currentUser = { real: true, provider: 'e2e', id: 'import-limit' };
@@ -111,7 +111,7 @@ async function waitForPersistedProject(page, projectName) {
         saveProjectsToStorage = () => {};
         renderProjectsList = () => {};
         showToast = () => {};
-        storePendingLocalImport = value => { preservedPending = value; pendingLocalImportProjects = value; };
+        storePendingLocalImport = value => { preservedPending = value; pendingLocalImportProjects = value; return true; };
         lsRemove = () => {};
         window.confirm = () => true;
         maybeOfferLocalImport();
@@ -127,8 +127,8 @@ async function waitForPersistedProject(page, projectName) {
         storePendingLocalImport = saved.storePendingLocalImport;
         lsRemove = saved.lsRemove;
         window.confirm = saved.confirm;
-        if (saved.pendingStorage === null) localStorage.removeItem('codelab_xd_pending_import_v1');
-        else localStorage.setItem('codelab_xd_pending_import_v1', saved.pendingStorage);
+        if (saved.pendingStorage === null) localStorage.removeItem('codelab_xd_pending_local_import_v1');
+        else localStorage.setItem('codelab_xd_pending_local_import_v1', saved.pendingStorage);
       }
     });
     assert.equal(importLimitCheck.count, 3,
@@ -140,6 +140,50 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(importLimitCheck.preservedPending.length, 1,
       'Projects omitted because of the cap must remain recoverable for a later import');
 
+    // If overflow cannot be persisted, abort before replacing the original snapshot.
+    const failedPendingImportCheck = await page.evaluate(() => {
+      const saved = {
+        currentUser, projects, pendingLocalImportProjects, maxProjects,
+        saveProjectsToStorage, renderProjectsList, showToast,
+        storePendingLocalImport, lsRemove, confirm: window.confirm
+      };
+      let saveCalls = 0;
+      let toast = '';
+      try {
+        currentUser = { real: true, provider: 'e2e', id: 'import-storage-failure' };
+        projects = [{ id: 'account-existing', name: 'Existente', code: { html: '' } }];
+        pendingLocalImportProjects = [
+          { id: 'overflow-one', name: 'Pendiente 1', code: { html: '' } },
+          { id: 'overflow-two', name: 'Pendiente 2', code: { html: '' } }
+        ];
+        maxProjects = 2;
+        saveProjectsToStorage = () => { saveCalls++; };
+        renderProjectsList = () => {};
+        showToast = message => { toast = message; };
+        storePendingLocalImport = () => false;
+        lsRemove = () => {};
+        window.confirm = () => true;
+        maybeOfferLocalImport();
+        return { ids: projects.map(project => project.id), saveCalls, warned: toast.includes('No se pudo guardar') };
+      } finally {
+        currentUser = saved.currentUser;
+        projects = saved.projects;
+        pendingLocalImportProjects = saved.pendingLocalImportProjects;
+        maxProjects = saved.maxProjects;
+        saveProjectsToStorage = saved.saveProjectsToStorage;
+        renderProjectsList = saved.renderProjectsList;
+        showToast = saved.showToast;
+        storePendingLocalImport = saved.storePendingLocalImport;
+        lsRemove = saved.lsRemove;
+        window.confirm = saved.confirm;
+      }
+    });
+    assert.deepEqual(failedPendingImportCheck.ids, ['account-existing'],
+      'Failed pending-import persistence must abort before mutating account projects');
+    assert.equal(failedPendingImportCheck.saveCalls, 0,
+      'Failed pending-import persistence must not overwrite the source snapshot');
+    assert.equal(failedPendingImportCheck.warned, true,
+      'Failed pending-import persistence must explain that the import was aborted');
 
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
