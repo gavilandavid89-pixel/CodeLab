@@ -562,7 +562,7 @@ function createNewProjectConfirm() {
     type,
     updatedAt: new Date().toISOString(),
     code: { ...defaultTemplate },
-    ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff' } } : {})
+    ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true } } : {})
   };
   projects.unshift(newProj);
   saveProjectsToStorage();
@@ -648,6 +648,10 @@ function openProject(id) {
   document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
   const mobileBar = document.getElementById('mobileBottomBar');
   if (mobileBar) mobileBar.classList.toggle('hidden', isDesignProject);
+  const desktopActions = document.getElementById('desktopProjectActions');
+  const mobileActions = document.getElementById('mobileProjectActions');
+  if (desktopActions) desktopActions.classList.toggle('hidden', isDesignProject);
+  if (mobileActions) mobileActions.classList.toggle('hidden', isDesignProject);
   setMobileStudioMode('code');
   // Layout after studio is visible
   requestAnimationFrame(() => {
@@ -2236,7 +2240,8 @@ let designEventsBound = false;
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
   if (!p || p.type !== 'design') return null;
-  if (!p.design || typeof p.design !== 'object') p.design = { elements: [], frame: 'desktop', background: '#ffffff' };
+  if (!p.design || typeof p.design !== 'object') p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
+  if (p.design.grid == null) p.design.grid = true;
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
   return p;
 }
@@ -2271,7 +2276,8 @@ function designRedo() {
   selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
 }
 function initializeDesignProject(project) {
-  if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff' };
+  if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
+  if (project.design.grid == null) project.design.grid = true;
   if (!Array.isArray(project.design.elements)) project.design.elements = [];
   selectedDesignElementId = null; designUndoStack = []; designRedoStack = [];
   const frame = document.getElementById('designFrameSize');
@@ -2280,6 +2286,41 @@ function initializeDesignProject(project) {
   bindDesignCanvasEvents();
   updateDesignHistoryButtons();
 }
+
+function toggleDesignGrid() {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory(); p.design.grid = !p.design.grid;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignBackground(color) {
+  const p = activeDesignProject(); if (!p || !/^#[0-9a-f]{6}$/i.test(color)) return;
+  recordDesignHistory(); p.design.background = color;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function alignDesignElement() {
+  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
+  recordDesignHistory();
+  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  el.x = Math.max(0, Math.round((width - (Number(el.width)||120)) / 2));
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function exportDesignHtml() {
+  const p = activeDesignProject(); if (!p) return;
+  const elements = p.design.elements.map(el => {
+    const tag = el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
+    const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
+    const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
+    return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
+  }).join('\\n');
+  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const html = '<!doctype html>\\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;overflow-x:auto}.design-frame{position:relative;width:'+width+'px;min-height:900px;background:'+(p.design.background||'#fff')+';margin:0 auto}</style></head><body><main class="design-frame">'+elements+'</main></body></html>';
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a'); link.href = url; link.download = (p.name || 'codelab-design').replace(/[^a-z0-9_-]+/gi,'-') + '.html';
+  document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  showToast('Diseño exportado como HTML.');
+}
+
 function setDesignFrame(frame) {
   const p = activeDesignProject(); if (!p) return;
   recordDesignHistory();
@@ -2320,6 +2361,11 @@ function renderDesignWorkspace() {
   const widths = { desktop: 1440, tablet: 768, mobile: 390 };
   canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
   canvas.style.backgroundColor = p.design.background || '#ffffff';
+  canvas.style.backgroundImage = p.design.grid ? 'linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px)' : 'none';
+  const bgPicker = document.getElementById('designBackgroundColor');
+  if (bgPicker) bgPicker.value = /^#[0-9a-f]{6}$/i.test(p.design.background || '') ? p.design.background : '#ffffff';
+  const gridBtn = document.getElementById('designGridBtn');
+  if (gridBtn) gridBtn.classList.toggle('text-violet-300', !!p.design.grid);
   canvas.replaceChildren();
   if (empty && p.design.elements.length === 0) canvas.appendChild(empty);
   const sorted = p.design.elements;
