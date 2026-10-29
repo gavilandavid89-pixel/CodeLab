@@ -267,7 +267,9 @@ async function loadProjectsFromStorage() {
 
 function persistWorkspace() {
   lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
-  if (syncRetryTimer) {
+  // Do not cancel a scheduled retry while a previous request is still in flight:
+  // runWorkspaceSync() may be unable to start a newer save until that request settles.
+  if (syncRetryTimer && !syncRunning) {
     clearTimeout(syncRetryTimer);
     syncRetryTimer = null;
   }
