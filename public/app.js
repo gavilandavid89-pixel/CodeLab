@@ -1031,6 +1031,7 @@ async function createNewProjectConfirm() {
       return Array.isArray(saved) && saved.some(project => project && project.id === newProj.id);
     } catch (_) { return false; }
   })();
+  creatingProjectInFlight = false;
   closeNewProjectModal();
   renderProjectsList();
   openProject(newProj.id);
