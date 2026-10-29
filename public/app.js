@@ -162,12 +162,22 @@ function readPendingLocalImportMap() {
   return {};
 }
 function storePendingLocalImport(localProjects) {
-  pendingLocalImportProjects = Array.isArray(localProjects) ? localProjects : [];
+  const nextProjects = Array.isArray(localProjects) ? localProjects : [];
   const userKey = currentRealUserKey();
-  if (!userKey) return;
+  if (!userKey) {
+    pendingLocalImportProjects = nextProjects;
+    return true;
+  }
   const byUser = readPendingLocalImportMap();
-  byUser[userKey] = pendingLocalImportProjects;
-  lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }));
+  byUser[userKey] = nextProjects;
+  // Do not report pending imports as durable unless localStorage confirms the write.
+  // The caller can then leave the original project snapshot untouched for recovery.
+  if (!lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }))) {
+    pendingLocalImportProjects = nextProjects;
+    return false;
+  }
+  pendingLocalImportProjects = nextProjects;
+  return true;
 }
 function restorePendingLocalImport() {
   const byUser = readPendingLocalImportMap();
@@ -1339,11 +1349,16 @@ function maybeOfferLocalImport() {
     const imported = candidates.slice(0, availableSlots);
     const skippedProjects = candidates.slice(imported.length);
     const skipped = skippedProjects.length;
+    if (skipped > 0 && !storePendingLocalImport(skippedProjects)) {
+      // Do not overwrite the original local snapshot if overflow recovery could
+      // not be persisted. The user can retry after storage space becomes available.
+      lsRemove(flag);
+      showToast('No se pudo guardar la lista de proyectos pendientes. No se importó nada; libera espacio del navegador e inténtalo de nuevo.', 'error');
+      return;
+    }
     projects = imported.concat(projects);
     if (skipped > 0) {
-      // Never discard projects that did not fit. Keep them in the account-scoped
-      // pending-import store and allow a later retry after the user frees space.
-      storePendingLocalImport(skippedProjects);
+      // The overflow list is durable before the imported subset can overwrite the source snapshot.
       lsRemove(flag);
     } else {
       clearPendingLocalImport();
