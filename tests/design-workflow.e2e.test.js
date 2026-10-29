@@ -134,6 +134,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(keyboardSize.height, sizeAfter.height + 10, 'resize handle Shift+ArrowDown should increase height by ten pixels');
 
     // 4c. Keyboard nudging and duplication shortcuts operate on the selected layer.
+    await element.focus();
     const beforeNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Shift+ArrowDown');
