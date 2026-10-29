@@ -193,14 +193,39 @@
     else console[kind === 'warn' ? 'warn' : 'log'](message);
   }
 
-  async function loadHtml2Canvas() {
+  async function loadHtml2Canvas(timeoutMs) {
     if (typeof window.html2canvas === 'function') return window.html2canvas;
     await new Promise(function (resolve, reject) {
       const script = document.createElement('script');
+      let settled = false;
+      let timer;
+      function cleanup() {
+        clearTimeout(timer);
+        script.onload = null;
+        script.onerror = null;
+      }
+      timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        script.remove();
+        reject(new Error('El motor de captura tardó demasiado en cargarse.'));
+      }, Math.max(250, Number(timeoutMs) || 12000));
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
       script.async = true;
-      script.onload = resolve;
-      script.onerror = function () { reject(new Error('No se pudo cargar el motor de captura. Comprueba la conexión e inténtalo de nuevo.')); };
+      script.onload = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      script.onerror = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        script.remove();
+        reject(new Error('No se pudo cargar el motor de captura. Comprueba la conexión e inténtalo de nuevo.'));
+      };
       document.head.appendChild(script);
     });
     if (typeof window.html2canvas !== 'function') throw new Error('El motor de captura no está disponible.');
@@ -414,6 +439,7 @@
     buildWebCaptureContext: buildWebCaptureContext,
     buildCaptureDocument: buildCaptureDocument,
     waitForCaptureAssets: waitForCaptureAssets,
+    loadHtml2Canvas: loadHtml2Canvas,
     captureDesignForAI: captureDesignForAI,
     captureWebForAI: captureWebForAI,
     installWebCaptureControls: installWebCaptureControls

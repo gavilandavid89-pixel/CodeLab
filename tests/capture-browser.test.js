@@ -17,6 +17,23 @@ const { chromium } = require('playwright');
       })[kind];
     });
     await page.addScriptTag({ path: 'public/capture.js' });
+    const loaderTimeoutMessage = await page.evaluate(async () => {
+      const appendChild = document.head.appendChild;
+      document.head.appendChild = function (script) {
+        window.__codelabStalledCaptureScript = script;
+        return script;
+      };
+      try {
+        await window.CodeLabCapture.loadHtml2Canvas(250);
+        return '';
+      } catch (error) {
+        return error && error.message ? error.message : String(error);
+      } finally {
+        document.head.appendChild = appendChild;
+        if (window.__codelabStalledCaptureScript) window.__codelabStalledCaptureScript.remove();
+      }
+    });
+    assert.match(loaderTimeoutMessage, /tardó demasiado en cargarse/, 'A stalled capture-engine download should fail within a bounded time');
     const pendingAssets = await page.evaluate(async () => {
       const image = { loading: 'lazy', complete: false, naturalWidth: 0, addEventListener() {} };
       return window.CodeLabCapture.waitForCaptureAssets({
