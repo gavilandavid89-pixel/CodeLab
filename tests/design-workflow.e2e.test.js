@@ -81,7 +81,60 @@ async function waitForPersistedProject(page, projectName) {
     });
     assert.equal(projectLimitCheck.after, projectLimitCheck.before,
       'The UI must prevent creating a project when the workspace has reached its server-configured limit');
-    
+
+    // Creating either project type must persist locally before opening the editor,
+    // and a failed server sync must be reported as local-only rather than success.
+    const createFailureFeedbackCheck = await page.evaluate(async () => {
+      const saved = {
+        projects, maxProjects, currentProjectId, currentUser,
+        saveProjectsToStorage, saveLocalProjectsSnapshot, showToast,
+        renderProjectsList, openProject, closeNewProjectModal,
+        inCopyBranch, isCopyBranchCreated
+      };
+      const originalProjectIds = projects.map(project => project.id);
+      let localSnapshotCalled = false;
+      let openedId = null;
+      let toast = '';
+      try {
+        maxProjects = Math.max(maxProjects, projects.length + 2);
+        saveLocalProjectsSnapshot = () => {
+          localSnapshotCalled = true;
+          return lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+        };
+        saveProjectsToStorage = async () => false;
+        showToast = message => { toast = message; };
+        renderProjectsList = () => {};
+        openProject = id => { openedId = id; };
+        document.querySelector('input[name="newProjectType"][value="web"]').checked = true;
+        document.getElementById('newProjectNameInput').value = 'Proyecto web offline E2E';
+        await createNewProjectConfirm();
+        const created = projects.find(project => project.name === 'Proyecto web offline E2E');
+        const raw = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || '[]');
+        const persistedLocally = Array.isArray(raw) && raw.some(project => project.id === created?.id);
+        const feedbackIsHonest = /guardado localmente|sincronización queda pendiente/i.test(toast);
+        return { localSnapshotCalled, createdType: created?.type, persistedLocally, openedMatchesCreated: openedId === created?.id, feedbackIsHonest };
+      } finally {
+        projects = saved.projects;
+        maxProjects = saved.maxProjects;
+        currentProjectId = saved.currentProjectId;
+        currentUser = saved.currentUser;
+        saveProjectsToStorage = saved.saveProjectsToStorage;
+        saveLocalProjectsSnapshot = saved.saveLocalProjectsSnapshot;
+        showToast = saved.showToast;
+        renderProjectsList = saved.renderProjectsList;
+        openProject = saved.openProject;
+        closeNewProjectModal = saved.closeNewProjectModal;
+        inCopyBranch = saved.inCopyBranch;
+        isCopyBranchCreated = saved.isCopyBranchCreated;
+        localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+      }
+    });
+    assert.equal(createFailureFeedbackCheck.localSnapshotCalled, true, 'project creation must attempt a local snapshot before sync');
+    assert.equal(createFailureFeedbackCheck.createdType, 'web', 'the selected web project type must be retained');
+    assert.equal(createFailureFeedbackCheck.persistedLocally, true, 'a server failure must not leave the new project only in memory');
+    assert.equal(createFailureFeedbackCheck.openedMatchesCreated, true, 'the newly created project should open after the local snapshot attempt');
+    assert.equal(createFailureFeedbackCheck.feedbackIsHonest, true, 'failed server sync must be reported as local-only');
+
     // OAuth local import must obey the same project cap as manual creation.
     const importLimitCheck = await page.evaluate(() => {
       const saved = {
