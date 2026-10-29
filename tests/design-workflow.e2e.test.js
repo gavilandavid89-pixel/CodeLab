@@ -777,6 +777,13 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<image href="data:image\/png;base64,/, 'SVG export should preserve the embedded image layer');
     assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<ellipse cx=/, 'SVG export should preserve ellipse geometry');
 
+    // Keep the JSON backup's button pointed at an internal layer so import can
+    // prove that layer IDs are remapped rather than left pointing at the source.
+    await page.locator('#designProperty-href').fill(internalTarget);
+    await page.waitForFunction(value =>
+      getCurrentProject()?.design.elements.find(item => item.type === 'button')?.href === value,
+      internalTarget, { timeout: 3000 });
+
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
     const jsonExportReady = page.waitForEvent('download');
