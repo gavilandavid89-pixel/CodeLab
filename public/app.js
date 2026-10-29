@@ -223,13 +223,16 @@ window.addEventListener('DOMContentLoaded', () => {
   workspaceId = lsGet(STORAGE_KEY_WORKSPACE);
   initialWorkspaceId = workspaceId;
   workspaceToken = lsGet(STORAGE_KEY_WORKSPACE_TOKEN) || '';
-  loadAiSettings();
   setSyncStatus('saving', 'Conectando…');
   showBootLoading(true, 'Iniciando CodeLab…', 'Conectando con el workspace y cargando proyectos.');
   handleAuthQueryParams();
   loadAuthFromServer()
     .catch(() => loadAuthFromStorage())
-    .then(() => Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]))
+    .then(() => {
+      // Resolve account identity before loading provider credentials from local storage.
+      loadAiSettings();
+      return Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]);
+    })
     .then(() => {
       // Let optional workspace tools (e.g. design tokens) load their account-backed
       // settings only after auth has resolved the correct workspace credentials.
@@ -1062,6 +1065,7 @@ async function logoutAuth() {
   } catch (_) {}
   currentUser = null;
   lsRemove(STORAGE_KEY_AUTH);
+  loadAiSettings();
   updateAuthUI();
   showToast('Sesión cerrada.');
   // Reload workspace as anonymous
@@ -1751,8 +1755,27 @@ async function undoLastMerge() {
 
 
 // ---------- AI settings & generation ----------
+function aiSettingsStorageKey() {
+  const userKey = currentRealUserKey();
+  return userKey ? STORAGE_KEY_AI + ':' + userKey : STORAGE_KEY_AI;
+}
+
+function aiForceLocalStorageKey() {
+  const userKey = currentRealUserKey();
+  return userKey ? 'codelab_ai_force_local_v1:' + userKey : 'codelab_ai_force_local_v1';
+}
+
 function loadAiSettings() {
-  const raw = lsGet(STORAGE_KEY_AI);
+  const userKey = currentRealUserKey();
+  // Old releases used one browser-wide key. Never reuse it after a real account
+  // is known: its owner cannot be determined safely, and it may contain another
+  // account's provider secret.
+  if (userKey) {
+    lsRemove(STORAGE_KEY_AI);
+    lsRemove('codelab_ai_force_local_v1');
+  }
+  aiSettings = { mode: 'auto', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '' };
+  const raw = lsGet(aiSettingsStorageKey());
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
@@ -1778,10 +1801,10 @@ async function loadServerAiStatus() {
     };
     // Server has AI: force Auto unless user explicitly locked Local after seeing the new UI
     if (serverAi.serverKey) {
-      const lockLocal = lsGet('codelab_ai_force_local_v1') === '1';
+      const lockLocal = lsGet(aiForceLocalStorageKey()) === '1';
       if (!lockLocal && aiSettings.mode === 'local') {
         aiSettings.mode = 'auto';
-        lsSet(STORAGE_KEY_AI, JSON.stringify(aiSettings));
+        lsSet(aiSettingsStorageKey(), JSON.stringify(aiSettings));
       }
       if (serverAi.model) aiSettings.model = serverAi.model;
     }
@@ -1860,9 +1883,9 @@ function saveAiSettings() {
     showToast('Modo API: necesitas AI_API_KEY en el servidor o pegar tu key.', 'warn');
     return;
   }
-  lsSet(STORAGE_KEY_AI, JSON.stringify(aiSettings));
-  if (mode === 'local') lsSet('codelab_ai_force_local_v1', '1');
-  else lsRemove('codelab_ai_force_local_v1');
+  lsSet(aiSettingsStorageKey(), JSON.stringify(aiSettings));
+  if (mode === 'local') lsSet(aiForceLocalStorageKey(), '1');
+  else lsRemove(aiForceLocalStorageKey());
   updateAiUI();
   closeAiSettingsModal();
   const label =
