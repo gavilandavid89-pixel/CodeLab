@@ -51,6 +51,10 @@
         ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + xmlEscape(background) + '"/>'
         : '';
       if (el.type === 'rectangle') return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      if (el.type === 'ellipse') {
+        const ellipseFill = background !== 'transparent' ? ' fill="' + xmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
+        return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+      }
       if (el.type === 'image') {
         const source = safeImageSource(el.src);
         const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
