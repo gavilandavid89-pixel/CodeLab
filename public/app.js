@@ -2514,6 +2514,7 @@ let designRedoStack = [];
 let designDragState = null;
 let designEventsBound = false;
 let designZoom = 1;
+const MAX_DESIGN_ELEMENTS = 500;
 
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
@@ -2907,6 +2908,10 @@ function setDesignFrame(frame) {
 }
 function addDesignElement(type) {
   const p = activeDesignProject(); if (!p) return;
+  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para añadir otra.', 'warn');
+    return;
+  }
   recordDesignHistory();
   const defaults = {
     heading: { label: 'Título', text: 'Título de tu diseño', x: 80, y: 70, width: 560, height: 76, color: '#111827', background: 'transparent', fontSize: 42, weight: 700, radius: 0 },
