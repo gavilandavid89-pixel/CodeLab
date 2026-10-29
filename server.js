@@ -1612,6 +1612,12 @@ const server = http.createServer(async (req, res) => {
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        try {
+          enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+        } catch (error) {
+          console.error('workspace_corrupt', id, error.message);
+          return sendJson(res, 500, { error: 'workspace_corrupt' });
+        }
         if (req.method === 'GET') {
           return sendJson(res, 200, { settings: readDesignSystem(id) });
         }
