@@ -32,6 +32,7 @@ jobs:
           node --check tests/version-consistency.test.js
           node --check tests/ai-settings-isolation.test.js
           node --check tests/interface-wiring.test.js
+          node --check tests/interface-responsive.e2e.test.js
       - name: Check version metadata consistency
         run: node tests/version-consistency.test.js
       - name: Audit static UI event wiring and IDs
@@ -71,6 +72,7 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
           node tests/design-workflow.e2e.test.js
+          node tests/interface-responsive.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
