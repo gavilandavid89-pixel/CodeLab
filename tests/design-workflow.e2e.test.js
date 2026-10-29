@@ -59,7 +59,11 @@ async function waitForPersistedProject(page, projectName) {
     // 2. Add an element and edit its real property input.
     await page.locator('button[onclick="addDesignElement(\'heading\')"]').click();
     const element = page.locator('#designCanvas [data-design-id]').first();
-    await element.waitFor();
+    try {
+      await element.waitFor({ timeout: 10000 });
+    } catch (error) {
+      throw new Error('Design element did not render after addDesignElement. Browser errors: ' + failures.join(' | ') + '. ' + error.message);
+    }
     const textField = page.locator('#designProperties input[type="text"]').first();
     await textField.fill('Prueba integral CodeLab');
     await page.waitForFunction(() => {
