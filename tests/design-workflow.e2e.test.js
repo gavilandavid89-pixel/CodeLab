@@ -1061,6 +1061,24 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(multipleRecoveryBackups.backups[0].raw, '{second-damaged}',
       'the additional malformed snapshot must remain recoverable');
 
+    const unreadableRecoverySlot = await page.evaluate(() => {
+      const key = 'codelab_xd_projects_recovery_v1';
+      const oldRecovery = localStorage.getItem(key);
+      try {
+        const unreadable = '{recovery-slot-is-corrupt';
+        localStorage.setItem(key, unreadable);
+        const preserved = preserveInvalidLocalProjectsSnapshot('{new-damaged}', 'invalid_json');
+        return { preserved, stored: localStorage.getItem(key), original: unreadable };
+      } finally {
+        if (oldRecovery === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, oldRecovery);
+      }
+    });
+    assert.equal(unreadableRecoverySlot.preserved, false,
+      'an unreadable recovery slot must block replacement rather than risking the previous recovery data');
+    assert.equal(unreadableRecoverySlot.stored, unreadableRecoverySlot.original,
+      'a malformed recovery slot must remain untouched when a safe merge is impossible');
+
     // Corrupt local project snapshots must be backed up byte-for-byte before
     // normal startup replaces the active snapshot with an empty/default project.
     for (const damagedSnapshot of [
