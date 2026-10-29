@@ -41,8 +41,15 @@
     const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
     const positions = new Map();
     if (!design || design.layoutMode !== 'auto') {
-      elements.forEach(function (el) { positions.set(el.id, { x: Number(el.x) || 0, y: Number(el.y) || 0 }); });
-      return { positions: positions, height: 900 };
+      let contentBottom = 0;
+      elements.forEach(function (el) {
+        const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+        const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+        const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+        positions.set(el.id, { x: x, y: y });
+        contentBottom = Math.max(contentBottom, y + height);
+      });
+      return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + 24)) };
     }
     const direction = design.layoutDirection === 'column' ? 'column' : 'row';
     const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
