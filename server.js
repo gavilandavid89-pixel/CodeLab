@@ -260,7 +260,7 @@ function validateProjects(projects) {
     if (!p || typeof p !== 'object') return 'invalid_project';
     if (typeof p.id !== 'string' || p.id.length > 80) return 'invalid_project_id';
     if (typeof p.name !== 'string' || p.name.length > 200) return 'invalid_project_name';
-    if (!p.code || typeof p.code !== 'object') return 'invalid_project_code';
+    if (!p.code || typeof p.code !== 'object' || Array.isArray(p.code)) return 'invalid_project_code';
     for (const k of ['html', 'css', 'js']) {
       if (p.code[k] != null && typeof p.code[k] !== 'string') return 'invalid_code_field';
       if (typeof p.code[k] === 'string' && p.code[k].length > 500000) return 'code_too_large';
