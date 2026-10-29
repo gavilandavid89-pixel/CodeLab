@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { URL } = require('url');
+const designTools = require('./public/design-tools.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -200,6 +201,29 @@ function safeId(value) {
 }
 function workspaceFile(id) {
   return path.join(WORKSPACES_DIR, safeId(id) + '.json');
+}
+function designSystemFile(id) {
+  return path.join(WORKSPACES_DIR, safeId(id) + '.design-system.json');
+}
+function readDesignSystem(id) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(designSystemFile(id), 'utf8'));
+    return parsed && parsed.settings && typeof parsed.settings === 'object'
+      ? designTools.sanitizeSettings(parsed.settings)
+      : null;
+  } catch (_) {
+    return null;
+  }
+}
+function writeDesignSystem(id, settings) {
+  const file = designSystemFile(id);
+  const tmp = file + '.tmp.' + process.pid + '.' + Date.now();
+  fs.writeFileSync(tmp, JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    settings: settings
+  }), 'utf8');
+  fs.renameSync(tmp, file);
 }
 function emptyState(owner) {
   return {
@@ -1166,6 +1190,31 @@ const server = http.createServer(async (req, res) => {
           console.error('Google OAuth error', e.message);
           return redirect(res, '/?auth=error&reason=google');
         }
+      }
+
+      // Workspace-scoped design-system settings, kept separate from project payloads.
+      const designSystemMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/design-system$/);
+      if (designSystemMatch && (req.method === 'GET' || req.method === 'PUT')) {
+        const id = safeId(designSystemMatch[1]);
+        if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        if (req.method === 'GET') {
+          return sendJson(res, 200, { settings: readDesignSystem(id) });
+        }
+        const body = await readBody(req);
+        if (!body || !body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) {
+          return sendJson(res, 400, { error: 'invalid_design_system' });
+        }
+        const allowed = ['name', 'primary', 'secondary', 'accent', 'surface', 'background', 'text',
+          'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'];
+        const input = {};
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(body.settings, key)) input[key] = body.settings[key];
+        }
+        const settings = designTools.sanitizeSettings(input);
+        writeDesignSystem(id, settings);
+        return sendJson(res, 200, { ok: true, settings: settings });
       }
 
       // Workspace init
