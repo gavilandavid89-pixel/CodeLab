@@ -79,6 +79,19 @@ async function waitForPersistedProject(page, projectName) {
     }, { timeout: 10000 });
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 0,
       'new design project should start with an empty canvas');
+    const cappedLayerCount = await page.evaluate(() => {
+      const project = window.activeDesignProject();
+      project.design.elements = Array.from({ length: 500 }, (_, index) => ({
+        id: 'limit-layer-' + index, type: 'heading', label: 'Layer ' + index, text: 'Layer'
+      }));
+      window.addDesignElement('heading');
+      const count = project.design.elements.length;
+      project.design.elements = [];
+      window.renderDesignWorkspace();
+      return count;
+    });
+    assert.equal(cappedLayerCount, 500,
+      'Adding a layer beyond the visual-design limit must be blocked without mutating the project');
 
     // 2. Add an element and edit its real property input.
     await page.locator('button[onclick="addDesignElement(\'heading\')"]').click();
