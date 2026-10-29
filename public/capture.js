@@ -36,12 +36,42 @@
     return '';
   }
 
+  function getCaptureLayoutPositions(design) {
+    const elements = Array.isArray(design && design.elements) ? design.elements : [];
+    const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+    const positions = new Map();
+    if (!design || design.layoutMode !== 'auto') {
+      elements.forEach(function (el) { positions.set(el.id, { x: Number(el.x) || 0, y: Number(el.y) || 0 }); });
+      return { positions: positions, height: 900 };
+    }
+    const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+    const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+    const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+    let x = padding, y = padding, rowHeight = 0;
+    elements.forEach(function (el) {
+      const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      if (direction === 'row') {
+        if (x > padding && x + width > frameWidth - padding) { x = padding; y += rowHeight + gap; rowHeight = 0; }
+        positions.set(el.id, { x: x, y: y });
+        x += width + gap; rowHeight = Math.max(rowHeight, height);
+      } else {
+        positions.set(el.id, { x: padding, y: y });
+        y += height + gap;
+      }
+    });
+    const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+    return { positions: positions, height: Math.max(900, contentBottom + padding) };
+  }
+
   function captureDesignSvg(project) {
     const design = project && project.design ? project.design : {};
     const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[design.frame] || 1440;
-    const height = 900;
+    const layout = getCaptureLayoutPositions(design);
+    const height = layout.height;
     const items = (Array.isArray(design.elements) ? design.elements : []).map(function (el) {
-      const x = Number(el.x) || 0, y = Number(el.y) || 0;
+      const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+      const x = Number(position.x) || 0, y = Number(position.y) || 0;
       const w = Math.max(20, Number(el.width) || 120), h = Math.max(20, Number(el.height) || 48);
       const fontSize = Math.max(8, Number(el.fontSize) || 16);
       const radius = Math.max(0, Number(el.radius) || 0);
@@ -281,10 +311,12 @@
     const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
     const pixelCount = captured.width * captured.height * scale * scale;
     const slug = safeSlug(project.name);
+    const layout = getCaptureLayoutPositions(project.design);
     const elements = (project.design.elements || []).map(function (el, index) {
+      const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       return {
         order: index + 1, id: el.id || null, type: el.type || 'text', label: el.label || el.type || 'Elemento',
-        text: el.text || '', bounds: { x: Number(el.x) || 0, y: Number(el.y) || 0, width: Math.max(20, Number(el.width) || 120), height: Math.max(20, Number(el.height) || 48) },
+        text: el.text || '', bounds: { x: Number(position.x) || 0, y: Number(position.y) || 0, width: Math.max(20, Number(el.width) || 120), height: Math.max(20, Number(el.height) || 48) },
         style: { color: el.color || '#111827', background: el.background || 'transparent', fontSize: Number(el.fontSize) || 16, fontWeight: Number(el.weight) || 400, radius: Number(el.radius) || 0, textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left' },
         image: el.type === 'image' ? { alt: String(el.alt || el.label || '').slice(0, 300), source: String(el.src || '').startsWith('data:image/') ? '[imagen incrustada; visible en el PNG]' : safeImageSource(el.src), objectFit: ['contain','cover','fill'].includes(el.objectFit) ? el.objectFit : 'cover' } : null
       };
