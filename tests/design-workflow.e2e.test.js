@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
 const { chromium } = require('playwright');
 
 const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
@@ -114,6 +115,47 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(mobileLayout.documentWidth <= mobileLayout.viewportWidth + 2,
       'mobile app shell should not introduce document-level horizontal overflow');
 
+    // 6b. Exercise the actual AI capture flow and inspect both generated artifacts.
+    const captureDownloads = [];
+    const captureDownloadsReady = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        page.off('download', onCaptureDownload);
+        reject(new Error('AI capture did not produce both context and image artifacts'));
+      }, 15000);
+      function onCaptureDownload(download) {
+        captureDownloads.push(download);
+        if (captureDownloads.length >= 2) {
+          clearTimeout(timeout);
+          page.off('download', onCaptureDownload);
+          resolve();
+        }
+      }
+      page.on('download', onCaptureDownload);
+    });
+    await page.locator('button[onclick="captureDesignForAI()"]').click();
+    await captureDownloadsReady;
+    const captureFiles = await Promise.all(captureDownloads.map(async download => ({
+      name: download.suggestedFilename(),
+      path: await download.path()
+    })));
+    const contextFile = captureFiles.find(file => /-contexto-ia\.json$/.test(file.name));
+    const imageFile = captureFiles.find(file => /-captura-ia\.(png|svg)$/.test(file.name));
+    assert.ok(contextFile, 'AI capture should export structured context JSON');
+    assert.ok(imageFile, 'AI capture should export a visual artifact (PNG or SVG fallback)');
+    const captureContext = JSON.parse(await fs.readFile(contextFile.path, 'utf8'));
+    assert.equal(captureContext.format, 'codelab-ai-design-capture');
+    assert.ok(captureContext.elementCount >= 1, 'capture context should include the canvas element');
+    assert.ok(captureContext.elements.some(item => item.text === 'Prueba integral CodeLab'),
+      'capture context should preserve the actual edited element text');
+    if (/\.png$/.test(imageFile.name)) {
+      const png = await fs.readFile(imageFile.path);
+      assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a',
+        'successful PNG capture should produce a valid PNG signature');
+    } else {
+      assert.match(await fs.readFile(imageFile.path, 'utf8'), /<svg[\s>]/i,
+        'SVG fallback should contain an SVG document');
+    }
+
     // 7. Verify recovery of newer local edits and an offline deletion after reload.
     await page.selectOption('#designFrameSize', 'desktop');
     await waitForPersistedProject(page, PROJECT_NAME);
@@ -219,6 +261,49 @@ async function waitForPersistedProject(page, projectName) {
     // keeping the converted project selected for insertion and persistence checks.
     await page.locator('button[onclick="returnToDashboard()"]').click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
+    // 9a. Save design tokens through the real dialog, verify server persistence,
+    // reload the app, and ensure the UI restores the server-backed settings.
+    await page.locator('#openDesignTools').click();
+    await page.locator('#designToolsModal').waitFor({ state: 'visible' });
+    await page.locator('#systemName').fill('Sistema integral E2E');
+    await page.locator('#colorPrimary').fill('#123abc');
+    await page.locator('#saveDesignSystem').click();
+    await page.waitForFunction(async expected => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !token) return false;
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/design-system', {
+          headers: { 'x-workspace-token': token }
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return data.settings && data.settings.name === expected && data.settings.primary === '#123abc';
+      } catch (_) { return false; }
+    }, 'Sistema integral E2E', { timeout: 15000 });
+
+    // Validate the export artifact as part of the same user journey.
+    await page.locator('#designToolsTab-tokens').click();
+    const tokenDownloadPromise = page.waitForEvent('download');
+    await page.locator('#exportDesignSystemJson').click();
+    const tokenDownload = await tokenDownloadPromise;
+    const tokenPath = await tokenDownload.path();
+    const exportedTokens = JSON.parse(await fs.readFile(tokenPath, 'utf8'));
+    assert.equal(exportedTokens.format, 'codelab-design-system');
+    assert.equal(exportedTokens.name, 'Sistema integral E2E');
+    assert.equal(exportedTokens.colors.primary, '#123abc');
+
+    await page.locator('#designToolsCloseFooter').click();
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+    await page.locator('#openDesignTools').click();
+    await page.locator('#designToolsModal').waitFor({ state: 'visible' });
+    await page.waitForFunction(() =>
+      document.getElementById('systemName')?.value === 'Sistema integral E2E' &&
+      document.getElementById('colorPrimary')?.value.toLowerCase() === '#123abc'
+    , null, { timeout: 10000 });
+    await page.locator('#designToolsCloseFooter').click();
+
     // Exercise the real component-library integration on the converted web project.
     await page.locator('#openComponentLibrary').click();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
@@ -292,7 +377,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
-    console.log('Full design workflow E2E passed: create → edit → undo/redo → drag → duplicate/delete → responsive presets → server persistence/reload → convert to web → insert component and persist.');
+    console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → server persistence.');
   } finally {
     await browser.close();
   }
