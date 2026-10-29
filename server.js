@@ -1165,14 +1165,17 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 413, { error: 'code_too_large' });
         }
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-        const apiKey = AI_API_KEY || clientKey;
+        // A configured server credential must never be sent to a client-selected
+        // provider URL. When present, the server key and its provider endpoint are
+        // a single trusted configuration; client keys are only used without one.
+        const usingServerKey = !!AI_API_KEY;
+        const apiKey = usingServerKey ? AI_API_KEY : clientKey;
         if (!apiKey) {
           return sendJson(res, 503, {
             error: 'ai_not_configured',
             message: 'No hay API key. Configura AI_API_KEY en el servidor o pégala en Ajustes del copiloto.'
           });
         }
-        const usingServerKey = !!AI_API_KEY && !(body && typeof body.apiKey === 'string' && body.apiKey.trim());
         let baseUrl = AI_BASE_URL;
         let model = AI_MODEL;
         if (!usingServerKey) {
