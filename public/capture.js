@@ -186,12 +186,18 @@
   function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
+    let clicked = false;
     link.href = url;
     link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    try {
+      document.body.appendChild(link);
+      link.click();
+      clicked = true;
+    } finally {
+      link.remove();
+      if (clicked) setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      else URL.revokeObjectURL(url);
+    }
   }
 
   function safeSlug(value) {
