@@ -308,6 +308,22 @@ async function waitForPersistedProject(page, projectName) {
     , null, { timeout: 10000 });
     await page.locator('#designToolsCloseFooter').click();
 
+    // A reload intentionally resets the active editor selection. Re-open the
+    // converted project explicitly before testing component insertion so this
+    // journey verifies project selection as well as the component dialog.
+    const convertedProjectCard = page.locator('#projectsGrid > div').filter({
+      has: page.locator('h4', { hasText: PROJECT_NAME + ' · Web' })
+    });
+    await convertedProjectCard.locator('button[data-action="open"]').click();
+    await page.waitForFunction(async name => {
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      return project && project.name === name + ' · Web' && project.type === 'web' &&
+        typeof window.getEditorValue === 'function' &&
+        window.getEditorValue('html') === project.code.html;
+    }, PROJECT_NAME, { timeout: 15000 });
+    await page.locator('button[onclick="returnToDashboard()"]').click();
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
+
     // Exercise the real component-library integration on the converted web project.
     await page.locator('#openComponentLibrary').click();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
