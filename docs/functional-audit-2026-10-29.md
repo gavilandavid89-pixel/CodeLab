@@ -23,6 +23,7 @@ Audit of the changes in PR #2 on `feature/design-workspace`: visual design proje
 - A workspace-scoped design-system endpoint persists visual settings; localStorage remains the fallback and old local settings migrate on first use. Design-system writes are serialized to prevent a slow earlier save from overwriting a newer value, and a stale workspace read cannot replace a local save made while it was in flight.
 - Forwarded-IP rate limiting preserves proxy-hop positions and rejects malformed chains instead of filtering invalid entries and accidentally shifting the trusted-hop selection; integration coverage uses a two-hop trust configuration.
 - Outbound HTTPS calls to OAuth and AI providers now have a configurable inactivity timeout (default 60 seconds, bounded to 1–300 seconds), preventing stalled upstreams from holding requests indefinitely.
+- The user-configurable AI provider URL is validated as HTTPS and resolved against public IP ranges; loopback/private targets are rejected, the resolved address is pinned for the connection, and the server integration test covers a loopback SSRF attempt.
 
 ## Remaining limitations / coverage gaps
 - The focused browser tests for the design-tools and component-library dialogs extract their modal markup and mock editor APIs. Design-system workspace sync is tested with a simulated API, and server persistence/auth is covered by an integration test; live OAuth cross-device behavior still requires a deployed environment.
