@@ -315,6 +315,27 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.locator('#newProjectModal').evaluate(node => node.classList.contains('hidden')), true,
       'creation modal should close after the save attempt settles');
 
+    const renameLimitCheck = await page.evaluate(async () => {
+      const originalPrompt = window.prompt;
+      const originalToast = showToast;
+      const originalName = getCurrentProject().name;
+      let toast = '';
+      try {
+        window.prompt = () => 'x'.repeat(201);
+        showToast = message => { toast = message; };
+        await editCurrentProjectName();
+        return {
+          nameUnchanged: getCurrentProject().name === originalName,
+          warned: /200 caracteres/i.test(toast)
+        };
+      } finally {
+        window.prompt = originalPrompt;
+        showToast = originalToast;
+      }
+    });
+    assert.equal(renameLimitCheck.nameUnchanged, true, 'renaming must enforce the same 200-character limit as creation');
+    assert.equal(renameLimitCheck.warned, true, 'an overlong project name must explain the limit');
+
     // AI output must obey the same per-file limit as manual tools/server saves.
     await page.evaluate(() => {
       window.__e2eOversizedAiOriginals = {
