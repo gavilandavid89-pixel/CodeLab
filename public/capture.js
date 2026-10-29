@@ -325,6 +325,7 @@
       format: 'codelab-ai-design-capture', version: 2, project: project.name || 'Diseño sin título',
       frame: project.design.frame || 'desktop', image: slug + '-captura-ia.png',
       canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale: scale, background: project.design.background || '#ffffff' },
+      layout: { mode: project.design.layoutMode === 'auto' ? 'auto' : 'free', direction: project.design.layoutDirection === 'column' ? 'column' : 'row', gap: Math.max(0, Math.min(200, Number(project.design.layoutGap) || 0)), padding: Math.max(0, Math.min(200, Number(project.design.layoutPadding) || 0)) },
       elementCount: elements.length, elements: elements,
       aiInstructions: 'Analiza el PNG para evaluar la apariencia visual y usa este JSON para conocer posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue problemas observables de sugerencias y considera accesibilidad y adaptación móvil.'
     };
