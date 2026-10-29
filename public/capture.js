@@ -25,6 +25,8 @@
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   }
 
+  const MAX_CAPTURE_DESIGN_ELEMENTS = 500;
+
   function safeImageSource(value) {
     const source = String(value || '').trim();
     if (!source || source.length > 2800000) return '';
@@ -38,6 +40,9 @@
 
   function getCaptureLayoutPositions(design) {
     const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : [];
+    if (elements.length > MAX_CAPTURE_DESIGN_ELEMENTS) {
+      throw new Error('El diseño supera el límite de ' + MAX_CAPTURE_DESIGN_ELEMENTS + ' capas para capturar.');
+    }
     const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
     const positions = new Map();
     if (!design || design.layoutMode !== 'auto') {
@@ -437,7 +442,13 @@
       toast('Abre un proyecto de diseño primero.', 'warn');
       return;
     }
-    const captured = captureDesignSvg(project);
+    let captured;
+    try {
+      captured = captureDesignSvg(project);
+    } catch (error) {
+      toast(error && error.message ? error.message : 'No se pudo preparar la captura del diseño.', 'warn');
+      return;
+    }
     const scaleControl = document.getElementById('designCaptureScale');
     const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
     const pixelCount = captured.width * captured.height * scale * scale;
