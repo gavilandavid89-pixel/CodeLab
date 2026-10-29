@@ -2732,6 +2732,222 @@ function exportDesignHtml() {
   showToast('Diseño exportado como HTML adaptable.');
 }
 
+function setupNewProjectModalKeys() {
+  const input = document.getElementById('newProjectNameInput');
+  if (input) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createNewProjectConfirm();
+      }
+    });
+  }
+  const authIn = document.getElementById('authUsernameInput');
+  if (authIn) {
+    authIn.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmAuthModal();
+      }
+    });
+  }
+  // Debounced search (avoids re-render on every keystroke)
+  const search = document.getElementById('searchProjectInput');
+  if (search && !search._codelabBound) {
+    search._codelabBound = true;
+    let tmr = null;
+    search.removeAttribute('oninput');
+    search.addEventListener('input', () => {
+      if (tmr) clearTimeout(tmr);
+      tmr = setTimeout(() => {
+        tmr = null;
+        renderProjectsList();
+      }, 120);
+    });
+  }
+}
+
+function startReconnectLoop() {
+  if (reconnectTimer) clearInterval(reconnectTimer);
+  reconnectTimer = setInterval(async () => {
+    if (serverReady) return;
+    try {
+      const r = await fetch('/api/health');
+      if (!r.ok) return;
+      // Try to re-init workspace
+      const init = await fetch('/api/workspace/init', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: Object.assign(
+          { 'Content-Type': 'application/json' },
+          workspaceToken ? { 'x-workspace-token': workspaceToken } : {}
+        ),
+        body: JSON.stringify({ id: workspaceId || null })
+      });
+      if (!init.ok) return;
+      const boot = await init.json();
+      workspaceId = boot.workspaceId;
+      workspaceToken = boot.token;
+      lsSet(STORAGE_KEY_WORKSPACE, workspaceId);
+      lsSet(STORAGE_KEY_WORKSPACE_TOKEN, workspaceToken);
+      const remoteProjects = Array.isArray(boot.state && boot.state.projects) ? boot.state.projects : [];
+      const skipLocalIds = remoteProjects.length && generatedDefaultProjectId
+        ? new Set([generatedDefaultProjectId])
+        : new Set();
+      projects = mergeWorkspaceProjects(remoteProjects, projects, loadDeletedProjectIds(workspaceId), skipLocalIds);
+      if (skipLocalIds.size) generatedDefaultProjectId = null;
+      if (Number.isInteger(boot.state && boot.state.revision)) workspaceRevision = boot.state.revision;
+      serverReady = true;
+      setSyncStatus('synced', 'Reconectado');
+      updateDashboardStatus();
+      showToast('Conexión con el servidor restaurada.');
+      await persistWorkspace();
+    } catch (_) {
+      // still offline
+    }
+  }, RECONNECT_INTERVAL_MS);
+}
+
+// ---------- Split panel resize (U1) ----------
+function applySplitRatio(pct) {
+  const editorPanel = document.getElementById('editorPanel');
+  const previewPanel = document.getElementById('previewPanel');
+  const main = document.getElementById('mainSplit');
+  if (!editorPanel || !main) return;
+  pct = Math.min(80, Math.max(20, Number(pct) || 50));
+  const isRow = window.innerWidth >= 768;
+  if (isRow) {
+    editorPanel.style.width = pct + '%';
+    editorPanel.style.flex = 'none';
+    editorPanel.style.height = '';
+    if (previewPanel) {
+      previewPanel.style.width = 100 - pct + '%';
+      previewPanel.style.flex = 'none';
+      previewPanel.style.height = '';
+    }
+  } else {
+    editorPanel.style.height = pct + '%';
+    editorPanel.style.flex = 'none';
+    editorPanel.style.width = '100%';
+    if (previewPanel) {
+      previewPanel.style.height = 100 - pct + '%';
+      previewPanel.style.flex = 'none';
+      previewPanel.style.width = '100%';
+    }
+  }
+  try {
+    lsSet('codelab_split_pct', String(pct));
+  } catch (_) {}
+  Object.keys(editors).forEach(k => {
+    try {
+      if (editors[k] && editors[k].layout) editors[k].layout();
+    } catch (_) {}
+  });
+}
+
+function closeSplitMenu() {
+  const m = document.getElementById('splitMenu');
+  if (m) m.classList.add('hidden');
+}
+
+function openSplitMenu(anchor) {
+  let menu = document.getElementById('splitMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'splitMenu';
+    menu.className =
+      'hidden absolute z-50 w-52 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 text-xs text-slate-200';
+    menu.innerHTML =
+      '<div class="px-3 py-2 text-[10px] uppercase tracking-wide text-slate-500 border-b border-slate-800">Panel</div>' +
+      '<button type="button" data-split="30" class="w-full text-left px-3 py-2.5 hover:bg-slate-800 flex items-center gap-2"><i class="fa-solid fa-left-right text-cyan-400 w-4"></i> Código 30% / Vista 70%</button>' +
+      '<button type="button" data-split="50" class="w-full text-left px-3 py-2.5 hover:bg-slate-800 flex items-center gap-2"><i class="fa-solid fa-table-columns text-cyan-400 w-4"></i> 50% / 50%</button>' +
+      '<button type="button" data-split="70" class="w-full text-left px-3 py-2.5 hover:bg-slate-800 flex items-center gap-2"><i class="fa-solid fa-left-right text-cyan-400 w-4"></i> Código 70% / Vista 30%</button>' +
+      '<button type="button" data-split="bar" class="w-full text-left px-3 py-2.5 hover:bg-slate-800 flex items-center gap-2 border-t border-slate-800"><i class="fa-solid fa-grip-lines-vertical text-amber-400 w-4"></i> Solo ajustar barra (arrastrar)</button>';
+    document.body.appendChild(menu);
+    menu.addEventListener('click', e => {
+      const btn = e.target.closest('[data-split]');
+      if (!btn) return;
+      const v = btn.getAttribute('data-split');
+      if (v === 'bar') {
+        closeSplitMenu();
+        showToast('Arrastra la barra divisoria para ajustar el tamaño.');
+        return;
+      }
+      applySplitRatio(Number(v));
+      closeSplitMenu();
+      showToast('Panel: código ' + v + '%');
+    });
+  }
+  const rect = anchor.getBoundingClientRect();
+  menu.classList.remove('hidden');
+  menu.style.position = 'fixed';
+  menu.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+  menu.style.top = Math.min(rect.bottom + 6, window.innerHeight - 200) + 'px';
+}
+
+function setupSplitResize() {
+  const divider = document.getElementById('splitDivider');
+  const editorPanel = document.getElementById('editorPanel');
+  const main = document.getElementById('mainSplit');
+  if (!divider || !editorPanel || !main) return;
+
+  // Restore saved ratio
+  const saved = Number(lsGet('codelab_split_pct'));
+  if (saved >= 20 && saved <= 80) applySplitRatio(saved);
+
+  let dragging = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+
+  divider.style.touchAction = 'none';
+  divider.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    document.body.style.cursor = window.innerWidth >= 768 ? 'col-resize' : 'row-resize';
+    document.body.style.userSelect = 'none';
+    if (divider.setPointerCapture) {
+      try { divider.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    closeSplitMenu();
+  });
+
+  document.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) moved = true;
+    if (!moved) return;
+    const rect = main.getBoundingClientRect();
+    const isRow = window.innerWidth >= 768;
+    let pct;
+    if (isRow) pct = ((e.clientX - rect.left) / rect.width) * 100;
+    else pct = ((e.clientY - rect.top) / rect.height) * 100;
+    applySplitRatio(pct);
+  });
+
+  const stopSplitDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    // Tap/click without drag → open size menu.
+    if (!moved) openSplitMenu(divider);
+  };
+  document.addEventListener('pointerup', stopSplitDrag);
+  document.addEventListener('pointercancel', stopSplitDrag);
+
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('splitMenu');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (menu.contains(e.target) || e.target === divider || divider.contains(e.target)) return;
+    closeSplitMenu();
+  });
+}
+
+
 function toggleDesignExportMenu() {
   const menu = document.getElementById('designExportMenu');
   const button = document.getElementById('designExportMenuButton');
