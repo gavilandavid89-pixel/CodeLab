@@ -278,6 +278,11 @@
     return '/api/workspace/' + encodeURIComponent(credentials.id) + '/design-system';
   }
 
+  function isCurrentWorkspace(credentials) {
+    const active = workspaceCredentials();
+    return !!active && !!credentials && active.id === credentials.id && active.token === credentials.token;
+  }
+
   function saveSettings(input) {
     const s = sanitizeSettings(input);
     const credentials = workspaceCredentials();
@@ -288,6 +293,7 @@
       const url = workspaceDesignSystemUrl(credentials);
       const payload = JSON.stringify({ settings: s });
       workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+        if (sequence !== workspaceSettingsSyncSequence || !isCurrentWorkspace(credentials)) return;
         const response = await fetch(url, {
           method: 'PUT',
           credentials: 'same-origin',
@@ -445,11 +451,14 @@
         });
         if (!response.ok) throw new Error('workspace_design_system_load_failed');
         const data = await response.json();
+        // Ignore stale responses if logout/account switching changed the active workspace.
+        if (!isCurrentWorkspace(credentials)) return;
         // A user save made while GET was in flight wins over the older snapshot.
         if (sequenceAtStart !== workspaceSettingsSyncSequence) {
           const latest = loadSavedSettings(localKey);
           const payload = JSON.stringify({ settings: latest });
           workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+            if (!isCurrentWorkspace(credentials)) return;
             const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
               method: 'PUT',
               credentials: 'same-origin',
@@ -475,7 +484,7 @@
         renderAll();
         const payload = JSON.stringify({ settings: settings });
         workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
-          if (sequenceAtStart !== workspaceSettingsSyncSequence) return;
+          if (!isCurrentWorkspace(credentials) || sequenceAtStart !== workspaceSettingsSyncSequence) return;
           const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
             method: 'PUT',
             credentials: 'same-origin',
