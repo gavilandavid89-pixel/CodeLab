@@ -561,7 +561,10 @@ function sendJson(res, status, body, extraHeaders) {
   const data = JSON.stringify(body);
   const headers = Object.assign({
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(data)
+    'Content-Length': Buffer.byteLength(data),
+    // API responses can contain workspace content, account metadata, or bearer
+    // tokens; never let a browser or intermediary cache them as shared content.
+    'Cache-Control': 'no-store'
   }, extraHeaders || {});
   res.writeHead(status, headers);
   res.end(data);
