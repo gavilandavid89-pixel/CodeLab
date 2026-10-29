@@ -2458,7 +2458,7 @@ function bindDesignCanvasEvents() {
     if (!designDragState) return;
     const el = selectedDesignElement(); if (!el || el.id !== designDragState.id) return;
     const dx = (ev.clientX - designDragState.startX) / (designDragState.scaleX || 1);
-    const dy = ev.clientY - designDragState.startY;
+    const dy = (ev.clientY - designDragState.startY) / (designZoom || 1);
     el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
     const node = document.querySelector('[data-design-id="' + el.id + '"]');
     if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
