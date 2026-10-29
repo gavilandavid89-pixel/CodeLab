@@ -320,8 +320,6 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /border-radius:50%/, 'HTML export should preserve ellipse geometry');
     assert.match(exportedHtml, /href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer"/,
       'HTML export should preserve the safe prototype destination with safe new-tab attributes');
-    await page.locator('button[onclick="deleteDesignElement()"]').click();
-    await page.waitForFunction(() => !Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).some(node => node.getAttribute('aria-label') === 'Botón'));
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
@@ -443,6 +441,8 @@ async function waitForPersistedProject(page, projectName) {
       'design-to-web conversion should preserve ellipse geometry');
     assert.match(converted.code.html, /addEventListener\("resize",fit/,
       'converted page should resize its design frame to the viewport');
+    assert.match(converted.code.html, /href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer"/,
+      'design-to-web conversion should preserve the safe prototype navigation destination');
 
     // Monaco loads asynchronously; wait until the editor reflects the active project
     // rather than asserting against the previous design project's stale editor contents.
