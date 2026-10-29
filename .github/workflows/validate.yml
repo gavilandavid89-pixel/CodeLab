@@ -21,13 +21,17 @@ jobs:
           node --check server.js
           node --check public/app.js
           node --check public/capture.js
+          node --check public/design-tools.js
       - name: Test AI-ready design capture export
         run: node tests/design-capture.test.js
+      - name: Test design system tokens and contrast
+        run: node tests/design-tools.test.js
       - name: Browser test AI-ready web capture
         run: |
           npm install --no-save --package-lock=false playwright
           npx playwright install chromium
           node tests/capture-browser.test.js
+          node tests/design-tools-browser.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
