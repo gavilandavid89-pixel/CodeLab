@@ -540,8 +540,11 @@ function isSecureRequest(req) {
 
 function publicBaseUrl(req) {
   if (OAUTH_PUBLIC_URL) return OAUTH_PUBLIC_URL;
-  const proto = (req.headers['x-forwarded-proto'] || (isSecureRequest(req) ? 'https' : 'http')).split(',')[0].trim();
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:' + PORT;
+  // Use the request Host supplied by the front proxy, not X-Forwarded-Host:
+  // the latter can be client-controlled on misconfigured proxy chains and must
+  // not be allowed to choose the OAuth callback origin.
+  const proto = isSecureRequest(req) ? 'https' : 'http';
+  const host = req.headers.host || 'localhost:' + PORT;
   return proto + '://' + host;
 }
 
