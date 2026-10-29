@@ -26,6 +26,7 @@ let pendingAuthProvider = null;
 let oauthConfig = { github: false, google: false, demoFallback: true };
 let mobileStudioMode = 'code';
 let editors = {};
+let editorInitGeneration = 0;
 let activeTab = 'html';
 let isCopyBranchCreated = false;
 let inCopyBranch = false;
@@ -1071,6 +1072,7 @@ function getMonacoOptions() {
 
 function initMonacoOrFallback(code) {
   code = normalizeCode(code);
+  const initGeneration = ++editorInitGeneration;
   if (useMonaco && typeof require !== 'undefined') {
     require.config({
       paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }
@@ -1078,6 +1080,7 @@ function initMonacoOrFallback(code) {
     require(
       ['vs/editor/editor.main'],
       function () {
+        if (initGeneration !== editorInitGeneration) return;
         try {
           const opts = getMonacoOptions();
           if (!editors.html) {
@@ -1129,6 +1132,7 @@ function initMonacoOrFallback(code) {
         }
       },
       function (err) {
+        if (initGeneration !== editorInitGeneration) return;
         console.warn('Monaco load failed', err);
         enableFallbackMode(code);
       }
