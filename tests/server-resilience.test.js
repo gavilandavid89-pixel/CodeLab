@@ -43,7 +43,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(status.user, null, 'Malformed session cookie should be treated as unauthenticated');
     assert.equal(typeof status.demoFallback, 'boolean');
 
-    const oversized = '{"padding":"' + 'x'.repeat(2 * 1024 * 1024) + '"}';
+    const oversized = '{"padding":"' + 'x'.repeat(10 * 1024 * 1024) + '"}';
     const oversizedResponse = await fetch(BASE_URL + '/api/workspace/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
