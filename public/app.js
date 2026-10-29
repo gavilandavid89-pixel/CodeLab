@@ -464,6 +464,12 @@ async function runWorkspaceSync() {
           break;
         }
         if (r.status === 413) {
+          // A newer save may already contain fewer projects or less code; try
+          // that latest snapshot before deciding the workspace is too large.
+          if (syncGeneration !== generationAtStart) {
+            resolveSyncWaiters(false, generationAtStart);
+            continue;
+          }
           syncGeneration = 0;
           workspacePayloadTooLarge = true;
           resolveSyncWaiters(false, generationAtStart);
