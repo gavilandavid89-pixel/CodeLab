@@ -4,6 +4,7 @@
 // ==========================================
 const APP_VERSION = '2.6.6';
 const STORAGE_KEY_PROJECTS = 'codelab_xd_projects_v2';
+const STORAGE_KEY_PROJECTS_RECOVERY = 'codelab_xd_projects_recovery_v1';
 const STORAGE_KEY_PROJECTS_WORKSPACE = 'codelab_xd_projects_workspace_v1';
 const STORAGE_KEY_DELETED_PROJECTS = 'codelab_xd_deleted_projects_v1';
 const STORAGE_KEY_PENDING_IMPORT = 'codelab_xd_pending_local_import_v1';
@@ -19,6 +20,7 @@ const MAX_CONSOLE_LINES = 200;
 let workspaceId = null;
 let initialWorkspaceId = null;
 let pendingLocalImportProjects = null;
+let localProjectsSnapshotRecoveryFailed = false;
 let generatedDefaultProjectId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
@@ -77,9 +79,36 @@ function lsSet(key, value) {
 function lsRemove(key) {
   try { localStorage.removeItem(key); } catch (_) {}
 }
+function preserveInvalidLocalProjectsSnapshot(raw, reason) {
+  if (typeof raw !== 'string') return false;
+  const existing = lsGet(STORAGE_KEY_PROJECTS_RECOVERY);
+  if (existing) {
+    try {
+      const backup = JSON.parse(existing);
+      if (backup && backup.raw === raw) return true;
+    } catch (_) {}
+    // Keep the first recoverable copy rather than replacing it with another
+    // damaged snapshot on a later startup.
+    return false;
+  }
+  const backup = JSON.stringify({
+    version: 1,
+    savedAt: new Date().toISOString(),
+    reason: reason,
+    raw: raw
+  });
+  return lsSet(STORAGE_KEY_PROJECTS_RECOVERY, backup);
+}
 function saveLocalProjectsSnapshot() {
-  lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
-  if (workspaceId) lsSet(STORAGE_KEY_PROJECTS_WORKSPACE, workspaceId);
+  // Never overwrite a damaged snapshot unless its exact contents were first
+  // preserved successfully in the recovery slot.
+  if (localProjectsSnapshotRecoveryFailed) {
+    console.warn('Local project snapshot was not overwritten because recovery backup failed.');
+    return false;
+  }
+  const saved = lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  if (saved && workspaceId) lsSet(STORAGE_KEY_PROJECTS_WORKSPACE, workspaceId);
+  return saved;
 }
 function readDeletedProjectMap() {
   try {
@@ -329,8 +358,16 @@ async function loadProjectsFromStorage() {
         const parsedLocalProjects = JSON.parse(stored);
         // Old or manually edited browser storage must never make workspace
         // bootstrap call array methods on an arbitrary JSON object.
-        localProjects = Array.isArray(parsedLocalProjects) ? parsedLocalProjects : [];
-      } catch (_) { localProjects = []; }
+        if (Array.isArray(parsedLocalProjects)) {
+          localProjects = parsedLocalProjects;
+        } else {
+          localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'projects_not_array');
+          localProjects = [];
+        }
+      } catch (_) {
+        localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'invalid_json');
+        localProjects = [];
+      }
     }
     const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
     const sameWorkspace = !!localWorkspaceMarker && localWorkspaceMarker === boot.workspaceId;
@@ -359,6 +396,7 @@ async function loadProjectsFromStorage() {
       try {
         const parsedLocalProjects = JSON.parse(stored);
         if (!Array.isArray(parsedLocalProjects)) {
+          localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'projects_not_array');
           throw new Error('local_projects_invalid');
         }
         const localProjects = parsedLocalProjects;
@@ -369,7 +407,15 @@ async function loadProjectsFromStorage() {
           storePendingLocalImport(Array.isArray(localProjects) ? localProjects : []);
           projects = [];
         }
-      } catch (_) { projects = []; }
+      } catch (error) {
+        if (error && error.message === 'local_projects_invalid') {
+          // Recovery backup was attempted above; retain the raw snapshot if
+          // storage was unavailable rather than pretending it was recovered.
+        } else if (stored) {
+          localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'invalid_json');
+        }
+        projects = [];
+      }
     }
     setSyncStatus('offline', 'Solo local');
   }
