@@ -153,6 +153,14 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 2,
       'image should be added as a separate editable layer');
 
+    // 5b. Layer order can be changed from the selected-layer properties panel.
+    const layerLabels = () => page.locator('#designCanvas [data-design-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
+    assert.deepEqual(await layerLabels(), ['Título', 'Imagen']);
+    await page.click('#designLayerDown');
+    assert.deepEqual(await layerLabels(), ['Imagen', 'Título'], 'sending a layer back should change render order');
+    await page.click('#designLayerUp');
+    assert.deepEqual(await layerLabels(), ['Título', 'Imagen'], 'bringing a layer forward should restore render order');
+
     // 5c. Apply a full-page template and undo it without losing the prior design.
     await page.click('#designTemplatesButton');
     await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
