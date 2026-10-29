@@ -15,7 +15,8 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       ...process.env,
       PORT: String(PORT),
       CODELAB_DATA_DIR: dataDir,
-      CODELAB_WORKSPACE_SECRET: 'test-only-server-resilience-secret'
+      CODELAB_WORKSPACE_SECRET: 'test-only-server-resilience-secret',
+      CODELAB_TRUSTED_PROXY_HOPS: '2'
     },
     stdio: 'ignore'
   });
@@ -90,12 +91,12 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     let lastRateLimitStatus = 0;
     for (let index = 1; index <= 121; index++) {
       const response = await fetch(BASE_URL + '/api/health', {
-        headers: { 'x-forwarded-for': '198.51.100.' + index + ', 203.0.113.7' }
+        headers: { 'x-forwarded-for': '198.51.100.' + index + ', not-an-ip, 203.0.113.7' }
       });
       lastRateLimitStatus = response.status;
     }
     assert.equal(lastRateLimitStatus, 429,
-      'Rate limiting should use the rightmost proxy-appended IP rather than spoofable leftmost values');
+      'Malformed forwarded chains must fall back safely instead of shifting the configured trusted-hop selection');
     console.log('Server resilience passed: malformed cookies, oversized bodies, workspace settings auth/persistence, and forwarded-IP rate limiting.');
   } finally {
     server.kill('SIGTERM');
