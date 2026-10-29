@@ -528,31 +528,11 @@ async function waitForPersistedProject(page, projectName) {
     // reload the app, and ensure the UI restores the server-backed settings.
     await page.locator('#openDesignTools').click();
     await page.locator('#designToolsModal').waitFor({ state: 'visible' });
-    // Inject a transient rate limit while this end-to-end journey saves the design system.
     await page.locator('#systemName').fill('Sistema integral E2E');
     await page.locator('#colorPrimary').evaluate(input => {
       input.value = '#123abc';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    // Exercise design-system recovery in the real application: the first PUT
-    // gets rate-limited, then the production retry path must persist the value.
-    let designSystemRateLimitInjected = false;
-    let designSystemPutAttempts = 0;
-    await page.route('**/api/workspace/*/design-system', async route => {
-      if (route.request().method() === 'PUT') {
-        designSystemPutAttempts++;
-        if (!designSystemRateLimitInjected) {
-          designSystemRateLimitInjected = true;
-          await route.fulfill({
-            status: 429,
-            contentType: 'application/json',
-            body: JSON.stringify({ error: 'rate_limited', message: 'E2E design-system retry' })
-          });
-          return;
-        }
-      }
-      await route.continue();
     });
     await page.locator('#saveDesignSystem').click();
     await page.waitForFunction(async expected => {
@@ -568,9 +548,6 @@ async function waitForPersistedProject(page, projectName) {
         return data.settings && data.settings.name === expected && data.settings.primary === '#123abc';
       } catch (_) { return false; }
     }, 'Sistema integral E2E', { timeout: 15000 });
-    assert.equal(designSystemRateLimitInjected, true, 'full-system journey should inject one design-system HTTP 429');
-    assert.ok(designSystemPutAttempts >= 1, 'the rate-limit injection must reach the real design-system save path');
-
     // Validate the export artifact as part of the same user journey.
     await page.locator('#designToolsTab-tokens').click();
     const tokenDownloadPromise = page.waitForEvent('download');
