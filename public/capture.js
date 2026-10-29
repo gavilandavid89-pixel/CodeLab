@@ -443,7 +443,24 @@
       if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
       const image = new Image();
       svgUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
-      await new Promise(function (resolve, reject) { image.onload = resolve; image.onerror = reject; image.src = svgUrl; });
+      await new Promise(function (resolve, reject) {
+        let settled = false;
+        const timeout = setTimeout(function () {
+          finish(new Error('El SVG tardó demasiado en renderizarse.'));
+        }, 10000);
+        function finish(error) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          image.onload = null;
+          image.onerror = null;
+          if (error) reject(error);
+          else resolve();
+        }
+        image.onload = function () { finish(); };
+        image.onerror = function () { finish(new Error('No se pudo renderizar el SVG de diseño.')); };
+        image.src = svgUrl;
+      });
       const canvas = document.createElement('canvas');
       canvas.width = captured.width * scale; canvas.height = captured.height * scale;
       const ctx = canvas.getContext('2d');
