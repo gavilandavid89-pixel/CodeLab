@@ -99,7 +99,7 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Tokens ajustables para escala tipográfica, espaciado y radios de borde.
 - Aplicación directa del bloque de tokens al CSS del proyecto web abierto, reemplazando solo el bloque administrado y preservando el resto del CSS.
 - Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
-- Guardado local en el navegador actual; puedes exportar e importar el JSON para trasladar o compartir el sistema visual entre dispositivos. El guardado no se sincroniza automáticamente con la cuenta ni con el servidor.
+- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Los ajustes se recuperan al abrir CodeLab desde otro dispositivo con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
 
 Las pruebas automáticas cubren los cálculos de contraste, generación de tokens, exportaciones y una prueba de interacción en Chromium.
 
