@@ -138,8 +138,30 @@ let SERVER_SECRET = process.env.CODELAB_WORKSPACE_SECRET || '';
 if (!SERVER_SECRET) {
   try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
   if (!SERVER_SECRET) {
-    SERVER_SECRET = crypto.randomBytes(32).toString('hex');
-    try { fs.writeFileSync(SECRET_FILE, SERVER_SECRET, { encoding: 'utf8', mode: 0o600 }); } catch (_) {}
+    const generatedSecret = crypto.randomBytes(32).toString('hex');
+    try {
+      // Exclusive creation prevents two instances sharing a disk from silently
+      // replacing one another's HMAC key during concurrent startup.
+      fs.writeFileSync(SECRET_FILE, generatedSecret, {
+        encoding: 'utf8',
+        mode: 0o600,
+        flag: 'wx'
+      });
+      SERVER_SECRET = generatedSecret;
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
+      } else {
+        throw new Error('CODELAB_WORKSPACE_SECRET is required when the secret file cannot be persisted: ' + error.message);
+      }
+    }
+  }
+  if (!SERVER_SECRET) {
+    throw new Error('Workspace secret file is empty or unreadable; configure CODELAB_WORKSPACE_SECRET or repair ' + SECRET_FILE);
+  }
+  // Tighten permissions for an existing secret file as well as newly created ones.
+  try { fs.chmodSync(SECRET_FILE, 0o600); } catch (error) {
+    console.warn('Could not restrict workspace secret file permissions:', error.message);
   }
 }
 
