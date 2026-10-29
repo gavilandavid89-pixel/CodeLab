@@ -36,6 +36,24 @@ jobs:
           node tests/capture-browser.test.js
           node tests/design-tools-browser.test.js
           node tests/component-library-browser.test.js
+      - name: End-to-end visual design workflow in the real app
+        shell: bash
+        run: |
+          export PORT=3188
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3188"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-e2e-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-e2e-secret"
+          node server.js > "$RUNNER_TEMP/codelab-e2e.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab E2E server log ====="; cat "$RUNNER_TEMP/codelab-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/design-workflow.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
