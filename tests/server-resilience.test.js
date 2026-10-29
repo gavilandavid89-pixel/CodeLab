@@ -9,12 +9,13 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
 
 (async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-server-resilience-'));
-  const server = spawn(process.execPath, ['server.js'], {
+  let server = spawn(process.execPath, ['server.js'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       PORT: String(PORT),
       CODELAB_DATA_DIR: dataDir,
+      CODELAB_WORKSPACE_SECRET: '',
       CODELAB_TRUSTED_PROXY_HOPS: '2',
       GITHUB_CLIENT_ID: 'test-github-client',
       GITHUB_CLIENT_SECRET: 'test-github-secret',
@@ -299,7 +300,56 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     }
     assert.equal(lastRateLimitStatus, 429,
       'Malformed forwarded chains must fall back safely instead of shifting the configured trusted-hop selection');
-    console.log('Server resilience passed: malformed cookies, oversized bodies, workspace settings auth/persistence, and forwarded-IP rate limiting.');
+
+    // Restart against the same data directory without an environment secret:
+    // the generated HMAC key must remain stable and existing workspace tokens
+    // and persisted design-system settings must continue to work.
+    await new Promise(resolve => {
+      if (server.exitCode !== null) return resolve();
+      server.once('exit', resolve);
+      server.kill('SIGTERM');
+    });
+    server = spawn(process.execPath, ['server.js'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PORT: String(PORT),
+        CODELAB_DATA_DIR: dataDir,
+        CODELAB_WORKSPACE_SECRET: '',
+        CODELAB_TRUSTED_PROXY_HOPS: '2',
+        GITHUB_CLIENT_ID: 'test-github-client',
+        GITHUB_CLIENT_SECRET: 'test-github-secret',
+        GOOGLE_CLIENT_ID: 'test-google-client',
+        GOOGLE_CLIENT_SECRET: 'test-google-secret',
+        AI_API_KEY: 'test-only-server-ai-key',
+        AI_BASE_URL: 'https://does-not-resolve.invalid'
+      },
+      stdio: 'ignore'
+    });
+    healthy = false;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (server.exitCode !== null) throw new Error('Restarted server exited before becoming healthy.');
+      try {
+        const response = await fetch(BASE_URL + '/api/health');
+        if (response.ok) { healthy = true; break; }
+      } catch (_) {}
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    assert.equal(healthy, true, 'Server should restart using the persisted workspace secret');
+    assert.equal(await fs.readFile(generatedSecretPath, 'utf8'), generatedSecret,
+      'Restart must not rotate the generated workspace secret');
+    const reloadedWorkspaceResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      headers: { 'x-workspace-token': workspace.token }
+    });
+    assert.equal(reloadedWorkspaceResponse.status, 200,
+      'A workspace token created before restart must remain valid with the persisted secret');
+    const reloadedWorkspace = await reloadedWorkspaceResponse.json();
+    assert.equal(reloadedWorkspace.revision, 0);
+    const reloadedDesignSystemResponse = await fetch(designSystemUrl, { headers: authHeaders });
+    assert.equal(reloadedDesignSystemResponse.status, 200);
+    assert.equal((await reloadedDesignSystemResponse.json()).settings.name, 'Persisted system',
+      'Design-system settings must survive a server restart');
+    console.log('Server resilience passed: request validation, session safety, workspace ownership/persistence, secret stability, SSRF protection and rate limiting.');
   } finally {
     server.kill('SIGTERM');
     await new Promise(resolve => setTimeout(resolve, 100));
