@@ -145,6 +145,8 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     for (const provider of ['github', 'google']) {
       const start = await fetch(BASE_URL + '/api/auth/' + provider, { redirect: 'manual' });
       assert.equal(start.status, 302, provider + ' OAuth should start with a redirect');
+      assert.equal(start.headers.get('cache-control'), 'no-store',
+        provider + ' OAuth redirects must not be cached with transient state');
       const authorizeUrl = new URL(start.headers.get('location'));
       const state = authorizeUrl.searchParams.get('state');
       assert.ok(state, provider + ' OAuth redirect should include signed state');
