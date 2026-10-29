@@ -960,6 +960,36 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
+    // A merge must stop if the branch could not be saved or the main workspace
+    // could not be refreshed; otherwise a stale server snapshot can discard edits.
+    const mergeGuard = await page.evaluate(async () => {
+      const saved = {
+        inCopyBranch,
+        saveInCopyBranch: window.saveInCopyBranch,
+        refreshWorkspaceFromServer: window.refreshWorkspaceFromServer,
+        showToast: window.showToast
+      };
+      let refreshCalled = false;
+      let toast = '';
+      try {
+        inCopyBranch = true;
+        window.saveInCopyBranch = async () => false;
+        window.refreshWorkspaceFromServer = async () => { refreshCalled = true; return true; };
+        window.showToast = message => { toast = message; };
+        await mergeToMainProject();
+        return { refreshCalled, toast };
+      } finally {
+        inCopyBranch = saved.inCopyBranch;
+        window.saveInCopyBranch = saved.saveInCopyBranch;
+        window.refreshWorkspaceFromServer = saved.refreshWorkspaceFromServer;
+        window.showToast = saved.showToast;
+      }
+    });
+    assert.equal(mergeGuard.refreshCalled, false,
+      'merge must not replace local state with a server snapshot when branch save fails');
+    assert.match(mergeGuard.toast, /sincroniza la copia/i,
+      'merge should explain why it stopped');
+
     // Malformed array envelopes must not be treated as account/workspace maps:
     // assigning named keys to arrays is lost by JSON.stringify and would erase
     // deletion tombstones or pending imports on the next write.
