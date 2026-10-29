@@ -49,8 +49,14 @@ const AI_BASE_URL = (process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || '
   .trim()
   .replace(/\/$/, '');
 const _rawModel = (process.env.AI_MODEL || process.env.OPENAI_MODEL || '').trim();
-const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS) || 4096;
-const AI_RATE_MAX = Number(process.env.AI_RATE_MAX) || 20; // per window per IP
+const configuredAiMaxTokens = Number.parseInt(process.env.AI_MAX_TOKENS || '', 10);
+const AI_MAX_TOKENS = Number.isInteger(configuredAiMaxTokens) && configuredAiMaxTokens > 0
+  ? Math.min(32768, configuredAiMaxTokens)
+  : 4096;
+const configuredAiRateMax = Number.parseInt(process.env.AI_RATE_MAX || '', 10);
+const AI_RATE_MAX = Number.isInteger(configuredAiRateMax) && configuredAiRateMax > 0
+  ? Math.min(1000, configuredAiRateMax)
+  : 20; // per window per IP
 
 function isGroqBase(url) {
   return /api\.groq\.com/i.test(url || '');
