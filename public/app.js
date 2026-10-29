@@ -2910,7 +2910,7 @@ function renderDesignWorkspace() {
       resizeHandle.setAttribute('aria-label', 'Redimensionar ' + (el.label || el.type));
       resizeHandle.setAttribute('aria-valuetext', Math.round(Number(el.width)||120) + ' por ' + Math.round(Number(el.height)||48) + ' píxeles');
       resizeHandle.tabIndex = 0;
-      resizeHandle.style.cssText = 'position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
+      resizeHandle.style.cssText = 'position:absolute;right:0;bottom:0;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
       resizeHandle.addEventListener('pointerdown', ev => {
         if (ev.button !== 0) return;
         ev.preventDefault(); ev.stopPropagation();
