@@ -555,8 +555,17 @@ async function refreshWorkspaceFromServer() {
     });
     if (!r.ok) return false;
     const data = await r.json();
-    projects = Array.isArray(data.projects) ? data.projects : [];
-    workspaceRevision = Number.isInteger(data.revision) ? data.revision : 0;
+    // A successful HTTP status is not enough: reject malformed snapshots before
+    // mutating memory or localStorage, otherwise a broken response can erase the
+    // editor's current project list.
+    if (!data || typeof data !== 'object' || Array.isArray(data) ||
+        !Array.isArray(data.projects) ||
+        !Number.isInteger(data.revision) || data.revision < 0) {
+      console.warn('Workspace refresh returned an invalid snapshot.');
+      return false;
+    }
+    projects = data.projects;
+    workspaceRevision = data.revision;
     saveLocalProjectsSnapshot();
     return true;
   } catch (_) {
