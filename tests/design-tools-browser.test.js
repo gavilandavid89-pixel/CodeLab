@@ -52,6 +52,19 @@ function extractDivById(html, id) {
       input.value = '18'; input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     assert.match(await page.locator('#designTokensCss').inputValue(), /--font-size-base: 18px;/);
+    await page.evaluate(() => {
+      window.getCurrentProject = () => ({ id: 'web-fixture', name: 'Web Fixture', type: 'web' });
+      window.getEditorValue = () => '.existing { color: red; }';
+      window.setEditorValue = (lang, value) => { window.__appliedCss = value; };
+      window.updatePreview = () => { window.__previewUpdated = true; };
+      window.showToast = (message) => { window.__toolToast = message; };
+    });
+    await page.click('#applyDesignTokens');
+    const applied = await page.evaluate(() => window.__appliedCss || '');
+    assert.match(applied, /--color-primary: #ff0000;/);
+    assert.match(applied, /CodeLab Design Tokens START/);
+    assert.match(applied, /\.existing \{ color: red; \}/);
+    assert.equal(await page.evaluate(() => window.__previewUpdated), true);
     await page.click('#saveDesignSystem');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#ff0000');
     const downloadPromise = page.waitForEvent('download');
