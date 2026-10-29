@@ -24,6 +24,11 @@ const tallFreeLayout = capture.captureDesignSvg({ design: { frame: 'mobile', ele
 assert.equal(tallFreeLayout.height, 1272, 'Free-layout captures must include elements below the initial 900px viewport');
 const oversizedAutoLayout = capture.captureDesignSvg({ design: { frame: 'mobile', layoutMode: 'auto', layoutDirection: 'column', layoutPadding: 20, layoutGap: 10, elements: Array.from({ length: 100 }, (_, i) => ({ id: 'auto-' + i, type: 'rectangle', width: 300, height: 100, background: '#ffffff' })) } });
 assert.equal(oversizedAutoLayout.height, 6000, 'Auto-layout captures must cap total SVG height for very tall designs');
+assert.throws(
+  () => capture.captureDesignSvg({ design: { frame: 'mobile', elements: Array.from({ length: 501 }, (_, i) => ({ id: 'layer-' + i, type: 'text', text: 'Layer' })) } }),
+  /500 capas/,
+  'Design capture must reject excessive layer counts before building a large SVG'
+);
 const malformedGeometry = capture.captureDesignSvg({ design: { frame: 'mobile', elements: [{ id: 'bad', type: 'text', text: 'Bounded', x: Infinity, y: NaN, width: 99999999, height: 99999999, background: '#ffffff', fontSize: 9999, weight: 9999, radius: 99999 }] } });
 assert.doesNotMatch(malformedGeometry.svg, /Infinity|NaN|font-size="9999"|font-weight="9999"/, 'Capture SVG must not emit non-finite coordinates or unbounded typography');
 assert.match(malformedGeometry.svg, /width="4000" height="4000"/, 'Capture element dimensions must be clamped to safe bounds');
