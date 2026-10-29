@@ -22,7 +22,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       GOOGLE_CLIENT_ID: 'test-google-client',
       GOOGLE_CLIENT_SECRET: 'test-google-secret',
       AI_API_KEY: 'test-only-server-ai-key',
-      AI_BASE_URL: 'https://127.0.0.1'
+      AI_BASE_URL: 'https://does-not-resolve.invalid'
     },
     stdio: 'ignore'
   });
@@ -218,7 +218,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       body: JSON.stringify({
         prompt: 'hello',
         apiKey: 'test-only-key',
-        baseUrl: 'https://does-not-resolve.invalid',
+        baseUrl: 'https://127.0.0.1:' + PORT,
         model: 'test-model'
       })
     });
