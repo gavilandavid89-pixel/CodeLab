@@ -107,7 +107,7 @@
     const css = String(input.css || '');
     const js = String(input.js || '');
     const viewport = Number(input.viewport) || 1280;
-    const scale = [1, 2, 3].includes(Number(input.scale)) ? Number(input.scale) : 2;
+    const scale = [1, 2, 3, 4].includes(Number(input.scale)) ? Number(input.scale) : 2;
     const title = (html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || project.name || 'Página sin título';
     const description = (html.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>/i) || [])[1] || '';
     const headings = [];
@@ -193,7 +193,7 @@
     const controls = document.getElementById('webCaptureViewport');
     const viewport = Math.max(320, Math.min(1920, Number(controls && controls.value) || 1280));
     const scaleControl = document.getElementById('webCaptureScale');
-    const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+    const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
     const code = getProjectCode(project);
     const slug = safeSlug(project.name);
     const iframe = document.createElement('iframe');
@@ -278,7 +278,7 @@
     }
     const captured = captureDesignSvg(project);
     const scaleControl = document.getElementById('designCaptureScale');
-    const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+    const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
     const pixelCount = captured.width * captured.height * scale * scale;
     const slug = safeSlug(project.name);
     const elements = (project.design.elements || []).map(function (el, index) {
@@ -324,7 +324,7 @@
     if (!toolbar || document.getElementById('webCaptureBtn')) return;
     const controls = document.createElement('div');
     controls.className = 'flex items-center gap-1.5';
-    controls.innerHTML = '<label class="sr-only" for="webCaptureViewport">Ancho de captura</label><select id="webCaptureViewport" title="Ancho de la captura" class="max-w-[105px] bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] text-slate-300"><option value="1280">Desktop</option><option value="768">Tablet</option><option value="390">Móvil</option></select><label class="sr-only" for="webCaptureScale">Resolución de captura</label><select id="webCaptureScale" title="Resolución: 1× estándar, 2× alta, 3× máxima" class="max-w-[65px] bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] text-slate-300"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option></select><button id="webCaptureBtn" type="button" title="Descargar captura visual y contexto para IA" class="rounded bg-violet-600 hover:bg-violet-500 px-2 py-1 text-[10px] font-semibold text-white whitespace-nowrap"><i class="fa-solid fa-camera mr-1"></i>Captura IA</button>';
+    controls.innerHTML = '<label class="sr-only" for="webCaptureViewport">Ancho de captura</label><select id="webCaptureViewport" title="Ancho de la captura" class="max-w-[105px] bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] text-slate-300"><option value="1280">Desktop</option><option value="768">Tablet</option><option value="390">Móvil</option></select><label class="sr-only" for="webCaptureScale">Resolución de captura</label><select id="webCaptureScale" title="Resolución: 1× estándar, 2× alta, 3× alta densidad, 4× máxima" class="max-w-[65px] bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] text-slate-300"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select><button id="webCaptureBtn" type="button" title="Descargar captura visual y contexto para IA" class="rounded bg-violet-600 hover:bg-violet-500 px-2 py-1 text-[10px] font-semibold text-white whitespace-nowrap"><i class="fa-solid fa-camera mr-1"></i>Captura IA</button>';
     toolbar.appendChild(controls);
     const button = document.getElementById('webCaptureBtn');
     if (button) button.addEventListener('click', captureWebForAI);
