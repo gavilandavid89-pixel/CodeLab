@@ -81,6 +81,53 @@ async function waitForPersistedProject(page, projectName) {
     });
     assert.equal(projectLimitCheck.after, projectLimitCheck.before,
       'The UI must prevent creating a project when the workspace has reached its server-configured limit');
+    
+    // OAuth local import must obey the same project cap as manual creation.
+    const importLimitCheck = await page.evaluate(() => {
+      const saved = {
+        currentUser,
+        projects,
+        pendingLocalImportProjects,
+        maxProjects,
+        saveProjectsToStorage,
+        renderProjectsList,
+        showToast,
+        confirm: window.confirm,
+        pendingStorage: localStorage.getItem('codelab_xd_pending_local_import_v1')
+      };
+      try {
+        currentUser = { real: true, provider: 'e2e', id: 'import-limit' };
+        projects = [{ id: 'existing-project', name: 'Existente', code: { html: '', css: '', js: '' } }];
+        pendingLocalImportProjects = [
+          { id: 'import-one', name: 'Uno', code: { html: '<p>1</p>' } },
+          { id: 'import-two', name: 'Dos', code: { html: '<p>2</p>' } },
+          { id: 'import-three', name: 'Tres', code: { html: '<p>3</p>' } }
+        ];
+        maxProjects = 2;
+        saveProjectsToStorage = () => {};
+        renderProjectsList = () => {};
+        showToast = () => {};
+        window.confirm = () => true;
+        maybeOfferLocalImport();
+        return { count: projects.length, importedIds: projects.map(project => project.id) };
+      } finally {
+        currentUser = saved.currentUser;
+        projects = saved.projects;
+        pendingLocalImportProjects = saved.pendingLocalImportProjects;
+        maxProjects = saved.maxProjects;
+        saveProjectsToStorage = saved.saveProjectsToStorage;
+        renderProjectsList = saved.renderProjectsList;
+        showToast = saved.showToast;
+        window.confirm = saved.confirm;
+        if (saved.pendingStorage === null) localStorage.removeItem('codelab_xd_pending_local_import_v1');
+        else localStorage.setItem('codelab_xd_pending_local_import_v1', saved.pendingStorage);
+      }
+    });
+    assert.equal(importLimitCheck.count, 2,
+      'Local OAuth import must not exceed the configured project cap');
+    assert.ok(importLimitCheck.importedIds.includes('existing-project'),
+      'Local OAuth import must preserve existing account projects');
+
 
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
