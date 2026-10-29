@@ -184,8 +184,19 @@
       }
       const html = String(window.getEditorValue('html') || '');
       const next = /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, item.html + '\n</body>') : html + '\n' + item.html;
+      // Keep the editor within the same per-field limit enforced by the server.
+      // Reject before touching the editor so a tool action cannot create a
+      // project that then fails validation during persistence/synchronization.
+      if (next.length > 500000) {
+        status('No se insertó el componente: el HTML superaría el límite de 500.000 caracteres. Reduce el código existente e inténtalo de nuevo.');
+        return;
+      }
+      if (typeof window.saveCurrentCodeToActiveProject !== 'function') {
+        status('No se pudo guardar el componente porque el editor todavía no está listo. Inténtalo de nuevo.');
+        return;
+      }
       window.setEditorValue('html', next);
-      if (typeof window.saveCurrentCodeToActiveProject === 'function') window.saveCurrentCodeToActiveProject(true);
+      window.saveCurrentCodeToActiveProject(true);
       if (typeof window.updatePreview === 'function') window.updatePreview();
       status('Componente insertado en el HTML del proyecto.');
     }
