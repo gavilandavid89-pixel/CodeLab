@@ -528,9 +528,7 @@ async function waitForPersistedProject(page, projectName) {
     // reload the app, and ensure the UI restores the server-backed settings.
     await page.locator('#openDesignTools').click();
     await page.locator('#designToolsModal').waitFor({ state: 'visible' });
-    // Finish initial workspace migration before injecting a rate limit, so the
-    // fault is guaranteed to hit the explicit user save rather than startup sync.
-    await page.waitForFunction(() => /workspace/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 10000 });
+    // Inject a transient rate limit while this end-to-end journey saves the design system.
     await page.locator('#systemName').fill('Sistema integral E2E');
     await page.locator('#colorPrimary').evaluate(input => {
       input.value = '#123abc';
