@@ -95,6 +95,7 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Paleta con colores primario, secundario, acento, superficie, fondo y texto, con generación automática de tonos 50–900.
 - Vista previa de componentes para revisar cómo conviven los colores antes de usarlos en una interfaz.
 - Comprobador de contraste basado en la fórmula WCAG: AA para texto normal (4.5:1), AA para texto grande (3:1) y AAA para texto normal (7:1).
+- Auditoría estática del HTML del proyecto abierto para detectar imágenes sin alt, campos sin etiqueta detectable, botones/enlaces sin nombre, ids duplicados, saltos de encabezados y metadatos básicos; permite exportar un informe JSON.
 - Tokens ajustables para escala tipográfica, espaciado y radios de borde.
 - Aplicación directa del bloque de tokens al CSS del proyecto web abierto, reemplazando solo el bloque administrado y preservando el resto del CSS.
 - Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
