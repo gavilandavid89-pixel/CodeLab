@@ -3300,7 +3300,12 @@ function applyDesignTemplate(templateId) {
     showToast('Abre un proyecto de diseño primero.', 'warn');
     return;
   }
+  if (!['landing','dashboard','portfolio'].includes(templateId)) {
+    showToast('Selecciona una plantilla válida.', 'warn');
+    return;
+  }
   if (project.design.elements.length && !window.confirm('Esta plantilla reemplazará las capas actuales. Puedes usar Deshacer para recuperar el diseño anterior. ¿Continuar?')) return;
+  recordDesignHistory();
   const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
   const compact = frameWidth <= 768;
   const pad = compact ? 24 : 80;
@@ -3360,11 +3365,7 @@ function applyDesignTemplate(templateId) {
       elements.push(make('heading', card.title, card.title, x + 14, y + 45, cardWidth - 28, 55, { fontSize: compact ? 20 : 22, weight: 700 }));
     });
     project.design.background = '#ffffff';
-  } else {
-    showToast('Selecciona una plantilla válida.', 'warn');
-    return;
   }
-  recordDesignHistory();
   project.design.elements = elements;
   project.updatedAt = new Date().toISOString();
   selectedDesignElementId = elements[0] ? elements[0].id : null;
