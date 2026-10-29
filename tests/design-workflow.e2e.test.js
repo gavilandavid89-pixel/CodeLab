@@ -113,7 +113,21 @@ async function waitForPersistedProject(page, projectName) {
     await page.click('#designSnapBtn');
     await element.focus();
 
-    // 4b. Keyboard nudging and duplication shortcuts operate on the selected layer.
+    // 4b. Resize the selected layer directly from its canvas handle.
+    const sizeBefore = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
+    const resizeHandle = page.locator('[data-design-resize-handle]');
+    await resizeHandle.waitFor({ state: 'visible' });
+    const handleBox = await resizeHandle.boundingBox();
+    assert.ok(handleBox, 'selected canvas layer should expose a visible resize handle');
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handleBox.x + handleBox.width / 2 + 32, handleBox.y + handleBox.height / 2 + 24, { steps: 4 });
+    await page.mouse.up();
+    const sizeAfter = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
+    assert.ok(sizeAfter.width >= sizeBefore.width + 25, 'canvas resize handle should increase layer width');
+    assert.ok(sizeAfter.height >= sizeBefore.height + 18, 'canvas resize handle should increase layer height');
+
+    // 4c. Keyboard nudging and duplication shortcuts operate on the selected layer.
     const beforeNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Shift+ArrowDown');
