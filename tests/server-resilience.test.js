@@ -426,6 +426,13 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(ownerMismatchInit.status, 500,
       'Workspace initialization must enforce ownership even for an existing session');
     assert.equal((await ownerMismatchInit.json()).error, 'workspace_corrupt');
+    const ownerMismatchDesignSystem = await fetch(
+      BASE_URL + '/api/workspace/' + ownerMismatchWorkspaceId + '/design-system',
+      { headers: ownerMismatchHeaders }
+    );
+    assert.equal(ownerMismatchDesignSystem.status, 500,
+      'Design-system endpoints must not bypass account workspace ownership checks');
+    assert.equal((await ownerMismatchDesignSystem.json()).error, 'workspace_corrupt');
     await fs.rm(ownerMismatchStatePath, { force: true });
     await fs.rm(ownerMismatchSessionPath, { force: true });
 
