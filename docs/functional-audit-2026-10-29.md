@@ -16,6 +16,7 @@ Audit of the changes in PR #2 on `feature/design-workspace`: visual design proje
 - Palette swatches are labelled as selecting/using a shade rather than claiming to copy it.
 - Uncommitted design-system edits remain in the modal draft when it is closed and reopened during the same page session.
 - CSS token insertion deduplicates repeated managed marker blocks.
+- Visual design exports are available as standalone HTML, SVG, and editable project JSON. Exported HTML scales the fixed design frame to the viewport and recalculates on resize; color values are restricted to safe CSS color syntax. The chained E2E downloads all three formats and verifies the HTML responsive behavior and export payloads.
 - UI wording now explains that token insertion adds CSS variables and does not automatically rewrite every existing color/style.
 - Capture sanitization neutralizes quoted and unquoted javascript: URLs in link, image, and form-action attributes.
 - Server request handling now tolerates malformed cookie encoding and returns a proper 413 for oversized bodies; rate-limit maps expire stale AI entries and forwarded-IP parsing supports an explicit trusted-proxy hop count.
