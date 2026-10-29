@@ -4077,7 +4077,7 @@ function closeDesignTemplatesMenu() {
   if (button) button.setAttribute('aria-expanded', 'false');
 }
 
-function applyDesignTemplate(templateId) {
+async function applyDesignTemplate(templateId) {
   const project = activeDesignProject();
   if (!project || !project.design) {
     showToast('Abre un proyecto de diseño primero.', 'warn');
@@ -4154,8 +4154,25 @@ function applyDesignTemplate(templateId) {
   selectedDesignElementId = elements[0] ? elements[0].id : null;
   closeDesignTemplatesMenu();
   renderDesignWorkspace();
-  saveProjectsToStorage();
-  showToast('Plantilla aplicada. Puedes editar cada capa y deshacer el cambio.');
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  const localCopyMatches = (() => {
+    try {
+      const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+      const savedProject = Array.isArray(snapshot) && snapshot.find(item => item && item.id === project.id);
+      return !!savedProject && !!savedProject.design &&
+        Array.isArray(savedProject.design.elements) &&
+        savedProject.design.elements.length === elements.length &&
+        elements.every(element => savedProject.design.elements.some(saved => saved && saved.id === element.id));
+    } catch (_) { return false; }
+  })();
+  if (serverSaved) {
+    showToast('Plantilla aplicada y sincronizada. Puedes editar cada capa y deshacer el cambio.');
+  } else if (localCopyMatches) {
+    showToast('Plantilla aplicada y guardada localmente; sincronización pendiente.', 'warn');
+  } else {
+    showToast('Plantilla aplicada al lienzo, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
+  }
 }
 
 function exportDesignSvg() {
