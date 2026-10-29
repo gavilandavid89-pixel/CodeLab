@@ -95,7 +95,7 @@
   function buildDesignTokens(input) {
     const s = sanitizeSettings(input);
     const typeSteps = [-2, -1, 0, 1, 2, 3, 4].map(step => ({
-      name: step < 0 ? 'xs'.repeat(Math.abs(step)) : step === 0 ? 'base' : 'xl'.repeat(step),
+      name: ({ '-2': 'xs', '-1': 'sm', '0': 'base', '1': 'lg', '2': 'xl', '3': '2xl', '4': '3xl' })[String(step)],
       step: step,
       px: Math.round(s.baseFont * Math.pow(s.typeRatio, step) * 100) / 100
     }));
