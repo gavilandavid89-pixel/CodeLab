@@ -154,6 +154,20 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const invalidCodeResult = await invalidCodeContainer.json();
     assert.equal(invalidCodeResult.error, 'invalid_payload');
     assert.equal(invalidCodeResult.detail, 'invalid_project_code');
+    const duplicateProjectIdsResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 0,
+        projects: [
+          { id: 'same-id', name: 'First', code: {} },
+          { id: 'same-id', name: 'Second', code: {} }
+        ]
+      })
+    });
+    assert.equal(duplicateProjectIdsResponse.status, 400,
+      'A workspace update must not persist multiple projects with the same identity');
+    assert.equal((await duplicateProjectIdsResponse.json()).detail, 'duplicate_project_id');
     const corruptInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
