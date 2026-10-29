@@ -78,10 +78,13 @@
     const height = layout.height;
     const items = (Array.isArray(design.elements) ? design.elements : []).map(function (el) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
-      const x = Number(position.x) || 0, y = Number(position.y) || 0;
-      const w = Math.max(20, Number(el.width) || 120), h = Math.max(20, Number(el.height) || 48);
-      const fontSize = Math.max(8, Number(el.fontSize) || 16);
-      const radius = Math.max(0, Number(el.radius) || 0);
+      const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
+      const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
+      const y = Math.max(-6000, Math.min(6000, finiteNumber(position.y, 0)));
+      const w = Math.max(20, Math.min(4000, finiteNumber(el.width, 120) || 120));
+      const h = Math.max(20, Math.min(4000, finiteNumber(el.height, 48) || 48));
+      const fontSize = Math.max(8, Math.min(256, finiteNumber(el.fontSize, 16) || 16));
+      const radius = Math.max(0, Math.min(4000, finiteNumber(el.radius, 0)));
       const background = safeColor(el.background);
       const color = safeColor(el.color || '#111827');
       const rect = background !== 'transparent'
@@ -107,7 +110,7 @@
       const tspans = lines.map(function (line, i) {
         return '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + xmlEscape(line) + '</tspan>';
       }).join('');
-      return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + xmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Number(el.weight) || 400) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+      return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + xmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, finiteNumber(el.weight, 400) || 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
     }).join('');
     return {
       width: width,
