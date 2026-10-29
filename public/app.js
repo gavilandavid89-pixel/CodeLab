@@ -442,13 +442,15 @@ async function runWorkspaceSync() {
           serverSyncError = true;
           syncGeneration = 0;
           setSyncStatus('conflict', 'Conflicto');
-          resolveSyncWaiters(false, generationAtStart);
+          // A newer save can queue while this request is in flight; fail every waiter on terminal conflict.
+          resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
           showConflictModal(data);
           break;
         }
         if (r.status === 429) {
           syncGeneration = 0;
-          resolveSyncWaiters(false, generationAtStart);
+          // All queued saves are deferred to the scheduled retry, so none may remain unresolved.
+          resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
           setSyncStatus('offline', 'Reintento pendiente');
           if (!syncRetryTimer) {
             const delay = SYNC_RETRY_DELAYS_MS[Math.min(syncRetryAttempt, SYNC_RETRY_DELAYS_MS.length - 1)];
@@ -503,7 +505,7 @@ async function runWorkspaceSync() {
       } catch (e) {
         serverReady = false;
         syncGeneration = 0;
-        resolveSyncWaiters(false, generationAtStart);
+        resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
         console.warn('No se pudo sincronizar con el servidor.', e);
         setSyncStatus('offline', 'Solo local');
         showToast('Guardado local activo; el servidor no está disponible.', 'warn');
