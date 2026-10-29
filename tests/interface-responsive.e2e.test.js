@@ -56,6 +56,21 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
 
     const bottomBar = page.locator('#mobileBottomBar');
     await bottomBar.waitFor({ state: 'visible' });
+    console.log('Mobile nav hit-test diagnostics:', JSON.stringify(await page.evaluate(() => {
+      const nav = document.getElementById('mobileBottomBar');
+      const button = document.getElementById('mobileTabPreview');
+      const studio = document.getElementById('studioView');
+      const r = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const style = element => {
+        const s = getComputedStyle(element);
+        const b = element.getBoundingClientRect();
+        return { position: s.position, zIndex: s.zIndex, display: s.display, pointerEvents: s.pointerEvents,
+          left: b.left, top: b.top, width: b.width, height: b.height };
+      };
+      return { viewport: { width: innerWidth, height: innerHeight }, nav: style(nav), button: style(button),
+        studio: style(studio), hit: { id: hit?.id, tag: hit?.tagName, className: String(hit?.className || '') } };
+    })));
     await page.locator('#mobileTabPreview').click();
     assert.ok(await page.locator('#studioView').evaluate(el => el.classList.contains('mobile-mode-preview')),
       'Preview bottom-tab should switch the mobile studio to preview mode');
