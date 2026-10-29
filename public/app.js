@@ -1825,8 +1825,7 @@ async function saveInCopyBranch() {
     css: getEditorValue('css'),
     js: getEditorValue('js')
   });
-  persistBranch(true);
-  const ok = await persistWorkspace();
+  const ok = await persistBranch(true);
   showToast(
     ok === false
       ? 'La copia quedó guardada localmente; el servidor no respondió.'
