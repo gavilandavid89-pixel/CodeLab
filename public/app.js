@@ -2974,7 +2974,11 @@ function renderDesignWorkspace() {
         if (ev.key === 'ArrowRight') el.width = Math.min(4000, (Number(el.width)||120) + step);
         if (ev.key === 'ArrowUp') el.height = Math.max(20, (Number(el.height)||48) - step);
         if (ev.key === 'ArrowDown') el.height = Math.min(4000, (Number(el.height)||48) + step);
-        renderDesignWorkspace(); saveProjectsToStorage();
+        const resizeId = el.id;
+        renderDesignWorkspace();
+        const nextHandle = Array.from(document.querySelectorAll('[data-design-resize-handle]')).find(item => item.dataset.designResizeHandle === resizeId);
+        if (nextHandle) nextHandle.focus();
+        saveProjectsToStorage();
       });
       node.appendChild(resizeHandle);
     }
