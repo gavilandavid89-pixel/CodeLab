@@ -222,7 +222,7 @@ function parseOAuthState(state) {
 // Rotate through large session directories so entries after the first batch
 // are also eventually checked, while keeping each cleanup pass bounded.
 let sessionCleanupCursor = 0;
-setInterval(() => {
+function cleanupExpiredSessions() {
   try {
     const allSessionFiles = fs.readdirSync(SESSIONS_DIR).filter(file => file.endsWith('.json'));
     let files = allSessionFiles;
@@ -248,7 +248,9 @@ setInterval(() => {
       } catch (_) {}
     }
   } catch (_) {}
-}, 15 * 60 * 1000).unref();
+}
+cleanupExpiredSessions();
+setInterval(cleanupExpiredSessions, 15 * 60 * 1000).unref();
 
 function safeId(value) {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
