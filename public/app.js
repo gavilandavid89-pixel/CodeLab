@@ -150,12 +150,12 @@ function loadDeletedProjectIds(forWorkspaceId) {
   return new Set(Array.isArray(byWorkspace[forWorkspaceId]) ? byWorkspace[forWorkspaceId].filter(id => typeof id === 'string') : []);
 }
 function recordDeletedProjectId(id) {
-  if (!workspaceId || !id) return;
+  if (!workspaceId || !id) return false;
   const byWorkspace = readDeletedProjectMap();
   const ids = new Set(Array.isArray(byWorkspace[workspaceId]) ? byWorkspace[workspaceId] : []);
   ids.add(id);
   byWorkspace[workspaceId] = Array.from(ids);
-  lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
+  return lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
 }
 function clearDeletedProjectIds(forWorkspaceId) {
   const target = forWorkspaceId || workspaceId;
@@ -914,19 +914,43 @@ function createNewProjectConfirm() {
   showToast('Proyecto "' + name + '" creado.');
 }
 
-function deleteProject(id, e) {
+async function deleteProject(id, e) {
   if (e) e.stopPropagation();
   if (!confirm('¿Eliminar este proyecto permanentemente?')) return;
-  recordDeletedProjectId(id);
-  projects = projects.filter(p => p.id !== id);
+  const index = projects.findIndex(project => project && project.id === id);
+  if (index < 0) return;
+  const deletedProject = projects[index];
+  const previousCurrentProjectId = currentProjectId;
+  const previousInCopyBranch = inCopyBranch;
+  const previousIsCopyBranchCreated = isCopyBranchCreated;
+  const tombstoneSaved = recordDeletedProjectId(id);
+  projects = projects.filter(project => project.id !== id);
   if (currentProjectId === id) {
     currentProjectId = null;
     inCopyBranch = false;
     isCopyBranchCreated = false;
   }
-  saveProjectsToStorage();
+  let synchronized = false;
+  try { synchronized = await saveProjectsToStorage() === true; } catch (_) {}
+  if (synchronized || tombstoneSaved) {
+    renderProjectsList();
+    showToast(
+      synchronized
+        ? 'Proyecto eliminado y sincronizado.'
+        : 'Proyecto eliminado localmente; la marca de eliminación quedó guardada y se sincronizará al recuperar la conexión.',
+      synchronized ? 'info' : 'warn'
+    );
+    return;
+  }
+  // Without either a durable tombstone or a confirmed server delete, rollback.
+  // Otherwise the old server copy could reappear on the next workspace merge.
+  projects.splice(Math.min(index, projects.length), 0, deletedProject);
+  currentProjectId = previousCurrentProjectId;
+  inCopyBranch = previousInCopyBranch;
+  isCopyBranchCreated = previousIsCopyBranchCreated;
+  saveLocalProjectsSnapshot();
   renderProjectsList();
-  showToast('Proyecto eliminado.');
+  showToast('No se pudo asegurar la eliminación; se conservó el proyecto para evitar que reaparezca o se pierda.', 'error');
 }
 
 function duplicateProjectFromDashboard(id, e) {
