@@ -49,7 +49,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
-    await assert.rejects(fs.stat(staleSessionPath),
+    await assert.rejects(fs.stat(staleSessionPath), { code: 'ENOENT' },
       'Expired session records should be removed during startup cleanup');
     assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
       'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
