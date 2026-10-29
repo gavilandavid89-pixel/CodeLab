@@ -85,6 +85,10 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       'Invalid body-size configuration must fall back to a safe default');
     assert.equal(healthConfig.maxProjects, 50,
       'Invalid project-count configuration must fall back to a safe default');
+    const aiStatusResponse = await fetch(BASE_URL + '/api/ai/status');
+    assert.equal(aiStatusResponse.status, 200);
+    assert.equal((await aiStatusResponse.json()).maxProjects, 50,
+      'The client-facing AI status must expose the same project limit used by workspace validation');
     const healthHeadResponse = await fetch(BASE_URL + '/api/health', { method: 'HEAD' });
     assert.equal(healthHeadResponse.status, 200);
     assert.equal(await healthHeadResponse.text(), '', 'Health HEAD must not send a JSON body');
