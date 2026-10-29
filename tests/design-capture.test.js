@@ -12,6 +12,7 @@ const design = {
       { id: 'right', type: 'text', text: 'Right', x: 20, y: 160, width: 200, height: 40, fontSize: 16, color: '#334155', background: 'transparent', textAlign: 'right' },
       { id: 'button', type: 'button', text: 'Continue', x: 20, y: 220, width: 180, height: 48, fontSize: 16, color: '#ffffff', background: '#6d28d9', radius: 8 },
       { id: 'rectangle', type: 'rectangle', x: 10, y: 290, width: 100, height: 60, background: '#e2e8f0', radius: 4 },
+      { id: 'ellipse', type: 'ellipse', x: 220, y: 500, width: 100, height: 80, background: '#c4b5fd' },
       { id: 'image', type: 'image', src: 'https://images.example.test/sample.png', alt: 'Sample photo', objectFit: 'contain', x: 12, y: 370, width: 180, height: 120, background: '#e2e8f0' }
     ]
   }
@@ -23,6 +24,7 @@ assert.match(mobile.svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
 assert.match(mobile.svg, /Hello &lt;AI&gt; &amp; &quot;friends&quot;/);
 assert.match(mobile.svg, /fill="#6d28d9"/);
 assert.match(mobile.svg, /width="100" height="60"/);
+assert.match(mobile.svg, /<ellipse cx="270" cy="540" rx="50" ry="40" fill="#c4b5fd"\/>/, 'Ellipse layers should preserve their oval geometry in SVG');
 assert.match(mobile.svg, /<image href="https:\/\/images\.example\.test\/sample\.png"/, 'SVG capture should preserve safe image layers');
 assert.match(mobile.svg, /preserveAspectRatio="xMidYMid meet"/, 'Image fit mode should be reflected in SVG capture');
 assert.doesNotMatch(capture.captureDesignSvg({ design: { frame: 'mobile', elements: [{ type: 'image', src: 'javascript:alert(1)', x: 0, y: 0, width: 20, height: 20 }] } }).svg, /javascript:/i, 'Unsafe image sources must not be embedded in SVG');
