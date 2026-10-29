@@ -29,6 +29,9 @@ jobs:
           node --check public/design-tools.js
           node --check public/component-library.js
           node --check tests/server-resilience.test.js
+          node --check tests/version-consistency.test.js
+      - name: Check version metadata consistency
+        run: node tests/version-consistency.test.js
       - name: Test server resilience and workspace persistence
         run: node tests/server-resilience.test.js
       - name: Test AI-ready design capture export
