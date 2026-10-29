@@ -72,6 +72,36 @@ function extractDivById(html, id) {
     assert.match(inserted, /Resumen del proyecto/);
     assert.match(inserted, /<\/body>/);
     assert.equal(await page.evaluate(() => window.__saved && window.__previewUpdated), true);
+
+    // Inserting a reusable tool must respect the same HTML field cap enforced by
+    // server-side workspace validation; rejected actions must not mutate editor state.
+    await page.evaluate(() => {
+      window.__insertCalls = 0;
+      window.__insertedHtml = 'previous editor value';
+      window.getEditorValue = () => 'x'.repeat(500000);
+      window.setEditorValue = () => { window.__insertCalls++; };
+      window.saveCurrentCodeToActiveProject = () => { window.__savedAfterReject = true; };
+    });
+    await page.click('#componentLibraryInsert');
+    assert.equal(await page.evaluate(() => window.__insertCalls), 0,
+      'oversized component insertion must be rejected before modifying the editor');
+    assert.equal(await page.evaluate(() => window.__insertedHtml), 'previous editor value',
+      'rejected insertion must preserve existing editor state');
+    assert.match(await page.locator('#componentLibraryStatus').textContent(), /500\.000 caracteres/,
+      'the tool should explain why insertion was rejected');
+
+    // If the editor persistence hook is unavailable, do not report a successful insertion.
+    await page.evaluate(() => {
+      window.getEditorValue = () => '<!doctype html><html><body></body></html>';
+      window.setEditorValue = () => { window.__insertCalls++; };
+      delete window.saveCurrentCodeToActiveProject;
+    });
+    await page.click('#componentLibraryInsert');
+    assert.equal(await page.evaluate(() => window.__insertCalls), 0,
+      'insertion must not change the editor when the persistence hook is missing');
+    assert.match(await page.locator('#componentLibraryStatus').textContent(), /editor todavía no está listo/,
+      'the tool should report when editor persistence is unavailable');
+
     const downloadPromise = page.waitForEvent('download');
     await page.click('#componentLibraryDownload');
     const download = await downloadPromise;
