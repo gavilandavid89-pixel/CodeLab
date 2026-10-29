@@ -19,13 +19,20 @@ const { chromium } = require('playwright');
     await page.addScriptTag({ path: 'public/capture.js' });
     await page.waitForSelector('#webCaptureBtn');
     await page.selectOption('#webCaptureViewport', '768');
-    const downloadsPromise = Promise.all([
-      page.waitForEvent('download', { timeout: 45000 }),
-      page.waitForEvent('download', { timeout: 45000 })
-    ]);
+    const downloads = [];
+    const downloadsPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Expected PNG and JSON downloads, received: ' + downloads.map(d => d.suggestedFilename()).join(', '))), 45000);
+      page.on('download', (download) => {
+        downloads.push(download);
+        if (downloads.length === 2) { clearTimeout(timeout); resolve(downloads); }
+      });
+    });
     await page.click('#webCaptureBtn');
-    const [pngDownload, jsonDownload] = await downloadsPromise;
-    assert.match(pngDownload.suggestedFilename(), /\.png$/i, 'Browser capture must download a PNG');
+    const receivedDownloads = await downloadsPromise;
+    const pngDownload = receivedDownloads.find(download => /\.png$/i.test(download.suggestedFilename()));
+    const jsonDownload = receivedDownloads.find(download => /\.json$/i.test(download.suggestedFilename()));
+    assert.ok(pngDownload, 'Browser capture must download a PNG');
+    assert.ok(jsonDownload, 'Browser capture must download context JSON');
     const pngPath = await pngDownload.path();
     const png = await fs.readFile(pngPath);
     assert.ok(png.length > 500, 'PNG output must contain rendered image data');
