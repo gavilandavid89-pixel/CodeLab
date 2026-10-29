@@ -24,6 +24,7 @@ Audit of the changes in PR #2 on `feature/design-workspace`: visual design proje
 - Forwarded-IP rate limiting preserves proxy-hop positions and rejects malformed chains instead of filtering invalid entries and accidentally shifting the trusted-hop selection; integration coverage uses a two-hop trust configuration.
 - Outbound HTTPS calls to OAuth and AI providers now have a configurable inactivity timeout (default 60 seconds, bounded to 1–300 seconds), preventing stalled upstreams from holding requests indefinitely.
 - OAuth callbacks now require the signed state to match an HttpOnly, SameSite=Lax, short-lived cookie set when that browser starts login; integration tests verify copied state URLs without the initiating browser cookie are rejected for GitHub and Google.
+- Copilot provider settings and user-supplied API keys are now stored under account-specific browser storage keys; account identity resolves before loading AI settings, legacy global keys are discarded when a real account is active, and logout reloads anonymous settings to avoid leaving the prior account's key in memory. A source-level regression guard runs in CI.
 - The user-configurable AI provider URL is validated as HTTPS and resolved against public IP ranges; loopback/private targets are rejected, the resolved address is pinned for the connection, and the server integration test covers a loopback SSRF attempt.
 
 ## Remaining limitations / coverage gaps
