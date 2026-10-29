@@ -28,6 +28,7 @@ function extractDivById(html, id) {
     const fixtureHtml = '<!doctype html><html lang="es"><body class="bg-slate-950 text-white"><button id="openDesignTools">Herramientas</button>' + modal + '</body></html>';
     let remoteSettings = null;
     let remoteWrites = 0;
+    let failNextPutWithRateLimit = false;
     let delayNextPut = false;
     let releaseDelayedPut = null;
     await page.route('http://codelab.test/**', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixtureHtml }));
@@ -40,6 +41,10 @@ function extractDivById(html, id) {
       if (request.method() === 'PUT') {
         const incomingSettings = request.postDataJSON().settings;
         remoteWrites++;
+        if (failNextPutWithRateLimit) {
+          failNextPutWithRateLimit = false;
+          return route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'rate_limited' }) });
+        }
         if (delayNextPut) {
           delayNextPut = false;
           await page.evaluate(() => { window.__delayedPutStarted = true; });
@@ -112,11 +117,13 @@ function extractDivById(html, id) {
     assert.match(applied, /CodeLab Design Tokens START/);
     assert.match(applied, /\.existing \{ color: red; \}/);
     assert.equal(await page.evaluate(() => window.__previewUpdated), true);
+    const writesBeforeRateLimit = remoteWrites;
+    failNextPutWithRateLimit = true;
     await page.click('#saveDesignSystem');
     await page.waitForFunction(() => window.__remoteDesignSystem?.primary === '#ff0000', null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('codelab-design-system-v1')).primary), '#ff0000');
     assert.equal(await page.evaluate(() => window.__remoteDesignSystem.primary), '#ff0000');
-    assert.ok(remoteWrites >= 2, 'settings should migrate to the workspace and then save edits remotely');
+    assert.ok(remoteWrites >= writesBeforeRateLimit + 2, 'a 429 response should be retried and the design system should still persist remotely');
     const downloadPromise = page.waitForEvent('download');
     await page.click('#exportDesignSystemJson');
     const download = await downloadPromise;

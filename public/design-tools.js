@@ -294,6 +294,25 @@
     return '/api/workspace/' + encodeURIComponent(credentials.id) + '/design-system';
   }
 
+  async function requestWorkspaceSettings(url, options) {
+    const delays = [200, 500];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let response;
+      try {
+        response = await fetch(url, options);
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+        continue;
+      }
+      if (response.ok || (response.status !== 429 && response.status < 500) || attempt === 2) {
+        return response;
+      }
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+    }
+    throw new Error('workspace_design_system_request_failed');
+  }
+
   function isCurrentWorkspace(credentials) {
     const active = workspaceCredentials();
     return !!active && !!credentials && active.id === credentials.id && active.token === credentials.token;
@@ -310,7 +329,7 @@
       const payload = JSON.stringify({ settings: s });
       workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
         if (sequence !== workspaceSettingsSyncSequence || !isCurrentWorkspace(credentials)) return;
-        const response = await fetch(url, {
+        const response = await requestWorkspaceSettings(url, {
           method: 'PUT',
           credentials: 'same-origin',
           headers: {
@@ -461,7 +480,7 @@
       }
       const sequenceAtStart = workspaceSettingsSyncSequence;
       try {
-        const response = await fetch(workspaceDesignSystemUrl(credentials), {
+        const response = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
           credentials: 'same-origin',
           headers: { 'x-workspace-token': credentials.token }
         });
@@ -475,7 +494,7 @@
           const payload = JSON.stringify({ settings: latest });
           workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
             if (!isCurrentWorkspace(credentials)) return;
-            const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
+            const saveResponse = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
               method: 'PUT',
               credentials: 'same-origin',
               headers: { 'Content-Type': 'application/json', 'x-workspace-token': credentials.token },
@@ -501,7 +520,7 @@
         const payload = JSON.stringify({ settings: settings });
         workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
           if (!isCurrentWorkspace(credentials) || sequenceAtStart !== workspaceSettingsSyncSequence) return;
-          const saveResponse = await fetch(workspaceDesignSystemUrl(credentials), {
+          const saveResponse = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
             method: 'PUT',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'x-workspace-token': credentials.token },
