@@ -145,14 +145,21 @@
     const endMarker = '/* CodeLab Design Tokens END */';
     const block = startMarker + '\n' + String(tokensCss || '').trim() + '\n' + endMarker;
     const source = String(existingCss || '');
-    const pattern = /\/\* CodeLab Design Tokens START \*\/[\s\S]*?\/\* CodeLab Design Tokens END \*\//g;
+    // Match complete managed blocks and orphaned markers. A half-edited marker
+    // should not be left behind to confuse the next update or duplicate tokens.
+    const pattern = /\/\* CodeLab Design Tokens START \*\/[\s\S]*?\/\* CodeLab Design Tokens END \*\/|\/\* CodeLab Design Tokens (?:START|END) \*\//g;
     let replaced = false;
-    const cleaned = source.replace(pattern, () => {
-      if (replaced) return '';
-      replaced = true;
-      return block;
+    const cleaned = source.replace(pattern, match => {
+      const isCompleteBlock = match.startsWith(startMarker) && match.includes(endMarker);
+      if (!replaced && isCompleteBlock) {
+        replaced = true;
+        return block;
+      }
+      return '';
     });
-    return replaced ? cleaned.replace(/\n{3,}/g, '\n\n') : block + (source.trim() ? '\n\n' + source.replace(/^\s+/, '') : '\n');
+    return replaced
+      ? cleaned.replace(/\n{3,}/g, '\n\n')
+      : block + (cleaned.trim() ? '\n\n' + cleaned.replace(/^\s+/, '') : '\n');
   }
 
   function auditHtml(html) {
