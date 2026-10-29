@@ -2321,7 +2321,7 @@ function exportDesignHtml() {
   const elements = p.design.elements.map(el => {
     const tag = el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
     const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
-    const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
+    const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;text-align:'+(['left','center','right'].includes(el.textAlign)?el.textAlign:'left')+';font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
     return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
@@ -2391,10 +2391,12 @@ function renderDesignWorkspace() {
     node.style.left = (Number(el.x) || 0) + 'px'; node.style.top = (Number(el.y) || 0) + 'px';
     node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
     node.style.borderRadius = Math.max(0, Number(el.radius) || 0) + 'px';
     node.style.display = 'flex'; node.style.alignItems = 'center';
     node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
+    node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.padding = el.type === 'rectangle' ? '0' : '4px';
     node.style.whiteSpace = 'pre-wrap'; node.style.overflow = 'hidden';
     node.style.outline = el.id === selectedDesignElementId ? '2px solid #8b5cf6' : '1px solid transparent';
@@ -2428,7 +2430,7 @@ function renderDesignWorkspace() {
     field('Nombre de capa','label','text') +
     '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
-    field('Tamaño de texto','fontSize') + field('Redondeado','radius');
+    field('Tamaño de texto','fontSize') + field('Redondeado','radius') + (el.type !== 'rectangle' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '');
   updateDesignHistoryButtons();
 }
 function updateDesignProperty(key, value) {
