@@ -646,6 +646,8 @@ function openProject(id) {
   document.getElementById('designStudioPanel').classList.toggle('flex', isDesignProject);
   document.getElementById('mainSplit').classList.toggle('md:flex-row', !isDesignProject);
   document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
+  const mobileBar = document.getElementById('mobileBottomBar');
+  if (mobileBar) mobileBar.classList.toggle('hidden', isDesignProject);
   setMobileStudioMode('code');
   // Layout after studio is visible
   requestAnimationFrame(() => {
@@ -2343,6 +2345,7 @@ function renderDesignWorkspace() {
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
       selectedDesignElementId = el.id;
+      recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
       designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
       node.setPointerCapture && node.setPointerCapture(ev.pointerId);
