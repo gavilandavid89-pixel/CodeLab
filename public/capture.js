@@ -256,6 +256,9 @@
       return;
     }
     const captured = captureDesignSvg(project);
+    const scaleControl = document.getElementById('designCaptureScale');
+    const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+    const pixelCount = captured.width * captured.height * scale * scale;
     const slug = safeSlug(project.name);
     const elements = (project.design.elements || []).map(function (el, index) {
       return {
@@ -267,7 +270,7 @@
     const context = {
       format: 'codelab-ai-design-capture', version: 2, project: project.name || 'Diseño sin título',
       frame: project.design.frame || 'desktop', image: slug + '-captura-ia.png',
-      canvas: { width: captured.width, height: captured.height, background: project.design.background || '#ffffff' },
+      canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale: scale, background: project.design.background || '#ffffff' },
       elementCount: elements.length, elements: elements,
       aiInstructions: 'Analiza el PNG para evaluar la apariencia visual y usa este JSON para conocer posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue problemas observables de sugerencias y considera accesibilidad y adaptación móvil.'
     };
@@ -276,14 +279,17 @@
       const image = new Image();
       const svgUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
       await new Promise(function (resolve, reject) { image.onload = resolve; image.onerror = reject; image.src = svgUrl; });
+      if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
       const canvas = document.createElement('canvas');
-      canvas.width = captured.width * 2; canvas.height = captured.height * 2;
+      canvas.width = captured.width * scale; canvas.height = captured.height * scale;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
-      ctx.scale(2, 2); ctx.drawImage(image, 0, 0, captured.width, captured.height); URL.revokeObjectURL(svgUrl);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.scale(scale, scale); ctx.drawImage(image, 0, 0, captured.width, captured.height); URL.revokeObjectURL(svgUrl);
       const png = await new Promise(function (resolve, reject) { canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('No se pudo generar el PNG.')); }, 'image/png'); });
       downloadBlob(slug + '-captura-ia.png', png);
-      toast('Captura IA lista: PNG 2× y contexto JSON.');
+      toast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
     } catch (error) {
       downloadBlob(slug + '-captura-ia.svg', new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
       toast('El PNG falló; descargué SVG y contexto JSON.', 'warn');
