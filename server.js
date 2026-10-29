@@ -357,12 +357,26 @@ function createSession(user) {
 }
 
 function readSession(sid) {
-  if (!sid) return null;
+  // Session IDs are generated as 24 random bytes encoded as lowercase hex.
+  // Reject anything else before mapping a cookie value to a filesystem path.
+  if (typeof sid !== 'string' || !/^[a-f0-9]{48}$/.test(sid)) return null;
+  const file = sessionPath(sid);
   try {
-    const raw = fs.readFileSync(sessionPath(sid), 'utf8');
+    const raw = fs.readFileSync(file, 'utf8');
     const session = JSON.parse(raw);
-    if (!session || session.expiresAt < Date.now()) {
-      try { fs.unlinkSync(sessionPath(sid)); } catch (_) {}
+    const valid =
+      session &&
+      typeof session === 'object' &&
+      !Array.isArray(session) &&
+      session.id === sid &&
+      Number.isFinite(session.expiresAt) &&
+      session.expiresAt > Date.now() &&
+      session.user &&
+      typeof session.user === 'object' &&
+      typeof session.user.id === 'string' &&
+      (session.user.provider === 'github' || session.user.provider === 'google');
+    if (!valid) {
+      try { fs.unlinkSync(file); } catch (_) {}
       return null;
     }
     return session;
