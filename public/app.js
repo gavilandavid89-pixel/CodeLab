@@ -93,7 +93,8 @@ function preserveInvalidLocalProjectsSnapshot(raw, reason) {
       // Never overwrite it with a new backup we cannot safely merge.
       return false;
     }
-    if (!backup || typeof backup !== 'object' || Array.isArray(backup)) return false;
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) ||
+        (backup.backups != null && !Array.isArray(backup.backups))) return false;
     const extras = Array.isArray(backup.backups) ? backup.backups : [];
     if (backup.raw === raw || extras.some(item => item && item.raw === raw)) return true;
     if (typeof backup.raw === 'string') {
