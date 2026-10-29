@@ -298,6 +298,9 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(exportedTokens.colors.primary, '#123abc');
 
     await page.locator('#designToolsCloseFooter').click();
+    // Remove the browser fallback so the next page load must recover these
+    // values from the server-backed workspace design-system endpoint.
+    await page.evaluate(() => localStorage.removeItem('codelab-design-system-v1'));
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
     await page.locator('#openDesignTools').click();
