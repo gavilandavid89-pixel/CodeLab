@@ -413,22 +413,32 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let tooLarge = false;
+    let settled = false;
     req.on('data', chunk => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
+        chunks.length = 0;
+        settled = true;
+        // Keep the request stream alive long enough to return a real HTTP 413
+        // instead of resetting the socket before the caller can send JSON.
         reject(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) return;
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw) return resolve({});
       try { resolve(JSON.parse(raw)); }
       catch (e) { reject(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON' })); }
     });
-    req.on('error', reject);
+    req.on('error', error => {
+      if (!settled) reject(error);
+    });
   });
 }
 
