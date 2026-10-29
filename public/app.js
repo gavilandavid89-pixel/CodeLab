@@ -2977,10 +2977,9 @@ function renderDesignWorkspace() {
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
-      if (!selectedDesignElementIds.includes(el.id) || selectedDesignElementIds.length <= 1) {
-        selectedDesignElementId = el.id;
-        selectedDesignElementIds = [el.id];
-      }
+      // A plain drag acts on one layer; Shift/Ctrl/Meta-click is reserved for multi-selection.
+      selectedDesignElementId = el.id;
+      selectedDesignElementIds = [el.id];
       node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
