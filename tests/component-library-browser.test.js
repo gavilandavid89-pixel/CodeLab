@@ -76,11 +76,23 @@ function extractDivById(html, id) {
 
     // A rejected server save must not be reported as a confirmed successful save.
     await page.evaluate(() => {
-      window.getEditorValue = kind => kind === 'html' ? '<!doctype html><html><body></body></html>' : '';
-      window.saveCurrentCodeToActiveProject = async () => false;
+      window.__editorHtml = '<!doctype html><html><body></body></html>';
+      window.__saveCalls = 0;
+      window.getEditorValue = kind => kind === 'html' ? window.__editorHtml : '';
+      window.setEditorValue = (kind, value) => { window.__editorHtml = value; };
+      window.saveCurrentCodeToActiveProject = async () => ++window.__saveCalls > 1;
     });
     await page.click('#componentLibraryInsert');
     await page.waitForFunction(() => /no se confirmó el guardado\/sincronización/i.test(document.querySelector('#componentLibraryStatus')?.textContent || ''), null, { timeout: 3000 });
+    await page.click('#componentLibraryInsert');
+    await page.waitForFunction(() => /guardado; sincronización confirmada/i.test(document.querySelector('#componentLibraryStatus')?.textContent || ''), null, { timeout: 3000 });
+    const retryResult = await page.evaluate(() => ({
+      saveCalls: window.__saveCalls,
+      insertedHtml: window.__editorHtml
+    }));
+    assert.equal(retryResult.saveCalls, 2, 'retry after a failed save should retry persistence');
+    assert.equal((retryResult.insertedHtml.match(/Resumen del proyecto/g) || []).length, 1,
+      'retrying a failed insertion must not insert a duplicate component');
 
     // Inserting a reusable tool must respect the same HTML field cap enforced by
     // server-side workspace validation; rejected actions must not mutate editor state.
