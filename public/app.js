@@ -784,6 +784,10 @@ function createNewProjectConfirm() {
     return;
   }
   const name = document.getElementById('newProjectNameInput').value.trim() || 'Proyecto sin título';
+  if (name.length > 200) {
+    showToast('El nombre del proyecto no puede superar los 200 caracteres.', 'warn');
+    return;
+  }
   const selectedType = document.querySelector('input[name="newProjectType"]:checked');
   const type = selectedType && selectedType.value === 'design' ? 'design' : 'web';
   const newProj = {
@@ -827,7 +831,7 @@ function duplicateProjectFromDashboard(id, e) {
   if (!orig) return;
   const dup = {
     id: 'proj_' + crypto.randomUUID(),
-    name: orig.name + ' (Copia)',
+    name: String(orig.name || 'Proyecto').slice(0, 200 - ' (Copia)'.length) + ' (Copia)',
     type: orig.type === 'design' ? 'design' : 'web',
     updatedAt: new Date().toISOString(),
     code: JSON.parse(JSON.stringify(orig.code)),
