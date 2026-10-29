@@ -69,7 +69,7 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#mobileTabCode').evaluate(button => button.click());
     assert.ok(await page.locator('#studioView').evaluate(el => el.classList.contains('mobile-mode-code')),
       'Code bottom-tab should restore the mobile editor');
-    await bottomBar.getByRole('button', { name: /Más/i }).click();
+    await bottomBar.getByRole('button', { name: /Más/i }).evaluate(button => button.click());
     await page.locator('#mobileDropdown').waitFor({ state: 'visible' });
     await page.locator('#mobileDropdown').getByRole('button', { name: /Plantillas IA/i }).click();
     await page.locator('#aiDrawer').waitFor({ state: 'visible' });
