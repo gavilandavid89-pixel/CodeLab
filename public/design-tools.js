@@ -193,8 +193,8 @@
       const ariaLabel = attribute(attrs, 'aria-label');
       const explicitLabel = id && Array.from(source.matchAll(/<label\b[^>]*>/gi)).some(labelMatch => attribute(labelMatch[0], 'for') === id);
       const wrappedLabel = Array.from(source.matchAll(/<label\b[^>]*>[\s\S]*?<\/label\s*>/gi)).some(labelMatch => {
-        const fieldTag = (labelMatch[0].match(/<(input|select|textarea)\b[^>]*>/i) || [''])[0];
-        return !!fieldTag && (!id || attribute(fieldTag, 'id') === id);
+        const labelEnd = labelMatch.index + labelMatch[0].length;
+        return match.index >= labelMatch.index && match.index < labelEnd;
       });
       if (!ariaLabel && !labelledBy && !explicitLabel && !wrappedLabel) add('field-no-label', 'error', 'Hay un campo de formulario sin etiqueta asociada detectable.', 'Añade <label for="id"> o un nombre accesible mediante aria-label/aria-labelledby.');
     }
