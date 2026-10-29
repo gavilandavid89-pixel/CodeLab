@@ -37,7 +37,7 @@
   }
 
   function getCaptureLayoutPositions(design) {
-    const elements = Array.isArray(design && design.elements) ? design.elements : [];
+    const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : [];
     const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
     const positions = new Map();
     if (!design || design.layoutMode !== 'auto') {
@@ -77,7 +77,7 @@
     const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[design.frame] || 1440;
     const layout = getCaptureLayoutPositions(design);
     const height = layout.height;
-    const items = (Array.isArray(design.elements) ? design.elements : []).map(function (el) {
+    const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
       const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
@@ -443,7 +443,7 @@
     const pixelCount = captured.width * captured.height * scale * scale;
     const slug = safeSlug(project.name);
     const layout = getCaptureLayoutPositions(project.design);
-    const elements = (project.design.elements || []).map(function (el, index) {
+    const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el, index) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
       const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
