@@ -2641,6 +2641,9 @@ async function captureDesignForAI() {
   const project = activeDesignProject();
   if (!project || !project.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
   const captured = captureDesignSvg(project);
+  const scaleControl = document.getElementById('designCaptureScale');
+  const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+  const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const elements = (project.design.elements || []).map((el, index) => ({
     order: index + 1,
@@ -2664,7 +2667,7 @@ async function captureDesignForAI() {
     project: project.name || 'Diseño sin título',
     frame: project.design.frame || 'desktop',
     image: slug + '-captura-ia.png',
-    canvas: { width: captured.width, height: captured.height, background: project.design.background || '#ffffff' },
+    canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale, background: project.design.background || '#ffffff' },
     elementCount: elements.length,
     elements,
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
@@ -2680,7 +2683,7 @@ async function captureDesignForAI() {
       image.onerror = reject;
       image.src = svgUrl;
     });
-    const scale = 2;
+    if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
     const canvas = document.createElement('canvas');
     canvas.width = captured.width * scale; canvas.height = captured.height * scale;
     const ctx = canvas.getContext('2d');
@@ -2690,7 +2693,7 @@ async function captureDesignForAI() {
     URL.revokeObjectURL(svgUrl);
     const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
     downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
-    showToast('Captura IA lista: PNG 2×, contexto JSON y prompt.');
+    showToast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
   } catch (error) {
     downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
     showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
