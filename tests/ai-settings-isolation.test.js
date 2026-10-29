@@ -21,4 +21,7 @@ assert.match(source, /async function logoutAuth\(\)[\s\S]*?workspaceToken = '';[
 assert.match(source, /if \(currentUser && currentUser\.real\) \{\s*const saved = await persistWorkspace\(\);\s*if \(!saved\) \{\s*storePendingLocalImport\(projects\);/,
   'logout must preserve unsynced account projects if the server save fails');
 
+assert.match(source, /Do not overwrite a pending snapshot already preserved for this account\.[\s\S]*?if \(!\(Array\.isArray\(pendingLocalImportProjects\) && pendingLocalImportProjects\.length\)\) \{\s*storePendingLocalImport\(localProjects\);/,
+  'a saved offline account snapshot must not be replaced by the anonymous workspace snapshot');
+
 console.log('AI settings and logout isolation checks passed.');
