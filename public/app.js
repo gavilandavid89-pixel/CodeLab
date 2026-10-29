@@ -441,6 +441,7 @@ async function runWorkspaceSync() {
           const data = await r.json();
           serverSyncError = true;
           syncGeneration = 0;
+          updateDashboardStatus();
           setSyncStatus('conflict', 'Conflicto');
           // A newer save can queue while this request is in flight; fail every waiter on terminal conflict.
           resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
@@ -598,6 +599,7 @@ function conflictTakeServer() {
   clearDeletedProjectIds(workspaceId);
   closeConflictModal();
   serverSyncError = false;
+  updateDashboardStatus();
   setSyncStatus('synced', 'Sincronizado');
   if (currentProjectId) {
     const proj = projects.find(p => p.id === currentProjectId);
@@ -649,6 +651,7 @@ function conflictKeepLocal() {
   pendingConflict = null;
   closeConflictModal();
   serverSyncError = false;
+  updateDashboardStatus();
   persistWorkspace().then(ok => {
     if (ok) {
       showToast('Tu versión local se guardó en el servidor.');
