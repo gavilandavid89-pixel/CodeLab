@@ -975,16 +975,20 @@ function escapeAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
+let creatingProjectInFlight = false;
 function openNewProjectModal() {
+  if (creatingProjectInFlight) return;
   document.getElementById('newProjectNameInput').value = '';
   document.getElementById('newProjectModal').classList.remove('hidden');
 }
 
 function closeNewProjectModal() {
+  if (creatingProjectInFlight) return;
   document.getElementById('newProjectModal').classList.add('hidden');
 }
 
-function createNewProjectConfirm() {
+async function createNewProjectConfirm() {
+  if (creatingProjectInFlight) return;
   if (projects.length >= maxProjects) {
     showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de crear otro.', 'warn');
     return;
@@ -1004,12 +1008,45 @@ function createNewProjectConfirm() {
     code: { ...defaultTemplate },
     ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false } } : {})
   };
+  creatingProjectInFlight = true;
+  const confirmButton = document.querySelector('#newProjectModal button[onclick="createNewProjectConfirm()"]');
+  const previousButtonText = confirmButton ? confirmButton.textContent : '';
+  if (confirmButton) {
+    confirmButton.disabled = true;
+    confirmButton.setAttribute('aria-busy', 'true');
+    confirmButton.textContent = 'Creando…';
+  }
   projects.unshift(newProj);
-  saveProjectsToStorage();
+  // Save the local snapshot first so a server/network failure cannot turn a
+  // successful-looking create action into a project that exists only in RAM.
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try {
+    serverSaved = await saveProjectsToStorage() === true;
+  } catch (_) {}
+  const localContainsProject = (() => {
+    try {
+      const raw = lsGet(STORAGE_KEY_PROJECTS);
+      const saved = JSON.parse(raw || 'null');
+      return Array.isArray(saved) && saved.some(project => project && project.id === newProj.id);
+    } catch (_) { return false; }
+  })();
   closeNewProjectModal();
   renderProjectsList();
   openProject(newProj.id);
-  showToast('Proyecto "' + name + '" creado.');
+  if (serverSaved) {
+    showToast('Proyecto "' + name + '" creado y sincronizado.');
+  } else if (localSaved && localContainsProject) {
+    showToast('Proyecto "' + name + '" creado y guardado localmente. La sincronización queda pendiente.', 'warn');
+  } else {
+    showToast('Proyecto "' + name + '" está abierto, pero no se pudo confirmar un guardado duradero. Exporta una copia antes de salir.', 'error');
+  }
+  creatingProjectInFlight = false;
+  if (confirmButton) {
+    confirmButton.disabled = false;
+    confirmButton.removeAttribute('aria-busy');
+    confirmButton.textContent = previousButtonText || 'Crear Proyecto';
+  }
 }
 
 async function deleteProject(id, e) {
