@@ -3167,20 +3167,32 @@ function deleteDesignElement() {
 }
 function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
-  const elements = p.design.elements.map(el => {
-    const tag = el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
-    const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
-    const href = el.type === 'button' ? safeDesignLink(el.href) : '';
-    const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
-    return '<'+tag+(href?' href="'+escapeAttr(href)+'" target="_blank" rel="noopener noreferrer"':'')+' style="'+style+'">'+text+'</'+tag+'>';
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+    const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
+    const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
+    const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : (el.type === 'rectangle' || el.type === 'ellipse') ? 'div' : 'p';
+    const text = el.type === 'rectangle' || el.type === 'ellipse' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
+    const color = safeDesignExportColor(el.color, '#111827');
+    const background = safeDesignExportColor(el.background, 'transparent');
+    const x = Math.max(0, Math.min(10000, Number(el.x) || 0));
+    const y = Math.max(0, Math.min(10000, Number(el.y) || 0));
+    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
+    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
+    const style = 'position:absolute;left:'+x+'px;top:'+y+'px;width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    if (el.type === 'image' && imageSource) return '<img src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+(buttonHref?' href="'+escapeAttr(buttonHref)+'" target="_blank" rel="noopener noreferrer"':'')+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
-  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
-  const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;overflow-x:auto}.design-frame{position:relative;width:'+width+'px;min-height:900px;background:'+(p.design.background||'#fff')+';margin:0 auto}@media(max-width:'+width+'px){.design-frame{transform-origin:top left;transform:scale(calc(100vw / '+width+'));margin-bottom:calc(900px * (100vw / '+width+' - 1))}}</style></head><body><main class="design-frame">'+elements+'</main></body></html>';
+  const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
+  const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{position:relative;width:'+frameWidth+'px;height:900px;background:'+frameBackground+';transform-origin:top left;margin:0}</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>';
   const next = { id: 'proj_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), name: p.name + ' · Web', type: 'web', updatedAt: new Date().toISOString(), code: { html, css: '', js: '' } };
   projects.unshift(next); saveProjectsToStorage(); renderProjectsList(); openProject(next.id);
   showToast('Página web creada a partir del diseño.');
 }
-
 
 function setupNewProjectModalKeys() {
   const input = document.getElementById('newProjectNameInput');
