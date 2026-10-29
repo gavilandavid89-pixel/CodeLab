@@ -151,8 +151,12 @@
     const issues = [];
     const add = (code, severity, message, fix) => issues.push({ code: code, severity: severity, message: message, fix: fix });
     const attribute = (tag, name) => {
-      const match = String(tag || '').match(new RegExp('\\b' + name + '\\s*=\\s*(?:"([^"]*)"|\\'([^\\']*)\\'|([^\\s>]+))', 'i'));
-      return match ? (match[1] || match[2] || match[3] || '') : null;
+      const text = String(tag || '');
+      const doubleQuoted = text.match(new RegExp('\\\\b' + name + '\\\\s*=\\\\s*"([^"]*)"', 'i'));
+      const singleQuoted = text.match(new RegExp("\\\\b" + name + "\\\\s*=\\\\s*'([^']*)'", 'i'));
+      const unquoted = text.match(new RegExp('\\\\b' + name + '\\\\s*=\\\\s*([^\\\\s>]+)', 'i'));
+      const match = doubleQuoted || singleQuoted || unquoted;
+      return match ? (match[1] || '') : null;
     };
     if (!source.trim()) {
       add('empty-html', 'error', 'El HTML del proyecto está vacío.', 'Añade la estructura principal de la página antes de ejecutar la auditoría.');
