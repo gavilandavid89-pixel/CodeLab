@@ -127,7 +127,7 @@ Incluye plantillas visuales para **landing de producto**, **panel de control** y
 
 ## Capturas para IA
 
-Los proyectos de diseño y web permiten elegir captura PNG a 1×, 2× o 3×, junto con JSON estructurado de elementos/código y estilos. Los proyectos web permiten además seleccionar escritorio, tablet o móvil. El contexto JSON registra la escala real y las dimensiones en píxeles correspondientes. Para evitar agotar la memoria del navegador, se bloquean capturas superiores a 32 millones de píxeles y se recomienda bajar la escala o el ancho si ocurre. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
+Los proyectos de diseño y web permiten elegir captura PNG a 1×, 2×, 3× o 4× (máxima densidad), junto con JSON estructurado de elementos/código y estilos. El render vectorial de los diseños se rasteriza directamente a la escala elegida para conservar bordes nítidos. Los proyectos web permiten además seleccionar escritorio, tablet o móvil. El contexto JSON registra la escala real y las dimensiones en píxeles correspondientes. Para evitar agotar la memoria del navegador, se bloquean capturas superiores a 32 millones de píxeles y se recomienda bajar la escala o el ancho si ocurre. Para seguridad, el render aislado de captura no ejecuta el JavaScript del proyecto ni contenido embebido; los efectos dinámicos de JS no se reflejan en el PNG.
 
 ## Biblioteca de componentes reutilizables
 
