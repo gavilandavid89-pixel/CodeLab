@@ -26,6 +26,13 @@ assert.equal(tokens.spacing[7].px, 48);
 assert.equal(tokens.radius.find(item => item.name === 'radius-lg').px, 10);
 assert.equal(tokens.accessibility.contrastRatio, Math.round(tools.contrastRatio('#f8fafc', '#020617') * 100) / 100);
 
+const exportedRoundTrip = tools.buildDesignTokens({ name: 'Round trip', primary: '#123456', baseFont: 20, typeRatio: 1.3, baseSpacing: 8, baseRadius: 16 });
+assert.equal(exportedRoundTrip.format, 'codelab-design-system');
+assert.equal(exportedRoundTrip.version, 1);
+assert.equal(exportedRoundTrip.typography.baseFontPx, 20);
+assert.equal(exportedRoundTrip.spacing[0].px, 8);
+assert.equal(exportedRoundTrip.radius.find(item => item.name === 'radius-lg').px, 16);
+
 const css = tools.toCssVariables({ primary: '#123456', baseFont: 18, baseSpacing: 6 });
 assert.match(css, /--color-primary: #123456;/);
 assert.match(css, /--color-primary-500: #123456;/);
