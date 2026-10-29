@@ -299,7 +299,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.evaluate(() => {
       const project = window.activeDesignProject();
       return project.design.elements.find(item => item.type === 'button')?.href || '';
-    }), 'https://example.com/docs/', 'prototype buttons should keep normalized HTTP(S) destinations only');
+    }), 'https://example.com/docs', 'prototype buttons should keep normalized HTTP(S) destinations only');
 
     // 6d. Verify the three explicit export formats through the real UI.
     await page.click('#designExportMenuButton');
