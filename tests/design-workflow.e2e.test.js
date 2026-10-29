@@ -148,10 +148,11 @@ async function waitForPersistedProject(page, projectName) {
 
     // 4d. Multi-select three layers from the layer list and distribute them evenly.
     const distributionX = [100, 300, 800];
-    for (const x of distributionX) {
+    const distributionY = [420, 500, 600];
+    for (let index = 0; index < distributionX.length; index++) {
       await page.locator('button[onclick="addDesignElement(\'rectangle\')"]').click();
-      await page.locator('#designProperty-x').fill(String(x));
-      await page.locator('#designProperty-y').fill('500');
+      await page.locator('#designProperty-x').fill(String(distributionX[index]));
+      await page.locator('#designProperty-y').fill(String(distributionY[index]));
       await page.locator('#designProperty-width').fill('100');
       await page.locator('#designProperty-height').fill('60');
     }
@@ -166,6 +167,13 @@ async function waitForPersistedProject(page, projectName) {
         .map(item => item.left).sort((a, b) => a - b));
     assert.deepEqual(distributed.slice(0, 3), [100, 450, 800],
       'multi-select distribution should create equal gaps while preserving first/last bounds');
+    await page.locator('button[aria-label="Alinear arriba"]').click();
+    const alignedTops = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes =>
+      nodes.map(node => ({ top: parseFloat(node.style.top), left: parseFloat(node.style.left), width: parseFloat(node.style.width) }))
+        .filter(item => item.width === 100 && item.left >= 100 && item.left <= 900)
+        .map(item => item.top));
+    assert.deepEqual(alignedTops.slice(0, 3), [420, 420, 420],
+      'multi-select alignment should align all selected layer tops to the shared selection edge');
     await page.locator('button[onclick="deleteDesignElement()"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 1);
     await element.click();
