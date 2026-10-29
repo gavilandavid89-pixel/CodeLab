@@ -162,6 +162,23 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal((await corruptStateResponse.json()).error, 'workspace_corrupt');
     await fs.rm(corruptStatePath, { force: true });
 
+    const invalidShapeInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'invalid-shape-state-regression' })
+    });
+    assert.equal(invalidShapeInitResponse.status, 200);
+    const invalidShapeWorkspace = await invalidShapeInitResponse.json();
+    const invalidShapePath = path.join(dataDir, 'workspaces', invalidShapeWorkspace.workspaceId + '.json');
+    await fs.writeFile(invalidShapePath, JSON.stringify({ revision: 0, projects: null }), { mode: 0o600 });
+    const invalidShapeResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(invalidShapeWorkspace.workspaceId), {
+      headers: { 'x-workspace-token': invalidShapeWorkspace.token }
+    });
+    assert.equal(invalidShapeResponse.status, 500,
+      'Structurally invalid but parseable workspace state must not silently become an empty project list');
+    assert.equal((await invalidShapeResponse.json()).error, 'workspace_corrupt');
+    await fs.rm(invalidShapePath, { force: true });
+
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
