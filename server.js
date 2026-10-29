@@ -945,14 +945,15 @@ function isPublicProviderIp(address) {
     // Only allow global-unicast IPv6. Explicitly block local, mapped, transition,
     // and documentation ranges to avoid reaching private services through IPv6.
     if (!/^[23][0-9a-f]{0,3}:/.test(ip)) return false;
-    if (
-      ip.startsWith('2001:db8:') ||
-      ip.startsWith('2001:0:') ||
-      ip.startsWith('2001:10:') ||
-      ip.startsWith('2001:20:') ||
-      ip.startsWith('2002:') ||
-      ip.startsWith('3fff:')
-    ) return false;
+    if (ip.startsWith('2001:')) {
+      // The IANA special-purpose 2001::/23 block includes many reserved
+      // subranges; reject it as a whole instead of only matching a few spellings.
+      const secondHextet = ip.split(':')[1] || '0';
+      const secondValue = Number.parseInt(secondHextet, 16);
+      if (Number.isFinite(secondValue) && secondValue <= 0x1ff) return false;
+      if (ip.startsWith('2001:db8:')) return false;
+    }
+    if (ip.startsWith('2002:') || ip.startsWith('3fff:')) return false;
     if (ip.startsWith('::ffff:') || ip === '::' || ip === '::1') return false;
     return true;
   }
