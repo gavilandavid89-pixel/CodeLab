@@ -279,6 +279,23 @@ function readState(id) {
   const file = workspaceFile(id);
   if (!fs.existsSync(file)) return emptyState();
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // Do not silently replace malformed persisted fields with empty defaults: that
+  // can make a broken workspace look valid and later overwrite recoverable data.
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('workspace_state_invalid');
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, 'projects') && !Array.isArray(parsed.projects)) {
+    throw new Error('workspace_projects_invalid');
+  }
+  if (parsed.revision != null && (!Number.isInteger(parsed.revision) || parsed.revision < 0)) {
+    throw new Error('workspace_revision_invalid');
+  }
+  if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
+    throw new Error('workspace_updated_at_invalid');
+  }
+  if (parsed.owner != null && (typeof parsed.owner !== 'object' || Array.isArray(parsed.owner))) {
+    throw new Error('workspace_owner_invalid');
+  }
   return {
     version: 5,
     revision: Number.isInteger(parsed.revision) ? parsed.revision : 0,
