@@ -293,6 +293,8 @@ async function waitForPersistedProject(page, projectName) {
     // 6c. Configure a safe button destination to exercise prototype navigation.
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designProperty-href').fill('javascript:alert(1)');
+    assert.equal(await page.evaluate(() => window.activeDesignProject().design.elements.find(item => item.type === 'button')?.href || ''),
+      '', 'prototype destinations must reject javascript URLs');
     await page.locator('#designProperty-href').fill('https://example.com/docs');
     assert.equal(await page.evaluate(() => {
       const project = window.activeDesignProject();
