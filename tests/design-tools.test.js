@@ -57,5 +57,7 @@ assert.ok(audit.summary.warnings >= 4);
 const goodAudit = tools.auditHtml('<html lang="es"><head><title>Bien</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><h1>Hola</h1><img src="decor.png" alt=""><label for="email">Correo</label><input id="email"><button>Enviar</button><a href="/docs">Documentación</a></main></body></html>');
 assert.equal(goodAudit.summary.errors, 0);
 assert.equal(goodAudit.issues.some(item => item.code === 'image-missing-alt'), false);
+const partialLabelAudit = tools.auditHtml('<html lang="es"><head><title>Form</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><label>Nombre<input type="text"></label><input type="email"></body></html>');
+assert.equal(partialLabelAudit.issues.filter(item => item.code === 'field-no-label').length, 1, 'Only the field outside its own label should be flagged');
 
 console.log('Design tools unit tests passed: WCAG contrast, palette generation, typography, spacing, radius and CSS token export.');
