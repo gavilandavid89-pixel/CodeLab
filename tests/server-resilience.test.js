@@ -398,6 +398,37 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal((await invalidOwnerStateResponse.json()).error, 'workspace_corrupt');
     await fs.rm(invalidOwnerStatePath, { force: true });
 
+    // A previously valid session must not bypass ownership checks if the
+    // deterministic account workspace is later replaced by another owner's state.
+    const ownerMismatchWorkspaceId = 'ws_github_123456789';
+    const ownerMismatchStatePath = path.join(dataDir, 'workspaces', ownerMismatchWorkspaceId + '.json');
+    const ownerMismatchSessionId = 'a'.repeat(48);
+    const ownerMismatchSessionPath = path.join(sessionsDir, ownerMismatchSessionId + '.json');
+    await fs.writeFile(ownerMismatchStatePath, JSON.stringify({
+      version: 5, revision: 0, updatedAt: new Date().toISOString(), projects: [],
+      owner: { provider: 'google', id: 'different-user' }
+    }), { mode: 0o600 });
+    await fs.writeFile(ownerMismatchSessionPath, JSON.stringify({
+      id: ownerMismatchSessionId,
+      user: { id: '123456789', provider: 'github', name: 'Test account' },
+      createdAt: Date.now(), expiresAt: Date.now() + 60000
+    }), { mode: 0o600 });
+    const ownerMismatchHeaders = { Cookie: 'codelab_sid=' + ownerMismatchSessionId };
+    const ownerMismatchRead = await fetch(BASE_URL + '/api/workspace/' + ownerMismatchWorkspaceId, {
+      headers: ownerMismatchHeaders
+    });
+    assert.equal(ownerMismatchRead.status, 500,
+      'Session-backed workspace reads must reject a persisted owner mismatch');
+    assert.equal((await ownerMismatchRead.json()).error, 'workspace_corrupt');
+    const ownerMismatchInit = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST', headers: { ...ownerMismatchHeaders, 'Content-Type': 'application/json' }, body: '{}'
+    });
+    assert.equal(ownerMismatchInit.status, 500,
+      'Workspace initialization must enforce ownership even for an existing session');
+    assert.equal((await ownerMismatchInit.json()).error, 'workspace_corrupt');
+    await fs.rm(ownerMismatchStatePath, { force: true });
+    await fs.rm(ownerMismatchSessionPath, { force: true });
+
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
