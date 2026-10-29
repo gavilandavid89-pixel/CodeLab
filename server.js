@@ -1,5 +1,5 @@
 /**
- * CodeLab XD Studio Pro v2.6.0
+ * CodeLab XD Studio Pro v2.6.6
  * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
  */
 const http = require('http');
