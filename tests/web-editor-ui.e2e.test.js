@@ -23,6 +23,16 @@ async function setCode(page, lang, value) {
     await page.keyboard.press('Control+A');
     await page.keyboard.type(value);
   }
+  console.log('Editor input probe:', JSON.stringify(await page.evaluate(language => ({
+    language,
+    useMonaco,
+    editorReady: !!editors[language],
+    editorValue: getEditorValue(language).slice(0, 180),
+    fallbackVisible: !!document.getElementById('fallback-' + language) &&
+      !document.getElementById('fallback-' + language).classList.contains('hidden'),
+    fallbackValue: document.getElementById('fallback-' + language)?.value?.slice(0, 180),
+    activeElement: document.activeElement?.className || document.activeElement?.id || document.activeElement?.tagName
+  }), lang)));
   await page.waitForFunction(({ lang, value }) => getEditorValue(lang).trim() === value.trim(),
     { lang, value }, { timeout: 10000 });
 }
