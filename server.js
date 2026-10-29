@@ -1372,6 +1372,12 @@ const server = http.createServer(async (req, res) => {
           }
         } else {
           const requested = safeId(body && body.id);
+          // Authenticated workspace IDs are deterministic so they sync across devices.
+          // Never let anonymous initialization squat on that namespace before its owner
+          // signs in; otherwise the returned HMAC token would remain valid after binding.
+          if (requested && /^ws_(github|google)_/i.test(requested)) {
+            return sendJson(res, 400, { error: 'reserved_workspace_id' });
+          }
           id = requested || 'ws_' + crypto.randomUUID();
           const file = workspaceFile(id);
           if (fs.existsSync(file)) {
