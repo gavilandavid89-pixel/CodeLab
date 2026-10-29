@@ -25,11 +25,11 @@ assert.match(source, /loadAiSettings\(\);\s*updateAuthUI\(\);[\s\S]*?showToast\(
 
 assert.match(source, /async function logoutAuth\(\)[\s\S]*?workspaceToken = '';[\s\S]*?lsRemove\(STORAGE_KEY_WORKSPACE_TOKEN\);[\s\S]*?loadAiSettings\(\);/,
   'logout must drop the prior workspace bearer token and reload account-isolated AI settings');
-assert.match(source, /if \(currentUser && currentUser\.real\) \{\s*const saved = await persistWorkspace\(\);\s*if \(!saved\) \{\s*storePendingLocalImport\(projects\);/,
-  'logout must preserve unsynced account projects if the server save fails');
+assert.match(source, /if \(currentUser && currentUser\.real\) \{\s*const saved = await persistWorkspace\(\);\s*if \(!saved\) \{\s*const preserved = storePendingLocalImport\(projects\);\s*if \(!preserved\)/,
+  'logout must preserve unsynced account projects and abort if recovery storage fails');
 
-assert.match(source, /if \(!\(Array\.isArray\(pendingLocalImportProjects\) && pendingLocalImportProjects\.length\)\) \{\s*storePendingLocalImport\(localProjects\);/,
-  'an existing account snapshot must not be overwritten by the anonymous workspace snapshot');
+assert.match(source, /if \(!\(Array\.isArray\(pendingLocalImportProjects\) && pendingLocalImportProjects\.length\)\) \{\s*if \(!storePendingLocalImport\(localProjects\)\)/,
+  'an existing account snapshot must not be overwritten when cross-workspace recovery storage fails');
 
 assert.match(designTools, /function workspaceSettingsStorageKey\(credentials\)[\s\S]*?STORAGE_KEY \+ ':' \+ active\.id/,
   'design-system local storage must be namespaced by OAuth workspace');
