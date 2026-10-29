@@ -1337,15 +1337,23 @@ function maybeOfferLocalImport() {
     // Imports must obey the same server-configured project cap as creation and duplication.
     // Otherwise the client immediately enters a state the server will reject on every save.
     const imported = candidates.slice(0, availableSlots);
-    const skipped = candidates.length - imported.length;
+    const skippedProjects = candidates.slice(imported.length);
+    const skipped = skippedProjects.length;
     projects = imported.concat(projects);
-    clearPendingLocalImport();
+    if (skipped > 0) {
+      // Never discard projects that did not fit. Keep them in the account-scoped
+      // pending-import store and allow a later retry after the user frees space.
+      storePendingLocalImport(skippedProjects);
+      lsRemove(flag);
+    } else {
+      clearPendingLocalImport();
+    }
     saveProjectsToStorage();
     renderProjectsList();
     if (skipped > 0) {
       showToast(imported.length
-        ? imported.length + ' proyecto(s) importados. ' + skipped + ' omitido(s): se alcanzó el límite de ' + maxProjects + '.'
-        : 'No se importaron proyectos: se alcanzó el límite de ' + maxProjects + '.', 'warn');
+        ? imported.length + ' proyecto(s) importados. ' + skipped + ' quedan guardados para importar después de liberar espacio.'
+        : 'Los proyectos siguen guardados para importarlos cuando liberes espacio en tu cuenta.', 'warn');
     } else {
       showToast(imported.length ? imported.length + ' proyecto(s) local(es) importados a tu cuenta.' : 'Los proyectos locales ya estaban presentes en tu cuenta.');
     }
