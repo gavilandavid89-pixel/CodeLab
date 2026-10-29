@@ -153,6 +153,24 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 2,
       'image should be added as a separate editable layer');
 
+    // 5c. Apply a full-page template and undo it without losing the prior design.
+    await page.click('#designTemplatesButton');
+    await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#designTemplateDashboard');
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 11);
+    assert.ok((await page.locator('#designCanvas').innerText()).includes('Panel de control'),
+      'dashboard template should populate a complete starter layout');
+    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), '#f8fafc');
+    await page.click('#designUndoBtn');
+    await page.waitForFunction(() => {
+      const nodes = Array.from(document.querySelectorAll('#designCanvas [data-design-id]'));
+      return nodes.length === 2 && nodes.some(node => node.innerText === 'Prueba integral CodeLab') &&
+        !!document.querySelector('#designCanvas [data-design-id] img[alt="E2E sample image"]');
+    });
+    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), '#ffffff',
+      'undo should restore the original background as well as the original layers');
+
     // 6. Exercise responsive frame presets and mobile overflow behavior.
     await page.selectOption('#designFrameSize', 'tablet');
     assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.width), '768px');
