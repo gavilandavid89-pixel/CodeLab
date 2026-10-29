@@ -304,14 +304,12 @@
       renderAll();
       showTab(activeTab);
       modal.classList.remove('hidden');
-      document.body.classList.add('overflow-hidden');
       const close = get('closeDesignTools');
       if (close) close.focus();
     }
 
     function close() {
       modal.classList.add('hidden');
-      document.body.classList.remove('overflow-hidden');
       const opener = get('openDesignTools');
       if (opener) opener.focus();
     }
