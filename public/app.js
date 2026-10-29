@@ -2311,9 +2311,9 @@ function exportDesignHtml() {
     const text = el.type === 'rectangle' ? '' : escapeHtml(el.text || '');
     const style = 'position:absolute;left:'+(Number(el.x)||0)+'px;top:'+(Number(el.y)||0)+'px;width:'+(Number(el.width)||120)+'px;height:'+(Number(el.height)||48)+'px;color:'+(el.color||'#111827')+';background:'+(el.background||'transparent')+';font-size:'+(Number(el.fontSize)||16)+'px;font-weight:'+(Number(el.weight)||400)+';border-radius:'+(Number(el.radius)||0)+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
     return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
-  }).join('\\n');
+  }).join('\n');
   const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
-  const html = '<!doctype html>\\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;overflow-x:auto}.design-frame{position:relative;width:'+width+'px;min-height:900px;background:'+(p.design.background||'#fff')+';margin:0 auto}</style></head><body><main class="design-frame">'+elements+'</main></body></html>';
+  const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;overflow-x:auto}.design-frame{position:relative;width:'+width+'px;min-height:900px;background:'+(p.design.background||'#fff')+';margin:0 auto}</style></head><body><main class="design-frame">'+elements+'</main></body></html>';
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a'); link.href = url; link.download = (p.name || 'codelab-design').replace(/[^a-z0-9_-]+/gi,'-') + '.html';
