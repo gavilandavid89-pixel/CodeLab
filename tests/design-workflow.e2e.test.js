@@ -79,18 +79,23 @@ async function waitForPersistedProject(page, projectName) {
     }, { timeout: 10000 });
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 0,
       'new design project should start with an empty canvas');
-    const cappedLayerCount = await page.evaluate(() => {
+    const layerLimitCheck = await page.evaluate(() => {
       const project = window.activeDesignProject();
-      project.design.elements = Array.from({ length: 500 }, (_, index) => ({
+      project.design = [];
+      const normalized = window.activeDesignProject();
+      const designShapeValid = !Array.isArray(normalized.design) && Array.isArray(normalized.design.elements);
+      normalized.design.elements = Array.from({ length: 500 }, (_, index) => ({
         id: 'limit-layer-' + index, type: 'heading', label: 'Layer ' + index, text: 'Layer'
       }));
       window.addDesignElement('heading');
-      const count = project.design.elements.length;
-      project.design.elements = [];
+      const count = normalized.design.elements.length;
+      normalized.design.elements = [];
       window.renderDesignWorkspace();
-      return count;
+      return { count, designShapeValid };
     });
-    assert.equal(cappedLayerCount, 500,
+    assert.equal(layerLimitCheck.designShapeValid, true,
+      'Malformed array-valued design state must normalize to a valid design object');
+    assert.equal(layerLimitCheck.count, 500,
       'Adding a layer beyond the visual-design limit must be blocked without mutating the project');
 
     // 2. Add an element and edit its real property input.
