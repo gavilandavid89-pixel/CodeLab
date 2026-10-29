@@ -2236,6 +2236,7 @@ let designUndoStack = [];
 let designRedoStack = [];
 let designDragState = null;
 let designEventsBound = false;
+let designZoom = 1;
 
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
@@ -2280,6 +2281,9 @@ function initializeDesignProject(project) {
   if (project.design.grid == null) project.design.grid = true;
   if (!Array.isArray(project.design.elements)) project.design.elements = [];
   selectedDesignElementId = null; designUndoStack = []; designRedoStack = [];
+  designZoom = 1;
+  const zoomInput = document.getElementById('designZoom');
+  if (zoomInput) zoomInput.value = '100';
   const frame = document.getElementById('designFrameSize');
   if (frame) frame.value = project.design.frame || 'desktop';
   renderDesignWorkspace();
@@ -2287,6 +2291,14 @@ function initializeDesignProject(project) {
   updateDesignHistoryButtons();
 }
 
+function setDesignZoom(value) {
+  const next = Math.max(0.5, Math.min(1.5, Number(value) / 100 || 1));
+  designZoom = next;
+  const canvas = document.getElementById('designCanvas');
+  if (canvas) canvas.style.zoom = String(next);
+  const label = document.getElementById('designZoomLabel');
+  if (label) label.textContent = Math.round(next * 100) + '%';
+}
 function toggleDesignGrid() {
   const p = activeDesignProject(); if (!p) return;
   recordDesignHistory(); p.design.grid = !p.design.grid;
@@ -2360,6 +2372,9 @@ function renderDesignWorkspace() {
   if (!canvas || !layers || !props) return;
   const widths = { desktop: 1440, tablet: 768, mobile: 390 };
   canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
+  canvas.style.zoom = String(designZoom);
+  const zoomLabel = document.getElementById('designZoomLabel');
+  if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
   canvas.style.backgroundColor = p.design.background || '#ffffff';
   canvas.style.backgroundImage = p.design.grid ? 'linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px)' : 'none';
   const bgPicker = document.getElementById('designBackgroundColor');
