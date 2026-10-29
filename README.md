@@ -49,7 +49,7 @@ Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, 
 - Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)  
 - Workspace por usuario: `ws_{provider}_{id}`  
 - Acceso por token HMAC **o** sesión dueña del workspace  
-- Rate limit con selección configurable de saltos de proxy confiables; no se confía en el valor X-Forwarded-For más a la izquierda  
+- Rate limit con saltos de proxy confiables configurables; se rechazan cadenas X-Forwarded-For malformadas para evitar desplazar la selección de IP confiable  
 - Validación de payload, límites de tamaño y path traversal bloqueado  
 - Preview en iframe sandbox + CSP  
 
