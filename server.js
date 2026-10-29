@@ -894,18 +894,26 @@ async function handleGoogleCallback(code, redirectUri) {
 }
 
 function ensureUserWorkspace(user) {
-  const id = userWorkspaceId(user);
+  if (!user || (user.provider !== 'github' && user.provider !== 'google') ||
+      user.id == null || !String(user.id).trim()) {
+    throw new Error('workspace_owner_invalid');
+  }
+  const owner = { provider: user.provider, id: String(user.id) };
+  const id = userWorkspaceId(owner);
   const file = workspaceFile(id);
   if (!fs.existsSync(file)) {
-    writeState(id, emptyState({ provider: user.provider, id: user.id }));
-  } else {
-    try {
-      const st = readState(id);
-      if (!st.owner) {
-        st.owner = { provider: user.provider, id: user.id };
-        writeState(id, st);
-      }
-    } catch (_) {}
+    writeState(id, emptyState(owner));
+    return id;
+  }
+
+  // Never treat unreadable or malformed account state as an empty workspace:
+  // OAuth must fail closed rather than creating a session over corrupt data.
+  const state = readState(id);
+  if (!state.owner) {
+    state.owner = owner;
+    writeState(id, state);
+  } else if (state.owner.provider !== owner.provider || state.owner.id !== owner.id) {
+    throw new Error('workspace_owner_mismatch');
   }
   return id;
 }
