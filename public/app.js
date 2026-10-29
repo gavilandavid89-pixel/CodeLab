@@ -2415,21 +2415,11 @@ async function captureDesignForAI() {
     image: slug + '-captura-ia.png',
     canvas: { width: captured.width, height: captured.height, background: project.design.background || '#ffffff' },
     elementCount: elements.length,
-    elements
+    elements,
+    aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
   const json = JSON.stringify(context, null, 2);
-  const prompt = [
-    'CONTEXTO PARA REVISAR ESTE DISEÑO DE CODELAB',
-    'Usa la imagen PNG para evaluar la apariencia visual y el archivo JSON para conocer las posiciones, dimensiones, textos y estilos exactos.',
-    'No inventes contenido que no aparezca en los archivos. Distingue los problemas observables de las sugerencias.',
-    'Proyecto: ' + context.project,
-    'Marco: ' + context.frame + ' (' + captured.width + ' × ' + captured.height + ' px)',
-    'Elementos: ' + elements.length,
-    'Archivos adjuntos esperados: ' + slug + '-captura-ia.png y ' + slug + '-contexto-ia.json',
-    'Solicita o propone cambios concretos y accesibles, considerando también la adaptación móvil.'
-  ].join('\n');
   downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
-  downloadDesignAsset(slug + '-prompt-ia.txt', prompt, 'text/plain;charset=utf-8');
   try {
     const svgBlob = new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' });
     const svgUrl = URL.createObjectURL(svgBlob);
