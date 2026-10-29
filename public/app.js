@@ -2374,8 +2374,9 @@ function captureDesignSvg(project) {
     });
     const lineHeight = el.type === 'heading' ? fontSize * 1.1 : fontSize * 1.25;
     const totalHeight = Math.max(lineHeight, lines.length * lineHeight);
-    const anchor = el.type === 'button' ? 'middle' : (['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left');
-    const textX = anchor === 'left' ? x + 6 : anchor === 'right' ? x + w - 6 : x + w / 2;
+    const align = el.type === 'button' ? 'center' : (['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left');
+    const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+    const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
     const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
     const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
     return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Number(el.weight) || 400) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
