@@ -195,6 +195,9 @@ function clearPendingLocalImport() {
   pendingLocalImportProjects = null;
   if (Object.keys(byUser).length) lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }));
   else lsRemove(STORAGE_KEY_PENDING_IMPORT);
+  // The current workspace now owns the active snapshot; it is safe to resume
+  // local saves after a previous cross-workspace recovery failure.
+  localProjectsSnapshotWriteBlocked = false;
 }
 function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
   const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
