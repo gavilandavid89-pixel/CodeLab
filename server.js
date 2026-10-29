@@ -809,7 +809,14 @@ function isPublicProviderIp(address) {
     // Only allow global-unicast IPv6. Explicitly block local, mapped, transition,
     // and documentation ranges to avoid reaching private services through IPv6.
     if (!/^[23][0-9a-f]{0,3}:/.test(ip)) return false;
-    if (ip.startsWith('2001:db8:') || ip.startsWith('2001:0:') || ip.startsWith('2002:')) return false;
+    if (
+      ip.startsWith('2001:db8:') ||
+      ip.startsWith('2001:0:') ||
+      ip.startsWith('2001:10:') ||
+      ip.startsWith('2001:20:') ||
+      ip.startsWith('2002:') ||
+      ip.startsWith('3fff:')
+    ) return false;
     if (ip.startsWith('::ffff:') || ip === '::' || ip === '::1') return false;
     return true;
   }
@@ -832,7 +839,10 @@ async function resolvePublicProviderTarget(urlString) {
   if (!records.length || records.some(record => !isPublicProviderIp(record.address))) {
     throw Object.assign(new Error('AI provider URL must resolve only to public IP addresses.'), { status: 400 });
   }
-  const pinned = records[0];
+  // Prefer IPv4 when the provider publishes both families: some hosting
+  // networks still have incomplete IPv6 egress, while the full DNS set above
+  // has already been checked to ensure no private address is mixed in.
+  const pinned = records.find(record => record.family === 4) || records[0];
   return {
     url: target.toString(),
     lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family)
