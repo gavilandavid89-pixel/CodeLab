@@ -303,6 +303,10 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(imageFile, 'AI capture should export a visual artifact (PNG or SVG fallback)');
     const captureContext = JSON.parse(await fs.readFile(contextFile.path, 'utf8'));
     assert.equal(captureContext.format, 'codelab-ai-design-capture');
+    assert.equal(captureContext.layout.mode, 'auto', 'AI context should record Auto Layout mode');
+    assert.equal(captureContext.layout.direction, 'column', 'AI context should record Auto Layout direction');
+    assert.equal(captureContext.layout.gap, 24, 'AI context should record Auto Layout spacing');
+    assert.equal(captureContext.layout.padding, 20, 'AI context should record Auto Layout padding');
     assert.ok(captureContext.elementCount >= 1, 'capture context should include the canvas element');
     assert.ok(captureContext.elements.some(item => item.type === 'image' && item.image && item.image.alt === 'E2E sample image'),
       'AI context should preserve image alt text without embedding the base64 payload again');
