@@ -1833,8 +1833,9 @@ async function saveInCopyBranch() {
   const ok = await persistBranch(true);
   showToast(
     ok === false
-      ? 'La copia quedó guardada localmente; el servidor no respondió.'
-      : 'Cambios guardados únicamente en la copia.'
+      ? 'No se confirmó la sincronización de la copia. Se mantienen los cambios en el editor; revisa el estado de guardado.'
+      : 'Cambios guardados y sincronización confirmada únicamente en la copia.',
+    ok === false ? 'warn' : 'info'
   );
   return ok !== false;
 }
@@ -1860,8 +1861,16 @@ async function mergeToMainProject() {
   }
   const proj = getCurrentProject();
   if (!proj || !proj.branch) return;
-  await saveInCopyBranch();
-  await refreshWorkspaceFromServer();
+  const branchSaved = await saveInCopyBranch();
+  if (!branchSaved) {
+    showToast('No se puede fusionar todavía: guarda y sincroniza la copia antes de continuar.', 'warn');
+    return;
+  }
+  const refreshed = await refreshWorkspaceFromServer();
+  if (!refreshed) {
+    showToast('No se pudo verificar la versión principal del servidor. No se fusionó nada; inténtalo de nuevo cuando vuelva la conexión.', 'warn');
+    return;
+  }
   const latest = getCurrentProject();
   if (!latest) return;
   if (latest.branch && latest.branch.id === copyBranchId) {
