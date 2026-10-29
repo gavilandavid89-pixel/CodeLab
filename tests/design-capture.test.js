@@ -28,7 +28,7 @@ assert.match(mobile.svg, /text-anchor="end"/);
 assert.match(capture.captureDesignSvg({ design: { frame: 'tablet', elements: [] } }).svg, /width="768"/);
 assert.match(capture.captureDesignSvg({ design: { frame: 'desktop', elements: [] } }).svg, /width="1440"/);
 
-const unsafe = '<h1 onclick="steal()">Hello</h1><script>alert(1)</script><iframe src="https://evil.test"></iframe><a href="javascript:alert(1)">bad</a>';
+const unsafe = '<h1 onclick="steal()">Hello</h1><script>alert(1)</script><iframe src="https://evil.test"></iframe><a href="javascript:alert(1)">bad</a><img src=javascript:alert(2)><form action=javascript:alert(3)><button formaction=" javascript:alert(4)">send</button></form>';
 const safe = capture.sanitizeForCapture(unsafe);
 assert.doesNotMatch(safe, /<script\b/i, 'Capture HTML must not execute inline scripts');
 assert.doesNotMatch(safe, /<iframe\b/i, 'Embedded frames must be removed');
