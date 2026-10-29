@@ -145,6 +145,8 @@ async function waitForPersistedProject(page, projectName) {
       const image = document.querySelector('#designCanvas [data-design-id] img');
       return image && image.complete && image.naturalWidth > 0;
     }, null, { timeout: 10000 });
+    assert.equal(await page.locator('#designProperty-src').inputValue(), '',
+      'embedded image bytes should stay in project state, not be copied into a giant URL input value');
     await page.locator('#designProperty-alt').fill('E2E sample image');
     await page.waitForFunction(() => {
       const image = document.querySelector('#designCanvas [data-design-id] img');
