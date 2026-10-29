@@ -2611,6 +2611,27 @@ function distributeDesignElements(axis = 'horizontal') {
 function alignDesignElement(mode = 'center-x') {
   const p = activeDesignProject(), el = selectedDesignElement();
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
+  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
+  if (selected.length > 1) {
+    const left = Math.min(...selected.map(item => Number(item.x) || 0));
+    const top = Math.min(...selected.map(item => Number(item.y) || 0));
+    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + Math.max(20, Number(item.width) || 120)));
+    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + Math.max(20, Number(item.height) || 48)));
+    const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
+    recordDesignHistory();
+    for (const item of selected) {
+      const width = Math.max(20, Number(item.width) || 120), height = Math.max(20, Number(item.height) || 48);
+      if (mode === 'left') item.x = left;
+      else if (mode === 'center-x') item.x = Math.round(centerX - width / 2);
+      else if (mode === 'right') item.x = right - width;
+      else if (mode === 'top') item.y = top;
+      else if (mode === 'center-y') item.y = Math.round(centerY - height / 2);
+      else if (mode === 'bottom') item.y = bottom - height;
+    }
+    renderDesignWorkspace(); saveProjectsToStorage();
+    showToast('Capas alineadas respecto a la selección.');
+    return;
+  }
   recordDesignHistory();
   const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
   const height = 900;
