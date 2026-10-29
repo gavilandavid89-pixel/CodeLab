@@ -1000,10 +1000,14 @@ async function waitForPersistedProject(page, projectName) {
     // rather than asserting against the previous design project's stale editor contents.
     await page.waitForFunction(() => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
-      return project && project.type === 'web' &&
-        typeof window.getEditorValue === 'function' &&
-        window.getEditorValue('html') === project.code.html;
-    }, { timeout: 15000 });
+      if (!project || project.type !== 'web' || !project.code || typeof window.getEditorValue !== 'function') return false;
+      const editorHtml = window.getEditorValue('html');
+      // Monaco may normalize line endings/formatting, so compare the real content
+      // marker instead of requiring byte-for-byte equality with the stored string.
+      return typeof editorHtml === 'string' &&
+        project.code.html.includes('Prueba integral CodeLab') &&
+        editorHtml.includes('Prueba integral CodeLab');
+    }, null, { timeout: 15000 });
 
     // 9. Return to the dashboard (where the component-library entry point lives),
     // keeping the converted project selected for insertion and persistence checks.
