@@ -96,8 +96,6 @@ node server.js
 
 ## Laboratorio de diseño visual
 
-El editor visual permite exportar el diseño como HTML adaptable, SVG vectorial o respaldo JSON del proyecto (con sus elementos editables). La prueba E2E recorre los tres formatos desde el menú real de la interfaz y verifica el contenido descargado.
-
 Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. Incluye:
 
 - Paleta con colores primario, secundario, acento, superficie, fondo y texto, con generación automática de tonos 50–900.
@@ -110,6 +108,10 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Con OAuth real configurado, los ajustes se recuperan en otros dispositivos con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
 
 Las pruebas automáticas cubren los cálculos de contraste, generación de tokens, exportaciones y una prueba de interacción en Chromium.
+
+## Exportación del editor visual
+
+El editor visual permite exportar el diseño como HTML adaptable, SVG vectorial o respaldo JSON del proyecto (con sus elementos editables). El HTML ajusta el marco del diseño al ancho de la pantalla al abrirlo y recalcula la escala cuando cambia el tamaño de la ventana. Los valores de color se validan antes de insertarlos en el HTML exportado.
 
 ## Capturas para IA
 
