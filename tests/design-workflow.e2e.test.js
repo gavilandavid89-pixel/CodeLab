@@ -114,9 +114,27 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(mobileLayout.documentWidth <= mobileLayout.viewportWidth + 2,
       'mobile app shell should not introduce document-level horizontal overflow');
 
-    // 7. Verify server persistence, reload the app, and reopen the same project.
+    // 7. Verify recovery of newer local edits and an offline deletion after reload.
     await page.selectOption('#designFrameSize', 'desktop');
     await waitForPersistedProject(page, PROJECT_NAME);
+    const deletedDefaultId = await page.evaluate(name => {
+      const projects = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || '[]');
+      const project = projects.find(item => item.name === name);
+      const starter = projects.find(item => item.name === 'Mi Primer Proyecto');
+      if (!project || !project.design || !project.design.elements.length || !starter) return null;
+      // Simulate an edit saved locally while the server was unreachable.
+      project.design.elements[0].text = 'Edición local recuperada';
+      project.updatedAt = new Date().toISOString();
+      localStorage.setItem('codelab_xd_projects_v2', JSON.stringify(projects));
+      // Simulate a deletion that has not yet been confirmed by the server.
+      localStorage.setItem('codelab_xd_deleted_project_id_for_e2e', starter.id);
+      localStorage.setItem('codelab_xd_deleted_projects_v1', JSON.stringify({
+        workspaceId: localStorage.getItem('codelab_xd_workspace_v4'),
+        ids: [starter.id]
+      }));
+      return starter.id;
+    }, PROJECT_NAME);
+    assert.ok(deletedDefaultId, 'fixture should include the starter project and design project');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
     const projectCard = page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME });
@@ -126,8 +144,24 @@ async function waitForPersistedProject(page, projectName) {
       return design && !design.classList.contains('hidden') &&
         document.querySelector('#designCanvas [data-design-id]');
     }, { timeout: 10000 });
-    assert.equal(await page.locator('#designCanvas [data-design-id]').first().innerText(), 'Prueba integral CodeLab',
-      'edited design should survive a real server-backed reload');
+    assert.equal(await page.locator('#designCanvas [data-design-id]').first().innerText(), 'Edición local recuperada',
+      'a newer local edit must not be overwritten by the server snapshot');
+    await page.locator('#designProperties input[type="text"]').first().fill('Prueba integral CodeLab');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.textContent === 'Prueba integral CodeLab');
+    await waitForPersistedProject(page, PROJECT_NAME);
+    await page.waitForFunction(async id => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId), {
+          headers: { 'x-workspace-token': token }
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return !(data.projects || []).some(project => project.id === id);
+      } catch (_) { return false; }
+    }, deletedDefaultId, { timeout: 10000 });
+    await page.evaluate(() => localStorage.removeItem('codelab_xd_deleted_project_id_for_e2e'));
 
     // 8. Convert the saved design into a web project and inspect the generated HTML.
     await page.locator('button[onclick="convertDesignToWeb()"]').click();
