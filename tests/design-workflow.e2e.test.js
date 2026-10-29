@@ -1080,27 +1080,49 @@ async function waitForPersistedProject(page, projectName) {
       const pendingKey = 'codelab_xd_pending_local_import_v1';
       const oldDeleted = localStorage.getItem(deletedKey);
       const oldPending = localStorage.getItem(pendingKey);
+      const deletedRecoveryKey = 'codelab_xd_deleted_projects_recovery_v1';
+      const pendingRecoveryKey = 'codelab_xd_pending_import_recovery_v1';
+      const oldDeletedRecovery = localStorage.getItem(deletedRecoveryKey);
+      const oldPendingRecovery = localStorage.getItem(pendingRecoveryKey);
+      const oldUser = currentUser;
+      const oldPendingProjects = pendingLocalImportProjects;
+      const oldSnapshotWriteBlocked = localProjectsSnapshotWriteBlocked;
       try {
-        localStorage.setItem(deletedKey, JSON.stringify({ byWorkspace: [] }));
-        localStorage.setItem(pendingKey, JSON.stringify({ byUser: [] }));
+        const malformedDeletedRaw = JSON.stringify({ byWorkspace: [] });
+        const malformedPendingRaw = JSON.stringify({ byUser: [] });
+        localStorage.setItem(deletedKey, malformedDeletedRaw);
+        localStorage.setItem(pendingKey, malformedPendingRaw);
+        currentUser = { real: true, provider: 'github', id: 'malformed-map-test' };
         const deletedMap = readDeletedProjectMap();
         const pendingMap = readPendingLocalImportMap();
         recordDeletedProjectId('malformed-map-test-id');
+        storePendingLocalImport([{ id: 'pending-map-test-project', name: 'Recovery fixture' }]);
         const persistedDeleted = JSON.parse(localStorage.getItem(deletedKey) || '{}');
+        const deletedRecovery = JSON.parse(localStorage.getItem(deletedRecoveryKey) || 'null');
+        const pendingRecovery = JSON.parse(localStorage.getItem(pendingRecoveryKey) || 'null');
         return {
           deletedMapIsObject: !Array.isArray(deletedMap) && Object.keys(deletedMap).length === 0,
           pendingMapIsObject: !Array.isArray(pendingMap) && Object.keys(pendingMap).length === 0,
           tombstonePersisted: Array.isArray(persistedDeleted.byWorkspace?.[workspaceId]) &&
-            persistedDeleted.byWorkspace[workspaceId].includes('malformed-map-test-id')
+            persistedDeleted.byWorkspace[workspaceId].includes('malformed-map-test-id'),
+          deletedRawPreserved: deletedRecovery && deletedRecovery.raw === malformedDeletedRaw,
+          pendingRawPreserved: pendingRecovery && pendingRecovery.raw === malformedPendingRaw
         };
       } finally {
+        currentUser = oldUser;
+        pendingLocalImportProjects = oldPendingProjects;
+        localProjectsSnapshotWriteBlocked = oldSnapshotWriteBlocked;
         if (oldDeleted === null) localStorage.removeItem(deletedKey); else localStorage.setItem(deletedKey, oldDeleted);
         if (oldPending === null) localStorage.removeItem(pendingKey); else localStorage.setItem(pendingKey, oldPending);
+        if (oldDeletedRecovery === null) localStorage.removeItem(deletedRecoveryKey); else localStorage.setItem(deletedRecoveryKey, oldDeletedRecovery);
+        if (oldPendingRecovery === null) localStorage.removeItem(pendingRecoveryKey); else localStorage.setItem(pendingRecoveryKey, oldPendingRecovery);
       }
     });
     assert.equal(malformedMapChecks.deletedMapIsObject, true, 'deleted-project map reader should reject array envelopes');
     assert.equal(malformedMapChecks.pendingMapIsObject, true, 'pending-import map reader should reject array envelopes');
     assert.equal(malformedMapChecks.tombstonePersisted, true, 'a malformed deleted-project map must not make new tombstones disappear');
+    assert.equal(malformedMapChecks.deletedRawPreserved, true, 'a malformed tombstone map must be backed up before replacement');
+    assert.equal(malformedMapChecks.pendingRawPreserved, true, 'a malformed pending-import map must be backed up before replacement');
 
     // Deletion must never remove the only visible copy if neither a durable
     // tombstone nor a confirmed server save is available.
