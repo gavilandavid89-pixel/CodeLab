@@ -108,18 +108,30 @@ function extractDivById(html, id) {
       window.getCurrentProject = () => ({ id: 'web-fixture', name: 'Web Fixture', type: 'web' });
       window.getEditorValue = (kind) => kind === 'html' ? '<html><head><title>Broken</title></head><body><h1>Title</h1><h3>Skip</h3><img src="hero.png"><button></button></body></html>' : '.existing { color: red; }';
       window.setEditorValue = (lang, value) => { window.__appliedCss = value; };
+      window.saveCurrentCodeToActiveProject = async () => true;
       window.updatePreview = () => { window.__previewUpdated = true; };
       window.showToast = (message) => { window.__toolToast = message; };
     });
     await page.click('#applyDesignTokens');
+    await page.waitForFunction(() => /guardado\/sincronización confirmados/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 3000 });
     const applied = await page.evaluate(() => window.__appliedCss || '');
     assert.match(applied, /--color-primary: #ff0000;/);
     assert.match(applied, /CodeLab Design Tokens START/);
     assert.match(applied, /\.existing \{ color: red; \}/);
     assert.equal(await page.evaluate(() => window.__previewUpdated), true);
 
+    // A failed workspace save must be visible even though the editor was changed.
+    await page.evaluate(() => {
+      window.saveCurrentCodeToActiveProject = async () => false;
+      const input = document.getElementById('baseFont');
+      input.value = '19'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.click('#applyDesignTokens');
+    await page.waitForFunction(() => /no se confirmó el guardado\/sincronización/i.test(document.querySelector('#designToolsStatus')?.textContent || ''), null, { timeout: 3000 });
+
     // Token application must not push CSS beyond the server's per-field cap.
     await page.evaluate(() => {
+      window.saveCurrentCodeToActiveProject = async () => true;
       window.__tokenSetCalls = 0;
       window.getEditorValue = kind => kind === 'html' ? '<html><body></body></html>' : 'x'.repeat(500000);
       window.setEditorValue = () => { window.__tokenSetCalls++; };
