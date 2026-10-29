@@ -290,8 +290,15 @@ function readDesignSystem(id) {
   } catch (_) {
     throw new Error('design_system_state_invalid');
   }
+  const requiredSettings = [
+    'name', 'primary', 'secondary', 'accent', 'surface', 'background', 'text',
+    'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'
+  ];
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
-      !parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings)) {
+      parsed.version !== 1 || typeof parsed.updatedAt !== 'string' ||
+      !Number.isFinite(Date.parse(parsed.updatedAt)) ||
+      !parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings) ||
+      !requiredSettings.every(key => Object.prototype.hasOwnProperty.call(parsed.settings, key))) {
     throw new Error('design_system_state_invalid');
   }
   return designTools.sanitizeSettings(parsed.settings);
