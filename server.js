@@ -971,6 +971,18 @@ function ensureUserWorkspace(user) {
   return id;
 }
 
+function enforceSessionWorkspaceOwner(id, state, user) {
+  if (!user || userWorkspaceId(user) !== id) return state;
+  const expected = { provider: user.provider, id: String(user.id) };
+  if (!state.owner) {
+    state.owner = expected;
+    writeState(id, state);
+  } else if (state.owner.provider !== expected.provider || state.owner.id !== expected.id) {
+    throw new Error('workspace_owner_mismatch');
+  }
+  return state;
+}
+
 
 function aiConfigured() {
   return {
@@ -1640,6 +1652,7 @@ const server = http.createServer(async (req, res) => {
         let state;
         try {
           state = readState(id);
+          state = enforceSessionWorkspaceOwner(id, state, sessionUser);
         } catch (error) {
           console.error('workspace_corrupt', id, error.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
@@ -1659,7 +1672,8 @@ const server = http.createServer(async (req, res) => {
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
-          return sendJson(res, 200, readState(id));
+          const state = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          return sendJson(res, 200, state);
         } catch (e) {
           console.error('workspace_corrupt', id, e.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
@@ -1679,7 +1693,7 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
         }
         try {
-          const current = readState(id);
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
           if (body.baseRevision !== current.revision) {
             return sendJson(res, 409, {
               error: 'revision_conflict',
