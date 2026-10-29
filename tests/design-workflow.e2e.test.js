@@ -42,6 +42,18 @@ async function waitForPersistedProject(page, projectName) {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
 
+    // The project preview runs scripts in an opaque-origin sandbox. It must not
+    // gain same-origin access or let unrelated windows spoof console entries.
+    const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox');
+    assert.ok(previewSandbox && !previewSandbox.includes('allow-same-origin'),
+      'Preview must not share the app origin or expose its localStorage credentials');
+    await page.evaluate(() => window.postMessage({
+      type: 'CONSOLE_LOG', logType: 'error', message: 'SPOOFED_CONSOLE_MESSAGE'
+    }, '*'));
+    await page.waitForTimeout(50);
+    assert.equal(await page.locator('#consoleOutput').getByText('SPOOFED_CONSOLE_MESSAGE', { exact: true }).count(), 0,
+      'The app must ignore console messages not sent by its own preview iframe');
+
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
     await page.locator('#newProjectNameInput').fill(PROJECT_NAME);
