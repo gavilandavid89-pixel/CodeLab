@@ -573,6 +573,7 @@ function sendJson(res, status, body, extraHeaders) {
 function redirect(res, location, extraHeaders) {
   const headers = Object.assign({
     Location: location,
+    'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'SAMEORIGIN',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
