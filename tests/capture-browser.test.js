@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
       window.showToast = (message) => { window.__lastToast = message; };
       window.getCurrentProject = () => ({ id: 'browser-fixture', name: 'Browser Capture Fixture', type: 'web' });
       window.getEditorValue = (kind) => ({
-        html: '<!doctype html><html><head><title>Browser Fixture</title></head><body><main style="padding:32px;background:#f8fafc"><h1 style="color:#6d28d9">Real browser capture</h1><p>Rendered content for the smoke test.</p><button>Action</button></main></body></html>',
+        html: '<!doctype html><html><head><title>Browser Fixture</title></head><body><main style="padding:32px;background:#f8fafc"><h1 style="color:#6d28d9">Real browser capture</h1><p>Rendered content for the smoke test.</p><img alt="Tiny fixture" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/3XcAAAAASUVORK5CYII="><button>Action</button></main></body></html>',
         css: 'body { margin: 0; font-family: Arial, sans-serif; } main { min-height: 600px; }',
         js: 'document.body.dataset.test = "not-executed-in-capture";'
       })[kind];
@@ -46,6 +46,11 @@ const { chromium } = require('playwright');
     assert.equal(context.format, 'codelab-ai-web-capture');
     assert.equal(context.viewport.width, 768);
     assert.equal(context.viewport.scale, 3, 'AI context must document the selected image scale');
+    assert.equal(context.viewport.pixelWidth, 768 * 3, 'AI context must document the actual output pixel width');
+    assert.equal(context.viewport.pixelHeight, 900 * 3, 'AI context must document the actual output pixel height');
+    assert.equal(context.renderedPage.assetStatus.imagesTotal, 1, 'Capture should report the image assets it waited for');
+    assert.equal(context.renderedPage.assetStatus.imagesLoaded, 1, 'Capture should wait for inline images before rendering');
+    assert.equal(context.renderedPage.assetStatus.timedOut, false, 'Capture assets should be ready before PNG rendering');
     assert.equal(context.page.title, 'Browser Fixture');
     assert.match(context.sourceCode.javascript, /not-executed-in-capture/);
     assert.equal(context.page.javascriptIncludedInScreenshot, false);
