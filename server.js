@@ -219,12 +219,23 @@ function parseOAuthState(state) {
   return { provider };
 }
 
-// Periodic session cleanup reads at most 200 JSON session files per scan.
+// Rotate through large session directories so entries after the first batch
+// are also eventually checked, while keeping each cleanup pass bounded.
+let sessionCleanupCursor = 0;
 setInterval(() => {
   try {
-    const files = fs.readdirSync(SESSIONS_DIR)
-      .filter(file => file.endsWith('.json'))
-      .slice(0, 200);
+    const allSessionFiles = fs.readdirSync(SESSIONS_DIR).filter(file => file.endsWith('.json'));
+    let files = allSessionFiles;
+    if (allSessionFiles.length > 200) {
+      const start = sessionCleanupCursor % allSessionFiles.length;
+      const end = start + 200;
+      files = end <= allSessionFiles.length
+        ? allSessionFiles.slice(start, end)
+        : allSessionFiles.slice(start).concat(allSessionFiles.slice(0, end - allSessionFiles.length));
+      sessionCleanupCursor = end % allSessionFiles.length;
+    } else {
+      sessionCleanupCursor = 0;
+    }
     const now = Date.now();
     for (const file of files) {
       try {
