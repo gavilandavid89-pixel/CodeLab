@@ -191,12 +191,18 @@ setInterval(() => {
     const now = Date.now();
     let n = 0;
     for (const f of files) {
-      if (!f.endsWith('.json') || n > 200) break;
+      // Ignore unrelated files instead of ending the scan: temporary or stray
+      // files must not prevent expired sessions later in the directory from being removed.
+      if (!f.endsWith('.json')) continue;
+      if (n >= 200) break;
       n++;
       try {
-        const raw = fs.readFileSync(path.join(SESSIONS_DIR, f), 'utf8');
-        const s = JSON.parse(raw);
-        if (!s.expiresAt || s.expiresAt < now) fs.unlinkSync(path.join(SESSIONS_DIR, f));
+        const sessionFile = path.join(SESSIONS_DIR, f);
+        const raw = fs.readFileSync(sessionFile, 'utf8');
+        const session = JSON.parse(raw);
+        if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) {
+          fs.unlinkSync(sessionFile);
+        }
       } catch (_) {}
     }
   } catch (_) {}
@@ -337,7 +343,16 @@ function createSession(user) {
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS
   };
-  fs.writeFileSync(sessionPath(sid), JSON.stringify(session), { encoding: 'utf8', mode: 0o600 });
+  const file = sessionPath(sid);
+  const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(session), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    // Session creation must not leave partial credentials or orphaned temp files.
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
   return session;
 }
 
