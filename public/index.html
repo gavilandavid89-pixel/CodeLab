@@ -689,10 +689,11 @@
         <button id="closeDesignTools" type="button" class="touch-target shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 text-slate-300" aria-label="Cerrar herramientas"><i class="fa-solid fa-xmark"></i></button>
       </header>
       <div class="p-3 sm:p-6 space-y-4">
-        <div role="tablist" aria-label="Herramientas de diseño" class="grid grid-cols-3 gap-1 rounded-xl border border-slate-800 bg-slate-950 p-1">
+        <div role="tablist" aria-label="Herramientas de diseño" class="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl border border-slate-800 bg-slate-950 p-1">
           <button id="designToolsTab-palette" type="button" role="tab" aria-selected="true" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-cyan-300 bg-cyan-500/15"><i class="fa-solid fa-palette mr-1"></i>Paleta</button>
           <button id="designToolsTab-accessibility" type="button" role="tab" aria-selected="false" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-slate-400"><i class="fa-solid fa-universal-access mr-1"></i>Contraste</button>
           <button id="designToolsTab-tokens" type="button" role="tab" aria-selected="false" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-slate-400"><i class="fa-solid fa-sliders mr-1"></i>Tokens</button>
+          <button id="designToolsTab-audit" type="button" role="tab" aria-selected="false" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-slate-400"><i class="fa-solid fa-universal-access mr-1"></i>Auditoría</button>
         </div>
 
         <section id="designToolsPanel-palette" role="tabpanel" class="space-y-4">
@@ -774,6 +775,23 @@
               <button id="applyDesignTokens" type="button" class="touch-target rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-2 text-xs font-bold text-white"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Aplicar al proyecto web</button>
               <button id="exportDesignSystemCss" type="button" class="touch-target rounded-lg bg-violet-600 hover:bg-violet-500 px-3 py-2 text-xs font-bold text-white"><i class="fa-solid fa-download mr-1"></i>Exportar CSS</button>
               <button id="exportDesignSystemJson" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-200"><i class="fa-solid fa-file-code mr-1"></i>Exportar JSON</button>
+            </div>
+          </div>
+        </section>
+        <section id="designToolsPanel-audit" role="tabpanel" class="hidden space-y-4">
+          <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+              <div class="flex items-center gap-3">
+                <div class="h-10 w-10 shrink-0 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-300"><i class="fa-solid fa-clipboard-check text-lg"></i></div>
+                <div><h3 class="text-sm font-bold text-white">Auditoría HTML rápida</h3><p class="text-[10px] text-slate-500">Analiza el proyecto web abierto</p></div>
+              </div>
+              <p class="text-xs leading-relaxed text-slate-400">Busca imágenes sin alt, campos sin etiqueta detectable, botones sin nombre, ids duplicados, saltos de encabezados, falta de idioma/título/viewport y enlaces target="_blank" sin noopener.</p>
+              <button id="runAccessibilityAudit" type="button" class="touch-target w-full rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-3 text-xs font-bold text-white"><i class="fa-solid fa-magnifying-glass-chart mr-2"></i>Analizar proyecto abierto</button>
+              <button id="exportAccessibilityAudit" type="button" disabled class="touch-target w-full rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 text-xs font-semibold text-slate-200"><i class="fa-solid fa-download mr-2"></i>Exportar informe JSON</button>
+              <p class="text-[10px] leading-relaxed text-slate-500">Es un análisis estático inicial, no una certificación WCAG. No ejecuta JavaScript ni evalúa todos los estados de interacción. Usa también el comprobador de contraste.</p>
+            </div>
+            <div id="accessibilityAuditResults" class="min-h-48 rounded-xl border border-slate-800 bg-slate-950/50 p-3 sm:p-4" aria-live="polite">
+              <div class="h-full min-h-40 flex flex-col items-center justify-center text-center gap-2 text-slate-500"><i class="fa-solid fa-list-check text-3xl"></i><p class="text-xs">Ejecuta la auditoría para ver problemas concretos y cómo corregirlos.</p></div>
             </div>
           </div>
         </section>
