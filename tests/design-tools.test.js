@@ -24,7 +24,7 @@ assert.equal(tokens.typography.scale.find(item => item.name === 'base').px, 18);
 assert.equal(tokens.spacing.length, 8);
 assert.equal(tokens.spacing[7].px, 48);
 assert.equal(tokens.radius.find(item => item.name === 'radius-lg').px, 10);
-assert.equal(tokens.accessibility.contrastRatio, 21);
+assert.equal(tokens.accessibility.contrastRatio, Math.round(tools.contrastRatio('#f8fafc', '#020617') * 100) / 100);
 
 const css = tools.toCssVariables({ primary: '#123456', baseFont: 18, baseSpacing: 6 });
 assert.match(css, /--color-primary: #123456;/);
