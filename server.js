@@ -345,6 +345,41 @@ function validateProjects(projects) {
       if (p.code[k] != null && typeof p.code[k] !== 'string') return 'invalid_code_field';
       if (typeof p.code[k] === 'string' && p.code[k].length > 500000) return 'code_too_large';
     }
+    if (p.branch != null) {
+      if (typeof p.branch !== 'object' || Array.isArray(p.branch)) return 'invalid_project_branch';
+      if (p.branch.id != null && (typeof p.branch.id !== 'string' || !p.branch.id.trim() || p.branch.id.length > 100)) {
+        return 'invalid_branch_id';
+      }
+      for (const codeKey of ['code', 'baseCode']) {
+        const branchCode = p.branch[codeKey];
+        if (branchCode == null) continue;
+        if (typeof branchCode !== 'object' || Array.isArray(branchCode)) return 'invalid_branch_code';
+        for (const field of ['html', 'css', 'js']) {
+          if (branchCode[field] != null && typeof branchCode[field] !== 'string') return 'invalid_branch_code_field';
+          if (typeof branchCode[field] === 'string' && branchCode[field].length > 500000) return 'branch_code_too_large';
+        }
+      }
+      for (const timestampKey of ['updatedAt', 'baseMainUpdatedAt']) {
+        if (p.branch[timestampKey] != null && typeof p.branch[timestampKey] !== 'string') return 'invalid_branch_timestamp';
+      }
+    }
+    if (p.mergeHistory != null) {
+      if (!Array.isArray(p.mergeHistory)) return 'invalid_merge_history';
+      if (p.mergeHistory.length > 50) return 'merge_history_too_large';
+      for (const entry of p.mergeHistory) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return 'invalid_merge_history_entry';
+        if (entry.code != null) {
+          if (typeof entry.code !== 'object' || Array.isArray(entry.code)) return 'invalid_merge_history_code';
+          for (const field of ['html', 'css', 'js']) {
+            if (entry.code[field] != null && typeof entry.code[field] !== 'string') return 'invalid_merge_history_code_field';
+            if (typeof entry.code[field] === 'string' && entry.code[field].length > 500000) return 'merge_history_code_too_large';
+          }
+        }
+        if (entry.branch != null && (typeof entry.branch !== 'object' || Array.isArray(entry.branch))) {
+          return 'invalid_merge_history_branch';
+        }
+      }
+    }
     if (p.design != null) {
       if (typeof p.design !== 'object' || Array.isArray(p.design)) return 'invalid_project_design';
       if (p.design.elements != null && !Array.isArray(p.design.elements)) return 'invalid_design_elements';
