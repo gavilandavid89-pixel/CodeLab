@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check server.js
           node --check public/app.js
+          node --check public/capture.js
       - name: Test AI-ready design capture export
         run: node tests/design-capture.test.js
       - name: Smoke test API and Groq model normalization
