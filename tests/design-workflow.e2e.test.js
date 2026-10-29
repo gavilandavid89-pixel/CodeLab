@@ -126,6 +126,12 @@ async function waitForPersistedProject(page, projectName) {
     const sizeAfter = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
     assert.ok(sizeAfter.width >= sizeBefore.width + 25, 'canvas resize handle should increase layer width');
     assert.ok(sizeAfter.height >= sizeBefore.height + 18, 'canvas resize handle should increase layer height');
+    await resizeHandle.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowDown');
+    const keyboardSize = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
+    assert.equal(keyboardSize.width, sizeAfter.width + 1, 'resize handle ArrowRight should increase width by one pixel');
+    assert.equal(keyboardSize.height, sizeAfter.height + 10, 'resize handle Shift+ArrowDown should increase height by ten pixels');
 
     // 4c. Keyboard nudging and duplication shortcuts operate on the selected layer.
     const beforeNudge = await element.evaluate(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) }));
