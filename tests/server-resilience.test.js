@@ -20,7 +20,9 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       GITHUB_CLIENT_ID: 'test-github-client',
       GITHUB_CLIENT_SECRET: 'test-github-secret',
       GOOGLE_CLIENT_ID: 'test-google-client',
-      GOOGLE_CLIENT_SECRET: 'test-google-secret'
+      GOOGLE_CLIENT_SECRET: 'test-google-secret',
+      AI_API_KEY: 'test-only-server-ai-key',
+      AI_BASE_URL: 'https://127.0.0.1'
     },
     stdio: 'ignore'
   });
@@ -179,7 +181,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       body: JSON.stringify({
         prompt: 'hello',
         apiKey: 'test-only-key',
-        baseUrl: 'https://127.0.0.1:' + PORT,
+        baseUrl: 'https://does-not-resolve.invalid',
         model: 'test-model'
       })
     });
