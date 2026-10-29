@@ -210,7 +210,12 @@
     for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
       const attrs = match[1] || '', body = match[2] || '';
       const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!attribute(attrs, 'aria-label') && !attribute(attrs, 'aria-labelledby') && !text) add('link-no-name', 'warning', 'Hay un enlace sin nombre accesible detectable.', 'Añade texto descriptivo o aria-label.');
+      const imageTag = (body.match(/<img\b[^>]*>/i) || [''])[0];
+      const imageAlt = attribute(imageTag, 'alt');
+      const namedImage = imageAlt !== null && imageAlt.trim().length > 0;
+      if (!attribute(attrs, 'aria-label') && !attribute(attrs, 'aria-labelledby') && !text && !namedImage) {
+        add('link-no-name', 'warning', 'Hay un enlace sin nombre accesible detectable.', 'Añade texto descriptivo, una imagen con alt descriptivo o aria-label.');
+      }
       if ((attribute(attrs, 'target') || '').toLowerCase() === '_blank') {
         const rel = (attribute(attrs, 'rel') || '').toLowerCase().split(/\s+/);
         if (!rel.includes('noopener') && !rel.includes('noreferrer')) add('blank-link-noopener', 'warning', 'Un enlace target="_blank" no declara noopener/noreferrer.', 'Añade rel="noopener noreferrer" al enlace externo.');
