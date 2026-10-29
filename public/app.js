@@ -2542,12 +2542,26 @@ function initializeDesignProject(project) {
 }
 
 function setDesignZoom(value) {
-  const next = Math.max(0.5, Math.min(1.5, Number(value) / 100 || 1));
+  const next = Math.max(0.2, Math.min(1.5, Number(value) / 100 || 1));
   designZoom = next;
   const canvas = document.getElementById('designCanvas');
   if (canvas) canvas.style.zoom = String(next);
   const label = document.getElementById('designZoomLabel');
   if (label) label.textContent = Math.round(next * 100) + '%';
+  const slider = document.getElementById('designZoom');
+  if (slider) slider.value = String(Math.round(next * 100 / 5) * 5);
+}
+function fitDesignToViewport() {
+  const project = activeDesignProject();
+  const canvas = document.getElementById('designCanvas');
+  const viewport = document.getElementById('designCanvasScroll');
+  if (!project || !canvas || !viewport) return;
+  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  const frameWidth = widths[project.design.frame] || widths.desktop;
+  const availableWidth = Math.max(200, viewport.clientWidth - 64);
+  const fitScale = Math.min(1, availableWidth / frameWidth);
+  const snappedScale = Math.max(0.2, Math.floor(fitScale * 20) / 20);
+  setDesignZoom(Math.round(snappedScale * 100));
 }
 function toggleDesignGrid() {
   const p = activeDesignProject(); if (!p) return;
