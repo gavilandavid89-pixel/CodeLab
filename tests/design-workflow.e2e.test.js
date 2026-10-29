@@ -639,6 +639,8 @@ async function waitForPersistedProject(page, projectName) {
     let injectedWorkspaceRateLimit = false;
     let injectedWorkspaceTooLarge = false;
     let allowWorkspaceTooLarge = false;
+    let injectedWorkspaceValidationError = false;
+    let allowWorkspaceValidationError = false;
     let workspacePutRequests = 0;
     await page.route('**/api/workspace/**', async route => {
       if (route.request().method() === 'PUT') {
@@ -649,6 +651,15 @@ async function waitForPersistedProject(page, projectName) {
             status: 413,
             contentType: 'application/json',
             body: JSON.stringify({ error: 'payload_too_large' })
+          });
+          return;
+        }
+        if (allowWorkspaceValidationError && !injectedWorkspaceValidationError) {
+          injectedWorkspaceValidationError = true;
+          await route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'invalid_payload', detail: 'duplicate_project_id' })
           });
           return;
         }
@@ -700,12 +711,26 @@ async function waitForPersistedProject(page, projectName) {
       !document.getElementById('dashSyncBadge')?.textContent.includes('Solo local')
     , null, { timeout: 5000 });
 
+    // A 400 payload-validation response means the server is reachable. The
+    // client must keep sync recoverable and succeed when the next save is valid.
+    allowWorkspaceValidationError = true;
+    await page.evaluate(async () => { await window.persistWorkspace(); });
+    await page.waitForFunction(() =>
+      document.getElementById('dashSyncBadge')?.textContent.includes('Datos no válidos')
+    , null, { timeout: 5000 });
+    assert.equal(injectedWorkspaceValidationError, true, 'E2E should inject one workspace validation response');
+    allowWorkspaceValidationError = false;
+    await page.evaluate(async () => { await window.persistWorkspace(); });
+    await page.waitForFunction(() =>
+      !document.getElementById('dashSyncBadge')?.textContent.includes('Datos no válidos')
+    , null, { timeout: 5000 });
+
     await page.unroute('**/api/workspace/**');
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
-    console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → server persistence.');
+    console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
   } finally {
     await browser.close();
   }
