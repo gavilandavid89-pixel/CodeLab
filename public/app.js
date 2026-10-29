@@ -481,6 +481,7 @@ async function runWorkspaceSync() {
           serverSyncError = true;
           resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
           setSyncStatus('offline', 'Datos no válidos · solo local');
+          updateDashboardStatus();
           const reason = details.detail || details.error || 'invalid_payload';
           showToast('El servidor rechazó los datos (' + reason + '). Tus cambios siguen guardados localmente; revisa los datos y vuelve a guardar.', 'warn');
           break;
@@ -1244,6 +1245,9 @@ function updateDashboardStatus() {
   if (badge) {
     if (workspacePayloadTooLarge) {
       badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1 text-amber-300"></i> Solo local · límite de tamaño';
+      badge.className = 'px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300';
+    } else if (serverSyncError) {
+      badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1 text-amber-300"></i> Sincronización pendiente · revisar';
       badge.className = 'px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300';
     } else if (currentUser && currentUser.real) {
       badge.innerHTML =
