@@ -2876,14 +2876,29 @@ function selectDesignElement(id, additive = false) {
   }
   renderDesignWorkspace();
 }
+function designLayerDomId(id) {
+  return 'layer-' + String(id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+}
 function safeDesignLink(value) {
   const source = String(value || '').trim();
   if (!source || source.length > 2048) return '';
+  if (/^#layer-[a-z0-9_-]{1,120}$/i.test(source)) return source;
   try {
     const url = new URL(source);
     if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
   } catch (_) {}
   return '';
+}
+function designLinkAttributes(value) {
+  const href = safeDesignLink(value);
+  if (!href) return '';
+  if (href.startsWith('#layer-')) return ' href="' + escapeAttr(href) + '"';
+  return ' href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer"';
+}
+function setDesignPrototypeTarget(value) {
+  updateDesignProperty('href', value);
+  const input = document.getElementById('designProperty-href');
+  if (input) input.value = safeDesignLink(value);
 }
 function safeDesignImageSource(value) {
   const source = String(value || '').trim();
@@ -3127,7 +3142,14 @@ function renderDesignWorkspace() {
     const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
     return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
   };
-  const buttonControls = el.type === 'button' ? field('Destino del botón (HTTP/S)','href','url','placeholder="https://ejemplo.com"') : '';
+  const buttonTargetOptions = p.design.elements.filter(item => item.id !== el.id).map(item => {
+    const target = '#' + designLayerDomId(item.id);
+    return '<option value="' + escapeAttr(target) + '" ' + (el.href === target ? 'selected' : '') + '>' + escapeHtml(item.label || item.type || 'Capa') + '</option>';
+  }).join('');
+  const buttonControls = el.type === 'button'
+    ? field('Destino del botón (URL o capa)','href','text','placeholder="https://ejemplo.com o #layer-…"') +
+      '<label class="block space-y-1"><span class="text-slate-400">Destino dentro del diseño</span><select id="designPrototypeTarget" aria-label="Destino interno del prototipo" onchange="setDesignPrototypeTarget(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="">Sin destino interno</option>' + buttonTargetOptions + '</select></label>'
+    : '';
   const imageControls = el.type === 'image'
     ? '<label class="block space-y-1"><span class="text-slate-400">Archivo (máx. 2 MB)</span><input id="designImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="importDesignImage(this.files && this.files[0])" class="w-full text-[11px] text-slate-300"></label>' +
       field('URL de imagen','src','url','placeholder="URL HTTP(S) o sube un archivo"') + field('Texto alternativo','alt','text') +
