@@ -164,6 +164,15 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(converted.code.html, /name="viewport"/,
       'converted web project should include a responsive viewport meta tag');
 
+    // Monaco loads asynchronously; wait until the editor reflects the active project
+    // rather than asserting against the previous design project's stale editor contents.
+    await page.waitForFunction(() => {
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      return project && project.type === 'web' &&
+        typeof window.getEditorValue === 'function' &&
+        window.getEditorValue('html') === project.code.html;
+    }, { timeout: 15000 });
+
     // 9. Return to the dashboard (where the component-library entry point lives),
     // keeping the converted project selected for insertion and persistence checks.
     await page.locator('button[onclick="returnToDashboard()"]').click();
@@ -194,7 +203,7 @@ async function waitForPersistedProject(page, projectName) {
     }, PROJECT_NAME, { timeout: 15000 });
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
-    console.log('Full design workflow E2E passed: create → edit → undo/redo → drag → duplicate/delete → responsive presets → server persistence/reload → convert to web.');
+    console.log('Full design workflow E2E passed: create → edit → undo/redo → drag → duplicate/delete → responsive presets → server persistence/reload → convert to web → insert component and persist.');
   } finally {
     await browser.close();
   }
