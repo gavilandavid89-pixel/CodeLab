@@ -161,7 +161,13 @@ async function waitForPersistedProject(page, projectName) {
     await page.click('#designLayerUp');
     assert.deepEqual(await layerLabels(), ['Título', 'Imagen'], 'bringing a layer forward should restore render order');
 
-    // 5c. Apply a full-page template and undo it without losing the prior design.
+    // 5c. Ellipse layers remain oval in the editable canvas.
+    await page.locator('button[onclick="addDesignElement(\'ellipse\')"]').click();
+    assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 3);
+    assert.equal(await page.locator('#designCanvas [data-design-id]').last().evaluate(node => node.style.borderRadius), '50%',
+      'ellipse should use a true oval border radius');
+
+    // 5d. Apply a full-page template and undo it without losing the prior design.
     await page.click('#designTemplatesButton');
     await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
     page.once('dialog', dialog => dialog.accept());
@@ -173,7 +179,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.click('#designUndoBtn');
     await page.waitForFunction(() => {
       const nodes = Array.from(document.querySelectorAll('#designCanvas [data-design-id]'));
-      return nodes.length === 2 && nodes.some(node => node.innerText === 'Prueba integral CodeLab') &&
+      return nodes.length === 3 && nodes.some(node => node.innerText === 'Prueba integral CodeLab') &&
         !!document.querySelector('#designCanvas [data-design-id] img[alt="E2E sample image"]');
     });
     assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundColor), 'rgb(255, 255, 255)',
@@ -260,6 +266,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /window\.innerWidth\/w/, 'HTML export should calculate scale from the current viewport width');
     assert.match(exportedHtml, /<img src="data:image\/png;base64,/, 'HTML export should include the embedded image asset');
     assert.match(exportedHtml, /alt="E2E sample image"/, 'HTML export should preserve the image alt text');
+    assert.match(exportedHtml, /border-radius:50%/, 'HTML export should preserve ellipse geometry');
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
@@ -269,6 +276,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(svgExport.suggestedFilename(), /\.svg$/i, 'SVG export should have an SVG filename');
     assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<svg[\s>]/i, 'SVG export should preserve vector markup');
     assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<image href="data:image\/png;base64,/, 'SVG export should preserve the embedded image layer');
+    assert.match(await fs.readFile(await svgExport.path(), 'utf8'), /<ellipse cx=/, 'SVG export should preserve ellipse geometry');
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
