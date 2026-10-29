@@ -17,6 +17,7 @@ let workspaceId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
 let serverSyncError = false;
+let workspacePayloadTooLarge = false;
 let projects = [];
 let currentProjectId = null;
 let currentUser = null;
@@ -340,11 +341,21 @@ async function runWorkspaceSync() {
           }
           break;
         }
+        if (r.status === 413) {
+          syncGeneration = 0;
+          workspacePayloadTooLarge = true;
+          resolveSyncWaiters(false, generationAtStart);
+          setSyncStatus('offline', 'Límite de tamaño · solo local');
+          updateDashboardStatus();
+          showToast('El workspace supera el límite de tamaño del servidor. Tus cambios siguen guardados localmente; elimina o exporta proyectos para volver a sincronizar.', 'warn');
+          break;
+        }
         if (!r.ok) throw new Error('workspace_save_failed');
         const data = await r.json();
         workspaceRevision = data.revision;
         syncRetryAttempt = 0;
         serverSyncError = false;
+        workspacePayloadTooLarge = false;
         resolveSyncWaiters(true, generationAtStart);
         setSyncStatus(inCopyBranch ? 'branch' : 'synced', inCopyBranch ? 'Copia · Guardada' : 'Sincronizado');
         if (syncGeneration === generationAtStart) break;
@@ -1037,7 +1048,10 @@ function updateDashboardStatus() {
   const badge = document.getElementById('dashSyncBadge');
   const wid = document.getElementById('dashWorkspaceId');
   if (badge) {
-    if (currentUser && currentUser.real) {
+    if (workspacePayloadTooLarge) {
+      badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1 text-amber-300"></i> Solo local · límite de tamaño';
+      badge.className = 'px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300';
+    } else if (currentUser && currentUser.real) {
       badge.innerHTML =
         '<i class="fa-solid fa-shield-halved mr-1 text-emerald-400"></i> Cuenta ' +
         currentUser.provider +
