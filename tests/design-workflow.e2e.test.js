@@ -1547,6 +1547,7 @@ async function waitForPersistedProject(page, projectName) {
         !document.getElementById('designStudioPanel')?.classList.contains('hidden');
     }, PROJECT_NAME, { timeout: 15000 });
 
+    const matrixBaselineCount = await page.locator('#designCanvas [data-design-id]').count();
     const matrix = { frames: ['desktop', 'tablet', 'mobile'], types: ['heading', 'text', 'button', 'rectangle', 'ellipse', 'image'], cases: 0 };
     for (const frame of matrix.frames) {
       await page.selectOption('#designFrameSize', frame);
@@ -1571,7 +1572,7 @@ async function waitForPersistedProject(page, projectName) {
       }
     }
     assert.equal(matrix.cases, 18, 'all 6 layer types must complete add/duplicate/delete/undo/redo in all 3 responsive frames');
-    assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 3,
+    assert.equal(await page.locator('#designCanvas [data-design-id]').count(), matrixBaselineCount,
       'the matrix must clean up temporary layers without changing the original design content');
     await page.evaluate(async () => {
       if (typeof saveCurrentCodeToActiveProject === 'function') await saveCurrentCodeToActiveProject(true);
@@ -1580,9 +1581,9 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
     await page.waitForFunction(name => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
-      return project && project.name === name && project.type === 'design' &&
-        document.querySelectorAll('#designCanvas [data-design-id]').length === 3;
-    }, PROJECT_NAME, { timeout: 15000 });
+      return project && project.name === name.name && project.type === 'design' &&
+        document.querySelectorAll('#designCanvas [data-design-id]').length === name.count;
+    }, { name: PROJECT_NAME, count: matrixBaselineCount }, { timeout: 15000 });
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
