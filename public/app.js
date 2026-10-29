@@ -156,8 +156,10 @@ function isValidDeletedProjectMapSnapshot(raw) {
   try {
     const stored = JSON.parse(raw);
     if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
-    const modern = stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace);
-    const legacy = typeof stored.workspaceId === 'string' && Array.isArray(stored.ids);
+    const modern = stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace) &&
+      Object.values(stored.byWorkspace).every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string'));
+    const legacy = typeof stored.workspaceId === 'string' && Array.isArray(stored.ids) &&
+      stored.ids.every(id => typeof id === 'string');
     return !!(modern || legacy);
   } catch (_) { return false; }
 }
@@ -165,7 +167,8 @@ function isValidPendingLocalImportSnapshot(raw) {
   try {
     const stored = JSON.parse(raw);
     if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
-    const modern = stored.byUser && typeof stored.byUser === 'object' && !Array.isArray(stored.byUser);
+    const modern = stored.byUser && typeof stored.byUser === 'object' && !Array.isArray(stored.byUser) &&
+      Object.values(stored.byUser).every(projects => Array.isArray(projects));
     const legacy = typeof stored.userKey === 'string' && Array.isArray(stored.projects);
     return !!(modern || legacy);
   } catch (_) { return false; }
@@ -203,11 +206,17 @@ function recordDeletedProjectId(id) {
   return lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
 }
 function clearDeletedProjectIds(forWorkspaceId) {
+  const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
+  if (raw && !isValidDeletedProjectMapSnapshot(raw) &&
+      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
+    return false;
+  }
   const target = forWorkspaceId || workspaceId;
   const byWorkspace = readDeletedProjectMap();
   if (target) delete byWorkspace[target];
-  if (Object.keys(byWorkspace).length) lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
-  else lsRemove(STORAGE_KEY_DELETED_PROJECTS);
+  if (Object.keys(byWorkspace).length) return lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
+  lsRemove(STORAGE_KEY_DELETED_PROJECTS);
+  return lsGet(STORAGE_KEY_DELETED_PROJECTS) === null;
 }
 function currentRealUserKey() {
   return currentUser && currentUser.real ? currentUser.provider + '_' + currentUser.id : null;
@@ -260,16 +269,26 @@ function restorePendingLocalImport() {
   if (userKey && Array.isArray(byUser[userKey])) pendingLocalImportProjects = byUser[userKey];
 }
 function clearPendingLocalImport() {
+  const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
+  if (raw && !isValidPendingLocalImportSnapshot(raw) &&
+      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
+    return false;
+  }
   const userKey = currentRealUserKey();
   const byUser = readPendingLocalImportMap();
   if (userKey) delete byUser[userKey];
+  if (Object.keys(byUser).length) {
+    if (!lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }))) return false;
+  } else {
+    lsRemove(STORAGE_KEY_PENDING_IMPORT);
+    if (lsGet(STORAGE_KEY_PENDING_IMPORT) !== null) return false;
+  }
   pendingLocalImportProjects = null;
-  if (Object.keys(byUser).length) lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }));
-  else lsRemove(STORAGE_KEY_PENDING_IMPORT);
   // The current workspace now owns the active snapshot; it is safe to resume
   // local saves after a previous cross-workspace recovery failure.
   localProjectsSnapshotWriteBlocked = false;
   localSnapshotBlockedWarningShown = false;
+  return true;
 }
 function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
   const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
