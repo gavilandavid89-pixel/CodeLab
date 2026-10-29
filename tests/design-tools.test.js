@@ -66,6 +66,9 @@ assert.equal(goodAudit.summary.errors, 0);
 assert.equal(goodAudit.issues.some(item => item.code === 'image-missing-alt'), false);
 const imageLinkAudit = tools.auditHtml('<html lang="es"><head><title>Imágenes enlazadas</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><a href="/inicio"><img src="logo.png" alt="Inicio"></a><a href="/decorativa"><img src="decor.png" alt=""></a></main></body></html>');
 assert.equal(imageLinkAudit.issues.filter(item => item.code === 'link-no-name').length, 1, 'A descriptive image alt should name its link, while a decorative alt should not');
+const svgNameAudit = tools.auditHtml('<html lang="es"><head><title>Iconos</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><button><img src="decor.png" alt=""></button><button><svg role="img"><title>Guardar</title></svg></button><a href="/inicio"><svg role="img"><title>Inicio</title></svg></a></main></body></html>');
+assert.equal(svgNameAudit.issues.filter(item => item.code === 'button-no-name').length, 1, 'An empty-alt decorative image must not name a button, while a titled SVG should');
+assert.equal(svgNameAudit.issues.filter(item => item.code === 'link-no-name').length, 0, 'An SVG with role=img and a title should name its link');
 const partialLabelAudit = tools.auditHtml('<html lang="es"><head><title>Form</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><label>Nombre<input type="text"></label><input type="email"></body></html>');
 assert.equal(partialLabelAudit.issues.filter(item => item.code === 'field-no-label').length, 1, 'Only the field outside its own label should be flagged');
 

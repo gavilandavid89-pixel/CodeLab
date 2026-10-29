@@ -167,6 +167,21 @@
       const match = doubleQuoted || singleQuoted || unquoted;
       return match ? (match[1] || '') : null;
     };
+    const hasNamedGraphic = body => {
+      const content = String(body || '');
+      const imageTag = (content.match(/<img\b[^>]*>/i) || [''])[0];
+      const imageAlt = attribute(imageTag, 'alt');
+      if (imageAlt !== null && imageAlt.trim()) return true;
+      const svg = content.match(/<svg\b([^>]*)>([\s\S]*?)<\/svg\s*>/i);
+      if (!svg) return false;
+      const svgAttrs = svg[1] || '';
+      const ariaLabel = attribute(svgAttrs, 'aria-label');
+      if (ariaLabel && ariaLabel.trim()) return true;
+      const role = (attribute(svgAttrs, 'role') || '').toLowerCase();
+      const titleMatch = (svg[2] || '').match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i);
+      const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+      return role === 'img' && Boolean(title);
+    };
     if (!source.trim()) {
       add('empty-html', 'error', 'El HTML del proyecto está vacío.', 'Añade la estructura principal de la página antes de ejecutar la auditoría.');
       return { format: 'codelab-accessibility-audit', version: 1, checkedAt: new Date().toISOString(), summary: { errors: 1, warnings: 0, info: 0, total: 1 }, issues: issues, scope: 'Análisis estático del HTML; no ejecuta JavaScript ni calcula contraste CSS.' };
@@ -190,8 +205,7 @@
       const attrs = match[1] || '', body = match[2] || '';
       const label = attribute(attrs, 'aria-label') || attribute(attrs, 'aria-labelledby');
       const text = body.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/\s+/g, ' ').trim();
-      const imageTag = (body.match(/<img\b[^>]*>/i) || [''])[0];
-      if (!label && !text && attribute(imageTag, 'alt') === null) add('button-no-name', 'error', 'Hay un botón sin nombre accesible detectable.', 'Añade texto visible o aria-label con una acción clara.');
+      if (!label && !text && !hasNamedGraphic(body)) add('button-no-name', 'error', 'Hay un botón sin nombre accesible detectable.', 'Añade texto visible, una imagen con alt descriptivo, un SVG con nombre accesible o aria-label.');
     }
     for (const match of source.matchAll(/<(input|select|textarea)\b([^>]*)>/gi)) {
       const tag = match[0], attrs = match[2] || '';
@@ -210,11 +224,8 @@
     for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
       const attrs = match[1] || '', body = match[2] || '';
       const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      const imageTag = (body.match(/<img\b[^>]*>/i) || [''])[0];
-      const imageAlt = attribute(imageTag, 'alt');
-      const namedImage = imageAlt !== null && imageAlt.trim().length > 0;
-      if (!attribute(attrs, 'aria-label') && !attribute(attrs, 'aria-labelledby') && !text && !namedImage) {
-        add('link-no-name', 'warning', 'Hay un enlace sin nombre accesible detectable.', 'Añade texto descriptivo, una imagen con alt descriptivo o aria-label.');
+      if (!attribute(attrs, 'aria-label') && !attribute(attrs, 'aria-labelledby') && !text && !hasNamedGraphic(body)) {
+        add('link-no-name', 'warning', 'Hay un enlace sin nombre accesible detectable.', 'Añade texto descriptivo, una imagen con alt descriptivo, un SVG con nombre accesible o aria-label.');
       }
       if ((attribute(attrs, 'target') || '').toLowerCase() === '_blank') {
         const rel = (attribute(attrs, 'rel') || '').toLowerCase().split(/\s+/);
