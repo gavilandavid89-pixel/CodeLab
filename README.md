@@ -96,6 +96,7 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Vista previa de componentes para revisar cómo conviven los colores antes de usarlos en una interfaz.
 - Comprobador de contraste basado en la fórmula WCAG: AA para texto normal (4.5:1), AA para texto grande (3:1) y AAA para texto normal (7:1).
 - Tokens ajustables para escala tipográfica, espaciado y radios de borde.
+- Aplicación directa del bloque de tokens al CSS del proyecto web abierto, reemplazando solo el bloque administrado y preservando el resto del CSS.
 - Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
 - Guardado local en el navegador actual. Para trasladar el sistema a otro dispositivo, exporta el JSON; este guardado no se sincroniza todavía con la cuenta ni con el servidor.
 
