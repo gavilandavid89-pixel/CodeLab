@@ -1189,7 +1189,14 @@ async function logoutAuth() {
   if (currentUser && currentUser.real) {
     const saved = await persistWorkspace();
     if (!saved) {
-      storePendingLocalImport(projects);
+      const preserved = storePendingLocalImport(projects);
+      if (!preserved) {
+        // Logging out would delete the only active snapshot while offline work
+        // has nowhere durable to go. Keep the account/session intact and let the
+        // user retry after freeing browser storage.
+        showToast('No se cerró la sesión porque no se pudieron proteger los cambios pendientes. Libera espacio del navegador e inténtalo de nuevo.', 'error');
+        return;
+      }
       pendingLocalImportProjects = null;
     }
   }
