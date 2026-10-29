@@ -2900,7 +2900,12 @@ function bindDesignCanvasEvents() {
       el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
       el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
     }
-    designDragState = null; renderDesignWorkspace(); saveProjectsToStorage();
+    const selectedId = selectedDesignElementId;
+    designDragState = null;
+    renderDesignWorkspace();
+    const selectedNode = Array.from(document.querySelectorAll('[data-design-id]')).find(node => node.dataset.designId === selectedId);
+    if (selectedNode) selectedNode.focus();
+    saveProjectsToStorage();
   };
   document.addEventListener('pointerup', finishDesignDrag);
   document.addEventListener('pointercancel', finishDesignDrag);
