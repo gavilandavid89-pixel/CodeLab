@@ -639,13 +639,19 @@ function conflictKeepLocal() {
   if (serverProjects.length) {
     const stamp = new Date().toLocaleString();
     serverProjects.forEach(sp => {
-      const already = projects.some(
-        p => p.name && p.name.indexOf('(servidor ') !== -1 && p.id === 'srv_bak_' + (sp.id || '')
+      const sourceId = String(sp.id || 'project');
+      const already = projects.some(p =>
+        p.serverBackupOf === sourceId ||
+        (typeof p.id === 'string' && p.id.startsWith('srv_bak_' + sourceId.slice(0, 45) + '_'))
       );
       if (already) return;
+      const backupSuffix = ' (servidor ' + stamp + ')';
       projects.unshift({
-        id: 'srv_bak_' + (sp.id || Date.now()) + '_' + Date.now().toString(36),
-        name: (sp.name || 'Proyecto') + ' (servidor ' + stamp + ')',
+        // Keep backup IDs and names within the server's validation limits even
+        // when the source project already uses the maximum allowed length.
+        id: 'srv_bak_' + sourceId.slice(0, 45) + '_' + Date.now().toString(36),
+        serverBackupOf: sourceId,
+        name: (String(sp.name || 'Proyecto').slice(0, 200 - backupSuffix.length) || 'Proyecto') + backupSuffix,
         updatedAt: sp.updatedAt || new Date().toISOString(),
         code: cloneCode(sp.code),
         branch: sp.branch ? deepClone(sp.branch) : undefined,
