@@ -117,6 +117,23 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const invalidCodeResult = await invalidCodeContainer.json();
     assert.equal(invalidCodeResult.error, 'invalid_payload');
     assert.equal(invalidCodeResult.detail, 'invalid_project_code');
+    const corruptInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'corrupt-state-regression' })
+    });
+    assert.equal(corruptInitResponse.status, 200);
+    const corruptWorkspace = await corruptInitResponse.json();
+    const corruptStatePath = path.join(dataDir, 'workspaces', corruptWorkspace.workspaceId + '.json');
+    await fs.writeFile(corruptStatePath, '{"truncated":', { mode: 0o600 });
+    const corruptStateResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(corruptWorkspace.workspaceId), {
+      headers: { 'x-workspace-token': corruptWorkspace.token }
+    });
+    assert.equal(corruptStateResponse.status, 500,
+      'Corrupt persisted workspace JSON should return a controlled server error');
+    assert.equal((await corruptStateResponse.json()).error, 'workspace_corrupt');
+    await fs.rm(corruptStatePath, { force: true });
+
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
