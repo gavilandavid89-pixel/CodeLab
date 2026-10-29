@@ -78,6 +78,9 @@ async function setCode(page, lang, value) {
     await page.locator('#copyAlertBanner').waitFor({ state: 'visible' });
     await setCode(page, 'html', branchHtml);
     await page.locator('button[onclick="saveInCopyBranch()"]').click();
+    await page.waitForFunction(() =>
+      document.getElementById('toastMsg')?.textContent.includes('Cambios guardados y sincronización confirmada'),
+      null, { timeout: 15000 });
     await page.locator('#toggleCopyBranchBtn').click();
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>CodeLab listo</h1><button id=\"preview-action\">Acción</button></main>".trim(),
       null, { timeout: 10000 });
