@@ -3119,7 +3119,8 @@ function renderDesignWorkspace() {
   props.innerHTML = layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
     field('Nombre de capa','label','text') + buttonControls + imageControls +
-    '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + field('Ancho','width') + field('Alto','height') + '</div>' +
+    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
+    '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
     (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
     '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>';
@@ -3146,6 +3147,15 @@ function updateDesignProperty(key, value) {
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
+  }
+  if (p && p.design.layoutMode === 'auto') {
+    const layout = getDesignLayoutPositions(p.design);
+    document.querySelectorAll('[data-design-id]').forEach(item => {
+      const pos = layout.positions.get(item.dataset.designId);
+      if (pos) { item.style.left = pos.x + 'px'; item.style.top = pos.y + 'px'; }
+    });
+    const canvas = document.getElementById('designCanvas');
+    if (canvas) canvas.style.height = layout.height + 'px';
   }
   if (key === 'label') {
     const layerButtons = document.querySelectorAll('#designLayers button');
