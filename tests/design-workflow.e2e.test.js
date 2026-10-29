@@ -101,9 +101,10 @@ async function waitForPersistedProject(page, projectName) {
         pendingLocalImportProjects = [
           { id: 'import-one', name: 'Uno', code: { html: '<p>1</p>' } },
           { id: 'import-two', name: 'Dos', code: { html: '<p>2</p>' } },
+          { id: 'import-two', name: 'Dos duplicado', code: { html: '<p>duplicado</p>' } },
           { id: 'import-three', name: 'Tres', code: { html: '<p>3</p>' } }
         ];
-        maxProjects = 2;
+        maxProjects = 3;
         saveProjectsToStorage = () => {};
         renderProjectsList = () => {};
         showToast = () => {};
@@ -123,10 +124,12 @@ async function waitForPersistedProject(page, projectName) {
         else localStorage.setItem('codelab_xd_pending_local_import_v1', saved.pendingStorage);
       }
     });
-    assert.equal(importLimitCheck.count, 2,
+    assert.equal(importLimitCheck.count, 3,
       'Local OAuth import must not exceed the configured project cap');
     assert.ok(importLimitCheck.importedIds.includes('existing-project'),
       'Local OAuth import must preserve existing account projects');
+    assert.equal(new Set(importLimitCheck.importedIds).size, importLimitCheck.importedIds.length,
+      'Local OAuth import must deduplicate IDs within the imported snapshot');
 
 
     // 1. Create and open a real design project through the production dashboard.
