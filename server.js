@@ -4,6 +4,7 @@
  */
 const http = require('http');
 const https = require('https');
+const dns = require('dns').promises;
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -478,7 +479,8 @@ function httpsRequest(urlStr, options, body) {
       hostname: u.hostname,
       path: u.pathname + u.search,
       method: options.method || 'GET',
-      headers: options.headers || {}
+      headers: options.headers || {},
+      ...(options.lookup ? { lookup: options.lookup } : {})
     };
     const req = https.request(opts, res => {
       const chunks = [];
@@ -692,6 +694,57 @@ function aiConfigured() {
   };
 }
 
+function isPublicProviderIp(address) {
+  const family = net.isIP(address);
+  if (family === 4) {
+    const octets = address.split('.').map(Number);
+    const value = (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256 + octets[3]) >>> 0;
+    const ranges = [
+      ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+      ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+      ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+      ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]
+    ];
+    return !ranges.some(([network, bits]) => {
+      const n = network.split('.').map(Number);
+      const base = (((n[0] * 256 + n[1]) * 256 + n[2]) * 256 + n[3]) >>> 0;
+      const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+      return (value & mask) === (base & mask);
+    });
+  }
+  if (family === 6) {
+    const ip = address.toLowerCase();
+    // Only allow global-unicast IPv6. Explicitly block local, mapped, transition,
+    // and documentation ranges to avoid reaching private services through IPv6.
+    if (!/^[23][0-9a-f]{0,3}:/.test(ip)) return false;
+    if (ip.startsWith('2001:db8:') || ip.startsWith('2001:0:') || ip.startsWith('2002:')) return false;
+    if (ip.startsWith('::ffff:') || ip === '::' || ip === '::1') return false;
+    return true;
+  }
+  return false;
+}
+
+async function resolvePublicProviderTarget(urlString) {
+  let target;
+  try { target = new URL(urlString); }
+  catch (_) { throw Object.assign(new Error('invalid_ai_provider_url'), { status: 400 }); }
+  if (target.protocol !== 'https:' || target.username || target.password || target.hash) {
+    throw Object.assign(new Error('AI provider URL must use HTTPS without embedded credentials or fragments.'), { status: 400 });
+  }
+  const hostname = target.hostname.replace(/^\\[|\\]$/g, '');
+  let records;
+  try { records = await dns.lookup(hostname, { all: true, verbatim: true }); }
+  catch (_) { throw Object.assign(new Error('AI provider hostname could not be resolved.'), { status: 400 }); }
+  if (!records.length || records.some(record => !isPublicProviderIp(record.address))) {
+    throw Object.assign(new Error('AI provider URL must resolve only to public IP addresses.'), { status: 400 });
+  }
+  const pinned = records[0];
+  return {
+    url: target.toString(),
+    lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family)
+  };
+}
+
 async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperature, maxTokens, publicUrl }) {
   const base = (baseUrl || AI_BASE_URL).replace(/\/$/, '');
   const groq = isGroqBase(base);
@@ -707,10 +760,12 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
     headers['X-Title'] = 'CodeLab XD Studio Pro';
   }
 
+  const providerTarget = await resolvePublicProviderTarget(base + '/chat/completions');
+
   async function doRequest(bodyObj) {
     const body = JSON.stringify(bodyObj);
     const h = Object.assign({}, headers, { 'Content-Length': Buffer.byteLength(body) });
-    return httpsRequest(base + '/chat/completions', { method: 'POST', headers: h }, body);
+    return httpsRequest(providerTarget.url, { method: 'POST', headers: h, lookup: providerTarget.lookup }, body);
   }
 
   function buildPayload(modelId, withJsonFormat) {
