@@ -66,6 +66,22 @@ async function waitForPersistedProject(page, projectName) {
       document.getElementById('consoleOutput')?.textContent.includes('TRUSTED_PREVIEW_MESSAGE')
     , null, { timeout: 3000 });
 
+    // Project creation must respect the same configurable cap enforced by the API.
+    const projectLimitCheck = await page.evaluate(() => {
+      const previousLimit = maxProjects;
+      const before = projects.length;
+      maxProjects = before;
+      openNewProjectModal();
+      document.getElementById('newProjectNameInput').value = 'No debe crearse por límite';
+      createNewProjectConfirm();
+      const after = projects.length;
+      closeNewProjectModal();
+      maxProjects = previousLimit;
+      return { before, after };
+    });
+    assert.equal(projectLimitCheck.after, projectLimitCheck.before,
+      'The UI must prevent creating a project when the workspace has reached its server-configured limit');
+
     // 1. Create and open a real design project through the production dashboard.
     await page.locator('button[onclick="openNewProjectModal()"]').click();
     await page.locator('#newProjectNameInput').fill(PROJECT_NAME);
