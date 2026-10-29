@@ -797,11 +797,11 @@ async function waitForPersistedProject(page, projectName) {
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify(projectBackup))
     });
-    await page.waitForFunction(name => {
+    await page.waitForFunction(({ name, count }) => {
       const project = getCurrentProject();
       return project && project.type === 'design' && project.name === name + ' (Importado)' &&
-        Array.isArray(project.design?.elements) && project.design.elements.length === 4;
-    }, PROJECT_NAME, { timeout: 10000 });
+        Array.isArray(project.design?.elements) && project.design.elements.length === count;
+    }, { name: PROJECT_NAME, count: projectBackup.project.design.elements.length }, { timeout: 10000 });
     const restoredBackupCheck = await page.evaluate(() => {
       const project = getCurrentProject();
       const button = project.design.elements.find(item => item.type === 'button');
