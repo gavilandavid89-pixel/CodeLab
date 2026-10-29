@@ -44,6 +44,9 @@ let previewTimer = null;
 let syncGeneration = 0;
 let syncRunning = false;
 let syncWaiters = [];
+let syncRetryTimer = null;
+let syncRetryAttempt = 0;
+const SYNC_RETRY_DELAYS_MS = [2000, 5000, 15000];
 let reconnectTimer = null;
 
 
@@ -264,6 +267,10 @@ async function loadProjectsFromStorage() {
 
 function persistWorkspace() {
   lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  if (syncRetryTimer) {
+    clearTimeout(syncRetryTimer);
+    syncRetryTimer = null;
+  }
   if (!serverReady) {
     setSyncStatus('offline', 'Solo local');
     return Promise.resolve(false);
@@ -305,15 +312,25 @@ async function runWorkspaceSync() {
           break;
         }
         if (r.status === 429) {
-          showToast('Límite de peticiones alcanzado. Reintentando en unos segundos…', 'warn');
           syncGeneration = 0;
           resolveSyncWaiters(false, generationAtStart);
-          setSyncStatus('offline', 'Rate limit');
+          setSyncStatus('offline', 'Reintento pendiente');
+          if (!syncRetryTimer) {
+            const delay = SYNC_RETRY_DELAYS_MS[Math.min(syncRetryAttempt, SYNC_RETRY_DELAYS_MS.length - 1)];
+            syncRetryAttempt = Math.min(syncRetryAttempt + 1, SYNC_RETRY_DELAYS_MS.length - 1);
+            showToast('Límite de peticiones alcanzado. Se reintentará el guardado automáticamente.', 'warn');
+            syncRetryTimer = setTimeout(() => {
+              syncRetryTimer = null;
+              if (!serverReady) return;
+              persistWorkspace();
+            }, delay);
+          }
           break;
         }
         if (!r.ok) throw new Error('workspace_save_failed');
         const data = await r.json();
         workspaceRevision = data.revision;
+        syncRetryAttempt = 0;
         serverSyncError = false;
         resolveSyncWaiters(true, generationAtStart);
         setSyncStatus(inCopyBranch ? 'branch' : 'synced', inCopyBranch ? 'Copia · Guardada' : 'Sincronizado');
