@@ -132,6 +132,7 @@ async function waitForPersistedProject(page, projectName) {
       }
       page.on('download', onCaptureDownload);
     });
+    await page.selectOption('#designCaptureScale', '3');
     await page.locator('button[onclick="captureDesignForAI()"]').click();
     await captureDownloadsReady;
     const captureFiles = await Promise.all(captureDownloads.map(async download => ({
@@ -145,12 +146,17 @@ async function waitForPersistedProject(page, projectName) {
     const captureContext = JSON.parse(await fs.readFile(contextFile.path, 'utf8'));
     assert.equal(captureContext.format, 'codelab-ai-design-capture');
     assert.ok(captureContext.elementCount >= 1, 'capture context should include the canvas element');
+    assert.equal(captureContext.canvas.scale, 3, 'design capture context should record the selected 3× resolution');
+    assert.equal(captureContext.canvas.pixelWidth, captureContext.canvas.width * 3, 'context pixel width should match the selected scale');
+    assert.equal(captureContext.canvas.pixelHeight, captureContext.canvas.height * 3, 'context pixel height should match the selected scale');
     assert.ok(captureContext.elements.some(item => item.text === 'Prueba integral CodeLab'),
       'capture context should preserve the actual edited element text');
     if (/\.png$/.test(imageFile.name)) {
       const png = await fs.readFile(imageFile.path);
       assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a',
         'successful PNG capture should produce a valid PNG signature');
+      assert.equal(png.readUInt32BE(16), captureContext.canvas.pixelWidth, 'PNG width should match capture context');
+      assert.equal(png.readUInt32BE(20), captureContext.canvas.pixelHeight, 'PNG height should match capture context');
     } else {
       assert.match(await fs.readFile(imageFile.path, 'utf8'), /<svg[\s>]/i,
         'SVG fallback should contain an SVG document');
