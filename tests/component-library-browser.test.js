@@ -63,15 +63,24 @@ function extractDivById(html, id) {
       window.getCurrentProject = () => ({ id: 'fixture', type: 'web' });
       window.getEditorValue = kind => kind === 'html' ? '<!doctype html><html><body><main>Existing content</main></body></html>' : '';
       window.setEditorValue = (kind, value) => { window.__insertedHtml = value; };
-      window.saveCurrentCodeToActiveProject = () => { window.__saved = true; };
+      window.saveCurrentCodeToActiveProject = async () => { window.__saved = true; return true; };
       window.updatePreview = () => { window.__previewUpdated = true; };
     });
     await page.click('#componentLibraryInsert');
+    await page.waitForFunction(() => /guardado; sincronización confirmada/i.test(document.querySelector('#componentLibraryStatus')?.textContent || ''), null, { timeout: 3000 });
     const inserted = await page.evaluate(() => window.__insertedHtml);
     assert.match(inserted, /Existing content/);
     assert.match(inserted, /Resumen del proyecto/);
     assert.match(inserted, /<\/body>/);
     assert.equal(await page.evaluate(() => window.__saved && window.__previewUpdated), true);
+
+    // A rejected server save must not be reported as a confirmed successful save.
+    await page.evaluate(() => {
+      window.getEditorValue = kind => kind === 'html' ? '<!doctype html><html><body></body></html>' : '';
+      window.saveCurrentCodeToActiveProject = async () => false;
+    });
+    await page.click('#componentLibraryInsert');
+    await page.waitForFunction(() => /no se confirmó el guardado\/sincronización/i.test(document.querySelector('#componentLibraryStatus')?.textContent || ''), null, { timeout: 3000 });
 
     // Inserting a reusable tool must respect the same HTML field cap enforced by
     // server-side workspace validation; rejected actions must not mutate editor state.
