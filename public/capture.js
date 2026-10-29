@@ -235,24 +235,48 @@
   async function waitForCaptureAssets(doc, timeoutMs) {
     const images = Array.from(doc && doc.images ? doc.images : []);
     images.forEach(function (img) { img.loading = 'eager'; });
+    const view = doc && doc.defaultView;
+    const backgroundSources = new Set();
+    if (doc && typeof doc.querySelectorAll === 'function' && view && typeof view.getComputedStyle === 'function') {
+      Array.from(doc.querySelectorAll('*')).forEach(function (element) {
+        let background = '';
+        try { background = view.getComputedStyle(element).backgroundImage || ''; } catch (_) {}
+        const pattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
+        let match;
+        while ((match = pattern.exec(background))) {
+          const source = String(match[1] || match[2] || match[3] || '').trim();
+          if (source && source.toLowerCase() !== 'none') backgroundSources.add(source);
+        }
+      });
+    }
+    const backgroundImages = Array.from(backgroundSources).map(function (source) {
+      const probe = view && typeof view.Image === 'function' ? new view.Image() : null;
+      if (probe) probe.src = source;
+      return { source: source, image: probe };
+    });
     const fontTask = doc && doc.fonts && doc.fonts.ready
       ? Promise.resolve(doc.fonts.ready).catch(function () {})
       : Promise.resolve();
-    const imageTasks = images.map(function (img) {
+    function waitForImage(img) {
       function decode() {
-        return typeof img.decode === 'function' ? img.decode().catch(function () {}) : Promise.resolve();
+        return typeof img.decode === 'function' ? Promise.resolve(img.decode()).catch(function () {}) : Promise.resolve();
       }
       if (img.complete) return img.naturalWidth > 0 ? decode() : Promise.resolve();
       return new Promise(function (resolve) {
         img.addEventListener('load', function () { decode().then(resolve); }, { once: true });
         img.addEventListener('error', resolve, { once: true });
       });
+    }
+    const imageTasks = images.map(waitForImage);
+    const backgroundTasks = backgroundImages.map(function (entry) {
+      if (!entry.image) return Promise.resolve();
+      return waitForImage(entry.image);
     });
     let timer;
     const timeout = new Promise(function (resolve) {
       timer = setTimeout(function () { resolve(false); }, Math.max(250, Number(timeoutMs) || 5000));
     });
-    const allReady = Promise.all([fontTask].concat(imageTasks)).then(function () { return true; });
+    const allReady = Promise.all([fontTask].concat(imageTasks, backgroundTasks)).then(function () { return true; });
     const completed = await Promise.race([allReady, timeout]);
     clearTimeout(timer);
     return {
@@ -261,6 +285,10 @@
       imagesLoaded: images.filter(function (img) { return img.complete && img.naturalWidth > 0; }).length,
       imagesFailed: images.filter(function (img) { return img.complete && img.naturalWidth === 0; }).length,
       imagesPending: images.filter(function (img) { return !img.complete; }).length,
+      backgroundImagesTotal: backgroundImages.length,
+      backgroundImagesLoaded: backgroundImages.filter(function (entry) { return entry.image && entry.image.complete && entry.image.naturalWidth > 0; }).length,
+      backgroundImagesFailed: backgroundImages.filter(function (entry) { return entry.image && entry.image.complete && entry.image.naturalWidth === 0; }).length,
+      backgroundImagesPending: backgroundImages.filter(function (entry) { return entry.image && !entry.image.complete; }).length,
       timedOut: !completed
     };
   }
