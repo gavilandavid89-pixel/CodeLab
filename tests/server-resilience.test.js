@@ -169,6 +169,14 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(corruptStateResponse.status, 500,
       'Corrupt persisted workspace JSON should return a controlled server error');
     assert.equal((await corruptStateResponse.json()).error, 'workspace_corrupt');
+    const corruptInitRetryResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': corruptWorkspace.token },
+      body: JSON.stringify({ id: corruptWorkspace.workspaceId })
+    });
+    assert.equal(corruptInitRetryResponse.status, 500,
+      'Workspace initialization must report the same controlled corruption error as workspace reads');
+    assert.equal((await corruptInitRetryResponse.json()).error, 'workspace_corrupt');
     await fs.rm(corruptStatePath, { force: true });
 
     const invalidShapeInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
