@@ -1555,6 +1555,8 @@ async function waitForPersistedProject(page, projectName) {
         const countBefore = await page.locator('#designCanvas [data-design-id]').count();
         await page.locator(`button[onclick="addDesignElement('${type}')"]`).click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
+        const addedLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
+        assert.ok(addedLayerId, type + ' layer should expose its stable ID in ' + frame + ' frame');
         assert.equal(await page.locator('#designProperties').isVisible(), true,
           type + ' properties must be visible after adding it in ' + frame + ' frame');
 
@@ -1566,7 +1568,8 @@ async function waitForPersistedProject(page, projectName) {
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 2);
         await page.locator('#designRedoBtn').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
-        await page.locator('button[onclick="deleteDesignElement()"]' ).click();
+        await page.locator('#designCanvas [data-design-id="' + addedLayerId + '"]').click();
+        await page.locator('button[onclick="deleteDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore);
         matrix.cases += 1;
       }
