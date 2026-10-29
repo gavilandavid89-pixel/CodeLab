@@ -17,6 +17,7 @@ const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_REAL_DIR = fs.realpathSync(PUBLIC_DIR);
 const SECRET_FILE = path.join(DATA_DIR, '.workspace-secret');
 const MAX_BODY_BYTES = Number(process.env.CODELAB_MAX_BODY_BYTES) || 10 * 1024 * 1024;
 const MAX_PROJECTS = Number(process.env.CODELAB_MAX_PROJECTS) || 50;
@@ -605,30 +606,45 @@ function serveStatic(req, res, urlPath) {
   if (rel === '/' || rel === '') rel = '/index.html';
   const filePath = path.resolve(PUBLIC_DIR, '.' + path.sep + rel.replace(/^[/]+/, ''));
   const relToPublic = path.relative(PUBLIC_DIR, filePath);
-  if (relToPublic.startsWith('..') || path.isAbsolute(relToPublic)) {
+  if (relToPublic === '..' || relToPublic.startsWith('..' + path.sep) || path.isAbsolute(relToPublic)) {
     setSecurityHeaders(res);
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not Found');
   }
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
+  fs.realpath(filePath, (realpathError, realPath) => {
+    if (realpathError) {
       setSecurityHeaders(res);
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end('Not Found');
     }
-    const ext = path.extname(filePath).toLowerCase();
-    setSecurityHeaders(res);
-    const headers = {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Content-Length': data.length
-    };
-    // HTML references stable asset URLs; force revalidation so deployments cannot leave
-    // users running stale application logic for a full day after a release.
-    if (ext === '.html' || ext === '.js' || ext === '.css') {
-      headers['Cache-Control'] = 'no-cache';
+    // Lexical path checks alone do not stop a symlink inside public/ from
+    // pointing at a private server-side file outside the asset directory.
+    const realRelative = path.relative(PUBLIC_REAL_DIR, realPath);
+    if (realRelative === '..' || realRelative.startsWith('..' + path.sep) || path.isAbsolute(realRelative)) {
+      setSecurityHeaders(res);
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Not Found');
     }
-    res.writeHead(200, headers);
-    res.end(data);
+    fs.readFile(realPath, (err, data) => {
+      if (err) {
+        setSecurityHeaders(res);
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Not Found');
+      }
+      const ext = path.extname(realPath).toLowerCase();
+      setSecurityHeaders(res);
+      const headers = {
+        'Content-Type': MIME[ext] || 'application/octet-stream',
+        'Content-Length': data.length
+      };
+      // HTML references stable asset URLs; force revalidation so deployments cannot leave
+      // users running stale application logic for a full day after a release.
+      if (ext === '.html' || ext === '.js' || ext === '.css') {
+        headers['Cache-Control'] = 'no-cache';
+      }
+      res.writeHead(200, headers);
+      res.end(data);
+    });
   });
 }
 
