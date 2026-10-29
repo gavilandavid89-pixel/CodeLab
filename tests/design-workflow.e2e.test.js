@@ -290,7 +290,16 @@ async function waitForPersistedProject(page, projectName) {
         'SVG fallback should contain an SVG document');
     }
 
-    // 6c. Verify the three explicit export formats through the real UI.
+    // 6c. Configure a safe button destination to exercise prototype navigation.
+    await page.locator('button[onclick="addDesignElement(\\'button\\')"]').click();
+    await page.locator('#designProperty-href').fill('javascript:alert(1)');
+    await page.locator('#designProperty-href').fill('https://example.com/docs');
+    assert.equal(await page.evaluate(() => {
+      const project = window.activeDesignProject();
+      return project.design.elements.find(item => item.type === 'button')?.href || '';
+    }), 'https://example.com/docs/', 'prototype buttons should keep normalized HTTP(S) destinations only');
+
+    // 6d. Verify the three explicit export formats through the real UI.
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
     const htmlExportReady = page.waitForEvent('download');
@@ -307,6 +316,10 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /<img src="data:image\/png;base64,/, 'HTML export should include the embedded image asset');
     assert.match(exportedHtml, /alt="E2E sample image"/, 'HTML export should preserve the image alt text');
     assert.match(exportedHtml, /border-radius:50%/, 'HTML export should preserve ellipse geometry');
+    assert.match(exportedHtml, /href="https:\/\/example\.com\/docs\/" target="_blank" rel="noopener noreferrer"/,
+      'HTML export should preserve the safe prototype destination with safe new-tab attributes');
+    await page.locator('button[onclick="deleteDesignElement()"]').click();
+    await page.waitForFunction(() => !Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).some(node => node.getAttribute('aria-label') === 'Botón'));
 
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
