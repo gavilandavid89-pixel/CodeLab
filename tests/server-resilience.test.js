@@ -104,6 +104,12 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(savedSettings.settings.name, 'Persisted system');
     assert.equal(savedSettings.settings.primary, '#123456');
     assert.equal(savedSettings.settings.baseFont, 18);
+    const workspaceFiles = await fs.readdir(path.join(dataDir, 'workspaces'));
+    const designSystemFile = workspaceFiles.find(name => name.endsWith('.design-system.json'));
+    assert.ok(designSystemFile, 'Saved design system should have a persistent backing file');
+    const designSystemStat = await fs.stat(path.join(dataDir, 'workspaces', designSystemFile));
+    assert.equal(designSystemStat.mode & 0o077, 0,
+      'Design-system persistence file should not grant group or other users access');
 
     const reloadSettingsResponse = await fetch(designSystemUrl, { headers: authHeaders });
     assert.equal(reloadSettingsResponse.status, 200);
