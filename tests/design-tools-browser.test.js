@@ -117,6 +117,26 @@ function extractDivById(html, id) {
     assert.match(applied, /CodeLab Design Tokens START/);
     assert.match(applied, /\.existing \{ color: red; \}/);
     assert.equal(await page.evaluate(() => window.__previewUpdated), true);
+
+    // Token application must not push CSS beyond the server's per-field cap.
+    await page.evaluate(() => {
+      window.__tokenSetCalls = 0;
+      window.getEditorValue = kind => kind === 'html' ? '<html><body></body></html>' : 'x'.repeat(500000);
+      window.setEditorValue = () => { window.__tokenSetCalls++; };
+    });
+    await page.click('#applyDesignTokens');
+    assert.equal(await page.evaluate(() => window.__tokenSetCalls), 0,
+      'oversized token application must be rejected before modifying the CSS editor');
+    assert.match(await page.locator('#designToolsStatus').textContent(), /500\.000 caracteres/,
+      'the design tool should explain the CSS size limit');
+
+    // Restore the normal editor fixture before continuing sync/export checks.
+    await page.evaluate(() => {
+      window.getEditorValue = kind => kind === 'html'
+        ? '<html><head><title>Broken</title></head><body><h1>Title</h1><h3>Skip</h3><img src="hero.png"><button></button></body></html>'
+        : '.existing { color: red; }';
+      window.setEditorValue = (lang, value) => { window.__appliedCss = value; };
+    });
     const writesBeforeRateLimit = remoteWrites;
     failNextPutWithRateLimit = true;
     await page.click('#saveDesignSystem');
