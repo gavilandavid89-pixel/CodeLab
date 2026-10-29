@@ -123,6 +123,7 @@
   function sanitizeForCapture(html) {
     return String(html || '')
       .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '<!-- JavaScript omitido durante la captura segura -->')
+      .replace(/<script\b[^>]*>[\s\S]*$/gi, '<!-- JavaScript omitido durante la captura segura -->')
       .replace(/<(iframe|object|embed|portal)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
       .replace(/<(iframe|object|embed|portal)\b[^>]*\/?>/gi, '')
       .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
