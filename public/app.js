@@ -2683,12 +2683,13 @@ function captureDesignSvg(project) {
     const color = String(value || 'transparent').trim();
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   };
-  const items = (project.design.elements || []).map(el => {
+  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map(el => {
     const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
-    const x = Number(position.x) || 0, y = Number(position.y) || 0;
-    const w = Math.max(20, Number(el.width) || 120), h = Math.max(20, Number(el.height) || 48);
-    const fontSize = Math.max(8, Number(el.fontSize) || 16);
-    const radius = Math.max(0, Number(el.radius) || 0);
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const x = Math.max(-6000, Math.min(6000, finite(position.x, 0))), y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
+    const w = Math.max(20, Math.min(4000, finite(el.width, 120) || 120)), h = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
+    const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
+    const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
     const rect = background !== 'transparent'
@@ -2727,7 +2728,7 @@ function captureDesignSvg(project) {
     const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
     const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
     const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
-    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Number(el.weight) || 400) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
   }).join('');
   return {
     width, height,
@@ -2743,22 +2744,33 @@ async function captureDesignForAI() {
   const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
-  const elements = (project.design.elements || []).map((el, index) => ({
+  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
+    const layout = getDesignLayoutPositions(project.design);
+    const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
+    const y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
+    const width = Math.max(20, Math.min(4000, finite(el.width, 120) || 120));
+    const height = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
+    const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
+    const fontWeight = Math.max(100, Math.min(900, finite(el.weight, 400)));
+    const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
+    return ({
     order: index + 1,
     id: el.id || null,
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
     text: el.text || '',
-    bounds: { x: Number(el.x) || 0, y: Number(el.y) || 0, width: Math.max(20, Number(el.width) || 120), height: Math.max(20, Number(el.height) || 48) },
+    bounds: { x, y, width, height },
     style: {
       color: el.color || '#111827',
       background: el.background || 'transparent',
-      fontSize: Number(el.fontSize) || 16,
-      fontWeight: Number(el.weight) || 400,
-      radius: Number(el.radius) || 0,
+      fontSize,
+      fontWeight,
+      radius,
       textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
     }
-  }));
+  });
   const context = {
     format: 'codelab-ai-design-capture',
     version: 1,
@@ -2963,13 +2975,20 @@ function importDesignImage(file) {
   reader.readAsDataURL(file);
 }
 function getDesignLayoutPositions(design) {
-  const elements = Array.isArray(design && design.elements) ? design.elements : [];
+  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
   const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
   if (mode === 'free') {
-    for (const el of elements) positions.set(el.id, { x: Number(el.x) || 0, y: Number(el.y) || 0 });
-    return { positions, height: 900, mode, frameWidth };
+    let contentBottom = 0;
+    for (const el of elements) {
+      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      positions.set(el.id, { x, y });
+      contentBottom = Math.max(contentBottom, y + height);
+    }
+    return { positions, height: Math.min(6000, Math.max(900, contentBottom + 24)), mode, frameWidth };
   }
   const direction = design.layoutDirection === 'column' ? 'column' : 'row';
   const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
@@ -2990,7 +3009,7 @@ function getDesignLayoutPositions(design) {
     }
   }
   const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
-  return { positions, height: Math.max(900, contentBottom + padding), mode, frameWidth, direction, gap, padding };
+  return { positions, height: Math.min(6000, Math.max(900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
 }
 function setDesignLayoutMode(value) {
   const p = activeDesignProject(); if (!p) return;
