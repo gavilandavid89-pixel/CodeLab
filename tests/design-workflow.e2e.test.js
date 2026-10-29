@@ -164,7 +164,11 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(converted.code.html, /name="viewport"/,
       'converted web project should include a responsive viewport meta tag');
 
-    // 9. Exercise the real component-library integration on the converted web project.
+    // 9. Return to the dashboard (where the component-library entry point lives),
+    // keeping the converted project selected for insertion and persistence checks.
+    await page.locator('button[onclick="returnToDashboard()"]').click();
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
+    // Exercise the real component-library integration on the converted web project.
     await page.locator('#openComponentLibrary').click();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
     await page.locator('#componentLibraryInsert').click();
