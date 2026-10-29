@@ -2324,6 +2324,138 @@ function alignDesignElement(mode = 'center-x') {
   else if (mode === 'bottom') el.y = Math.max(0, height - eh);
   renderDesignWorkspace(); saveProjectsToStorage();
 }
+function downloadDesignAsset(filename, content, type) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function designXmlEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function captureDesignSvg(project) {
+  const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
+  const height = 900;
+  const safeColor = value => {
+    const color = String(value || 'transparent').trim();
+    return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
+  };
+  const items = (project.design.elements || []).map(el => {
+    const x = Number(el.x) || 0, y = Number(el.y) || 0;
+    const w = Math.max(20, Number(el.width) || 120), h = Math.max(20, Number(el.height) || 48);
+    const fontSize = Math.max(8, Number(el.fontSize) || 16);
+    const radius = Math.max(0, Number(el.radius) || 0);
+    const background = safeColor(el.background);
+    const color = safeColor(el.color || '#111827');
+    const rect = background !== 'transparent'
+      ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"/>'
+      : '';
+    if (el.type === 'rectangle') {
+      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+    }
+    const raw = String(el.text || '').split(/\r?\n/);
+    const maxChars = Math.max(1, Math.floor((w - 12) / (fontSize * 0.56)));
+    const lines = [];
+    raw.forEach(line => {
+      const words = line.split(/\s+/); let current = '';
+      words.forEach(word => {
+        if (!word && !current) return;
+        const next = current ? current + ' ' + word : word;
+        if (next.length > maxChars && current) { lines.push(current); current = word; }
+        else current = next;
+      });
+      lines.push(current);
+    });
+    const lineHeight = el.type === 'heading' ? fontSize * 1.1 : fontSize * 1.25;
+    const totalHeight = Math.max(lineHeight, lines.length * lineHeight);
+    const anchor = el.type === 'button' ? 'middle' : (['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left');
+    const textX = anchor === 'left' ? x + 6 : anchor === 'right' ? x + w - 6 : x + w / 2;
+    const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
+    const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
+    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Number(el.weight) || 400) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+  }).join('');
+  return {
+    width, height,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + designXmlEscape(safeColor(project.design.background || '#ffffff')) + '"/>' + items + '</svg>'
+  };
+}
+
+async function captureDesignForAI() {
+  const project = activeDesignProject();
+  if (!project || !project.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
+  const captured = captureDesignSvg(project);
+  const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+  const elements = (project.design.elements || []).map((el, index) => ({
+    order: index + 1,
+    id: el.id || null,
+    type: el.type || 'text',
+    label: el.label || el.type || 'Elemento',
+    text: el.text || '',
+    bounds: { x: Number(el.x) || 0, y: Number(el.y) || 0, width: Math.max(20, Number(el.width) || 120), height: Math.max(20, Number(el.height) || 48) },
+    style: {
+      color: el.color || '#111827',
+      background: el.background || 'transparent',
+      fontSize: Number(el.fontSize) || 16,
+      fontWeight: Number(el.weight) || 400,
+      radius: Number(el.radius) || 0,
+      textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
+    }
+  }));
+  const context = {
+    format: 'codelab-ai-design-capture',
+    version: 1,
+    project: project.name || 'Diseño sin título',
+    frame: project.design.frame || 'desktop',
+    image: slug + '-captura-ia.png',
+    canvas: { width: captured.width, height: captured.height, background: project.design.background || '#ffffff' },
+    elementCount: elements.length,
+    elements
+  };
+  const json = JSON.stringify(context, null, 2);
+  const prompt = [
+    'CONTEXTO PARA REVISAR ESTE DISEÑO DE CODELAB',
+    'Usa la imagen PNG para evaluar la apariencia visual y el archivo JSON para conocer las posiciones, dimensiones, textos y estilos exactos.',
+    'No inventes contenido que no aparezca en los archivos. Distingue los problemas observables de las sugerencias.',
+    'Proyecto: ' + context.project,
+    'Marco: ' + context.frame + ' (' + captured.width + ' × ' + captured.height + ' px)',
+    'Elementos: ' + elements.length,
+    'Archivos adjuntos esperados: ' + slug + '-captura-ia.png y ' + slug + '-contexto-ia.json',
+    'Solicita o propone cambios concretos y accesibles, considerando también la adaptación móvil.'
+  ].join('\n');
+  downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
+  downloadDesignAsset(slug + '-prompt-ia.txt', prompt, 'text/plain;charset=utf-8');
+  try {
+    const svgBlob = new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+      image.src = svgUrl;
+    });
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = captured.width * scale; canvas.height = captured.height * scale;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
+    ctx.scale(scale, scale);
+    ctx.drawImage(image, 0, 0, captured.width, captured.height);
+    URL.revokeObjectURL(svgUrl);
+    const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
+    downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
+    showToast('Captura IA lista: PNG 2×, contexto JSON y prompt.');
+  } catch (error) {
+    downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
+    showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
+  }
+}
+
 function exportDesignHtml() {
   const p = activeDesignProject(); if (!p) return;
   const elements = p.design.elements.map(el => {
