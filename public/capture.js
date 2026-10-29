@@ -64,7 +64,7 @@
       .replace(/<(iframe|object|embed|portal)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
       .replace(/<(iframe|object|embed|portal)\b[^>]*\/?>/gi, '')
       .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, ' $1="#"')
+      .replace(/\s+(href|src|action|formaction|xlink:href)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, ' $1="#"')
       .replace(/<base\b[^>]*>/gi, '');
   }
 
