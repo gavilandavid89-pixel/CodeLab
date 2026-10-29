@@ -361,6 +361,9 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /class="design-viewport"/, 'HTML export should use a viewport wrapper');
     assert.match(exportedHtml, /addEventListener\("resize",fit/, 'HTML export should recalculate scale on resize');
     assert.match(exportedHtml, /f\.style\.transform/, 'HTML export should apply a visual scale to the fixed design canvas');
+    assert.match(exportedHtml, /class="design-frame auto-layout"/, 'HTML export should preserve Auto Layout mode');
+    assert.match(exportedHtml, /display:flex;flex-direction:column/, 'HTML export should use a flow layout instead of absolute positioning');
+    assert.match(exportedHtml, /gap:24px;padding:20px/, 'HTML export should preserve Auto Layout spacing and padding');
     assert.match(exportedHtml, /window\.innerWidth\/w/, 'HTML export should calculate scale from the current viewport width');
     assert.match(exportedHtml, /<img src="data:image\/png;base64,/, 'HTML export should include the embedded image asset');
     assert.match(exportedHtml, /alt="E2E sample image"/, 'HTML export should preserve the image alt text');
@@ -488,6 +491,10 @@ async function waitForPersistedProject(page, projectName) {
       'design-to-web conversion should preserve ellipse geometry');
     assert.match(converted.code.html, /addEventListener\("resize",fit/,
       'converted page should resize its design frame to the viewport');
+    assert.match(converted.code.html, /class="design-frame auto-layout"/,
+      'design-to-web conversion should preserve Auto Layout mode');
+    assert.match(converted.code.html, /flex-direction:column/,
+      'design-to-web conversion should preserve the flow direction');
     assert.match(converted.code.html, /href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer"/,
       'design-to-web conversion should preserve the safe prototype navigation destination');
 
