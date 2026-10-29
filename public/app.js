@@ -2830,6 +2830,7 @@ function renderDesignWorkspace() {
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
       selectedDesignElementId = el.id;
+      node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
       designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
