@@ -699,6 +699,11 @@ const MIME = {
 };
 
 function serveStatic(req, res, urlPath) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    setSecurityHeaders(res);
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, HEAD' });
+    return res.end('Method Not Allowed');
+  }
   let rel;
   try {
     rel = decodeURIComponent(urlPath.split('?')[0]);
@@ -753,7 +758,9 @@ function serveStatic(req, res, urlPath) {
         headers['Cache-Control'] = 'no-cache';
       }
       res.writeHead(200, headers);
-      res.end(data);
+      // HEAD returns the same representation metadata as GET without transferring
+      // the asset body, as required by HTTP semantics.
+      res.end(req.method === 'HEAD' ? undefined : data);
     });
   });
 }
