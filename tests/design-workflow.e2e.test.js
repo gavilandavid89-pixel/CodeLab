@@ -963,8 +963,10 @@ async function waitForPersistedProject(page, projectName) {
     // A merge must stop if the branch could not be saved or the main workspace
     // could not be refreshed; otherwise a stale server snapshot can discard edits.
     const mergeGuard = await page.evaluate(async () => {
+      const project = getCurrentProject();
       const saved = {
         inCopyBranch,
+        projectBranch: project && project.branch,
         saveInCopyBranch: window.saveInCopyBranch,
         refreshWorkspaceFromServer: window.refreshWorkspaceFromServer,
         showToast: window.showToast
@@ -972,6 +974,8 @@ async function waitForPersistedProject(page, projectName) {
       let refreshCalled = false;
       let toast = '';
       try {
+        if (!project) return { refreshCalled: false, toast: 'no active project' };
+        project.branch = { id: 'merge-guard-fixture' };
         inCopyBranch = true;
         window.saveInCopyBranch = async () => false;
         window.refreshWorkspaceFromServer = async () => { refreshCalled = true; return true; };
@@ -980,6 +984,10 @@ async function waitForPersistedProject(page, projectName) {
         return { refreshCalled, toast };
       } finally {
         inCopyBranch = saved.inCopyBranch;
+        if (project) {
+          if (saved.projectBranch === undefined) delete project.branch;
+          else project.branch = saved.projectBranch;
+        }
         window.saveInCopyBranch = saved.saveInCopyBranch;
         window.refreshWorkspaceFromServer = saved.refreshWorkspaceFromServer;
         window.showToast = saved.showToast;
