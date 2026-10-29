@@ -25,7 +25,7 @@ Audit of the changes in PR #2 on `feature/design-workspace`: visual design proje
 - Design tokens are saved in localStorage, not synchronized to the user's account/workspace.
 - The accessibility audit is static regex-based HTML analysis. It does not execute JavaScript, inspect dynamic states, compute CSS contrast, or replace a full accessibility evaluation.
 - Monaco editor loading is asynchronous. A project switch could leave a previous project's delayed editor initialization callback able to overwrite the active editor; initialization now uses a generation guard so stale callbacks are ignored. The full-app E2E waits for the active project's editor contents before exercising insertion.
-- The E2E checks mobile viewport dimensions, canvas frame sizing, and document-level horizontal overflow, but it is not yet a screenshot-based visual regression test across multiple device sizes.
+- Workspace sync now schedules bounded automatic retries after HTTP 429 rate limiting (2 s, 5 s, then 15 s) instead of claiming a retry without scheduling one. The E2E checks mobile viewport dimensions, canvas frame sizing, and document-level horizontal overflow, but it is not yet a screenshot-based visual regression test across multiple device sizes.
 
 ## Deployment / merge
 PR remains open and draft. No merge or deployment was performed as part of this audit.
