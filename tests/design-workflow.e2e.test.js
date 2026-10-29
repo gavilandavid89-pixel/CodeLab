@@ -1552,14 +1552,14 @@ async function waitForPersistedProject(page, projectName) {
       await page.selectOption('#designFrameSize', frame);
       for (const type of matrix.types) {
         const countBefore = await page.locator('#designCanvas [data-design-id]').count();
-        await page.locator('button[onclick="addDesignElement(\\'' + type + '\\')"]').click();
+        await page.locator(`button[onclick="addDesignElement('${type}')"]`).click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
         assert.equal(await page.locator('#designProperties').isVisible(), true,
           type + ' properties must be visible after adding it in ' + frame + ' frame');
 
-        await page.locator('button[onclick="duplicateDesignElement()"]' ).click();
+        await page.locator('button[onclick="duplicateDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 2);
-        await page.locator('button[onclick="deleteDesignElement()"]' ).click();
+        await page.locator('button[onclick="deleteDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
         await page.locator('#designUndoBtn').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 2);
