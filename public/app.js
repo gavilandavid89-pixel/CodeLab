@@ -3122,3 +3122,56 @@ function setupSplitResize() {
   });
 }
 
+
+function toggleDesignExportMenu() {
+  const menu = document.getElementById('designExportMenu');
+  const button = document.getElementById('designExportMenuButton');
+  if (!menu || !button) return;
+  const opening = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !opening);
+  button.setAttribute('aria-expanded', String(opening));
+}
+
+function closeDesignExportMenu() {
+  const menu = document.getElementById('designExportMenu');
+  const button = document.getElementById('designExportMenuButton');
+  if (menu) menu.classList.add('hidden');
+  if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function exportDesignSvg() {
+  const project = activeDesignProject();
+  if (!project || !project.design) {
+    showToast('Abre un proyecto de diseño primero.', 'warn');
+    return;
+  }
+  try {
+    const capture = window.CodeLabCapture && window.CodeLabCapture.captureDesignSvg;
+    const result = typeof capture === 'function' ? capture(project) : captureDesignSvg(project);
+    const slug = (project.name || 'codelab-design').toLowerCase().normalize('NFD')
+      .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+    downloadDesignAsset(slug + '.svg', result.svg, 'image/svg+xml;charset=utf-8');
+    showToast('Diseño exportado como SVG vectorial.');
+  } catch (error) {
+    showToast('No se pudo exportar el SVG: ' + (error && error.message ? error.message : 'error de exportación'), 'warn');
+  }
+}
+
+function exportDesignProjectJson() {
+  const project = activeDesignProject();
+  if (!project || !project.design) {
+    showToast('Abre un proyecto de diseño primero.', 'warn');
+    return;
+  }
+  const slug = (project.name || 'codelab-design').toLowerCase().normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+  const payload = {
+    format: 'codelab-design-project',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    project: JSON.parse(JSON.stringify(project))
+  };
+  downloadDesignAsset(slug + '-proyecto.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
+  showToast('Respaldo JSON del proyecto exportado.');
+}
+
