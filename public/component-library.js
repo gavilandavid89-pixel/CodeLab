@@ -98,6 +98,7 @@
     modal.dataset.componentLibraryInitialized = 'true';
     const get = id => document.getElementById(id);
     let selectedId = 'hero';
+    let pendingInsertion = null;
     let bodyHadOverflowHidden = false;
     const status = message => {
       const target = get('componentLibraryStatus');
@@ -182,7 +183,29 @@
       if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function' || typeof window.setEditorValue !== 'function') {
         status('Abre primero un proyecto web para insertar un componente.'); return;
       }
+      if (typeof window.saveCurrentCodeToActiveProject !== 'function') {
+        status('No se pudo guardar el componente porque el editor todavía no está listo. Inténtalo de nuevo.');
+        return;
+      }
       const html = String(window.getEditorValue('html') || '');
+      // If the previous insertion reached the editor but its save was not
+      // confirmed, retry persistence without inserting the same component twice.
+      if (pendingInsertion && pendingInsertion.projectId === project.id &&
+          pendingInsertion.componentId === selectedId && pendingInsertion.html === html) {
+        try {
+          const saved = await window.saveCurrentCodeToActiveProject(true);
+          if (saved === true) {
+            pendingInsertion = null;
+            status('Componente insertado y guardado; sincronización confirmada.');
+          } else {
+            status('El componente sigue en el editor, pero no se confirmó el guardado/sincronización. Puedes reintentar sin duplicarlo.');
+          }
+        } catch (_) {
+          status('El componente sigue en el editor, pero el guardado falló. Puedes reintentar sin duplicarlo.');
+        }
+        return;
+      }
+      pendingInsertion = null;
       const next = /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, item.html + '\n</body>') : html + '\n' + item.html;
       // Keep the editor within the same per-field limit enforced by the server.
       // Reject before touching the editor so a tool action cannot create a
@@ -191,21 +214,19 @@
         status('No se insertó el componente: el HTML superaría el límite de 500.000 caracteres. Reduce el código existente e inténtalo de nuevo.');
         return;
       }
-      if (typeof window.saveCurrentCodeToActiveProject !== 'function') {
-        status('No se pudo guardar el componente porque el editor todavía no está listo. Inténtalo de nuevo.');
-        return;
-      }
       window.setEditorValue('html', next);
       if (typeof window.updatePreview === 'function') window.updatePreview();
+      pendingInsertion = { projectId: project.id, componentId: selectedId, html: next };
       try {
         const saved = await window.saveCurrentCodeToActiveProject(true);
         if (saved === true) {
+          pendingInsertion = null;
           status('Componente insertado y guardado; sincronización confirmada.');
         } else {
-          status('Componente insertado en el editor, pero no se confirmó el guardado/sincronización. Revisa el estado de guardado.');
+          status('Componente insertado en el editor, pero no se confirmó el guardado/sincronización. Puedes reintentar sin duplicarlo.');
         }
       } catch (_) {
-        status('Componente insertado en el editor, pero el guardado falló. Revisa el estado de guardado e inténtalo de nuevo.');
+        status('Componente insertado en el editor, pero el guardado falló. Puedes reintentar sin duplicarlo.');
       }
     }
     get('openComponentLibrary').addEventListener('click', open);
