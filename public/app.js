@@ -2784,29 +2784,42 @@ async function captureDesignForAI() {
   };
   const json = JSON.stringify(context, null, 2);
   downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
+  let svgUrl = '';
   try {
+    if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
     const svgBlob = new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' });
-    const svgUrl = URL.createObjectURL(svgBlob);
+    svgUrl = URL.createObjectURL(svgBlob);
     const image = new Image();
     await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = reject;
+      let settled = false;
+      const timeout = setTimeout(() => finish(new Error('El SVG tardó demasiado en renderizarse.')), 10000);
+      function finish(error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        image.onload = null;
+        image.onerror = null;
+        if (error) reject(error);
+        else resolve();
+      }
+      image.onload = () => finish();
+      image.onerror = () => finish(new Error('No se pudo renderizar el SVG.'));
       image.src = svgUrl;
     });
-    if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
     const canvas = document.createElement('canvas');
     canvas.width = captured.width * scale; canvas.height = captured.height * scale;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
     ctx.scale(scale, scale);
     ctx.drawImage(image, 0, 0, captured.width, captured.height);
-    URL.revokeObjectURL(svgUrl);
     const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
     downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
     showToast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
   } catch (error) {
     downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
     showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
+  } finally {
+    if (svgUrl) URL.revokeObjectURL(svgUrl);
   }
 }
 
