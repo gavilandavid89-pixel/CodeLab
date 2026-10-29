@@ -9,6 +9,12 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
 
 (async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-server-resilience-'));
+  const sessionsDir = path.join(dataDir, 'sessions');
+  await fs.mkdir(sessionsDir, { recursive: true });
+  const staleSessionPath = path.join(sessionsDir, 'expired-regression.json');
+  const unrelatedSessionTempPath = path.join(sessionsDir, '000-unrelated.tmp');
+  await fs.writeFile(staleSessionPath, JSON.stringify({ expiresAt: Date.now() - 1000 }));
+  await fs.writeFile(unrelatedSessionTempPath, 'keep this unrelated file');
   let server = spawn(process.execPath, ['server.js'], {
     cwd: process.cwd(),
     env: {
@@ -43,6 +49,10 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
+    await assert.rejects(fs.stat(staleSessionPath),
+      'Expired session records should be removed during startup cleanup');
+    assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
+      'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
     const healthConfigResponse = await fetch(BASE_URL + '/api/health');
     const healthConfig = await healthConfigResponse.json();
     assert.equal(healthConfig.maxBodyBytes, 10 * 1024 * 1024,
