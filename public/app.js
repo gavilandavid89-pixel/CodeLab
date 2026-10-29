@@ -2665,13 +2665,15 @@ function designXmlEscape(value) {
 
 function captureDesignSvg(project) {
   const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
-  const height = 900;
+  const layout = getDesignLayoutPositions(project.design);
+  const height = layout.height;
   const safeColor = value => {
     const color = String(value || 'transparent').trim();
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   };
   const items = (project.design.elements || []).map(el => {
-    const x = Number(el.x) || 0, y = Number(el.y) || 0;
+    const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const x = Number(position.x) || 0, y = Number(position.y) || 0;
     const w = Math.max(20, Number(el.width) || 120), h = Math.max(20, Number(el.height) || 48);
     const fontSize = Math.max(8, Number(el.fontSize) || 16);
     const radius = Math.max(0, Number(el.radius) || 0);
