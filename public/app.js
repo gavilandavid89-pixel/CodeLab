@@ -1255,16 +1255,42 @@ function scheduleAutosave() {
   }, AUTOSAVE_DEBOUNCE_MS);
 }
 
-function editCurrentProjectName() {
+async function editCurrentProjectName() {
   const proj = projects.find(p => p.id === currentProjectId);
   if (!proj) return;
   const newName = prompt('Nuevo nombre del proyecto:', proj.name);
-  if (newName && newName.trim()) {
-    proj.name = newName.trim();
-    document.getElementById('currentProjectTitle').innerText = proj.name;
-    saveProjectsToStorage();
-    showToast('Nombre actualizado.');
+  if (!newName || !newName.trim()) return;
+  const name = newName.trim();
+  if (name.length > 200) {
+    showToast('El nombre del proyecto no puede superar los 200 caracteres.', 'warn');
+    return;
   }
+  const previousName = proj.name;
+  const previousUpdatedAt = proj.updatedAt;
+  proj.name = name;
+  proj.updatedAt = new Date().toISOString();
+  let serverSaved = false;
+  try { serverSaved = await saveCurrentCodeToActiveProject(true) === true; } catch (_) {}
+  let localContainsRename = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    const savedProject = Array.isArray(snapshot) && snapshot.find(item => item && item.id === proj.id);
+    localContainsRename = !!savedProject && savedProject.name === name;
+  } catch (_) {}
+  if (!serverSaved && !localContainsRename) {
+    proj.name = previousName;
+    proj.updatedAt = previousUpdatedAt;
+    const title = document.getElementById('currentProjectTitle');
+    if (title) title.innerText = previousName;
+    renderProjectsList();
+    showToast('No se pudo confirmar el cambio de nombre; se conservó el nombre anterior.', 'error');
+    return;
+  }
+  const title = document.getElementById('currentProjectTitle');
+  if (title) title.innerText = name;
+  renderProjectsList();
+  if (serverSaved) showToast('Nombre actualizado y sincronizado.');
+  else showToast('Nombre actualizado localmente; sincronización pendiente.', 'warn');
 }
 
 // ---------- Auth (OAuth + demo fallback) ----------
