@@ -21,6 +21,8 @@ async function setCode(page, lang, value) {
     await editor.waitFor({ state: 'visible', timeout: 15000 });
     await editor.click({ position: { x: 80, y: 10 } });
     await page.keyboard.press('Control+A');
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
     await page.keyboard.type(value);
   }
   console.log('Editor input probe:', JSON.stringify(await page.evaluate(language => ({
