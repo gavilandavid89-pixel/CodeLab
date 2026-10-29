@@ -105,8 +105,8 @@ async function waitForPersistedProject(page, projectName) {
       }));
       window.addDesignElement('heading');
       const countAfterAdd = normalized.design.elements.length;
-      window.selectedDesignElementId = 'limit-layer-0';
-      window.selectedDesignElementIds = ['limit-layer-0'];
+      selectedDesignElementId = 'limit-layer-0';
+      selectedDesignElementIds = ['limit-layer-0'];
       window.duplicateDesignElement();
       const countAfterDuplicate = normalized.design.elements.length;
       normalized.design.elements = [
@@ -114,13 +114,13 @@ async function waitForPersistedProject(page, projectName) {
         { id: 'overlap-b', x: 10, y: 0, width: 200, height: 100 },
         { id: 'overlap-c', x: 20, y: 0, width: 200, height: 100 }
       ];
-      window.selectedDesignElementIds = ['overlap-a', 'overlap-b', 'overlap-c'];
-      window.designUndoStack = [];
+      selectedDesignElementIds = ['overlap-a', 'overlap-b', 'overlap-c'];
+      designUndoStack = [];
       window.distributeDesignElements('horizontal');
-      const undoStepsAfterRejectedDistribution = window.designUndoStack.length;
+      const undoStepsAfterRejectedDistribution = designUndoStack.length;
       normalized.design.elements = [];
-      window.selectedDesignElementId = null;
-      window.selectedDesignElementIds = [];
+      selectedDesignElementId = null;
+      selectedDesignElementIds = [];
       window.renderDesignWorkspace();
       return { countAfterAdd, countAfterDuplicate, designShapeValid, undoStepsAfterRejectedDistribution };
     });
