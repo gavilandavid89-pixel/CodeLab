@@ -2542,7 +2542,7 @@ function initializeDesignProject(project) {
 }
 
 function setDesignZoom(value) {
-  const next = Math.max(0.2, Math.min(1.5, Number(value) / 100 || 1));
+  const next = Math.max(0.1, Math.min(1.5, Number(value) / 100 || 1));
   designZoom = next;
   const canvas = document.getElementById('designCanvas');
   if (canvas) canvas.style.zoom = String(next);
@@ -2560,7 +2560,7 @@ function fitDesignToViewport() {
   const frameWidth = widths[project.design.frame] || widths.desktop;
   const availableWidth = Math.max(200, viewport.clientWidth - 64);
   const fitScale = Math.min(1, availableWidth / frameWidth);
-  const snappedScale = Math.max(0.2, Math.floor(fitScale * 20) / 20);
+  const snappedScale = Math.max(0.1, Math.floor(fitScale * 20) / 20);
   setDesignZoom(Math.round(snappedScale * 100));
 }
 function toggleDesignGrid() {
