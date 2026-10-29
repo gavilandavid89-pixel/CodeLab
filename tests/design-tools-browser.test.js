@@ -89,6 +89,7 @@ function extractDivById(html, id) {
     await page.locator('#designSystemJsonFile').setInputFiles({
       name: 'imported-design-system.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(importFixture))
     });
+    await page.waitForFunction(() => document.querySelector('#systemName')?.value === 'Sistema importado', null, { timeout: 5000 });
     assert.equal(await page.locator('#systemName').inputValue(), 'Sistema importado');
     assert.equal(await page.locator('#colorPrimary').inputValue(), '#123456');
     assert.equal(await page.locator('#baseFont').inputValue(), '20');
