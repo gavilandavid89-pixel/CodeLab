@@ -130,6 +130,42 @@ function saveLocalProjectsSnapshot() {
   if (saved) localSnapshotBlockedWarningShown = false;
   return saved;
 }
+function preserveInvalidLocalMapSnapshot(raw, recoveryKey, reason) {
+  if (typeof raw !== 'string') return false;
+  const entry = { savedAt: new Date().toISOString(), reason: reason, raw: raw };
+  const existing = lsGet(recoveryKey);
+  if (existing) {
+    let backup;
+    try { backup = JSON.parse(existing); } catch (_) { return false; }
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) ||
+        (backup.backups != null && !Array.isArray(backup.backups))) return false;
+    const extras = Array.isArray(backup.backups) ? backup.backups : [];
+    if (backup.raw === raw || extras.some(item => item && item.raw === raw)) return true;
+    if (typeof backup.raw === 'string' || Array.isArray(backup.backups)) {
+      return lsSet(recoveryKey, JSON.stringify({ ...backup, version: backup.version || 1, backups: extras.concat(entry) }));
+    }
+    return false;
+  }
+  return lsSet(recoveryKey, JSON.stringify({
+    version: 1, savedAt: entry.savedAt, reason: entry.reason, raw: entry.raw
+  }));
+}
+function isValidDeletedProjectMapSnapshot(raw) {
+  try {
+    const stored = JSON.parse(raw);
+    return !!(stored && typeof stored === 'object' && !Array.isArray(stored) &&
+      ((stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace)) ||
+       (typeof stored.workspaceId === 'string' && Array.isArray(stored.ids)));
+  } catch (_) { return false; }
+}
+function isValidPendingLocalImportSnapshot(raw) {
+  try {
+    const stored = JSON.parse(raw);
+    return !!(stored && typeof stored === 'object' && !Array.isArray(stored) &&
+      ((stored.byUser && typeof stored.byUser === 'object' && !Array.isArray(stored.byUser)) ||
+       (typeof stored.userKey === 'string' && Array.isArray(stored.projects)));
+  } catch (_) { return false; }
+}
 function readDeletedProjectMap() {
   try {
     const stored = JSON.parse(lsGet(STORAGE_KEY_DELETED_PROJECTS) || 'null');
@@ -151,6 +187,11 @@ function loadDeletedProjectIds(forWorkspaceId) {
 }
 function recordDeletedProjectId(id) {
   if (!workspaceId || !id) return false;
+  const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
+  if (raw && !isValidDeletedProjectMapSnapshot(raw) &&
+      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
+    return false;
+  }
   const byWorkspace = readDeletedProjectMap();
   const ids = new Set(Array.isArray(byWorkspace[workspaceId]) ? byWorkspace[workspaceId] : []);
   ids.add(id);
@@ -183,6 +224,12 @@ function readPendingLocalImportMap() {
 }
 function storePendingLocalImport(localProjects) {
   const nextProjects = Array.isArray(localProjects) ? localProjects : [];
+  const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
+  if (raw && !isValidPendingLocalImportSnapshot(raw) &&
+      !preserveInvalidLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
+    pendingLocalImportProjects = nextProjects;
+    return false;
+  }
   const userKey = currentRealUserKey();
   if (!userKey) {
     pendingLocalImportProjects = nextProjects;
