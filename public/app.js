@@ -1768,10 +1768,10 @@ function updateBranchButtons() {
   }
 }
 
-function duplicateProject() {
+async function duplicateProject() {
   const proj = getCurrentProject();
   if (!proj) return;
-  if (!inCopyBranch) saveCurrentCodeToActiveProject(true);
+  if (!inCopyBranch) await saveCurrentCodeToActiveProject(true);
   const source = cloneCode(proj.code);
   copyBaseCode = source;
   copyProjectCode = cloneCode(source);
@@ -1784,9 +1784,14 @@ function duplicateProject() {
     baseMainUpdatedAt: proj.updatedAt,
     updatedAt: new Date().toISOString()
   };
-  persistBranch(true);
+  const saved = await persistBranch(true);
   updateBranchButtons();
-  showToast('Copia de trabajo creada. El original queda aislado.');
+  showToast(
+    saved === true
+      ? 'Copia de trabajo creada y sincronización confirmada. El original queda aislado.'
+      : 'Copia de trabajo creada en esta sesión, pero no se confirmó la sincronización. Revisa el estado de guardado.',
+    saved === true ? 'info' : 'warn'
+  );
 }
 
 function toggleCopyBranch() {
