@@ -1,4 +1,4 @@
-# CodeLab XD Studio Pro v2.6.1
+# CodeLab XD Studio Pro v2.6.6
 
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
 
@@ -32,6 +32,9 @@ Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así p
 | `OAUTH_PUBLIC_URL` | URL pública exacta, ej. `https://TU-APP.onrender.com` (recomendado) |
 | `CODELAB_DATA_DIR` | `/var/data` con Persistent Disk |
 | `CODELAB_WORKSPACE_SECRET` | Cadena aleatoria larga |
+| `CODELAB_TRUSTED_PROXY_HOPS` | Saltos de proxy inverso confiables que agregan X-Forwarded-For (default 1; ajusta a la cadena real del hosting) |
+| `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 2 MiB) |
+| `CODELAB_MAX_PROJECTS` | Máximo de proyectos por workspace (default 50) |
 | `NODE_ENV` | `production` |
 
 Si no configuras OAuth, la UI ofrece **perfil demo local** (sin login real).
@@ -46,7 +49,8 @@ Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, 
 - Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)  
 - Workspace por usuario: `ws_{provider}_{id}`  
 - Acceso por token HMAC **o** sesión dueña del workspace  
-- Rate limit, validación de payload, path traversal bloqueado  
+- Rate limit con selección configurable de saltos de proxy confiables; no se confía en el valor X-Forwarded-For más a la izquierda  
+- Validación de payload, límites de tamaño y path traversal bloqueado  
 - Preview en iframe sandbox + CSP  
 
 ## Copiloto IA
@@ -99,7 +103,7 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Tokens ajustables para escala tipográfica, espaciado y radios de borde.
 - Aplicación directa del bloque de tokens al CSS del proyecto web abierto, reemplazando solo el bloque administrado y preservando el resto del CSS.
 - Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
-- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Los ajustes se recuperan al abrir CodeLab desde otro dispositivo con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
+- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Con OAuth real configurado, los ajustes se recuperan en otros dispositivos con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
 
 Las pruebas automáticas cubren los cálculos de contraste, generación de tokens, exportaciones y una prueba de interacción en Chromium.
 
