@@ -16,7 +16,11 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       PORT: String(PORT),
       CODELAB_DATA_DIR: dataDir,
       CODELAB_WORKSPACE_SECRET: 'test-only-server-resilience-secret',
-      CODELAB_TRUSTED_PROXY_HOPS: '2'
+      CODELAB_TRUSTED_PROXY_HOPS: '2',
+      GITHUB_CLIENT_ID: 'test-github-client',
+      GITHUB_CLIENT_SECRET: 'test-github-secret',
+      GOOGLE_CLIENT_ID: 'test-google-client',
+      GOOGLE_CLIENT_SECRET: 'test-google-secret'
     },
     stdio: 'ignore'
   });
@@ -43,6 +47,23 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const status = await response.json();
     assert.equal(status.user, null, 'Malformed session cookie should be treated as unauthenticated');
     assert.equal(typeof status.demoFallback, 'boolean');
+
+    // OAuth state must be bound to the browser that started the flow, not just
+    // signed by the server. A copied authorization URL without its cookie fails.
+    for (const provider of ['github', 'google']) {
+      const start = await fetch(BASE_URL + '/api/auth/' + provider, { redirect: 'manual' });
+      assert.equal(start.status, 302, provider + ' OAuth should start with a redirect');
+      const authorizeUrl = new URL(start.headers.get('location'));
+      const state = authorizeUrl.searchParams.get('state');
+      assert.ok(state, provider + ' OAuth redirect should include signed state');
+      assert.match(start.headers.get('set-cookie') || '', new RegExp('codelab_oauth_state_' + provider));
+      const callback = await fetch(BASE_URL + '/api/auth/' + provider + '/callback?code=attacker-controlled&state=' + encodeURIComponent(state), {
+        redirect: 'manual'
+      });
+      assert.equal(callback.status, 302);
+      assert.match(callback.headers.get('location') || '', /reason=invalid_state/,
+        provider + ' callback must reject a valid state copied without its browser cookie');
+    }
 
     const oversized = '{"padding":"' + 'x'.repeat(10 * 1024 * 1024) + '"}';
     const oversizedResponse = await fetch(BASE_URL + '/api/workspace/init', {
