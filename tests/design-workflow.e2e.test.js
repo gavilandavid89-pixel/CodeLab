@@ -797,6 +797,13 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(projectBackup.project.design.elements.find(item => item.type === 'image')?.alt, 'E2E sample image',
       'JSON backup should preserve image metadata');
 
+    // Restore the original project's external prototype target; only the
+    // downloaded backup fixture should retain the internal layer link.
+    await page.locator('#designProperty-href').fill('https://example.com/docs');
+    await page.waitForFunction(() =>
+      getCurrentProject()?.design.elements.find(item => item.type === 'button')?.href === 'https://example.com/docs',
+      null, { timeout: 3000 });
+
     // The exported backup must be restorable as a separate project, including
     // image metadata and remapped internal prototype links.
     await page.locator('#designProjectJsonFile').setInputFiles({
