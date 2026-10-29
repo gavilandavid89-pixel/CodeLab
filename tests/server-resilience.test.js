@@ -319,6 +319,27 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal((await invalidProjectStateResponse.json()).error, 'workspace_corrupt');
     await fs.rm(invalidProjectStatePath, { force: true });
 
+    const invalidOwnerInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'invalid-owner-state-regression' })
+    });
+    assert.equal(invalidOwnerInitResponse.status, 200);
+    const invalidOwnerWorkspace = await invalidOwnerInitResponse.json();
+    const invalidOwnerStatePath = path.join(dataDir, 'workspaces', invalidOwnerWorkspace.workspaceId + '.json');
+    await fs.writeFile(invalidOwnerStatePath, JSON.stringify({
+      revision: 0,
+      projects: [],
+      owner: { provider: 'unknown-provider', id: 'attacker' }
+    }), { mode: 0o600 });
+    const invalidOwnerStateResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(invalidOwnerWorkspace.workspaceId), {
+      headers: { 'x-workspace-token': invalidOwnerWorkspace.token }
+    });
+    assert.equal(invalidOwnerStateResponse.status, 500,
+      'Persisted workspace ownership must be validated before the state is returned');
+    assert.equal((await invalidOwnerStateResponse.json()).error, 'workspace_corrupt');
+    await fs.rm(invalidOwnerStatePath, { force: true });
+
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
