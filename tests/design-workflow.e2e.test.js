@@ -104,15 +104,34 @@ async function waitForPersistedProject(page, projectName) {
         id: 'limit-layer-' + index, type: 'heading', label: 'Layer ' + index, text: 'Layer'
       }));
       window.addDesignElement('heading');
-      const count = normalized.design.elements.length;
+      const countAfterAdd = normalized.design.elements.length;
+      window.selectedDesignElementId = 'limit-layer-0';
+      window.selectedDesignElementIds = ['limit-layer-0'];
+      window.duplicateDesignElement();
+      const countAfterDuplicate = normalized.design.elements.length;
+      normalized.design.elements = [
+        { id: 'overlap-a', x: 0, y: 0, width: 200, height: 100 },
+        { id: 'overlap-b', x: 10, y: 0, width: 200, height: 100 },
+        { id: 'overlap-c', x: 20, y: 0, width: 200, height: 100 }
+      ];
+      window.selectedDesignElementIds = ['overlap-a', 'overlap-b', 'overlap-c'];
+      window.designUndoStack = [];
+      window.distributeDesignElements('horizontal');
+      const undoStepsAfterRejectedDistribution = window.designUndoStack.length;
       normalized.design.elements = [];
+      window.selectedDesignElementId = null;
+      window.selectedDesignElementIds = [];
       window.renderDesignWorkspace();
-      return { count, designShapeValid };
+      return { countAfterAdd, countAfterDuplicate, designShapeValid, undoStepsAfterRejectedDistribution };
     });
     assert.equal(layerLimitCheck.designShapeValid, true,
       'Malformed array-valued design state must normalize to a valid design object');
-    assert.equal(layerLimitCheck.count, 500,
+    assert.equal(layerLimitCheck.countAfterAdd, 500,
       'Adding a layer beyond the visual-design limit must be blocked without mutating the project');
+    assert.equal(layerLimitCheck.countAfterDuplicate, 500,
+      'Duplicating a layer beyond the visual-design limit must be blocked too');
+    assert.equal(layerLimitCheck.undoStepsAfterRejectedDistribution, 0,
+      'A rejected layer distribution must not create a fake undo step');
 
     // 2. Add an element and edit its real property input.
     await page.locator('button[onclick="addDesignElement(\'heading\')"]').click();
