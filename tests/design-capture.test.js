@@ -48,7 +48,7 @@ assert.doesNotMatch(safe, /<iframe\b/i, 'Embedded frames must be removed');
 assert.doesNotMatch(safe, /onclick\s*=/i, 'Inline event handlers must be removed');
 assert.doesNotMatch(safe, /javascript:/i, 'javascript: URLs must be neutralized');
 const unclosedScript = capture.sanitizeForCapture('<main>Before</main><script src="https://evil.test/payload.js">');
-assert.doesNotMatch(unclosedScript, /<script\\b/i, 'Malformed unclosed script tags must not survive isolated capture');
+assert.doesNotMatch(unclosedScript, /<script\b/i, 'Malformed unclosed script tags must not survive isolated capture');
 
 const captureDocument = capture.buildCaptureDocument({
   viewport: 390,
