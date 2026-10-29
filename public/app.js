@@ -642,7 +642,7 @@ function conflictKeepLocal() {
       const sourceId = String(sp.id || 'project');
       const already = projects.some(p =>
         p.serverBackupOf === sourceId ||
-        (typeof p.id === 'string' && p.id.startsWith('srv_bak_' + sourceId.slice(0, 45) + '_'))
+        (typeof p.id === 'string' && p.id.startsWith('srv_bak_' + sourceId + '_'))
       );
       if (already) return;
       const backupSuffix = ' (servidor ' + stamp + ')';
