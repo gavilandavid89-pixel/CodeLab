@@ -137,6 +137,10 @@ window.addEventListener('DOMContentLoaded', () => {
     .catch(() => loadAuthFromStorage())
     .then(() => Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]))
     .then(() => {
+      // Let optional workspace tools (e.g. design tokens) load their account-backed
+      // settings only after auth has resolved the correct workspace credentials.
+      window.codelabWorkspaceReady = true;
+      window.dispatchEvent(new Event('codelab-workspace-ready'));
       renderProjectsList();
       updateDashboardStatus();
       updateAiUI();
