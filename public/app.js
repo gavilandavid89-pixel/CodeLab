@@ -631,7 +631,7 @@ function resolveSyncWaiters(completed, generation) {
 }
 
 function saveProjectsToStorage() {
-  persistWorkspace();
+  return persistWorkspace();
 }
 
 async function refreshWorkspaceFromServer() {
@@ -1009,13 +1009,16 @@ async function returnToDashboard() {
 }
 
 function saveCurrentCodeToActiveProject(immediate) {
-  if (!currentProjectId) return;
+  if (!currentProjectId) return Promise.resolve(false);
   const active = projects.find(p => p.id === currentProjectId);
   if (active && active.type === 'design') {
     active.updatedAt = new Date().toISOString();
-    if (immediate) saveProjectsToStorage();
-    else scheduleAutosave();
-    return;
+    if (immediate) {
+      if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+      return saveProjectsToStorage();
+    }
+    scheduleAutosave();
+    return Promise.resolve(true);
   }
   const code = normalizeCode({
     html: getEditorValue('html'),
@@ -1024,16 +1027,18 @@ function saveCurrentCodeToActiveProject(immediate) {
   });
   if (inCopyBranch) {
     copyProjectCode = JSON.parse(JSON.stringify(code));
-    persistBranch();
-    return;
+    return persistBranch(!!immediate);
   }
   const proj = projects.find(p => p.id === currentProjectId);
-  if (proj) {
-    proj.code = code;
-    proj.updatedAt = new Date().toISOString();
-    if (immediate) saveProjectsToStorage();
-    else scheduleAutosave();
+  if (!proj) return Promise.resolve(false);
+  proj.code = code;
+  proj.updatedAt = new Date().toISOString();
+  if (immediate) {
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    return saveProjectsToStorage();
   }
+  scheduleAutosave();
+  return Promise.resolve(true);
 }
 
 function scheduleAutosave() {
@@ -1713,7 +1718,7 @@ function codeEqual(a, b) {
 
 function persistBranch(immediate) {
   const proj = getCurrentProject();
-  if (!proj || !isCopyBranchCreated) return;
+  if (!proj || !isCopyBranchCreated) return false;
   proj.branch = {
     id: copyBranchId || 'branch_' + Date.now(),
     baseCode: cloneCode(copyBaseCode),
@@ -1722,8 +1727,12 @@ function persistBranch(immediate) {
     updatedAt: new Date().toISOString()
   };
   copyBranchId = proj.branch.id;
-  if (immediate) saveProjectsToStorage();
-  else scheduleAutosave();
+  if (immediate) {
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    return saveProjectsToStorage();
+  }
+  scheduleAutosave();
+  return true;
 }
 
 function loadBranchFromProject(proj) {
