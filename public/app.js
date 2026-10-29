@@ -752,7 +752,7 @@ function createNewProjectConfirm() {
     type,
     updatedAt: new Date().toISOString(),
     code: { ...defaultTemplate },
-    ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true } } : {})
+    ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false } } : {})
   };
   projects.unshift(newProj);
   saveProjectsToStorage();
@@ -2554,6 +2554,18 @@ function toggleDesignGrid() {
   recordDesignHistory(); p.design.grid = !p.design.grid;
   renderDesignWorkspace(); saveProjectsToStorage();
 }
+function toggleDesignSnap() {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory(); p.design.snapToGrid = !p.design.snapToGrid;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignGridSize(value) {
+  const p = activeDesignProject(); if (!p) return;
+  const size = [4, 8, 16, 32].includes(Number(value)) ? Number(value) : 8;
+  if ((Number(p.design.gridSize) || 8) === size) return;
+  recordDesignHistory(); p.design.gridSize = size;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
 function setDesignBackground(color) {
   const p = activeDesignProject(); if (!p || !/^#[0-9a-f]{6}$/i.test(color)) return;
   recordDesignHistory(); p.design.background = color;
@@ -2775,11 +2787,20 @@ function renderDesignWorkspace() {
   const zoomLabel = document.getElementById('designZoomLabel');
   if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
   canvas.style.backgroundColor = p.design.background || '#ffffff';
+  const gridSize = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
   canvas.style.backgroundImage = p.design.grid ? 'linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px)' : 'none';
+  canvas.style.backgroundSize = p.design.grid ? gridSize + 'px ' + gridSize + 'px' : '';
   const bgPicker = document.getElementById('designBackgroundColor');
   if (bgPicker) bgPicker.value = /^#[0-9a-f]{6}$/i.test(p.design.background || '') ? p.design.background : '#ffffff';
   const gridBtn = document.getElementById('designGridBtn');
   if (gridBtn) gridBtn.classList.toggle('text-violet-300', !!p.design.grid);
+  const snapBtn = document.getElementById('designSnapBtn');
+  if (snapBtn) {
+    snapBtn.classList.toggle('text-violet-300', !!p.design.snapToGrid);
+    snapBtn.setAttribute('aria-pressed', String(!!p.design.snapToGrid));
+  }
+  const gridSizeSelect = document.getElementById('designGridSize');
+  if (gridSizeSelect) gridSizeSelect.value = String(gridSize);
   canvas.replaceChildren();
   if (empty && p.design.elements.length === 0) canvas.appendChild(empty);
   const sorted = p.design.elements;
@@ -2871,6 +2892,13 @@ function bindDesignCanvasEvents() {
   });
   const finishDesignDrag = () => {
     if (!designDragState) return;
+    const p = activeDesignProject();
+    const el = selectedDesignElement();
+    if (p && el && p.design.snapToGrid) {
+      const step = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
+      el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
+      el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
+    }
     designDragState = null; renderDesignWorkspace(); saveProjectsToStorage();
   };
   document.addEventListener('pointerup', finishDesignDrag);
