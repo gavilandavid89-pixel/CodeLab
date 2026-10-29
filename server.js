@@ -286,8 +286,14 @@ function writeState(id, state) {
     projects: state.projects,
     owner: state.owner || null
   };
-  fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8');
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8', { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    // A failed atomic replace must not leave orphaned workspace temp files behind.
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
 }
 
 // --- Cookies & sessions ---
