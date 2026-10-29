@@ -48,6 +48,15 @@ const updated = tools.injectTokenBlock(injected, ':root { --color-primary: #abcd
 assert.equal((updated.match(/CodeLab Design Tokens START/g) || []).length, 1);
 assert.match(updated, /--color-primary: #abcdef;/);
 assert.match(updated, /\.button \{ color: red; \}/);
+const recoveredMalformedBlock = tools.injectTokenBlock(
+  '/* CodeLab Design Tokens START */\n.button { color: green; }\n/* unrelated comment */',
+  ':root { --color-primary: #abcdef; }'
+);
+assert.equal((recoveredMalformedBlock.match(/CodeLab Design Tokens START/g) || []).length, 1,
+  'An orphaned managed-token marker should be replaced rather than accumulated');
+assert.match(recoveredMalformedBlock, /\.button \{ color: green; \}/,
+  'Recovering a malformed token block must preserve unmanaged CSS');
+assert.doesNotMatch(recoveredMalformedBlock, /CodeLab Design Tokens END.*CodeLab Design Tokens END/s);
 
 const clamped = tools.sanitizeSettings({ baseFont: 200, typeRatio: 3, baseSpacing: 0, baseRadius: -10 });
 assert.equal(clamped.baseFont, 32);
