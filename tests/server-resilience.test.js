@@ -462,6 +462,10 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     const corruptDesignSystemResponse = await fetch(designSystemUrl, { headers: authHeaders });
     assert.equal(corruptDesignSystemResponse.status, 500,
       'Corrupt persisted design-system JSON must not masquerade as an absent settings file');
+    await fs.writeFile(path.join(dataDir, 'workspaces', designSystemFile), JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), settings: {} }), { mode: 0o600 });
+    const malformedDesignSystemResponse = await fetch(designSystemUrl, { headers: authHeaders });
+    assert.equal(malformedDesignSystemResponse.status, 500,
+      'Valid JSON with an incomplete design-system schema must not silently reset settings to defaults');
     await fs.writeFile(path.join(dataDir, 'workspaces', designSystemFile), persistedDesignSystemText, { mode: 0o600 });
     assert.equal(reloadedSettings.settings.primary, '#123456');
 
