@@ -146,7 +146,7 @@
     const html = String(input.html || '');
     const css = String(input.css || '');
     const js = String(input.js || '');
-    const viewport = Number(input.viewport) || 1280;
+    const viewport = Math.max(320, Math.min(1920, Number(input.viewport) || 1280));
     const scale = [1, 2, 3, 4].includes(Number(input.scale)) ? Number(input.scale) : 2;
     const title = (html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || project.name || 'Página sin título';
     const description = (html.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>/i) || [])[1] || '';
