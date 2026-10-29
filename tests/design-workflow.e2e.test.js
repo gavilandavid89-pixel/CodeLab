@@ -378,7 +378,7 @@ async function waitForPersistedProject(page, projectName) {
     assert.match(exportedHtml, /display:flex;flex-direction:column/, 'HTML export should use a flow layout instead of absolute positioning');
     assert.match(exportedHtml, /gap:24px;padding:20px/, 'HTML export should preserve Auto Layout spacing and padding');
     assert.match(exportedHtml, /window\.innerWidth\/w/, 'HTML export should calculate scale from the current viewport width');
-    assert.match(exportedHtml, /<img src="data:image\/png;base64,/, 'HTML export should include the embedded image asset');
+    assert.match(exportedHtml, /<img\b[^>]*\bsrc="data:image\/png;base64,/, 'HTML export should include the embedded image asset regardless of safe attribute ordering');
     assert.match(exportedHtml, /alt="E2E sample image"/, 'HTML export should preserve the image alt text');
     assert.match(exportedHtml, /border-radius:50%/, 'HTML export should preserve ellipse geometry');
     assert.match(exportedHtml, /href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer"/,
