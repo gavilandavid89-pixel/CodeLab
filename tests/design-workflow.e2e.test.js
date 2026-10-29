@@ -180,6 +180,24 @@ async function waitForPersistedProject(page, projectName) {
     // Exercise the real component-library integration on the converted web project.
     await page.locator('#openComponentLibrary').click();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
+    // Simulate one server-side rate limit and verify the client retries the real save.
+    let injectedWorkspaceRateLimit = false;
+    let workspacePutRequests = 0;
+    await page.route('**/api/workspace/**', async route => {
+      if (route.request().method() === 'PUT') {
+        workspacePutRequests += 1;
+        if (!injectedWorkspaceRateLimit) {
+          injectedWorkspaceRateLimit = true;
+          await route.fulfill({
+            status: 429,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'rate_limited', message: 'Test rate limit' })
+          });
+          return;
+        }
+      }
+      await route.continue();
+    });
     await page.locator('#componentLibraryInsert').click();
     const insertedHtml = await page.evaluate(() => window.getEditorValue('html'));
     assert.match(insertedHtml, /cl-hero/,
@@ -201,6 +219,9 @@ async function waitForPersistedProject(page, projectName) {
         return false;
       }
     }, PROJECT_NAME, { timeout: 15000 });
+    await page.unroute('**/api/workspace/**');
+    assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
+    assert.ok(workspacePutRequests >= 2, 'workspace sync should retry after the first 429 response');
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full design workflow E2E passed: create → edit → undo/redo → drag → duplicate/delete → responsive presets → server persistence/reload → convert to web → insert component and persist.');
