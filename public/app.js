@@ -2702,7 +2702,7 @@ async function captureDesignForAI() {
 
 function safeDesignExportColor(value, fallback) {
   const color = String(value || fallback || '#ffffff').trim();
-  return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\\([\\d\\s.,%]+\\)|hsla?\\([\\d\\s.,%deg]+\\))$/i.test(color) ? color : (fallback || '#ffffff');
+  return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : (fallback || '#ffffff');
 }
 
 function exportDesignHtml() {
@@ -2723,11 +2723,11 @@ function exportDesignHtml() {
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     const style = 'position:absolute;left:'+x+'px;top:'+y+'px;width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';border-radius:'+radius+'px;display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'');
     return '<'+tag+' style="'+style+'">'+text+'</'+tag+'>';
-  }).join('\\n');
+  }).join('\n');
   const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
   const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
-  const html = '<!doctype html>\\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{position:relative;width:'+frameWidth+'px;height:900px;background:'+frameBackground+';transform-origin:top left;margin:0}</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\\/script></body></html>';
-  const slug = (p.name || 'codelab-design').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'codelab-design';
+  const html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{position:relative;width:'+frameWidth+'px;height:900px;background:'+frameBackground+';transform-origin:top left;margin:0}</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>';
+  const slug = (p.name || 'codelab-design').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'codelab-design';
   downloadDesignAsset(slug + '.html', html, 'text/html;charset=utf-8');
   showToast('Diseño exportado como HTML adaptable.');
 }
