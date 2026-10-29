@@ -375,7 +375,13 @@ function readState(id) {
   if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
     throw new Error('workspace_updated_at_invalid');
   }
-  if (parsed.owner != null && (typeof parsed.owner !== 'object' || Array.isArray(parsed.owner))) {
+  if (parsed.owner != null && (
+      typeof parsed.owner !== 'object' ||
+      Array.isArray(parsed.owner) ||
+      typeof parsed.owner.id !== 'string' ||
+      !parsed.owner.id ||
+      (parsed.owner.provider !== 'github' && parsed.owner.provider !== 'google')
+    )) {
     throw new Error('workspace_owner_invalid');
   }
   return {
@@ -1440,8 +1446,8 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const user = await handleGithubCallback(code);
-          const session = createSession(user);
           ensureUserWorkspace(user);
+          const session = createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
             COOKIE_NAME + '=' + encodeURIComponent(session.id) +
@@ -1486,8 +1492,8 @@ const server = http.createServer(async (req, res) => {
         try {
           const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
           const user = await handleGoogleCallback(code, redirectUri);
-          const session = createSession(user);
           ensureUserWorkspace(user);
+          const session = createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
             COOKIE_NAME + '=' + encodeURIComponent(session.id) +
