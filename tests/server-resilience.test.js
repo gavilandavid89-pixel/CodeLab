@@ -45,7 +45,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(appAsset.headers.get('cache-control'), 'no-cache',
       'Client JavaScript must revalidate after deployment instead of remaining stale for 24 hours');
 
-    const traversalResponse = await fetch(BASE_URL + '/%2e%2e/server.js');
+    const traversalResponse = await fetch(BASE_URL + '/%252e%252e/server.js');
     assert.equal(traversalResponse.status, 404,
       'Encoded path traversal must not expose files outside the public asset directory');
     assert.doesNotMatch(await traversalResponse.text(), /createServer|SERVER_SECRET/,
