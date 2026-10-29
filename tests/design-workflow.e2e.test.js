@@ -960,6 +960,35 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
+    // Ctrl+S must reflect the actual persistence result rather than announcing
+    // success while the workspace save is rejected.
+    const keyboardSaveCheck = await page.evaluate(async () => {
+      const saved = {
+        inCopyBranch,
+        saveCurrentCodeToActiveProject: window.saveCurrentCodeToActiveProject,
+        showToast: window.showToast
+      };
+      let toast = '', kind = '';
+      try {
+        inCopyBranch = false;
+        window.saveCurrentCodeToActiveProject = async () => false;
+        window.showToast = (message, severity) => { toast = message; kind = severity || ''; };
+        document.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 's', ctrlKey: true, bubbles: true, cancelable: true
+        }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return { toast, kind };
+      } finally {
+        inCopyBranch = saved.inCopyBranch;
+        window.saveCurrentCodeToActiveProject = saved.saveCurrentCodeToActiveProject;
+        window.showToast = saved.showToast;
+      }
+    });
+    assert.match(keyboardSaveCheck.toast, /no se confirmó el guardado\/sincronización/i,
+      'Ctrl+S must not report a successful save when persistence returns false');
+    assert.equal(keyboardSaveCheck.kind, 'warn',
+      'an unconfirmed Ctrl+S save should be shown as a warning');
+
     // Branch creation must not announce server synchronization when persistence fails.
     const branchCreationCheck = await page.evaluate(async () => {
       const project = getCurrentProject();
