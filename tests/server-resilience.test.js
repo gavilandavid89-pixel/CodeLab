@@ -289,6 +289,26 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal((await invalidShapeResponse.json()).error, 'workspace_corrupt');
     await fs.rm(invalidShapePath, { force: true });
 
+    const invalidProjectInitResponse = await fetch(BASE_URL + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'invalid-project-state-regression' })
+    });
+    assert.equal(invalidProjectInitResponse.status, 200);
+    const invalidProjectWorkspace = await invalidProjectInitResponse.json();
+    const invalidProjectStatePath = path.join(dataDir, 'workspaces', invalidProjectWorkspace.workspaceId + '.json');
+    await fs.writeFile(invalidProjectStatePath, JSON.stringify({
+      revision: 0,
+      projects: [{ id: 'broken-project', name: 'Broken project', code: [] }]
+    }), { mode: 0o600 });
+    const invalidProjectStateResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(invalidProjectWorkspace.workspaceId), {
+      headers: { 'x-workspace-token': invalidProjectWorkspace.token }
+    });
+    assert.equal(invalidProjectStateResponse.status, 500,
+      'Parseable persisted state with invalid project records must not reach the editor');
+    assert.equal((await invalidProjectStateResponse.json()).error, 'workspace_corrupt');
+    await fs.rm(invalidProjectStatePath, { force: true });
+
     const designSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/design-system';
     const authHeaders = { 'x-workspace-token': workspace.token };
 
