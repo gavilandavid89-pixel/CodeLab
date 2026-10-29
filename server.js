@@ -19,6 +19,10 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const SECRET_FILE = path.join(DATA_DIR, '.workspace-secret');
 const MAX_BODY_BYTES = Number(process.env.CODELAB_MAX_BODY_BYTES) || 10 * 1024 * 1024;
 const MAX_PROJECTS = Number(process.env.CODELAB_MAX_PROJECTS) || 50;
+const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
+const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
+  ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
+  : 60000;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 120;
 const APP_VERSION = '2.6.6';
@@ -483,6 +487,9 @@ function httpsRequest(urlStr, options, body) {
         const text = Buffer.concat(chunks).toString('utf8');
         resolve({ status: res.statusCode, headers: res.headers, body: text });
       });
+    });
+    req.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      req.destroy(Object.assign(new Error('upstream_timeout'), { code: 'UPSTREAM_TIMEOUT' }));
     });
     req.on('error', reject);
     if (body) req.write(body);
