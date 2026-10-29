@@ -182,10 +182,21 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
     // Simulate one server-side rate limit and verify the client retries the real save.
     let injectedWorkspaceRateLimit = false;
+    let injectedWorkspaceTooLarge = false;
+    let allowWorkspaceTooLarge = false;
     let workspacePutRequests = 0;
     await page.route('**/api/workspace/**', async route => {
       if (route.request().method() === 'PUT') {
         workspacePutRequests += 1;
+        if (allowWorkspaceTooLarge && !injectedWorkspaceTooLarge) {
+          injectedWorkspaceTooLarge = true;
+          await route.fulfill({
+            status: 413,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'payload_too_large' })
+          });
+          return;
+        }
         if (!injectedWorkspaceRateLimit) {
           injectedWorkspaceRateLimit = true;
           await route.fulfill({
@@ -219,9 +230,24 @@ async function waitForPersistedProject(page, projectName) {
         return false;
       }
     }, PROJECT_NAME, { timeout: 15000 });
+
+    // A 413 is a payload-size condition, not a connectivity outage. The local
+    // copy must remain available and a later smaller save must restore sync.
+    allowWorkspaceTooLarge = true;
+    await page.evaluate(async () => { await window.persistWorkspace(); });
+    await page.waitForFunction(() =>
+      document.getElementById('dashSyncBadge')?.textContent.includes('Solo local')
+    , { timeout: 5000 });
+    assert.equal(injectedWorkspaceTooLarge, true, 'E2E should inject one workspace payload-size response');
+    allowWorkspaceTooLarge = false;
+    await page.evaluate(async () => { await window.persistWorkspace(); });
+    await page.waitForFunction(() =>
+      !document.getElementById('dashSyncBadge')?.textContent.includes('Solo local')
+    , { timeout: 5000 });
+
     await page.unroute('**/api/workspace/**');
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
-    assert.ok(workspacePutRequests >= 1, 'E2E should observe the real workspace save request');
+    assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full design workflow E2E passed: create → edit → undo/redo → drag → duplicate/delete → responsive presets → server persistence/reload → convert to web → insert component and persist.');
