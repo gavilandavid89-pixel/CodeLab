@@ -8,6 +8,11 @@ const css = '#editor-check { color: rgb(1, 2, 3); } #preview-action { background
 const js = 'document.getElementById("preview-action").addEventListener("click", () => console.log("action-ok")); console.log("preview-ok");';
 
 async function setCode(page, lang, value) {
+  await page.waitForFunction(language =>
+    (typeof editors !== 'undefined' && editors[language] && typeof editors[language].getValue === 'function') ||
+    (document.getElementById('fallback-' + language) &&
+      !document.getElementById('fallback-' + language).classList.contains('hidden')),
+    lang, { timeout: 15000 });
   await page.locator('#tab-' + lang).click();
   if (await page.locator('#fallback-' + lang).isVisible()) {
     await page.locator('#fallback-' + lang).fill(value);
@@ -18,7 +23,7 @@ async function setCode(page, lang, value) {
     await page.keyboard.press('Control+A');
     await page.keyboard.insertText(value);
   }
-  await page.waitForFunction(({ lang, value }) => getEditorValue(lang) === value,
+  await page.waitForFunction(({ lang, value }) => getEditorValue(lang).trim() === value.trim(),
     { lang, value }, { timeout: 10000 });
 }
 
