@@ -1028,6 +1028,54 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(malformedMapChecks.pendingMapIsObject, true, 'pending-import map reader should reject array envelopes');
     assert.equal(malformedMapChecks.tombstonePersisted, true, 'a malformed deleted-project map must not make new tombstones disappear');
 
+    // Deletion must never remove the only visible copy if neither a durable
+    // tombstone nor a confirmed server save is available.
+    const deletionSafety = await page.evaluate(async () => {
+      const saved = {
+        projects, currentProjectId, inCopyBranch, isCopyBranchCreated,
+        recordDeletedProjectId, saveProjectsToStorage, saveLocalProjectsSnapshot,
+        renderProjectsList, showToast, confirm: window.confirm
+      };
+      const fixture = { id: 'delete-safety-fixture', name: 'Delete safety fixture', code: { html: '', css: '', js: '' } };
+      let toast = '';
+      try {
+        projects = [fixture];
+        currentProjectId = null;
+        inCopyBranch = false;
+        isCopyBranchCreated = false;
+        window.confirm = () => true;
+        recordDeletedProjectId = () => false;
+        saveProjectsToStorage = async () => false;
+        saveLocalProjectsSnapshot = () => true;
+        renderProjectsList = () => {};
+        showToast = message => { toast = message; };
+        await deleteProject(fixture.id);
+        const retainedWithoutDurability = projects.some(project => project.id === fixture.id);
+        projects = [fixture];
+        recordDeletedProjectId = () => true;
+        await deleteProject(fixture.id);
+        const removedWithDurableTombstone = !projects.some(project => project.id === fixture.id);
+        return { retainedWithoutDurability, removedWithDurableTombstone, toast };
+      } finally {
+        projects = saved.projects;
+        currentProjectId = saved.currentProjectId;
+        inCopyBranch = saved.inCopyBranch;
+        isCopyBranchCreated = saved.isCopyBranchCreated;
+        recordDeletedProjectId = saved.recordDeletedProjectId;
+        saveProjectsToStorage = saved.saveProjectsToStorage;
+        saveLocalProjectsSnapshot = saved.saveLocalProjectsSnapshot;
+        renderProjectsList = saved.renderProjectsList;
+        showToast = saved.showToast;
+        window.confirm = saved.confirm;
+      }
+    });
+    assert.equal(deletionSafety.retainedWithoutDurability, true,
+      'deletion should roll back if neither local tombstone nor server persistence succeeds');
+    assert.equal(deletionSafety.removedWithDurableTombstone, true,
+      'deletion may remain local when a durable tombstone protects it from resurrection');
+    assert.match(deletionSafety.toast, /marca de eliminación quedó guardada/i,
+      'offline deletion should explain that its tombstone is durable');
+
     // Multiple malformed snapshots must each remain recoverable. Keep the first
     // legacy backup in place and append subsequent raw snapshots without duplicates.
     const multipleRecoveryBackups = await page.evaluate(() => {
