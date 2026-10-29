@@ -113,7 +113,11 @@ function saveLocalProjectsSnapshot() {
 function readDeletedProjectMap() {
   try {
     const stored = JSON.parse(lsGet(STORAGE_KEY_DELETED_PROJECTS) || 'null');
-    if (stored && stored.byWorkspace && typeof stored.byWorkspace === 'object') return stored.byWorkspace;
+    if (stored && stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace)) {
+      // Arrays accept named properties in memory, but JSON.stringify drops them.
+      // Reject this malformed envelope so deletion tombstones remain durable.
+      return stored.byWorkspace;
+    }
     // Read the original single-workspace format for migration.
     if (stored && typeof stored.workspaceId === 'string' && Array.isArray(stored.ids)) {
       return { [stored.workspaceId]: stored.ids };
@@ -146,7 +150,11 @@ function currentRealUserKey() {
 function readPendingLocalImportMap() {
   try {
     const saved = JSON.parse(lsGet(STORAGE_KEY_PENDING_IMPORT) || 'null');
-    if (saved && saved.byUser && typeof saved.byUser === 'object') return saved.byUser;
+    if (saved && saved.byUser && typeof saved.byUser === 'object' && !Array.isArray(saved.byUser)) {
+      // Named account keys on an array are omitted by JSON.stringify and would
+      // silently discard pending imports on the next write.
+      return saved.byUser;
+    }
     if (saved && typeof saved.userKey === 'string' && Array.isArray(saved.projects)) {
       return { [saved.userKey]: saved.projects };
     }
