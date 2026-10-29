@@ -1243,7 +1243,8 @@ const server = http.createServer(async (req, res) => {
           const data = JSON.stringify(body);
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
-            'Content-Length': Buffer.byteLength(data)
+            'Content-Length': Buffer.byteLength(data),
+            'Cache-Control': 'no-store'
           });
           return res.end();
         }
