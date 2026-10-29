@@ -282,14 +282,19 @@ function designSystemFile(id) {
   return path.join(WORKSPACES_DIR, safeId(id) + '.design-system.json');
 }
 function readDesignSystem(id) {
+  const file = designSystemFile(id);
+  if (!fs.existsSync(file)) return null;
+  let parsed;
   try {
-    const parsed = JSON.parse(fs.readFileSync(designSystemFile(id), 'utf8'));
-    return parsed && parsed.settings && typeof parsed.settings === 'object'
-      ? designTools.sanitizeSettings(parsed.settings)
-      : null;
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (_) {
-    return null;
+    throw new Error('design_system_state_invalid');
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+      !parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings)) {
+    throw new Error('design_system_state_invalid');
+  }
+  return designTools.sanitizeSettings(parsed.settings);
 }
 function writeDesignSystem(id, settings) {
   const file = designSystemFile(id);
