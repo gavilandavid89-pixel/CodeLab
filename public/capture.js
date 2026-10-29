@@ -28,6 +28,14 @@
   }
 
   const MAX_CAPTURE_DESIGN_ELEMENTS = 500;
+  const MAX_CAPTURE_PIXELS = 32000000;
+
+  function getCapturePixelCount(width, height, scale) {
+    const safeWidth = Number.isFinite(Number(width)) ? Math.max(0, Number(width)) : 0;
+    const safeHeight = Number.isFinite(Number(height)) ? Math.max(0, Number(height)) : 0;
+    const safeScale = [1, 2, 3, 4].includes(Number(scale)) ? Number(scale) : 1;
+    return safeWidth * safeHeight * safeScale * safeScale;
+  }
 
   function safeImageSource(value) {
     const source = String(value || '').trim();
@@ -394,14 +402,16 @@
       };
       context.page.javascriptIncludedInScreenshot = false;
       context.page.screenshotNote += ' Se eliminaron scripts, iframes y objetos incrustados y se neutralizaron manejadores inline durante la captura.';
+      // Reject oversized raster dimensions before waiting for every asset or loading
+      // the third-party rasterizer; otherwise a doomed capture still consumes time and bandwidth.
+      const pixelCount = getCapturePixelCount(viewport, height, scale);
+      if (pixelCount > MAX_CAPTURE_PIXELS) {
+        throw new Error('La captura a ' + scale + '× ocuparía demasiada memoria. Elige una escala menor o un ancho de dispositivo más pequeño.');
+      }
       const assetStatus = await waitForCaptureAssets(captureDoc, 6000);
       context.renderedPage.assetStatus = assetStatus;
       const html2canvas = await loadHtml2Canvas();
       await new Promise(function (resolve) { setTimeout(resolve, 50); });
-      const pixelCount = viewport * height * scale * scale;
-      if (pixelCount > 32000000) {
-        throw new Error('La captura a ' + scale + '× ocuparía demasiada memoria. Elige una escala menor o un ancho de dispositivo más pequeño.');
-      }
       const canvas = await html2canvas(root, {
         backgroundColor: '#ffffff',
         scale: scale,
@@ -453,7 +463,7 @@
     }
     const scaleControl = document.getElementById('designCaptureScale');
     const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
-    const pixelCount = captured.width * captured.height * scale * scale;
+    const pixelCount = getCapturePixelCount(captured.width, captured.height, scale);
     const slug = safeSlug(project.name);
     const layout = getCaptureLayoutPositions(project.design);
     const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el, index) {
@@ -537,6 +547,7 @@
 
   return {
     xmlEscape: xmlEscape,
+    getCapturePixelCount: getCapturePixelCount,
     captureDesignSvg: captureDesignSvg,
     sanitizeForCapture: sanitizeForCapture,
     buildWebCaptureContext: buildWebCaptureContext,
