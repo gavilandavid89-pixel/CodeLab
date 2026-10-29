@@ -142,8 +142,14 @@
     const endMarker = '/* CodeLab Design Tokens END */';
     const block = startMarker + '\n' + String(tokensCss || '').trim() + '\n' + endMarker;
     const source = String(existingCss || '');
-    const pattern = /\/\* CodeLab Design Tokens START \*\/[\s\S]*?\/\* CodeLab Design Tokens END \*\//;
-    return pattern.test(source) ? source.replace(pattern, block) : block + (source.trim() ? '\n\n' + source.replace(/^\s+/, '') : '\n');
+    const pattern = /\/\* CodeLab Design Tokens START \*\/[\s\S]*?\/\* CodeLab Design Tokens END \*\//g;
+    let replaced = false;
+    const cleaned = source.replace(pattern, () => {
+      if (replaced) return '';
+      replaced = true;
+      return block;
+    });
+    return replaced ? cleaned.replace(/\n{3,}/g, '\n\n') : block + (source.trim() ? '\n\n' + source.replace(/^\s+/, '') : '\n');
   }
 
   function auditHtml(html) {
@@ -287,7 +293,7 @@
       const host = get('designPalettePreview');
       if (!host) return;
       const shades = generatePalette(settings.primary);
-      host.innerHTML = shades.map(item => '<button type="button" class="min-w-0 text-left group" data-palette-color="' + item.color + '" title="Copiar ' + item.color + '"><span class="block h-8 sm:h-10 rounded-lg border border-white/10" style="background:' + item.color + '"></span><span class="block mt-1 text-[9px] sm:text-[10px] text-slate-400">' + item.step + '</span><span class="block text-[8px] sm:text-[10px] font-mono text-slate-500">' + item.color + '</span></button>').join('');
+      host.innerHTML = shades.map(item => '<button type="button" class="min-w-0 text-left group" data-palette-color="' + item.color + '" title="Usar ' + item.color + '" aria-label="Usar tono ' + item.color + '"><span class="block h-8 sm:h-10 rounded-lg border border-white/10" style="background:' + item.color + '"></span><span class="block mt-1 text-[9px] sm:text-[10px] text-slate-400">' + item.step + '</span><span class="block text-[8px] sm:text-[10px] font-mono text-slate-500">' + item.color + '</span></button>').join('');
       host.querySelectorAll('[data-palette-color]').forEach(button => button.addEventListener('click', async () => {
         const color = button.getAttribute('data-palette-color');
         const primary = get('colorPrimary');
@@ -388,7 +394,6 @@
     }
 
     function open() {
-      settings = loadSavedSettings();
       fillForm();
       renderAll();
       showTab(activeTab);
