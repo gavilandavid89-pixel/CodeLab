@@ -136,7 +136,9 @@
         clearSelected();
         return;
       }
-      if (!results.some(item => item.id === selectedId)) selectedId = results[0].id;
+      if (!results.some(item => item.id === selectedId)) {
+        selectedId = results.some(item => item.id === 'hero') ? 'hero' : results[0].id;
+      }
       host.innerHTML = results.map(item => '<button type="button" data-component-id="' + item.id + '" class="text-left rounded-xl border p-3 transition ' + (item.id === selectedId ? 'border-cyan-400 bg-cyan-500/10' : 'border-slate-800 bg-slate-950/50 hover:border-slate-600') + '"><span class="block text-xs font-bold text-slate-100">' + item.name + '</span><span class="block text-[10px] text-slate-400 mt-1">' + item.category + '</span><span class="block text-[11px] text-slate-400 mt-2">' + item.description + '</span></button>').join('');
       host.querySelectorAll('[data-component-id]').forEach(button => button.addEventListener('click', () => {
         selectedId = button.dataset.componentId; renderList(); renderSelected();
