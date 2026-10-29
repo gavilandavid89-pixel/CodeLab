@@ -15,7 +15,6 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       ...process.env,
       PORT: String(PORT),
       CODELAB_DATA_DIR: dataDir,
-      CODELAB_WORKSPACE_SECRET: 'test-only-server-resilience-secret',
       CODELAB_TRUSTED_PROXY_HOPS: '2',
       GITHUB_CLIENT_ID: 'test-github-client',
       GITHUB_CLIENT_SECRET: 'test-github-secret',
@@ -41,6 +40,14 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
+
+    const generatedSecretPath = path.join(dataDir, '.workspace-secret');
+    const generatedSecret = await fs.readFile(generatedSecretPath, 'utf8');
+    assert.match(generatedSecret, /^[a-f0-9]{64}$/,
+      'Without an environment secret, the server must persist a cryptographically random workspace key');
+    const generatedSecretStat = await fs.stat(generatedSecretPath);
+    assert.equal(generatedSecretStat.mode & 0o077, 0,
+      'Persisted workspace HMAC secret must not be readable by group or other users');
 
     const appAsset = await fetch(BASE_URL + '/app.js');
     assert.equal(appAsset.status, 200, 'Main client script should be served');
