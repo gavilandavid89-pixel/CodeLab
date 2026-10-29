@@ -795,6 +795,36 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(injectedWorkspaceRateLimit, true, 'E2E should inject one workspace rate limit');
     assert.ok(workspacePutRequests >= 3, 'E2E should observe saves, retry, and size-limit recovery');
 
+    // Malformed array envelopes must not be treated as account/workspace maps:
+    // assigning named keys to arrays is lost by JSON.stringify and would erase
+    // deletion tombstones or pending imports on the next write.
+    const malformedMapChecks = await page.evaluate(() => {
+      const deletedKey = 'codelab_xd_deleted_projects_v1';
+      const pendingKey = 'codelab_xd_pending_local_import_v1';
+      const oldDeleted = localStorage.getItem(deletedKey);
+      const oldPending = localStorage.getItem(pendingKey);
+      try {
+        localStorage.setItem(deletedKey, JSON.stringify({ byWorkspace: [] }));
+        localStorage.setItem(pendingKey, JSON.stringify({ byUser: [] }));
+        const deletedMap = readDeletedProjectMap();
+        const pendingMap = readPendingLocalImportMap();
+        recordDeletedProjectId('malformed-map-test-id');
+        const persistedDeleted = JSON.parse(localStorage.getItem(deletedKey) || '{}');
+        return {
+          deletedMapIsObject: !Array.isArray(deletedMap) && Object.keys(deletedMap).length === 0,
+          pendingMapIsObject: !Array.isArray(pendingMap) && Object.keys(pendingMap).length === 0,
+          tombstonePersisted: Array.isArray(persistedDeleted.byWorkspace?.[workspaceId]) &&
+            persistedDeleted.byWorkspace[workspaceId].includes('malformed-map-test-id')
+        };
+      } finally {
+        if (oldDeleted === null) localStorage.removeItem(deletedKey); else localStorage.setItem(deletedKey, oldDeleted);
+        if (oldPending === null) localStorage.removeItem(pendingKey); else localStorage.setItem(pendingKey, oldPending);
+      }
+    });
+    assert.equal(malformedMapChecks.deletedMapIsObject, true, 'deleted-project map reader should reject array envelopes');
+    assert.equal(malformedMapChecks.pendingMapIsObject, true, 'pending-import map reader should reject array envelopes');
+    assert.equal(malformedMapChecks.tombstonePersisted, true, 'a malformed deleted-project map must not make new tombstones disappear');
+
     // Corrupt local project snapshots must be backed up byte-for-byte before
     // normal startup replaces the active snapshot with an empty/default project.
     for (const damagedSnapshot of [
