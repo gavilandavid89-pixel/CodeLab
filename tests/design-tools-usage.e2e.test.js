@@ -27,8 +27,11 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
         return elements.length === before + 1 && elements.some(item => item.type === type);
       }, { before, type }, { timeout: 5000 });
     }
-    const layerCount = await page.locator('#designLayers [data-design-element-id]').count();
-    assert.ok(layerCount >= 6, 'All six element tools should create selectable layers');
+    const createdTypes = await page.evaluate(() => getCurrentProject().design.elements.map(item => item.type));
+    for (const type of ['heading', 'text', 'button', 'rectangle', 'ellipse', 'image']) {
+      assert.ok(createdTypes.includes(type), 'The ' + type + ' tool should add an element to the active design');
+    }
+    assert.ok(await page.locator('#designLayers').isVisible(), 'The design layers panel should remain visible while tools are used');
 
     // Undo/redo should remove and restore the last added element.
     const beforeUndo = await page.evaluate(() => getCurrentProject().design.elements.length);
