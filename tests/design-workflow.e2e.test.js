@@ -997,7 +997,8 @@ async function waitForPersistedProject(page, projectName) {
     }, { timeout: 10000 });
     assert.equal(await page.locator('#designCanvas [data-design-id]').first().innerText(), 'Edición local recuperada',
       'a newer local edit must not be overwritten by the server snapshot');
-    // Selection is intentionally not persisted; select the element again to edit its properties.
+    // Selection is intentionally not persisted; hide the overlay before clicking the canvas element beneath it.
+    await page.locator('#designStudioPanel button[aria-label="Cerrar panel de opciones"]').click();
     await page.locator('#designCanvas [data-design-id]').first().click();
     await page.locator('#designInspectorProperties input[type="text"]').first().fill('Prueba integral CodeLab');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.textContent === 'Prueba integral CodeLab');
