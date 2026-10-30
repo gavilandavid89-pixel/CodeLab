@@ -1662,7 +1662,19 @@ async function waitForPersistedProject(page, projectName) {
     const flowSource = page.locator('[data-flow-source-port="' + flowButtonId + '"]');
     const flowTarget = page.locator('[data-flow-target-project="' + targetProjectId + '"]');
     await flowSource.waitFor({ state: 'visible' });
-    await flowSource.dragTo(flowTarget, { targetPosition: { x: 160, y: 25 } });
+    // Use real pointer coordinates: locator.dragTo may trigger HTML drag events
+    // without reliably reproducing the editor's pointer-driven connection gesture.
+    const sourceBox = await flowSource.boundingBox();
+    const targetBox = await flowTarget.boundingBox();
+    assert.ok(sourceBox && targetBox, 'source port and destination page must have visible bounds');
+    const startX = sourceBox.x + sourceBox.width / 2;
+    const startY = sourceBox.y + sourceBox.height / 2;
+    const endX = targetBox.x + Math.min(160, targetBox.width - 10);
+    const endY = targetBox.y + 25;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(endX, endY, { steps: 12 });
+    await page.mouse.up();
     await page.waitForFunction(({ sourceProjectId, flowButtonId, targetProjectId }) => {
       const source = projects.find(item => item.id === sourceProjectId);
       return source?.design?.flowConnections?.some(c => c.sourceElementId === flowButtonId && c.targetProjectId === targetProjectId);
