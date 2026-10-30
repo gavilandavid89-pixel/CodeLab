@@ -42,6 +42,7 @@ let oauthConfig = { github: false, google: false, demoFallback: true };
 let mobileStudioMode = 'code';
 let editors = {};
 let editorInitGeneration = 0;
+let editorReadyProjectId = null;
 let activeTab = 'html';
 let isCopyBranchCreated = false;
 let inCopyBranch = false;
@@ -1262,8 +1263,16 @@ async function returnToDashboard() {
     autosaveTimer = null;
   }
   try {
-    if (inCopyBranch) await saveInCopyBranch();
-    else saveCurrentCodeToActiveProject(true);
+    const activeProject = projects.find(project => project && project.id === currentProjectId);
+    // Do not let a not-yet-initialized Monaco/fallback editor overwrite durable
+    // generated HTML when the user leaves the project immediately after opening it.
+    if (activeProject && activeProject.type !== 'design' && editorReadyProjectId !== currentProjectId) {
+      showToast('El editor aún está cargando; se conservó el código guardado.', 'warn');
+    } else if (inCopyBranch) {
+      await saveInCopyBranch();
+    } else {
+      await saveCurrentCodeToActiveProject(true);
+    }
   } catch (e) {
     console.warn('Error guardando al salir', e);
   }
@@ -1771,6 +1780,8 @@ function getMonacoOptions() {
 function initMonacoOrFallback(code) {
   code = normalizeCode(code);
   const initGeneration = ++editorInitGeneration;
+  const initProjectId = currentProjectId;
+  editorReadyProjectId = null;
   if (useMonaco && typeof require !== 'undefined') {
     require.config({
       paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }
@@ -1787,6 +1798,7 @@ function initMonacoOrFallback(code) {
             const jsEl = document.getElementById('monaco-js');
             if (!htmlEl || !cssEl || !jsEl) {
               enableFallbackMode(code);
+              if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
               return;
             }
             editors.html = monaco.editor.create(htmlEl, {
@@ -1824,19 +1836,23 @@ function initMonacoOrFallback(code) {
             try { editors[k].layout(); } catch (_) {}
           });
           updatePreview();
+          if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
         } catch (err) {
           console.warn('Monaco init failed, using fallback', err);
           enableFallbackMode(code);
+          if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
         }
       },
       function (err) {
         if (initGeneration !== editorInitGeneration) return;
         console.warn('Monaco load failed', err);
         enableFallbackMode(code);
+        if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
       }
     );
   } else {
     enableFallbackMode(code);
+    if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
   }
 }
 
