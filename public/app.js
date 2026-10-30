@@ -3069,6 +3069,7 @@ let designRedoStack = [];
 let designDragState = null;
 let designEventsBound = false;
 let designZoom = 1;
+let designCanvasLocked = false;
 const MAX_DESIGN_ELEMENTS = 500;
 
 function activeDesignProject() {
@@ -3130,6 +3131,27 @@ function initializeDesignProject(project) {
   updateDesignHistoryButtons();
 }
 
+// Overlay controls let the canvas use the full workspace underneath.
+function toggleDesignOptions(show) {
+  const root = document.getElementById('designStudioPanel');
+  if (!root) return;
+  root.classList.toggle('design-options-hidden', !show);
+  const reopen = document.getElementById('designOptionsReopen');
+  if (reopen) reopen.setAttribute('aria-expanded', String(!!show));
+}
+function toggleDesignCanvasLock() {
+  designCanvasLocked = !designCanvasLocked;
+  const button = document.getElementById('designCanvasLockBtn');
+  if (button) {
+    button.setAttribute('aria-pressed', String(designCanvasLocked));
+    button.textContent = designCanvasLocked ? '🔒 Lienzo bloqueado' : '🔓 Bloquear lienzo';
+    button.title = designCanvasLocked
+      ? 'Zoom y posición bloqueados; vuelve a pulsar para navegar'
+      : 'Bloquear zoom y posición del lienzo';
+    button.classList.toggle('bg-violet-700', designCanvasLocked);
+  }
+}
+
 // Touch-friendly canvas navigation: pinch zoom and one-finger pan on empty canvas.
 function toggleDesignPanel(panel = 'inspector') {
   const root = document.getElementById('designStudioPanel');
@@ -3150,7 +3172,7 @@ function setupDesignCanvasGestures() {
   const pointers = new Map(); let pinchStart = null; let panStart = null;
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   viewport.addEventListener('pointerdown', event => {
-    if (event.pointerType !== 'touch') return;
+    if (event.pointerType !== 'touch' || designCanvasLocked) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
       const pts = Array.from(pointers.values());
@@ -3161,7 +3183,7 @@ function setupDesignCanvasGestures() {
     }
   }, { passive: false });
   viewport.addEventListener('pointermove', event => {
-    if (!pointers.has(event.pointerId)) return;
+    if (designCanvasLocked || !pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size >= 2 && pinchStart) {
       const pts = Array.from(pointers.values()).slice(0, 2);
