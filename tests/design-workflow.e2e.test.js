@@ -86,7 +86,7 @@ async function waitForPersistedProject(page, projectName) {
     // and a failed server sync must be reported as local-only rather than success.
     const createFailureFeedbackCheck = await page.evaluate(async () => {
       const saved = {
-        projects, maxProjects, currentProjectId, currentUser,
+        projects: projects.slice(), maxProjects, currentProjectId, currentUser,
         saveProjectsToStorage, saveLocalProjectsSnapshot, showToast,
         renderProjectsList, openProject, closeNewProjectModal,
         inCopyBranch, isCopyBranchCreated
@@ -304,6 +304,7 @@ async function waitForPersistedProject(page, projectName) {
     }, { timeout: 10000 });
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), 0,
       'new design project should start with an empty canvas');
+    const originalDesignProjectId = await page.evaluate(() => getCurrentProject().id);
 
     // The second creation choice must open the code editor, not the design studio.
     // Then return to the dashboard and reopen the original design without mixing state.
@@ -424,7 +425,7 @@ async function waitForPersistedProject(page, projectName) {
           project.type === 'web' && /Construye el Futuro/.test(project.code?.html || ''));
     }, null, { timeout: 10000 });
     await page.locator('#projectsGrid > div').filter({ hasText: 'Flujo integral web E2E (Copia)' }).waitFor({ state: 'visible', timeout: 10000 });
-    await page.locator('#projectsGrid > div').filter({ hasText: PROJECT_NAME }).locator('button[data-action="open"]').click();
+    await page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(PROJECT_NAME, { exact: true }) }).locator('button[data-action="open"]').click();
     await page.waitForFunction(() => {
       const design = document.getElementById('designStudioPanel');
       return design && !design.classList.contains('hidden') &&
@@ -981,6 +982,7 @@ async function waitForPersistedProject(page, projectName) {
       const editor = document.getElementById('editorPanel');
       return design && design.classList.contains('hidden') && editor && !editor.classList.contains('hidden');
     }, { timeout: 10000 });
+    await page.evaluate(id => { window.__e2eOriginalDesignProjectId = id; }, originalDesignProjectId);
     const convertedHandle = await page.waitForFunction(async name => {
       const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
       const token = localStorage.getItem('codelab_xd_workspace_token_v1');
@@ -991,8 +993,9 @@ async function waitForPersistedProject(page, projectName) {
         });
         if (!response.ok) return false;
         const data = await response.json();
-        return (data.projects || []).find(project =>
-          project.name === name &&
+        const matchingProjects = (data.projects || []).filter(project => project.name === name);
+        if (matchingProjects.length !== 1 || matchingProjects[0].id !== window.__e2eOriginalDesignProjectId) return false;
+        return matchingProjects.find(project =>
           project.type === 'web' &&
           project.code &&
           project.code.html.includes('Prueba integral CodeLab')
@@ -1002,6 +1005,7 @@ async function waitForPersistedProject(page, projectName) {
       }
     }, PROJECT_NAME, { timeout: 15000 });
     const converted = await convertedHandle.jsonValue();
+    assert.equal(converted.id, originalDesignProjectId, 'conversion must preserve the original project ID');
     assert.equal(converted.type, 'web');
     assert.equal(converted.name, PROJECT_NAME, 'conversion must preserve the original project name');
     assert.match(converted.code.html, /Prueba integral CodeLab/,
@@ -1120,7 +1124,7 @@ async function waitForPersistedProject(page, projectName) {
     // converted project explicitly before testing component insertion so this
     // journey verifies project selection as well as the component dialog.
     const convertedProjectCard = page.locator('#projectsGrid > div').filter({
-      has: page.locator('h4', { hasText: PROJECT_NAME })
+      has: page.locator('h4').getByText(PROJECT_NAME, { exact: true })
     });
     await convertedProjectCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(async name => {
