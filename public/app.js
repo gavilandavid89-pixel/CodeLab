@@ -727,7 +727,10 @@ async function runWorkspaceSync() {
         workspacePayloadTooLarge = false;
         updateDashboardStatus();
         if (syncGeneration === generationAtStart) {
-          clearDeletedProjectIds(workspaceId);
+          // Do not erase deletion tombstones merely because *a* save succeeded.
+          // A concurrent/stale workspace snapshot can still contain the deleted
+          // ID and otherwise resurrect it on the next boot. Tombstones are scoped
+          // to the workspace and remain the source of truth during merges.
           if (generatedDefaultProjectId && projects.some(project => project.id === generatedDefaultProjectId)) {
             generatedDefaultProjectId = null;
           }
