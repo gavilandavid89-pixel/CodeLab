@@ -107,10 +107,10 @@ async function createProject(page, type, name) {
     await layer.click();
     await page.locator('#designProperties').waitFor({ state: 'visible' });
     const beforeDup = await page.evaluate(() => getCurrentProject().design.elements.length);
-    await page.locator('#designProperties button[onclick="duplicateDesignElement()"]').click();
+    await page.locator('button[onclick="duplicateDesignElement()"]').click();
     await page.waitForFunction(n => getCurrentProject().design.elements.length === n + 1, beforeDup);
     const beforeDelete = await page.evaluate(() => getCurrentProject().design.elements.length);
-    const deleteButton = page.locator('#designProperties button[onclick="deleteSelectedDesignElement()"]');
+    const deleteButton = page.locator('button[onclick="deleteDesignElement()"]');
     if (await deleteButton.count()) {
       await deleteButton.click();
       await page.waitForFunction(n => getCurrentProject().design.elements.length === n - 1, beforeDelete);
