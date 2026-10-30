@@ -106,6 +106,7 @@ async function setCode(page, lang, value) {
     // directly instead of trying to reopen a branch that no longer exists.
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>".trim(),
       null, { timeout: 10000 });
+    page.once('dialog', dialog => dialog.accept());
     await page.locator('#undoMergeBtn').click();
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>CodeLab listo</h1><button id=\"preview-action\">Acción</button></main>".trim(),
       null, { timeout: 10000 });
