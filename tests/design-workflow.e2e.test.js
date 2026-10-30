@@ -821,10 +821,36 @@ async function waitForPersistedProject(page, projectName) {
       internalTarget, 'choosing an internal target should update the prototype button');
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
-    const internalHtmlReady = page.waitForEvent('download');
+    await page.evaluate(() => {
+      window.__capturedHtmlExport = null;
+      window.__htmlExportBlobs = new Map();
+      window.__htmlExportUrlDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+      window.__htmlExportCreateObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        const url = window.__htmlExportCreateObjectURL(blob);
+        window.__htmlExportBlobs.set(url, blob);
+        return url;
+      };
+      window.__htmlExportClickHandler = event => {
+        const link = event.target && event.target.closest ? event.target.closest('a[download$=".html"]') : null;
+        if (!link) return;
+        const blob = window.__htmlExportBlobs.get(link.href);
+        if (!blob) return;
+        event.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => { window.__capturedHtmlExport = new TextDecoder().decode(reader.result); };
+        reader.readAsArrayBuffer(blob);
+      };
+      document.addEventListener('click', window.__htmlExportClickHandler, true);
+    });
     await page.locator('#designExportMenu [role="menuitem"]').filter({ hasText: 'HTML adaptable' }).click();
-    const internalHtmlDownload = await internalHtmlReady;
-    const internalHtml = await fs.readFile(await internalHtmlDownload.path(), 'utf8');
+    await page.waitForFunction(() => typeof window.__capturedHtmlExport === 'string' && window.__capturedHtmlExport.length > 0);
+    const internalHtml = await page.evaluate(() => window.__capturedHtmlExport);
+    await page.evaluate(() => {
+      document.removeEventListener('click', window.__htmlExportClickHandler, true);
+      if (window.__htmlExportUrlDescriptor) Object.defineProperty(URL, 'createObjectURL', window.__htmlExportUrlDescriptor);
+      else delete URL.createObjectURL;
+    });
     assert.ok(internalHtml.includes('href="' + internalTarget + '"'), 'HTML export should preserve internal layer navigation');
     assert.ok(internalHtml.includes('id="' + internalTarget.slice(1) + '"'), 'HTML export should assign stable anchor IDs to target layers');
     await page.locator('#designProperty-href').fill('javascript:alert(1)');
