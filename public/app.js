@@ -3911,41 +3911,46 @@ async function returnToSourceDesign() {
 }
 
 async function switchProjectWorkspace(targetType) {
-  if (!['web', 'design'].includes(targetType)) return;
+  if (!['web', 'design'].includes(targetType) || creatingProjectInFlight) return;
   const project = projects.find(item => item.id === currentProjectId);
   if (!project || project.type === targetType) return;
+  creatingProjectInFlight = true;
   try {
-    const saved = await saveCurrentCodeToActiveProject(true);
-    if (saved === false) {
-      showToast('No se pudo confirmar el guardado; no se cambió de espacio.', 'warn');
+    try {
+      const saved = await saveCurrentCodeToActiveProject(true);
+      if (saved === false) {
+        showToast('No se pudo confirmar el guardado; no se cambió de espacio.', 'warn');
+        return;
+      }
+    } catch (_) {
+      showToast('No se pudo guardar el espacio actual; no se cambió de editor.', 'error');
       return;
     }
-  } catch (_) {
-    showToast('No se pudo guardar el espacio actual; no se cambió de editor.', 'error');
-    return;
+    project.hasWebSpace = true;
+    project.hasDesignSpace = true;
+    if (!project.design || typeof project.design !== 'object') {
+      project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
+    }
+    const previousType = project.type;
+    project.type = targetType;
+    project.updatedAt = new Date().toISOString();
+    const localSaved = saveLocalProjectsSnapshot();
+    let serverSaved = false;
+    try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+    if (!serverSaved && !localSaved) {
+      project.type = previousType;
+      showToast('No se pudo guardar el cambio de espacio; se mantuvo el editor actual.', 'error');
+      return;
+    }
+    openProject(project.id);
+    renderProjectsList();
+    showToast(targetType === 'design'
+      ? (serverSaved ? 'Espacio Diseño abierto y sincronizado.' : 'Espacio Diseño abierto localmente; sincronización pendiente.')
+      : (serverSaved ? 'Espacio Web abierto y sincronizado.' : 'Espacio Web abierto localmente; sincronización pendiente.'),
+      serverSaved ? 'info' : 'warn');
+  } finally {
+    creatingProjectInFlight = false;
   }
-  project.hasWebSpace = true;
-  project.hasDesignSpace = true;
-  if (!project.design || typeof project.design !== 'object') {
-    project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
-  }
-  const previousType = project.type;
-  project.type = targetType;
-  project.updatedAt = new Date().toISOString();
-  const localSaved = saveLocalProjectsSnapshot();
-  let serverSaved = false;
-  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
-  if (!serverSaved && !localSaved) {
-    project.type = previousType;
-    showToast('No se pudo guardar el cambio de espacio; se mantuvo el editor actual.', 'error');
-    return;
-  }
-  openProject(project.id);
-  renderProjectsList();
-  showToast(targetType === 'design'
-    ? (serverSaved ? 'Espacio Diseño abierto y sincronizado.' : 'Espacio Diseño abierto localmente; sincronización pendiente.')
-    : (serverSaved ? 'Espacio Web abierto y sincronizado.' : 'Espacio Web abierto localmente; sincronización pendiente.'),
-    serverSaved ? 'info' : 'warn');
 }
 
 async function convertDesignToWeb() {
@@ -3995,22 +4000,25 @@ async function convertDesignToWeb() {
     return;
   }
   creatingProjectInFlight = true;
-  // Generate the web representation inside this same project. Keep the design
-  // document and project ID intact so switching editors never creates duplicates.
-  p.code = normalizeCode({ html, css: '', js: '' });
-  p.type = 'web';
-  p.hasWebSpace = true;
-  p.hasDesignSpace = true;
-  p.updatedAt = new Date().toISOString();
-  creatingProjectInFlight = false;
-  const localSaved = saveLocalProjectsSnapshot();
-  let serverSaved = false;
-  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
-  openProject(p.id);
-  renderProjectsList();
-  if (serverSaved) showToast('Espacio Web actualizado en este proyecto; el Diseño original se conserva.');
-  else if (localSaved) showToast('Espacio Web actualizado localmente; sincronización pendiente.', 'warn');
-  else showToast('La web se generó, pero no se confirmó el guardado. Exporta una copia antes de salir.', 'error');
+  // Keep the mutation lock until both local snapshot and server sync have settled.
+  // Otherwise a second create/switch can race this conversion's in-flight save.
+  try {
+    p.code = normalizeCode({ html, css: '', js: '' });
+    p.type = 'web';
+    p.hasWebSpace = true;
+    p.hasDesignSpace = true;
+    p.updatedAt = new Date().toISOString();
+    const localSaved = saveLocalProjectsSnapshot();
+    let serverSaved = false;
+    try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+    openProject(p.id);
+    renderProjectsList();
+    if (serverSaved) showToast('Espacio Web actualizado en este proyecto; el Diseño original se conserva.');
+    else if (localSaved) showToast('Espacio Web actualizado localmente; sincronización pendiente.', 'warn');
+    else showToast('La web se generó, pero no se confirmó el guardado. Exporta una copia antes de salir.', 'error');
+  } finally {
+    creatingProjectInFlight = false;
+  }
 }
 
 function setupNewProjectModalKeys() {
