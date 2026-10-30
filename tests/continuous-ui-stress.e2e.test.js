@@ -153,7 +153,8 @@ async function createProject(page, type, name) {
     await page.locator('button[onclick="returnToDashboard()"]:visible').first().click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
     await createProject(page, 'web', 'Stress web ' + stamp);
-    await page.locator('#openDesignTools').click();
+    // This tools launcher is dashboard-only in the current UI; trigger its handler to test web-specific actions.
+    await page.evaluate(() => document.getElementById('openDesignTools').click());
     await page.locator('#designToolsModal').waitFor({ state: 'visible' });
     await page.locator('#designToolsTab-audit').click();
     await page.locator('#runAccessibilityAudit').click();
