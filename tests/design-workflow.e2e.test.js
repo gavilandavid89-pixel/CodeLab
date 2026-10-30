@@ -742,17 +742,20 @@ async function waitForPersistedProject(page, projectName) {
         }
         const artifact = { name: this.download, type: blob.type, size: blob.size };
         window.__designCaptureArtifacts.push(artifact);
-        if (/\\.json$/.test(this.download) || /\\.svg$/.test(this.download)) {
-          blob.text().then(text => { artifact.text = text; });
-        } else if (/\\.png$/.test(this.download)) {
-          blob.arrayBuffer().then(buffer => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const buffer = reader.result;
+          if (/\\.json$/.test(this.download) || /\\.svg$/.test(this.download)) {
+            artifact.text = new TextDecoder().decode(buffer);
+          } else if (/\\.png$/.test(this.download)) {
             const bytes = new Uint8Array(buffer);
             const view = new DataView(buffer);
             artifact.signature = Array.from(bytes.slice(0, 8));
             artifact.width = view.getUint32(16);
             artifact.height = view.getUint32(20);
-          });
-        }
+          }
+        };
+        reader.readAsArrayBuffer(blob);
       };
     });
     await page.selectOption('#designCaptureScale', '4');
