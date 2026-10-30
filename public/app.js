@@ -418,6 +418,7 @@ window.addEventListener('DOMContentLoaded', () => {
       updateAiUI();
       startReconnectLoop();
       setupSplitResize();
+      setupDesignCanvasGestures();
       setupKeyboardShortcuts();
       setupNewProjectModalKeys();
       const pg = document.getElementById('projectsGrid');
@@ -3127,6 +3128,40 @@ function initializeDesignProject(project) {
   renderDesignWorkspace();
   bindDesignCanvasEvents();
   updateDesignHistoryButtons();
+}
+
+// Touch-friendly canvas navigation: pinch zoom and one-finger pan on empty canvas.
+function setupDesignCanvasGestures() {
+  const viewport = document.getElementById('designCanvasScroll');
+  if (!viewport || viewport.dataset.gesturesBound === 'true') return;
+  viewport.dataset.gesturesBound = 'true';
+  const pointers = new Map(); let pinchStart = null; let panStart = null;
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  viewport.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch') return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      const pts = Array.from(pointers.values());
+      pinchStart = { distance: Math.max(1, distance(pts[0], pts[1])), zoom: designZoom };
+      panStart = null; event.preventDefault();
+    } else if (pointers.size === 1) {
+      panStart = { x: event.clientX, y: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop };
+    }
+  }, { passive: false });
+  viewport.addEventListener('pointermove', event => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size >= 2 && pinchStart) {
+      const pts = Array.from(pointers.values()).slice(0, 2);
+      const next = Math.max(0.1, Math.min(1.5, pinchStart.zoom * distance(pts[0], pts[1]) / pinchStart.distance));
+      setDesignZoom(Math.round(next * 100)); event.preventDefault();
+    } else if (pointers.size === 1 && panStart && !event.target.closest('[data-design-id]')) {
+      viewport.scrollLeft = panStart.scrollLeft - (event.clientX - panStart.x);
+      viewport.scrollTop = panStart.scrollTop - (event.clientY - panStart.y); event.preventDefault();
+    }
+  }, { passive: false });
+  const finish = event => { pointers.delete(event.pointerId); if (pointers.size < 2) pinchStart = null; if (!pointers.size) panStart = null; };
+  viewport.addEventListener('pointerup', finish); viewport.addEventListener('pointercancel', finish); viewport.addEventListener('lostpointercapture', finish);
 }
 
 function setDesignZoom(value) {
