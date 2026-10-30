@@ -31,6 +31,13 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     await page.locator('#designFlowGraphModal').waitFor({ state: 'visible' });
     await page.locator('[data-flow-source-port="' + sourceElementId + '"]').waitFor({ state: 'visible' });
     await page.locator('[data-flow-target-project="' + targetId + '"]').waitFor({ state: 'visible' });
+    await page.locator('#designFlowChoose').click();
+    const sourceRow = page.locator('[data-flow-action="' + sourceElementId + '"][data-flow-source-project="' + sourceId + '"]');
+    await sourceRow.click();
+    await page.waitForFunction(id => {
+      const row = document.querySelector('[data-flow-action="' + id + '"]');
+      return !!row && row.className.includes('border-yellow-300');
+    }, sourceElementId, { timeout: 5000 });
     const source = page.locator('[data-flow-source-port="' + sourceElementId + '"]');
     const target = page.locator('[data-flow-target-project="' + targetId + '"]');
     await source.dragTo(target, { targetPosition: { x: 150, y: 25 } });
