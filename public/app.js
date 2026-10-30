@@ -4190,7 +4190,7 @@ function startReconnectLoop() {
 /* Keep the entire CodeLab shell in sync with the actual visible viewport.
    visualViewport events cover mobile pinch zoom; window resize covers desktop
    zoom, orientation changes and browser chrome changes. */
-function refreshWholeInterfaceViewport() {
+function refreshWholeInterfaceViewport(reflow = true) {
   const vv = window.visualViewport;
   const root = document.documentElement;
   const width = Math.max(1, Math.round(vv && vv.width ? vv.width : root.clientWidth || window.innerWidth));
@@ -4200,6 +4200,7 @@ function refreshWholeInterfaceViewport() {
   root.style.setProperty('--codelab-visible-left', Math.round(vv ? vv.offsetLeft : 0) + 'px');
   root.style.setProperty('--codelab-visible-top', Math.round(vv ? vv.offsetTop : 0) + 'px');
 
+  if (!reflow) return;
   // Recalculate editor/canvas geometry after the browser restores its zoom level.
   Object.keys(editors || {}).forEach(key => {
     try { if (editors[key] && typeof editors[key].layout === 'function') editors[key].layout(); } catch (_) {}
@@ -4218,19 +4219,23 @@ function refreshWholeInterfaceViewport() {
   if (window.__codelabWholeViewportBound) return;
   window.__codelabWholeViewportBound = true;
   let scheduled = false;
-  const schedule = () => {
+  let shouldReflow = true;
+  const schedule = (reflow = true) => {
+    shouldReflow = shouldReflow || reflow;
     if (scheduled) return;
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      refreshWholeInterfaceViewport();
+      const doReflow = shouldReflow;
+      shouldReflow = false;
+      refreshWholeInterfaceViewport(doReflow);
     });
   };
-  window.addEventListener('resize', schedule, { passive: true });
-  window.addEventListener('orientationchange', schedule, { passive: true });
+  window.addEventListener('resize', () => schedule(true), { passive: true });
+  window.addEventListener('orientationchange', () => schedule(true), { passive: true });
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', schedule, { passive: true });
-    window.visualViewport.addEventListener('scroll', schedule, { passive: true });
+    window.visualViewport.addEventListener('resize', () => schedule(true), { passive: true });
+    window.visualViewport.addEventListener('scroll', () => schedule(false), { passive: true });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once: true });
   else schedule();
