@@ -730,7 +730,7 @@ async function waitForPersistedProject(page, projectName) {
       window.__nativeDesignCreateObjectURL = URL.createObjectURL.bind(URL);
       window.__nativeDesignAnchorClick = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = blob => {
-        const url = nativeCreateObjectURL(blob);
+        const url = window.__nativeDesignCreateObjectURL(blob);
         window.__designCaptureBlobs.set(url, blob);
         return url;
       };
