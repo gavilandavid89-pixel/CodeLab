@@ -480,7 +480,7 @@ async function waitForPersistedProject(page, projectName) {
     } catch (error) {
       throw new Error('Design element did not render after addDesignElement. Browser errors: ' + failures.join(' | ') + '. ' + error.message);
     }
-    const textField = page.locator('#designProperties input[type="text"]').first();
+    const textField = page.locator('#designInspectorProperties input[type="text"]').first();
     await textField.fill('Prueba integral CodeLab');
     await page.waitForFunction(() => {
       const node = document.querySelector('#designCanvas [data-design-id]');
@@ -935,7 +935,7 @@ async function waitForPersistedProject(page, projectName) {
       'a newer local edit must not be overwritten by the server snapshot');
     // Selection is intentionally not persisted; select the element again to edit its properties.
     await page.locator('#designCanvas [data-design-id]').first().click();
-    await page.locator('#designProperties input[type="text"]').first().fill('Prueba integral CodeLab');
+    await page.locator('#designInspectorProperties input[type="text"]').first().fill('Prueba integral CodeLab');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.textContent === 'Prueba integral CodeLab');
     await waitForPersistedProject(page, PROJECT_NAME);
     await page.waitForFunction(async id => {
@@ -1601,7 +1601,7 @@ async function waitForPersistedProject(page, projectName) {
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
         const addedLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
         assert.ok(addedLayerId, type + ' layer should expose its stable ID in ' + frame + ' frame');
-        assert.equal(await page.locator('#designProperties').isVisible(), true,
+        assert.equal(await page.locator('#designInspectorProperties').isVisible(), true,
           type + ' properties must be visible after adding it in ' + frame + ' frame');
 
         await page.locator('button[onclick="duplicateDesignElement()"]').click();
