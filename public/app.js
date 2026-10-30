@@ -1078,6 +1078,17 @@ async function deleteProject(id, e) {
   const previousInCopyBranch = inCopyBranch;
   const previousIsCopyBranchCreated = isCopyBranchCreated;
   const tombstoneSaved = recordDeletedProjectId(id);
+  // Remove incoming links to a deleted destination before persisting the workspace.
+  // Keep the original entries so a failed delete can roll the workspace back atomically.
+  const removedFlowConnections = [];
+  for (const project of projects) {
+    if (!project || !project.design || !Array.isArray(project.design.flowConnections)) continue;
+    const removed = project.design.flowConnections.filter(connection => connection && connection.targetProjectId === id);
+    if (removed.length) {
+      removedFlowConnections.push({ project, connections: removed });
+      project.design.flowConnections = project.design.flowConnections.filter(connection => !connection || connection.targetProjectId !== id);
+    }
+  }
   projects = projects.filter(project => project.id !== id);
   if (currentProjectId === id) {
     currentProjectId = null;
@@ -1099,6 +1110,11 @@ async function deleteProject(id, e) {
   // Without either a durable tombstone or a confirmed server delete, rollback.
   // Otherwise the old server copy could reappear on the next workspace merge.
   projects.splice(Math.min(index, projects.length), 0, deletedProject);
+  for (const entry of removedFlowConnections) {
+    if (!entry.project.design) entry.project.design = { elements: [] };
+    if (!Array.isArray(entry.project.design.flowConnections)) entry.project.design.flowConnections = [];
+    entry.project.design.flowConnections.push(...entry.connections);
+  }
   currentProjectId = previousCurrentProjectId;
   inCopyBranch = previousInCopyBranch;
   isCopyBranchCreated = previousIsCopyBranchCreated;
@@ -3905,7 +3921,11 @@ function duplicateDesignElement() {
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
-  recordDesignHistory(); p.design.elements = p.design.elements.filter(el => !selectedDesignElementIds.includes(el.id) && el.id !== selectedDesignElementId);
+  recordDesignHistory();
+  const deletedElementIds = new Set(p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId).map(el => el.id));
+  p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
+  // Never leave graph edges pointing at a layer that no longer exists.
+  if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
   selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); saveProjectsToStorage();
 }
 function openDesignFlowGraph() {
