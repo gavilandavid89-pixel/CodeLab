@@ -102,7 +102,8 @@ async function setCode(page, lang, value) {
       }));
       throw new Error('Merge did not complete: ' + JSON.stringify(state) + '; ' + error.message);
     }
-    await page.locator('#toggleCopyBranchBtn').click();
+    // A successful merge consumes the branch, so verify the merged main editor
+    // directly instead of trying to reopen a branch that no longer exists.
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>".trim(),
       null, { timeout: 10000 });
     await page.locator('#undoMergeBtn').click();
