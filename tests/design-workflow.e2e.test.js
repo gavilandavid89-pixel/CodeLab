@@ -1634,7 +1634,7 @@ async function waitForPersistedProject(page, projectName) {
     await sourceCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(expected => getCurrentProject()?.id === expected, sourceProjectId, { timeout: 15000 });
     await page.locator('button[onclick="convertDesignToWeb()"]').click();
-    await page.waitForFunction(() => !document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
+    await page.waitForFunction(() => document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
       !document.getElementById('studioView')?.classList.contains('hidden') && typeof getCurrentProject === 'function' &&
       getCurrentProject()?.type === 'web', null, { timeout: 15000 });
     const generatedFlowHtml = await page.evaluate(() => getCurrentProject().code.html);
