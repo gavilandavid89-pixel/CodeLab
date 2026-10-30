@@ -98,16 +98,7 @@
     cards.querySelectorAll('[data-flow-target-project]').forEach(target => target.addEventListener('pointerup', e => {
       if (!pendingStart) return;
       e.preventDefault();
-      const sourceProject = findProject(pendingStart.projectId), source = sourceProject && sourceProject.design.elements.find(el => el.id === pendingStart.elementId);
-      const targetId = (activeTarget || target).dataset.flowTargetProject;
-      if (!sourceProject || !source || sourceProject.id === targetId) { showToast('Conecta una opción con otra página distinta.', 'warn'); return; }
-      if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra página.', 'warn'); pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null; return; }
-      sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(c => c.sourceElementId !== source.id);
-      sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId });
-      selectedSource = { projectId: sourceProject.id, elementId: source.id };
-      source.flowRole = 'navigate';
-      sourceProject.updatedAt = new Date().toISOString();
-      saveProjectsToStorage(); renderGraph(); showToast('Conexión creada desde «' + (source.label || source.text || 'Opción') + '» a la página de destino.');
+      commitConnection(activeTarget || target);
     }));
     cards.querySelectorAll('[data-flow-menu]').forEach(check => check.addEventListener('change', () => {
       const p = findProject(check.dataset.flowProject), el = p && p.design.elements.find(item => item.id === check.dataset.flowMenu);
@@ -124,6 +115,19 @@
       p.updatedAt = new Date().toISOString(); saveProjectsToStorage(); renderGraph();
     }));
     requestAnimationFrame(drawWires);
+  }
+  function commitConnection(target) {
+    if (!pendingStart || !target) return;
+    const sourceProject = findProject(pendingStart.projectId), source = sourceProject && sourceProject.design.elements.find(el => el.id === pendingStart.elementId);
+    const targetId = target.dataset.flowTargetProject;
+    if (!sourceProject || !source || sourceProject.id === targetId) { showToast('Conecta una opción con otra página distinta.', 'warn'); return; }
+    if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra página.', 'warn'); return; }
+    sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(c => c.sourceElementId !== source.id);
+    sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId });
+    selectedSource = { projectId: sourceProject.id, elementId: source.id };
+    source.flowRole = 'navigate';
+    sourceProject.updatedAt = new Date().toISOString();
+    saveProjectsToStorage(); renderGraph(); showToast('Conexión creada desde «' + (source.label || source.text || 'Opción') + '» a la página de destino.');
   }
   function pointFor(selector, attr, id) {
     const el = Array.from(modal.querySelectorAll(selector)).find(item => item.getAttribute(attr) === id);
@@ -176,15 +180,16 @@
     const c=canvas.getBoundingClientRect(), x2=ex-c.left+canvas.scrollLeft, y2=ey-c.top+canvas.scrollTop, mid=(x1+x2)/2;
     const d='M '+x1+' '+y1+' C '+mid+' '+y1+', '+mid+' '+y2+', '+x2+' '+y2; draftPath.setAttribute('d',d); const draftHalo=svg.querySelector('[data-draft-halo]'); if(draftHalo) draftHalo.setAttribute('d',d);
     const targets=Array.from(modal.querySelectorAll('[data-flow-target-project]')); let hit=null, hitDistance=Infinity;
-    for(const card of targets){const t=rayRectDistance(sx,sy,dx,dy,card.getBoundingClientRect(),rayLength);if(t!==null&&t<hitDistance){hit=card;hitDistance=t;}}
+    for(const card of targets){if(card.dataset.flowTargetProject===pendingStart.projectId)continue;const t=rayRectDistance(sx,sy,dx,dy,card.getBoundingClientRect(),rayLength);if(t!==null&&t<hitDistance){hit=card;hitDistance=t;}}
     if(hit!==activeTarget){if(activeTarget)activeTarget.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');activeTarget=hit;if(activeTarget)activeTarget.classList.add('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');}
   }
   function finishDraft(e) {
     if (!pendingStart) return;
-    const target = activeTarget || (e.target && e.target.closest ? e.target.closest('[data-flow-target-project]') : null);
+    const directTarget = e.target && e.target.closest ? e.target.closest('[data-flow-target-project]') : null;
+    const target = activeTarget || directTarget;
     if (target) {
-      // The target pointerup handler performs the save; leave cleanup to the next frame.
-      setTimeout(() => { pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); drawWires(); }, 0);
+      if (target !== directTarget) commitConnection(target);
+      setTimeout(() => { pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); const halo=svg.querySelector('[data-draft-halo]'); if(halo) halo.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); drawWires(); }, 0);
     } else {
       pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null;
     }
