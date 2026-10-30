@@ -1711,6 +1711,9 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
       sourceProjectId, { timeout: 10000 });
     await page.waitForFunction(() => !document.getElementById('designStudioPanel')?.classList.contains('hidden'));
+    // Workspace type changes before the async persistence lock is released.
+    await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
+      null, { timeout: 15000 });
     await page.locator('#switchToWebBtn').click();
     await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'web',
       sourceProjectId, { timeout: 10000 });
