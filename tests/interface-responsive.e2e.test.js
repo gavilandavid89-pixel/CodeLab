@@ -123,6 +123,10 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.waitForTimeout(100);
     assert.ok(await page.locator('#designCanvas').isVisible(),
       'design canvas should remain available in landscape orientation');
+    assert.ok(await page.locator('#designZoom').isVisible(), 'design zoom control remains available');
+    assert.ok(await page.locator('#designFitBtn').isVisible(), 'fit-to-canvas action remains available');
+    assert.equal(await page.locator('#designStudioPanel .design-toolbar').count(), 1,
+      'design tools must be rendered in one toolbar, without duplicate toolbars');
     assert.ok(await page.locator('#designCanvasScroll').evaluate(el => el.clientWidth > 0),
       'design canvas scroll container should retain a usable width in landscape');
     await page.setViewportSize({ width: 390, height: 844 });
