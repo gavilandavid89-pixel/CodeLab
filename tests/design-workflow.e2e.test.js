@@ -1712,6 +1712,19 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(generatedFlowHtml.includes('data-page-id="' + sourceProjectId + '"'), 'generated web must include the source design page');
     assert.ok(generatedFlowHtml.includes('data-page-id="' + targetProjectId + '"'), 'generated web must include the connected destination page');
     assert.ok(generatedFlowHtml.includes('data-flow-to="' + targetProjectId + '"'), 'generated option must navigate to the connected destination');
+    // Execute the generated standalone web app and verify the actual route, not just its markup.
+    const flowPreview = await context.newPage();
+    flowPreview.on('pageerror', error => failures.push(error.message));
+    await flowPreview.setContent(generatedFlowHtml);
+    await flowPreview.locator('[data-page-id="' + sourceProjectId + '"]:not([hidden])').waitFor({ state: 'visible' });
+    await flowPreview.locator('[data-flow-to="' + targetProjectId + '"]').first().click();
+    await flowPreview.waitForFunction(id => {
+      const target = Array.from(document.querySelectorAll('[data-page-id]')).find(section => section.getAttribute('data-page-id') === id);
+      return !!target && !target.hidden;
+    }, targetProjectId, { timeout: 5000 });
+    assert.equal(await flowPreview.locator('[data-page-id="' + sourceProjectId + '"]').evaluate(el => el.hidden), true,
+      'navigating to the connected page must hide the source page');
+    await flowPreview.close();
 
     // Conversion updates the web space on the same project; switching editors
     // must preserve identity and both the design document and generated web.
