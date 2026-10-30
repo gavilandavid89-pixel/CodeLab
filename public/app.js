@@ -1006,8 +1006,11 @@ async function createNewProjectConfirm() {
     name: name,
     type,
     updatedAt: new Date().toISOString(),
+    // Both workspaces exist from creation; type selects the initial editor only.
     code: { ...defaultTemplate },
-    ...(type === 'design' ? { design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false } } : {})
+    hasWebSpace: true,
+    hasDesignSpace: true,
+    design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false }
   };
   creatingProjectInFlight = true;
   const confirmButton = document.querySelector('#newProjectModal button[onclick="createNewProjectConfirm()"]');
@@ -1176,6 +1179,21 @@ function openProject(id) {
   if (banner) banner.classList.add('hidden');
   document.getElementById('welcomeDashboard').classList.add('hidden');
   document.getElementById('studioView').classList.remove('hidden');
+  // Backfill legacy projects so old web-only/design-only projects can use both spaces.
+  proj.hasWebSpace = true;
+  proj.hasDesignSpace = true;
+  if (!proj.design || typeof proj.design !== 'object') {
+    proj.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
+  }
+  const workspaceSwitch = document.getElementById('workspaceSwitch');
+  if (workspaceSwitch) {
+    workspaceSwitch.classList.remove('hidden');
+    workspaceSwitch.classList.add('inline-flex');
+    const webButton = document.getElementById('switchToWebBtn');
+    const designButton = document.getElementById('switchToDesignBtn');
+    if (webButton) webButton.setAttribute('aria-pressed', proj.type === 'web' ? 'true' : 'false');
+    if (designButton) designButton.setAttribute('aria-pressed', proj.type === 'design' ? 'true' : 'false');
+  }
   const isDesignProject = proj.type === 'design';
   document.getElementById('editorPanel').classList.toggle('hidden', isDesignProject);
   document.getElementById('splitDivider').classList.toggle('hidden', isDesignProject);
@@ -3892,6 +3910,33 @@ async function returnToSourceDesign() {
   showToast('Volviste al diseño original. La web generada se conserva como proyecto separado.');
 }
 
+async function switchProjectWorkspace(targetType) {
+  if (!['web', 'design'].includes(targetType)) return;
+  const project = projects.find(item => item.id === currentProjectId);
+  if (!project || project.type === targetType) return;
+  try {
+    const saved = await saveCurrentCodeToActiveProject(true);
+    if (saved === false) {
+      showToast('No se pudo confirmar el guardado; no se cambió de espacio.', 'warn');
+      return;
+    }
+  } catch (_) {
+    showToast('No se pudo guardar el espacio actual; no se cambió de editor.', 'error');
+    return;
+  }
+  project.hasWebSpace = true;
+  project.hasDesignSpace = true;
+  if (!project.design || typeof project.design !== 'object') {
+    project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
+  }
+  project.type = targetType;
+  project.updatedAt = new Date().toISOString();
+  saveLocalProjectsSnapshot();
+  openProject(project.id);
+  renderProjectsList();
+  showToast(targetType === 'design' ? 'Espacio Diseño abierto.' : 'Espacio Web abierto.');
+}
+
 async function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
   if (creatingProjectInFlight) {
@@ -3944,29 +3989,22 @@ async function convertDesignToWeb() {
   }
   creatingProjectInFlight = true;
   const suffix = ' · Web';
-  const next = {
-    id: 'proj_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()),
-    name: String(p.name || 'Diseño').slice(0, 200 - suffix.length) + suffix,
-    type: 'web',
-    sourceDesignProjectId: p.id,
-    updatedAt: new Date().toISOString(),
-    code: { html, css: '', js: '' }
-  };
-  projects.unshift(next);
+  // Generate the web representation inside this same project. Keep the design
+  // document and project ID intact so switching editors never creates duplicates.
+  p.code = normalizeCode({ html, css: '', js: '' });
+  p.type = 'web';
+  p.hasWebSpace = true;
+  p.hasDesignSpace = true;
+  p.updatedAt = new Date().toISOString();
+  creatingProjectInFlight = false;
   const localSaved = saveLocalProjectsSnapshot();
   let serverSaved = false;
   try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
-  let localContainsProject = false;
-  try {
-    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
-    localContainsProject = Array.isArray(snapshot) && snapshot.some(project => project && project.id === next.id);
-  } catch (_) {}
-  creatingProjectInFlight = false;
+  openProject(p.id);
   renderProjectsList();
-  openProject(next.id);
-  if (serverSaved) showToast('Página web creada a partir del diseño y sincronizada.');
-  else if (localSaved && localContainsProject) showToast('Página web creada y guardada localmente; sincronización pendiente.', 'warn');
-  else showToast('La web se abrió, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
+  if (serverSaved) showToast('Espacio Web actualizado en este proyecto; el Diseño original se conserva.');
+  else if (localSaved) showToast('Espacio Web actualizado localmente; sincronización pendiente.', 'warn');
+  else showToast('La web se generó, pero no se confirmó el guardado. Exporta una copia antes de salir.', 'error');
 }
 
 function setupNewProjectModalKeys() {
