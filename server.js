@@ -1314,6 +1314,12 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 400, { error: 'bad_url' });
   }
 
+  // Agent Space: isolated browser cockpit, served from its own public subdirectory.
+  // It only drives the same-origin page in its iframe; it does not expose server-side execution.
+  if (pathname === '/agent-space' || pathname === '/agent-space/') {
+    return serveStatic(req, res, '/agent-space/index.html');
+  }
+
   if (pathname.startsWith('/api/')) {
     if (!checkRateLimit(ip)) {
       return sendJson(res, 429, { error: 'rate_limited', message: 'Demasiadas peticiones.' });
