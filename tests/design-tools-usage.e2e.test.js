@@ -41,13 +41,12 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     await page.waitForFunction(n => getCurrentProject().design.elements.length === n, beforeUndo, { timeout: 5000 });
 
     // Grid, snapping, viewport fit and frame presets must expose working state.
-    const gridBefore = await page.locator('#designGridBtn').getAttribute('aria-pressed');
+    const gridBefore = await page.evaluate(() => getCurrentProject().design.grid);
     await page.locator('#designGridBtn').click();
-    const gridAfter = await page.locator('#designGridBtn').getAttribute('aria-pressed');
-    assert.notEqual(gridAfter, gridBefore, 'Grid toggle must change its pressed state');
-    const snapBefore = await page.locator('#designSnapBtn').getAttribute('aria-pressed');
+    assert.notEqual(await page.evaluate(() => getCurrentProject().design.grid), gridBefore, 'Grid toggle must change the project grid setting');
+    const snapBefore = await page.evaluate(() => getCurrentProject().design.snapToGrid);
     await page.locator('#designSnapBtn').click();
-    assert.notEqual(await page.locator('#designSnapBtn').getAttribute('aria-pressed'), snapBefore, 'Snap toggle must change its pressed state');
+    assert.notEqual(await page.evaluate(() => getCurrentProject().design.snapToGrid), snapBefore, 'Snap toggle must change the project snapping setting');
     await page.locator('#designFitBtn').click();
     await page.locator('#designFrameSize').selectOption({ index: 1 });
     assert.ok(await page.locator('#designCanvas').evaluate(el => el.clientWidth > 0 && el.clientHeight > 0), 'Canvas must remain usable after frame changes');
