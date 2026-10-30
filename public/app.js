@@ -4184,6 +4184,55 @@ function startReconnectLoop() {
 }
 
 // ---------- Split panel resize (U1) ----------
+/* Keep the entire CodeLab shell in sync with the actual visible viewport.
+   visualViewport events cover mobile pinch zoom; window resize covers desktop
+   zoom, orientation changes and browser chrome changes. */
+function refreshWholeInterfaceViewport() {
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  const width = Math.max(1, Math.round(vv && vv.width ? vv.width : root.clientWidth || window.innerWidth));
+  const height = Math.max(1, Math.round(vv && vv.height ? vv.height : root.clientHeight || window.innerHeight));
+  root.style.setProperty('--codelab-visible-width', width + 'px');
+  root.style.setProperty('--codelab-visible-height', height + 'px');
+  root.style.setProperty('--codelab-visible-left', Math.round(vv ? vv.offsetLeft : 0) + 'px');
+  root.style.setProperty('--codelab-visible-top', Math.round(vv ? vv.offsetTop : 0) + 'px');
+
+  // Recalculate editor/canvas geometry after the browser restores its zoom level.
+  Object.keys(editors || {}).forEach(key => {
+    try { if (editors[key] && typeof editors[key].layout === 'function') editors[key].layout(); } catch (_) {}
+  });
+  const designScroll = document.getElementById('designCanvasScroll');
+  if (designScroll) {
+    designScroll.style.maxHeight = Math.max(120, height - 150) + 'px';
+  }
+  if (typeof renderDesignWorkspace === 'function' &&
+      document.getElementById('designStudioPanel') &&
+      !document.getElementById('designStudioPanel').classList.contains('hidden')) {
+    try { renderDesignWorkspace(); } catch (_) {}
+  }
+}
+(function bindWholeInterfaceViewport() {
+  if (window.__codelabWholeViewportBound) return;
+  window.__codelabWholeViewportBound = true;
+  let scheduled = false;
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      refreshWholeInterfaceViewport();
+    });
+  };
+  window.addEventListener('resize', schedule, { passive: true });
+  window.addEventListener('orientationchange', schedule, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', schedule, { passive: true });
+    window.visualViewport.addEventListener('scroll', schedule, { passive: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  else schedule();
+})();
+
 function applySplitRatio(pct) {
   const editorPanel = document.getElementById('editorPanel');
   const previewPanel = document.getElementById('previewPanel');
