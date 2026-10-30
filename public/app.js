@@ -1150,6 +1150,13 @@ function openProject(id) {
     }
   }
   currentProjectId = id;
+  const returnToDesignBtn = document.getElementById('returnToDesignBtn');
+  if (returnToDesignBtn) {
+    const sourceDesign = proj.sourceDesignProjectId && projects.find(item => item.id === proj.sourceDesignProjectId && item.type === 'design');
+    returnToDesignBtn.classList.toggle('hidden', !sourceDesign);
+    returnToDesignBtn.classList.toggle('inline-flex', !!sourceDesign);
+    returnToDesignBtn.setAttribute('aria-hidden', sourceDesign ? 'false' : 'true');
+  }
   aiRequestGeneration++;
   inCopyBranch = false;
   isCopyBranchCreated = loadBranchFromProject(proj);
@@ -3860,6 +3867,31 @@ function openDesignFlowGraph() {
   else showToast('El editor de nodos no se pudo cargar.', 'warn');
 }
 
+async function returnToSourceDesign() {
+  const webProject = projects.find(item => item.id === currentProjectId);
+  if (!webProject || webProject.type !== 'web' || !webProject.sourceDesignProjectId) {
+    showToast('Esta web no tiene un diseño de origen vinculado.', 'warn');
+    return;
+  }
+  const source = projects.find(item => item.id === webProject.sourceDesignProjectId && item.type === 'design');
+  if (!source) {
+    showToast('No se encuentra el diseño de origen. Puede haberse eliminado.', 'warn');
+    return;
+  }
+  try {
+    const saved = await saveCurrentCodeToActiveProject(true);
+    if (saved === false) {
+      showToast('No se pudo confirmar el guardado de la web; revisa la sincronización antes de cambiar.', 'warn');
+      return;
+    }
+  } catch (_) {
+    showToast('No se pudo guardar la web; no se cambió de editor.', 'error');
+    return;
+  }
+  openProject(source.id);
+  showToast('Volviste al diseño original. La web generada se conserva como proyecto separado.');
+}
+
 async function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
   if (creatingProjectInFlight) {
@@ -3916,6 +3948,7 @@ async function convertDesignToWeb() {
     id: 'proj_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()),
     name: String(p.name || 'Diseño').slice(0, 200 - suffix.length) + suffix,
     type: 'web',
+    sourceDesignProjectId: p.id,
     updatedAt: new Date().toISOString(),
     code: { html, css: '', js: '' }
   };
