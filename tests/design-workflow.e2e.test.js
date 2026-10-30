@@ -728,6 +728,7 @@ async function waitForPersistedProject(page, projectName) {
       window.__designCaptureArtifacts = [];
       window.__designCaptureBlobs = new Map();
       window.__nativeDesignCreateObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+      window.__nativeDesignCreateObjectURL = URL.createObjectURL.bind(URL);
       window.__nativeDesignAnchorClickDescriptor = Object.getOwnPropertyDescriptor(HTMLAnchorElement.prototype, 'click');
       window.__nativeDesignAnchorClick = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = blob => {
