@@ -727,7 +727,10 @@ async function runWorkspaceSync() {
         workspacePayloadTooLarge = false;
         updateDashboardStatus();
         if (syncGeneration === generationAtStart) {
-          clearDeletedProjectIds(workspaceId);
+          // Do not erase deletion tombstones merely because *a* save succeeded.
+          // A concurrent/stale workspace snapshot can still contain the deleted
+          // ID and otherwise resurrect it on the next boot. Tombstones are scoped
+          // to the workspace and remain the source of truth during merges.
           if (generatedDefaultProjectId && projects.some(project => project.id === generatedDefaultProjectId)) {
             generatedDefaultProjectId = null;
           }
@@ -1231,11 +1234,24 @@ function openProject(id) {
     if (designButton) designButton.setAttribute('aria-pressed', proj.type === 'design' ? 'true' : 'false');
   }
   const isDesignProject = proj.type === 'design';
-  document.getElementById('editorPanel').classList.toggle('hidden', isDesignProject);
-  document.getElementById('splitDivider').classList.toggle('hidden', isDesignProject);
-  document.getElementById('previewPanel').classList.toggle('hidden', isDesignProject);
-  document.getElementById('designStudioPanel').classList.toggle('hidden', !isDesignProject);
-  document.getElementById('designStudioPanel').classList.toggle('flex', isDesignProject);
+  const editorPanel = document.getElementById('editorPanel');
+  const splitDivider = document.getElementById('splitDivider');
+  const previewPanel = document.getElementById('previewPanel');
+  const designStudioPanel = document.getElementById('designStudioPanel');
+  // Set explicit display states as well as utility classes. This prevents a
+  // conflicting flex utility or responsive rule from leaving both toolbars
+  // mounted/visible when switching between the Web and Design workspaces.
+  if (editorPanel) editorPanel.style.display = isDesignProject ? 'none' : '';
+  if (splitDivider) splitDivider.style.display = isDesignProject ? 'none' : '';
+  if (previewPanel) previewPanel.style.display = isDesignProject ? 'none' : '';
+  if (designStudioPanel) designStudioPanel.style.display = isDesignProject ? 'flex' : 'none';
+  if (editorPanel) editorPanel.classList.toggle('hidden', isDesignProject);
+  if (splitDivider) splitDivider.classList.toggle('hidden', isDesignProject);
+  if (previewPanel) previewPanel.classList.toggle('hidden', isDesignProject);
+  if (designStudioPanel) {
+    designStudioPanel.classList.toggle('hidden', !isDesignProject);
+    designStudioPanel.classList.toggle('flex', isDesignProject);
+  }
   document.getElementById('mainSplit').classList.toggle('md:flex-row', !isDesignProject);
   document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
   const mobileBar = document.getElementById('mobileBottomBar');
@@ -4184,6 +4200,60 @@ function startReconnectLoop() {
 }
 
 // ---------- Split panel resize (U1) ----------
+/* Keep the entire CodeLab shell in sync with the actual visible viewport.
+   visualViewport events cover mobile pinch zoom; window resize covers desktop
+   zoom, orientation changes and browser chrome changes. */
+function refreshWholeInterfaceViewport(reflow = true) {
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  const width = Math.max(1, Math.round(vv && vv.width ? vv.width : root.clientWidth || window.innerWidth));
+  const height = Math.max(1, Math.round(vv && vv.height ? vv.height : root.clientHeight || window.innerHeight));
+  root.style.setProperty('--codelab-visible-width', width + 'px');
+  root.style.setProperty('--codelab-visible-height', height + 'px');
+  root.style.setProperty('--codelab-visible-left', Math.round(vv ? vv.offsetLeft : 0) + 'px');
+  root.style.setProperty('--codelab-visible-top', Math.round(vv ? vv.offsetTop : 0) + 'px');
+
+  if (!reflow) return;
+  // Recalculate editor/canvas geometry after the browser restores its zoom level.
+  Object.keys(editors || {}).forEach(key => {
+    try { if (editors[key] && typeof editors[key].layout === 'function') editors[key].layout(); } catch (_) {}
+  });
+  const designScroll = document.getElementById('designCanvasScroll');
+  if (designScroll) {
+    designScroll.style.maxHeight = Math.max(120, height - 150) + 'px';
+  }
+  if (typeof renderDesignWorkspace === 'function' &&
+      document.getElementById('designStudioPanel') &&
+      !document.getElementById('designStudioPanel').classList.contains('hidden')) {
+    try { renderDesignWorkspace(); } catch (_) {}
+  }
+}
+(function bindWholeInterfaceViewport() {
+  if (window.__codelabWholeViewportBound) return;
+  window.__codelabWholeViewportBound = true;
+  let scheduled = false;
+  let shouldReflow = true;
+  const schedule = (reflow = true) => {
+    shouldReflow = shouldReflow || reflow;
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      const doReflow = shouldReflow;
+      shouldReflow = false;
+      refreshWholeInterfaceViewport(doReflow);
+    });
+  };
+  window.addEventListener('resize', () => schedule(true), { passive: true });
+  window.addEventListener('orientationchange', () => schedule(true), { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => schedule(true), { passive: true });
+    window.visualViewport.addEventListener('scroll', () => schedule(false), { passive: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  else schedule();
+})();
+
 function applySplitRatio(pct) {
   const editorPanel = document.getElementById('editorPanel');
   const previewPanel = document.getElementById('previewPanel');
