@@ -36,7 +36,7 @@ async function setCode(page, lang, value) {
   const errors = [];
   try {
     const page = await browser.newPage({ viewport: { width: 1365, height: 900 } });
-    page.on('pageerror', e => errors.push(e.message));
+    page.on('pageerror', e => errors.push(e.stack || e.message));
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
 
