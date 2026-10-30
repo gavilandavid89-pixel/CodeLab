@@ -3131,6 +3131,19 @@ function initializeDesignProject(project) {
 }
 
 // Touch-friendly canvas navigation: pinch zoom and one-finger pan on empty canvas.
+function toggleDesignPanel(panel) {
+  const root = document.getElementById('designStudioPanel');
+  const button = document.getElementById(panel === 'inspector' ? 'toggleDesignInspector' : 'toggleDesignProperties');
+  if (!root || !button || !['inspector', 'properties'].includes(panel)) return;
+  const className = panel === 'inspector' ? 'design-inspector-hidden' : 'design-properties-hidden';
+  const isHidden = root.classList.toggle(className);
+  button.setAttribute('aria-expanded', String(!isHidden));
+  button.classList.toggle('bg-violet-700', !isHidden);
+  button.title = (isHidden ? 'Mostrar ' : 'Ocultar ') + (panel === 'inspector' ? 'Inspector' : 'propiedades');
+  const viewport = document.getElementById('designCanvasScroll');
+  if (viewport) viewport.style.flex = root.classList.contains('design-inspector-hidden') && root.classList.contains('design-properties-hidden') ? '1 1 100%' : '1 1 auto';
+}
+
 function setupDesignCanvasGestures() {
   const viewport = document.getElementById('designCanvasScroll');
   if (!viewport || viewport.dataset.gesturesBound === 'true') return;
