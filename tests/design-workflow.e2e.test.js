@@ -745,9 +745,9 @@ async function waitForPersistedProject(page, projectName) {
         const reader = new FileReader();
         reader.onload = () => {
           const buffer = reader.result;
-          if (/\\.json$/.test(this.download) || /\\.svg$/.test(this.download)) {
+          if (/\.json$/.test(this.download) || /\.svg$/.test(this.download)) {
             artifact.text = new TextDecoder().decode(buffer);
-          } else if (/\\.png$/.test(this.download)) {
+          } else if (/\.png$/.test(this.download)) {
             const bytes = new Uint8Array(buffer);
             const view = new DataView(buffer);
             artifact.signature = Array.from(bytes.slice(0, 8));
