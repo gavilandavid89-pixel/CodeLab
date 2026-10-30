@@ -145,3 +145,6 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - En orientación horizontal se reduce la altura de la barra de herramientas y del Inspector para aprovechar el espacio disponible.
 - Las acciones de diseño siguen disponibles desde la barra compacta. Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 
+
+- El panel que antes se titulaba «Capas» ahora se titula «Inspector».
+- Los paneles Inspector y Propiedades se pueden ocultar y volver a abrir desde la barra del editor; al ocultarlos, el lienzo recupera el espacio disponible. Esto facilita trabajar con diagramas y conexiones de nodos.
