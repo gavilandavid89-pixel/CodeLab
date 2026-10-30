@@ -14,6 +14,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +28,7 @@ jobs:
           node --check public/app.js
           node --check public/capture.js
           node --check public/design-tools.js
+          node --check public/design-flow.js
           node --check public/component-library.js
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
