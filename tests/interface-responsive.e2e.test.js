@@ -53,6 +53,10 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#studioView').waitFor({ state: 'visible', timeout: 15000 });
     await page.waitForFunction(name => document.getElementById('currentProjectTitle')?.textContent === name,
       WEB_NAME, { timeout: 10000 });
+    assert.notEqual(await page.locator('#editorPanel').evaluate(el => getComputedStyle(el).display), 'none',
+      'web workspace should display its code editor');
+    assert.equal(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
+      'web workspace must not show the design toolbar/canvas');
 
     const bottomBar = page.locator('#mobileBottomBar');
     await bottomBar.waitFor({ state: 'visible' });
@@ -92,6 +96,10 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       const project = typeof getCurrentProject === 'function' ? getCurrentProject() : null;
       return project && project.name === name && project.type === 'design';
     }, DESIGN_NAME, { timeout: 10000 });
+    assert.equal(await page.locator('#editorPanel').evaluate(el => getComputedStyle(el).display), 'none',
+      'design workspace must hide the web editor toolbar');
+    assert.notEqual(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
+      'design workspace should show its own toolbar/canvas');
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designCanvas [data-design-id]').first().waitFor({ state: 'visible' });
     assert.ok(await page.locator('#designProperties').isVisible(),
