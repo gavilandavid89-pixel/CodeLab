@@ -19,6 +19,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 
 - `status`: concise page/API readiness signals.
 - `connections_status`: API health, GitHub/Google OAuth configured booleans, and AI provider configuration.
+- `ai_ping`: one low-token request through the existing AI provider endpoint; reports success/failure and model without returning model output.
 - `read_page`: a bounded text snapshot of the public page.
 - `list_controls`: visible DOM control metadata.
 - `read_element`, `fill`, `select`, `click`: allowlisted DOM interactions using a CSS selector; `click` requires explicit approval.
@@ -40,4 +41,4 @@ Never place API keys, access tokens, cookies, or private project contents in iss
 
 ## Deployment state
 
-The issue-triggered bridge is merged into `main` and a real `status` command succeeded on 2026-10-30. A follow-up change adds safer readiness handling and connection diagnostics; it is also merged into `main`. The operational connection still has an important limitation: it reaches the public, unauthenticated CodeLab site, not the user's signed-in workspace or private server internals. The CodeLab Render app itself is unchanged by the bridge-only updates.
+The issue-triggered bridge is merged into `main`; real `status`, `list_controls`, and `connections_status` commands succeeded on 2026-10-30. The first AI ping exposed a DNS callback compatibility bug, which was fixed; a subsequent live ping returned HTTP 200 using `openai/gpt-oss-120b` via Groq. The live health response reports GitHub OAuth and Google OAuth as not configured, while the server-side AI key is configured. The operational browser connection still uses a fresh anonymous session; it does not inherit the user's signed-in session or expose private workspace data. Keep this distinction explicit.
