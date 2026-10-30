@@ -1655,7 +1655,7 @@ async function waitForPersistedProject(page, projectName) {
     const targetProjectId = await page.evaluate(() => getCurrentProject().id);
     await page.locator(`button[onclick="addDesignElement('heading')"]`).click();
     await page.locator('#openDesignFlowGraph').click();
-    await page.locator('#designFlowGraphModal').waitFor({ state: 'visible' });
+    await page.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 0 });
     await page.locator('#designFlowChoose').click();
     await page.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     await page.waitForFunction(id => document.querySelector('[data-flow-action="' + id + '"]')?.className.includes('border-yellow-300'), flowButtonId, { timeout: 5000 });
