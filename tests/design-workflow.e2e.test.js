@@ -1708,8 +1708,18 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
       null, { timeout: 15000 });
     await page.locator('#switchToDesignBtn').click();
-    await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
-      sourceProjectId, { timeout: 10000 });
+    try {
+      await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
+        sourceProjectId, { timeout: 10000 });
+    } catch (error) {
+      const state = await page.evaluate(() => ({
+        project: typeof getCurrentProject === 'function' ? { id: getCurrentProject()?.id, type: getCurrentProject()?.type } : null,
+        mutationLock: typeof creatingProjectInFlight !== 'undefined' ? creatingProjectInFlight : 'unavailable',
+        syncStatus: document.getElementById('syncStatus')?.innerText || '',
+        visibleToasts: Array.from(document.querySelectorAll('[role=alert], [data-toast], .toast')).map(el => el.innerText).filter(Boolean).slice(-5)
+      }));
+      throw new Error('Workspace switch to design did not complete: ' + JSON.stringify(state) + '; ' + error.message);
+    }
     await page.waitForFunction(() => !document.getElementById('designStudioPanel')?.classList.contains('hidden'));
     // Workspace type changes before the async persistence lock is released.
     await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
