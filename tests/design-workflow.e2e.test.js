@@ -1893,6 +1893,40 @@ async function waitForPersistedProject(page, projectName) {
       } catch (_) { return false; }
     }, { sourceProjectId, targetProjectId }, { timeout: 15000 });
 
+    // Persistence endurance after real mutations: repeatedly reopen the same
+    // project after the destination page is deleted, confirming that the source
+    // design, generated web code, and graph cleanup survive server round-trips.
+    const durableSourceName = PROJECT_NAME;
+    for (let reloadCycle = 1; reloadCycle <= 6; reloadCycle += 1) {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+      await page.locator('#welcomeDashboard').waitFor({ state: 'visible', timeout: 15000 });
+      const durableCard = page.locator('#projectsGrid > div').filter({
+        has: page.locator('h4').getByText(durableSourceName, { exact: true })
+      });
+      await durableCard.locator('button[data-action="open"]').click();
+      await page.waitForFunction(id => getCurrentProject()?.id === id, sourceProjectId, { timeout: 15000 });
+      const durableState = await page.evaluate(({ sourceProjectId, targetProjectId }) => {
+        const project = projects.find(item => item.id === sourceProjectId);
+        return {
+          sameProject: getCurrentProject()?.id === sourceProjectId,
+          hasDesignLayers: (project?.design?.elements || []).some(element => element.type === 'button'),
+          hasGeneratedWeb: String(project?.code?.html || '').includes('data-page-id="' + targetProjectId + '"'),
+          hasDanglingConnection: (project?.design?.flowConnections || []).some(connection => connection.targetProjectId === targetProjectId)
+        };
+      }, { sourceProjectId, targetProjectId });
+      assert.equal(durableState.sameProject, true, 'reload cycle ' + reloadCycle + ' must reopen the original project identity');
+      assert.equal(durableState.hasDesignLayers, true, 'reload cycle ' + reloadCycle + ' must retain design layers');
+      assert.equal(durableState.hasGeneratedWeb, true, 'reload cycle ' + reloadCycle + ' must retain generated web output');
+      assert.equal(durableState.hasDanglingConnection, false, 'reload cycle ' + reloadCycle + ' must not restore deleted-page links');
+      await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
+        null, { timeout: 15000 });
+      console.log('Persistence/reload endurance passed: ' + reloadCycle + '/6 cycles.');
+      await page.evaluate(() => returnToDashboard());
+      await page.locator('#welcomeDashboard').waitFor({ state: 'visible', timeout: 10000 });
+    }
+    console.log('Persistence endurance passed: six full reload/reopen cycles retained both workspaces and graph cleanup.');
+
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
   } finally {
