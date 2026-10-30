@@ -41,7 +41,7 @@ async function createProject(page, type, name) {
     await page.locator('#selector').fill('#designToolsTab-accessibility');
     await page.locator('#clickElement').click();
     await agentApp.locator('#designToolsTab-accessibility').waitFor({ state: 'visible' });
-    await agentApp.locator('#designToolsTab-accessibility').waitFor(async el => (await el.getAttribute('aria-selected')) === 'true');
+    assert.equal(await agentApp.locator('#designToolsTab-accessibility').getAttribute('aria-selected'), 'true');
     await page.locator('#selector').fill('#closeDesignTools');
     await page.locator('#clickElement').click();
     await agentApp.locator('#designToolsModal').waitFor({ state: 'hidden', timeout: 10000 });
