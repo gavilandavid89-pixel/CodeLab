@@ -108,7 +108,30 @@
     }
     #studioView #mainSplit { flex: 1 1 auto; }
     #designStudioPanel { max-width: 100%; }
-    #designCanvasScroll { min-width: 0; overscroll-behavior: contain; }
+    #designCanvasScroll { min-width: 0; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+    #designStudioPanel > .design-toolbar { flex-wrap: wrap; }
+    #designCanvas { transform-origin: top left; touch-action: none; user-select: none; }
+    #designCanvasScroll { position: relative; }
+    #designCanvasScroll.design-gesture-active { cursor: grabbing; }
+    @media (max-width: 767px) {
+      #designStudioPanel { overflow: hidden !important; }
+      #designStudioPanel > .design-toolbar { gap: 6px !important; padding: 6px 8px !important; max-height: 104px; overflow-y: auto; white-space: normal !important; }
+      #designStudioPanel > .design-toolbar > .ml-auto { margin-left: 0 !important; flex-wrap: wrap; }
+      #designStudioPanel #designCanvasScroll { padding: 12px !important; flex: 1 1 55%; min-height: 120px; }
+      #designStudioPanel #designCanvasScroll > div:first-child { display: none; }
+      #designStudioPanel aside:first-child { display: none !important; }
+      #designStudioPanel aside:last-child { width: 100% !important; max-height: min(34dvh, 260px) !important; flex: 0 0 auto; border-left: 0 !important; border-top: 1px solid #1e293b; }
+      #designStudioPanel aside:last-child > div:first-child { padding: 6px 10px !important; }
+      #designStudioPanel #designProperties { padding: 8px !important; }
+      #designStudioPanel aside:last-child > div:last-child { display: flex; gap: 8px; padding: 6px 8px !important; }
+      #designStudioPanel aside:last-child > div:last-child button { flex: 1; }
+      #designStudioPanel .design-toolbar button { min-height: 36px; }
+    }
+    @media (orientation: landscape) and (max-width: 900px) {
+      #designStudioPanel > .design-toolbar { max-height: 72px; }
+      #designStudioPanel #designCanvasScroll { flex-basis: 65%; }
+      #designStudioPanel aside:last-child { max-height: 28dvh !important; }
+    }
     @media (max-width: 767px) {
       #welcomeDashboard > header { flex-wrap: wrap; }
       #welcomeDashboard main { min-width: 0; width: 100%; }
@@ -443,7 +466,7 @@
 
       <!-- ESPACIO DE DISEÑO VISUAL -->
       <section id="designStudioPanel" class="hidden flex-1 min-h-0 bg-slate-950 text-slate-100 flex-col">
-        <div class="flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
+        <div class="design-toolbar flex flex-wrap items-center gap-2 overflow-x-auto px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
           <div class="flex items-center gap-1">
             <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
             <button onclick="designRedo()" id="designRedoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
