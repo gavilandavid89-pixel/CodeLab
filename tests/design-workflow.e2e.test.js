@@ -1645,6 +1645,22 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(generatedFlowHtml.includes('data-page-id="' + targetProjectId + '"'), 'generated web must include the connected destination page');
     assert.ok(generatedFlowHtml.includes('data-flow-to="' + targetProjectId + '"'), 'generated option must navigate to the connected destination');
 
+    // A converted web project must retain a durable link to its source design,
+    // and the editor must offer a safe route back without replacing either project.
+    const convertedProjectId = await page.evaluate(() => getCurrentProject().id);
+    const returnButton = page.locator('#returnToDesignBtn');
+    await returnButton.waitFor({ state: 'visible', timeout: 5000 });
+    await returnButton.click();
+    await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
+      sourceProjectId, { timeout: 10000 });
+    await page.waitForFunction(() => !document.getElementById('designStudioPanel')?.classList.contains('hidden'));
+    await page.evaluate(id => openProject(id), convertedProjectId);
+    await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'web',
+      convertedProjectId, { timeout: 10000 });
+    await page.locator('#returnToDesignBtn').waitFor({ state: 'visible', timeout: 5000 });
+    assert.equal(await page.evaluate(() => getCurrentProject().sourceDesignProjectId), sourceProjectId,
+      'converted web must persist the source design project ID');
+
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
   } finally {
