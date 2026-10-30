@@ -38,6 +38,7 @@ jobs:
           node --check tests/design-tools-usage.e2e.test.js
           node --check tests/interface-responsive.e2e.test.js
           node --check tests/web-editor-ui.e2e.test.js
+          node --check tests/continuous-ui-stress.e2e.test.js
       - name: Check version metadata consistency
         run: node tests/version-consistency.test.js
       - name: Audit static UI event wiring and IDs
@@ -80,6 +81,7 @@ jobs:
           node tests/design-tools-usage.e2e.test.js
           node tests/interface-responsive.e2e.test.js
           node tests/web-editor-ui.e2e.test.js
+          node tests/continuous-ui-stress.e2e.test.js
       - name: Test offline save and reconnect recovery
         shell: bash
         run: |
