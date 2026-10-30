@@ -727,7 +727,8 @@ async function waitForPersistedProject(page, projectName) {
     await page.evaluate(() => {
       window.__designCaptureArtifacts = [];
       window.__designCaptureBlobs = new Map();
-      window.__nativeDesignCreateObjectURL = URL.createObjectURL.bind(URL);
+      window.__nativeDesignCreateObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+      window.__nativeDesignAnchorClickDescriptor = Object.getOwnPropertyDescriptor(HTMLAnchorElement.prototype, 'click');
       window.__nativeDesignAnchorClick = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = blob => {
         const url = window.__nativeDesignCreateObjectURL(blob);
@@ -808,8 +809,10 @@ async function waitForPersistedProject(page, projectName) {
     }
 
     await page.evaluate(() => {
-      HTMLAnchorElement.prototype.click = window.__nativeDesignAnchorClick;
-      URL.createObjectURL = window.__nativeDesignCreateObjectURL;
+      if (window.__nativeDesignAnchorClickDescriptor) Object.defineProperty(HTMLAnchorElement.prototype, 'click', window.__nativeDesignAnchorClickDescriptor);
+      else delete HTMLAnchorElement.prototype.click;
+      if (window.__nativeDesignCreateObjectURLDescriptor) Object.defineProperty(URL, 'createObjectURL', window.__nativeDesignCreateObjectURLDescriptor);
+      else delete URL.createObjectURL;
     });
 
     // 6c. Configure a safe button destination to exercise prototype navigation.
