@@ -11,7 +11,7 @@ if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
 
 function parseCommand(raw) {
   if (typeof raw !== 'string' || raw.length > 12000) throw new Error('Issue body missing or too large.');
-  const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/, '');
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
