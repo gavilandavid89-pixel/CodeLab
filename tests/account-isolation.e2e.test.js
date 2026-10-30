@@ -67,7 +67,7 @@ function project(id, name, marker) {
   assert.equal(new Set(initialized.map(x => x.token)).size, 10, 'All 10 users must receive distinct workspace tokens');
 
   const firstSaveResults = await Promise.all(initialized.map(async (account, i) => {
-    const marker = 'PRIVATE_USER_' + (i + 1);
+    const marker = 'PRIVATE_USER_' + String(i + 1).padStart(2, '0');
     const result = await request('/api/workspace/' + encodeURIComponent(account.workspaceId), {
       method: 'PUT', cookie: account.user.cookie, token: account.token,
       body: { baseRevision: account.revision, projects: [project('project-' + (i + 1), 'Private project ' + (i + 1), marker)] }
@@ -114,7 +114,7 @@ function project(id, name, marker) {
   // the other must receive 409 rather than silently overwriting the winner.
   const conflictResults = await Promise.all(initialized.map(async (account, i) => {
     const revision = snapshots[i].revision;
-    const attempts = await Promise.all(['RACE_A_' + i, 'RACE_B_' + i].map(marker =>
+    const attempts = await Promise.all(['RACE_A_' + String(i + 1).padStart(2, '0'), 'RACE_B_' + String(i + 1).padStart(2, '0')].map(marker =>
       request('/api/workspace/' + encodeURIComponent(account.workspaceId), {
         method: 'PUT', cookie: account.user.cookie, token: account.token,
         body: { baseRevision: revision, projects: [project('project-' + i, 'Race ' + marker, marker)] }
@@ -132,9 +132,9 @@ function project(id, name, marker) {
     assert.equal(result.status, 200);
     assert.equal(result.json.revision, snapshots[i].revision + 1, 'Revision must advance once despite concurrent edits');
     const html = result.json.projects[0].code.html;
-    assert.ok(html.includes('RACE_A_' + i) || html.includes('RACE_B_' + i), 'Winning edit must persist');
+    assert.ok(html.includes('RACE_A_' + String(i + 1).padStart(2, '0')) || html.includes('RACE_B_' + String(i + 1).padStart(2, '0')), 'Winning edit must persist');
     for (let j = 0; j < initialized.length; j++) {
-      if (j !== i) assert.equal(JSON.stringify(result.json).includes('RACE_A_' + j) || JSON.stringify(result.json).includes('RACE_B_' + j), false, 'Concurrent edits must remain isolated');
+      if (j !== i) assert.equal(JSON.stringify(result.json).includes('RACE_A_' + String(j + 1).padStart(2, '0')) || JSON.stringify(result.json).includes('RACE_B_' + String(j + 1).padStart(2, '0')), false, 'Concurrent edits must remain isolated');
     }
     return result.json;
   }));
