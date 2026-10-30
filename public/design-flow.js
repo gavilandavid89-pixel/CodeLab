@@ -49,7 +49,7 @@
   function openDesignFlowGraph() {
     ensureModal(); modal.classList.remove('hidden'); updateChooseButton(); renderGraph();
   }
-  function closeDesignFlowGraph() { if (modal) modal.classList.add('hidden'); pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); }
+  function closeDesignFlowGraph() { if (modal) modal.classList.add('hidden'); pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); const halo=svg.querySelector('[data-draft-halo]'); if(halo) halo.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); }
   function renderGraph() {
     if (!modal || modal.classList.contains('hidden')) return;
     const cards = modal.querySelector('#designFlowCards');
@@ -139,7 +139,7 @@
     if (!modal || modal.classList.contains('hidden')) return;
     const w = Math.max(canvas.scrollWidth, canvas.clientWidth), h = Math.max(canvas.scrollHeight, canvas.clientHeight);
     svg.setAttribute('width', w); svg.setAttribute('height', h); svg.style.width = w+'px'; svg.style.height = h+'px';
-    svg.querySelectorAll('path[data-connection]').forEach(p => p.remove());
+    svg.querySelectorAll('path[data-connection],path[data-wire-halo]').forEach(p => p.remove());
     for (const c of allConnections()) {
       const a = pointFor('[data-flow-source-port]','data-flow-source-port',c.sourceElementId);
       const sourceCard = Array.from(modal.querySelectorAll('[data-flow-source-project]')).find(el => el.dataset.flowSourceProject === c.sourceProjectId && el.dataset.flowAction === c.sourceElementId);
