@@ -15,7 +15,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'click', 'read_element', 'fill', 'select']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'click', 'read_element', 'fill', 'select']);
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   if (!command.expires_at || !Number.isFinite(Date.parse(command.expires_at))) throw new Error('A valid expires_at is required.');
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
@@ -73,7 +73,22 @@ try {
   // Let the app's own initialization and initial API calls finish before inspecting it.
   await page.waitForTimeout(2500);
 
-  if (command.action === 'connections_status') {
+  if (command.action === 'ai_ping') {
+    const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
+      timeout: 70000,
+      headers: { 'content-type': 'application/json' },
+      data: {}
+    });
+    let data = {};
+    try { data = await response.json(); } catch (_) {}
+    result = {
+      httpStatus: response.status(),
+      ok: response.ok() && data.ok === true,
+      model: data.model || null,
+      error: data.error || null,
+      message: data.ok === true ? 'El proveedor de IA respondió al ping.' : (data.message || data.error || 'El ping de IA no fue exitoso.')
+    };
+  } else if (command.action === 'connections_status') {
     const [health, auth] = await Promise.all([
       getJson(page, '/api/health'),
       getJson(page, '/api/auth/status')
