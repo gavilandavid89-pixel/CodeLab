@@ -3131,17 +3131,16 @@ function initializeDesignProject(project) {
 }
 
 // Touch-friendly canvas navigation: pinch zoom and one-finger pan on empty canvas.
-function toggleDesignPanel(panel) {
+function toggleDesignPanel(panel = 'inspector') {
   const root = document.getElementById('designStudioPanel');
-  const button = document.getElementById(panel === 'inspector' ? 'toggleDesignInspector' : 'toggleDesignProperties');
-  if (!root || !button || !['inspector', 'properties'].includes(panel)) return;
-  const className = panel === 'inspector' ? 'design-inspector-hidden' : 'design-properties-hidden';
-  const isHidden = root.classList.toggle(className);
+  const button = document.getElementById('toggleDesignInspector');
+  if (!root || !button || panel !== 'inspector') return;
+  const isHidden = root.classList.toggle('design-inspector-hidden');
   button.setAttribute('aria-expanded', String(!isHidden));
   button.classList.toggle('bg-violet-700', !isHidden);
-  button.title = (isHidden ? 'Mostrar ' : 'Ocultar ') + (panel === 'inspector' ? 'Inspector' : 'propiedades');
+  button.title = (isHidden ? 'Mostrar ' : 'Ocultar ') + 'Inspector';
   const viewport = document.getElementById('designCanvasScroll');
-  if (viewport) viewport.style.flex = root.classList.contains('design-inspector-hidden') && root.classList.contains('design-properties-hidden') ? '1 1 100%' : '1 1 auto';
+  if (viewport) viewport.style.flex = isHidden ? '1 1 100%' : '1 1 auto';
 }
 
 function setupDesignCanvasGestures() {
