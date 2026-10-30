@@ -1703,6 +1703,10 @@ async function waitForPersistedProject(page, projectName) {
     const sharedProjectId = await page.evaluate(() => getCurrentProject().id);
     assert.equal(sharedProjectId, sourceProjectId, 'design-to-web conversion must not create a second project');
     assert.ok(await page.evaluate(() => !!getCurrentProject().design), 'the source design document must remain attached');
+    // The conversion exposes type='web' before its awaited persistence settles.
+    // Wait for its mutation lock to release before issuing another workspace action.
+    await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
+      null, { timeout: 15000 });
     await page.locator('#switchToDesignBtn').click();
     await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
       sourceProjectId, { timeout: 10000 });
