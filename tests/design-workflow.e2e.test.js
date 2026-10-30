@@ -1643,7 +1643,7 @@ async function waitForPersistedProject(page, projectName) {
     // and conversion emits both connected pages as a working single-page web app.
     const sourceProjectId = await page.evaluate(() => getCurrentProject().id);
     await page.locator(`button[onclick="addDesignElement('button')"]`).click();
-    const flowButtonId = await page.evaluate(() => getCurrentProject().design.elements.find(el => el.type === 'button').id);
+    const flowButtonId = await page.evaluate(() => getCurrentProject().design.elements.filter(el => el.type === 'button').at(-1)?.id);
     await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
     const targetName = 'Página destino de nodos ' + Date.now();
@@ -1655,7 +1655,7 @@ async function waitForPersistedProject(page, projectName) {
     const targetProjectId = await page.evaluate(() => getCurrentProject().id);
     await page.locator(`button[onclick="addDesignElement('heading')"]`).click();
     await page.locator('#openDesignFlowGraph').click();
-    await page.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 0 });
+    await page.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#designFlowChoose').click();
     await page.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     await page.waitForFunction(id => document.querySelector('[data-flow-action="' + id + '"]')?.className.includes('border-yellow-300'), flowButtonId, { timeout: 5000 });
@@ -1667,6 +1667,10 @@ async function waitForPersistedProject(page, projectName) {
       const source = projects.find(item => item.id === sourceProjectId);
       return source?.design?.flowConnections?.some(c => c.sourceElementId === flowButtonId && c.targetProjectId === targetProjectId);
     }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
+    assert.equal(await page.evaluate(({ sourceProjectId, flowButtonId }) => {
+      const source = projects.find(item => item.id === sourceProjectId);
+      return source?.design?.flowConnections?.filter(c => c.sourceElementId === flowButtonId).length || 0;
+    }, { sourceProjectId, flowButtonId }), 1, 'one drag must create exactly one outgoing connection');
     await page.locator('#designFlowClose').click();
     await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
