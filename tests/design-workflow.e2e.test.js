@@ -726,13 +726,25 @@ async function waitForPersistedProject(page, projectName) {
     // multiple automatic downloads, which is unrelated to whether both artifacts were generated.
     await page.evaluate(() => {
       window.__designCaptureArtifacts = [];
-      downloadDesignAsset = (filename, content, type) => {
-        const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
-        const artifact = { name: filename, type: blob.type, size: blob.size };
+      window.__designCaptureBlobs = new Map();
+      const nativeCreateObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        const url = nativeCreateObjectURL(blob);
+        window.__designCaptureBlobs.set(url, blob);
+        return url;
+      };
+      HTMLAnchorElement.prototype.click = function() {
+        if (!this.download) return;
+        const blob = window.__designCaptureBlobs.get(this.href);
+        if (!blob) {
+          window.__designCaptureArtifacts.push({ name: this.download, error: 'download blob not found' });
+          return;
+        }
+        const artifact = { name: this.download, type: blob.type, size: blob.size };
         window.__designCaptureArtifacts.push(artifact);
-        if (/\.json$/.test(filename)) {
+        if (/\\.json$/.test(this.download) || /\\.svg$/.test(this.download)) {
           blob.text().then(text => { artifact.text = text; });
-        } else if (/\.png$/.test(filename)) {
+        } else if (/\\.png$/.test(this.download)) {
           blob.arrayBuffer().then(buffer => {
             const bytes = new Uint8Array(buffer);
             const view = new DataView(buffer);
@@ -740,8 +752,6 @@ async function waitForPersistedProject(page, projectName) {
             artifact.width = view.getUint32(16);
             artifact.height = view.getUint32(20);
           });
-        } else if (/\.svg$/.test(filename)) {
-          blob.text().then(text => { artifact.text = text; });
         }
       };
     });
