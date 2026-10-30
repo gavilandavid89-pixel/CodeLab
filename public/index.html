@@ -507,7 +507,7 @@
           <div class="relative">
             <button id="designExportMenuButton" type="button" aria-expanded="false" aria-controls="designExportMenu" onclick="toggleDesignExportMenu()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-download mr-1"></i> Exportar <i class="fa-solid fa-chevron-down ml-1 text-[9px]"></i></button>
             <div id="designExportMenu" role="menu" aria-label="Formatos de exportación" class="hidden absolute left-0 top-full mt-1 z-50 min-w-44 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
-              <button type="button" role="menuitem" onclick="exportDesignHtml(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-brands fa-html5 mr-2 text-orange-400"></i>HTML adaptable</button>
+
               <button id="exportDesignSvgOption" type="button" role="menuitem" onclick="exportDesignSvg(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-bezier-curve mr-2 text-cyan-400"></i>SVG vectorial</button>
               <button id="exportDesignJsonOption" type="button" role="menuitem" onclick="exportDesignProjectJson(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-code mr-2 text-violet-400"></i>Proyecto JSON (respaldo)</button>
               <button id="importDesignProjectJsonOption" type="button" role="menuitem" onclick="closeDesignExportMenu(); document.getElementById('designProjectJsonFile').click()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-arrow-up mr-2 text-emerald-400"></i>Importar respaldo como proyecto</button>
@@ -521,7 +521,7 @@
             <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
               <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
             </select>
-            <button onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"><i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> Crear web</button>
+
             <button id="openDesignFlowGraph" type="button" onclick="openDesignFlowGraph()" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold" title="Conectar opciones con páginas mediante nodos"><i class="fa-solid fa-diagram-project mr-1"></i> Nodos</button>
           </div>
         </div>
