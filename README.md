@@ -136,3 +136,12 @@ Los proyectos de diseño y web permiten elegir captura PNG a 1×, 2×, 3× o 4×
 La acción **Convertir a web** conserva las capas de imagen incrustadas, las elipses, los estilos y los enlaces seguros de los botones; la página generada ajusta el marco al ancho de pantalla y recalcula la escala al redimensionar la ventana.
 
 Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML autónomas: navegación, hero de landing, tarjetas de características, métricas, precios, formulario de contacto, panel de proyecto y pie de página. Permite buscar y filtrar por categoría, previsualizar el HTML en un iframe aislado, copiar el fragmento, exportar una página HTML adaptable e insertar el fragmento seleccionado en el HTML del proyecto web activo. Los componentes incluyen sus estilos en un bloque local para funcionar sin una librería CSS externa. La inserción conserva el HTML existente y solo está disponible desde proyectos web, no desde proyectos de diseño.
+
+
+## Editor visual: interacción táctil y organización
+
+- El zoom del lienzo es independiente del zoom de la interfaz. Usa el control de porcentaje para un ajuste preciso o pellizca con dos dedos sobre el área del lienzo en dispositivos táctiles.
+- En móvil, el lienzo conserva el espacio principal; la lista de capas se oculta para evitar una columna estrecha y el Inspector ocupa una franja inferior desplazable.
+- En orientación horizontal se reduce la altura de la barra de herramientas y del Inspector para aprovechar el espacio disponible.
+- Las acciones de diseño siguen disponibles desde la barra compacta. Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
+
