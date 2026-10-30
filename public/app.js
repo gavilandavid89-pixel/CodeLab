@@ -2025,10 +2025,13 @@ async function duplicateProject() {
   );
 }
 
-function toggleCopyBranch() {
+async function toggleCopyBranch() {
   const proj = getCurrentProject();
   if (!proj || !proj.branch) return;
-  if (inCopyBranch) saveInCopyBranch();
+  if (inCopyBranch) {
+    const saved = await saveInCopyBranch();
+    if (!saved) return;
+  }
   aiRequestGeneration++;
   inCopyBranch = !inCopyBranch;
   const banner = document.getElementById('copyAlertBanner');
