@@ -95,11 +95,6 @@
       gestureOrigin = { x: e.clientX, y: e.clientY }; activeTarget = null;
       moveDraft(e);
     }));
-    cards.querySelectorAll('[data-flow-target-project]').forEach(target => target.addEventListener('pointerup', e => {
-      if (!pendingStart) return;
-      e.preventDefault();
-      commitConnection(activeTarget || target);
-    }));
     cards.querySelectorAll('[data-flow-menu]').forEach(check => check.addEventListener('change', () => {
       const p = findProject(check.dataset.flowProject), el = p && p.design.elements.find(item => item.id === check.dataset.flowMenu);
       if (!p || !el) return;
@@ -186,13 +181,20 @@
   function finishDraft(e) {
     if (!pendingStart) return;
     const directTarget = e.target && e.target.closest ? e.target.closest('[data-flow-target-project]') : null;
-    const target = activeTarget || directTarget;
-    if (target) {
-      if (target !== directTarget) commitConnection(target);
-      setTimeout(() => { pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); const halo=svg.querySelector('[data-draft-halo]'); if(halo) halo.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); drawWires(); }, 0);
-    } else {
-      pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null;
-    }
+    const target = directTarget || Array.from(modal.querySelectorAll('[data-flow-target-project]')).find(card => {
+      const r = card.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    }) || null;
+    if (target) commitConnection(target);
+    pendingStart = null;
+    gestureOrigin = null;
+    activeTarget = null;
+    if (draftPath) draftPath.remove();
+    const halo = svg && svg.querySelector('[data-draft-halo]');
+    if (halo) halo.remove();
+    draftPath = null;
+    if (modal) modal.querySelectorAll('[data-flow-target-project]').forEach(t => t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]'));
+    drawWires();
   }
   function buildFlowAwareWebHtml(root, fallbackHtml) {
     const projectsById = new Map(designProjects().map(p => [p.id, p]));
@@ -240,8 +242,7 @@
     return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(root.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.flow-screen{width:100%;min-height:100vh}.flow-viewport{position:relative;width:100%;overflow:hidden}.flow-frame{transform-origin:top left}.flow-frame.auto-layout{width:100%;max-width:100%}@media(max-width:768px){.flow-frame.auto-layout{flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}.flow-frame.auto-layout>*{max-width:100%}}</style></head><body>'+pages+'<script>(function(){var screens=[].slice.call(document.querySelectorAll(".flow-screen"));function show(id){var found=screens.find(function(s){return s.getAttribute("data-page-id")===id});if(!found)return;screens.forEach(function(s){s.hidden=s!==found});fit();window.scrollTo(0,0)}function fit(){var active=screens.find(function(s){return !s.hidden});if(!active)return;var f=active.querySelector(".flow-frame"),v=active.querySelector(".flow-viewport");if(!f||!v)return;if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return}var w=parseFloat(f.style.width)||1440,h=parseFloat(f.style.height)||900,s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px"}document.addEventListener("click",function(e){var nav=e.target.closest("[data-flow-to]");if(nav){e.preventDefault();show(nav.getAttribute("data-flow-to"));return}var menu=e.target.closest("[data-flow-menu]");if(menu){menu.setAttribute("aria-expanded",menu.getAttribute("aria-expanded")!=="true"?"true":"false")}});document.addEventListener("keydown",function(e){var nav=e.target.closest&&e.target.closest('[data-flow-to]');if(nav&&(e.key==='Enter'||e.key===' ')){e.preventDefault();show(nav.getAttribute('data-flow-to'))}});window.addEventListener("resize",fit,{passive:true});window.addEventListener("hashchange",function(){var id=decodeURIComponent(location.hash.slice(1));if(id)show(id)});fit()})();<\/script></body></html>';
   }
 
-  const graphLauncher = document.getElementById('openDesignFlowGraph');
-  if (graphLauncher) graphLauncher.addEventListener('click', openDesignFlowGraph);
+  // The launcher uses the inline handler in index.html; avoid registering a second click path.
 
   window.buildFlowAwareWebHtml = buildFlowAwareWebHtml;
   // Expose the launcher used by the HTML inline handler and automated UI checks.
