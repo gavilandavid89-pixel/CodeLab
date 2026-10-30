@@ -37,8 +37,6 @@ async function waitForPersistedProject(page, projectName) {
       acceptDownloads: true
     });
     const page = await context.newPage();
-    const downloadCdp = await context.newCDPSession(page);
-    await downloadCdp.send('Browser.grantPermissions', { origin: BASE_URL, permissions: ['automatic-downloads'] });
     page.on('pageerror', error => failures.push(error.message));
 
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -724,34 +722,45 @@ async function waitForPersistedProject(page, projectName) {
       'mobile app shell should not introduce document-level horizontal overflow: ' + JSON.stringify(mobileLayout));
 
     // 6b. Exercise the actual AI capture flow and inspect both generated artifacts.
-    const captureDownloads = [];
-    const captureDownloadsReady = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        page.off('download', onCaptureDownload);
-        reject(new Error('AI capture did not produce both context and image artifacts'));
-      }, 15000);
-      function onCaptureDownload(download) {
-        captureDownloads.push(download);
-        if (captureDownloads.length >= 2) {
-          clearTimeout(timeout);
-          page.off('download', onCaptureDownload);
-          resolve();
+    // Capture the download payloads at the app boundary: Chromium headless blocks
+    // multiple automatic downloads, which is unrelated to whether both artifacts were generated.
+    await page.evaluate(() => {
+      window.__designCaptureArtifacts = [];
+      window.downloadDesignAsset = (filename, content, type) => {
+        const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
+        const artifact = { name: filename, type: blob.type, size: blob.size };
+        window.__designCaptureArtifacts.push(artifact);
+        if (/\.json$/.test(filename)) {
+          blob.text().then(text => { artifact.text = text; });
+        } else if (/\.png$/.test(filename)) {
+          blob.arrayBuffer().then(buffer => {
+            const bytes = new Uint8Array(buffer);
+            const view = new DataView(buffer);
+            artifact.signature = Array.from(bytes.slice(0, 8));
+            artifact.width = view.getUint32(16);
+            artifact.height = view.getUint32(20);
+          });
+        } else if (/\.svg$/.test(filename)) {
+          blob.text().then(text => { artifact.text = text; });
         }
-      }
-      page.on('download', onCaptureDownload);
+      };
     });
     await page.selectOption('#designCaptureScale', '4');
     await page.locator('button[onclick="captureDesignForAI()"]').click();
-    await captureDownloadsReady;
-    const captureFiles = await Promise.all(captureDownloads.map(async download => ({
-      name: download.suggestedFilename(),
-      path: await download.path()
-    })));
+    await page.waitForFunction(() => {
+      const artifacts = window.__designCaptureArtifacts || [];
+      return artifacts.length >= 2 && artifacts.every(item =>
+        item.name.endsWith('-contexto-ia.json') ? !!item.text :
+        item.name.endsWith('-captura-ia.png') ? !!item.signature :
+        item.name.endsWith('-captura-ia.svg') ? !!item.text : false
+      );
+    }, null, { timeout: 20000 });
+    const captureFiles = await page.evaluate(() => window.__designCaptureArtifacts);
     const contextFile = captureFiles.find(file => /-contexto-ia\.json$/.test(file.name));
     const imageFile = captureFiles.find(file => /-captura-ia\.(png|svg)$/.test(file.name));
     assert.ok(contextFile, 'AI capture should export structured context JSON');
-    assert.ok(imageFile, 'AI capture should export a visual artifact (PNG or SVG fallback)');
-    const captureContext = JSON.parse(await fs.readFile(contextFile.path, 'utf8'));
+    assert.ok(imageFile, 'AI capture should produce a visual artifact (PNG or SVG fallback)');
+    const captureContext = JSON.parse(contextFile.text);
     assert.equal(captureContext.format, 'codelab-ai-design-capture');
     assert.equal(captureContext.layout.mode, 'auto', 'AI context should record Auto Layout mode');
     assert.equal(captureContext.layout.direction, 'column', 'AI context should record Auto Layout direction');
@@ -766,14 +775,12 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(captureContext.elements.some(item => item.text === 'Prueba integral CodeLab'),
       'capture context should preserve the actual edited element text');
     if (/\.png$/.test(imageFile.name)) {
-      const png = await fs.readFile(imageFile.path);
-      assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a',
+      assert.deepEqual(imageFile.signature, [137, 80, 78, 71, 13, 10, 26, 10],
         'successful PNG capture should produce a valid PNG signature');
-      assert.equal(png.readUInt32BE(16), captureContext.canvas.pixelWidth, 'PNG width should match capture context');
-      assert.equal(png.readUInt32BE(20), captureContext.canvas.pixelHeight, 'PNG height should match capture context');
+      assert.equal(imageFile.width, captureContext.canvas.pixelWidth, 'PNG width should match capture context');
+      assert.equal(imageFile.height, captureContext.canvas.pixelHeight, 'PNG height should match capture context');
     } else {
-      assert.match(await fs.readFile(imageFile.path, 'utf8'), /<svg[\s>]/i,
-        'SVG fallback should contain an SVG document');
+      assert.match(imageFile.text, /<svg[\s>]/i, 'SVG fallback should contain an SVG document');
     }
 
     // 6c. Configure a safe button destination to exercise prototype navigation.
