@@ -102,8 +102,8 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design workspace should show its own toolbar/canvas');
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designCanvas [data-design-id]').first().waitFor({ state: 'visible' });
-    assert.ok(await page.locator('#designProperties').isVisible(),
-      'adding a design layer on mobile should open its properties');
+    assert.equal(await page.locator('#designProperties').count(), 0,
+      'the design editor must not contain a properties panel');
     const touchTargets = await page.locator('#designStudioPanel button:visible').evaluateAll(buttons =>
       buttons.filter(button => {
         const r = button.getBoundingClientRect();
@@ -133,10 +133,8 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#toggleDesignInspector').click();
     assert.equal(await page.locator('#designStudioPanel').evaluate(el => el.classList.contains('design-inspector-hidden')), false,
       'Inspector panel can be reopened');
-    assert.equal(await page.locator('#designProperties').count(), 1,
-      'property controls must exist exactly once inside the unified Inspector');
-    assert.equal(await page.locator('#designLayersPanel #designProperties').count(), 1,
-      'property controls must be nested inside Inspector');
+    assert.equal(await page.locator('#designProperties').count(), 0,
+      'property controls must be removed entirely from the design editor');
     assert.equal(await page.locator('#designPropertiesPanel').count(), 0,
       'separate properties panel must be deleted, not hidden');
     assert.equal(await page.locator('#toggleDesignProperties').count(), 0,
