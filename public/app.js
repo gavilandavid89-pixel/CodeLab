@@ -3403,7 +3403,7 @@ async function captureDesignForAI() {
   if (!project || !project.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
   const captured = captureDesignSvg(project);
   const scaleControl = document.getElementById('designCaptureScale');
-  const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+  const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const designLayout = getDesignLayoutPositions(project.design);
@@ -3442,7 +3442,17 @@ async function captureDesignForAI() {
     image: slug + '-captura-ia.png',
     canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale, background: project.design.background || '#ffffff' },
     elementCount: elements.length,
-    elements,
+    layout: {
+      mode: project.design.layoutMode === 'auto' ? 'auto' : 'free',
+      direction: ['row', 'column'].includes(project.design.layoutDirection) ? project.design.layoutDirection : 'column',
+      gap: Math.max(0, Math.min(200, Number(project.design.layoutGap) || 0)),
+      padding: Math.max(0, Math.min(300, Number(project.design.layoutPadding) || 0))
+    },
+    elements: elements.map((item, index) => {
+      const source = project.design.elements.filter(el => !!el && typeof el === 'object')[index];
+      if (source && source.type === 'image') item.image = { alt: String(source.alt || '').slice(0, 500) };
+      return item;
+    }),
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
   const json = JSON.stringify(context, null, 2);
