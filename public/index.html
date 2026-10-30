@@ -428,6 +428,7 @@
               <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
             </select>
             <button onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"><i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> Crear web</button>
+            <button id="openDesignFlowGraph" type="button" onclick="openDesignFlowGraph()" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold" title="Conectar opciones con páginas mediante nodos"><i class="fa-solid fa-diagram-project mr-1"></i> Nodos</button>
           </div>
         </div>
         <div class="flex flex-1 min-h-0 overflow-hidden flex-col sm:flex-row">
@@ -862,6 +863,7 @@
   <script src="/design-tools.js"></script>
   <script src="/capture.js"></script>
   <script src="/component-library.js"></script>
+  <script src="/design-flow.js"></script>
 </body>
 
 </html>
