@@ -112,6 +112,11 @@
     #designStudioPanel > .design-toolbar { flex-wrap: wrap; }
     #designCanvas { transform-origin: top left; touch-action: none; user-select: none; }
     #designCanvasScroll { position: relative; }
+    #designLayersPanel[hidden], #designPropertiesPanel[hidden] { display: none !important; }
+    #designStudioPanel.design-inspector-hidden #designLayersPanel { display: none !important; }
+    #designStudioPanel.design-properties-hidden #designPropertiesPanel { display: none !important; }
+    #designStudioPanel.design-inspector-hidden.design-properties-hidden #designCanvasScroll { flex: 1 1 100%; }
+    #designStudioPanel.design-inspector-hidden #designCanvasScroll, #designStudioPanel.design-properties-hidden #designCanvasScroll { flex: 1 1 auto; }
     #designCanvasScroll.design-gesture-active { cursor: grabbing; }
     @media (max-width: 767px) {
       #designStudioPanel { overflow: hidden !important; }
@@ -119,7 +124,9 @@
       #designStudioPanel > .design-toolbar > .ml-auto { margin-left: 0 !important; flex-wrap: wrap; }
       #designStudioPanel #designCanvasScroll { padding: 12px !important; flex: 1 1 55%; min-height: 120px; }
       #designStudioPanel #designCanvasScroll > div:first-child { display: none; }
-      #designStudioPanel aside:first-child { display: none !important; }
+      #designStudioPanel #designLayersPanel { display: flex !important; width: 100% !important; max-height: 22dvh; flex: 0 0 auto; border-right: 0 !important; border-top: 1px solid #1e293b; }
+      #designStudioPanel #designLayersPanel > div:first-child { padding: 6px 10px !important; }
+      #designStudioPanel #designLayersPanel > div:last-child { display: none; }
       #designStudioPanel aside:last-child { width: 100% !important; max-height: min(34dvh, 260px) !important; flex: 0 0 auto; border-left: 0 !important; border-top: 1px solid #1e293b; }
       #designStudioPanel aside:last-child > div:first-child { padding: 6px 10px !important; }
       #designStudioPanel #designProperties { padding: 8px !important; }
@@ -467,6 +474,8 @@
       <!-- ESPACIO DE DISEÑO VISUAL -->
       <section id="designStudioPanel" class="hidden flex-1 min-h-0 bg-slate-950 text-slate-100 flex-col">
         <div class="design-toolbar flex flex-wrap items-center gap-2 overflow-x-auto px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
+          <button id="toggleDesignInspector" type="button" onclick="toggleDesignPanel('inspector')" aria-expanded="true" aria-controls="designLayersPanel" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar Inspector"><i class="fa-solid fa-panel-left"></i><span class="hidden sm:inline ml-1">Inspector</span></button>
+          <button id="toggleDesignProperties" type="button" onclick="toggleDesignPanel('properties')" aria-expanded="true" aria-controls="designPropertiesPanel" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar propiedades"><i class="fa-solid fa-sliders"></i><span class="hidden sm:inline ml-1">Propiedades</span></button>
           <div class="flex items-center gap-1">
             <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
             <button onclick="designRedo()" id="designRedoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
@@ -527,8 +536,8 @@
           </div>
         </div>
         <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden flex-col sm:flex-row">
-          <aside class="hidden sm:flex w-48 lg:w-56 flex-col border-r border-slate-800 bg-slate-900/80 shrink-0">
-            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Capas</div>
+          <aside id="designLayersPanel" class="hidden sm:flex w-48 lg:w-56 flex-col border-r border-slate-800 bg-slate-900/80 shrink-0">
+            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Inspector</div>
             <div id="designLayers" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
             <div class="px-3 py-2 border-t border-slate-800 text-[10px] text-slate-500">Selecciona una capa para editarla.</div>
           </aside>
