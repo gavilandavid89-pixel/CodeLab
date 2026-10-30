@@ -2,13 +2,19 @@ name: Validate CodeLab
 
 on:
   push:
-    branches: ["main", "fix/**"]
+    branches: ["main", "fix/**", "feature/**"]
   pull_request:
     branches: ["main"]
+
+# Keep the newest run for each event/branch while preserving separate push and PR checks.
+concurrency:
+  group: codelab-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,6 +26,98 @@ jobs:
         run: |
           node --check server.js
           node --check public/app.js
+          node --check public/capture.js
+          node --check public/design-tools.js
+          node --check public/design-flow.js
+          node --check public/component-library.js
+          node --check tests/server-resilience.test.js
+          node --check tests/version-consistency.test.js
+          node --check tests/ai-settings-isolation.test.js
+          node --check tests/interface-wiring.test.js
+          node --check tests/account-isolation.e2e.test.js
+          node --check tests/design-tools-usage.e2e.test.js
+          node --check tests/interface-responsive.e2e.test.js
+          node --check tests/web-editor-ui.e2e.test.js
+          node --check tests/continuous-ui-stress.e2e.test.js
+      - name: Check version metadata consistency
+        run: node tests/version-consistency.test.js
+      - name: Audit static UI event wiring and IDs
+        run: node tests/interface-wiring.test.js
+      - name: Check per-account AI settings isolation
+        run: node tests/ai-settings-isolation.test.js
+      - name: Test server resilience and workspace persistence
+        run: node tests/server-resilience.test.js
+      - name: Test AI-ready design capture export
+        run: node tests/design-capture.test.js
+      - name: Test design system tokens and contrast
+        run: node tests/design-tools.test.js
+      - name: Test reusable component library
+        run: node tests/component-library.test.js
+      - name: Browser test AI-ready web capture
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install chromium
+          node tests/capture-browser.test.js
+          node tests/design-tools-browser.test.js
+          node tests/component-library-browser.test.js
+      - name: Chained full-system E2E in the real app
+        shell: bash
+        run: |
+          export PORT=3188
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3188"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-e2e-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-e2e-secret"
+          node server.js > "$RUNNER_TEMP/codelab-e2e.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab E2E server log ====="; cat "$RUNNER_TEMP/codelab-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/design-workflow.e2e.test.js
+          node tests/design-tools-usage.e2e.test.js
+          node tests/interface-responsive.e2e.test.js
+          node tests/web-editor-ui.e2e.test.js
+          node tests/continuous-ui-stress.e2e.test.js
+      - name: Test offline save and reconnect recovery
+        shell: bash
+        run: |
+          export PORT=3189
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3189"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-offline-e2e-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-offline-e2e-secret"
+          node server.js > "$RUNNER_TEMP/codelab-offline-e2e.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab offline E2E server log ====="; cat "$RUNNER_TEMP/codelab-offline-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/offline-sync.e2e.test.js
+      - name: Test concurrent account isolation
+        shell: bash
+        run: |
+          export PORT=3190
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3190"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-account-isolation-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-account-isolation-secret"
+          node server.js > "$RUNNER_TEMP/codelab-account-isolation.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab account isolation server log ====="; cat "$RUNNER_TEMP/codelab-account-isolation.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/account-isolation.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
@@ -30,7 +128,7 @@ jobs:
           export AI_MODEL="openai/gpt-oss-120b"
           node server.js > "$RUNNER_TEMP/codelab.log" 2>&1 &
           SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab server log ====="; cat "$RUNNER_TEMP/codelab.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
             if curl --silent --fail http://127.0.0.1:3187/api/health > "$RUNNER_TEMP/health.json"; then
               break

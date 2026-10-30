@@ -1,0 +1,806 @@
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) {
+    root.CodeLabDesignTools = api;
+    if (typeof document !== 'undefined') {
+      const start = () => api.init();
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+      else start();
+    }
+  }
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+
+  const STORAGE_KEY = 'codelab-design-system-v1';
+  // Serialize writes so a slow earlier request cannot overwrite a newer design system.
+  let workspaceSettingsSyncQueue = Promise.resolve();
+  let workspaceSettingsSyncSequence = 0;
+  const DEFAULTS = Object.freeze({
+    name: 'Mi sistema visual',
+    primary: '#06b6d4',
+    secondary: '#2563eb',
+    accent: '#a855f7',
+    surface: '#0f172a',
+    background: '#020617',
+    text: '#f8fafc',
+    contrastForeground: '#f8fafc',
+    contrastBackground: '#020617',
+    baseFont: 16,
+    typeRatio: 1.25,
+    baseSpacing: 4,
+    baseRadius: 12
+  });
+
+  function normalizeHex(value, fallback) {
+    let hex = String(value || '').trim();
+    if (!hex.startsWith('#')) hex = '#' + hex;
+    if (/^#[0-9a-f]{3}$/i.test(hex)) hex = '#' + hex.slice(1).split('').map(c => c + c).join('');
+    return /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : (fallback || '#000000');
+  }
+
+  function hexToRgb(value) {
+    const hex = normalizeHex(value);
+    return { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) };
+  }
+
+  function channelLuminance(channel) {
+    const s = channel / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  }
+
+  function relativeLuminance(color) {
+    const rgb = hexToRgb(color);
+    return 0.2126 * channelLuminance(rgb.r) + 0.7152 * channelLuminance(rgb.g) + 0.0722 * channelLuminance(rgb.b);
+  }
+
+  function contrastRatio(foreground, background) {
+    const a = relativeLuminance(foreground), b = relativeLuminance(background);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }
+
+  function mixColors(color, target, amount) {
+    const a = hexToRgb(color), b = hexToRgb(target);
+    const mix = key => Math.round(a[key] + (b[key] - a[key]) * amount).toString(16).padStart(2, '0');
+    return '#' + mix('r') + mix('g') + mix('b');
+  }
+
+  function generatePalette(primary) {
+    const base = normalizeHex(primary, DEFAULTS.primary);
+    const shades = [
+      { step: 50, color: mixColors(base, '#ffffff', 0.92) },
+      { step: 100, color: mixColors(base, '#ffffff', 0.82) },
+      { step: 200, color: mixColors(base, '#ffffff', 0.64) },
+      { step: 300, color: mixColors(base, '#ffffff', 0.42) },
+      { step: 400, color: mixColors(base, '#ffffff', 0.2) },
+      { step: 500, color: base },
+      { step: 600, color: mixColors(base, '#000000', 0.15) },
+      { step: 700, color: mixColors(base, '#000000', 0.3) },
+      { step: 800, color: mixColors(base, '#000000', 0.45) },
+      { step: 900, color: mixColors(base, '#000000', 0.6) }
+    ];
+    return shades;
+  }
+
+  function sanitizeSettings(input) {
+    const s = Object.assign({}, DEFAULTS, input || {});
+    ['primary', 'secondary', 'accent', 'surface', 'background', 'text', 'contrastForeground', 'contrastBackground'].forEach(key => {
+      s[key] = normalizeHex(s[key], DEFAULTS[key]);
+    });
+    s.name = String(s.name || DEFAULTS.name).trim().slice(0, 80) || DEFAULTS.name;
+    s.baseFont = Math.min(32, Math.max(10, Number.isFinite(Number(s.baseFont)) ? Number(s.baseFont) : DEFAULTS.baseFont));
+    s.typeRatio = Math.min(1.5, Math.max(1.1, Number.isFinite(Number(s.typeRatio)) ? Number(s.typeRatio) : DEFAULTS.typeRatio));
+    s.baseSpacing = Math.min(16, Math.max(2, Number.isFinite(Number(s.baseSpacing)) ? Number(s.baseSpacing) : DEFAULTS.baseSpacing));
+    s.baseRadius = Math.min(32, Math.max(0, Number(s.baseRadius) || 0));
+    return s;
+  }
+
+  function buildDesignTokens(input) {
+    const s = sanitizeSettings(input);
+    const typeSteps = [-2, -1, 0, 1, 2, 3, 4].map(step => ({
+      name: ({ '-2': 'xs', '-1': 'sm', '0': 'base', '1': 'lg', '2': 'xl', '3': '2xl', '4': '3xl' })[String(step)],
+      step: step,
+      px: Math.round(s.baseFont * Math.pow(s.typeRatio, step) * 100) / 100
+    }));
+    const spacing = Array.from({ length: 8 }, (_, i) => ({ name: 'space-' + (i + 1), px: s.baseSpacing * (i + 1) }));
+    return {
+      format: 'codelab-design-system',
+      version: 1,
+      name: s.name,
+      colors: {
+        primary: s.primary, secondary: s.secondary, accent: s.accent,
+        surface: s.surface, background: s.background, text: s.text,
+        primaryScale: generatePalette(s.primary)
+      },
+      typography: { baseFontPx: s.baseFont, ratio: s.typeRatio, scale: typeSteps },
+      spacing: spacing,
+      radius: [
+        { name: 'radius-sm', px: Math.round(s.baseRadius * 0.33) },
+        { name: 'radius-md', px: Math.round(s.baseRadius * 0.66) },
+        { name: 'radius-lg', px: s.baseRadius },
+        { name: 'radius-xl', px: s.baseRadius * 2 }
+      ],
+      accessibility: {
+        foreground: s.contrastForeground,
+        background: s.contrastBackground,
+        contrastRatio: Math.round(contrastRatio(s.contrastForeground, s.contrastBackground) * 100) / 100
+      }
+    };
+  }
+
+  function toCssVariables(input) {
+    const tokens = buildDesignTokens(input);
+    const lines = [':root {'];
+    Object.keys(tokens.colors).filter(key => key !== 'primaryScale').forEach(key => lines.push('  --color-' + key + ': ' + tokens.colors[key] + ';'));
+    tokens.colors.primaryScale.forEach(item => lines.push('  --color-primary-' + item.step + ': ' + item.color + ';'));
+    tokens.typography.scale.forEach(item => lines.push('  --font-size-' + item.name + ': ' + item.px + 'px;'));
+    tokens.spacing.forEach(item => lines.push('  --' + item.name + ': ' + item.px + 'px;'));
+    tokens.radius.forEach(item => lines.push('  --' + item.name + ': ' + item.px + 'px;'));
+    lines.push('}', '');
+    return lines.join('\n');
+  }
+
+  function injectTokenBlock(existingCss, tokensCss) {
+    const startMarker = '/* CodeLab Design Tokens START */';
+    const endMarker = '/* CodeLab Design Tokens END */';
+    const block = startMarker + '\n' + String(tokensCss || '').trim() + '\n' + endMarker;
+    const source = String(existingCss || '');
+    // Match complete managed blocks and orphaned markers. A half-edited marker
+    // should not be left behind to confuse the next update or duplicate tokens.
+    const pattern = /\/\* CodeLab Design Tokens START \*\/[\s\S]*?\/\* CodeLab Design Tokens END \*\/|\/\* CodeLab Design Tokens (?:START|END) \*\//g;
+    let replaced = false;
+    const cleaned = source.replace(pattern, match => {
+      const isCompleteBlock = match.startsWith(startMarker) && match.includes(endMarker);
+      if (!replaced && isCompleteBlock) {
+        replaced = true;
+        return block;
+      }
+      return '';
+    });
+    return replaced
+      ? cleaned.replace(/\n{3,}/g, '\n\n')
+      : block + (cleaned.trim() ? '\n\n' + cleaned.replace(/^\s+/, '') : '\n');
+  }
+
+  function auditHtml(html) {
+    const source = String(html || '');
+    const issues = [];
+    const add = (code, severity, message, fix) => issues.push({ code: code, severity: severity, message: message, fix: fix });
+    const attribute = (tag, name) => {
+      const text = String(tag || '');
+      const doubleQuoted = text.match(new RegExp('\\b' + name + '\\s*=\\s*"([^"]*)"', 'i'));
+      const singleQuoted = text.match(new RegExp("\\b" + name + "\\s*=\\s*'([^']*)'", 'i'));
+      const unquoted = text.match(new RegExp('\\b' + name + '\\s*=\\s*([^\\s>]+)', 'i'));
+      const match = doubleQuoted || singleQuoted || unquoted;
+      return match ? (match[1] || '') : null;
+    };
+    const hasNamedGraphic = body => {
+      const content = String(body || '');
+      const imageTag = (content.match(/<img\b[^>]*>/i) || [''])[0];
+      const imageAlt = attribute(imageTag, 'alt');
+      if (imageAlt !== null && imageAlt.trim()) return true;
+      const svg = content.match(/<svg\b([^>]*)>([\s\S]*?)<\/svg\s*>/i);
+      if (!svg) return false;
+      const svgAttrs = svg[1] || '';
+      const ariaLabel = attribute(svgAttrs, 'aria-label');
+      if (ariaLabel && ariaLabel.trim()) return true;
+      const role = (attribute(svgAttrs, 'role') || '').toLowerCase();
+      const titleMatch = (svg[2] || '').match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i);
+      const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+      return role === 'img' && Boolean(title);
+    };
+    if (!source.trim()) {
+      add('empty-html', 'error', 'El HTML del proyecto está vacío.', 'Añade la estructura principal de la página antes de ejecutar la auditoría.');
+      return { format: 'codelab-accessibility-audit', version: 1, checkedAt: new Date().toISOString(), summary: { errors: 1, warnings: 0, info: 0, total: 1 }, issues: issues, scope: 'Análisis estático del HTML; no ejecuta JavaScript ni calcula contraste CSS.' };
+    }
+    if (!/<html\b[^>]*\blang\s*=/i.test(source)) add('missing-lang', 'warning', 'No se encontró lang en la etiqueta html.', 'Define el idioma de la página, por ejemplo <html lang="es">.');
+    if (!/<title\b[^>]*>[\s\S]*?\S[\s\S]*?<\/title\s*>/i.test(source)) add('missing-title', 'warning', 'Falta un título de página no vacío.', 'Añade un <title> descriptivo dentro de <head>.');
+    if (!/<meta\b[^>]*name\s*=\s*["']viewport["']/i.test(source)) add('missing-viewport', 'warning', 'No se encontró la meta viewport.', 'Añade meta name="viewport" content="width=device-width, initial-scale=1" para dispositivos móviles.');
+    if (!/<main\b/i.test(source)) add('missing-main', 'info', 'No se encontró un landmark main.', 'Usa <main> para envolver el contenido principal único de la página.');
+
+    const ids = new Map();
+    for (const match of source.matchAll(/\bid\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi)) {
+      const id = match[1] || match[2] || match[3];
+      ids.set(id, (ids.get(id) || 0) + 1);
+    }
+    ids.forEach((count, id) => { if (count > 1) add('duplicate-id', 'warning', 'Se repite un atributo id en el documento.', 'Usa un id único para cada elemento; hay un identificador repetido.'); });
+
+    for (const match of source.matchAll(/<img\b[^>]*>/gi)) {
+      if (attribute(match[0], 'alt') === null) add('image-missing-alt', 'error', 'Hay una imagen sin atributo alt.', 'Añade alt descriptivo o alt="" si la imagen es puramente decorativa.');
+    }
+    for (const match of source.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button\s*>/gi)) {
+      const attrs = match[1] || '', body = match[2] || '';
+      const label = attribute(attrs, 'aria-label') || attribute(attrs, 'aria-labelledby');
+      const text = body.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (!label && !text && !hasNamedGraphic(body)) add('button-no-name', 'error', 'Hay un botón sin nombre accesible detectable.', 'Añade texto visible, una imagen con alt descriptivo, un SVG con nombre accesible o aria-label.');
+    }
+    for (const match of source.matchAll(/<(input|select|textarea)\b([^>]*)>/gi)) {
+      const tag = match[0], attrs = match[2] || '';
+      const type = (attribute(attrs, 'type') || '').toLowerCase();
+      if (tag.toLowerCase().startsWith('<input') && ['hidden', 'submit', 'reset', 'button', 'image'].includes(type)) continue;
+      const id = attribute(attrs, 'id');
+      const labelledBy = attribute(attrs, 'aria-labelledby');
+      const ariaLabel = attribute(attrs, 'aria-label');
+      const explicitLabel = id && Array.from(source.matchAll(/<label\b[^>]*>/gi)).some(labelMatch => attribute(labelMatch[0], 'for') === id);
+      const wrappedLabel = Array.from(source.matchAll(/<label\b[^>]*>[\s\S]*?<\/label\s*>/gi)).some(labelMatch => {
+        const labelEnd = labelMatch.index + labelMatch[0].length;
+        return match.index >= labelMatch.index && match.index < labelEnd;
+      });
+      if (!ariaLabel && !labelledBy && !explicitLabel && !wrappedLabel) add('field-no-label', 'error', 'Hay un campo de formulario sin etiqueta asociada detectable.', 'Añade <label for="id"> o un nombre accesible mediante aria-label/aria-labelledby.');
+    }
+    for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+      const attrs = match[1] || '', body = match[2] || '';
+      const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!attribute(attrs, 'aria-label') && !attribute(attrs, 'aria-labelledby') && !text && !hasNamedGraphic(body)) {
+        add('link-no-name', 'warning', 'Hay un enlace sin nombre accesible detectable.', 'Añade texto descriptivo, una imagen con alt descriptivo, un SVG con nombre accesible o aria-label.');
+      }
+      if ((attribute(attrs, 'target') || '').toLowerCase() === '_blank') {
+        const rel = (attribute(attrs, 'rel') || '').toLowerCase().split(/\s+/);
+        if (!rel.includes('noopener') && !rel.includes('noreferrer')) add('blank-link-noopener', 'warning', 'Un enlace target="_blank" no declara noopener/noreferrer.', 'Añade rel="noopener noreferrer" al enlace externo.');
+      }
+    }
+    let previousHeading = 0;
+    for (const match of source.matchAll(/<h([1-6])\b[^>]*>/gi)) {
+      const level = Number(match[1]);
+      if (previousHeading && level > previousHeading + 1) add('heading-skip', 'warning', 'La jerarquía de encabezados salta un nivel.', 'Usa encabezados en orden lógico sin saltar niveles; el estilo visual se puede controlar con CSS.');
+      previousHeading = level;
+    }
+    const errors = issues.filter(item => item.severity === 'error').length;
+    const warnings = issues.filter(item => item.severity === 'warning').length;
+    const info = issues.filter(item => item.severity === 'info').length;
+    return {
+      format: 'codelab-accessibility-audit',
+      version: 1,
+      checkedAt: new Date().toISOString(),
+      summary: { errors: errors, warnings: warnings, info: info, total: issues.length },
+      issues: issues,
+      scope: 'Análisis estático del HTML. No ejecuta JavaScript, no inspecciona estados dinámicos ni calcula contraste de colores CSS; usa el comprobador de contraste por separado.'
+    };
+  }
+
+  function workspaceSettingsStorageKey(credentials) {
+    const active = credentials || workspaceCredentials();
+    // OAuth workspaces have a stable account-bound ID. Keep their local visual
+    // systems separate; anonymous workspaces retain the legacy browser-local key.
+    return active && /^ws_(github|google)_/.test(active.id)
+      ? STORAGE_KEY + ':' + active.id
+      : STORAGE_KEY;
+  }
+
+  function loadSavedSettings(storageKey) {
+    try {
+      const saved = localStorage.getItem(storageKey || workspaceSettingsStorageKey());
+      return sanitizeSettings(saved ? JSON.parse(saved) : DEFAULTS);
+    } catch (_) {
+      return sanitizeSettings(DEFAULTS);
+    }
+  }
+
+  function saveLocalSettings(input, storageKey) {
+    const s = sanitizeSettings(input);
+    try {
+      localStorage.setItem(storageKey || workspaceSettingsStorageKey(), JSON.stringify(s));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function workspaceCredentials() {
+    if (typeof window === 'undefined' || !window.codelabWorkspaceReady) return null;
+    try {
+      const id = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      return id && token ? { id: id, token: token } : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function workspaceDesignSystemUrl(credentials) {
+    return '/api/workspace/' + encodeURIComponent(credentials.id) + '/design-system';
+  }
+
+  async function requestWorkspaceSettings(url, options) {
+    const delays = [200, 500];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let response;
+      try {
+        response = await fetch(url, options);
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+        continue;
+      }
+      if (response.ok || (response.status !== 429 && response.status < 500) || attempt === 2) {
+        return response;
+      }
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+    }
+    throw new Error('workspace_design_system_request_failed');
+  }
+
+  function isCurrentWorkspace(credentials) {
+    const active = workspaceCredentials();
+    return !!active && !!credentials && active.id === credentials.id && active.token === credentials.token;
+  }
+
+  function saveSettings(input) {
+    const s = sanitizeSettings(input);
+    const credentials = workspaceCredentials();
+    const localKey = workspaceSettingsStorageKey(credentials);
+    if (!saveLocalSettings(s, localKey)) return false;
+    const sequence = ++workspaceSettingsSyncSequence;
+    if (credentials && typeof fetch === 'function') {
+      const url = workspaceDesignSystemUrl(credentials);
+      const payload = JSON.stringify({ settings: s });
+      workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+        if (sequence !== workspaceSettingsSyncSequence || !isCurrentWorkspace(credentials)) return;
+        const response = await requestWorkspaceSettings(url, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-workspace-token': credentials.token
+          },
+          body: payload
+        });
+        if (!response.ok) throw new Error('workspace_design_system_save_failed');
+        if (sequence === workspaceSettingsSyncSequence && typeof window.showToast === 'function') {
+          window.showToast('Sistema visual sincronizado con tu workspace.');
+        }
+      }).catch(() => {
+        if (sequence === workspaceSettingsSyncSequence && typeof window.showToast === 'function') {
+          window.showToast('Sistema guardado en este navegador; no se pudo sincronizar con el workspace.', 'warn');
+        }
+      });
+    }
+    return true;
+  }
+
+  function downloadText(filename, text, mime) {
+    const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function init() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('designToolsModal');
+    if (!modal || modal.dataset.designToolsInitialized === 'true') return;
+    modal.dataset.designToolsInitialized = 'true';
+    let settings = loadSavedSettings();
+    let activeTab = 'palette';
+
+    const get = id => document.getElementById(id);
+    const fieldIds = ['systemName', 'colorPrimary', 'colorSecondary', 'colorAccent', 'colorSurface', 'colorBackground', 'colorText', 'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'];
+    const readForm = () => {
+      const values = Object.assign({}, settings);
+      fieldIds.forEach(id => {
+        const el = get(id);
+        if (!el) return;
+        const key = ({
+          systemName: 'name', colorPrimary: 'primary', colorSecondary: 'secondary', colorAccent: 'accent',
+          colorSurface: 'surface', colorBackground: 'background', colorText: 'text',
+          contrastForeground: 'contrastForeground', contrastBackground: 'contrastBackground',
+          baseFont: 'baseFont', typeRatio: 'typeRatio', baseSpacing: 'baseSpacing', baseRadius: 'baseRadius'
+        })[id];
+        values[key] = el.type === 'number' ? Number(el.value) : el.value;
+      });
+      return sanitizeSettings(values);
+    };
+
+    function renderPalette() {
+      const host = get('designPalettePreview');
+      if (!host) return;
+      const shades = generatePalette(settings.primary);
+      host.innerHTML = shades.map(item => '<button type="button" class="min-w-0 text-left group" data-palette-color="' + item.color + '" title="Usar ' + item.color + '" aria-label="Usar tono ' + item.color + '"><span class="block h-8 sm:h-10 rounded-lg border border-white/10" style="background:' + item.color + '"></span><span class="block mt-1 text-[9px] sm:text-[10px] text-slate-400">' + item.step + '</span><span class="block text-[8px] sm:text-[10px] font-mono text-slate-500">' + item.color + '</span></button>').join('');
+      host.querySelectorAll('[data-palette-color]').forEach(button => button.addEventListener('click', async () => {
+        const color = button.getAttribute('data-palette-color');
+        const primary = get('colorPrimary');
+        if (primary) primary.value = color;
+        settings = sanitizeSettings(Object.assign({}, readForm(), { primary: color }));
+        renderAll();
+        announce('Tono ' + color + ' seleccionado.');
+      }));
+    }
+
+    function renderContrast() {
+      const ratio = contrastRatio(settings.contrastForeground, settings.contrastBackground);
+      const rounded = ratio.toFixed(2);
+      const normalAA = ratio >= 4.5, largeAA = ratio >= 3, normalAAA = ratio >= 7;
+      const result = get('contrastResult');
+      if (result) {
+        result.innerHTML = '<div class="flex items-center justify-between gap-2"><span class="text-xs text-slate-400">Relación de contraste</span><strong class="text-xl font-black tabular-nums">' + rounded + ':1</strong></div>' +
+          '<div class="grid grid-cols-3 gap-2 mt-3">' +
+          contrastBadge('AA texto normal', normalAA) + contrastBadge('AA texto grande', largeAA) + contrastBadge('AAA normal', normalAAA) + '</div>';
+      }
+      const sample = get('contrastSample');
+      if (sample) {
+        sample.style.color = settings.contrastForeground;
+        sample.style.backgroundColor = settings.contrastBackground;
+      }
+    }
+
+    function contrastBadge(label, pass) {
+      return '<div class="rounded-lg border p-2 ' + (pass ? 'border-emerald-700 bg-emerald-950/40 text-emerald-300' : 'border-rose-800 bg-rose-950/40 text-rose-300') + '"><span class="block text-[10px] font-semibold">' + label + '</span><strong class="text-xs">' + (pass ? 'Cumple' : 'No cumple') + '</strong></div>';
+    }
+
+    function renderTokens() {
+      const tokens = buildDesignTokens(settings);
+      const typeHost = get('typeScalePreview');
+      if (typeHost) typeHost.innerHTML = tokens.typography.scale.map(item =>
+        '<div class="flex items-baseline justify-between gap-3 border-b border-slate-800 py-1.5"><span style="font-size:' + item.px + 'px" class="font-semibold text-slate-100">Aa</span><span class="text-[10px] font-mono text-slate-400">--font-size-' + item.name + ': ' + item.px + 'px</span></div>'
+      ).join('');
+      const spacingHost = get('spacingPreview');
+      if (spacingHost) spacingHost.innerHTML = tokens.spacing.map(item =>
+        '<div class="flex items-center gap-2 text-[10px] text-slate-400"><span class="w-14 font-mono">' + item.name + '</span><span class="h-2 rounded bg-cyan-500" style="width:' + Math.min(160, item.px * 3) + 'px"></span><span>' + item.px + 'px</span></div>'
+      ).join('');
+      const css = get('designTokensCss');
+      if (css) css.value = toCssVariables(settings);
+      const json = get('designTokensJson');
+      if (json) json.value = JSON.stringify(tokens, null, 2);
+    }
+
+    function renderPreview() {
+      const preview = get('designSystemLivePreview');
+      if (!preview) return;
+      preview.style.background = settings.background;
+      preview.style.color = settings.text;
+      const surface = get('designPreviewSurface');
+      if (surface) surface.style.background = settings.surface;
+      const title = get('designPreviewTitle');
+      if (title) title.style.color = settings.text;
+      ['designPreviewPrimary', 'designPreviewSecondary', 'designPreviewAccent'].forEach((id, i) => {
+        const el = get(id);
+        if (el) el.style.background = [settings.primary, settings.secondary, settings.accent][i];
+      });
+    }
+
+    function renderAll() {
+      renderPalette();
+      renderContrast();
+      renderTokens();
+      renderPreview();
+    }
+
+    function announce(message) {
+      const status = get('designToolsStatus');
+      if (status) status.textContent = message;
+    }
+
+    async function syncSettingsFromWorkspace() {
+      const credentials = workspaceCredentials();
+      if (!credentials) return;
+      const localKey = workspaceSettingsStorageKey(credentials);
+      const isAccountWorkspace = /^ws_(github|google)_/.test(credentials.id);
+      if (isAccountWorkspace) {
+        // A legacy browser-wide setting has no trustworthy owner; never import it
+        // into an OAuth account's workspace.
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+      }
+      const sequenceAtStart = workspaceSettingsSyncSequence;
+      try {
+        const response = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
+          credentials: 'same-origin',
+          headers: { 'x-workspace-token': credentials.token }
+        });
+        if (!response.ok) throw new Error('workspace_design_system_load_failed');
+        const data = await response.json();
+        // Ignore stale responses if logout/account switching changed the active workspace.
+        if (!isCurrentWorkspace(credentials)) return;
+        // A user save made while GET was in flight wins over the older snapshot.
+        if (sequenceAtStart !== workspaceSettingsSyncSequence) {
+          const latest = loadSavedSettings(localKey);
+          const payload = JSON.stringify({ settings: latest });
+          workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+            if (!isCurrentWorkspace(credentials)) return;
+            const saveResponse = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
+              method: 'PUT',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'x-workspace-token': credentials.token },
+              body: payload
+            });
+            if (!saveResponse.ok) throw new Error('workspace_design_system_save_failed');
+          }).catch(() => {});
+          return;
+        }
+        if (data && data.settings) {
+          settings = sanitizeSettings(data.settings);
+          saveLocalSettings(settings, localKey);
+          fillForm();
+          renderAll();
+          announce('Sistema visual recuperado desde tu workspace.');
+          return;
+        }
+        // Initialize from this workspace's local copy, never from another
+        // OAuth account's legacy browser-wide settings.
+        settings = loadSavedSettings(localKey);
+        fillForm();
+        renderAll();
+        const payload = JSON.stringify({ settings: settings });
+        workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
+          if (!isCurrentWorkspace(credentials) || sequenceAtStart !== workspaceSettingsSyncSequence) return false;
+          const saveResponse = await requestWorkspaceSettings(workspaceDesignSystemUrl(credentials), {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'x-workspace-token': credentials.token },
+            body: payload
+          });
+          if (!saveResponse.ok) throw new Error('workspace_design_system_migration_failed');
+          // A workspace/account switch or newer local edit during the request
+          // means this response must not be presented as the current sync result.
+          return isCurrentWorkspace(credentials) && sequenceAtStart === workspaceSettingsSyncSequence;
+        });
+        const migrationSaved = await workspaceSettingsSyncQueue;
+        if (migrationSaved === true && isCurrentWorkspace(credentials) && sequenceAtStart === workspaceSettingsSyncSequence) {
+          announce('Sistema visual local sincronizado con tu workspace.');
+        } else {
+          announce('El workspace cambió durante la sincronización; se conserva la copia local y no se confirmó la sincronización.');
+        }
+      } catch (_) {
+        announce('No se pudo sincronizar el sistema visual; se conserva la copia local.');
+      }
+    }
+
+    function fillForm() {
+      const map = {
+        systemName: 'name', colorPrimary: 'primary', colorSecondary: 'secondary', colorAccent: 'accent',
+        colorSurface: 'surface', colorBackground: 'background', colorText: 'text',
+        contrastForeground: 'contrastForeground', contrastBackground: 'contrastBackground',
+        baseFont: 'baseFont', typeRatio: 'typeRatio', baseSpacing: 'baseSpacing', baseRadius: 'baseRadius'
+      };
+      Object.keys(map).forEach(id => { if (get(id)) get(id).value = settings[map[id]]; });
+    }
+
+    function showTab(tab) {
+      activeTab = tab;
+      ['palette', 'accessibility', 'tokens', 'audit'].forEach(name => {
+        const panel = get('designToolsPanel-' + name);
+        const button = get('designToolsTab-' + name);
+        if (panel) panel.classList.toggle('hidden', name !== activeTab);
+        if (button) {
+          button.setAttribute('aria-selected', String(name === activeTab));
+          button.classList.toggle('bg-cyan-500/15', name === activeTab);
+          button.classList.toggle('text-cyan-300', name === activeTab);
+          button.classList.toggle('text-slate-400', name !== activeTab);
+        }
+      });
+    }
+
+    function trapModalFocus(event) {
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),iframe:not([tabindex="-1"]),[tabindex]:not([tabindex="-1"])'))
+        .filter(element => element.getClientRects().length > 0 && window.getComputedStyle(element).visibility !== 'hidden');
+      if (!focusable.length) { event.preventDefault(); return; }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    }
+
+    function open() {
+      fillForm();
+      renderAll();
+      showTab(activeTab);
+      modal.classList.remove('hidden');
+      const close = get('closeDesignTools');
+      if (close) close.focus();
+    }
+
+    function close() {
+      modal.classList.add('hidden');
+      const opener = get('openDesignTools');
+      if (opener) opener.focus();
+    }
+
+    fieldIds.forEach(id => {
+      const el = get(id);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        settings = readForm();
+        renderAll();
+        announce('Cambios sin guardar.');
+      });
+      el.addEventListener('change', () => {
+        settings = readForm();
+        renderAll();
+      });
+    });
+
+    ['palette', 'accessibility', 'tokens', 'audit'].forEach(tab => {
+      const button = get('designToolsTab-' + tab);
+      if (button) button.addEventListener('click', () => showTab(tab));
+    });
+
+    window.addEventListener('codelab-workspace-ready', syncSettingsFromWorkspace);
+    if (window.codelabWorkspaceReady) syncSettingsFromWorkspace();
+
+    if (get('openDesignTools')) get('openDesignTools').addEventListener('click', open);
+    if (get('closeDesignTools')) get('closeDesignTools').addEventListener('click', close);
+    if (get('designToolsCloseFooter')) get('designToolsCloseFooter').addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    modal.addEventListener('keydown', trapModalFocus);
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.classList.contains('hidden')) close(); });
+
+    if (get('runAccessibilityAudit')) get('runAccessibilityAudit').addEventListener('click', () => {
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function') {
+        announce('Abre un proyecto web en el editor para auditar su HTML.');
+        if (typeof window.showToast === 'function') window.showToast('Abre un proyecto web en el editor para auditar el HTML.', 'warn');
+        return;
+      }
+      const report = auditHtml(window.getEditorValue('html') || '');
+      const output = get('accessibilityAuditResults');
+      if (output) {
+        const summary = report.summary;
+        output.innerHTML = '<div class="grid grid-cols-3 gap-2 mb-3">' +
+          '<div class="rounded-lg border border-rose-900 bg-rose-950/40 p-2"><strong class="block text-lg text-rose-300">' + summary.errors + '</strong><span class="text-[10px] text-slate-400">Errores</span></div>' +
+          '<div class="rounded-lg border border-amber-900 bg-amber-950/40 p-2"><strong class="block text-lg text-amber-300">' + summary.warnings + '</strong><span class="text-[10px] text-slate-400">Avisos</span></div>' +
+          '<div class="rounded-lg border border-slate-700 bg-slate-900 p-2"><strong class="block text-lg text-slate-200">' + summary.info + '</strong><span class="text-[10px] text-slate-400">Sugerencias</span></div></div>' +
+          (report.issues.length ? report.issues.map(item => '<article class="rounded-lg border border-slate-800 bg-slate-950/70 p-3 mb-2"><div class="flex flex-wrap items-center gap-2 mb-1"><span class="text-[9px] uppercase tracking-wider font-bold ' + (item.severity === 'error' ? 'text-rose-300' : item.severity === 'warning' ? 'text-amber-300' : 'text-slate-400') + '">' + item.severity + '</span><code class="text-[10px] text-cyan-300">' + item.code + '</code></div><p class="text-xs text-slate-200">' + item.message + '</p><p class="text-[10px] text-slate-400 mt-1">' + item.fix + '</p></article>').join('') : '<p class="rounded-lg border border-emerald-800 bg-emerald-950/30 p-3 text-xs text-emerald-300">No se encontraron problemas en las reglas estáticas incluidas. Esto no garantiza accesibilidad completa.</p>') +
+          '<p class="text-[10px] text-slate-500 mt-3">' + report.scope + '</p>';
+        output.dataset.report = JSON.stringify(report);
+      }
+      if (get('exportAccessibilityAudit')) get('exportAccessibilityAudit').disabled = false;
+      announce('Auditoría HTML terminada: ' + report.summary.errors + ' errores y ' + report.summary.warnings + ' avisos.');
+    });
+    if (get('exportAccessibilityAudit')) get('exportAccessibilityAudit').addEventListener('click', () => {
+      const output = get('accessibilityAuditResults');
+      if (!output || !output.dataset.report) { announce('Ejecuta la auditoría antes de exportar.'); return; }
+      downloadText('codelab-accessibility-audit.json', output.dataset.report, 'application/json;charset=utf-8');
+      announce('Informe de auditoría descargado.');
+    });
+    if (get('saveDesignSystem')) get('saveDesignSystem').addEventListener('click', () => {
+      settings = readForm();
+      const ok = saveSettings(settings);
+      announce(ok ? 'Sistema guardado localmente; sincronizando con el workspace si está disponible.' : 'No se pudo guardar; exporta el JSON para conservarlo.');
+    });
+    if (get('resetDesignSystem')) get('resetDesignSystem').addEventListener('click', () => {
+      settings = sanitizeSettings(DEFAULTS);
+      fillForm();
+      renderAll();
+      announce('Valores predeterminados restaurados. Guarda para conservarlos.');
+    });
+    if (get('applyDesignTokens')) get('applyDesignTokens').addEventListener('click', async () => {
+      settings = readForm();
+      const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+      if (!project || project.type === 'design' || typeof window.getEditorValue !== 'function' ||
+          typeof window.setEditorValue !== 'function' || typeof window.saveCurrentCodeToActiveProject !== 'function') {
+        announce('Abre un proyecto web completamente cargado para aplicar estos tokens.');
+        if (typeof window.showToast === 'function') window.showToast('Abre un proyecto web completamente cargado para aplicar los tokens.', 'warn');
+        return;
+      }
+      const nextCss = injectTokenBlock(window.getEditorValue('css') || '', toCssVariables(settings));
+      // The server validates each code field at 500,000 characters. Prevent a
+      // design-tool action from creating CSS that the workspace can no longer save.
+      if (nextCss.length > 500000) {
+        announce('No se aplicaron los tokens: el CSS superaría el límite de 500.000 caracteres. Reduce el CSS existente e inténtalo de nuevo.');
+        if (typeof window.showToast === 'function') window.showToast('No se aplicaron los tokens porque el CSS superaría el límite de 500.000 caracteres.', 'warn');
+        return;
+      }
+      window.setEditorValue('css', nextCss);
+      if (typeof window.updatePreview === 'function') window.updatePreview();
+      try {
+        const saved = await window.saveCurrentCodeToActiveProject(true);
+        if (saved === true) {
+          announce('Tokens aplicados y guardado/sincronización confirmados.');
+          if (typeof window.showToast === 'function') window.showToast('Tokens aplicados y proyecto guardado.');
+        } else {
+          announce('Tokens aplicados al editor, pero no se confirmó el guardado/sincronización. Revisa el estado de guardado.');
+          if (typeof window.showToast === 'function') window.showToast('Tokens aplicados; revisa el estado de guardado.', 'warn');
+        }
+      } catch (_) {
+        announce('Tokens aplicados al editor, pero el guardado falló. Revisa el estado de guardado e inténtalo de nuevo.');
+        if (typeof window.showToast === 'function') window.showToast('Tokens aplicados, pero el guardado falló.', 'warn');
+      }
+    });
+    if (get('exportDesignSystemCss')) get('exportDesignSystemCss').addEventListener('click', () => {
+      settings = readForm();
+      downloadText('codelab-design-tokens.css', toCssVariables(settings), 'text/css;charset=utf-8');
+      announce('CSS de variables descargado.');
+    });
+    if (get('exportDesignSystemJson')) get('exportDesignSystemJson').addEventListener('click', () => {
+      settings = readForm();
+      downloadText('codelab-design-system.json', JSON.stringify(buildDesignTokens(settings), null, 2), 'application/json;charset=utf-8');
+      announce('Sistema visual JSON descargado.');
+    });
+    if (get('importDesignSystemJson') && get('designSystemJsonFile')) {
+      get('importDesignSystemJson').addEventListener('click', () => get('designSystemJsonFile').click());
+      get('designSystemJsonFile').addEventListener('change', async event => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        try {
+          if (file.size > 10 * 1024 * 1024) throw new Error('El archivo supera el límite de 10 MiB.');
+          const imported = JSON.parse(await file.text());
+          if (!imported || imported.format !== 'codelab-design-system' || imported.version !== 1 ||
+              !imported.colors || !imported.typography || !imported.accessibility) {
+            throw new Error('El archivo no es un sistema visual CodeLab compatible.');
+          }
+          const scale = Array.isArray(imported.typography.scale) ? imported.typography.scale : [];
+          const baseStep = scale.find(item => item && item.name === 'base');
+          const validHex = value => typeof value === 'string' &&
+            /^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
+          const requiredColorKeys = ['primary', 'secondary', 'accent', 'surface', 'background', 'text'];
+          if (!requiredColorKeys.every(key => validHex(imported.colors[key])) ||
+              !validHex(imported.accessibility.foreground) || !validHex(imported.accessibility.background)) {
+            throw new Error('El archivo contiene colores inválidos; no se importó ningún cambio.');
+          }
+          const baseFont = Number(imported.typography.baseFontPx || (baseStep && baseStep.px));
+          const typeRatio = Number(imported.typography.ratio);
+          const baseSpacing = Number(Array.isArray(imported.spacing) && imported.spacing[0] ? imported.spacing[0].px : NaN);
+          const radiusToken = Array.isArray(imported.radius) && imported.radius.find(item => item && item.name === 'radius-lg');
+          const baseRadius = Number(radiusToken ? radiusToken.px : NaN);
+          if (!Number.isFinite(baseFont) || baseFont < 10 || baseFont > 32 ||
+              !Number.isFinite(typeRatio) || typeRatio < 1.1 || typeRatio > 1.5 ||
+              !Number.isFinite(baseSpacing) || baseSpacing < 2 || baseSpacing > 16 ||
+              !Number.isFinite(baseRadius) || baseRadius < 0 || baseRadius > 32) {
+            throw new Error('El archivo contiene valores tipográficos, de espaciado o radio fuera de rango.');
+          }
+          settings = sanitizeSettings({
+            name: imported.name,
+            primary: imported.colors.primary,
+            secondary: imported.colors.secondary,
+            accent: imported.colors.accent,
+            surface: imported.colors.surface,
+            background: imported.colors.background,
+            text: imported.colors.text,
+            contrastForeground: imported.accessibility.foreground,
+            contrastBackground: imported.accessibility.background,
+            baseFont: baseFont,
+            typeRatio: typeRatio,
+            baseSpacing: baseSpacing,
+            baseRadius: baseRadius
+          });
+          fillForm();
+          renderAll();
+          const saved = saveSettings(settings);
+          announce(saved ? 'Sistema visual importado y guardado localmente; sincronizando con el workspace si está disponible.' : 'Sistema visual importado en esta sesión; no se pudo guardar en este navegador.');
+          if (typeof window.showToast === 'function') window.showToast('Sistema visual importado.');
+        } catch (error) {
+          announce('No se pudo importar: ' + (error && error.message ? error.message : 'archivo inválido.'));
+          if (typeof window.showToast === 'function') window.showToast('No se pudo importar el sistema visual.', 'warn');
+        } finally {
+          event.target.value = '';
+        }
+      });
+    }
+    if (get('copyDesignSystemCss')) get('copyDesignSystemCss').addEventListener('click', async () => {
+      settings = readForm();
+      const css = toCssVariables(settings);
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(css);
+        else throw new Error('clipboard unavailable');
+        announce('CSS copiado al portapapeles.');
+      } catch (_) {
+        const area = get('designTokensCss');
+        if (area) { area.focus(); area.select(); document.execCommand('copy'); announce('CSS seleccionado para copiar manualmente.'); }
+      }
+    });
+
+    fillForm();
+    renderAll();
+    showTab(activeTab);
+  }
+
+  return {
+    defaults: DEFAULTS,
+    normalizeHex: normalizeHex,
+    contrastRatio: contrastRatio,
+    generatePalette: generatePalette,
+    buildDesignTokens: buildDesignTokens,
+    toCssVariables: toCssVariables,
+    injectTokenBlock: injectTokenBlock,
+    auditHtml: auditHtml,
+    sanitizeSettings: sanitizeSettings,
+    init: init
+  };
+});

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#020617">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com; img-src 'self' data: https:; font-src 'self' data: https://cdnjs.cloudflare.com; connect-src 'self' https:; frame-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>CodeLab XD Studio Pro v2.6.4</title>
+  <title>CodeLab XD Studio Pro v2.6.6</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -43,13 +43,51 @@
     body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     .touch-target { min-height: 44px; min-width: 44px; }
     @media (max-width: 767px) {
+      /* Prevent intrinsic flex widths in the project header from widening the document on phones. */
+      #studioView > header {
+        min-width: 0 !important;
+        max-width: 100vw !important;
+        overflow-x: clip !important;
+      }
+      #studioView > header > div:first-child {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        flex-wrap: wrap !important;
+      }
+      #studioView > header > div:first-child > div:nth-child(2) {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        flex-wrap: wrap !important;
+      }
+      #studioView #workspaceSwitch {
+        margin-left: 0 !important;
+        flex-wrap: wrap !important;
+      }
+      #studioView #currentProjectTitle {
+        display: block;
+        max-width: 32vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #studioView #statusBadge {
+        min-width: 0;
+        max-width: 42vw;
+      }
+      #studioView #statusText {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       #studioView.mobile-mode-code #previewPanel { display: none !important; }
       #studioView.mobile-mode-code #editorPanel { width: 100% !important; height: 100% !important; flex: 1 !important; }
       #studioView.mobile-mode-preview #editorPanel { display: none !important; }
       #studioView.mobile-mode-preview #previewPanel { width: 100% !important; height: 100% !important; flex: 1 !important; }
       #splitDivider { display: none !important; }
-      #studioView { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
-      #mobileBottomBar { display: flex !important; }
+      #studioView { position: relative !important; z-index: 1 !important; padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+      #designStudioPanel button { min-height: 44px; min-width: 44px; }
+      #mobileBottomBar { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; pointer-events: auto !important; }
       .hide-on-mobile { display: none !important; }
     }
     @media (min-width: 768px) {
@@ -109,10 +147,15 @@
               Editor HTML/CSS/JS con vista previa en vivo, autoguardado, ramas y sincronización segura.
             </p>
           </div>
-          <button onclick="openNewProjectModal()" class="w-full sm:w-auto touch-target flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-lg shadow-cyan-500/25 transition">
-            <i class="fa-solid fa-plus"></i>
-            <span>Crear proyecto</span>
-          </button>
+          <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
+            <button id="openDesignTools" type="button" class="touch-target flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs sm:text-sm border border-slate-700 transition">
+              <i class="fa-solid fa-swatchbook"></i><span>Herramientas</span>
+            </button>
+            <button id="openComponentLibrary" type="button" class="touch-target flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-violet-300 font-bold text-xs sm:text-sm border border-slate-700 transition"><i class="fa-solid fa-cubes"></i><span>Componentes</span></button>
+            <button onclick="openNewProjectModal()" class="touch-target col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-3 sm:px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-cyan-500/25 transition">
+              <i class="fa-solid fa-plus"></i><span>Crear proyecto</span>
+            </button>
+          </div>
         </div>
         <div id="workspaceStatusBar" class="flex flex-wrap items-center gap-2 text-[11px]">
           <span id="dashSyncBadge" class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
@@ -213,6 +256,11 @@
 
         <div class="flex items-center gap-2">
           <span id="currentProjectTitle" class="font-extrabold text-sm text-cyan-400 tracking-tight">Mi Proyecto</span>
+          <div id="workspaceSwitch" class="hidden items-center gap-1 ml-2" role="group" aria-label="Espacios del proyecto">
+            <button id="switchToWebBtn" type="button" onclick="switchProjectWorkspace('web')" aria-pressed="false" class="px-2 py-1 rounded-md text-xs border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10">Web</button>
+            <button id="switchToDesignBtn" type="button" onclick="switchProjectWorkspace('design')" aria-pressed="false" class="px-2 py-1 rounded-md text-xs border border-violet-400/40 text-violet-200 hover:bg-violet-500/10">Diseño</button>
+          </div>
+          <button id="returnToDesignBtn" type="button" onclick="returnToSourceDesign()" class="hidden items-center gap-1 px-2 py-1 rounded-md bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 text-xs border border-violet-400/40 whitespace-nowrap" title="Volver al proyecto de diseño"><i class="fa-solid fa-pen-ruler"></i><span class="hidden sm:inline">Volver a diseño</span></button>
           <button onclick="editCurrentProjectName()" class="text-slate-500 hover:text-slate-300 text-xs"><i class="fa-solid fa-pen"></i></button>
         </div>
 
@@ -223,7 +271,7 @@
       </div>
 
       <!-- MENÚ DE OPCIONES (ORDENADO Y COMPLETO) -->
-      <div class="hidden md:flex items-center gap-2">
+      <div id="desktopProjectActions" class="hidden md:flex items-center gap-2">
         <button onclick="duplicateProject()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-500/30 transition">
           <i class="fa-solid fa-clone"></i>
           <span>1. Copiar Trabajo</span>
@@ -260,7 +308,7 @@
       </div>
 
       <!-- Menú Responsivo (⋮) -->
-      <div class="relative md:hidden">
+      <div id="mobileProjectActions" class="relative md:hidden">
         <button onclick="toggleMobileMenu()" class="p-2 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 text-sm">
           <i class="fa-solid fa-ellipsis-vertical"></i>
         </button>
@@ -360,6 +408,95 @@
           <div id="previewContainer" class="w-full h-full bg-white relative">
             <iframe id="previewIframe" class="w-full h-full border-0" sandbox="allow-scripts allow-forms"></iframe>
           </div>
+        </div>
+      </section>
+
+      <!-- ESPACIO DE DISEÑO VISUAL -->
+      <section id="designStudioPanel" class="hidden flex-1 min-h-0 bg-slate-950 text-slate-100 flex-col">
+        <div class="flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
+          <div class="flex items-center gap-1">
+            <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
+            <button onclick="designRedo()" id="designRedoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
+          </div>
+          <span class="h-6 w-px bg-slate-700 mx-1"></span>
+          <button onclick="addDesignElement('heading')" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold"><i class="fa-solid fa-heading mr-1"></i> Título</button>
+          <button onclick="addDesignElement('text')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-font mr-1"></i> Texto</button>
+          <button onclick="addDesignElement('button')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square-caret-right mr-1"></i> Botón</button>
+          <button onclick="addDesignElement('rectangle')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square mr-1"></i> Rectángulo</button>
+          <button onclick="addDesignElement('ellipse')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Añadir una elipse o círculo"><i class="fa-regular fa-circle mr-1"></i> Elipse</button>
+          <button onclick="addDesignElement('image')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Añadir una imagen al diseño"><i class="fa-regular fa-image mr-1"></i> Imagen</button>
+          <div class="relative">
+            <button id="designTemplatesButton" type="button" aria-expanded="false" aria-controls="designTemplatesMenu" onclick="toggleDesignTemplatesMenu()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-layer-group mr-1"></i> Plantillas</button>
+            <div id="designTemplatesMenu" role="menu" aria-label="Plantillas de diseño" class="hidden absolute left-0 top-full mt-1 z-50 min-w-44 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
+              <button id="designTemplateLanding" type="button" role="menuitem" onclick="applyDesignTemplate('landing')" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">Landing de producto</button>
+              <button id="designTemplateDashboard" type="button" role="menuitem" onclick="applyDesignTemplate('dashboard')" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">Panel de control</button>
+              <button id="designTemplatePortfolio" type="button" role="menuitem" onclick="applyDesignTemplate('portfolio')" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">Portfolio</button>
+            </div>
+          </div>
+          <button onclick="toggleDesignGrid()" id="designGridBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar cuadrícula"><i class="fa-solid fa-border-all mr-1"></i> Rejilla</button>
+          <button onclick="toggleDesignSnap()" id="designSnapBtn" type="button" aria-pressed="false" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Ajustar las capas a la cuadrícula al soltar" aria-label="Ajustar a la cuadrícula"><i class="fa-solid fa-magnet"></i><span class="hidden sm:inline ml-1">Ajustar</span></button>
+          <label class="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1.5" title="Tamaño de la cuadrícula"><span class="sr-only">Tamaño de cuadrícula</span><select id="designGridSize" aria-label="Tamaño de cuadrícula" onchange="setDesignGridSize(this.value)" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="4">4 px</option><option value="8" selected>8 px</option><option value="16">16 px</option><option value="32">32 px</option></select></label>
+          <div class="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="Alinear elemento seleccionado">
+<button onclick="alignDesignElement('left')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la izquierda" aria-label="Alinear izquierda"><i class="fa-solid fa-align-left"></i></button>
+<button onclick="alignDesignElement('center-x')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar horizontalmente" aria-label="Centrar horizontal"><i class="fa-solid fa-arrows-left-right"></i></button>
+<button onclick="alignDesignElement('right')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la derecha" aria-label="Alinear derecha"><i class="fa-solid fa-align-right"></i></button>
+<span class="mx-0.5 h-5 border-l border-slate-700"></span>
+<button onclick="alignDesignElement('top')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear arriba" aria-label="Alinear arriba"><i class="fa-solid fa-arrow-up"></i></button>
+<button onclick="alignDesignElement('center-y')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar verticalmente" aria-label="Centrar vertical"><i class="fa-solid fa-arrows-up-down"></i></button>
+<button onclick="alignDesignElement('bottom')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear abajo" aria-label="Alinear abajo"><i class="fa-solid fa-arrow-down"></i></button>
+</div>
+          <div class="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="Distribuir capas seleccionadas">
+            <button type="button" onclick="distributeDesignElements('horizontal')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Distribuir horizontalmente (selecciona 3 o más capas con Shift + clic)" aria-label="Distribuir capas horizontalmente"><i class="fa-solid fa-arrows-left-right"></i><span class="hidden xl:inline ml-1">Distribuir H</span></button>
+            <button type="button" onclick="distributeDesignElements('vertical')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Distribuir verticalmente (selecciona 3 o más capas con Shift + clic)" aria-label="Distribuir capas verticalmente"><i class="fa-solid fa-arrows-up-down"></i><span class="hidden xl:inline ml-1">Distribuir V</span></button>
+          </div>
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Color de fondo del marco">Fondo <input id="designBackgroundColor" type="color" value="#ffffff" onchange="setDesignBackground(this.value)" class="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"></label>
+          <label class="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Zoom del lienzo"><i class="fa-solid fa-magnifying-glass"></i><input id="designZoom" type="range" min="10" max="150" step="5" value="100" oninput="setDesignZoom(this.value)" class="w-16 sm:w-20 accent-violet-500"><span id="designZoomLabel" class="w-8 text-right">100%</span></label>
+          <button id="designFitBtn" type="button" onclick="fitDesignToViewport()" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Ajustar el lienzo al ancho visible" aria-label="Ajustar lienzo al ancho visible"><i class="fa-solid fa-expand"></i><span class="hidden sm:inline ml-1">Encajar</span></button>
+          <div class="relative">
+            <button id="designExportMenuButton" type="button" aria-expanded="false" aria-controls="designExportMenu" onclick="toggleDesignExportMenu()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-download mr-1"></i> Exportar <i class="fa-solid fa-chevron-down ml-1 text-[9px]"></i></button>
+            <div id="designExportMenu" role="menu" aria-label="Formatos de exportación" class="hidden absolute left-0 top-full mt-1 z-50 min-w-44 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
+              <button type="button" role="menuitem" onclick="exportDesignHtml(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-brands fa-html5 mr-2 text-orange-400"></i>HTML adaptable</button>
+              <button id="exportDesignSvgOption" type="button" role="menuitem" onclick="exportDesignSvg(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-bezier-curve mr-2 text-cyan-400"></i>SVG vectorial</button>
+              <button id="exportDesignJsonOption" type="button" role="menuitem" onclick="exportDesignProjectJson(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-code mr-2 text-violet-400"></i>Proyecto JSON (respaldo)</button>
+              <button id="importDesignProjectJsonOption" type="button" role="menuitem" onclick="closeDesignExportMenu(); document.getElementById('designProjectJsonFile').click()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-arrow-up mr-2 text-emerald-400"></i>Importar respaldo como proyecto</button>
+            </div>
+            <input id="designProjectJsonFile" type="file" accept=".json,application/json" class="hidden" aria-label="Importar respaldo de proyecto de diseño" onchange="importDesignProjectJson(this.files && this.files[0]); this.value = ''">
+          </div>
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Resolución de la captura IA"><span class="hidden sm:inline">Resolución</span><select id="designCaptureScale" aria-label="Resolución de captura IA" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></label>
+          <button onclick="captureDesignForAI()" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold" title="Descarga una captura PNG en alta resolución y el contexto estructurado para una IA"><i class="fa-solid fa-camera mr-1"></i> Captura IA</button>
+          <div class="ml-auto flex items-center gap-2">
+            <label class="text-[11px] text-slate-400" for="designFrameSize">Marco</label>
+            <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
+              <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
+            </select>
+            <button onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"><i class="fa-solid fa-arrow-right-arrow-left mr-1"></i> Crear web</button>
+            <button id="openDesignFlowGraph" type="button" onclick="openDesignFlowGraph()" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold" title="Conectar opciones con páginas mediante nodos"><i class="fa-solid fa-diagram-project mr-1"></i> Nodos</button>
+          </div>
+        </div>
+        <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden flex-col sm:flex-row">
+          <aside class="hidden sm:flex w-48 lg:w-56 flex-col border-r border-slate-800 bg-slate-900/80 shrink-0">
+            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Capas</div>
+            <div id="designLayers" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+            <div class="px-3 py-2 border-t border-slate-800 text-[10px] text-slate-500">Selecciona una capa para editarla.</div>
+          </aside>
+          <div id="designCanvasScroll" class="flex-1 min-w-0 w-full max-w-full overflow-auto p-4 sm:p-8 bg-[#171923]">
+            <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Lienzo · arrastra elementos para moverlos</div>
+            <div id="designCanvas" class="relative mx-auto bg-white text-slate-900 shadow-2xl overflow-hidden" style="width:1440px;height:900px;max-width:none;background-color:#ffffff;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:20px 20px;touch-action:pan-x pan-y;">
+              <div id="designCanvasEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
+                <i class="fa-solid fa-pen-ruler text-4xl mb-3"></i><strong class="text-sm">Tu lienzo está listo</strong><span class="text-xs mt-1">Añade un elemento desde la barra superior.</span>
+              </div>
+            </div>
+          </div>
+          <aside class="w-full sm:w-56 lg:w-64 max-h-48 sm:max-h-none border-t sm:border-t-0 sm:border-l border-slate-800 bg-slate-900/90 shrink-0 overflow-y-auto">
+            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Propiedades</div>
+            <div id="designProperties" class="p-3 space-y-3 text-xs">
+              <p class="text-slate-500 leading-relaxed">Selecciona un elemento para editar su contenido, posición, tamaño y color.</p>
+            </div>
+            <div class="p-3 border-t border-slate-800 space-y-2">
+              <button onclick="duplicateDesignElement()" class="w-full px-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-copy mr-1"></i> Duplicar capa</button>
+              <button onclick="deleteDesignElement()" class="w-full px-2 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs"><i class="fa-solid fa-trash mr-1"></i> Eliminar capa</button>
+            </div>
+          </aside>
         </div>
       </section>
     </main>
@@ -467,8 +604,23 @@
         <button onclick="closeNewProjectModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de proyecto</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="cursor-pointer rounded-xl border border-cyan-500/50 bg-cyan-500/10 p-3 flex flex-col gap-2 hover:bg-cyan-500/15">
+            <input type="radio" name="newProjectType" value="web" checked class="accent-cyan-400">
+            <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-solid fa-code text-cyan-300"></i> Página web</span>
+            <span class="text-[11px] leading-relaxed text-slate-400">Código, vista previa y ejecución.</span>
+          </label>
+          <label class="cursor-pointer rounded-xl border border-violet-500/50 bg-violet-500/10 p-3 flex flex-col gap-2 hover:bg-violet-500/15">
+            <input type="radio" name="newProjectType" value="design" class="accent-violet-400">
+            <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-solid fa-pen-ruler text-violet-300"></i> Diseño</span>
+            <span class="text-[11px] leading-relaxed text-slate-400">Lienzo visual, capas y prototipos.</span>
+          </label>
+        </div>
+      </div>
+      <div>
         <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Proyecto</label>
-        <input type="text" id="newProjectNameInput" autofocus placeholder="Ej: Mi Calculadora Web" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500">
+        <input type="text" id="newProjectNameInput" maxlength="200" autofocus placeholder="Ej: Mi Calculadora Web" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500">
       </div>
       <div class="flex justify-end gap-2 pt-2">
         <button onclick="closeNewProjectModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold">Cancelar</button>
@@ -597,7 +749,163 @@
     </div>
   </div>
 
+
+  <!-- DESIGN TOOLS: reusable design system, contrast and tokens -->
+  <div id="designToolsModal" role="dialog" aria-modal="true" aria-labelledby="designToolsTitle" class="hidden fixed inset-0 z-[70] bg-slate-950/85 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
+    <div class="w-full max-w-6xl max-h-[96dvh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-4 backdrop-blur">
+        <div class="min-w-0">
+          <h2 id="designToolsTitle" class="text-base sm:text-lg font-black text-white"><i class="fa-solid fa-swatchbook mr-2 text-cyan-400"></i>Laboratorio de diseño</h2>
+          <p class="text-[10px] sm:text-xs text-slate-400 mt-1">Paletas, accesibilidad y tokens reutilizables para tus interfaces.</p>
+        </div>
+        <button id="closeDesignTools" type="button" class="touch-target shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 text-slate-300" aria-label="Cerrar herramientas"><i class="fa-solid fa-xmark"></i></button>
+      </header>
+      <div class="p-3 sm:p-6 space-y-4">
+        <div role="tablist" aria-label="Herramientas de diseño" class="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl border border-slate-800 bg-slate-950 p-1">
+          <button id="designToolsTab-palette" type="button" role="tab" aria-selected="true" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-cyan-300 bg-cyan-500/15"><i class="fa-solid fa-palette mr-1"></i>Paleta</button>
+          <button id="designToolsTab-accessibility" type="button" role="tab" aria-selected="false" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-slate-400"><i class="fa-solid fa-universal-access mr-1"></i>Contraste</button>
+          <button id="designToolsTab-tokens" type="button" role="tab" aria-selected="false" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-slate-400"><i class="fa-solid fa-sliders mr-1"></i>Tokens</button>
+          <button id="designToolsTab-audit" type="button" role="tab" aria-selected="false" class="touch-target rounded-lg px-2 py-2 text-xs font-bold text-slate-400"><i class="fa-solid fa-universal-access mr-1"></i>Auditoría</button>
+        </div>
+
+        <section id="designToolsPanel-palette" role="tabpanel" class="space-y-4">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-4">
+              <div>
+                <label for="systemName" class="block text-xs font-semibold text-slate-300 mb-1.5">Nombre del sistema</label>
+                <input id="systemName" maxlength="80" value="Mi sistema visual" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <label class="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2.5 text-xs text-slate-300">Primario<input id="colorPrimary" type="color" value="#06b6d4" class="h-9 w-10 cursor-pointer rounded bg-transparent border-0"></label>
+                <label class="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2.5 text-xs text-slate-300">Secundario<input id="colorSecondary" type="color" value="#2563eb" class="h-9 w-10 cursor-pointer rounded bg-transparent border-0"></label>
+                <label class="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2.5 text-xs text-slate-300">Acento<input id="colorAccent" type="color" value="#a855f7" class="h-9 w-10 cursor-pointer rounded bg-transparent border-0"></label>
+                <label class="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2.5 text-xs text-slate-300">Superficie<input id="colorSurface" type="color" value="#0f172a" class="h-9 w-10 cursor-pointer rounded bg-transparent border-0"></label>
+                <label class="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2.5 text-xs text-slate-300">Fondo<input id="colorBackground" type="color" value="#020617" class="h-9 w-10 cursor-pointer rounded bg-transparent border-0"></label>
+                <label class="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2.5 text-xs text-slate-300">Texto<input id="colorText" type="color" value="#f8fafc" class="h-9 w-10 cursor-pointer rounded bg-transparent border-0"></label>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button id="saveDesignSystem" type="button" class="touch-target rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-2 text-xs font-bold text-white"><i class="fa-solid fa-floppy-disk mr-1"></i>Guardar aquí</button>
+                <button id="resetDesignSystem" type="button" class="touch-target rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs text-slate-200"><i class="fa-solid fa-rotate-left mr-1"></i>Restablecer</button>
+              </div>
+              <p class="text-[10px] leading-relaxed text-slate-500">Guardar aquí almacena estos ajustes en este navegador. Exporta el JSON para reutilizar el sistema en otro dispositivo.</p>
+            </div>
+            <div class="space-y-3">
+              <div id="designSystemLivePreview" class="rounded-xl border border-slate-800 p-4 space-y-3" style="background:#020617;color:#f8fafc">
+                <div class="flex items-center justify-between gap-2"><span class="text-[10px] uppercase tracking-widest opacity-60">Vista previa real</span><span class="h-2 w-2 rounded-full bg-emerald-400"></span></div>
+                <div id="designPreviewSurface" class="rounded-xl p-4 border border-white/10" style="background:#0f172a">
+                  <p class="text-[10px] uppercase tracking-widest opacity-60 mb-1">Componente de ejemplo</p>
+                  <h3 id="designPreviewTitle" class="text-lg font-black">Construye con consistencia</h3>
+                  <p class="mt-1 text-xs opacity-70">Prueba cómo conviven tus colores antes de usarlos en una interfaz.</p>
+                  <div class="flex flex-wrap gap-2 mt-4">
+                    <button id="designPreviewPrimary" type="button" class="touch-target rounded-lg px-3 py-2 text-xs font-bold text-white" style="background:#06b6d4">Acción principal</button>
+                    <button id="designPreviewSecondary" type="button" class="touch-target rounded-lg px-3 py-2 text-xs font-bold text-white" style="background:#2563eb">Secundaria</button>
+                    <span id="designPreviewAccent" class="inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style="background:#a855f7">Etiqueta</span>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div class="flex items-center justify-between gap-2 mb-3"><h3 class="text-xs font-bold text-slate-200">Escala automática del color primario</h3><span class="text-[10px] text-slate-500">50–900</span></div>
+                <div id="designPalettePreview" class="grid grid-cols-5 sm:grid-cols-10 gap-2"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="designToolsPanel-accessibility" role="tabpanel" class="hidden space-y-4">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-4">
+              <p class="text-xs leading-relaxed text-slate-400">Comprueba el contraste de dos colores con la fórmula WCAG. Esto es una comprobación de contraste, no una auditoría completa de accesibilidad.</p>
+              <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 p-3 text-xs text-slate-300">Color del texto<input id="contrastForeground" type="color" value="#f8fafc" class="h-10 w-12 cursor-pointer rounded bg-transparent border-0"></label>
+              <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 p-3 text-xs text-slate-300">Color del fondo<input id="contrastBackground" type="color" value="#020617" class="h-10 w-12 cursor-pointer rounded bg-transparent border-0"></label>
+              <div id="contrastResult" aria-live="polite" class="rounded-xl border border-slate-800 bg-slate-900 p-3"></div>
+            </div>
+            <div id="contrastSample" class="min-h-48 rounded-xl border border-slate-700 p-6 flex flex-col justify-center" style="color:#f8fafc;background:#020617">
+              <p class="text-[10px] uppercase tracking-widest opacity-70 mb-2">Vista previa de contraste</p>
+              <h3 class="text-2xl font-black">Texto de ejemplo</h3>
+              <p class="text-sm mt-2">Los colores cambian en tiempo real. Revisa texto normal y grande antes de exportar.</p>
+              <button type="button" class="self-start mt-4 rounded-lg border border-current px-3 py-2 text-xs font-bold">Ejemplo de botón</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="designToolsPanel-tokens" role="tabpanel" class="hidden space-y-4">
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <label class="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">Tamaño base (px)<input id="baseFont" type="number" min="10" max="32" step="1" value="16" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm"></label>
+            <label class="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">Ratio tipográfico<input id="typeRatio" type="number" min="1.1" max="1.5" step="0.05" value="1.25" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm"></label>
+            <label class="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">Espaciado base (px)<input id="baseSpacing" type="number" min="2" max="16" step="1" value="4" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm"></label>
+            <label class="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">Radio base (px)<input id="baseRadius" type="number" min="0" max="32" step="1" value="12" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm"></label>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><h3 class="text-xs font-bold text-slate-200 mb-2">Escala tipográfica</h3><div id="typeScalePreview" class="space-y-1"></div></div>
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><h3 class="text-xs font-bold text-slate-200 mb-2">Escala de espaciado</h3><div id="spacingPreview" class="space-y-2"></div></div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+            <div class="flex items-center justify-between gap-2"><h3 class="text-xs font-bold text-slate-200">Variables CSS generadas</h3><button id="copyDesignSystemCss" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs"><i class="fa-regular fa-copy mr-1"></i>Copiar CSS</button></div>
+            <p class="text-[10px] text-slate-400">Esto agrega variables CSS administradas al archivo; no reemplaza automáticamente los colores existentes. Para cambiar un estilo, usa por ejemplo <code>var(--color-primary)</code>.</p><textarea id="designTokensCss" readonly rows="7" class="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-[10px] text-cyan-200"></textarea>
+            <details class="text-xs text-slate-400"><summary class="cursor-pointer py-2">Ver JSON estructurado</summary><textarea id="designTokensJson" readonly rows="10" class="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-[10px] text-emerald-200"></textarea></details>
+            <div class="flex flex-wrap gap-2">
+              <button id="applyDesignTokens" type="button" class="touch-target rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-2 text-xs font-bold text-white"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Añadir tokens al CSS del proyecto web</button>
+              <button id="exportDesignSystemCss" type="button" class="touch-target rounded-lg bg-violet-600 hover:bg-violet-500 px-3 py-2 text-xs font-bold text-white"><i class="fa-solid fa-download mr-1"></i>Exportar CSS</button>
+              <button id="exportDesignSystemJson" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-200"><i class="fa-solid fa-file-code mr-1"></i>Exportar JSON</button>
+              <button id="importDesignSystemJson" type="button" class="touch-target rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-200"><i class="fa-solid fa-file-arrow-up mr-1"></i>Importar JSON</button>
+              <input id="designSystemJsonFile" type="file" accept=".json,application/json" class="hidden" aria-label="Seleccionar archivo JSON del sistema visual">
+            </div>
+          </div>
+        </section>
+        <section id="designToolsPanel-audit" role="tabpanel" class="hidden space-y-4">
+          <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+              <div class="flex items-center gap-3">
+                <div class="h-10 w-10 shrink-0 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-300"><i class="fa-solid fa-clipboard-check text-lg"></i></div>
+                <div><h3 class="text-sm font-bold text-white">Auditoría HTML rápida</h3><p class="text-[10px] text-slate-500">Analiza el proyecto web abierto</p></div>
+              </div>
+              <p class="text-xs leading-relaxed text-slate-400">Busca imágenes sin alt, campos sin etiqueta detectable, botones sin nombre, ids duplicados, saltos de encabezados, falta de idioma/título/viewport y enlaces target="_blank" sin noopener.</p>
+              <button id="runAccessibilityAudit" type="button" class="touch-target w-full rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-3 text-xs font-bold text-white"><i class="fa-solid fa-magnifying-glass-chart mr-2"></i>Analizar proyecto abierto</button>
+              <button id="exportAccessibilityAudit" type="button" disabled class="touch-target w-full rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 text-xs font-semibold text-slate-200"><i class="fa-solid fa-download mr-2"></i>Exportar informe JSON</button>
+              <p class="text-[10px] leading-relaxed text-slate-500">Es un análisis estático inicial, no una certificación WCAG. No ejecuta JavaScript ni evalúa todos los estados de interacción. Usa también el comprobador de contraste.</p>
+            </div>
+            <div id="accessibilityAuditResults" class="min-h-48 rounded-xl border border-slate-800 bg-slate-950/50 p-3 sm:p-4" aria-live="polite">
+              <div class="h-full min-h-40 flex flex-col items-center justify-center text-center gap-2 text-slate-500"><i class="fa-solid fa-list-check text-3xl"></i><p class="text-xs">Ejecuta la auditoría para ver problemas concretos y cómo corregirlos.</p></div>
+            </div>
+          </div>
+        </section>
+        <p id="designToolsStatus" role="status" aria-live="polite" class="min-h-5 text-xs text-cyan-300"></p>
+      </div>
+      <footer class="sticky bottom-0 flex justify-end border-t border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-3 backdrop-blur">
+        <button id="designToolsCloseFooter" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-4 py-2 text-xs font-bold text-slate-200">Cerrar herramientas</button>
+      </footer>
+    </div>
+  </div>
+
+
+
+  <!-- COMPONENT LIBRARY: searchable, reusable HTML sections -->
+  <div id="componentLibraryModal" role="dialog" aria-modal="true" aria-labelledby="componentLibraryTitle" class="hidden fixed inset-0 z-[75] bg-slate-950/85 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
+    <div class="w-full max-w-7xl max-h-[96dvh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-4 backdrop-blur">
+        <div class="min-w-0"><h2 id="componentLibraryTitle" class="text-base sm:text-lg font-black text-white"><i class="fa-solid fa-cubes mr-2 text-cyan-400"></i>Biblioteca de componentes</h2><p class="mt-1 text-[10px] sm:text-xs text-slate-400">Previsualiza, copia, exporta o inserta bloques reutilizables en tu web.</p></div>
+        <button id="closeComponentLibrary" type="button" class="touch-target shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 text-slate-300" aria-label="Cerrar biblioteca"><i class="fa-solid fa-xmark"></i></button>
+      </header>
+      <div class="p-3 sm:p-5 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_190px] gap-2"><label class="sr-only" for="componentLibrarySearch">Buscar componentes</label><input id="componentLibrarySearch" type="search" placeholder="Buscar navegación, hero, formulario..." class="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-white focus:border-cyan-500 focus:outline-none"><label class="sr-only" for="componentLibraryCategory">Filtrar categoría</label><select id="componentLibraryCategory" class="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-white"><option>Todas</option><option>Navegación</option><option>Secciones</option><option>Tarjetas</option><option>Formularios</option><option>Paneles</option></select></div>
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.5fr)] gap-4"><div id="componentLibraryList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2 content-start" aria-label="Componentes disponibles"></div>
+          <section class="min-w-0 rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-3"><div><h3 id="componentLibrarySelectedName" class="font-bold text-white text-sm">Hero de landing</h3><p id="componentLibrarySelectedDescription" class="text-xs text-slate-400 mt-1"></p></div>
+            <div class="rounded-xl border border-slate-800 bg-slate-800 p-2"><iframe id="componentLibraryPreview" title="Vista previa aislada del componente" sandbox="" loading="lazy" class="w-full min-h-[280px] sm:min-h-[320px] rounded-lg bg-slate-100"></iframe></div>
+            <label for="componentLibraryCode" class="block text-xs font-semibold text-slate-300">HTML del componente</label><textarea id="componentLibraryCode" readonly rows="8" spellcheck="false" class="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] text-cyan-100 focus:outline-none"></textarea>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2"><button id="componentLibraryCopy" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-3 text-xs font-bold text-slate-100"><i class="fa-regular fa-copy mr-1"></i>Copiar HTML</button><button id="componentLibraryDownload" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-3 text-xs font-bold text-slate-100"><i class="fa-solid fa-download mr-1"></i>Exportar página</button><button id="componentLibraryInsert" type="button" class="touch-target rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-3 text-xs font-bold text-white"><i class="fa-solid fa-plus mr-1"></i>Insertar en web</button></div>
+          </section>
+        </div>
+        <p id="componentLibraryStatus" role="status" aria-live="polite" class="min-h-5 text-xs text-cyan-300"></p>
+      </div>
+      <footer class="sticky bottom-0 flex justify-end border-t border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-3 backdrop-blur"><button id="componentLibraryCloseFooter" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-4 py-2 text-xs font-bold text-slate-200">Cerrar biblioteca</button></footer>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
+  <script src="/design-tools.js"></script>
+  <script src="/capture.js"></script>
+  <script src="/component-library.js"></script>
+  <script src="/design-flow.js"></script>
 </body>
 
 </html>

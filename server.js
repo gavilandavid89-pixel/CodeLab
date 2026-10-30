@@ -1,26 +1,44 @@
 /**
- * CodeLab XD Studio Pro v2.6.0
+ * CodeLab XD Studio Pro v2.6.6
  * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
  */
 const http = require('http');
 const https = require('https');
+const dns = require('dns').promises;
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const net = require('net');
 const { URL } = require('url');
+const designTools = require('./public/design-tools.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_REAL_DIR = fs.realpathSync(PUBLIC_DIR);
 const SECRET_FILE = path.join(DATA_DIR, '.workspace-secret');
-const MAX_BODY_BYTES = Number(process.env.CODELAB_MAX_BODY_BYTES) || 2 * 1024 * 1024;
-const MAX_PROJECTS = Number(process.env.CODELAB_MAX_PROJECTS) || 50;
+const configuredMaxBodyBytes = Number.parseInt(process.env.CODELAB_MAX_BODY_BYTES || '', 10);
+const MAX_BODY_BYTES = Number.isInteger(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
+  ? Math.min(50 * 1024 * 1024, Math.max(1024, configuredMaxBodyBytes))
+  : 10 * 1024 * 1024;
+const configuredMaxProjects = Number.parseInt(process.env.CODELAB_MAX_PROJECTS || '', 10);
+const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxProjects > 0
+  ? Math.min(500, configuredMaxProjects)
+  : 50;
+const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
+const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
+  ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
+  : 60000;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 120;
 const APP_VERSION = '2.6.6';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const configuredSessionCleanupInterval = Number.parseInt(process.env.CODELAB_SESSION_CLEANUP_INTERVAL_MS || '', 10);
+const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInterval) && configuredSessionCleanupInterval > 0
+  ? Math.min(60 * 60 * 1000, Math.max(1000, configuredSessionCleanupInterval))
+  : 15 * 60 * 1000;
 const COOKIE_NAME = 'codelab_sid';
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
@@ -35,8 +53,14 @@ const AI_BASE_URL = (process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || '
   .trim()
   .replace(/\/$/, '');
 const _rawModel = (process.env.AI_MODEL || process.env.OPENAI_MODEL || '').trim();
-const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS) || 4096;
-const AI_RATE_MAX = Number(process.env.AI_RATE_MAX) || 20; // per window per IP
+const configuredAiMaxTokens = Number.parseInt(process.env.AI_MAX_TOKENS || '', 10);
+const AI_MAX_TOKENS = Number.isInteger(configuredAiMaxTokens) && configuredAiMaxTokens > 0
+  ? Math.min(32768, configuredAiMaxTokens)
+  : 4096;
+const configuredAiRateMax = Number.parseInt(process.env.AI_RATE_MAX || '', 10);
+const AI_RATE_MAX = Number.isInteger(configuredAiRateMax) && configuredAiRateMax > 0
+  ? Math.min(1000, configuredAiRateMax)
+  : 20; // per window per IP
 
 function isGroqBase(url) {
   return /api\.groq\.com/i.test(url || '');
@@ -120,12 +144,42 @@ function checkAiRateLimit(ip) {
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
-let SERVER_SECRET = process.env.CODELAB_WORKSPACE_SECRET || '';
+let SERVER_SECRET = (process.env.CODELAB_WORKSPACE_SECRET || '').trim();
 if (!SERVER_SECRET) {
   try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
   if (!SERVER_SECRET) {
-    SERVER_SECRET = crypto.randomBytes(32).toString('hex');
-    try { fs.writeFileSync(SECRET_FILE, SERVER_SECRET, { encoding: 'utf8', mode: 0o600 }); } catch (_) {}
+    const generatedSecret = crypto.randomBytes(32).toString('hex');
+    const tempSecretFile = SECRET_FILE + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+    try {
+      // Write the full secret privately first, then atomically publish it with a
+      // no-overwrite hard link. Concurrent instances can never observe a partial key.
+      fs.writeFileSync(tempSecretFile, generatedSecret, {
+        encoding: 'utf8',
+        mode: 0o600,
+        flag: 'wx'
+      });
+      try {
+        fs.linkSync(tempSecretFile, SECRET_FILE);
+        SERVER_SECRET = generatedSecret;
+      } catch (error) {
+        if (error.code === 'EEXIST') {
+          try { SERVER_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch (_) {}
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      throw new Error('CODELAB_WORKSPACE_SECRET is required when the secret file cannot be persisted: ' + error.message);
+    } finally {
+      try { fs.unlinkSync(tempSecretFile); } catch (_) {}
+    }
+  }
+  if (!SERVER_SECRET) {
+    throw new Error('Workspace secret file is empty or unreadable; configure CODELAB_WORKSPACE_SECRET or repair ' + SECRET_FILE);
+  }
+  // Tighten permissions for an existing secret file as well as newly created ones.
+  try { fs.chmodSync(SECRET_FILE, 0o600); } catch (error) {
+    console.warn('Could not restrict workspace secret file permissions:', error.message);
   }
 }
 
@@ -143,8 +197,13 @@ function checkRateLimit(ip) {
 }
 setInterval(() => {
   const now = Date.now();
+  // Both limiters are keyed by client IP. Expire stale entries in both maps so
+  // long-running servers do not retain every IP that has ever called the API.
   for (const [ip, entry] of rateMap) {
     if (now - entry.start > RATE_WINDOW_MS * 2) rateMap.delete(ip);
+  }
+  for (const [ip, entry] of aiRateMap) {
+    if (now - entry.start > RATE_WINDOW_MS * 2) aiRateMap.delete(ip);
   }
 }, 60 * 1000).unref();
 
@@ -172,29 +231,93 @@ function parseOAuthState(state) {
   return { provider };
 }
 
-// Periodic session file cleanup (cheap, max 200 files/scan)
-setInterval(() => {
+// Rotate through large session directories so entries after the first batch
+// are also eventually checked, while keeping each cleanup pass bounded.
+let sessionCleanupCursor = 0;
+function cleanupExpiredSessions() {
   try {
-    const files = fs.readdirSync(SESSIONS_DIR);
+    const allSessionFiles = fs.readdirSync(SESSIONS_DIR).filter(file => file.endsWith('.json'));
+    let files = allSessionFiles;
+    if (allSessionFiles.length > 200) {
+      const start = sessionCleanupCursor % allSessionFiles.length;
+      const end = start + 200;
+      files = end <= allSessionFiles.length
+        ? allSessionFiles.slice(start, end)
+        : allSessionFiles.slice(start).concat(allSessionFiles.slice(0, end - allSessionFiles.length));
+      sessionCleanupCursor = end % allSessionFiles.length;
+    } else {
+      sessionCleanupCursor = 0;
+    }
     const now = Date.now();
-    let n = 0;
-    for (const f of files) {
-      if (!f.endsWith('.json') || n > 200) break;
-      n++;
+    for (const file of files) {
       try {
-        const raw = fs.readFileSync(path.join(SESSIONS_DIR, f), 'utf8');
-        const s = JSON.parse(raw);
-        if (!s.expiresAt || s.expiresAt < now) fs.unlinkSync(path.join(SESSIONS_DIR, f));
+        const sessionFile = path.join(SESSIONS_DIR, file);
+        const raw = fs.readFileSync(sessionFile, 'utf8');
+        let session;
+        try {
+          session = JSON.parse(raw);
+        } catch (_) {
+          // A malformed session can never authenticate; remove it rather than
+          // retaining an orphan file forever after every cleanup pass.
+          fs.unlinkSync(sessionFile);
+          continue;
+        }
+        if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) {
+          fs.unlinkSync(sessionFile);
+        }
       } catch (_) {}
     }
   } catch (_) {}
-}, 15 * 60 * 1000).unref();
+}
+cleanupExpiredSessions();
+setInterval(cleanupExpiredSessions, SESSION_CLEANUP_INTERVAL_MS).unref();
 
 function safeId(value) {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
 }
 function workspaceFile(id) {
   return path.join(WORKSPACES_DIR, safeId(id) + '.json');
+}
+function designSystemFile(id) {
+  return path.join(WORKSPACES_DIR, safeId(id) + '.design-system.json');
+}
+function readDesignSystem(id) {
+  const file = designSystemFile(id);
+  if (!fs.existsSync(file)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (_) {
+    throw new Error('design_system_state_invalid');
+  }
+  const requiredSettings = [
+    'name', 'primary', 'secondary', 'accent', 'surface', 'background', 'text',
+    'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'
+  ];
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+      parsed.version !== 1 || typeof parsed.updatedAt !== 'string' ||
+      !Number.isFinite(Date.parse(parsed.updatedAt)) ||
+      !parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings) ||
+      !requiredSettings.every(key => Object.prototype.hasOwnProperty.call(parsed.settings, key))) {
+    throw new Error('design_system_state_invalid');
+  }
+  return designTools.sanitizeSettings(parsed.settings);
+}
+function writeDesignSystem(id, settings) {
+  const file = designSystemFile(id);
+  const tmp = file + '.tmp.' + process.pid + '.' + Date.now();
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      settings: settings
+    }), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    // Keep failed settings writes from leaving sensitive workspace temp files behind.
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
 }
 function emptyState(owner) {
   return {
@@ -212,17 +335,71 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+const MAX_DESIGN_ELEMENTS = 500;
+
 function validateProjects(projects) {
   if (!Array.isArray(projects)) return 'projects_not_array';
   if (projects.length > MAX_PROJECTS) return 'too_many_projects';
+  const projectIds = new Set();
   for (const p of projects) {
-    if (!p || typeof p !== 'object') return 'invalid_project';
-    if (typeof p.id !== 'string' || p.id.length > 80) return 'invalid_project_id';
-    if (typeof p.name !== 'string' || p.name.length > 200) return 'invalid_project_name';
-    if (!p.code || typeof p.code !== 'object') return 'invalid_project_code';
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return 'invalid_project';
+    if (typeof p.id !== 'string' || !p.id.trim() || p.id.length > 80) return 'invalid_project_id';
+    if (projectIds.has(p.id)) return 'duplicate_project_id';
+    projectIds.add(p.id);
+    if (typeof p.name !== 'string' || !p.name.trim() || p.name.length > 200) return 'invalid_project_name';
+    if (!p.code || typeof p.code !== 'object' || Array.isArray(p.code)) return 'invalid_project_code';
     for (const k of ['html', 'css', 'js']) {
       if (p.code[k] != null && typeof p.code[k] !== 'string') return 'invalid_code_field';
       if (typeof p.code[k] === 'string' && p.code[k].length > 500000) return 'code_too_large';
+    }
+    if (p.branch != null) {
+      if (typeof p.branch !== 'object' || Array.isArray(p.branch)) return 'invalid_project_branch';
+      if (p.branch.id != null && (typeof p.branch.id !== 'string' || !p.branch.id.trim() || p.branch.id.length > 100)) {
+        return 'invalid_branch_id';
+      }
+      for (const codeKey of ['code', 'baseCode']) {
+        const branchCode = p.branch[codeKey];
+        if (branchCode == null) continue;
+        if (typeof branchCode !== 'object' || Array.isArray(branchCode)) return 'invalid_branch_code';
+        for (const field of ['html', 'css', 'js']) {
+          if (branchCode[field] != null && typeof branchCode[field] !== 'string') return 'invalid_branch_code_field';
+          if (typeof branchCode[field] === 'string' && branchCode[field].length > 500000) return 'branch_code_too_large';
+        }
+      }
+      for (const timestampKey of ['updatedAt', 'baseMainUpdatedAt']) {
+        if (p.branch[timestampKey] != null && typeof p.branch[timestampKey] !== 'string') return 'invalid_branch_timestamp';
+      }
+    }
+    if (p.mergeHistory != null) {
+      if (!Array.isArray(p.mergeHistory)) return 'invalid_merge_history';
+      if (p.mergeHistory.length > 50) return 'merge_history_too_large';
+      for (const entry of p.mergeHistory) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return 'invalid_merge_history_entry';
+        if (entry.code != null) {
+          if (typeof entry.code !== 'object' || Array.isArray(entry.code)) return 'invalid_merge_history_code';
+          for (const field of ['html', 'css', 'js']) {
+            if (entry.code[field] != null && typeof entry.code[field] !== 'string') return 'invalid_merge_history_code_field';
+            if (typeof entry.code[field] === 'string' && entry.code[field].length > 500000) return 'merge_history_code_too_large';
+          }
+        }
+        if (entry.branch != null && (typeof entry.branch !== 'object' || Array.isArray(entry.branch))) {
+          return 'invalid_merge_history_branch';
+        }
+      }
+    }
+    if (p.design != null) {
+      if (typeof p.design !== 'object' || Array.isArray(p.design)) return 'invalid_project_design';
+      if (p.design.elements != null && !Array.isArray(p.design.elements)) return 'invalid_design_elements';
+      if (Array.isArray(p.design.elements)) {
+        if (p.design.elements.length > MAX_DESIGN_ELEMENTS) return 'too_many_design_elements';
+        const elementIds = new Set();
+        for (const element of p.design.elements) {
+          if (!element || typeof element !== 'object' || Array.isArray(element)) return 'invalid_design_element';
+          if (typeof element.id !== 'string' || !element.id.trim() || element.id.length > 100) return 'invalid_design_element_id';
+          if (elementIds.has(element.id)) return 'duplicate_design_element_id';
+          elementIds.add(element.id);
+        }
+      }
     }
   }
   return null;
@@ -232,6 +409,36 @@ function readState(id) {
   const file = workspaceFile(id);
   if (!fs.existsSync(file)) return emptyState();
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // Do not silently replace malformed persisted fields with empty defaults: that
+  // can make a broken workspace look valid and later overwrite recoverable data.
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('workspace_state_invalid');
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, 'projects') && !Array.isArray(parsed.projects)) {
+    throw new Error('workspace_projects_invalid');
+  }
+  // Persisted JSON can be syntactically valid while containing project records
+  // the editor cannot safely consume. Reuse the same validator as writes so
+  // GET/init never leaks malformed state back to the client or masks it as empty.
+  if (Array.isArray(parsed.projects)) {
+    const projectError = validateProjects(parsed.projects);
+    if (projectError) throw new Error('workspace_projects_invalid:' + projectError);
+  }
+  if (parsed.revision != null && (!Number.isInteger(parsed.revision) || parsed.revision < 0)) {
+    throw new Error('workspace_revision_invalid');
+  }
+  if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
+    throw new Error('workspace_updated_at_invalid');
+  }
+  if (parsed.owner != null && (
+      typeof parsed.owner !== 'object' ||
+      Array.isArray(parsed.owner) ||
+      typeof parsed.owner.id !== 'string' ||
+      !parsed.owner.id ||
+      (parsed.owner.provider !== 'github' && parsed.owner.provider !== 'google')
+    )) {
+    throw new Error('workspace_owner_invalid');
+  }
   return {
     version: 5,
     revision: Number.isInteger(parsed.revision) ? parsed.revision : 0,
@@ -251,8 +458,14 @@ function writeState(id, state) {
     projects: state.projects,
     owner: state.owner || null
   };
-  fs.writeFileSync(tmp, JSON.stringify(payload), 'utf8');
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    // A failed atomic replace must not leave orphaned workspace temp files behind.
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
 }
 
 // --- Cookies & sessions ---
@@ -261,7 +474,13 @@ function parseCookies(req) {
   const out = {};
   header.split(';').forEach(part => {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) return;
+    const key = part.slice(0, i).trim();
+    const rawValue = part.slice(i + 1).trim();
+    // Malformed percent-encoding in an unrelated cookie must not turn every
+    // authenticated API request into a 500 response.
+    try { out[key] = decodeURIComponent(rawValue); }
+    catch (_) { out[key] = rawValue; }
   });
   return out;
 }
@@ -284,17 +503,40 @@ function createSession(user) {
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS
   };
-  fs.writeFileSync(sessionPath(sid), JSON.stringify(session), { encoding: 'utf8', mode: 0o600 });
+  const file = sessionPath(sid);
+  const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(session), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    // Session creation must not leave partial credentials or orphaned temp files.
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
   return session;
 }
 
 function readSession(sid) {
-  if (!sid) return null;
+  // Session IDs are generated as 24 random bytes encoded as lowercase hex.
+  // Reject anything else before mapping a cookie value to a filesystem path.
+  if (typeof sid !== 'string' || !/^[a-f0-9]{48}$/.test(sid)) return null;
+  const file = sessionPath(sid);
   try {
-    const raw = fs.readFileSync(sessionPath(sid), 'utf8');
+    const raw = fs.readFileSync(file, 'utf8');
     const session = JSON.parse(raw);
-    if (!session || session.expiresAt < Date.now()) {
-      try { fs.unlinkSync(sessionPath(sid)); } catch (_) {}
+    const valid =
+      session &&
+      typeof session === 'object' &&
+      !Array.isArray(session) &&
+      session.id === sid &&
+      Number.isFinite(session.expiresAt) &&
+      session.expiresAt > Date.now() &&
+      session.user &&
+      typeof session.user === 'object' &&
+      typeof session.user.id === 'string' &&
+      (session.user.provider === 'github' || session.user.provider === 'google');
+    if (!valid) {
+      try { fs.unlinkSync(file); } catch (_) {}
       return null;
     }
     return session;
@@ -304,6 +546,8 @@ function readSession(sid) {
 }
 
 function destroySession(sid) {
+  // Logout cookies are untrusted input; only generated session IDs may map to files.
+  if (typeof sid !== 'string' || !/^[a-f0-9]{48}$/.test(sid)) return;
   try { fs.unlinkSync(sessionPath(sid)); } catch (_) {}
 }
 
@@ -338,8 +582,11 @@ function isSecureRequest(req) {
 
 function publicBaseUrl(req) {
   if (OAUTH_PUBLIC_URL) return OAUTH_PUBLIC_URL;
-  const proto = (req.headers['x-forwarded-proto'] || (isSecureRequest(req) ? 'https' : 'http')).split(',')[0].trim();
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:' + PORT;
+  // Use the request Host supplied by the front proxy, not X-Forwarded-Host:
+  // the latter can be client-controlled on misconfigured proxy chains and must
+  // not be allowed to choose the OAuth callback origin.
+  const proto = isSecureRequest(req) ? 'https' : 'http';
+  const host = req.headers.host || 'localhost:' + PORT;
   return proto + '://' + host;
 }
 
@@ -372,7 +619,10 @@ function sendJson(res, status, body, extraHeaders) {
   const data = JSON.stringify(body);
   const headers = Object.assign({
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(data)
+    'Content-Length': Buffer.byteLength(data),
+    // API responses can contain workspace content, account metadata, or bearer
+    // tokens; never let a browser or intermediary cache them as shared content.
+    'Cache-Control': 'no-store'
   }, extraHeaders || {});
   res.writeHead(status, headers);
   res.end(data);
@@ -381,6 +631,7 @@ function sendJson(res, status, body, extraHeaders) {
 function redirect(res, location, extraHeaders) {
   const headers = Object.assign({
     Location: location,
+    'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'SAMEORIGIN',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -402,43 +653,103 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let tooLarge = false;
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
     req.on('data', chunk => {
+      if (tooLarge || settled) return;
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
-        reject(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
-        req.destroy();
+        tooLarge = true;
+        chunks.length = 0;
+        // Keep the request stream alive long enough to return a real HTTP 413
+        // instead of resetting the socket before the caller can send JSON.
+        fail(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge || settled) return;
       const raw = Buffer.concat(chunks).toString('utf8');
-      if (!raw) return resolve({});
-      try { resolve(JSON.parse(raw)); }
-      catch (e) { reject(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON' })); }
+      if (!raw) {
+        settled = true;
+        return resolve({});
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        settled = true;
+        resolve(parsed);
+      } catch (_) {
+        fail(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON' }));
+      }
     });
-    req.on('error', reject);
+    req.on('aborted', () => {
+      fail(Object.assign(new Error('request_aborted'), { code: 'REQUEST_ABORTED' }));
+    });
+    req.on('error', error => fail(error));
   });
 }
+
+const MAX_UPSTREAM_RESPONSE_BYTES = 5 * 1024 * 1024;
 
 function httpsRequest(urlStr, options, body) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const opts = {
       hostname: u.hostname,
+      port: u.port ? Number(u.port) : 443,
       path: u.pathname + u.search,
       method: options.method || 'GET',
-      headers: options.headers || {}
+      headers: options.headers || {},
+      ...(options.lookup ? { lookup: options.lookup } : {})
+    };
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const succeed = value => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
     };
     const req = https.request(opts, res => {
       const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        resolve({ status: res.statusCode, headers: res.headers, body: text });
+      let size = 0;
+      res.on('data', chunk => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > MAX_UPSTREAM_RESPONSE_BYTES) {
+          const error = Object.assign(new Error('upstream_response_too_large'), {
+            code: 'UPSTREAM_RESPONSE_TOO_LARGE'
+          });
+          fail(error);
+          req.destroy(error);
+          return;
+        }
+        chunks.push(chunk);
       });
+      res.on('end', () => {
+        const responseText = Buffer.concat(chunks).toString('utf8');
+        succeed({ status: res.statusCode, headers: res.headers, body: responseText });
+      });
+      res.on('aborted', () => {
+        fail(Object.assign(new Error('upstream_response_aborted'), { code: 'UPSTREAM_RESPONSE_ABORTED' }));
+      });
+      res.on('error', fail);
     });
-    req.on('error', reject);
+    req.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
+      const error = Object.assign(new Error('upstream_timeout'), { code: 'UPSTREAM_TIMEOUT' });
+      fail(error);
+      req.destroy(error);
+    });
+    req.on('error', fail);
     if (body) req.write(body);
     req.end();
   });
@@ -457,6 +768,11 @@ const MIME = {
 };
 
 function serveStatic(req, res, urlPath) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    setSecurityHeaders(res);
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, HEAD' });
+    return res.end('Method Not Allowed');
+  }
   let rel;
   try {
     rel = decodeURIComponent(urlPath.split('?')[0]);
@@ -474,36 +790,79 @@ function serveStatic(req, res, urlPath) {
   if (rel === '/' || rel === '') rel = '/index.html';
   const filePath = path.resolve(PUBLIC_DIR, '.' + path.sep + rel.replace(/^[/]+/, ''));
   const relToPublic = path.relative(PUBLIC_DIR, filePath);
-  if (relToPublic.startsWith('..') || path.isAbsolute(relToPublic)) {
+  if (relToPublic === '..' || relToPublic.startsWith('..' + path.sep) || path.isAbsolute(relToPublic)) {
     setSecurityHeaders(res);
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not Found');
   }
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
+  fs.realpath(filePath, (realpathError, realPath) => {
+    if (realpathError) {
       setSecurityHeaders(res);
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end('Not Found');
     }
-    const ext = path.extname(filePath).toLowerCase();
-    setSecurityHeaders(res);
-    const headers = {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Content-Length': data.length
-    };
-    if (ext === '.html') {
-      headers['Cache-Control'] = 'no-cache';
-    } else if (ext === '.js' || ext === '.css') {
-      headers['Cache-Control'] = 'public, max-age=86400';
+    // Lexical path checks alone do not stop a symlink inside public/ from
+    // pointing at a private server-side file outside the asset directory.
+    const realRelative = path.relative(PUBLIC_REAL_DIR, realPath);
+    if (realRelative === '..' || realRelative.startsWith('..' + path.sep) || path.isAbsolute(realRelative)) {
+      setSecurityHeaders(res);
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Not Found');
     }
-    res.writeHead(200, headers);
-    res.end(data);
+    fs.stat(realPath, (statError, stat) => {
+      if (statError || !stat.isFile()) {
+        setSecurityHeaders(res);
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Not Found');
+      }
+      const ext = path.extname(realPath).toLowerCase();
+      setSecurityHeaders(res);
+      const headers = {
+        'Content-Type': MIME[ext] || 'application/octet-stream',
+        'Content-Length': stat.size
+      };
+      // HTML references stable asset URLs; force revalidation so deployments cannot leave
+      // users running stale application logic for a full day after a release.
+      if (ext === '.html' || ext === '.js' || ext === '.css') {
+        headers['Cache-Control'] = 'no-cache';
+      }
+      res.writeHead(200, headers);
+      // HEAD needs only metadata; GET streams the file so large static assets do not
+      // have to be fully buffered in memory for every concurrent client.
+      if (req.method === 'HEAD') return res.end();
+      const stream = fs.createReadStream(realPath);
+      res.on('close', () => {
+        // Stop disk reads when a client disconnects before the asset finishes.
+        if (!res.writableEnded) stream.destroy();
+      });
+      stream.on('error', error => {
+        console.error('static_asset_stream_failed', ext, error.message);
+        if (res.headersSent) res.destroy();
+        else {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Not Found');
+        }
+      });
+      stream.pipe(res);
+    });
   });
 }
 
 function clientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (fwd) return String(fwd).split(',')[0].trim();
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // Trust only the configured number of proxy-added hops. The default of one
+    // matches a single trusted reverse proxy; deployments with a longer trusted
+    // chain must set CODELAB_TRUSTED_PROXY_HOPS accordingly.
+    const addresses = String(forwarded).split(',').map(value => value.trim());
+    const parsedHops = Number.parseInt(process.env.CODELAB_TRUSTED_PROXY_HOPS || '1', 10);
+    const trustedHops = Number.isInteger(parsedHops) && parsedHops > 0 ? parsedHops : 1;
+    // Preserve hop positions: filtering malformed entries first could shift the
+    // selected address and let a crafted header bypass the intended proxy trust.
+    if (addresses.length >= trustedHops && addresses.every(address => net.isIP(address))) {
+      return addresses[addresses.length - trustedHops];
+    }
+  }
   return req.socket.remoteAddress || 'unknown';
 }
 
@@ -599,20 +958,40 @@ async function handleGoogleCallback(code, redirectUri) {
 }
 
 function ensureUserWorkspace(user) {
-  const id = userWorkspaceId(user);
+  if (!user || (user.provider !== 'github' && user.provider !== 'google') ||
+      user.id == null || !String(user.id).trim()) {
+    throw new Error('workspace_owner_invalid');
+  }
+  const owner = { provider: user.provider, id: String(user.id) };
+  const id = userWorkspaceId(owner);
   const file = workspaceFile(id);
   if (!fs.existsSync(file)) {
-    writeState(id, emptyState({ provider: user.provider, id: user.id }));
-  } else {
-    try {
-      const st = readState(id);
-      if (!st.owner) {
-        st.owner = { provider: user.provider, id: user.id };
-        writeState(id, st);
-      }
-    } catch (_) {}
+    writeState(id, emptyState(owner));
+    return id;
+  }
+
+  // Never treat unreadable or malformed account state as an empty workspace:
+  // OAuth must fail closed rather than creating a session over corrupt data.
+  const state = readState(id);
+  if (!state.owner) {
+    state.owner = owner;
+    writeState(id, state);
+  } else if (state.owner.provider !== owner.provider || state.owner.id !== owner.id) {
+    throw new Error('workspace_owner_mismatch');
   }
   return id;
+}
+
+function enforceSessionWorkspaceOwner(id, state, user) {
+  if (!user || userWorkspaceId(user) !== id) return state;
+  const expected = { provider: user.provider, id: String(user.id) };
+  if (!state.owner) {
+    state.owner = expected;
+    writeState(id, state);
+  } else if (state.owner.provider !== expected.provider || state.owner.id !== expected.id) {
+    throw new Error('workspace_owner_mismatch');
+  }
+  return state;
 }
 
 
@@ -624,6 +1003,70 @@ function aiConfigured() {
     rawModel: _rawModel || null,
     groq: isGroqBase(AI_BASE_URL),
     openRouter: isOpenRouterBase(AI_BASE_URL)
+  };
+}
+
+function isPublicProviderIp(address) {
+  const family = net.isIP(address);
+  if (family === 4) {
+    const octets = address.split('.').map(Number);
+    const value = (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256 + octets[3]) >>> 0;
+    const ranges = [
+      ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+      ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+      ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+      ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]
+    ];
+    return !ranges.some(([network, bits]) => {
+      const n = network.split('.').map(Number);
+      const base = (((n[0] * 256 + n[1]) * 256 + n[2]) * 256 + n[3]) >>> 0;
+      const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+      return (value & mask) === (base & mask);
+    });
+  }
+  if (family === 6) {
+    const ip = address.toLowerCase();
+    // Only allow global-unicast IPv6. Explicitly block local, mapped, transition,
+    // and documentation ranges to avoid reaching private services through IPv6.
+    if (!/^[23][0-9a-f]{0,3}:/.test(ip)) return false;
+    if (ip.startsWith('2001:')) {
+      // The IANA special-purpose 2001::/23 block includes many reserved
+      // subranges; reject it as a whole instead of only matching a few spellings.
+      const secondHextet = ip.split(':')[1] || '0';
+      const secondValue = Number.parseInt(secondHextet, 16);
+      if (Number.isFinite(secondValue) && secondValue <= 0x1ff) return false;
+      if (ip.startsWith('2001:db8:')) return false;
+    }
+    if (ip.startsWith('2002:') || ip.startsWith('3fff:')) return false;
+    if (ip.startsWith('::ffff:') || ip === '::' || ip === '::1') return false;
+    return true;
+  }
+  return false;
+}
+
+async function resolvePublicProviderTarget(urlString) {
+  let target;
+  try { target = new URL(urlString); }
+  catch (_) { throw Object.assign(new Error('invalid_ai_provider_url'), { status: 400 }); }
+  if (target.protocol !== 'https:' || target.username || target.password || target.hash) {
+    throw Object.assign(new Error('AI provider URL must use HTTPS without embedded credentials or fragments.'), { status: 400 });
+  }
+  const hostname = target.hostname.startsWith('[') && target.hostname.endsWith(']')
+    ? target.hostname.slice(1, -1)
+    : target.hostname;
+  let records;
+  try { records = await dns.lookup(hostname, { all: true, verbatim: true }); }
+  catch (_) { throw Object.assign(new Error('AI provider hostname could not be resolved.'), { status: 400 }); }
+  if (!records.length || records.some(record => !isPublicProviderIp(record.address))) {
+    throw Object.assign(new Error('AI provider URL must resolve only to public IP addresses.'), { status: 400 });
+  }
+  // Prefer IPv4 when the provider publishes both families: some hosting
+  // networks still have incomplete IPv6 egress, while the full DNS set above
+  // has already been checked to ensure no private address is mixed in.
+  const pinned = records.find(record => record.family === 4) || records[0];
+  return {
+    url: target.toString(),
+    lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family)
   };
 }
 
@@ -642,10 +1085,12 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
     headers['X-Title'] = 'CodeLab XD Studio Pro';
   }
 
+  const providerTarget = await resolvePublicProviderTarget(base + '/chat/completions');
+
   async function doRequest(bodyObj) {
     const body = JSON.stringify(bodyObj);
     const h = Object.assign({}, headers, { 'Content-Length': Buffer.byteLength(body) });
-    return httpsRequest(base + '/chat/completions', { method: 'POST', headers: h }, body);
+    return httpsRequest(providerTarget.url, { method: 'POST', headers: h, lookup: providerTarget.lookup }, body);
   }
 
   function buildPayload(modelId, withJsonFormat) {
@@ -891,7 +1336,8 @@ const server = http.createServer(async (req, res) => {
           const data = JSON.stringify(body);
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
-            'Content-Length': Buffer.byteLength(data)
+            'Content-Length': Buffer.byteLength(data),
+            'Cache-Control': 'no-store'
           });
           return res.end();
         }
@@ -938,6 +1384,7 @@ const server = http.createServer(async (req, res) => {
           baseUrl: cfg.serverKey ? cfg.baseUrl : null,
           groq: cfg.groq,
           openRouter: cfg.openRouter,
+          maxProjects: MAX_PROJECTS,
           modes: ['auto', 'api', 'local'],
           hint: cfg.serverKey
             ? (cfg.groq
@@ -1003,14 +1450,20 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 413, { error: 'code_too_large' });
         }
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-        const apiKey = AI_API_KEY || clientKey;
+        if (clientKey.length > 4096) {
+          return sendJson(res, 400, { error: 'invalid_api_key' });
+        }
+        // A user-supplied credential belongs to that user's provider settings.
+        // Never combine it with the server key: the selected key and endpoint must
+        // come from the same source, or the server secret could be sent to a custom URL.
+        const usingServerKey = !clientKey && !!AI_API_KEY;
+        const apiKey = clientKey || AI_API_KEY;
         if (!apiKey) {
           return sendJson(res, 503, {
             error: 'ai_not_configured',
             message: 'No hay API key. Configura AI_API_KEY en el servidor o pégala en Ajustes del copiloto.'
           });
         }
-        const usingServerKey = !!AI_API_KEY && !(body && typeof body.apiKey === 'string' && body.apiKey.trim());
         let baseUrl = AI_BASE_URL;
         let model = AI_MODEL;
         if (!usingServerKey) {
@@ -1026,6 +1479,8 @@ const server = http.createServer(async (req, res) => {
             model = body.model.trim();
           }
         }
+        if (baseUrl.length > 2048) return sendJson(res, 400, { error: 'invalid_provider_url' });
+        if (model.length > 200) return sendJson(res, 400, { error: 'invalid_model' });
         try {
           const messages = [
             { role: 'system', content: buildAiSystemPrompt(code) },
@@ -1053,7 +1508,7 @@ const server = http.createServer(async (req, res) => {
             js: result.js,
             message: result.message,
             model: model,
-            via: AI_API_KEY && !clientKey ? 'server' : 'client-key'
+            via: usingServerKey ? 'server' : 'client-key'
           });
         } catch (e) {
           console.error('AI proxy error:', e.message, e.body || '');
@@ -1074,26 +1529,30 @@ const server = http.createServer(async (req, res) => {
         }
         const state = createOAuthState('github');
         const redirectUri = publicBaseUrl(req) + '/api/auth/github/callback';
+        const stateCookie = 'codelab_oauth_state_github=' + encodeURIComponent(state) +
+          '; Path=/api/auth/github/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
         const url =
           'https://github.com/login/oauth/authorize?client_id=' +
           encodeURIComponent(GITHUB_CLIENT_ID) +
           '&redirect_uri=' + encodeURIComponent(redirectUri) +
           '&scope=' + encodeURIComponent('read:user user:email') +
           '&state=' + encodeURIComponent(state);
-        return redirect(res, url);
+        return redirect(res, url, { 'Set-Cookie': stateCookie });
       }
 
       // GitHub callback
       if (req.method === 'GET' && pathname === '/api/auth/github/callback') {
         const code = searchParams.get('code');
-        const st = parseOAuthState(searchParams.get('state'));
-        if (!code || !st || st.provider !== 'github') {
+        const state = searchParams.get('state');
+        const cookies = parseCookies(req);
+        const st = parseOAuthState(state);
+        if (!code || !st || st.provider !== 'github' || !state || cookies.codelab_oauth_state_github !== state) {
           return redirect(res, '/?auth=error&reason=invalid_state');
         }
         try {
           const user = await handleGithubCallback(code);
-          const session = createSession(user);
           ensureUserWorkspace(user);
+          const session = createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
             COOKIE_NAME + '=' + encodeURIComponent(session.id) +
@@ -1112,6 +1571,8 @@ const server = http.createServer(async (req, res) => {
         }
         const state = createOAuthState('google');
         const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
+        const stateCookie = 'codelab_oauth_state_google=' + encodeURIComponent(state) +
+          '; Path=/api/auth/google/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
         const url =
           'https://accounts.google.com/o/oauth2/v2/auth?client_id=' +
           encodeURIComponent(GOOGLE_CLIENT_ID) +
@@ -1121,21 +1582,23 @@ const server = http.createServer(async (req, res) => {
           '&state=' + encodeURIComponent(state) +
           '&access_type=online' +
           '&prompt=select_account';
-        return redirect(res, url);
+        return redirect(res, url, { 'Set-Cookie': stateCookie });
       }
 
       // Google callback
       if (req.method === 'GET' && pathname === '/api/auth/google/callback') {
         const code = searchParams.get('code');
-        const st = parseOAuthState(searchParams.get('state'));
-        if (!code || !st || st.provider !== 'google') {
+        const state = searchParams.get('state');
+        const cookies = parseCookies(req);
+        const st = parseOAuthState(state);
+        if (!code || !st || st.provider !== 'google' || !state || cookies.codelab_oauth_state_google !== state) {
           return redirect(res, '/?auth=error&reason=invalid_state');
         }
         try {
           const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
           const user = await handleGoogleCallback(code, redirectUri);
-          const session = createSession(user);
           ensureUserWorkspace(user);
+          const session = createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
             COOKIE_NAME + '=' + encodeURIComponent(session.id) +
@@ -1145,6 +1608,37 @@ const server = http.createServer(async (req, res) => {
           console.error('Google OAuth error', e.message);
           return redirect(res, '/?auth=error&reason=google');
         }
+      }
+
+      // Workspace-scoped design-system settings, kept separate from project payloads.
+      const designSystemMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/design-system$/);
+      if (designSystemMatch && (req.method === 'GET' || req.method === 'PUT')) {
+        const id = safeId(designSystemMatch[1]);
+        if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        try {
+          enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+        } catch (error) {
+          console.error('workspace_corrupt', id, error.message);
+          return sendJson(res, 500, { error: 'workspace_corrupt' });
+        }
+        if (req.method === 'GET') {
+          return sendJson(res, 200, { settings: readDesignSystem(id) });
+        }
+        const body = await readBody(req);
+        if (!body || !body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) {
+          return sendJson(res, 400, { error: 'invalid_design_system' });
+        }
+        const allowed = ['name', 'primary', 'secondary', 'accent', 'surface', 'background', 'text',
+          'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'];
+        const input = {};
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(body.settings, key)) input[key] = body.settings[key];
+        }
+        const settings = designTools.sanitizeSettings(input);
+        writeDesignSystem(id, settings);
+        return sendJson(res, 200, { ok: true, settings: settings });
       }
 
       // Workspace init
@@ -1163,18 +1657,34 @@ const server = http.createServer(async (req, res) => {
           id = requested || 'ws_' + crypto.randomUUID();
           const file = workspaceFile(id);
           if (fs.existsSync(file)) {
+            // Existing workspaces still require their token; never overwrite or
+            // rebind an existing deterministic OAuth workspace anonymously.
             if (!isAuthorized(req, id)) {
               return sendJson(res, 401, { error: 'workspace_unauthorized' });
             }
           } else {
+            // Authenticated workspace IDs are deterministic so they sync across devices.
+            // Never let anonymous initialization squat on that namespace before its owner
+            // signs in; otherwise the returned HMAC token would remain valid after binding.
+            if (requested && /^ws_(github|google)_/i.test(requested)) {
+              return sendJson(res, 400, { error: 'reserved_workspace_id' });
+            }
             writeState(id, emptyState());
           }
+        }
+        let state;
+        try {
+          state = readState(id);
+          state = enforceSessionWorkspaceOwner(id, state, sessionUser);
+        } catch (error) {
+          console.error('workspace_corrupt', id, error.message);
+          return sendJson(res, 500, { error: 'workspace_corrupt' });
         }
         return sendJson(res, 200, {
           ok: true,
           workspaceId: id,
           token: signWorkspace(id),
-          state: readState(id),
+          state: state,
           user: sessionUser || null
         });
       }
@@ -1185,7 +1695,8 @@ const server = http.createServer(async (req, res) => {
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
-          return sendJson(res, 200, readState(id));
+          const state = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          return sendJson(res, 200, state);
         } catch (e) {
           console.error('workspace_corrupt', id, e.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
@@ -1195,7 +1706,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'PUT' && getMatch) {
         const id = safeId(getMatch[1]);
         const body = await readBody(req);
-        if (!id || !Array.isArray(body.projects) || !Number.isInteger(body.baseRevision)) {
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) ||
+            !Array.isArray(body.projects) || !Number.isInteger(body.baseRevision)) {
           return sendJson(res, 400, { error: 'invalid_workspace' });
         }
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
@@ -1204,7 +1716,7 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
         }
         try {
-          const current = readState(id);
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
           if (body.baseRevision !== current.revision) {
             return sendJson(res, 409, {
               error: 'revision_conflict',

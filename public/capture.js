@@ -1,0 +1,561 @@
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) {
+    root.CodeLabCapture = api;
+    if (typeof document !== 'undefined') {
+      root.captureDesignSvg = api.captureDesignSvg;
+      root.captureDesignForAI = api.captureDesignForAI;
+      root.captureWebForAI = api.captureWebForAI;
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', api.installWebCaptureControls, { once: true });
+      else api.installWebCaptureControls();
+    }
+  }
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+
+  function xmlEscape(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  }
+
+  function safeColor(value) {
+    const color = String(value || 'transparent').trim();
+    // CSS hex colors only allow 3, 4, 6, or 8 hexadecimal digits.
+    // Reject other lengths rather than exporting values browsers will ignore.
+    return /^(#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
+  }
+
+  const MAX_CAPTURE_DESIGN_ELEMENTS = 500;
+  const MAX_CAPTURE_PIXELS = 32000000;
+
+  function getCapturePixelCount(width, height, scale) {
+    const safeWidth = Number.isFinite(Number(width)) ? Math.max(0, Number(width)) : 0;
+    const safeHeight = Number.isFinite(Number(height)) ? Math.max(0, Number(height)) : 0;
+    const safeScale = [1, 2, 3, 4].includes(Number(scale)) ? Number(scale) : 1;
+    return safeWidth * safeHeight * safeScale * safeScale;
+  }
+
+  function safeImageSource(value) {
+    const source = String(value || '').trim();
+    if (!source || source.length > 2800000) return '';
+    if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+    try {
+      const url = typeof window !== 'undefined' ? new URL(source, window.location.href) : new URL(source);
+      if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
+    } catch (_) {}
+    return '';
+  }
+
+  function getCaptureLayoutPositions(design) {
+    const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : [];
+    if (elements.length > MAX_CAPTURE_DESIGN_ELEMENTS) {
+      throw new Error('El diseño supera el límite de ' + MAX_CAPTURE_DESIGN_ELEMENTS + ' capas para capturar.');
+    }
+    const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+    const positions = new Map();
+    if (!design || design.layoutMode !== 'auto') {
+      let contentBottom = 0;
+      elements.forEach(function (el) {
+        const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+        const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+        const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+        positions.set(el.id, { x: x, y: y });
+        contentBottom = Math.max(contentBottom, y + height);
+      });
+      return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + 24)) };
+    }
+    const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+    const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+    const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+    let x = padding, y = padding, rowHeight = 0;
+    elements.forEach(function (el) {
+      const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      if (direction === 'row') {
+        if (x > padding && x + width > frameWidth - padding) { x = padding; y += rowHeight + gap; rowHeight = 0; }
+        positions.set(el.id, { x: x, y: y });
+        x += width + gap; rowHeight = Math.max(rowHeight, height);
+      } else {
+        positions.set(el.id, { x: padding, y: y });
+        y += height + gap;
+      }
+    });
+    const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+    // Keep generated SVG dimensions bounded even for huge projects or corrupted layout metadata.
+    return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + padding)) };
+  }
+
+  function captureDesignSvg(project) {
+    const design = project && project.design ? project.design : {};
+    const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[design.frame] || 1440;
+    const layout = getCaptureLayoutPositions(design);
+    const height = layout.height;
+    const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el) {
+      const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+      const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
+      const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
+      const y = Math.max(-6000, Math.min(6000, finiteNumber(position.y, 0)));
+      const w = Math.max(20, Math.min(4000, finiteNumber(el.width, 120) || 120));
+      const h = Math.max(20, Math.min(4000, finiteNumber(el.height, 48) || 48));
+      const fontSize = Math.max(8, Math.min(256, finiteNumber(el.fontSize, 16) || 16));
+      const radius = Math.max(0, Math.min(4000, finiteNumber(el.radius, 0)));
+      const background = safeColor(el.background);
+      const color = safeColor(el.color || '#111827');
+      const rect = background !== 'transparent'
+        ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + xmlEscape(background) + '"/>'
+        : '';
+      if (el.type === 'rectangle') return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      if (el.type === 'ellipse') {
+        const ellipseFill = background !== 'transparent' ? ' fill="' + xmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
+        return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+      }
+      if (el.type === 'image') {
+        const source = safeImageSource(el.src);
+        const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
+        if (source) return rect + '<image href="' + xmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
+        return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+      }
+      const lines = String(el.text || '').split(/\r?\n/);
+      const align = el.type === 'button' ? 'center' : (['left', 'center', 'right'].includes(el.textAlign) ? el.textAlign : 'left');
+      const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+      const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
+      const lineHeight = el.type === 'heading' ? fontSize * 1.1 : fontSize * 1.25;
+      const startY = y + Math.max(fontSize, (h - lines.length * lineHeight) / 2 + fontSize * 0.82);
+      const tspans = lines.map(function (line, i) {
+        return '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + xmlEscape(line) + '</tspan>';
+      }).join('');
+      return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + xmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, finiteNumber(el.weight, 400) || 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+    }).join('');
+    return {
+      width: width,
+      height: height,
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + xmlEscape(safeColor(design.background || '#ffffff')) + '"/>' + items + '</svg>'
+    };
+  }
+
+  function sanitizeForCapture(html) {
+    return String(html || '')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '<!-- JavaScript omitido durante la captura segura -->')
+      .replace(/<script\b[^>]*>[\s\S]*$/gi, '<!-- JavaScript omitido durante la captura segura -->')
+      .replace(/<(iframe|object|embed|portal)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+      .replace(/<(iframe|object|embed|portal)\b[^>]*\/?>/gi, '')
+      .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/\s+(href|src|action|formaction|xlink:href)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, ' $1="#"')
+      .replace(/<base\b[^>]*>/gi, '');
+  }
+
+  function buildCaptureDocument(input) {
+    const html = sanitizeForCapture(input.html || '');
+    const css = String(input.css || '').replace(/<\/style/gi, '<\\/style');
+    const viewport = Math.max(320, Math.min(1920, Number(input.viewport) || 1280));
+    const headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head\s*>/i);
+    const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body\s*>/i);
+    const head = headMatch ? headMatch[1] : '';
+    let body = bodyMatch ? bodyMatch[1] : html;
+    if (!bodyMatch) body = body.replace(/<!doctype[^>]*>|<\/?html\b[^>]*>|<\/?head\b[^>]*>|<\/?body\b[^>]*>/gi, '');
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=' + viewport + ', initial-scale=1">' + head + '<style>' + css + '</style></head><body>' + body + '</body></html>';
+  }
+
+  function buildWebCaptureContext(input) {
+    const project = input.project || {};
+    const html = String(input.html || '');
+    const css = String(input.css || '');
+    const js = String(input.js || '');
+    const viewport = Math.max(320, Math.min(1920, Number(input.viewport) || 1280));
+    const scale = [1, 2, 3, 4].includes(Number(input.scale)) ? Number(input.scale) : 2;
+    const title = (html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || project.name || 'Página sin título';
+    const descriptionTag = (html.match(/<meta\b[^>]*>/gi) || []).find(function (tag) {
+      return /\bname\s*=\s*["']description["']/i.test(tag);
+    }) || '';
+    const description = (descriptionTag.match(/\bcontent\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
+    const headings = [];
+    const headingPattern = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi;
+    let match;
+    while ((match = headingPattern.exec(html)) && headings.length < 80) {
+      headings.push({ level: Number(match[1]), text: match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) });
+    }
+    const imageCount = (html.match(/<img\b/gi) || []).length;
+    const linkCount = (html.match(/<a\b/gi) || []).length;
+    const buttonCount = (html.match(/<button\b/gi) || []).length;
+    const formCount = (html.match(/<form\b/gi) || []).length;
+    const externalCss = (html.match(/<link\b[^>]*>/gi) || []).filter(function (tag) {
+      return /\brel\s*=\s*["'][^"']*\bstylesheet\b[^"']*["']/i.test(tag);
+    }).length;
+    return {
+      format: 'codelab-ai-web-capture',
+      version: 2,
+      project: String(project.name || 'Página sin título'),
+      projectId: project.id || null,
+      capturedAt: new Date().toISOString(),
+      viewport: { width: viewport, height: Math.min(Math.max(Number(input.height) || 900, 320), 6000), scale: scale, pixelWidth: viewport * scale, pixelHeight: Math.min(Math.max(Number(input.height) || 900, 320), 6000) * scale },
+      page: {
+        title: title.replace(/<[^>]+>/g, '').trim().slice(0, 300),
+        description: String(description).slice(0, 500),
+        headings: headings,
+        counts: { images: imageCount, links: linkCount, buttons: buttonCount, forms: formCount, externalStylesheets: externalCss },
+        sourceLengths: { html: html.length, css: css.length, javascript: js.length },
+        javascriptIncludedInScreenshot: false,
+        screenshotNote: 'La captura renderiza HTML y CSS en un iframe aislado sin ejecutar JavaScript ni contenido embebido. El código JS se adjunta como contexto para revisión, pero sus efectos en tiempo de ejecución no aparecen en la imagen.'
+      },
+      sourceCode: { html: html, css: css, javascript: js },
+      aiInstructions: 'Analiza el PNG como evidencia visual de la página renderizada y utiliza este JSON para entender su estructura y el código fuente. El JavaScript no se ejecutó en el render aislado por seguridad: no atribuyas a la imagen estados dinámicos que no sean visibles. Distingue problemas observados de sugerencias, revisa accesibilidad, responsive y recursos ausentes. Propón cambios concretos con selectores y código cuando sea útil.'
+    };
+  }
+
+  function downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    let clicked = false;
+    link.href = url;
+    link.download = filename;
+    try {
+      document.body.appendChild(link);
+      link.click();
+      clicked = true;
+    } finally {
+      link.remove();
+      if (clicked) setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      else URL.revokeObjectURL(url);
+    }
+  }
+
+  function safeSlug(value) {
+    return String(value || 'codelab').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'codelab';
+  }
+
+  function toast(message, kind) {
+    if (typeof window.showToast === 'function') window.showToast(message, kind || 'info');
+    else console[kind === 'warn' ? 'warn' : 'log'](message);
+  }
+
+  async function loadHtml2Canvas(timeoutMs) {
+    if (typeof window.html2canvas === 'function') return window.html2canvas;
+    await new Promise(function (resolve, reject) {
+      const script = document.createElement('script');
+      let settled = false;
+      let timer;
+      function cleanup() {
+        clearTimeout(timer);
+        script.onload = null;
+        script.onerror = null;
+      }
+      timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        script.remove();
+        reject(new Error('El motor de captura tardó demasiado en cargarse.'));
+      }, Math.max(250, Number(timeoutMs) || 12000));
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.async = true;
+      script.onload = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      script.onerror = function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        script.remove();
+        reject(new Error('No se pudo cargar el motor de captura. Comprueba la conexión e inténtalo de nuevo.'));
+      };
+      document.head.appendChild(script);
+    });
+    if (typeof window.html2canvas !== 'function') throw new Error('El motor de captura no está disponible.');
+    return window.html2canvas;
+  }
+
+  async function waitForCaptureAssets(doc, timeoutMs) {
+    const images = Array.from(doc && doc.images ? doc.images : []);
+    images.forEach(function (img) { img.loading = 'eager'; });
+    const view = doc && doc.defaultView;
+    const backgroundSources = new Set();
+    if (doc && typeof doc.querySelectorAll === 'function' && view && typeof view.getComputedStyle === 'function') {
+      Array.from(doc.querySelectorAll('*')).forEach(function (element) {
+        let background = '';
+        try { background = view.getComputedStyle(element).backgroundImage || ''; } catch (_) {}
+        const pattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
+        let match;
+        while ((match = pattern.exec(background))) {
+          const source = String(match[1] || match[2] || match[3] || '').trim();
+          if (source && source.toLowerCase() !== 'none') backgroundSources.add(source);
+        }
+      });
+    }
+    const backgroundImages = Array.from(backgroundSources).map(function (source) {
+      const probe = view && typeof view.Image === 'function' ? new view.Image() : null;
+      return { source: source, image: probe };
+    });
+    const fontTask = doc && doc.fonts && doc.fonts.ready
+      ? Promise.resolve(doc.fonts.ready).catch(function () {})
+      : Promise.resolve();
+    function waitForImage(img, source) {
+      function decode() {
+        return typeof img.decode === 'function' ? Promise.resolve(img.decode()).catch(function () {}) : Promise.resolve();
+      }
+      if (!source && img.complete) return img.naturalWidth > 0 ? decode() : Promise.resolve();
+      return new Promise(function (resolve) {
+        let settled = false;
+        function finish() {
+          if (settled) return;
+          settled = true;
+          decode().then(resolve);
+        }
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', function () {
+          if (settled) return;
+          settled = true;
+          resolve();
+        }, { once: true });
+        if (source) img.src = source;
+        else if (img.complete) finish();
+      });
+    }
+    const imageTasks = images.map(function (img) { return waitForImage(img); });
+    const backgroundTasks = backgroundImages.map(function (entry) {
+      if (!entry.image) return Promise.resolve();
+      return waitForImage(entry.image, entry.source);
+    });
+    let timer;
+    const timeout = new Promise(function (resolve) {
+      timer = setTimeout(function () { resolve(false); }, Math.max(250, Number(timeoutMs) || 5000));
+    });
+    const allReady = Promise.all([fontTask].concat(imageTasks, backgroundTasks)).then(function () { return true; });
+    const completed = await Promise.race([allReady, timeout]);
+    clearTimeout(timer);
+    return {
+      fontsReady: !doc || !doc.fonts || doc.fonts.status === 'loaded',
+      imagesTotal: images.length,
+      imagesLoaded: images.filter(function (img) { return img.complete && img.naturalWidth > 0; }).length,
+      imagesFailed: images.filter(function (img) { return img.complete && img.naturalWidth === 0; }).length,
+      imagesPending: images.filter(function (img) { return !img.complete; }).length,
+      backgroundImagesTotal: backgroundImages.length,
+      backgroundImagesLoaded: backgroundImages.filter(function (entry) { return entry.image && entry.image.complete && entry.image.naturalWidth > 0; }).length,
+      backgroundImagesFailed: backgroundImages.filter(function (entry) { return entry.image && entry.image.complete && entry.image.naturalWidth === 0; }).length,
+      backgroundImagesPending: backgroundImages.filter(function (entry) { return entry.image && !entry.image.complete; }).length,
+      timedOut: !completed
+    };
+  }
+
+  function getProjectCode(project) {
+    const html = typeof window.getEditorValue === 'function' ? window.getEditorValue('html') : project.code && project.code.html;
+    const css = typeof window.getEditorValue === 'function' ? window.getEditorValue('css') : project.code && project.code.css;
+    const js = typeof window.getEditorValue === 'function' ? window.getEditorValue('js') : project.code && project.code.js;
+    return { html: String(html || ''), css: String(css || ''), js: String(js || '') };
+  }
+
+  async function captureWebForAI() {
+    const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
+    if (!project || project.type === 'design') {
+      toast('Abre un proyecto de página web para capturarlo.', 'warn');
+      return;
+    }
+    const controls = document.getElementById('webCaptureViewport');
+    const viewport = Math.max(320, Math.min(1920, Number(controls && controls.value) || 1280));
+    const scaleControl = document.getElementById('webCaptureScale');
+    const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+    const code = getProjectCode(project);
+    const slug = safeSlug(project.name);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-same-origin');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.tabIndex = -1;
+    iframe.style.cssText = 'position:fixed;left:-100000px;top:0;width:' + viewport + 'px;height:900px;border:0;visibility:hidden;pointer-events:none;';
+    const source = buildCaptureDocument({ html: code.html, css: code.css, viewport: viewport });
+    const context = buildWebCaptureContext({ project: project, html: code.html, css: code.css, js: code.js, viewport: viewport, height: 900, scale: scale });
+    let captureDoc;
+    let timeoutId;
+    try {
+      toast('Preparando captura aislada de la página…');
+      document.body.appendChild(iframe);
+      await new Promise(function (resolve, reject) {
+        timeoutId = setTimeout(function () { reject(new Error('La página tardó demasiado en renderizarse.')); }, 12000);
+        iframe.onload = resolve;
+        iframe.srcdoc = source;
+      });
+      captureDoc = iframe.contentDocument;
+      if (!captureDoc || !captureDoc.documentElement) throw new Error('No se pudo leer el render aislado.');
+      const root = captureDoc.documentElement;
+      const body = captureDoc.body;
+      const height = Math.min(6000, Math.max(900, body.scrollHeight, root.scrollHeight, body.offsetHeight, root.offsetHeight));
+      iframe.style.height = height + 'px';
+      context.viewport.height = height;
+      context.viewport.pixelWidth = viewport * scale;
+      context.viewport.pixelHeight = height * scale;
+      const headings = Array.from(captureDoc.querySelectorAll('h1,h2,h3,h4,h5,h6')).slice(0, 80).map(function (node) {
+        return { tag: node.tagName.toLowerCase(), text: (node.innerText || node.textContent || '').trim().slice(0, 300) };
+      });
+      context.renderedPage = {
+        documentHeight: height,
+        headings: headings,
+        images: Array.from(captureDoc.images).slice(0, 100).map(function (img) {
+          return { alt: img.alt || '', src: img.currentSrc || img.src || '', loaded: !!(img.complete && img.naturalWidth > 0), width: img.naturalWidth || 0, height: img.naturalHeight || 0 };
+        }),
+        landmarks: Array.from(captureDoc.querySelectorAll('header,nav,main,footer,section,article,form')).slice(0, 100).map(function (node) {
+          return { tag: node.tagName.toLowerCase(), label: (node.getAttribute('aria-label') || node.getAttribute('role') || '').slice(0, 120) };
+        })
+      };
+      context.page.javascriptIncludedInScreenshot = false;
+      context.page.screenshotNote += ' Se eliminaron scripts, iframes y objetos incrustados y se neutralizaron manejadores inline durante la captura.';
+      // Reject oversized raster dimensions before waiting for every asset or loading
+      // the third-party rasterizer; otherwise a doomed capture still consumes time and bandwidth.
+      const pixelCount = getCapturePixelCount(viewport, height, scale);
+      if (pixelCount > MAX_CAPTURE_PIXELS) {
+        throw new Error('La captura a ' + scale + '× ocuparía demasiada memoria. Elige una escala menor o un ancho de dispositivo más pequeño.');
+      }
+      const assetStatus = await waitForCaptureAssets(captureDoc, 6000);
+      context.renderedPage.assetStatus = assetStatus;
+      const html2canvas = await loadHtml2Canvas();
+      await new Promise(function (resolve) { setTimeout(resolve, 50); });
+      const canvas = await html2canvas(root, {
+        backgroundColor: '#ffffff',
+        scale: scale,
+        imageTimeout: 10000,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        width: viewport,
+        windowWidth: viewport,
+        height: height,
+        windowHeight: height,
+        onclone: function (clonedDocument) {
+          const style = clonedDocument.createElement('style');
+          style.setAttribute('data-codelab-capture-quality', 'true');
+          style.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;}';
+          (clonedDocument.head || clonedDocument.documentElement).appendChild(style);
+        },
+        scrollX: 0,
+        scrollY: 0
+      });
+      const png = await new Promise(function (resolve, reject) {
+        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')); }, 'image/png');
+      });
+      downloadBlob(slug + '-captura-ia.png', png);
+      downloadBlob(slug + '-contexto-ia.json', new Blob([JSON.stringify(context, null, 2)], { type: 'application/json;charset=utf-8' }));
+      toast('Captura web lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ') + contexto JSON.');
+    } catch (error) {
+      const contextBlob = new Blob([JSON.stringify(context, null, 2)], { type: 'application/json;charset=utf-8' });
+      downloadBlob(slug + '-contexto-ia.json', contextBlob);
+      toast('No se pudo completar el PNG: ' + (error && error.message ? error.message : 'error de captura') + '. Descargué el contexto JSON.', 'warn');
+    } finally {
+      clearTimeout(timeoutId);
+      if (iframe.isConnected) iframe.remove();
+    }
+  }
+
+  async function captureDesignForAI() {
+    const project = typeof window.activeDesignProject === 'function' ? window.activeDesignProject() : null;
+    if (!project || !project.design) {
+      toast('Abre un proyecto de diseño primero.', 'warn');
+      return;
+    }
+    let captured;
+    try {
+      captured = captureDesignSvg(project);
+    } catch (error) {
+      toast(error && error.message ? error.message : 'No se pudo preparar la captura del diseño.', 'warn');
+      return;
+    }
+    const scaleControl = document.getElementById('designCaptureScale');
+    const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+    const pixelCount = getCapturePixelCount(captured.width, captured.height, scale);
+    const slug = safeSlug(project.name);
+    const layout = getCaptureLayoutPositions(project.design);
+    const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el, index) {
+      const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+      const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
+      const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
+      const y = Math.max(-6000, Math.min(6000, finiteNumber(position.y, 0)));
+      const width = Math.max(20, Math.min(4000, finiteNumber(el.width, 120) || 120));
+      const height = Math.max(20, Math.min(4000, finiteNumber(el.height, 48) || 48));
+      const fontSize = Math.max(8, Math.min(256, finiteNumber(el.fontSize, 16) || 16));
+      const fontWeight = Math.max(100, Math.min(900, finiteNumber(el.weight, 400) || 400));
+      const radius = Math.max(0, Math.min(4000, finiteNumber(el.radius, 0)));
+      return {
+        order: index + 1, id: el.id || null, type: el.type || 'text', label: el.label || el.type || 'Elemento',
+        text: el.text || '', bounds: { x: x, y: y, width: width, height: height },
+        style: { color: el.color || '#111827', background: el.background || 'transparent', fontSize: fontSize, fontWeight: fontWeight, radius: radius, textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left' },
+        image: el.type === 'image' ? { alt: String(el.alt || el.label || '').slice(0, 300), source: String(el.src || '').startsWith('data:image/') ? '[imagen incrustada; visible en el PNG]' : safeImageSource(el.src), objectFit: ['contain','cover','fill'].includes(el.objectFit) ? el.objectFit : 'cover' } : null
+      };
+    });
+    const context = {
+      format: 'codelab-ai-design-capture', version: 2, project: project.name || 'Diseño sin título',
+      frame: project.design.frame || 'desktop', image: slug + '-captura-ia.png',
+      canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale: scale, background: project.design.background || '#ffffff' },
+      layout: { mode: project.design.layoutMode === 'auto' ? 'auto' : 'free', direction: project.design.layoutDirection === 'column' ? 'column' : 'row', gap: Math.max(0, Math.min(200, Number(project.design.layoutGap) || 0)), padding: Math.max(0, Math.min(200, Number(project.design.layoutPadding) || 0)) },
+      elementCount: elements.length, elements: elements,
+      aiInstructions: 'Analiza el PNG para evaluar la apariencia visual y usa este JSON para conocer posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue problemas observables de sugerencias y considera accesibilidad y adaptación móvil.'
+    };
+    downloadBlob(slug + '-contexto-ia.json', new Blob([JSON.stringify(context, null, 2)], { type: 'application/json;charset=utf-8' }));
+    let svgUrl = '';
+    try {
+      if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
+      const image = new Image();
+      svgUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
+      await new Promise(function (resolve, reject) {
+        let settled = false;
+        const timeout = setTimeout(function () {
+          finish(new Error('El SVG tardó demasiado en renderizarse.'));
+        }, 10000);
+        function finish(error) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          image.onload = null;
+          image.onerror = null;
+          if (error) reject(error);
+          else resolve();
+        }
+        image.onload = function () { finish(); };
+        image.onerror = function () { finish(new Error('No se pudo renderizar el SVG de diseño.')); };
+        image.src = svgUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = captured.width * scale; canvas.height = captured.height * scale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.scale(scale, scale); ctx.drawImage(image, 0, 0, captured.width, captured.height);
+      const png = await new Promise(function (resolve, reject) { canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('No se pudo generar el PNG.')); }, 'image/png'); });
+      downloadBlob(slug + '-captura-ia.png', png);
+      toast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
+    } catch (error) {
+      downloadBlob(slug + '-captura-ia.svg', new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
+      toast('El PNG falló; descargué SVG y contexto JSON.', 'warn');
+    } finally {
+      if (svgUrl) URL.revokeObjectURL(svgUrl);
+    }
+  }
+
+  function installWebCaptureControls() {
+    const preview = document.getElementById('previewPanel');
+    const toolbar = preview && preview.querySelector('.bg-slate-900.px-3.py-1\\.5');
+    if (!toolbar || document.getElementById('webCaptureBtn')) return;
+    const controls = document.createElement('div');
+    controls.className = 'flex items-center gap-1.5';
+    controls.innerHTML = '<label class="sr-only" for="webCaptureViewport">Ancho de captura</label><select id="webCaptureViewport" title="Ancho de la captura" class="max-w-[105px] bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] text-slate-300"><option value="1280">Desktop</option><option value="768">Tablet</option><option value="390">Móvil</option></select><label class="sr-only" for="webCaptureScale">Resolución de captura</label><select id="webCaptureScale" title="Resolución: 1× estándar, 2× alta, 3× alta densidad, 4× máxima" class="max-w-[65px] bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-[10px] text-slate-300"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select><button id="webCaptureBtn" type="button" title="Descargar captura visual y contexto para IA" class="rounded bg-violet-600 hover:bg-violet-500 px-2 py-1 text-[10px] font-semibold text-white whitespace-nowrap"><i class="fa-solid fa-camera mr-1"></i>Captura IA</button>';
+    toolbar.appendChild(controls);
+    const button = document.getElementById('webCaptureBtn');
+    if (button) button.addEventListener('click', captureWebForAI);
+  }
+
+  return {
+    xmlEscape: xmlEscape,
+    getCapturePixelCount: getCapturePixelCount,
+    captureDesignSvg: captureDesignSvg,
+    sanitizeForCapture: sanitizeForCapture,
+    buildWebCaptureContext: buildWebCaptureContext,
+    buildCaptureDocument: buildCaptureDocument,
+    waitForCaptureAssets: waitForCaptureAssets,
+    loadHtml2Canvas: loadHtml2Canvas,
+    captureDesignForAI: captureDesignForAI,
+    captureWebForAI: captureWebForAI,
+    installWebCaptureControls: installWebCaptureControls
+  };
+});

@@ -1,9 +1,15 @@
 // ==========================================
-// CodeLab XD Studio Pro v2.5.0
+// CodeLab XD Studio Pro v2.6.6
 // Persistencia segura, ramas, merge 3 vías, plantillas IA locales
 // ==========================================
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.6.6';
 const STORAGE_KEY_PROJECTS = 'codelab_xd_projects_v2';
+const STORAGE_KEY_PROJECTS_RECOVERY = 'codelab_xd_projects_recovery_v1';
+const STORAGE_KEY_PROJECTS_WORKSPACE = 'codelab_xd_projects_workspace_v1';
+const STORAGE_KEY_DELETED_PROJECTS = 'codelab_xd_deleted_projects_v1';
+const STORAGE_KEY_DELETED_PROJECTS_RECOVERY = 'codelab_xd_deleted_projects_recovery_v1';
+const STORAGE_KEY_PENDING_IMPORT = 'codelab_xd_pending_local_import_v1';
+const STORAGE_KEY_PENDING_IMPORT_RECOVERY = 'codelab_xd_pending_import_recovery_v1';
 const STORAGE_KEY_AUTH = 'codelab_xd_auth_v2';
 const STORAGE_KEY_WORKSPACE = 'codelab_xd_workspace_v4';
 const STORAGE_KEY_WORKSPACE_TOKEN = 'codelab_xd_workspace_token_v1';
@@ -14,18 +20,29 @@ const RECONNECT_INTERVAL_MS = 15000;
 const MAX_CONSOLE_LINES = 200;
 
 let workspaceId = null;
+let initialWorkspaceId = null;
+let pendingLocalImportProjects = null;
+let localProjectsSnapshotRecoveryFailed = false;
+let localProjectsSnapshotWriteBlocked = false;
+let localSnapshotBlockedWarningShown = false;
+let localMapRecoveryWarningShown = false;
+let generatedDefaultProjectId = null;
 let workspaceToken = '';
 let workspaceRevision = 0;
 let serverSyncError = false;
+let workspacePayloadTooLarge = false;
 let projects = [];
 let currentProjectId = null;
 let currentUser = null;
 let aiSettings = { mode: 'auto', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '' };
 let serverAi = { serverKey: false, model: 'gpt-4o-mini', baseUrl: null, hint: '' };
+let maxProjects = 50;
 let pendingAuthProvider = null;
 let oauthConfig = { github: false, google: false, demoFallback: true };
 let mobileStudioMode = 'code';
 let editors = {};
+let editorInitGeneration = 0;
+let editorReadyProjectId = null;
 let activeTab = 'html';
 let isCopyBranchCreated = false;
 let inCopyBranch = false;
@@ -43,6 +60,9 @@ let previewTimer = null;
 let syncGeneration = 0;
 let syncRunning = false;
 let syncWaiters = [];
+let syncRetryTimer = null;
+let syncRetryAttempt = 0;
+const SYNC_RETRY_DELAYS_MS = [2000, 5000, 15000];
 let reconnectTimer = null;
 
 
@@ -64,6 +84,258 @@ function lsSet(key, value) {
 }
 function lsRemove(key) {
   try { localStorage.removeItem(key); } catch (_) {}
+}
+function preserveInvalidLocalProjectsSnapshot(raw, reason) {
+  if (typeof raw !== 'string') return false;
+  const key = STORAGE_KEY_PROJECTS_RECOVERY;
+  const entry = { savedAt: new Date().toISOString(), reason: reason, raw: raw };
+  const existing = lsGet(key);
+  if (existing) {
+    let backup;
+    try { backup = JSON.parse(existing); } catch (_) {
+      // An unreadable recovery slot may itself contain the only recoverable copy.
+      // Never overwrite it with a new backup we cannot safely merge.
+      return false;
+    }
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) ||
+        (backup.backups != null && !Array.isArray(backup.backups))) return false;
+    const extras = Array.isArray(backup.backups) ? backup.backups : [];
+    if (backup.raw === raw || extras.some(item => item && item.raw === raw)) return true;
+    if (typeof backup.raw === 'string') {
+      // Preserve the first backup in its legacy top-level fields and append later
+      // damaged snapshots instead of permanently blocking all future local saves.
+      return lsSet(key, JSON.stringify({ ...backup, version: backup.version || 1, backups: extras.concat(entry) }));
+    }
+    if (Array.isArray(backup.backups)) {
+      return lsSet(key, JSON.stringify({ ...backup, backups: extras.concat(entry) }));
+    }
+    return false;
+  }
+  return lsSet(key, JSON.stringify({
+    version: 1,
+    savedAt: entry.savedAt,
+    reason: entry.reason,
+    raw: entry.raw
+  }));
+}
+function saveLocalProjectsSnapshot() {
+  // Never overwrite a damaged snapshot unless its exact contents were first
+  // preserved successfully in the recovery slot.
+  if (localProjectsSnapshotRecoveryFailed || localProjectsSnapshotWriteBlocked) {
+    console.warn('Local project snapshot was not overwritten because recovery backup failed.');
+    if (!localSnapshotBlockedWarningShown && typeof showToast === 'function') {
+      localSnapshotBlockedWarningShown = true;
+      showToast('No se pudo asegurar la recuperación de la copia local. Mantén el servidor conectado y exporta tus proyectos antes de cerrar esta sesión.', 'warn');
+    }
+    return false;
+  }
+  const saved = lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  if (saved && workspaceId) lsSet(STORAGE_KEY_PROJECTS_WORKSPACE, workspaceId);
+  if (saved) localSnapshotBlockedWarningShown = false;
+  return saved;
+}
+function preserveInvalidLocalMapSnapshot(raw, recoveryKey, reason) {
+  if (typeof raw !== 'string') return false;
+  const entry = { savedAt: new Date().toISOString(), reason: reason, raw: raw };
+  const existing = lsGet(recoveryKey);
+  if (existing) {
+    let backup;
+    try { backup = JSON.parse(existing); } catch (_) { return false; }
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) ||
+        (backup.backups != null && !Array.isArray(backup.backups))) return false;
+    const extras = Array.isArray(backup.backups) ? backup.backups : [];
+    if (backup.raw === raw || extras.some(item => item && item.raw === raw)) return true;
+    if (typeof backup.raw === 'string' || Array.isArray(backup.backups)) {
+      return lsSet(recoveryKey, JSON.stringify({ ...backup, version: backup.version || 1, backups: extras.concat(entry) }));
+    }
+    return false;
+  }
+  return lsSet(recoveryKey, JSON.stringify({
+    version: 1, savedAt: entry.savedAt, reason: entry.reason, raw: entry.raw
+  }));
+}
+function preserveMalformedLocalMapSnapshot(raw, recoveryKey, reason) {
+  const preserved = preserveInvalidLocalMapSnapshot(raw, recoveryKey, reason);
+  if (!preserved && !localMapRecoveryWarningShown && typeof showToast === 'function') {
+    localMapRecoveryWarningShown = true;
+    showToast('CodeLab detectó datos locales dañados y no pudo crear una copia de recuperación. No se sobrescribirán esos datos; mantén la sesión abierta y el servidor conectado.', 'warn');
+  } else if (preserved) {
+    localMapRecoveryWarningShown = false;
+  }
+  return preserved;
+}
+function isValidDeletedProjectMapSnapshot(raw) {
+  try {
+    const stored = JSON.parse(raw);
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
+    const modern = stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace) &&
+      Object.values(stored.byWorkspace).every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string'));
+    const legacy = typeof stored.workspaceId === 'string' && Array.isArray(stored.ids) &&
+      stored.ids.every(id => typeof id === 'string');
+    return !!(modern || legacy);
+  } catch (_) { return false; }
+}
+function isValidPendingLocalImportSnapshot(raw) {
+  try {
+    const stored = JSON.parse(raw);
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return false;
+    const modern = stored.byUser && typeof stored.byUser === 'object' && !Array.isArray(stored.byUser) &&
+      Object.values(stored.byUser).every(projects => Array.isArray(projects));
+    const legacy = typeof stored.userKey === 'string' && Array.isArray(stored.projects);
+    return !!(modern || legacy);
+  } catch (_) { return false; }
+}
+function readDeletedProjectMap() {
+  const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
+  if (raw && !isValidDeletedProjectMapSnapshot(raw)) {
+    preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map');
+  }
+  try {
+    const stored = JSON.parse(raw || 'null');
+    if (stored && stored.byWorkspace && typeof stored.byWorkspace === 'object' && !Array.isArray(stored.byWorkspace)) {
+      // Preserve the raw envelope before this reader is reached, then ignore
+      // malformed workspace entries so they cannot poison every later write.
+      const normalized = {};
+      Object.keys(stored.byWorkspace).forEach(id => {
+        const ids = stored.byWorkspace[id];
+        if (Array.isArray(ids)) normalized[id] = ids.filter(value => typeof value === 'string');
+      });
+      return normalized;
+    }
+    // Read the original single-workspace format for migration.
+    if (stored && typeof stored.workspaceId === 'string' && Array.isArray(stored.ids)) {
+      return { [stored.workspaceId]: stored.ids.filter(value => typeof value === 'string') };
+    }
+  } catch (_) {}
+  return {};
+}
+function loadDeletedProjectIds(forWorkspaceId) {
+  const byWorkspace = readDeletedProjectMap();
+  return new Set(Array.isArray(byWorkspace[forWorkspaceId]) ? byWorkspace[forWorkspaceId].filter(id => typeof id === 'string') : []);
+}
+function recordDeletedProjectId(id) {
+  if (!workspaceId || !id) return false;
+  const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
+  if (raw && !isValidDeletedProjectMapSnapshot(raw) &&
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
+    return false;
+  }
+  const byWorkspace = readDeletedProjectMap();
+  const ids = new Set(Array.isArray(byWorkspace[workspaceId]) ? byWorkspace[workspaceId] : []);
+  ids.add(id);
+  byWorkspace[workspaceId] = Array.from(ids);
+  return lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
+}
+function clearDeletedProjectIds(forWorkspaceId) {
+  const raw = lsGet(STORAGE_KEY_DELETED_PROJECTS);
+  if (raw && !isValidDeletedProjectMapSnapshot(raw) &&
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_DELETED_PROJECTS_RECOVERY, 'invalid_deleted_project_map')) {
+    return false;
+  }
+  const target = forWorkspaceId || workspaceId;
+  const byWorkspace = readDeletedProjectMap();
+  if (target) delete byWorkspace[target];
+  if (Object.keys(byWorkspace).length) return lsSet(STORAGE_KEY_DELETED_PROJECTS, JSON.stringify({ byWorkspace: byWorkspace }));
+  lsRemove(STORAGE_KEY_DELETED_PROJECTS);
+  return lsGet(STORAGE_KEY_DELETED_PROJECTS) === null;
+}
+function currentRealUserKey() {
+  return currentUser && currentUser.real ? currentUser.provider + '_' + currentUser.id : null;
+}
+function readPendingLocalImportMap() {
+  const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
+  if (raw && !isValidPendingLocalImportSnapshot(raw)) {
+    preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map');
+  }
+  try {
+    const saved = JSON.parse(raw || 'null');
+    if (saved && saved.byUser && typeof saved.byUser === 'object' && !Array.isArray(saved.byUser)) {
+      // Named account keys on an array are omitted by JSON.stringify and would
+      // silently discard pending imports on the next write.
+      const normalized = {};
+      Object.keys(saved.byUser).forEach(userKey => {
+        if (Array.isArray(saved.byUser[userKey])) normalized[userKey] = saved.byUser[userKey];
+      });
+      return normalized;
+    }
+    if (saved && typeof saved.userKey === 'string' && Array.isArray(saved.projects)) {
+      return { [saved.userKey]: saved.projects };
+    }
+  } catch (_) {}
+  return {};
+}
+function storePendingLocalImport(localProjects) {
+  const nextProjects = Array.isArray(localProjects) ? localProjects : [];
+  const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
+  if (raw && !isValidPendingLocalImportSnapshot(raw) &&
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
+    pendingLocalImportProjects = nextProjects;
+    return false;
+  }
+  const userKey = currentRealUserKey();
+  if (!userKey) {
+    pendingLocalImportProjects = nextProjects;
+    return true;
+  }
+  const byUser = readPendingLocalImportMap();
+  byUser[userKey] = nextProjects;
+  // Do not report pending imports as durable unless localStorage confirms the write.
+  // The caller can then leave the original project snapshot untouched for recovery.
+  if (!lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }))) {
+    pendingLocalImportProjects = nextProjects;
+    return false;
+  }
+  pendingLocalImportProjects = nextProjects;
+  // A durable account-scoped copy now exists, so the original snapshot may be
+  // safely replaced by this workspace's own local state again.
+  localProjectsSnapshotWriteBlocked = false;
+  localSnapshotBlockedWarningShown = false;
+  return true;
+}
+function restorePendingLocalImport() {
+  const byUser = readPendingLocalImportMap();
+  const userKey = currentRealUserKey();
+  if (userKey && Array.isArray(byUser[userKey])) pendingLocalImportProjects = byUser[userKey];
+}
+function clearPendingLocalImport() {
+  const raw = lsGet(STORAGE_KEY_PENDING_IMPORT);
+  if (raw && !isValidPendingLocalImportSnapshot(raw) &&
+      !preserveMalformedLocalMapSnapshot(raw, STORAGE_KEY_PENDING_IMPORT_RECOVERY, 'invalid_pending_import_map')) {
+    return false;
+  }
+  const userKey = currentRealUserKey();
+  const byUser = readPendingLocalImportMap();
+  if (userKey) delete byUser[userKey];
+  if (Object.keys(byUser).length) {
+    if (!lsSet(STORAGE_KEY_PENDING_IMPORT, JSON.stringify({ byUser: byUser }))) return false;
+  } else {
+    lsRemove(STORAGE_KEY_PENDING_IMPORT);
+    if (lsGet(STORAGE_KEY_PENDING_IMPORT) !== null) return false;
+  }
+  pendingLocalImportProjects = null;
+  // The current workspace now owns the active snapshot; it is safe to resume
+  // local saves after a previous cross-workspace recovery failure.
+  localProjectsSnapshotWriteBlocked = false;
+  localSnapshotBlockedWarningShown = false;
+  return true;
+}
+function mergeWorkspaceProjects(serverProjects, localProjects, deletedIds, skipLocalIds) {
+  const deleted = deletedIds instanceof Set ? deletedIds : new Set(deletedIds || []);
+  const skipped = skipLocalIds instanceof Set ? skipLocalIds : new Set(skipLocalIds || []);
+  const merged = new Map();
+  const timestamp = project => {
+    const value = Date.parse(project && project.updatedAt || '');
+    return Number.isFinite(value) ? value : 0;
+  };
+  (Array.isArray(serverProjects) ? serverProjects : []).forEach(project => {
+    if (project && typeof project.id === 'string' && !deleted.has(project.id)) merged.set(project.id, project);
+  });
+  (Array.isArray(localProjects) ? localProjects : []).forEach(project => {
+    if (!project || typeof project.id !== 'string' || deleted.has(project.id) || skipped.has(project.id)) return;
+    const serverProject = merged.get(project.id);
+    if (!serverProject || timestamp(project) >= timestamp(serverProject)) merged.set(project.id, project);
+  });
+  return Array.from(merged.values()).sort((a, b) => timestamp(b) - timestamp(a));
 }
 function deepClone(obj) {
   try {
@@ -124,15 +396,23 @@ function setSyncStatus(state, text) {
 // ---------- Boot ----------
 window.addEventListener('DOMContentLoaded', () => {
   workspaceId = lsGet(STORAGE_KEY_WORKSPACE);
+  initialWorkspaceId = workspaceId;
   workspaceToken = lsGet(STORAGE_KEY_WORKSPACE_TOKEN) || '';
-  loadAiSettings();
   setSyncStatus('saving', 'Conectando…');
   showBootLoading(true, 'Iniciando CodeLab…', 'Conectando con el workspace y cargando proyectos.');
   handleAuthQueryParams();
   loadAuthFromServer()
     .catch(() => loadAuthFromStorage())
-    .then(() => Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]))
     .then(() => {
+      // Resolve account identity before loading provider credentials from local storage.
+      loadAiSettings();
+      return Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]);
+    })
+    .then(() => {
+      // Let optional workspace tools (e.g. design tokens) load their account-backed
+      // settings only after auth has resolved the correct workspace credentials.
+      window.codelabWorkspaceReady = true;
+      window.dispatchEvent(new Event('codelab-workspace-ready'));
       renderProjectsList();
       updateDashboardStatus();
       updateAiUI();
@@ -159,7 +439,9 @@ window.addEventListener('beforeunload', () => {
     autosaveTimer = null;
   }
   try {
-    if (currentProjectId) {
+    // A navigation can happen before Monaco finishes loading. In that case,
+    // editor values may be empty/stale; never copy them over durable project code.
+    if (currentProjectId && editorReadyProjectId === currentProjectId) {
       const code = {
         html: getEditorValue('html'),
         css: getEditorValue('css'),
@@ -179,17 +461,23 @@ window.addEventListener('beforeunload', () => {
         }
       } else {
         const proj = projects.find(p => p.id === currentProjectId);
-        if (proj) {
-          proj.code = code;
-          proj.updatedAt = new Date().toISOString();
+        // Design projects store their canvas in the design object, not in the code editor.
+        if (proj && proj.type !== 'design') {
+          const existingCode = normalizeCode(proj.code);
+          const changed = code.html !== existingCode.html || code.css !== existingCode.css || code.js !== existingCode.js;
+          if (changed) {
+            proj.code = code;
+            proj.updatedAt = new Date().toISOString();
+          }
         }
       }
     }
-    lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+    saveLocalProjectsSnapshot();
   } catch (_) {}
 });
 
 async function loadProjectsFromStorage() {
+  restorePendingLocalImport();
   setSyncStatus('saving', 'Conectando…');
   try {
     const init = await fetch('/api/workspace/init', {
@@ -212,9 +500,41 @@ async function loadProjectsFromStorage() {
     let localProjects = [];
     const stored = lsGet(STORAGE_KEY_PROJECTS);
     if (stored) {
-      try { localProjects = JSON.parse(stored); } catch (_) { localProjects = []; }
+      try {
+        const parsedLocalProjects = JSON.parse(stored);
+        // Old or manually edited browser storage must never make workspace
+        // bootstrap call array methods on an arbitrary JSON object.
+        if (Array.isArray(parsedLocalProjects)) {
+          localProjects = parsedLocalProjects;
+        } else {
+          localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'projects_not_array');
+          localProjects = [];
+        }
+      } catch (_) {
+        localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'invalid_json');
+        localProjects = [];
+      }
     }
-    projects = serverProjects.length ? serverProjects : localProjects;
+    const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
+    const sameWorkspace = !!localWorkspaceMarker && localWorkspaceMarker === boot.workspaceId;
+    const mayMergeLocal = sameWorkspace || !currentUser || !currentUser.real;
+    if (currentUser && currentUser.real && localProjects.length && !sameWorkspace) {
+      // Never silently mix another browser workspace into an OAuth account.
+      // Keep it available for an explicit import after the account loads. Do
+      // not overwrite a pending snapshot already preserved for this account.
+      if (!(Array.isArray(pendingLocalImportProjects) && pendingLocalImportProjects.length)) {
+        if (!storePendingLocalImport(localProjects)) {
+          // Keep the original cross-workspace snapshot intact if its recovery
+          // copy could not be persisted; startup's normal save must not replace it.
+          localProjectsSnapshotWriteBlocked = true;
+        }
+      }
+    }
+    projects = mergeWorkspaceProjects(
+      serverProjects,
+      mayMergeLocal ? localProjects : [],
+      loadDeletedProjectIds(boot.workspaceId)
+    );
     workspaceRevision = Number.isInteger(data.revision) ? data.revision : 0;
     serverReady = true;
     setSyncStatus('synced', 'Sincronizado');
@@ -223,7 +543,32 @@ async function loadProjectsFromStorage() {
     console.warn('Servidor no disponible; usando copia local.', e);
     const stored = lsGet(STORAGE_KEY_PROJECTS);
     if (stored) {
-      try { projects = JSON.parse(stored); } catch (_) { projects = []; }
+      try {
+        const parsedLocalProjects = JSON.parse(stored);
+        if (!Array.isArray(parsedLocalProjects)) {
+          localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'projects_not_array');
+          throw new Error('local_projects_invalid');
+        }
+        const localProjects = parsedLocalProjects;
+        const localWorkspaceMarker = lsGet(STORAGE_KEY_PROJECTS_WORKSPACE) || initialWorkspaceId;
+        if (!currentUser || !currentUser.real || localWorkspaceMarker === workspaceId) {
+          projects = mergeWorkspaceProjects([], localProjects, loadDeletedProjectIds(workspaceId));
+        } else {
+          if (!storePendingLocalImport(Array.isArray(localProjects) ? localProjects : [])) {
+            // In offline startup the source snapshot is the only durable copy.
+            localProjectsSnapshotWriteBlocked = true;
+          }
+          projects = [];
+        }
+      } catch (error) {
+        if (error && error.message === 'local_projects_invalid') {
+          // Recovery backup was attempted above; retain the raw snapshot if
+          // storage was unavailable rather than pretending it was recovered.
+        } else if (stored) {
+          localProjectsSnapshotRecoveryFailed = !preserveInvalidLocalProjectsSnapshot(stored, 'invalid_json');
+        }
+        projects = [];
+      }
     }
     setSyncStatus('offline', 'Solo local');
   }
@@ -234,6 +579,12 @@ async function loadProjectsFromStorage() {
       ...p,
       id: typeof p.id === 'string' ? p.id : 'proj_' + Date.now(),
       name: typeof p.name === 'string' && p.name.trim() ? p.name : 'Sin título',
+      type: p.type === 'design' ? 'design' : 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      design: p.design && typeof p.design === 'object' && !Array.isArray(p.design)
+        ? { ...p.design, elements: Array.isArray(p.design.elements) ? p.design.elements : [], frame: p.design.frame || 'desktop', background: p.design.background || '#ffffff' }
+        : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
       updatedAt: p.updatedAt || new Date().toISOString(),
       code: normalizeCode(p.code),
       branch: p.branch && typeof p.branch === 'object'
@@ -248,19 +599,30 @@ async function loadProjectsFromStorage() {
   }).filter(Boolean);
 
   if (projects.length === 0) {
+    generatedDefaultProjectId = 'proj_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now());
     projects.push({
-      id: 'proj_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()),
+      id: generatedDefaultProjectId,
       name: 'Mi Primer Proyecto',
+      type: 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
       updatedAt: new Date().toISOString(),
       code: normalizeCode(defaultTemplate)
     });
   }
   if (serverReady) await persistWorkspace();
-  else lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  else saveLocalProjectsSnapshot();
 }
 
 function persistWorkspace() {
-  lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  saveLocalProjectsSnapshot();
+  // Do not cancel a scheduled retry while a previous request is still in flight:
+  // runWorkspaceSync() may be unable to start a newer save until that request settles.
+  if (syncRetryTimer && !syncRunning) {
+    clearTimeout(syncRetryTimer);
+    syncRetryTimer = null;
+  }
   if (!serverReady) {
     setSyncStatus('offline', 'Solo local');
     return Promise.resolve(false);
@@ -296,29 +658,87 @@ async function runWorkspaceSync() {
           const data = await r.json();
           serverSyncError = true;
           syncGeneration = 0;
+          updateDashboardStatus();
           setSyncStatus('conflict', 'Conflicto');
-          resolveSyncWaiters(false, generationAtStart);
+          // A newer save can queue while this request is in flight; fail every waiter on terminal conflict.
+          resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
           showConflictModal(data);
           break;
         }
         if (r.status === 429) {
-          showToast('Límite de peticiones alcanzado. Reintentando en unos segundos…', 'warn');
           syncGeneration = 0;
+          // All queued saves are deferred to the scheduled retry, so none may remain unresolved.
+          resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
+          setSyncStatus('offline', 'Reintento pendiente');
+          if (!syncRetryTimer) {
+            const delay = SYNC_RETRY_DELAYS_MS[Math.min(syncRetryAttempt, SYNC_RETRY_DELAYS_MS.length - 1)];
+            syncRetryAttempt = Math.min(syncRetryAttempt + 1, SYNC_RETRY_DELAYS_MS.length - 1);
+            showToast('Límite de peticiones alcanzado. Se reintentará el guardado automáticamente.', 'warn');
+            const retryWorkspaceSync = () => {
+              syncRetryTimer = null;
+              if (!serverReady) return;
+              // A newer save may still be settling; don't lose the retry by starting
+              // while runWorkspaceSync() is locked.
+              if (syncRunning) {
+                syncRetryTimer = setTimeout(retryWorkspaceSync, 1000);
+                return;
+              }
+              persistWorkspace();
+            };
+            syncRetryTimer = setTimeout(retryWorkspaceSync, delay);
+          }
+          break;
+        }
+        if (r.status === 400) {
+          // A validation error means the server is reachable. Keep the workspace
+          // online so a corrected next save can recover; do not misclassify this
+          // as a network outage and permanently disable sync for the page session.
+          let details = {};
+          try { details = await r.json(); } catch (_) {}
+          syncGeneration = 0;
+          serverSyncError = true;
+          resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
+          setSyncStatus('offline', 'Datos no válidos · solo local');
+          updateDashboardStatus();
+          const reason = details.detail || details.error || 'invalid_payload';
+          showToast('El servidor rechazó los datos (' + reason + '). Tus cambios siguen guardados localmente; revisa los datos y vuelve a guardar.', 'warn');
+          break;
+        }
+        if (r.status === 413) {
+          // A newer save may already contain fewer projects or less code; try
+          // that latest snapshot before deciding the workspace is too large.
+          if (syncGeneration !== generationAtStart) {
+            resolveSyncWaiters(false, generationAtStart);
+            continue;
+          }
+          syncGeneration = 0;
+          workspacePayloadTooLarge = true;
           resolveSyncWaiters(false, generationAtStart);
-          setSyncStatus('offline', 'Rate limit');
+          setSyncStatus('offline', 'Límite de tamaño · solo local');
+          updateDashboardStatus();
+          showToast('El workspace supera el límite de tamaño del servidor. Tus cambios siguen guardados localmente; elimina o exporta proyectos para volver a sincronizar.', 'warn');
           break;
         }
         if (!r.ok) throw new Error('workspace_save_failed');
         const data = await r.json();
         workspaceRevision = data.revision;
+        syncRetryAttempt = 0;
         serverSyncError = false;
+        workspacePayloadTooLarge = false;
+        updateDashboardStatus();
+        if (syncGeneration === generationAtStart) {
+          clearDeletedProjectIds(workspaceId);
+          if (generatedDefaultProjectId && projects.some(project => project.id === generatedDefaultProjectId)) {
+            generatedDefaultProjectId = null;
+          }
+        }
         resolveSyncWaiters(true, generationAtStart);
         setSyncStatus(inCopyBranch ? 'branch' : 'synced', inCopyBranch ? 'Copia · Guardada' : 'Sincronizado');
         if (syncGeneration === generationAtStart) break;
       } catch (e) {
         serverReady = false;
         syncGeneration = 0;
-        resolveSyncWaiters(false, generationAtStart);
+        resolveSyncWaiters(false, Number.MAX_SAFE_INTEGER);
         console.warn('No se pudo sincronizar con el servidor.', e);
         setSyncStatus('offline', 'Solo local');
         showToast('Guardado local activo; el servidor no está disponible.', 'warn');
@@ -340,7 +760,7 @@ function resolveSyncWaiters(completed, generation) {
 }
 
 function saveProjectsToStorage() {
-  persistWorkspace();
+  return persistWorkspace();
 }
 
 async function refreshWorkspaceFromServer() {
@@ -352,9 +772,18 @@ async function refreshWorkspaceFromServer() {
     });
     if (!r.ok) return false;
     const data = await r.json();
-    projects = Array.isArray(data.projects) ? data.projects : [];
-    workspaceRevision = Number.isInteger(data.revision) ? data.revision : 0;
-    lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+    // A successful HTTP status is not enough: reject malformed snapshots before
+    // mutating memory or localStorage, otherwise a broken response can erase the
+    // editor's current project list.
+    if (!data || typeof data !== 'object' || Array.isArray(data) ||
+        !Array.isArray(data.projects) ||
+        !Number.isInteger(data.revision) || data.revision < 0) {
+      console.warn('Workspace refresh returned an invalid snapshot.');
+      return false;
+    }
+    projects = data.projects;
+    workspaceRevision = data.revision;
+    saveLocalProjectsSnapshot();
     return true;
   } catch (_) {
     return false;
@@ -390,10 +819,13 @@ function conflictTakeServer() {
   if (!pendingConflict) return;
   projects = Array.isArray(pendingConflict.projects) ? pendingConflict.projects : [];
   workspaceRevision = Number.isInteger(pendingConflict.revision) ? pendingConflict.revision : 0;
-  lsSet(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+  saveLocalProjectsSnapshot();
+  clearDeletedProjectIds();
   pendingConflict = null;
+  clearDeletedProjectIds(workspaceId);
   closeConflictModal();
   serverSyncError = false;
+  updateDashboardStatus();
   setSyncStatus('synced', 'Sincronizado');
   if (currentProjectId) {
     const proj = projects.find(p => p.id === currentProjectId);
@@ -424,13 +856,25 @@ function conflictKeepLocal() {
   if (serverProjects.length) {
     const stamp = new Date().toLocaleString();
     serverProjects.forEach(sp => {
-      const already = projects.some(
-        p => p.name && p.name.indexOf('(servidor ') !== -1 && p.id === 'srv_bak_' + (sp.id || '')
+      const sourceId = String(sp.id || 'project');
+      const already = projects.some(p =>
+        p.serverBackupOf === sourceId ||
+        (typeof p.id === 'string' && p.id.startsWith('srv_bak_' + sourceId + '_'))
       );
       if (already) return;
+      const backupSuffix = ' (servidor ' + stamp + ')';
       projects.unshift({
-        id: 'srv_bak_' + (sp.id || Date.now()) + '_' + Date.now().toString(36),
-        name: (sp.name || 'Proyecto') + ' (servidor ' + stamp + ')',
+        // Keep backup IDs and names within the server's validation limits even
+        // when the source project already uses the maximum allowed length.
+        id: 'srv_bak_' + sourceId.slice(0, 45) + '_' + Date.now().toString(36),
+        serverBackupOf: sourceId,
+        name: (String(sp.name || 'Proyecto').slice(0, 200 - backupSuffix.length) || 'Proyecto') + backupSuffix,
+        type: sp.type === 'design' ? 'design' : 'web',
+        hasWebSpace: true,
+        hasDesignSpace: true,
+        design: sp.design && typeof sp.design === 'object' && !Array.isArray(sp.design)
+          ? deepClone(sp.design)
+          : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
         updatedAt: sp.updatedAt || new Date().toISOString(),
         code: cloneCode(sp.code),
         branch: sp.branch ? deepClone(sp.branch) : undefined,
@@ -445,6 +889,7 @@ function conflictKeepLocal() {
   pendingConflict = null;
   closeConflictModal();
   serverSyncError = false;
+  updateDashboardStatus();
   persistWorkspace().then(ok => {
     if (ok) {
       showToast('Tu versión local se guardó en el servidor.');
@@ -488,7 +933,7 @@ function renderProjectsList() {
     card.innerHTML =
       '<div class="space-y-2">' +
       '<div class="flex items-center justify-between gap-2">' +
-      '<span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 font-mono border border-cyan-500/20">HTML / CSS / JS</span>' +
+      '<span class="text-[10px] px-2 py-0.5 rounded-full ' + (p.type === 'design' ? 'bg-violet-500/10 text-violet-300 border-violet-500/20' : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20') + ' font-mono border">' + (p.type === 'design' ? 'DISEÑO · PROTOTIPO' : 'HTML / CSS / JS') + '</span>' +
       (hasBranch
         ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">Rama</span>'
         : '') +
@@ -538,62 +983,195 @@ function onProjectsGridClick(e) {
 
 
 function escapeAttr(str) {
-  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
+let creatingProjectInFlight = false;
+const duplicatingProjectIds = new Set();
 function openNewProjectModal() {
+  if (creatingProjectInFlight) return;
   document.getElementById('newProjectNameInput').value = '';
   document.getElementById('newProjectModal').classList.remove('hidden');
 }
 
 function closeNewProjectModal() {
+  if (creatingProjectInFlight) return;
   document.getElementById('newProjectModal').classList.add('hidden');
 }
 
-function createNewProjectConfirm() {
+async function createNewProjectConfirm() {
+  if (creatingProjectInFlight) return;
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de crear otro.', 'warn');
+    return;
+  }
   const name = document.getElementById('newProjectNameInput').value.trim() || 'Proyecto sin título';
+  if (name.length > 200) {
+    showToast('El nombre del proyecto no puede superar los 200 caracteres.', 'warn');
+    return;
+  }
+  const selectedType = document.querySelector('input[name="newProjectType"]:checked');
+  const type = selectedType && selectedType.value === 'design' ? 'design' : 'web';
   const newProj = {
     id: 'proj_' + crypto.randomUUID(),
     name: name,
+    type,
     updatedAt: new Date().toISOString(),
-    code: { ...defaultTemplate }
+    // Both workspaces exist from creation; type selects the initial editor only.
+    code: { ...defaultTemplate },
+    hasWebSpace: true,
+    hasDesignSpace: true,
+    design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false }
   };
+  creatingProjectInFlight = true;
+  const confirmButton = document.querySelector('#newProjectModal button[onclick="createNewProjectConfirm()"]');
+  const previousButtonText = confirmButton ? confirmButton.textContent : '';
+  if (confirmButton) {
+    confirmButton.disabled = true;
+    confirmButton.setAttribute('aria-busy', 'true');
+    confirmButton.textContent = 'Creando…';
+  }
   projects.unshift(newProj);
-  saveProjectsToStorage();
+  // Save the local snapshot first so a server/network failure cannot turn a
+  // successful-looking create action into a project that exists only in RAM.
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try {
+    serverSaved = await saveProjectsToStorage() === true;
+  } catch (_) {}
+  const localContainsProject = (() => {
+    try {
+      const raw = lsGet(STORAGE_KEY_PROJECTS);
+      const saved = JSON.parse(raw || 'null');
+      return Array.isArray(saved) && saved.some(project => project && project.id === newProj.id);
+    } catch (_) { return false; }
+  })();
+  creatingProjectInFlight = false;
   closeNewProjectModal();
   renderProjectsList();
   openProject(newProj.id);
-  showToast('Proyecto "' + name + '" creado.');
+  if (serverSaved) {
+    showToast('Proyecto "' + name + '" creado y sincronizado.');
+  } else if (localSaved && localContainsProject) {
+    showToast('Proyecto "' + name + '" creado y guardado localmente. La sincronización queda pendiente.', 'warn');
+  } else {
+    showToast('Proyecto "' + name + '" está abierto, pero no se pudo confirmar un guardado duradero. Exporta una copia antes de salir.', 'error');
+  }
+  creatingProjectInFlight = false;
+  if (confirmButton) {
+    confirmButton.disabled = false;
+    confirmButton.removeAttribute('aria-busy');
+    confirmButton.textContent = previousButtonText || 'Crear Proyecto';
+  }
 }
 
-function deleteProject(id, e) {
+async function deleteProject(id, e) {
   if (e) e.stopPropagation();
   if (!confirm('¿Eliminar este proyecto permanentemente?')) return;
-  projects = projects.filter(p => p.id !== id);
+  const index = projects.findIndex(project => project && project.id === id);
+  if (index < 0) return;
+  const deletedProject = projects[index];
+  const previousCurrentProjectId = currentProjectId;
+  const previousInCopyBranch = inCopyBranch;
+  const previousIsCopyBranchCreated = isCopyBranchCreated;
+  const tombstoneSaved = recordDeletedProjectId(id);
+  // Remove incoming links to a deleted destination before persisting the workspace.
+  // Keep the original entries so a failed delete can roll the workspace back atomically.
+  const removedFlowConnections = [];
+  for (const project of projects) {
+    if (!project || !project.design || !Array.isArray(project.design.flowConnections)) continue;
+    const removed = project.design.flowConnections.filter(connection => connection && connection.targetProjectId === id);
+    if (removed.length) {
+      removedFlowConnections.push({ project, connections: removed });
+      project.design.flowConnections = project.design.flowConnections.filter(connection => !connection || connection.targetProjectId !== id);
+    }
+  }
+  projects = projects.filter(project => project.id !== id);
   if (currentProjectId === id) {
     currentProjectId = null;
     inCopyBranch = false;
     isCopyBranchCreated = false;
   }
-  saveProjectsToStorage();
+  let synchronized = false;
+  try { synchronized = await saveProjectsToStorage() === true; } catch (_) {}
+  if (synchronized || tombstoneSaved) {
+    renderProjectsList();
+    showToast(
+      synchronized
+        ? 'Proyecto eliminado y sincronizado.'
+        : 'Proyecto eliminado localmente; la marca de eliminación quedó guardada y se sincronizará al recuperar la conexión.',
+      synchronized ? 'info' : 'warn'
+    );
+    return;
+  }
+  // Without either a durable tombstone or a confirmed server delete, rollback.
+  // Otherwise the old server copy could reappear on the next workspace merge.
+  projects.splice(Math.min(index, projects.length), 0, deletedProject);
+  for (const entry of removedFlowConnections) {
+    if (!entry.project.design) entry.project.design = { elements: [] };
+    if (!Array.isArray(entry.project.design.flowConnections)) entry.project.design.flowConnections = [];
+    entry.project.design.flowConnections.push(...entry.connections);
+  }
+  currentProjectId = previousCurrentProjectId;
+  inCopyBranch = previousInCopyBranch;
+  isCopyBranchCreated = previousIsCopyBranchCreated;
+  saveLocalProjectsSnapshot();
   renderProjectsList();
-  showToast('Proyecto eliminado.');
+  showToast('No se pudo asegurar la eliminación; se conservó el proyecto para evitar que reaparezca o se pierda.', 'error');
 }
 
-function duplicateProjectFromDashboard(id, e) {
+async function duplicateProjectFromDashboard(id, e) {
   if (e) e.stopPropagation();
+  if (duplicatingProjectIds.has(id)) return;
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de duplicar.', 'warn');
+    return;
+  }
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de duplicar.', 'warn');
+    return;
+  }
   const orig = projects.find(p => p.id === id);
   if (!orig) return;
-  const dup = {
-    id: 'proj_' + crypto.randomUUID(),
-    name: orig.name + ' (Copia)',
-    updatedAt: new Date().toISOString(),
-    code: JSON.parse(JSON.stringify(orig.code))
-  };
+  duplicatingProjectIds.add(id);
+  let dup;
+  try {
+    dup = {
+      id: 'proj_' + crypto.randomUUID(),
+      name: String(orig.name || 'Proyecto').slice(0, 200 - ' (Copia)'.length) + ' (Copia)',
+      type: orig.type === 'design' ? 'design' : 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      updatedAt: new Date().toISOString(),
+      code: JSON.parse(JSON.stringify(normalizeCode(orig.code))),
+      design: orig.design && typeof orig.design === 'object' && !Array.isArray(orig.design)
+        ? JSON.parse(JSON.stringify(orig.design))
+        : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false }
+    };
+  } catch (_) {
+    duplicatingProjectIds.delete(id);
+    showToast('No se pudo preparar una copia válida de este proyecto.', 'error');
+    return;
+  }
   projects.unshift(dup);
-  saveProjectsToStorage();
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  let localContainsCopy = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    localContainsCopy = Array.isArray(snapshot) && snapshot.some(project => project && project.id === dup.id);
+  } catch (_) {}
+  duplicatingProjectIds.delete(id);
   renderProjectsList();
-  showToast('Copia del proyecto creada.');
+  if (serverSaved) showToast('Copia del proyecto creada y sincronizada.');
+  else if (localSaved && localContainsCopy) showToast('Copia creada y guardada localmente; sincronización pendiente.', 'warn');
+  else showToast('La copia está en memoria, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
 function openProject(id) {
@@ -611,6 +1189,13 @@ function openProject(id) {
     }
   }
   currentProjectId = id;
+  const returnToDesignBtn = document.getElementById('returnToDesignBtn');
+  if (returnToDesignBtn) {
+    const sourceDesign = proj.sourceDesignProjectId && projects.find(item => item.id === proj.sourceDesignProjectId && item.type === 'design');
+    returnToDesignBtn.classList.toggle('hidden', !sourceDesign);
+    returnToDesignBtn.classList.toggle('inline-flex', !!sourceDesign);
+    returnToDesignBtn.setAttribute('aria-hidden', sourceDesign ? 'false' : 'true');
+  }
   aiRequestGeneration++;
   inCopyBranch = false;
   isCopyBranchCreated = loadBranchFromProject(proj);
@@ -630,11 +1215,44 @@ function openProject(id) {
   if (banner) banner.classList.add('hidden');
   document.getElementById('welcomeDashboard').classList.add('hidden');
   document.getElementById('studioView').classList.remove('hidden');
+  // Backfill legacy projects so old web-only/design-only projects can use both spaces.
+  proj.hasWebSpace = true;
+  proj.hasDesignSpace = true;
+  if (!proj.design || typeof proj.design !== 'object') {
+    proj.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
+  }
+  const workspaceSwitch = document.getElementById('workspaceSwitch');
+  if (workspaceSwitch) {
+    workspaceSwitch.classList.remove('hidden');
+    workspaceSwitch.classList.add('inline-flex');
+    const webButton = document.getElementById('switchToWebBtn');
+    const designButton = document.getElementById('switchToDesignBtn');
+    if (webButton) webButton.setAttribute('aria-pressed', proj.type === 'web' ? 'true' : 'false');
+    if (designButton) designButton.setAttribute('aria-pressed', proj.type === 'design' ? 'true' : 'false');
+  }
+  const isDesignProject = proj.type === 'design';
+  document.getElementById('editorPanel').classList.toggle('hidden', isDesignProject);
+  document.getElementById('splitDivider').classList.toggle('hidden', isDesignProject);
+  document.getElementById('previewPanel').classList.toggle('hidden', isDesignProject);
+  document.getElementById('designStudioPanel').classList.toggle('hidden', !isDesignProject);
+  document.getElementById('designStudioPanel').classList.toggle('flex', isDesignProject);
+  document.getElementById('mainSplit').classList.toggle('md:flex-row', !isDesignProject);
+  document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
+  const mobileBar = document.getElementById('mobileBottomBar');
+  if (mobileBar) mobileBar.classList.toggle('hidden', isDesignProject);
+  const desktopActions = document.getElementById('desktopProjectActions');
+  const mobileActions = document.getElementById('mobileProjectActions');
+  if (desktopActions) desktopActions.classList.toggle('hidden', isDesignProject);
+  if (mobileActions) mobileActions.classList.toggle('hidden', isDesignProject);
   setMobileStudioMode('code');
   // Layout after studio is visible
   requestAnimationFrame(() => {
-    initMonacoOrFallback(proj.code);
-    switchTab(activeTab || 'html');
+    if (isDesignProject) {
+      initializeDesignProject(proj);
+    } else {
+      initMonacoOrFallback(proj.code);
+      switchTab(activeTab || 'html');
+    }
   });
   setSyncStatus(serverReady ? 'synced' : 'offline', serverReady ? 'Sincronizado' : 'Solo local');
 }
@@ -646,8 +1264,16 @@ async function returnToDashboard() {
     autosaveTimer = null;
   }
   try {
-    if (inCopyBranch) await saveInCopyBranch();
-    else saveCurrentCodeToActiveProject(true);
+    const activeProject = projects.find(project => project && project.id === currentProjectId);
+    // Do not let a not-yet-initialized Monaco/fallback editor overwrite durable
+    // generated HTML when the user leaves the project immediately after opening it.
+    if (activeProject && activeProject.type !== 'design' && editorReadyProjectId !== currentProjectId) {
+      showToast('El editor aún está cargando; se conservó el código guardado.', 'warn');
+    } else if (inCopyBranch) {
+      await saveInCopyBranch();
+    } else {
+      await saveCurrentCodeToActiveProject(true);
+    }
   } catch (e) {
     console.warn('Error guardando al salir', e);
   }
@@ -657,7 +1283,17 @@ async function returnToDashboard() {
 }
 
 function saveCurrentCodeToActiveProject(immediate) {
-  if (!currentProjectId) return;
+  if (!currentProjectId) return Promise.resolve(false);
+  const active = projects.find(p => p.id === currentProjectId);
+  if (active && active.type === 'design') {
+    active.updatedAt = new Date().toISOString();
+    if (immediate) {
+      if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+      return saveProjectsToStorage();
+    }
+    scheduleAutosave();
+    return Promise.resolve(true);
+  }
   const code = normalizeCode({
     html: getEditorValue('html'),
     css: getEditorValue('css'),
@@ -665,16 +1301,18 @@ function saveCurrentCodeToActiveProject(immediate) {
   });
   if (inCopyBranch) {
     copyProjectCode = JSON.parse(JSON.stringify(code));
-    persistBranch();
-    return;
+    return persistBranch(!!immediate);
   }
   const proj = projects.find(p => p.id === currentProjectId);
-  if (proj) {
-    proj.code = code;
-    proj.updatedAt = new Date().toISOString();
-    if (immediate) saveProjectsToStorage();
-    else scheduleAutosave();
+  if (!proj) return Promise.resolve(false);
+  proj.code = code;
+  proj.updatedAt = new Date().toISOString();
+  if (immediate) {
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    return saveProjectsToStorage();
   }
+  scheduleAutosave();
+  return Promise.resolve(true);
 }
 
 function scheduleAutosave() {
@@ -686,16 +1324,42 @@ function scheduleAutosave() {
   }, AUTOSAVE_DEBOUNCE_MS);
 }
 
-function editCurrentProjectName() {
+async function editCurrentProjectName() {
   const proj = projects.find(p => p.id === currentProjectId);
   if (!proj) return;
   const newName = prompt('Nuevo nombre del proyecto:', proj.name);
-  if (newName && newName.trim()) {
-    proj.name = newName.trim();
-    document.getElementById('currentProjectTitle').innerText = proj.name;
-    saveProjectsToStorage();
-    showToast('Nombre actualizado.');
+  if (!newName || !newName.trim()) return;
+  const name = newName.trim();
+  if (name.length > 200) {
+    showToast('El nombre del proyecto no puede superar los 200 caracteres.', 'warn');
+    return;
   }
+  const previousName = proj.name;
+  const previousUpdatedAt = proj.updatedAt;
+  proj.name = name;
+  proj.updatedAt = new Date().toISOString();
+  let serverSaved = false;
+  try { serverSaved = await saveCurrentCodeToActiveProject(true) === true; } catch (_) {}
+  let localContainsRename = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    const savedProject = Array.isArray(snapshot) && snapshot.find(item => item && item.id === proj.id);
+    localContainsRename = !!savedProject && savedProject.name === name;
+  } catch (_) {}
+  if (!serverSaved && !localContainsRename) {
+    proj.name = previousName;
+    proj.updatedAt = previousUpdatedAt;
+    const title = document.getElementById('currentProjectTitle');
+    if (title) title.innerText = previousName;
+    renderProjectsList();
+    showToast('No se pudo confirmar el cambio de nombre; se conservó el nombre anterior.', 'error');
+    return;
+  }
+  const title = document.getElementById('currentProjectTitle');
+  if (title) title.innerText = name;
+  renderProjectsList();
+  if (serverSaved) showToast('Nombre actualizado y sincronizado.');
+  else showToast('Nombre actualizado localmente; sincronización pendiente.', 'warn');
 }
 
 // ---------- Auth (OAuth + demo fallback) ----------
@@ -839,16 +1503,48 @@ function connectAuth(provider) {
 }
 
 async function logoutAuth() {
+  // Flush account work before dropping its bearer token. If the server cannot
+  // accept the latest snapshot, preserve it in that user's pending-import slot.
+  if (currentUser && currentUser.real) {
+    const saved = await persistWorkspace();
+    if (!saved) {
+      const preserved = storePendingLocalImport(projects);
+      if (!preserved) {
+        // Logging out would delete the only active snapshot while offline work
+        // has nowhere durable to go. Keep the account/session intact and let the
+        // user retry after freeing browser storage.
+        showToast('No se cerró la sesión porque no se pudieron proteger los cambios pendientes. Libera espacio del navegador e inténtalo de nuevo.', 'error');
+        return;
+      }
+      pendingLocalImportProjects = null;
+    }
+  }
   try {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
   } catch (_) {}
   currentUser = null;
   lsRemove(STORAGE_KEY_AUTH);
+  // The workspace token is a bearer credential independent of the session
+  // cookie, so logout must remove it and start a fresh anonymous workspace.
+  workspaceId = null;
+  initialWorkspaceId = null;
+  workspaceToken = '';
+  workspaceRevision = 0;
+  serverReady = false;
+  projects = [];
+  currentProjectId = null;
+  pendingLocalImportProjects = null;
+  lsRemove(STORAGE_KEY_WORKSPACE);
+  lsRemove(STORAGE_KEY_WORKSPACE_TOKEN);
+  lsRemove(STORAGE_KEY_PROJECTS);
+  lsRemove(STORAGE_KEY_PROJECTS_WORKSPACE);
+  loadAiSettings();
   updateAuthUI();
   showToast('Sesión cerrada.');
-  // Reload workspace as anonymous
+  // Reload into a new anonymous workspace without the previous account's token.
   try {
     await loadProjectsFromStorage();
+    window.dispatchEvent(new Event('codelab-workspace-ready'));
     renderProjectsList();
     updateDashboardStatus();
   } catch (_) {}
@@ -939,36 +1635,87 @@ function updateOauthDemoBanner() {
 function maybeOfferLocalImport() {
   try {
     if (!currentUser || !currentUser.real) return;
-    if (projects.length > 0) return;
-    const raw = lsGet(STORAGE_KEY_PROJECTS);
-    if (!raw) return;
-    const local = JSON.parse(raw);
+    let local = Array.isArray(pendingLocalImportProjects) ? pendingLocalImportProjects : null;
+    if (!local) {
+      const raw = lsGet(STORAGE_KEY_PROJECTS);
+      if (!raw) return;
+      local = JSON.parse(raw);
+    }
     if (!Array.isArray(local) || local.length === 0) return;
     const flag = 'codelab_import_offered_' + (currentUser.provider + '_' + currentUser.id);
-    if (lsGet(flag)) return;
+    if (lsGet(flag)) {
+      clearPendingLocalImport();
+      return;
+    }
     lsSet(flag, '1');
     const ok = confirm(
-      'Tu workspace de cuenta está vacío, pero hay ' +
-        local.length +
-        ' proyecto(s) guardados en este navegador. ¿Importarlos a tu cuenta?'
+      'Hay ' + local.length +
+        ' proyecto(s) guardados en otro workspace de este navegador. ¿Importarlos a tu cuenta sin reemplazar los proyectos actuales?'
     );
-    if (!ok) return;
-    projects = local.map(p => ({
-      ...p,
-      code: normalizeCode(p.code),
-      id: typeof p.id === 'string' ? p.id : 'proj_' + Date.now()
-    }));
+    if (!ok) {
+      clearPendingLocalImport();
+      return;
+    }
+    const existingIds = new Set(projects.map(project => project.id));
+    const availableSlots = Math.max(0, maxProjects - projects.length);
+    const seenIds = new Set(existingIds);
+    const candidates = local.filter(project => project && typeof project === 'object' && !Array.isArray(project)).map((project, index) => ({
+      ...project,
+      id: typeof project.id === 'string' && project.id ? project.id : 'proj_import_' + Date.now() + '_' + index,
+      name: typeof project.name === 'string' && project.name.trim() ? project.name.trim().slice(0, 200) : 'Proyecto importado',
+      type: project.type === 'design' ? 'design' : 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      design: project.design && typeof project.design === 'object' && !Array.isArray(project.design)
+        ? { ...project.design, elements: Array.isArray(project.design.elements) ? project.design.elements : [], frame: project.design.frame || 'desktop', background: project.design.background || '#ffffff' }
+        : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
+      code: normalizeCode(project.code)
+    })).filter(project => {
+      if (seenIds.has(project.id)) return false;
+      seenIds.add(project.id);
+      return true;
+    });
+    // Imports must obey the same server-configured project cap as creation and duplication.
+    // Otherwise the client immediately enters a state the server will reject on every save.
+    const imported = candidates.slice(0, availableSlots);
+    const skippedProjects = candidates.slice(imported.length);
+    const skipped = skippedProjects.length;
+    if (skipped > 0 && !storePendingLocalImport(skippedProjects)) {
+      // Do not overwrite the original local snapshot if overflow recovery could
+      // not be persisted. The user can retry after storage space becomes available.
+      lsRemove(flag);
+      showToast('No se pudo guardar la lista de proyectos pendientes. No se importó nada; libera espacio del navegador e inténtalo de nuevo.', 'error');
+      return;
+    }
+    projects = imported.concat(projects);
+    if (skipped > 0) {
+      // The overflow list is durable before the imported subset can overwrite the source snapshot.
+      lsRemove(flag);
+    } else {
+      clearPendingLocalImport();
+    }
     saveProjectsToStorage();
     renderProjectsList();
-    showToast('Proyectos locales importados a tu cuenta.');
+    if (skipped > 0) {
+      showToast(imported.length
+        ? imported.length + ' proyecto(s) importados. ' + skipped + ' quedan guardados para importar después de liberar espacio.'
+        : 'Los proyectos siguen guardados para importarlos cuando liberes espacio en tu cuenta.', 'warn');
+    } else {
+      showToast(imported.length ? imported.length + ' proyecto(s) local(es) importados a tu cuenta.' : 'Los proyectos locales ya estaban presentes en tu cuenta.');
+    }
   } catch (_) {}
 }
-
 function updateDashboardStatus() {
   const badge = document.getElementById('dashSyncBadge');
   const wid = document.getElementById('dashWorkspaceId');
   if (badge) {
-    if (currentUser && currentUser.real) {
+    if (workspacePayloadTooLarge) {
+      badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1 text-amber-300"></i> Solo local · límite de tamaño';
+      badge.className = 'px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300';
+    } else if (serverSyncError) {
+      badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1 text-amber-300"></i> Sincronización pendiente · revisar';
+      badge.className = 'px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300';
+    } else if (currentUser && currentUser.real) {
       badge.innerHTML =
         '<i class="fa-solid fa-shield-halved mr-1 text-emerald-400"></i> Cuenta ' +
         currentUser.provider +
@@ -1033,6 +1780,9 @@ function getMonacoOptions() {
 
 function initMonacoOrFallback(code) {
   code = normalizeCode(code);
+  const initGeneration = ++editorInitGeneration;
+  const initProjectId = currentProjectId;
+  editorReadyProjectId = null;
   if (useMonaco && typeof require !== 'undefined') {
     require.config({
       paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.38.0/min/vs' }
@@ -1040,6 +1790,7 @@ function initMonacoOrFallback(code) {
     require(
       ['vs/editor/editor.main'],
       function () {
+        if (initGeneration !== editorInitGeneration) return;
         try {
           const opts = getMonacoOptions();
           if (!editors.html) {
@@ -1048,6 +1799,7 @@ function initMonacoOrFallback(code) {
             const jsEl = document.getElementById('monaco-js');
             if (!htmlEl || !cssEl || !jsEl) {
               enableFallbackMode(code);
+              if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
               return;
             }
             editors.html = monaco.editor.create(htmlEl, {
@@ -1085,18 +1837,23 @@ function initMonacoOrFallback(code) {
             try { editors[k].layout(); } catch (_) {}
           });
           updatePreview();
+          if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
         } catch (err) {
           console.warn('Monaco init failed, using fallback', err);
           enableFallbackMode(code);
+          if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
         }
       },
       function (err) {
+        if (initGeneration !== editorInitGeneration) return;
         console.warn('Monaco load failed', err);
         enableFallbackMode(code);
+        if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
       }
     );
   } else {
     enableFallbackMode(code);
+    if (initGeneration === editorInitGeneration && currentProjectId === initProjectId) editorReadyProjectId = initProjectId;
   }
 }
 
@@ -1216,10 +1973,10 @@ function updatePreview() {
   const errScript =
     '<script>' +
     'window.onerror=function(msg,url,line,col){' +
-    'window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:"Línea "+line+":"+col+" - "+msg}, window.location.origin||"*");' +
+    'window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:"Línea "+line+":"+col+" - "+msg}, "*");' +
     '};' +
-    'console.log=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"log",message:a.join(" ")},window.location.origin||"*");};' +
-    'console.error=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:a.join(" ")},window.location.origin||"*");};' +
+    'console.log=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"log",message:a.join(" ")},"*");};' +
+    'console.error=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:a.join(" ")},"*");};' +
     '<\/script>';
   iframe.srcdoc =
     '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; img-src data: https: http:; font-src data: https: http:; connect-src \'none\';">' +
@@ -1235,8 +1992,11 @@ function updatePreview() {
 }
 
 window.addEventListener('message', e => {
-  // Only accept messages from our own origin (srcdoc inherits parent origin in most browsers)
-  // or from null origin edge cases — reject foreign origins.
+  // Only the preview iframe may report console output. Its sandbox intentionally
+  // omits allow-same-origin, so its origin is opaque ("null") and cannot access
+  // the app's localStorage or authenticated workspace credentials.
+  const previewFrame = document.getElementById('previewIframe');
+  if (!previewFrame || e.source !== previewFrame.contentWindow) return;
   if (e.origin && e.origin !== 'null' && e.origin !== window.location.origin) return;
   if (!e.data || e.data.type !== 'CONSOLE_LOG') return;
   const out = document.getElementById('consoleOutput');
@@ -1270,7 +2030,7 @@ function codeEqual(a, b) {
 
 function persistBranch(immediate) {
   const proj = getCurrentProject();
-  if (!proj || !isCopyBranchCreated) return;
+  if (!proj || !isCopyBranchCreated) return false;
   proj.branch = {
     id: copyBranchId || 'branch_' + Date.now(),
     baseCode: cloneCode(copyBaseCode),
@@ -1279,8 +2039,12 @@ function persistBranch(immediate) {
     updatedAt: new Date().toISOString()
   };
   copyBranchId = proj.branch.id;
-  if (immediate) saveProjectsToStorage();
-  else scheduleAutosave();
+  if (immediate) {
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    return saveProjectsToStorage();
+  }
+  scheduleAutosave();
+  return true;
 }
 
 function loadBranchFromProject(proj) {
@@ -1316,10 +2080,10 @@ function updateBranchButtons() {
   }
 }
 
-function duplicateProject() {
+async function duplicateProject() {
   const proj = getCurrentProject();
   if (!proj) return;
-  if (!inCopyBranch) saveCurrentCodeToActiveProject(true);
+  if (!inCopyBranch) await saveCurrentCodeToActiveProject(true);
   const source = cloneCode(proj.code);
   copyBaseCode = source;
   copyProjectCode = cloneCode(source);
@@ -1332,15 +2096,25 @@ function duplicateProject() {
     baseMainUpdatedAt: proj.updatedAt,
     updatedAt: new Date().toISOString()
   };
-  persistBranch(true);
+  const saved = await persistBranch(true);
   updateBranchButtons();
-  showToast('Copia de trabajo creada. El original queda aislado.');
+  showToast(
+    saved === true
+      ? 'Copia de trabajo creada y sincronización confirmada. El original queda aislado.'
+      : 'Copia de trabajo creada en esta sesión, pero no se confirmó la sincronización. Revisa el estado de guardado.',
+    saved === true ? 'info' : 'warn'
+  );
 }
 
-function toggleCopyBranch() {
+async function toggleCopyBranch() {
   const proj = getCurrentProject();
   if (!proj || !proj.branch) return;
-  if (inCopyBranch) saveInCopyBranch();
+  if (inCopyBranch) {
+    const saved = await saveInCopyBranch();
+    // A server-sync failure should not trap the user inside the branch when its
+    // contents have already been retained in the local workspace snapshot.
+    if (saved === false && !saveLocalProjectsSnapshot()) return;
+  }
   aiRequestGeneration++;
   inCopyBranch = !inCopyBranch;
   const banner = document.getElementById('copyAlertBanner');
@@ -1373,14 +2147,15 @@ async function saveInCopyBranch() {
     css: getEditorValue('css'),
     js: getEditorValue('js')
   });
-  persistBranch(true);
-  const ok = await persistWorkspace();
+  const ok = await persistBranch(true);
+  const localSaved = ok === true || saveLocalProjectsSnapshot();
   showToast(
     ok === false
-      ? 'La copia quedó guardada localmente; el servidor no respondió.'
-      : 'Cambios guardados únicamente en la copia.'
+      ? (localSaved ? 'Copia guardada localmente; sincronización pendiente.' : 'No se confirmó el guardado de la copia. Revisa el estado de guardado.')
+      : 'Cambios guardados y sincronización confirmada únicamente en la copia.',
+    ok === false ? 'warn' : 'info'
   );
-  return ok !== false;
+  return localSaved;
 }
 
 function buildThreeWayMerge(main, base, branch) {
@@ -1404,8 +2179,16 @@ async function mergeToMainProject() {
   }
   const proj = getCurrentProject();
   if (!proj || !proj.branch) return;
-  await saveInCopyBranch();
-  await refreshWorkspaceFromServer();
+  const branchSaved = await saveInCopyBranch();
+  if (!branchSaved) {
+    showToast('No se puede fusionar todavía: guarda y sincroniza la copia antes de continuar.', 'warn');
+    return;
+  }
+  const refreshed = await refreshWorkspaceFromServer();
+  if (!refreshed && serverReady) {
+    showToast('No se pudo verificar la versión principal del servidor. No se fusionó nada; inténtalo de nuevo cuando vuelva la conexión.', 'warn');
+    return;
+  }
   const latest = getCurrentProject();
   if (!latest) return;
   if (latest.branch && latest.branch.id === copyBranchId) {
@@ -1453,8 +2236,9 @@ async function mergeToMainProject() {
   inCopyBranch = false;
 
   const ok = await persistWorkspace();
-  if (!ok) {
-    // Rollback local state
+  const localMergeSaved = ok === true || saveLocalProjectsSnapshot();
+  if (!localMergeSaved) {
+    // Rollback only when neither server nor local storage confirmed the merge.
     const idx = projects.findIndex(p => p.id === latest.id);
     if (idx >= 0) projects[idx] = snapshot;
     copyBaseCode = prevCopyState.copyBaseCode;
@@ -1497,7 +2281,8 @@ async function undoLastMerge() {
   else delete proj.branch;
 
   const ok = await persistWorkspace();
-  if (!ok) {
+  const localUndoSaved = ok === true || saveLocalProjectsSnapshot();
+  if (!localUndoSaved) {
     const idx = projects.findIndex(p => p.id === proj.id);
     if (idx >= 0) projects[idx] = snapshot;
     showToast('No se pudo guardar el deshacer en el servidor. Estado local revertido.', 'error');
@@ -1518,8 +2303,27 @@ async function undoLastMerge() {
 
 
 // ---------- AI settings & generation ----------
+function aiSettingsStorageKey() {
+  const userKey = currentRealUserKey();
+  return userKey ? STORAGE_KEY_AI + ':' + userKey : STORAGE_KEY_AI;
+}
+
+function aiForceLocalStorageKey() {
+  const userKey = currentRealUserKey();
+  return userKey ? 'codelab_ai_force_local_v1:' + userKey : 'codelab_ai_force_local_v1';
+}
+
 function loadAiSettings() {
-  const raw = lsGet(STORAGE_KEY_AI);
+  const userKey = currentRealUserKey();
+  // Old releases used one browser-wide key. Never reuse it after a real account
+  // is known: its owner cannot be determined safely, and it may contain another
+  // account's provider secret.
+  if (userKey) {
+    lsRemove(STORAGE_KEY_AI);
+    lsRemove('codelab_ai_force_local_v1');
+  }
+  aiSettings = { mode: 'auto', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '' };
+  const raw = lsGet(aiSettingsStorageKey());
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
@@ -1543,12 +2347,15 @@ async function loadServerAiStatus() {
       baseUrl: data.baseUrl || null,
       hint: data.hint || ''
     };
+    if (Number.isInteger(data.maxProjects) && data.maxProjects > 0 && data.maxProjects <= 500) {
+      maxProjects = data.maxProjects;
+    }
     // Server has AI: force Auto unless user explicitly locked Local after seeing the new UI
     if (serverAi.serverKey) {
-      const lockLocal = lsGet('codelab_ai_force_local_v1') === '1';
+      const lockLocal = lsGet(aiForceLocalStorageKey()) === '1';
       if (!lockLocal && aiSettings.mode === 'local') {
         aiSettings.mode = 'auto';
-        lsSet(STORAGE_KEY_AI, JSON.stringify(aiSettings));
+        lsSet(aiSettingsStorageKey(), JSON.stringify(aiSettings));
       }
       if (serverAi.model) aiSettings.model = serverAi.model;
     }
@@ -1627,9 +2434,9 @@ function saveAiSettings() {
     showToast('Modo API: necesitas AI_API_KEY en el servidor o pegar tu key.', 'warn');
     return;
   }
-  lsSet(STORAGE_KEY_AI, JSON.stringify(aiSettings));
-  if (mode === 'local') lsSet('codelab_ai_force_local_v1', '1');
-  else lsRemove('codelab_ai_force_local_v1');
+  lsSet(aiSettingsStorageKey(), JSON.stringify(aiSettings));
+  if (mode === 'local') lsSet(aiForceLocalStorageKey(), '1');
+  else lsRemove(aiForceLocalStorageKey());
   updateAiUI();
   closeAiSettingsModal();
   const label =
@@ -1824,31 +2631,62 @@ async function processAiInstruction() {
     }
   };
 
-  const applyGenerated = (generated, meta) => {
+  const applyGenerated = async (generated, meta) => {
     if (!stillValid()) {
       aiMsg.innerHTML =
         '<i class="fa-solid fa-ban text-slate-500 mt-0.5"></i><span class="text-slate-400">Cancelado: cambió el proyecto o la rama.</span>';
       finish();
       return;
     }
+    const codeFields = ['html', 'css', 'js'];
+    if (!generated || codeFields.some(key => typeof generated[key] !== 'string')) {
+      aiMsg.className = 'bg-red-950/40 border border-red-500/40 p-3 rounded-xl text-red-100 text-xs leading-relaxed';
+      aiMsg.textContent = 'La respuesta generada no contiene HTML, CSS y JS válidos. No se modificó el proyecto.';
+      showToast('Código generado inválido; no se aplicaron cambios.', 'error');
+      finish();
+      return;
+    }
+    const oversizedField = codeFields.find(key => generated[key].length > 500000);
+    if (oversizedField) {
+      aiMsg.className = 'bg-amber-950/30 border border-amber-500/40 p-3 rounded-xl text-amber-100 text-xs leading-relaxed';
+      aiMsg.textContent = 'El ' + oversizedField.toUpperCase() + ' generado supera el límite de 500000 caracteres. No se modificó el proyecto; reduce la solicitud e inténtalo de nuevo.';
+      showToast('Código generado demasiado grande; no se aplicaron cambios.', 'warn');
+      finish();
+      return;
+    }
     setEditorValue('html', generated.html, { silent: true });
     setEditorValue('css', generated.css, { silent: true });
     setEditorValue('js', generated.js, { silent: true });
-    saveCurrentCodeToActiveProject(true);
+    let saveConfirmed = false;
+    try { saveConfirmed = await saveCurrentCodeToActiveProject(true) === true; } catch (_) {}
     updatePreview();
+    const localCopyMatches = (() => {
+      try {
+        const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+        const savedProject = Array.isArray(snapshot) && snapshot.find(project => project && project.id === targetProjectId);
+        const savedCode = targetInCopyBranch ? savedProject && savedProject.branch && savedProject.branch.code : savedProject && savedProject.code;
+        return !!savedCode && ['html','css','js'].every(key => String(savedCode[key] || '') === String(generated[key] || ''));
+      } catch (_) { return false; }
+    })();
     const via = (meta && meta.via) || (isApi ? 'IA' : 'plantilla');
-    aiMsg.className =
-      'bg-emerald-950/30 border border-emerald-500/30 p-3 rounded-xl text-emerald-100 text-xs leading-relaxed';
+    const status = saveConfirmed
+      ? 'Guardado y sincronizado.'
+      : localCopyMatches
+        ? 'Guardado localmente; la sincronización queda pendiente.'
+        : 'Aplicado al editor, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.';
+    aiMsg.className = saveConfirmed || localCopyMatches
+      ? 'bg-emerald-950/30 border border-emerald-500/30 p-3 rounded-xl text-emerald-100 text-xs leading-relaxed'
+      : 'bg-amber-950/30 border border-amber-500/30 p-3 rounded-xl text-amber-100 text-xs leading-relaxed';
     aiMsg.innerHTML =
       '<div class="flex items-start gap-2">' +
-      '<i class="fa-solid fa-check-circle text-emerald-400 mt-0.5"></i>' +
-      '<div><div class="font-semibold text-emerald-300 mb-0.5">Aplicado · ' +
-      escapeHtml(via) +
+      '<i class="fa-solid ' + (saveConfirmed || localCopyMatches ? 'fa-check-circle text-emerald-400' : 'fa-triangle-exclamation text-amber-400') + ' mt-0.5"></i>' +
+      '<div><div class="font-semibold mb-0.5">' +
+      escapeHtml(status) +
       '</div><div class="text-emerald-100/90">' +
       escapeHtml(generated.message || 'Cambios aplicados al editor.') +
       '</div></div></div>';
     history.scrollTop = history.scrollHeight;
-    showToast('Copiloto: cambios aplicados.');
+    showToast(status, saveConfirmed || localCopyMatches ? 'info' : 'warn');
     finish();
   };
 
@@ -1860,7 +2698,7 @@ async function processAiInstruction() {
         js: getEditorValue('js')
       });
       const generated = await callRemoteAi(prompt, code);
-      applyGenerated(generated, { via: serverAi.serverKey ? 'servidor' : 'API' });
+      await applyGenerated(generated, { via: serverAi.serverKey ? 'servidor' : 'API' });
       return;
     }
   } catch (e) {
@@ -1882,7 +2720,7 @@ async function processAiInstruction() {
   }
 
   // Local templates
-  setTimeout(() => {
+  setTimeout(async () => {
     if (!stillValid()) {
       aiMsg.innerHTML = '<span class="text-slate-400">Cancelado.</span>';
       finish();
@@ -1952,7 +2790,7 @@ async function processAiInstruction() {
         '\n.ai-box { background: #1e1b4b; border: 1px solid #6366f1; padding: 1rem; border-radius: 0.75rem; margin-top: 1rem; }';
       generated.message = 'Plantilla genérica. Configura IA en ⚙ para resultados reales.';
     }
-    applyGenerated(generated, { via: 'plantilla' });
+    await applyGenerated(generated, { via: 'plantilla' });
   }, 280);
 }
 
@@ -2138,10 +2976,19 @@ function setupKeyboardShortcuts() {
         autosaveTimer = null;
       }
       if (inCopyBranch) {
-        saveInCopyBranch().then(() => showToast('Copia guardada.'));
+        // saveInCopyBranch owns its success/failure messaging.
+        saveInCopyBranch();
       } else {
-        saveCurrentCodeToActiveProject(true);
-        showToast('Proyecto guardado.');
+        saveCurrentCodeToActiveProject(true).then(ok => {
+          showToast(
+            ok === true
+              ? 'Proyecto guardado y sincronizado.'
+              : 'No se confirmó el guardado/sincronización del proyecto. Revisa el estado de guardado.',
+            ok === true ? 'info' : 'warn'
+          );
+        }).catch(() => {
+          showToast('Falló el guardado del proyecto. Revisa el estado de guardado e inténtalo de nuevo.', 'error');
+        });
       }
       return;
     }
@@ -2194,6 +3041,1070 @@ function setupKeyboardShortcuts() {
       }
     }
   });
+}
+
+
+/* ---------- CodeLab visual design workspace ---------- */
+let selectedDesignElementId = null;
+let selectedDesignElementIds = [];
+let designUndoStack = [];
+let designRedoStack = [];
+let designDragState = null;
+let designEventsBound = false;
+let designZoom = 1;
+const MAX_DESIGN_ELEMENTS = 500;
+
+function activeDesignProject() {
+  const p = projects.find(item => item.id === currentProjectId);
+  if (!p || p.type !== 'design') return null;
+  if (!p.design || typeof p.design !== 'object' || Array.isArray(p.design)) {
+    p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
+  }
+  if (p.design.grid == null) p.design.grid = true;
+  if (!['free','auto'].includes(p.design.layoutMode)) p.design.layoutMode = 'free';
+  if (!['row','column'].includes(p.design.layoutDirection)) p.design.layoutDirection = 'row';
+  p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
+  p.design.layoutPadding = Number.isFinite(Number(p.design.layoutPadding)) ? Math.max(0, Math.min(200, Number(p.design.layoutPadding))) : 24;
+  if (!Array.isArray(p.design.elements)) p.design.elements = [];
+  return p;
+}
+function designSnapshot() {
+  const p = activeDesignProject();
+  return p ? JSON.stringify(p.design) : null;
+}
+function recordDesignHistory() {
+  const snap = designSnapshot();
+  if (snap) {
+    designUndoStack.push(snap);
+    if (designUndoStack.length > 60) designUndoStack.shift();
+    designRedoStack = [];
+    updateDesignHistoryButtons();
+  }
+}
+function updateDesignHistoryButtons() {
+  const u = document.getElementById('designUndoBtn'), r = document.getElementById('designRedoBtn');
+  if (u) u.disabled = !designUndoStack.length;
+  if (r) r.disabled = !designRedoStack.length;
+}
+function designUndo() {
+  const p = activeDesignProject(); if (!p || !designUndoStack.length) return;
+  designRedoStack.push(JSON.stringify(p.design));
+  p.design = JSON.parse(designUndoStack.pop());
+  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+}
+function designRedo() {
+  const p = activeDesignProject(); if (!p || !designRedoStack.length) return;
+  designUndoStack.push(JSON.stringify(p.design));
+  p.design = JSON.parse(designRedoStack.pop());
+  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+}
+function initializeDesignProject(project) {
+  if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
+  if (project.design.grid == null) project.design.grid = true;
+  if (!Array.isArray(project.design.elements)) project.design.elements = [];
+  selectedDesignElementId = null; designUndoStack = []; designRedoStack = [];
+  designZoom = 1;
+  const zoomInput = document.getElementById('designZoom');
+  if (zoomInput) zoomInput.value = '100';
+  const frame = document.getElementById('designFrameSize');
+  if (frame) frame.value = project.design.frame || 'desktop';
+  renderDesignWorkspace();
+  bindDesignCanvasEvents();
+  updateDesignHistoryButtons();
+}
+
+function setDesignZoom(value) {
+  const next = Math.max(0.1, Math.min(1.5, Number(value) / 100 || 1));
+  designZoom = next;
+  const canvas = document.getElementById('designCanvas');
+  if (canvas) canvas.style.zoom = String(next);
+  const label = document.getElementById('designZoomLabel');
+  if (label) label.textContent = Math.round(next * 100) + '%';
+  const slider = document.getElementById('designZoom');
+  if (slider) slider.value = String(Math.round(next * 100 / 5) * 5);
+}
+function fitDesignToViewport() {
+  const project = activeDesignProject();
+  const canvas = document.getElementById('designCanvas');
+  const viewport = document.getElementById('designCanvasScroll');
+  if (!project || !canvas || !viewport) return;
+  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  const frameWidth = widths[project.design.frame] || widths.desktop;
+  const availableWidth = Math.max(200, viewport.clientWidth - 64);
+  const fitScale = Math.min(1, availableWidth / frameWidth);
+  const snappedScale = Math.max(0.1, Math.floor(fitScale * 20) / 20);
+  setDesignZoom(Math.round(snappedScale * 100));
+}
+function toggleDesignGrid() {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory(); p.design.grid = !p.design.grid;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function toggleDesignSnap() {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory(); p.design.snapToGrid = !p.design.snapToGrid;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignGridSize(value) {
+  const p = activeDesignProject(); if (!p) return;
+  const size = [4, 8, 16, 32].includes(Number(value)) ? Number(value) : 8;
+  if ((Number(p.design.gridSize) || 8) === size) return;
+  recordDesignHistory(); p.design.gridSize = size;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignBackground(color) {
+  const p = activeDesignProject(); if (!p || !/^#[0-9a-f]{6}$/i.test(color)) return;
+  recordDesignHistory(); p.design.background = color;
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function distributeDesignElements(axis = 'horizontal') {
+  const p = activeDesignProject();
+  if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
+  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
+  const horizontal = axis !== 'vertical';
+  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
+  const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
+  const last = ordered[ordered.length - 1];
+  const end = (Number(horizontal ? last.x : last.y) || 0) + Math.max(20, Number(horizontal ? last.width : last.height) || (horizontal ? 120 : 48));
+  const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
+  const gap = (end - start - totalSize) / (ordered.length - 1);
+  if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
+  // Record history only after validation; a rejected operation must not create
+  // a fake undo step for a state that never changed.
+  recordDesignHistory();
+  let cursor = start;
+  for (const el of ordered) {
+    if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
+    cursor += Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)) + gap;
+  }
+  renderDesignWorkspace(); saveProjectsToStorage();
+  showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
+}
+
+function alignDesignElement(mode = 'center-x') {
+  const p = activeDesignProject(), el = selectedDesignElement();
+  if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
+  if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
+  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
+  if (selected.length > 1) {
+    const left = Math.min(...selected.map(item => Number(item.x) || 0));
+    const top = Math.min(...selected.map(item => Number(item.y) || 0));
+    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + Math.max(20, Number(item.width) || 120)));
+    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + Math.max(20, Number(item.height) || 48)));
+    const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
+    recordDesignHistory();
+    for (const item of selected) {
+      const width = Math.max(20, Number(item.width) || 120), height = Math.max(20, Number(item.height) || 48);
+      if (mode === 'left') item.x = left;
+      else if (mode === 'center-x') item.x = Math.round(centerX - width / 2);
+      else if (mode === 'right') item.x = right - width;
+      else if (mode === 'top') item.y = top;
+      else if (mode === 'center-y') item.y = Math.round(centerY - height / 2);
+      else if (mode === 'bottom') item.y = bottom - height;
+    }
+    renderDesignWorkspace(); saveProjectsToStorage();
+    showToast('Capas alineadas respecto a la selección.');
+    return;
+  }
+  recordDesignHistory();
+  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const height = 900;
+  const ew = Math.max(20, Number(el.width) || 120), eh = Math.max(20, Number(el.height) || 48);
+  if (mode === 'left') el.x = 0;
+  else if (mode === 'center-x') el.x = Math.max(0, Math.round((width - ew) / 2));
+  else if (mode === 'right') el.x = Math.max(0, width - ew);
+  else if (mode === 'top') el.y = 0;
+  else if (mode === 'center-y') el.y = Math.max(0, Math.round((height - eh) / 2));
+  else if (mode === 'bottom') el.y = Math.max(0, height - eh);
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function downloadDesignAsset(filename, content, type) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  let clicked = false;
+  link.href = url; link.download = filename;
+  try {
+    document.body.appendChild(link);
+    link.click();
+    clicked = true;
+  } finally {
+    link.remove();
+    if (clicked) setTimeout(() => URL.revokeObjectURL(url), 1500);
+    else URL.revokeObjectURL(url);
+  }
+}
+
+function designXmlEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function captureDesignSvg(project) {
+  const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
+  const layout = getDesignLayoutPositions(project.design);
+  const height = layout.height;
+  const safeColor = value => {
+    const color = String(value || 'transparent').trim();
+    return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
+  };
+  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map(el => {
+    const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const x = Math.max(-6000, Math.min(6000, finite(position.x, 0))), y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
+    const w = Math.max(20, Math.min(4000, finite(el.width, 120) || 120)), h = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
+    const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
+    const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
+    const background = safeColor(el.background);
+    const color = safeColor(el.color || '#111827');
+    const rect = background !== 'transparent'
+      ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"/>'
+      : '';
+    if (el.type === 'rectangle') {
+      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+    }
+    if (el.type === 'ellipse') {
+      const ellipseFill = background !== 'transparent' ? ' fill="' + designXmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
+      return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+    }
+    if (el.type === 'image') {
+      const source = safeDesignImageSource(el.src);
+      const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
+      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
+      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+    }
+    const raw = String(el.text || '').split(/\r?\n/);
+    const maxChars = Math.max(1, Math.floor((w - 12) / (fontSize * 0.56)));
+    const lines = [];
+    raw.forEach(line => {
+      const words = line.split(/\s+/); let current = '';
+      words.forEach(word => {
+        if (!word && !current) return;
+        const next = current ? current + ' ' + word : word;
+        if (next.length > maxChars && current) { lines.push(current); current = word; }
+        else current = next;
+      });
+      lines.push(current);
+    });
+    const lineHeight = el.type === 'heading' ? fontSize * 1.1 : fontSize * 1.25;
+    const totalHeight = Math.max(lineHeight, lines.length * lineHeight);
+    const align = el.type === 'button' ? 'center' : (['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left');
+    const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+    const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
+    const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
+    const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
+    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+  }).join('');
+  return {
+    width, height,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + designXmlEscape(safeColor(project.design.background || '#ffffff')) + '"/>' + items + '</svg>'
+  };
+}
+
+async function captureDesignForAI() {
+  const project = activeDesignProject();
+  if (!project || !project.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
+  const captured = captureDesignSvg(project);
+  const scaleControl = document.getElementById('designCaptureScale');
+  const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+  const pixelCount = captured.width * captured.height * scale * scale;
+  const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+  const designLayout = getDesignLayoutPositions(project.design);
+  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
+    const position = designLayout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
+    const y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
+    const width = Math.max(20, Math.min(4000, finite(el.width, 120) || 120));
+    const height = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
+    const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
+    const fontWeight = Math.max(100, Math.min(900, finite(el.weight, 400)));
+    const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
+    return {
+      order: index + 1,
+    id: el.id || null,
+    type: el.type || 'text',
+    label: el.label || el.type || 'Elemento',
+    text: el.text || '',
+    bounds: { x, y, width, height },
+    style: {
+      color: el.color || '#111827',
+      background: el.background || 'transparent',
+      fontSize,
+      fontWeight,
+      radius,
+      textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
+      }
+    };
+  });
+  const context = {
+    format: 'codelab-ai-design-capture',
+    version: 1,
+    project: project.name || 'Diseño sin título',
+    frame: project.design.frame || 'desktop',
+    image: slug + '-captura-ia.png',
+    canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale, background: project.design.background || '#ffffff' },
+    elementCount: elements.length,
+    elements,
+    aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
+  };
+  const json = JSON.stringify(context, null, 2);
+  downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
+  let svgUrl = '';
+  try {
+    if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
+    const svgBlob = new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' });
+    svgUrl = URL.createObjectURL(svgBlob);
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => finish(new Error('El SVG tardó demasiado en renderizarse.')), 10000);
+      function finish(error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        image.onload = null;
+        image.onerror = null;
+        if (error) reject(error);
+        else resolve();
+      }
+      image.onload = () => finish();
+      image.onerror = () => finish(new Error('No se pudo renderizar el SVG.'));
+      image.src = svgUrl;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = captured.width * scale; canvas.height = captured.height * scale;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
+    ctx.scale(scale, scale);
+    ctx.drawImage(image, 0, 0, captured.width, captured.height);
+    const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
+    downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
+    showToast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
+  } catch (error) {
+    downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
+    showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
+  } finally {
+    if (svgUrl) URL.revokeObjectURL(svgUrl);
+  }
+}
+
+function safeDesignExportColor(value, fallback) {
+  const color = String(value || fallback || '#ffffff').trim();
+  return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : (fallback || '#ffffff');
+}
+
+function exportDesignHtml() {
+  const p = activeDesignProject();
+  if (!p || !p.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
+  const layout = getDesignLayoutPositions(p.design);
+  const layoutPositions = layout.positions;
+  const autoLayout = p.design.layoutMode === 'auto';
+  const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
+  const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
+  const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+    const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
+    const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
+    const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
+    const text = el.type === 'rectangle' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
+    const color = safeDesignExportColor(el.color, '#111827');
+    const background = safeDesignExportColor(el.background, 'transparent');
+    const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const x = Number.isFinite(Number(position.x)) ? Number(position.x) : 0;
+    const y = Number.isFinite(Number(position.y)) ? Number(position.y) : 0;
+    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
+    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const domId = designLayerDomId(el.id);
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+  }).join('\n');
+  const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
+  const frameStyle = autoLayout
+    ? 'position:relative;width:100%;max-width:'+frameWidth+'px;min-height:900px;height:auto;display:flex;flex-direction:'+layoutDirection+';flex-wrap:'+(layoutDirection==='row'?'wrap':'nowrap')+';gap:'+layoutGap+'px;padding:'+layoutPadding+'px;align-items:flex-start;background:'+frameBackground+';margin:0 auto;'
+    : 'position:relative;width:'+frameWidth+'px;height:900px;background:'+frameBackground+';transform-origin:top left;margin:0';
+  const frameClass = 'design-frame' + (autoLayout ? ' auto-layout' : '');
+  const mobileCss = autoLayout ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}' : '';
+  let html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
+  const slug = (p.name || 'codelab-design').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'codelab-design';
+  downloadDesignAsset(slug + '.html', html, 'text/html;charset=utf-8');
+  showToast('Diseño exportado como HTML adaptable.');
+}
+
+function setDesignFrame(frame) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  p.design.frame = ['desktop','tablet','mobile'].includes(frame) ? frame : 'desktop';
+  const canvas = document.getElementById('designCanvas');
+  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  if (canvas) canvas.style.width = widths[p.design.frame] + 'px';
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function addDesignElement(type) {
+  const p = activeDesignProject(); if (!p) return;
+  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para añadir otra.', 'warn');
+    return;
+  }
+  recordDesignHistory();
+  const defaults = {
+    heading: { label: 'Título', text: 'Título de tu diseño', x: 80, y: 70, width: 560, height: 76, color: '#111827', background: 'transparent', fontSize: 42, weight: 700, radius: 0 },
+    text: { label: 'Texto', text: 'Escribe aquí tu texto', x: 84, y: 165, width: 420, height: 64, color: '#475569', background: 'transparent', fontSize: 18, weight: 400, radius: 0 },
+    button: { label: 'Botón', text: 'Comenzar', x: 84, y: 250, width: 160, height: 48, color: '#ffffff', background: '#7c3aed', fontSize: 15, weight: 600, radius: 10, href: '' },
+    rectangle: { label: 'Rectángulo', text: '', x: 100, y: 340, width: 240, height: 150, color: '#ffffff', background: '#dbeafe', fontSize: 16, weight: 400, radius: 16 },
+    ellipse: { label: 'Elipse', text: '', x: 140, y: 340, width: 160, height: 160, color: '#ffffff', background: '#c4b5fd', fontSize: 16, weight: 400, radius: 9999 },
+    image: { label: 'Imagen', text: '', x: 120, y: 420, width: 240, height: 160, color: '#111827', background: '#e2e8f0', fontSize: 16, weight: 400, radius: 8, src: '', alt: 'Imagen del diseño', objectFit: 'cover' }
+  };
+  const d = defaults[type] || defaults.text;
+  const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), type, ...d };
+  p.design.elements.push(element); selectedDesignElementId = element.id; selectedDesignElementIds = [element.id];
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function selectedDesignElement() {
+  const p = activeDesignProject();
+  return p && p.design.elements.find(el => el.id === selectedDesignElementId);
+}
+function selectDesignElement(id, additive = false) {
+  if (additive) {
+    const current = selectedDesignElementIds.length ? selectedDesignElementIds.slice() : (selectedDesignElementId ? [selectedDesignElementId] : []);
+    selectedDesignElementIds = current.includes(id) ? current.filter(item => item !== id) : current.concat(id);
+    if (!selectedDesignElementIds.includes(selectedDesignElementId)) selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+    else if (!selectedDesignElementId) selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+  } else {
+    selectedDesignElementId = id;
+    selectedDesignElementIds = id ? [id] : [];
+  }
+  renderDesignWorkspace();
+}
+function designLayerDomId(id) {
+  return 'layer-' + String(id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+}
+function safeDesignLink(value) {
+  const source = String(value || '').trim();
+  if (!source || source.length > 2048) return '';
+  if (/^#layer-[a-z0-9_-]{1,120}$/i.test(source)) return source;
+  try {
+    const url = new URL(source);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
+  } catch (_) {}
+  return '';
+}
+function designLinkAttributes(value) {
+  const href = safeDesignLink(value);
+  if (!href) return '';
+  if (href.startsWith('#layer-')) return ' href="' + escapeAttr(href) + '"';
+  return ' href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer"';
+}
+function setDesignPrototypeTarget(value) {
+  updateDesignProperty('href', value);
+  const input = document.getElementById('designProperty-href');
+  if (input) input.value = safeDesignLink(value);
+}
+function safeDesignImageSource(value) {
+  const source = String(value || '').trim();
+  if (!source || source.length > 2800000) return '';
+  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+  try {
+    const url = new URL(source, window.location.href);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url.href;
+  } catch (_) {}
+  return '';
+}
+function renderDesignImageContent(node, el) {
+  const resizeHandle = node.querySelector('[data-design-resize-handle]');
+  Array.from(node.childNodes).forEach(child => { if (child !== resizeHandle) child.remove(); });
+  const appendContent = child => resizeHandle ? node.insertBefore(child, resizeHandle) : node.appendChild(child);
+  const src = safeDesignImageSource(el.src);
+  if (src) {
+    const image = document.createElement('img');
+    image.src = src;
+    image.alt = String(el.alt || el.label || 'Imagen del diseño').slice(0, 300);
+    image.draggable = false;
+    image.style.width = '100%'; image.style.height = '100%';
+    image.style.objectFit = ['contain','cover','fill'].includes(el.objectFit) ? el.objectFit : 'cover';
+    image.style.display = 'block';
+    appendContent(image);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.textContent = 'Añade una URL o archivo de imagen';
+    placeholder.style.cssText = 'display:flex;width:100%;height:100%;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:12px;color:#475569;background:#e2e8f0;';
+    appendContent(placeholder);
+  }
+}
+function importDesignImage(file) {
+  const project = activeDesignProject(), element = selectedDesignElement();
+  if (!project || !element || element.type !== 'image' || !file) return;
+  const allowedTypes = ['image/png','image/jpeg','image/webp','image/gif'];
+  if (!allowedTypes.includes(file.type)) { showToast('Usa una imagen PNG, JPEG, WebP o GIF.', 'warn'); return; }
+  if (file.size > 2 * 1024 * 1024) { showToast('La imagen supera el límite de 2 MB. Reduce su tamaño e inténtalo de nuevo.', 'warn'); return; }
+  const reader = new FileReader();
+  reader.onerror = () => showToast('No se pudo leer el archivo de imagen.', 'warn');
+  reader.onload = () => {
+    const src = safeDesignImageSource(reader.result);
+    if (!src) { showToast('El archivo no produjo una imagen válida.', 'warn'); return; }
+    recordDesignHistory();
+    element.src = src;
+    if (!element.alt || element.alt === 'Imagen del diseño') element.alt = file.name.replace(/\.[^.]+$/, '').slice(0, 300);
+    project.updatedAt = new Date().toISOString();
+    renderDesignWorkspace(); saveProjectsToStorage();
+    showToast('Imagen añadida al diseño.');
+  };
+  reader.readAsDataURL(file);
+}
+function getDesignLayoutPositions(design) {
+  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
+  const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
+  const positions = new Map();
+  if (mode === 'free') {
+    let contentBottom = 0;
+    for (const el of elements) {
+      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      positions.set(el.id, { x, y });
+      contentBottom = Math.max(contentBottom, y + height);
+    }
+    return { positions, height: Math.min(6000, Math.max(900, contentBottom + 24)), mode, frameWidth };
+  }
+  const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+  const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+  const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+  let x = padding, y = padding, rowHeight = 0;
+  for (const el of elements) {
+    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    if (direction === 'row') {
+      if (x > padding && x + width > frameWidth - padding) {
+        x = padding; y += rowHeight + gap; rowHeight = 0;
+      }
+      positions.set(el.id, { x, y });
+      x += width + gap; rowHeight = Math.max(rowHeight, height);
+    } else {
+      positions.set(el.id, { x: padding, y });
+      y += height + gap;
+    }
+  }
+  const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+  return { positions, height: Math.min(6000, Math.max(900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
+}
+function setDesignLayoutMode(value) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  p.design.layoutMode = value === 'auto' ? 'auto' : 'free';
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignLayoutDirection(value) {
+  const p = activeDesignProject(); if (!p) return;
+  recordDesignHistory();
+  p.design.layoutDirection = value === 'column' ? 'column' : 'row';
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignLayoutGap(value) {
+  const p = activeDesignProject(); if (!p) return;
+  const gap = Number(value);
+  if (!Number.isFinite(gap)) return;
+  recordDesignHistory(); p.design.layoutGap = Math.max(0, Math.min(200, Math.round(gap)));
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function setDesignLayoutPadding(value) {
+  const p = activeDesignProject(); if (!p) return;
+  const padding = Number(value);
+  if (!Number.isFinite(padding)) return;
+  recordDesignHistory(); p.design.layoutPadding = Math.max(0, Math.min(200, Math.round(padding)));
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function renderDesignWorkspace() {
+  const p = activeDesignProject(); if (!p) return;
+  const canvas = document.getElementById('designCanvas');
+  const layers = document.getElementById('designLayers');
+  const props = document.getElementById('designProperties');
+  const empty = document.getElementById('designCanvasEmpty');
+  if (!canvas || !layers || !props) return;
+  const validIds = new Set(p.design.elements.map(el => el.id));
+  selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
+  if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
+  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
+  const layout = getDesignLayoutPositions(p.design);
+  canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
+  canvas.style.height = layout.height + 'px';
+  canvas.style.zoom = String(designZoom);
+  const zoomLabel = document.getElementById('designZoomLabel');
+  if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
+  canvas.style.backgroundColor = p.design.background || '#ffffff';
+  const gridSize = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
+  canvas.style.backgroundImage = p.design.grid ? 'linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px)' : 'none';
+  canvas.style.backgroundSize = p.design.grid ? gridSize + 'px ' + gridSize + 'px' : '';
+  const bgPicker = document.getElementById('designBackgroundColor');
+  if (bgPicker) bgPicker.value = /^#[0-9a-f]{6}$/i.test(p.design.background || '') ? p.design.background : '#ffffff';
+  const gridBtn = document.getElementById('designGridBtn');
+  if (gridBtn) gridBtn.classList.toggle('text-violet-300', !!p.design.grid);
+  const snapBtn = document.getElementById('designSnapBtn');
+  if (snapBtn) {
+    snapBtn.classList.toggle('text-violet-300', !!p.design.snapToGrid);
+    snapBtn.setAttribute('aria-pressed', String(!!p.design.snapToGrid));
+  }
+  const gridSizeSelect = document.getElementById('designGridSize');
+  if (gridSizeSelect) gridSizeSelect.value = String(gridSize);
+  canvas.replaceChildren();
+  if (empty && p.design.elements.length === 0) canvas.appendChild(empty);
+  const sorted = p.design.elements;
+  for (const el of sorted) {
+    const node = document.createElement('div');
+    node.dataset.designId = el.id;
+    node.className = 'absolute select-none cursor-move';
+    // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
+    node.style.touchAction = 'none';
+    const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    node.style.left = layoutPosition.x + 'px'; node.style.top = layoutPosition.y + 'px';
+    node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
+    node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
+    node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
+    node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
+    node.style.display = 'flex'; node.style.alignItems = 'center';
+    node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
+    node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
+    node.style.padding = (el.type === 'rectangle' || el.type === 'image') ? '0' : '4px';
+    node.style.whiteSpace = 'pre-wrap'; node.style.overflow = 'hidden';
+    node.style.outline = selectedDesignElementIds.includes(el.id) || (!selectedDesignElementIds.length && el.id === selectedDesignElementId) ? '2px solid #8b5cf6' : '1px solid transparent';
+    node.style.outlineOffset = '2px';
+    if (el.type === 'heading') node.style.lineHeight = '1.1';
+    if (el.type === 'image') renderDesignImageContent(node, el);
+    else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    if (el.id === selectedDesignElementId && selectedDesignElementIds.length <= 1) {
+      const resizeHandle = document.createElement('span');
+      resizeHandle.dataset.designResizeHandle = el.id;
+      resizeHandle.setAttribute('role', 'slider');
+      resizeHandle.setAttribute('aria-label', 'Redimensionar ' + (el.label || el.type));
+      resizeHandle.setAttribute('aria-valuetext', Math.round(Number(el.width)||120) + ' por ' + Math.round(Number(el.height)||48) + ' píxeles');
+      resizeHandle.tabIndex = 0;
+      resizeHandle.style.cssText = 'position:absolute;right:0;bottom:0;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
+      resizeHandle.addEventListener('pointerdown', ev => {
+        if (ev.button !== 0) return;
+        ev.preventDefault(); ev.stopPropagation();
+        selectedDesignElementId = el.id;
+        recordDesignHistory();
+        const rect = canvas.getBoundingClientRect();
+        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: Number(el.width)||120, height: Number(el.height)||48, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+        try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
+      });
+      resizeHandle.addEventListener('keydown', ev => {
+        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
+        ev.preventDefault(); ev.stopPropagation();
+        recordDesignHistory();
+        const step = ev.shiftKey ? 10 : 1;
+        if (ev.key === 'ArrowLeft') el.width = Math.max(20, (Number(el.width)||120) - step);
+        if (ev.key === 'ArrowRight') el.width = Math.min(4000, (Number(el.width)||120) + step);
+        if (ev.key === 'ArrowUp') el.height = Math.max(20, (Number(el.height)||48) - step);
+        if (ev.key === 'ArrowDown') el.height = Math.min(4000, (Number(el.height)||48) + step);
+        const resizeId = el.id;
+        renderDesignWorkspace();
+        const nextHandle = Array.from(document.querySelectorAll('[data-design-resize-handle]')).find(item => item.dataset.designResizeHandle === resizeId);
+        if (nextHandle) nextHandle.focus();
+        saveProjectsToStorage();
+      });
+      node.appendChild(resizeHandle);
+    }
+    node.setAttribute('role','button'); node.setAttribute('aria-label',el.label || el.type); node.tabIndex = 0;
+    if (el.type === 'button' && safeDesignLink(el.href)) node.title = 'Alt + clic para probar navegación';
+    node.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) {
+        const destination = safeDesignLink(el.href);
+        if (destination.startsWith('#layer-')) {
+          const target = Array.from(document.querySelectorAll('[data-design-id]')).find(item => designLayerDomId(item.dataset.designId) === destination.slice(1));
+          if (target) {
+            selectDesignElement(target.dataset.designId, false);
+            const selectedTarget = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === target.dataset.designId);
+            if (selectedTarget) { selectedTarget.focus(); selectedTarget.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            showToast('Destino interno del prototipo seleccionado.');
+          } else showToast('No se encontró la capa de destino.', 'warn');
+        } else window.open(destination, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      if (ev.shiftKey || ev.metaKey || ev.ctrlKey) selectDesignElement(el.id, true);
+      else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
+    });
+    node.addEventListener('pointerdown', ev => {
+      if (ev.button !== 0) return;
+      if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
+      if (activeDesignProject()?.design.layoutMode === 'auto') return;
+      if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
+      // A plain drag acts on one layer; Shift/Ctrl/Meta-click is reserved for multi-selection.
+      selectedDesignElementId = el.id;
+      selectedDesignElementIds = [el.id];
+      node.focus();
+      recordDesignHistory();
+      const rect = canvas.getBoundingClientRect();
+      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+      node.setPointerCapture && node.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    });
+    canvas.appendChild(node);
+  }
+  layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+  ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
+  layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
+  const layoutControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Distribución del diseño</div>' +
+    '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Modo de colocación</span><select id="designLayoutMode" aria-label="Modo de colocación" onchange="setDesignLayoutMode(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="free" '+((p.design.layoutMode||'free')==='free'?'selected':'')+'>Libre (posiciones manuales)</option><option value="auto" '+(p.design.layoutMode==='auto'?'selected':'')+'>Auto Layout (flujo)</option></select></label>' +
+    (p.design.layoutMode === 'auto' ? '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Dirección</span><select id="designLayoutDirection" aria-label="Dirección Auto Layout" onchange="setDesignLayoutDirection(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="row" '+((p.design.layoutDirection||'row')==='row'?'selected':'')+'>Fila con ajuste de línea</option><option value="column" '+(p.design.layoutDirection==='column'?'selected':'')+'>Columna</option></select></label>' +
+      '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Espacio (px)</span><input id="designLayoutGap" type="number" min="0" max="200" value="'+Math.max(0,Math.min(200,Number(p.design.layoutGap)||0))+'" onchange="setDesignLayoutGap(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Relleno (px)</span><input id="designLayoutPadding" type="number" min="0" max="200" value="'+Math.max(0,Math.min(200,Number(p.design.layoutPadding)||0))+'" onchange="setDesignLayoutPadding(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label></div>'
+    : '<p class="text-[10px] text-slate-500">Auto Layout organiza las capas por orden, espacio y relleno; al activarlo se deshabilita el arrastre libre.</p>') + '</section>';
+  const el = selectedDesignElement();
+  if (!el) {
+    props.innerHTML = layoutControls + '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
+    updateDesignHistoryButtons(); return;
+  }
+  const field = (label, key, type='number', extra='') => {
+    const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
+    return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+  };
+  const buttonTargetOptions = p.design.elements.filter(item => item.id !== el.id).map(item => {
+    const target = '#' + designLayerDomId(item.id);
+    return '<option value="' + escapeAttr(target) + '" ' + (el.href === target ? 'selected' : '') + '>' + escapeHtml(item.label || item.type || 'Capa') + '</option>';
+  }).join('');
+  const buttonControls = el.type === 'button'
+    ? field('Destino del botón (URL o capa)','href','text','placeholder="https://ejemplo.com o #layer-…"') +
+      '<label class="block space-y-1"><span class="text-slate-400">Destino dentro del diseño</span><select id="designPrototypeTarget" aria-label="Destino interno del prototipo" onchange="setDesignPrototypeTarget(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="">Sin destino interno</option>' + buttonTargetOptions + '</select></label>'
+    : '';
+  const imageControls = el.type === 'image'
+    ? '<label class="block space-y-1"><span class="text-slate-400">Archivo (máx. 2 MB)</span><input id="designImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="importDesignImage(this.files && this.files[0])" class="w-full text-[11px] text-slate-300"></label>' +
+      field('URL de imagen','src','url','placeholder="URL HTTP(S) o sube un archivo"') + field('Texto alternativo','alt','text') +
+      '<label class="block space-y-1"><span class="text-slate-400">Ajuste de imagen</span><select id="designProperty-objectFit" onchange="updateDesignProperty(\'objectFit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="cover" '+((el.objectFit||'cover')==='cover'?'selected':'')+'>Cubrir</option><option value="contain" '+(el.objectFit==='contain'?'selected':'')+'>Contener</option><option value="fill" '+(el.objectFit==='fill'?'selected':'')+'>Estirar</option></select></label>'
+    : '';
+  const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
+  props.innerHTML = layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
+    (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
+    field('Nombre de capa','label','text') + buttonControls + imageControls +
+    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
+    '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
+    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
+    '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>';
+  updateDesignHistoryButtons();
+}
+function updateDesignProperty(key, value) {
+  const el = selectedDesignElement(); if (!el) return;
+  if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
+  else if (key === 'src') el.src = safeDesignImageSource(value);
+  else if (key === 'href') el.href = safeDesignLink(value);
+  else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
+  else if (key === 'color' || key === 'background') el[key] = value;
+  else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
+  const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
+  // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
+  const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
+  if (node) {
+    if (el.type === 'image') renderDesignImageContent(node, el);
+    else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
+    const layoutPosition = getDesignLayoutPositions(p.design).positions.get(el.id) || { x: Number(el.x)||0, y: Number(el.y)||0 };
+    node.style.left = layoutPosition.x+'px'; node.style.top = layoutPosition.y+'px';
+    node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
+    node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
+    node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
+    node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
+  }
+  if (p && p.design.layoutMode === 'auto') {
+    const layout = getDesignLayoutPositions(p.design);
+    document.querySelectorAll('[data-design-id]').forEach(item => {
+      const pos = layout.positions.get(item.dataset.designId);
+      if (pos) { item.style.left = pos.x + 'px'; item.style.top = pos.y + 'px'; }
+    });
+    const canvas = document.getElementById('designCanvas');
+    if (canvas) canvas.style.height = layout.height + 'px';
+  }
+  if (key === 'label') {
+    const layerButtons = document.querySelectorAll('#designLayers button');
+    layerButtons.forEach(b => { if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(el.id)) b.lastElementChild.textContent = el.label || el.type; });
+  }
+  scheduleAutosave();
+}
+function bindDesignCanvasEvents() {
+  if (designEventsBound) return; designEventsBound = true;
+  document.addEventListener('pointermove', ev => {
+    if (!designDragState) return;
+    const el = selectedDesignElement(); if (!el || el.id !== designDragState.id) return;
+    const dx = (ev.clientX - designDragState.startX) / (designDragState.scaleX || 1);
+    const dy = (ev.clientY - designDragState.startY) / (designDragState.scaleX || 1);
+    const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
+    if (designDragState.mode === 'resize') {
+      el.width = Math.max(20, Math.min(4000, Math.round(designDragState.width + dx)));
+      el.height = Math.max(20, Math.min(4000, Math.round(designDragState.height + dy)));
+      if (node) { node.style.width = el.width + 'px'; node.style.height = el.height + 'px'; }
+    } else {
+      el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
+      if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
+    }
+  });
+  const finishDesignDrag = () => {
+    if (!designDragState) return;
+    const p = activeDesignProject();
+    const el = selectedDesignElement();
+    if (p && el && p.design.snapToGrid) {
+      const step = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
+      if (designDragState.mode === 'resize') {
+        el.width = Math.max(20, Math.round((Number(el.width) || 120) / step) * step);
+        el.height = Math.max(20, Math.round((Number(el.height) || 48) / step) * step);
+      } else {
+        el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
+        el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
+      }
+    }
+    const selectedId = selectedDesignElementId;
+    designDragState = null;
+    renderDesignWorkspace();
+    const selectedNode = Array.from(document.querySelectorAll('[data-design-id]')).find(node => node.dataset.designId === selectedId);
+    if (selectedNode) selectedNode.focus();
+    saveProjectsToStorage();
+  };
+  document.addEventListener('pointerup', finishDesignDrag);
+  document.addEventListener('pointercancel', finishDesignDrag);
+  document.getElementById('designCanvas')?.addEventListener('click', ev => {
+    if (ev.target.id === 'designCanvas') { selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); }
+  });
+  let nudgeHistoryActive = false;
+  const arrowKeys = ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'];
+  document.addEventListener('keydown', ev => {
+    const p = activeDesignProject();
+    if (!p) return;
+    const target = ev.target;
+    if (target && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName))) return;
+    const mod = ev.ctrlKey || ev.metaKey;
+    if (mod && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault();
+      if (ev.shiftKey) designRedo(); else designUndo();
+    } else if (mod && ev.key.toLowerCase() === 'y') {
+      ev.preventDefault(); designRedo();
+    } else if (mod && ev.key.toLowerCase() === 'd' && selectedDesignElementId) {
+      ev.preventDefault(); duplicateDesignElement();
+    } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedDesignElementId) {
+      ev.preventDefault(); deleteDesignElement();
+    } else if (arrowKeys.includes(ev.key) && selectedDesignElementId &&
+      (!target || target === document.body || target.id === 'designCanvas' || (target.closest && target.closest('#designCanvas')))) {
+      const el = selectedDesignElement();
+      if (!el) return;
+      ev.preventDefault();
+      if (!nudgeHistoryActive) recordDesignHistory();
+      nudgeHistoryActive = true;
+      const step = ev.shiftKey ? 10 : 1;
+      if (ev.key === 'ArrowLeft') el.x = Math.max(0, (Number(el.x) || 0) - step);
+      if (ev.key === 'ArrowRight') el.x = Math.max(0, (Number(el.x) || 0) + step);
+      if (ev.key === 'ArrowUp') el.y = Math.max(0, (Number(el.y) || 0) - step);
+      if (ev.key === 'ArrowDown') el.y = Math.max(0, (Number(el.y) || 0) + step);
+      renderDesignWorkspace();
+      saveProjectsToStorage();
+    } else if (ev.key === 'Escape' && selectedDesignElementId) {
+      selectedDesignElementId = null; renderDesignWorkspace();
+    }
+  });
+  document.addEventListener('keyup', ev => {
+    if (arrowKeys.includes(ev.key)) nudgeHistoryActive = false;
+  });
+}
+function moveDesignLayer(direction) {
+  const project = activeDesignProject(), element = selectedDesignElement();
+  if (!project || !element || !Array.isArray(project.design.elements)) return;
+  const currentIndex = project.design.elements.findIndex(item => item.id === element.id);
+  const nextIndex = Math.max(0, Math.min(project.design.elements.length - 1, currentIndex + (direction < 0 ? -1 : 1)));
+  if (currentIndex < 0 || nextIndex === currentIndex) return;
+  recordDesignHistory();
+  project.design.elements.splice(currentIndex, 1);
+  project.design.elements.splice(nextIndex, 0, element);
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(nextIndex > currentIndex ? 'Capa traída al frente.' : 'Capa enviada atrás.');
+}
+function duplicateDesignElement() {
+  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
+  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
+    return;
+  }
+  recordDesignHistory();
+  const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
+  p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
+}
+function deleteDesignElement() {
+  const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
+  recordDesignHistory();
+  const deletedElementIds = new Set(p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId).map(el => el.id));
+  p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
+  // Never leave graph edges pointing at a layer that no longer exists.
+  if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
+  selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); saveProjectsToStorage();
+}
+function openDesignFlowGraph() {
+  if (typeof window !== 'undefined' && typeof window.__openDesignFlowGraph === 'function') window.__openDesignFlowGraph();
+  else showToast('El editor de nodos no se pudo cargar.', 'warn');
+}
+
+async function returnToSourceDesign() {
+  const webProject = projects.find(item => item.id === currentProjectId);
+  if (!webProject || webProject.type !== 'web' || !webProject.sourceDesignProjectId) {
+    showToast('Esta web no tiene un diseño de origen vinculado.', 'warn');
+    return;
+  }
+  const source = projects.find(item => item.id === webProject.sourceDesignProjectId && item.type === 'design');
+  if (!source) {
+    showToast('No se encuentra el diseño de origen. Puede haberse eliminado.', 'warn');
+    return;
+  }
+  try {
+    const saved = await saveCurrentCodeToActiveProject(true);
+    if (saved === false) {
+      showToast('No se pudo confirmar el guardado de la web; revisa la sincronización antes de cambiar.', 'warn');
+      return;
+    }
+  } catch (_) {
+    showToast('No se pudo guardar la web; no se cambió de editor.', 'error');
+    return;
+  }
+  openProject(source.id);
+  showToast('Volviste al diseño original. La web generada se conserva como proyecto separado.');
+}
+
+async function switchProjectWorkspace(targetType) {
+  if (!['web', 'design'].includes(targetType) || creatingProjectInFlight) return;
+  const project = projects.find(item => item.id === currentProjectId);
+  if (!project || project.type === targetType) return;
+  creatingProjectInFlight = true;
+  try {
+    // Monaco may load asynchronously after openProject() changes the project type.
+    // Never read an uninitialized/stale editor and overwrite the saved generated HTML.
+    if (project.type === 'web') {
+      const startedAt = Date.now();
+      let editorReady = false;
+      while (Date.now() - startedAt < 15000) {
+        const active = projects.find(item => item.id === project.id);
+        const code = normalizeCode(active && active.code);
+        if (active && getEditorValue('html') === code.html &&
+            getEditorValue('css') === code.css && getEditorValue('js') === code.js) {
+          editorReady = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      if (!editorReady) {
+        showToast('El editor Web todavía está cargando. No se cambió de espacio para proteger tu código.', 'warn');
+        return;
+      }
+    }
+    try {
+      const saved = await saveCurrentCodeToActiveProject(true);
+      const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
+      if (localSnapshotConfirmed !== true) {
+        showToast('No se pudo confirmar el guardado local; no se cambió de editor.', 'warn');
+        return;
+      }
+    } catch (_) {
+      showToast('No se pudo guardar el espacio actual; no se cambió de editor.', 'error');
+      return;
+    }
+    project.hasWebSpace = true;
+    project.hasDesignSpace = true;
+    if (!project.design || typeof project.design !== 'object') {
+      project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
+    }
+    const previousType = project.type;
+    project.type = targetType;
+    project.updatedAt = new Date().toISOString();
+    const localSaved = saveLocalProjectsSnapshot();
+    let serverSaved = false;
+    try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+    if (!serverSaved && !localSaved) {
+      project.type = previousType;
+      showToast('No se pudo guardar el cambio de espacio; se mantuvo el editor actual.', 'error');
+      return;
+    }
+    openProject(project.id);
+    renderProjectsList();
+    showToast(targetType === 'design'
+      ? (serverSaved ? 'Espacio Diseño abierto y sincronizado.' : 'Espacio Diseño abierto localmente; sincronización pendiente.')
+      : (serverSaved ? 'Espacio Web abierto y sincronizado.' : 'Espacio Web abierto localmente; sincronización pendiente.'),
+      serverSaved ? 'info' : 'warn');
+  } finally {
+    creatingProjectInFlight = false;
+  }
+}
+
+async function convertDesignToWeb() {
+  const p = activeDesignProject(); if (!p) return;
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de crear la web.', 'warn');
+    return;
+  }
+  const layout = getDesignLayoutPositions(p.design);
+  const layoutPositions = layout.positions;
+  const autoLayout = p.design.layoutMode === 'auto';
+  const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
+  const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
+  const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+    const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
+    const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
+    const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : (el.type === 'rectangle' || el.type === 'ellipse') ? 'div' : 'p';
+    const text = el.type === 'rectangle' || el.type === 'ellipse' || (el.type === 'image' && imageSource) ? '' : el.type === 'image' ? 'Añade una imagen' : escapeHtml(el.text || '');
+    const color = safeDesignExportColor(el.color, '#111827');
+    const background = safeDesignExportColor(el.background, 'transparent');
+    const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
+    const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
+    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
+    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const domId = designLayerDomId(el.id);
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+  }).join('\n');
+  const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
+  const frameStyle = autoLayout
+    ? 'position:relative;width:100%;max-width:'+frameWidth+'px;min-height:900px;height:auto;display:flex;flex-direction:'+layoutDirection+';flex-wrap:'+(layoutDirection==='row'?'wrap':'nowrap')+';gap:'+layoutGap+'px;padding:'+layoutPadding+'px;align-items:flex-start;background:'+safeDesignExportColor(p.design.background, '#ffffff')+';margin:0 auto;'
+    : 'position:relative;width:'+frameWidth+'px;min-height:900px;height:900px;background:'+safeDesignExportColor(p.design.background, '#ffffff')+';transform-origin:top left;margin:0 auto;';
+  const frameClass = 'design-frame' + (autoLayout ? ' auto-layout' : '');
+  const mobileCss = autoLayout ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}' : '';
+  let html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
+  if (typeof window !== 'undefined' && typeof window.buildFlowAwareWebHtml === 'function') html = window.buildFlowAwareWebHtml(p, html);
+  if (html.length > 500000) {
+    showToast('La web generada supera el límite de 500000 caracteres de HTML. Reduce las capas o imágenes y vuelve a intentarlo.', 'warn');
+    return;
+  }
+  creatingProjectInFlight = true;
+  // Keep the mutation lock until both local snapshot and server sync have settled.
+  // Otherwise a second create/switch can race this conversion's in-flight save.
+  try {
+    p.code = normalizeCode({ html, css: '', js: '' });
+    p.type = 'web';
+    p.hasWebSpace = true;
+    p.hasDesignSpace = true;
+    p.updatedAt = new Date().toISOString();
+    const localSaved = saveLocalProjectsSnapshot();
+    let serverSaved = false;
+    try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+    openProject(p.id);
+    renderProjectsList();
+    if (serverSaved) showToast('Espacio Web actualizado en este proyecto; el Diseño original se conserva.');
+    else if (localSaved) showToast('Espacio Web actualizado localmente; sincronización pendiente.', 'warn');
+    else showToast('La web se generó, pero no se confirmó el guardado. Exporta una copia antes de salir.', 'error');
+  } finally {
+    creatingProjectInFlight = false;
+  }
 }
 
 function setupNewProjectModalKeys() {
@@ -2254,15 +4165,13 @@ function startReconnectLoop() {
       workspaceToken = boot.token;
       lsSet(STORAGE_KEY_WORKSPACE, workspaceId);
       lsSet(STORAGE_KEY_WORKSPACE_TOKEN, workspaceToken);
-      if (Number.isInteger(boot.state && boot.state.revision)) {
-        // Only adopt server revision if we can; prefer local until explicit sync
-        if (!projects.length && Array.isArray(boot.state.projects) && boot.state.projects.length) {
-          projects = boot.state.projects;
-          workspaceRevision = boot.state.revision;
-        } else if (Number.isInteger(boot.state.revision)) {
-          workspaceRevision = boot.state.revision;
-        }
-      }
+      const remoteProjects = Array.isArray(boot.state && boot.state.projects) ? boot.state.projects : [];
+      const skipLocalIds = remoteProjects.length && generatedDefaultProjectId
+        ? new Set([generatedDefaultProjectId])
+        : new Set();
+      projects = mergeWorkspaceProjects(remoteProjects, projects, loadDeletedProjectIds(workspaceId), skipLocalIds);
+      if (skipLocalIds.size) generatedDefaultProjectId = null;
+      if (Number.isInteger(boot.state && boot.state.revision)) workspaceRevision = boot.state.revision;
       serverReady = true;
       setSyncStatus('synced', 'Reconectado');
       updateDashboardStatus();
@@ -2411,5 +4320,324 @@ function setupSplitResize() {
     if (menu.contains(e.target) || e.target === divider || divider.contains(e.target)) return;
     closeSplitMenu();
   });
+}
+
+
+function toggleDesignExportMenu() {
+  const menu = document.getElementById('designExportMenu');
+  const button = document.getElementById('designExportMenuButton');
+  if (!menu || !button) return;
+  const opening = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !opening);
+  button.setAttribute('aria-expanded', String(opening));
+}
+
+function closeDesignExportMenu() {
+  const menu = document.getElementById('designExportMenu');
+  const button = document.getElementById('designExportMenuButton');
+  if (menu) menu.classList.add('hidden');
+  if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+
+function toggleDesignTemplatesMenu() {
+  const menu = document.getElementById('designTemplatesMenu');
+  const button = document.getElementById('designTemplatesButton');
+  if (!menu || !button) return;
+  const opening = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !opening);
+  button.setAttribute('aria-expanded', String(opening));
+}
+
+function closeDesignTemplatesMenu() {
+  const menu = document.getElementById('designTemplatesMenu');
+  const button = document.getElementById('designTemplatesButton');
+  if (menu) menu.classList.add('hidden');
+  if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+async function applyDesignTemplate(templateId) {
+  const project = activeDesignProject();
+  if (!project || !project.design) {
+    showToast('Abre un proyecto de diseño primero.', 'warn');
+    return;
+  }
+  if (!['landing','dashboard','portfolio'].includes(templateId)) {
+    showToast('Selecciona una plantilla válida.', 'warn');
+    return;
+  }
+  if (project.design.elements.length && !window.confirm('Esta plantilla reemplazará las capas actuales. Puedes usar Deshacer para recuperar el diseño anterior. ¿Continuar?')) return;
+  recordDesignHistory();
+  const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
+  const compact = frameWidth <= 768;
+  const pad = compact ? 24 : 80;
+  const contentWidth = Math.max(250, frameWidth - pad * 2);
+  const make = (type, label, text, x, y, width, height, style) => ({
+    id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()),
+    type, label, text: text || '', x, y, width, height,
+    color: style.color || '#111827',
+    background: style.background || 'transparent',
+    fontSize: style.fontSize || 18,
+    weight: style.weight || 400,
+    radius: style.radius || 0,
+    textAlign: style.textAlign || 'left',
+    ...(type === 'image' ? { src: '', alt: label, objectFit: 'cover' } : {})
+  });
+  let elements = [];
+  if (templateId === 'landing') {
+    elements = [
+      make('heading', 'Título principal', 'Tu producto, en primer plano', pad, 50, contentWidth, 76, { fontSize: compact ? 30 : 44, weight: 700 }),
+      make('text', 'Descripción', 'Explica el valor de tu idea con una frase breve y clara.', pad, 138, contentWidth, 70, { fontSize: compact ? 16 : 20, color: '#475569' }),
+      make('button', 'Acción principal', 'Comenzar', pad, 230, compact ? contentWidth : 190, 52, { fontSize: 16, weight: 700, color: '#ffffff', background: '#7c3aed', radius: 12 }),
+      make('image', 'Imagen principal', '', pad, 320, contentWidth, compact ? 220 : 300, { background: '#e0e7ff', radius: 18 })
+    ];
+    project.design.background = '#ffffff';
+  } else if (templateId === 'dashboard') {
+    elements.push(make('heading', 'Título del panel', 'Panel de control', pad, 38, contentWidth, 64, { fontSize: compact ? 28 : 36, weight: 700 }));
+    elements.push(make('text', 'Subtítulo', 'Resumen de actividad', pad, 105, contentWidth, 36, { fontSize: 16, color: '#64748b' }));
+    const metrics = [
+      { title: 'Usuarios', value: '12.8k', color: '#dbeafe' },
+      { title: 'Ingresos', value: '$24.6k', color: '#dcfce7' },
+      { title: 'Conversión', value: '8.4%', color: '#f3e8ff' }
+    ];
+    const gap = 16;
+    const cardWidth = compact ? contentWidth : Math.floor((contentWidth - gap * 2) / 3);
+    metrics.forEach((metric, i) => {
+      const x = compact ? pad : pad + i * (cardWidth + gap);
+      const y = compact ? 170 + i * 150 : 170;
+      elements.push(make('rectangle', metric.title + ' tarjeta', '', x, y, cardWidth, 128, { background: metric.color, radius: 14 }));
+      elements.push(make('text', metric.title, metric.title, x + 16, y + 18, cardWidth - 32, 30, { fontSize: 14, color: '#475569' }));
+      elements.push(make('heading', metric.title + ' valor', metric.value, x + 16, y + 52, cardWidth - 32, 48, { fontSize: compact ? 26 : 30, weight: 700 }));
+    });
+    project.design.background = '#f8fafc';
+  } else if (templateId === 'portfolio') {
+    elements.push(make('heading', 'Nombre del portfolio', 'Mi portfolio', pad, 48, contentWidth, 70, { fontSize: compact ? 32 : 42, weight: 700 }));
+    elements.push(make('text', 'Introducción', 'Una selección de proyectos y trabajos recientes.', pad, 128, contentWidth, 52, { fontSize: 18, color: '#64748b' }));
+    const cards = [
+      { title: 'Proyecto Alpha', color: '#dbeafe' },
+      { title: 'Proyecto Beta', color: '#fce7f3' },
+      { title: 'Proyecto Gamma', color: '#dcfce7' }
+    ];
+    const gap = 16;
+    const cardWidth = compact ? contentWidth : Math.floor((contentWidth - gap * 2) / 3);
+    cards.forEach((card, i) => {
+      const x = compact ? pad : pad + i * (cardWidth + gap);
+      const y = compact ? 205 + i * 180 : 205;
+      elements.push(make('rectangle', card.title + ' tarjeta', '', x, y, cardWidth, 150, { background: card.color, radius: 16 }));
+      elements.push(make('heading', card.title, card.title, x + 14, y + 45, cardWidth - 28, 55, { fontSize: compact ? 20 : 22, weight: 700 }));
+    });
+    project.design.background = '#ffffff';
+  }
+  project.design.elements = elements;
+  project.updatedAt = new Date().toISOString();
+  selectedDesignElementId = elements[0] ? elements[0].id : null;
+  closeDesignTemplatesMenu();
+  renderDesignWorkspace();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  const localCopyMatches = (() => {
+    try {
+      const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+      const savedProject = Array.isArray(snapshot) && snapshot.find(item => item && item.id === project.id);
+      return !!savedProject && !!savedProject.design &&
+        Array.isArray(savedProject.design.elements) &&
+        savedProject.design.elements.length === elements.length &&
+        elements.every(element => savedProject.design.elements.some(saved => saved && saved.id === element.id));
+    } catch (_) { return false; }
+  })();
+  if (serverSaved) {
+    showToast('Plantilla aplicada y sincronizada. Puedes editar cada capa y deshacer el cambio.');
+  } else if (localCopyMatches) {
+    showToast('Plantilla aplicada y guardada localmente; sincronización pendiente.', 'warn');
+  } else {
+    showToast('Plantilla aplicada al lienzo, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
+  }
+}
+
+function exportDesignSvg() {
+  const project = activeDesignProject();
+  if (!project || !project.design) {
+    showToast('Abre un proyecto de diseño primero.', 'warn');
+    return;
+  }
+  try {
+    const capture = window.CodeLabCapture && window.CodeLabCapture.captureDesignSvg;
+    const result = typeof capture === 'function' ? capture(project) : captureDesignSvg(project);
+    const slug = (project.name || 'codelab-design').toLowerCase().normalize('NFD')
+      .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+    downloadDesignAsset(slug + '.svg', result.svg, 'image/svg+xml;charset=utf-8');
+    showToast('Diseño exportado como SVG vectorial.');
+  } catch (error) {
+    showToast('No se pudo exportar el SVG: ' + (error && error.message ? error.message : 'error de exportación'), 'warn');
+  }
+}
+
+function exportDesignProjectJson() {
+  const project = activeDesignProject();
+  if (!project || !project.design) {
+    showToast('Abre un proyecto de diseño primero.', 'warn');
+    return;
+  }
+  const slug = (project.name || 'codelab-design').toLowerCase().normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+  const payload = {
+    format: 'codelab-design-project',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    project: JSON.parse(JSON.stringify(project))
+  };
+  downloadDesignAsset(slug + '-proyecto.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
+  showToast('Respaldo JSON del proyecto exportado.');
+}
+
+async function importDesignProjectJson(file) {
+  if (!file) return;
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de importar.', 'warn');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('El respaldo supera el límite de 5 MB.', 'warn');
+    return;
+  }
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de importar.', 'warn');
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch (_) {
+    showToast('El archivo no contiene un JSON válido.', 'error');
+    return;
+  }
+  const source = payload && payload.format === 'codelab-design-project' &&
+    payload.version === 1 && payload.project && typeof payload.project === 'object' &&
+    !Array.isArray(payload.project) ? payload.project : null;
+  const sourceDesign = source && source.design;
+  if (!source || source.type !== 'design' || !sourceDesign ||
+      typeof sourceDesign !== 'object' || Array.isArray(sourceDesign) ||
+      !Array.isArray(sourceDesign.elements)) {
+    showToast('El archivo no es un respaldo de diseño CodeLab compatible.', 'error');
+    return;
+  }
+  if (sourceDesign.elements.length > MAX_DESIGN_ELEMENTS) {
+    showToast('El respaldo supera el límite de ' + MAX_DESIGN_ELEMENTS + ' capas.', 'warn');
+    return;
+  }
+  const code = normalizeCode(source.code);
+  if (['html','css','js'].some(key => code[key].length > 500000)) {
+    showToast('El código incluido supera el límite de 500000 caracteres por archivo.', 'warn');
+    return;
+  }
+  const allowedTypes = new Set(['heading','text','button','rectangle','ellipse','image']);
+  const oldToNewId = new Map();
+  const makeId = () => 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2));
+  const finite = (value, fallback, min, max) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  };
+  const color = (value, fallback) => {
+    const text = String(value || '');
+    return /^#[0-9a-f]{3,8}$/i.test(text) || text === 'transparent' ? text : fallback;
+  };
+  const elements = [];
+  for (const raw of sourceDesign.elements) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !allowedTypes.has(raw.type)) {
+      showToast('El respaldo contiene una capa inválida o no compatible. No se importó nada.', 'error');
+      return;
+    }
+    const oldId = typeof raw.id === 'string' ? raw.id : '';
+    const id = makeId();
+    if (oldId && !oldToNewId.has(oldId)) oldToNewId.set(oldId, id);
+    let src = '';
+    if (raw.type === 'image' && raw.src) {
+      src = safeDesignImageSource(raw.src);
+      if (!src) {
+        showToast('El respaldo contiene una imagen no segura o demasiado grande. No se importó nada.', 'error');
+        return;
+      }
+    }
+    const hrefRaw = typeof raw.href === 'string' ? raw.href.trim() : '';
+    let href = safeDesignLink(hrefRaw);
+    const internal = /^#layer-([a-z0-9_-]{1,120})$/i.exec(hrefRaw);
+    if (internal) href = '';
+    elements.push({
+      id, type: raw.type,
+      label: String(raw.label || raw.type).slice(0, 300),
+      text: String(raw.text || '').slice(0, 10000),
+      x: finite(raw.x, 0, -6000, 6000),
+      y: finite(raw.y, 0, -6000, 6000),
+      width: finite(raw.width, 120, 20, 4000),
+      height: finite(raw.height, 48, 20, 4000),
+      color: color(raw.color, '#111827'),
+      background: color(raw.background, 'transparent'),
+      fontSize: finite(raw.fontSize, 16, 8, 200),
+      weight: finite(raw.weight, 400, 100, 900),
+      radius: finite(raw.radius, 0, 0, 500),
+      textAlign: ['left','center','right'].includes(raw.textAlign) ? raw.textAlign : 'left',
+      ...(raw.type === 'button' ? { href } : {}),
+      ...(raw.type === 'image' ? {
+        src, alt: String(raw.alt || raw.label || 'Imagen del diseño').slice(0, 300),
+        objectFit: ['contain','cover','fill'].includes(raw.objectFit) ? raw.objectFit : 'cover'
+      } : {})
+    });
+  }
+  // Restore internal prototype links only after all imported layer IDs are known.
+  sourceDesign.elements.forEach((raw, index) => {
+    const match = /^#layer-([a-z0-9_-]{1,120})$/i.exec(String(raw && raw.href || '').trim());
+    if (match && elements[index] && elements[index].type === 'button') {
+      const targetId = oldToNewId.get(match[1]);
+      if (targetId) elements[index].href = '#layer-' + targetId.replace(/[^a-z0-9_-]/gi, '').slice(0, 120);
+    }
+  });
+  // Recheck after asynchronous file reading so import cannot race a project
+  // creation or cross the workspace cap between validation and mutation.
+  if (creatingProjectInFlight) {
+    showToast('Espera a que termine la operación actual antes de importar.', 'warn');
+    return;
+  }
+  if (projects.length >= maxProjects) {
+    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de importar.', 'warn');
+    return;
+  }
+  creatingProjectInFlight = true;
+  const sourceName = String(source.name || 'Diseño').trim() || 'Diseño';
+  const newProject = {
+    id: 'proj_' + crypto.randomUUID(),
+    name: (sourceName.slice(0, 200 - ' (Importado)'.length) + ' (Importado)'),
+    type: 'design',
+    hasWebSpace: true,
+    hasDesignSpace: true,
+    updatedAt: new Date().toISOString(),
+    code,
+    design: {
+      elements,
+      frame: ['desktop','tablet','mobile'].includes(sourceDesign.frame) ? sourceDesign.frame : 'desktop',
+      background: color(sourceDesign.background, '#ffffff'),
+      grid: sourceDesign.grid !== false,
+      gridSize: [4,8,16,32].includes(Number(sourceDesign.gridSize)) ? Number(sourceDesign.gridSize) : 8,
+      snapToGrid: !!sourceDesign.snapToGrid,
+      layoutMode: ['free','auto'].includes(sourceDesign.layoutMode) ? sourceDesign.layoutMode : 'free',
+      layoutDirection: ['row','column'].includes(sourceDesign.layoutDirection) ? sourceDesign.layoutDirection : 'row',
+      layoutGap: finite(sourceDesign.layoutGap, 16, 0, 200),
+      layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200)
+    }
+  };
+  projects.unshift(newProject);
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  let localContainsProject = false;
+  try {
+    const snapshot = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || 'null');
+    localContainsProject = Array.isArray(snapshot) && snapshot.some(item => item && item.id === newProject.id);
+  } catch (_) {}
+  creatingProjectInFlight = false;
+  renderProjectsList();
+  openProject(newProject.id);
+  if (serverSaved) showToast('Respaldo importado como proyecto nuevo y sincronizado.');
+  else if (localSaved && localContainsProject) showToast('Respaldo importado y guardado localmente; sincronización pendiente.', 'warn');
+  else showToast('El respaldo se abrió, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
