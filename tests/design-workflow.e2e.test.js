@@ -687,15 +687,36 @@ async function waitForPersistedProject(page, projectName) {
     await page.selectOption('#designFrameSize', 'mobile');
     assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.width), '390px');
     await page.setViewportSize({ width: 390, height: 844 });
-    const mobileLayout = await page.evaluate(() => ({
-      viewportWidth: window.innerWidth,
-      documentWidth: document.documentElement.scrollWidth,
-      canvasWidth: document.getElementById('designCanvas').getBoundingClientRect().width,
-      scrollContainerExists: !!document.getElementById('designCanvasScroll')
-    }));
+    const mobileLayout = await page.evaluate(() => {
+      const viewportWidth = window.innerWidth;
+      const offenders = [...document.querySelectorAll('body *')]
+        .filter(node => {
+          const rect = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          return style.display !== 'none' && style.position !== 'fixed' &&
+            rect.width > 0 && (rect.right > viewportWidth + 2 || rect.left < -2) &&
+            !node.closest('#designCanvasScroll');
+        })
+        .slice(0, 20)
+        .map(node => ({
+          tag: node.tagName,
+          id: node.id || '',
+          className: typeof node.className === 'string' ? node.className.slice(0, 160) : '',
+          left: Math.round(node.getBoundingClientRect().left),
+          right: Math.round(node.getBoundingClientRect().right),
+          width: Math.round(node.getBoundingClientRect().width)
+        }));
+      return {
+        viewportWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        canvasWidth: document.getElementById('designCanvas').getBoundingClientRect().width,
+        scrollContainerExists: !!document.getElementById('designCanvasScroll'),
+        offenders
+      };
+    });
     assert.ok(mobileLayout.scrollContainerExists, 'mobile canvas scroll container should exist');
     assert.ok(mobileLayout.documentWidth <= mobileLayout.viewportWidth + 2,
-      'mobile app shell should not introduce document-level horizontal overflow');
+      'mobile app shell should not introduce document-level horizontal overflow: ' + JSON.stringify(mobileLayout));
 
     // 6b. Exercise the actual AI capture flow and inspect both generated artifacts.
     const captureDownloads = [];
