@@ -118,7 +118,7 @@ async function setCode(page, lang, value) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#desktopProjectActions button[onclick="downloadProject()"]').click();
     const download = await downloadPromise;
-    assert.match(download.suggestedFilename(), /\\.html?$/i, 'project export should download HTML');
+    assert.match(download.suggestedFilename(), /\.html?$/i, 'project export should download HTML');
 
     assert.deepEqual(errors, [], 'web editor should not produce uncaught browser errors');
     console.log('Web editor UI E2E passed: create project, edit HTML/CSS/JS, live preview/console, workspace persistence, isolated branch, merge/undo, rename, and HTML export.');
