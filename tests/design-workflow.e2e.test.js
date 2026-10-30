@@ -1697,6 +1697,72 @@ async function waitForPersistedProject(page, projectName) {
       return source?.design?.flowConnections?.filter(c => c.sourceElementId === flowButtonId).length || 0;
     }, { sourceProjectId, flowButtonId }), 1, 'one drag must create exactly one outgoing connection');
     // Verify the connection reaches durable server storage, not only the in-memory UI.
+    // Long-run option endurance: repeatedly remove and recreate the same route
+    // through visible UI controls, asserting exactly one route remains each time.
+    for (let cycle = 1; cycle <= 15; cycle += 1) {
+      await page.locator('[data-flow-remove="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"][data-flow-target="' + targetProjectId + '"]').click();
+      await page.waitForFunction(({ sourceProjectId, flowButtonId }) => {
+        const source = projects.find(item => item.id === sourceProjectId);
+        return !(source?.design?.flowConnections || []).some(connection => connection.sourceElementId === flowButtonId);
+      }, { sourceProjectId, flowButtonId }, { timeout: 5000 });
+      const repeatSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
+      const repeatTarget = await page.locator('[data-flow-target-project="' + targetProjectId + '"]').boundingBox();
+      assert.ok(repeatSource && repeatTarget, 'repeated option cycle ' + cycle + ' must retain source and target controls');
+      await page.mouse.move(repeatSource.x + repeatSource.width / 2, repeatSource.y + repeatSource.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(repeatTarget.x + Math.min(160, repeatTarget.width - 10), repeatTarget.y + 25, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForFunction(({ sourceProjectId, flowButtonId, targetProjectId }) => {
+        const source = projects.find(item => item.id === sourceProjectId);
+        const routes = (source?.design?.flowConnections || []).filter(connection => connection.sourceElementId === flowButtonId);
+        return routes.length === 1 && routes[0].targetProjectId === targetProjectId;
+      }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 5000 });
+    }
+    console.log('Option endurance passed: 15 remove/reconnect cycles without duplicate or lost routes.');
+
+    // Run a touch-enabled browser context against the same persisted workspace.
+    // CDP touch events exercise the pointer-driven node connection gesture as a touchscreen would.
+    const touchContext = await browser.newContext({
+      viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+      storageState: await context.storageState()
+    });
+    const touchPage = await touchContext.newPage();
+    touchPage.on('pageerror', error => failures.push('touch: ' + (error.stack || error.message)));
+    await touchPage.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await touchPage.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+    const touchSourceCard = touchPage.locator('#projectsGrid > div').filter({ has: touchPage.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
+    await touchSourceCard.locator('button[data-action="open"]').click();
+    await touchPage.waitForFunction(id => getCurrentProject()?.id === id, sourceProjectId, { timeout: 15000 });
+    await touchPage.locator('#openDesignFlowGraph').click();
+    await touchPage.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 10000 });
+    await touchPage.locator('#designFlowChoose').click();
+    await touchPage.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
+    const touchPort = touchPage.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]');
+    const touchTarget = touchPage.locator('[data-flow-target-project="' + targetProjectId + '"]');
+    await touchPort.waitFor({ state: 'visible', timeout: 10000 });
+    const touchSourceBox = await touchPort.boundingBox();
+    const touchTargetBox = await touchTarget.boundingBox();
+    assert.ok(touchSourceBox && touchTargetBox, 'touch graph must expose source and destination bounds');
+    const cdp = await touchContext.newCDPSession(touchPage);
+    const touchX = touchSourceBox.x + touchSourceBox.width / 2;
+    const touchY = touchSourceBox.y + touchSourceBox.height / 2;
+    const destX = touchTargetBox.x + Math.min(140, touchTargetBox.width - 10);
+    const destY = touchTargetBox.y + 25;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: touchX, y: touchY, id: 1 }] });
+    for (let step = 1; step <= 10; step += 1) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{
+        x: touchX + (destX - touchX) * step / 10,
+        y: touchY + (destY - touchY) * step / 10, id: 1
+      }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await touchPage.waitForFunction(({ sourceProjectId, flowButtonId, targetProjectId }) => {
+      const source = projects.find(item => item.id === sourceProjectId);
+      return source?.design?.flowConnections?.some(connection => connection.sourceElementId === flowButtonId && connection.targetProjectId === targetProjectId);
+    }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
+    await touchContext.close();
+    console.log('Touchscreen node-connection E2E passed in 390×844 mobile context.');
+
     await page.waitForFunction(async ({ sourceProjectId, flowButtonId, targetProjectId }) => {
       const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
       const token = localStorage.getItem('codelab_xd_workspace_token_v1');
@@ -1771,6 +1837,32 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok((await page.evaluate(() => getCurrentProject().code.html)).includes('data-page-id="' + targetProjectId + '"'),
       'web code must remain on the shared project after switching editors');
     assert.ok(await page.evaluate(() => !!getCurrentProject().design), 'design data must survive web/design switching');
+
+    // Long-run workspace-switch endurance: alternate Web/Design repeatedly and
+    // verify the same project retains both representations after every cycle.
+    for (let cycle = 1; cycle <= 12; cycle += 1) {
+      await page.locator('#switchToDesignBtn').click();
+      await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design' &&
+        Array.isArray(getCurrentProject()?.design?.elements), sourceProjectId, { timeout: 10000 });
+      await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
+        null, { timeout: 15000 });
+      await page.locator('#switchToWebBtn').click();
+      await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'web' &&
+        typeof getCurrentProject()?.code?.html === 'string', sourceProjectId, { timeout: 10000 });
+      const retained = await page.evaluate(({ sourceProjectId, targetProjectId }) => {
+        const project = projects.find(item => item.id === sourceProjectId);
+        return {
+          designElements: project?.design?.elements?.length || 0,
+          hasDesignButton: project?.design?.elements?.some(element => element.id && element.type === 'button') || false,
+          hasWebTarget: String(project?.code?.html || '').includes('data-page-id="' + targetProjectId + '"')
+        };
+      }, { sourceProjectId, targetProjectId });
+      assert.ok(retained.designElements > 0 && retained.hasDesignButton && retained.hasWebTarget,
+        'workspace cycle ' + cycle + ' must retain design layers and generated web pages');
+      await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
+        null, { timeout: 15000 });
+    }
+    console.log('Workspace-switch endurance passed: 12 consecutive Web ↔ Design cycles preserved design and web content.');
 
     // Deleting a destination page must remove inbound graph links durably,
     // without deleting the already-generated standalone web page content.
