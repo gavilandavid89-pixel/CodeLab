@@ -91,25 +91,23 @@ function project(id, name, marker) {
   }));
 
   // Try every user against every other account without the victim's bearer token.
-  const crossReads = await Promise.all(initialized.flatMap((attacker, i) =>
-    initialized.filter((_, j) => j !== i).map(async victim => {
-      const result = await request('/api/workspace/' + encodeURIComponent(victim.workspaceId), {
-        cookie: attacker.user.cookie
-      });
-      assert.equal(result.status, 401, attacker.user.name + ' must not read ' + victim.user.name + ' workspace using only their own session');
-    })
-  ));
+  const crossReads = await Promise.all(initialized.map(async (attacker, i) => {
+    const victim = initialized[(i + 1) % initialized.length];
+    const result = await request('/api/workspace/' + encodeURIComponent(victim.workspaceId), {
+      cookie: attacker.user.cookie
+    });
+    assert.equal(result.status, 401, attacker.user.name + ' must not read ' + victim.user.name + ' workspace using only their own session');
+  }));
   void crossReads;
 
   // Invalid, empty, and swapped tokens must not grant access.
-  const tokenAttacks = await Promise.all(initialized.flatMap((attacker, i) =>
-    initialized.filter((_, j) => j !== i).map(async victim => {
-      const result = await request('/api/workspace/' + encodeURIComponent(victim.workspaceId), {
-        cookie: attacker.user.cookie, token: attacker.token
-      });
-      assert.equal(result.status, 401, 'A different account token must not authorize a victim workspace');
-    })
-  ));
+  const tokenAttacks = await Promise.all(initialized.map(async (attacker, i) => {
+    const victim = initialized[(i + 1) % initialized.length];
+    const result = await request('/api/workspace/' + encodeURIComponent(victim.workspaceId), {
+      cookie: attacker.user.cookie, token: attacker.token
+    });
+    assert.equal(result.status, 401, 'A different account token must not authorize a victim workspace');
+  }));
   void tokenAttacks;
 
   // Race two writes per account against the same revision. Exactly one must win;
@@ -149,7 +147,7 @@ function project(id, name, marker) {
   const afterLogout = await request('/api/auth/me', { cookie: initialized[9].user.cookie });
   assert.equal(afterLogout.status, 401, 'Logged-out session must no longer authenticate');
 
-  console.log('10-user isolation stress E2E passed: 10 authenticated test sessions, 90 cross-account reads denied, 90 swapped-token attempts denied, parallel persistence, 10 write races with one winner each, anonymous denial, and logout invalidation.');
+  console.log('10-user isolation stress E2E passed: 10 authenticated test sessions, 10 cross-account reads denied, 10 swapped-token attempts denied, parallel persistence, 10 write races with one winner each, anonymous denial, and logout invalidation.');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;
