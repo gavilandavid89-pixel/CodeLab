@@ -125,7 +125,7 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design canvas should remain available in landscape orientation');
     assert.ok(await page.locator('#designZoom').isVisible(), 'design zoom control remains available');
     assert.ok(await page.locator('#designFitBtn').isVisible(), 'fit-to-canvas action remains available');
-    assert.equal((await page.locator('#designLayersPanel').innerText()).includes('Inspector'), true,
+    assert.equal((await page.locator('#designLayersPanel').textContent()).includes('Inspector'), true,
       'the former layers panel must be labeled Inspector');
     await page.locator('#toggleDesignInspector').click();
     assert.equal(await page.locator('#designStudioPanel').evaluate(el => el.classList.contains('design-inspector-hidden')), true,
