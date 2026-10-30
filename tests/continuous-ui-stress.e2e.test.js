@@ -56,6 +56,7 @@ async function createProject(page, type, name) {
     assert.ok((await page.locator('#designToolsStatus').innerText()).length > 0);
     await page.locator('#resetDesignSystem').click();
     assert.equal(await page.locator('#colorPrimary').inputValue(), original);
+    await page.locator('#designToolsTab-tokens').click();
     for (const [id, ext] of [['exportDesignSystemCss', '.css'], ['exportDesignSystemJson', '.json']]) {
       const dl = page.waitForEvent('download');
       await page.locator('#' + id).click();
