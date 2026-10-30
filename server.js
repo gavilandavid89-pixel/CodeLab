@@ -40,6 +40,63 @@ const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInt
   ? Math.min(60 * 60 * 1000, Math.max(1000, configuredSessionCleanupInterval))
   : 15 * 60 * 1000;
 const COOKIE_NAME = 'codelab_sid';
+const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
+
+function readLocalAccounts() {
+  try {
+    const data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    throw new Error('local_account_store_unavailable');
+  }
+}
+
+function writeLocalAccounts(accounts) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = ACCOUNTS_FILE + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(accounts), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.renameSync(tmp, ACCOUNTS_FILE);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw error;
+  }
+}
+
+function passwordHash(password, salt) {
+  return crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+}
+
+function safePasswordEqual(a, b) {
+  const aa = Buffer.from(String(a || ''), 'hex');
+  const bb = Buffer.from(String(b || ''), 'hex');
+  return aa.length === bb.length && aa.length > 0 && crypto.timingSafeEqual(aa, bb);
+}
+
+function seedAdminAccountIfConfigured() {
+  if (!ADMIN_BOOTSTRAP_PASSWORD) return;
+  if (ADMIN_BOOTSTRAP_PASSWORD.length < 16) {
+    console.error('ADMIN_BOOTSTRAP_PASSWORD must contain at least 16 characters; local admin bootstrap skipped.');
+    return;
+  }
+  const accounts = readLocalAccounts();
+  if (accounts.ADMIN) return; // Never overwrite an existing account/password on restart.
+  const salt = crypto.randomBytes(16).toString('hex');
+  accounts.ADMIN = {
+    id: 'admin',
+    username: 'ADMIN',
+    role: 'admin',
+    salt,
+    passwordHash: passwordHash(ADMIN_BOOTSTRAP_PASSWORD, salt),
+    createdAt: new Date().toISOString(),
+    mustChangePassword: true
+  };
+  writeLocalAccounts(accounts);
+}
+
+
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
@@ -958,7 +1015,7 @@ async function handleGoogleCallback(code, redirectUri) {
 }
 
 function ensureUserWorkspace(user) {
-  if (!user || (user.provider !== 'github' && user.provider !== 'google') ||
+  if (!user || (user.provider !== 'github' && user.provider !== 'google' && user.provider !== 'local') ||
       user.id == null || !String(user.id).trim()) {
     throw new Error('workspace_owner_invalid');
   }
@@ -1313,6 +1370,8 @@ function parseAiJsonContent(content, fallbackCode) {
   );
 }
 
+seedAdminAccountIfConfigured();
+
 const server = http.createServer(async (req, res) => {
   const ip = clientIp(req);
   let pathname;
@@ -1359,6 +1418,63 @@ const server = http.createServer(async (req, res) => {
           return res.end();
         }
         return sendJson(res, 200, body);
+      }
+
+      // Native CodeLab account login. Public registration is intentionally disabled.
+      if (req.method === 'POST' && pathname === '/api/auth/login') {
+        const body = await readBody(req);
+        const username = typeof body.username === 'string' ? body.username.trim().toUpperCase() : '';
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!/^[A-Z0-9_]{3,32}$/.test(username) || password.length < 1 || password.length > 1024) {
+          return sendJson(res, 400, { error: 'invalid_credentials_format' });
+        }
+        const accounts = readLocalAccounts();
+        const account = accounts[username];
+        // Perform a comparable scrypt operation even when the account does not exist.
+        const salt = account?.salt || 'codelab-invalid-login-salt';
+        const candidate = passwordHash(password, salt);
+        if (!account || !safePasswordEqual(candidate, account.passwordHash)) {
+          return sendJson(res, 401, { error: 'invalid_credentials', message: 'Usuario o contraseña incorrectos.' });
+        }
+        const user = {
+          id: account.id,
+          provider: 'local',
+          name: account.username,
+          email: null,
+          avatar: null,
+          role: account.role
+        };
+        ensureUserWorkspace(user);
+        const session = createSession(user);
+        setSessionCookie(res, session.id, req);
+        return sendJson(res, 200, { ok: true, user, workspaceId: userWorkspaceId(user), mustChangePassword: !!account.mustChangePassword });
+      }
+
+      if (req.method === 'POST' && pathname === '/api/auth/change-password') {
+        const user = getSessionUser(req);
+        if (!user || user.provider !== 'local') return sendJson(res, 401, { error: 'not_authenticated' });
+        const body = await readBody(req);
+        const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+        const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+        if (newPassword.length < 16 || newPassword.length > 1024) {
+          return sendJson(res, 400, { error: 'password_too_short', message: 'La nueva contraseña debe tener al menos 16 caracteres.' });
+        }
+        const accounts = readLocalAccounts();
+        const account = accounts[user.name];
+        if (!account || !safePasswordEqual(passwordHash(currentPassword, account.salt), account.passwordHash)) {
+          return sendJson(res, 401, { error: 'invalid_credentials' });
+        }
+        const salt = crypto.randomBytes(16).toString('hex');
+        account.salt = salt;
+        account.passwordHash = passwordHash(newPassword, salt);
+        account.mustChangePassword = false;
+        account.passwordChangedAt = new Date().toISOString();
+        writeLocalAccounts(accounts);
+        const cookies = parseCookies(req);
+        destroySession(cookies[COOKIE_NAME]);
+        const session = createSession({ ...user, id: account.id, role: account.role });
+        setSessionCookie(res, session.id, req);
+        return sendJson(res, 200, { ok: true, mustChangePassword: false });
       }
 
       // Auth status / me
