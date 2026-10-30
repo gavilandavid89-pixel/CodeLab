@@ -48,7 +48,17 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     }, sourceElementId, { timeout: 5000 });
     const source = page.locator('[data-flow-source-port="' + sourceElementId + '"]');
     const target = page.locator('[data-flow-target-project="' + targetId + '"]');
-    await source.dragTo(target, { targetPosition: { x: 150, y: 25 } });
+    const sourceBox = await source.boundingBox();
+    const targetBox = await target.boundingBox();
+    assert.ok(sourceBox && targetBox, 'source connector and destination sheet must be visible');
+    const sx = sourceBox.x + sourceBox.width / 2, sy = sourceBox.y + sourceBox.height / 2;
+    const tx = targetBox.x + targetBox.width / 2, ty = targetBox.y + targetBox.height / 2;
+    const length = Math.hypot(tx - sx, ty - sy);
+    const gestureX = sx + (tx - sx) / length * 24, gestureY = sy + (ty - sy) / length * 24;
+    await page.mouse.move(sx, sy);
+    await page.mouse.down();
+    await page.mouse.move(gestureX, gestureY, { steps: 4 });
+    await page.mouse.up();
     await page.waitForFunction(({ sourceId, sourceElementId, targetId }) => {
       const p = projects.find(item => item.id === sourceId);
       return p?.design?.flowConnections?.some(c => c.sourceElementId === sourceElementId && c.targetProjectId === targetId);
