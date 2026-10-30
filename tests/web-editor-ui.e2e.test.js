@@ -90,7 +90,18 @@ async function setCode(page, lang, value) {
       null, { timeout: 10000 });
     page.once('dialog', dialog => dialog.accept());
     await page.locator('button[onclick="mergeToMainProject()"]').click();
-    await page.waitForFunction(() => document.getElementById('undoMergeBtn')?.disabled === false,
+    try {
+      await page.waitForFunction(() => document.getElementById('undoMergeBtn')?.disabled === false, null, { timeout: 15000 });
+    } catch (error) {
+      const state = await page.evaluate(() => ({
+        project: (() => { const p = getCurrentProject(); return p && { type: p.type, branch: p.branch && { id: p.branch.id, code: p.branch.code }, mergeHistoryLength: p.mergeHistory?.length || 0 }; })(),
+        inCopyBranch, copyBranchId, copyBaseCode, copyProjectCode,
+        undoDisabled: document.getElementById('undoMergeBtn')?.disabled,
+        syncStatus: document.getElementById('syncStatus')?.innerText || '',
+        toasts: Array.from(document.querySelectorAll('[role=alert], [data-toast], .toast')).map(el => el.innerText).filter(Boolean).slice(-5)
+      }));
+      throw new Error('Merge did not complete: ' + JSON.stringify(state) + '; ' + error.message);
+    }
       null, { timeout: 15000 });
     await page.locator('#toggleCopyBranchBtn').click();
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>".trim(),
