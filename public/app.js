@@ -3852,7 +3852,12 @@ function deleteDesignElement() {
   recordDesignHistory(); p.design.elements = p.design.elements.filter(el => !selectedDesignElementIds.includes(el.id) && el.id !== selectedDesignElementId);
   selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); saveProjectsToStorage();
 }
-async function convertDesignToWeb() {
+async function openDesignFlowGraph() {
+  if (typeof window !== 'undefined' && typeof window.__openDesignFlowGraph === 'function') window.__openDesignFlowGraph();
+  else showToast('El editor de nodos no se pudo cargar.', 'warn');
+}
+
+function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
   if (creatingProjectInFlight) {
     showToast('Espera a que termine la operación actual antes de crear la web.', 'warn');
