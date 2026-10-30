@@ -726,7 +726,7 @@ async function waitForPersistedProject(page, projectName) {
     // multiple automatic downloads, which is unrelated to whether both artifacts were generated.
     await page.evaluate(() => {
       window.__designCaptureArtifacts = [];
-      window.downloadDesignAsset = (filename, content, type) => {
+      downloadDesignAsset = (filename, content, type) => {
         const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
         const artifact = { name: filename, type: blob.type, size: blob.size };
         window.__designCaptureArtifacts.push(artifact);
