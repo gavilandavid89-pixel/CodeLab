@@ -184,7 +184,8 @@
         const id='layer-'+String(el.id||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,120);
         if(el.type==='image') {
           const src=safeDesignImageSource(el.src);
-          return src?'<img id="'+escAttr(id)+'" src="'+escAttr(src)+'" alt="'+escAttr(String(el.alt||el.label||'Imagen').slice(0,300))+'" style="'+style+'">':'<div id="'+escAttr(id)+'" style="'+style+'">'+esc(el.text||'Añade una imagen')+'</div>';
+          const navAttrs = target && el.flowRole !== 'menu' ? ' role="link" tabindex="0" data-flow-to="'+escAttr(target)+'" style="'+style+';cursor:pointer"' : ' style="'+style+'"';
+          return src?'<img id="'+escAttr(id)+'" src="'+escAttr(src)+'" alt="'+escAttr(String(el.alt||el.label||'Imagen').slice(0,300))+'"'+navAttrs+'>' : '<div id="'+escAttr(id)+'"'+(target && el.flowRole!=='menu'?' role="link" tabindex="0" data-flow-to="'+escAttr(target)+'"':'')+' style="'+style+'">'+esc(el.text||'Añade una imagen')+'</div>';
         }
         if(target && el.flowRole!=='menu') { const tag=el.type==='button'?'button':el.type==='heading'?'h1':(el.type==='rectangle'||el.type==='ellipse')?'div':el.type==='text'?'p':'div'; return '<'+tag+' id="'+escAttr(id)+'" role="link" tabindex="0" data-flow-to="'+escAttr(target)+'" style="'+style+';cursor:pointer">'+text+'</'+tag+'>'; }
         if(el.type==='button' && el.flowRole==='menu') return '<button type="button" id="'+escAttr(id)+'" data-flow-menu="true" aria-expanded="false" style="'+style+'">'+esc(el.text||'Menú')+'</button>';
