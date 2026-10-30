@@ -2115,13 +2115,14 @@ async function saveInCopyBranch() {
     js: getEditorValue('js')
   });
   const ok = await persistBranch(true);
+  const localSaved = ok === true || saveLocalProjectsSnapshot();
   showToast(
     ok === false
-      ? 'No se confirmó la sincronización de la copia. Se mantienen los cambios en el editor; revisa el estado de guardado.'
+      ? (localSaved ? 'Copia guardada localmente; sincronización pendiente.' : 'No se confirmó el guardado de la copia. Revisa el estado de guardado.')
       : 'Cambios guardados y sincronización confirmada únicamente en la copia.',
     ok === false ? 'warn' : 'info'
   );
-  return ok !== false;
+  return localSaved;
 }
 
 function buildThreeWayMerge(main, base, branch) {
@@ -2151,7 +2152,7 @@ async function mergeToMainProject() {
     return;
   }
   const refreshed = await refreshWorkspaceFromServer();
-  if (!refreshed) {
+  if (!refreshed && serverReady) {
     showToast('No se pudo verificar la versión principal del servidor. No se fusionó nada; inténtalo de nuevo cuando vuelva la conexión.', 'warn');
     return;
   }
