@@ -36,8 +36,9 @@ async function waitForPersistedProject(page, projectName) {
       viewport: { width: 1365, height: 900 },
       acceptDownloads: true
     });
-    await context.grantPermissions(['automatic-downloads'], { origin: BASE_URL });
     const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Browser.grantPermissions', { origin: BASE_URL, permissions: ['automatic-downloads'] });
     page.on('pageerror', error => failures.push(error.message));
 
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
