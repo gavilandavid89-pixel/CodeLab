@@ -103,7 +103,15 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       }).length);
     assert.equal(touchTargets, 0, 'visible design-studio buttons should not fall below the 32px minimum target');
 
+    // Browser viewport/zoom changes must refresh the full shell, not only the canvas.
+    const initialVisibleWidth = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim());
+    assert.ok(initialVisibleWidth.endsWith('px'), 'whole-interface viewport width should be tracked');
     await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForFunction(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '844px',
+      null, { timeout: 3000 });
+
     await page.waitForTimeout(100);
     assert.ok(await page.locator('#designCanvas').isVisible(),
       'design canvas should remain available in landscape orientation');
