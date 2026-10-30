@@ -992,7 +992,7 @@ async function waitForPersistedProject(page, projectName) {
         if (!response.ok) return false;
         const data = await response.json();
         return (data.projects || []).find(project =>
-          project.name === name + ' · Web' &&
+          project.name === name &&
           project.type === 'web' &&
           project.code &&
           project.code.html.includes('Prueba integral CodeLab')
@@ -1003,7 +1003,7 @@ async function waitForPersistedProject(page, projectName) {
     }, PROJECT_NAME, { timeout: 15000 });
     const converted = await convertedHandle.jsonValue();
     assert.equal(converted.type, 'web');
-    assert.match(converted.name, /Web/);
+    assert.equal(converted.name, PROJECT_NAME, 'conversion must preserve the original project name');
     assert.match(converted.code.html, /Prueba integral CodeLab/,
       'converted web project should include the edited design content');
     assert.match(converted.code.html, /name="viewport"/,
@@ -1120,12 +1120,12 @@ async function waitForPersistedProject(page, projectName) {
     // converted project explicitly before testing component insertion so this
     // journey verifies project selection as well as the component dialog.
     const convertedProjectCard = page.locator('#projectsGrid > div').filter({
-      has: page.locator('h4', { hasText: PROJECT_NAME + ' · Web' })
+      has: page.locator('h4', { hasText: PROJECT_NAME })
     });
     await convertedProjectCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(async name => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
-      return project && project.name === name + ' · Web' && project.type === 'web' &&
+      return project && project.name === name && project.type === 'web' &&
         typeof window.getEditorValue === 'function' &&
         window.getEditorValue('html') === project.code.html;
     }, PROJECT_NAME, { timeout: 15000 });
@@ -1212,7 +1212,7 @@ async function waitForPersistedProject(page, projectName) {
         });
         if (!response.ok) return false;
         const data = await response.json();
-        const project = (data.projects || []).find(item => item.name === name + ' · Web');
+        const project = (data.projects || []).find(item => item.name === name && item.type === 'web');
         return !!(project && project.code && project.code.html && /cl-hero/.test(project.code.html));
       } catch (_) {
         return false;
