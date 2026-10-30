@@ -34,6 +34,7 @@ jobs:
           node --check tests/version-consistency.test.js
           node --check tests/ai-settings-isolation.test.js
           node --check tests/interface-wiring.test.js
+          node --check tests/account-isolation.e2e.test.js
           node --check tests/interface-responsive.e2e.test.js
           node --check tests/web-editor-ui.e2e.test.js
       - name: Check version metadata consistency
