@@ -7,7 +7,7 @@ const renamed = name + ' renombrado';
 const branchHtml = "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>";
 const html = '<main id="editor-check"><h1>CodeLab listo</h1><button id="preview-action">Acción</button></main>';
 const css = '#editor-check { color: rgb(1, 2, 3); } #preview-action { background: rgb(4, 5, 6); }';
-const js = 'document.getElementById("preview-action").addEventListener("click", () => console.log("action-ok")); console.log("preview-ok");';
+const js = 'const previewAction = document.getElementById("preview-action"); if (previewAction) previewAction.addEventListener("click", () => console.log("action-ok")); console.log("preview-ok");';
 
 async function setCode(page, lang, value) {
   await page.waitForFunction(language =>
