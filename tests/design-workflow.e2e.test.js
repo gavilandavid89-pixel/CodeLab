@@ -729,28 +729,25 @@ async function waitForPersistedProject(page, projectName) {
       window.__designCaptureBlobs = new Map();
       window.__nativeDesignCreateObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
       window.__nativeDesignCreateObjectURL = URL.createObjectURL.bind(URL);
-      window.__nativeDesignAnchorClickDescriptor = Object.getOwnPropertyDescriptor(HTMLAnchorElement.prototype, 'click');
-      window.__nativeDesignAnchorClick = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = blob => {
         const url = window.__nativeDesignCreateObjectURL(blob);
         window.__designCaptureBlobs.set(url, blob);
         return url;
       };
-      HTMLAnchorElement.prototype.click = function() {
-        if (!this.download) return;
-        const blob = window.__designCaptureBlobs.get(this.href);
-        if (!blob) {
-          window.__designCaptureArtifacts.push({ name: this.download, error: 'download blob not found' });
-          return;
-        }
-        const artifact = { name: this.download, type: blob.type, size: blob.size };
+      window.__designCaptureClickHandler = event => {
+        const link = event.target && event.target.closest ? event.target.closest('a[download]') : null;
+        if (!link) return;
+        const blob = window.__designCaptureBlobs.get(link.href);
+        if (!blob) return;
+        event.preventDefault();
+        const artifact = { name: link.download, type: blob.type, size: blob.size };
         window.__designCaptureArtifacts.push(artifact);
         const reader = new FileReader();
         reader.onload = () => {
           const buffer = reader.result;
-          if (/\.json$/.test(this.download) || /\.svg$/.test(this.download)) {
+          if (/\.json$/.test(link.download) || /\.svg$/.test(link.download)) {
             artifact.text = new TextDecoder().decode(buffer);
-          } else if (/\.png$/.test(this.download)) {
+          } else if (/\.png$/.test(link.download)) {
             const bytes = new Uint8Array(buffer);
             const view = new DataView(buffer);
             artifact.signature = Array.from(bytes.slice(0, 8));
@@ -760,6 +757,7 @@ async function waitForPersistedProject(page, projectName) {
         };
         reader.readAsArrayBuffer(blob);
       };
+      document.addEventListener('click', window.__designCaptureClickHandler, true);
     });
     await page.selectOption('#designCaptureScale', '4');
     await page.locator('button[onclick="captureDesignForAI()"]').click();
@@ -809,8 +807,7 @@ async function waitForPersistedProject(page, projectName) {
     }
 
     await page.evaluate(() => {
-      if (window.__nativeDesignAnchorClickDescriptor) Object.defineProperty(HTMLAnchorElement.prototype, 'click', window.__nativeDesignAnchorClickDescriptor);
-      else delete HTMLAnchorElement.prototype.click;
+      document.removeEventListener('click', window.__designCaptureClickHandler, true);
       if (window.__nativeDesignCreateObjectURLDescriptor) Object.defineProperty(URL, 'createObjectURL', window.__nativeDesignCreateObjectURLDescriptor);
       else delete URL.createObjectURL;
     });
