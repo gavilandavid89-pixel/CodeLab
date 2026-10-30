@@ -3941,8 +3941,9 @@ async function switchProjectWorkspace(targetType) {
   try {
     try {
       const saved = await saveCurrentCodeToActiveProject(true);
-      if (saved === false) {
-        showToast('No se pudo confirmar el guardado; no se cambió de espacio.', 'warn');
+      const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
+      if (localSnapshotConfirmed !== true) {
+        showToast('No se pudo confirmar el guardado local; no se cambió de editor.', 'warn');
         return;
       }
     } catch (_) {
