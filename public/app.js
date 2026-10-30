@@ -3143,7 +3143,14 @@ function toggleDesignCanvasLock() {
   designCanvasLocked = !designCanvasLocked;
   const button = document.getElementById('designCanvasLockBtn');
   const viewport = document.getElementById('designCanvasScroll');
-  if (viewport) viewport.style.touchAction = designCanvasLocked ? 'none' : 'pan-x pan-y';
+  if (viewport) {
+    viewport.style.touchAction = designCanvasLocked ? 'none' : 'pan-x pan-y';
+    viewport.style.overflow = designCanvasLocked ? 'hidden' : 'auto';
+  }
+  const zoomSlider = document.getElementById('designZoom');
+  const fitButton = document.getElementById('designFitBtn');
+  if (zoomSlider) zoomSlider.disabled = designCanvasLocked;
+  if (fitButton) fitButton.disabled = designCanvasLocked;
   if (button) {
     button.setAttribute('aria-pressed', String(designCanvasLocked));
     button.textContent = designCanvasLocked ? '🔒 Lienzo bloqueado' : '🔓 Bloquear lienzo';
@@ -3201,6 +3208,7 @@ function setupDesignCanvasGestures() {
 }
 
 function setDesignZoom(value) {
+  if (designCanvasLocked) return;
   const next = Math.max(0.1, Math.min(1.5, Number(value) / 100 || 1));
   designZoom = next;
   const canvas = document.getElementById('designCanvas');
