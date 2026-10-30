@@ -28,13 +28,25 @@
     document.body.appendChild(modal);
     canvas = modal.querySelector('#designFlowCanvas'); svg = modal.querySelector('#designFlowWires');
     modal.querySelector('#designFlowClose').addEventListener('click', closeDesignFlowGraph);
-    modal.querySelector('#designFlowRefresh').addEventListener('click', renderGraph);\n    modal.querySelector('#designFlowOverviewToggle').addEventListener('click', () => { const panel=modal.querySelector('#designFlowOverview'); const opening=panel.classList.contains('hidden'); panel.classList.toggle('hidden',!opening); modal.querySelector('#designFlowOverviewToggle').setAttribute('aria-expanded',String(opening)); modal.querySelector('#designFlowOverviewToggle').textContent=opening?'Ocultar mapa de conexiones':'Ver mapa de conexiones'; renderOverview(); });\n    modal.querySelector('#designFlowChoose').addEventListener('click', () => { chooseMode = !chooseMode; if (!chooseMode) selectedSource = null; updateChooseButton(); renderGraph(); });
+    modal.querySelector('#designFlowRefresh').addEventListener('click', renderGraph);
+    modal.querySelector('#designFlowOverviewToggle').addEventListener('click', () => { const panel=modal.querySelector('#designFlowOverview'); const opening=panel.classList.contains('hidden'); panel.classList.toggle('hidden',!opening); modal.querySelector('#designFlowOverviewToggle').setAttribute('aria-expanded',String(opening)); modal.querySelector('#designFlowOverviewToggle').textContent=opening?'Ocultar mapa de conexiones':'Ver mapa de conexiones'; renderOverview(); });
+    modal.querySelector('#designFlowChoose').addEventListener('click', () => { chooseMode = !chooseMode; if (!chooseMode) selectedSource = null; updateChooseButton(); renderGraph(); });
     modal.addEventListener('click', e => { if (e.target === modal) closeDesignFlowGraph(); });
     document.addEventListener('pointermove', moveDraft);
     document.addEventListener('pointerup', finishDraft);
     window.addEventListener('resize', drawWires);
   }
-  function updateChooseButton() {\n    if (!modal) return; const b=modal.querySelector('#designFlowChoose'); if (!b) return; b.textContent='Elegir: '+(chooseMode?'activado':'desactivado'); b.setAttribute('aria-pressed',String(chooseMode)); b.classList.toggle('bg-yellow-400/15',chooseMode);\n  }\n  function renderOverview() {\n    if (!modal) return; const panel=modal.querySelector('#designFlowOverview'); if (!panel) return;\n    const pages=designProjects(), connections=allConnections(), pageById=new Map(pages.map(p=>[p.id,p]));\n    const broken=connections.filter(c=>!pageById.has(c.targetProjectId)||!pageById.get(c.sourceProjectId)?.design.elements.some(el=>el.id===c.sourceElementId));\n    panel.innerHTML='<div class="mb-3 flex flex-wrap items-center gap-2"><strong class="text-sm text-slate-100">Mapa de conexiones</strong><span class="rounded-full bg-slate-800 px-2 py-1 text-xs">'+connections.length+' conexiones</span><span class="rounded-full '+(broken.length?'bg-red-500/15 text-red-300':'bg-emerald-500/15 text-emerald-300')+' px-2 py-1 text-xs">'+broken.length+' rotas</span></div>'+(connections.length?'<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">'+connections.map(c=>{const p=pageById.get(c.sourceProjectId),el=p&&p.design.elements.find(item=>item.id===c.sourceElementId),target=pageById.get(c.targetProjectId),bad=!p||!el||!target;return '<div class="flex min-w-0 items-center gap-2 rounded-lg border '+(bad?'border-red-500/40':'border-slate-800')+' bg-slate-900 px-3 py-2"><span class="min-w-0 flex-1"><span class="block truncate text-xs font-semibold">'+esc(p?p.name:'Proyecto eliminado')+' · '+esc(el?(el.label||el.text||el.name||el.type||'Capa'):'Capa eliminada')+'</span><span class="block truncate text-[11px] '+(bad?'text-red-300':'text-cyan-300')+'">→ '+esc(target?target.name:'Destino inexistente')+'</span></span><button type="button" data-flow-overview-jump="'+esc(c.sourceProjectId)+'" class="shrink-0 rounded-md bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700">Ver</button></div>';}).join('')+'</div>':'<p class="text-xs text-slate-400">Todavía no hay conexiones. Elige una capa existente y arrastra su conector a otra página.</p>');\n    panel.querySelectorAll('[data-flow-overview-jump]').forEach(b=>b.addEventListener('click',()=>{const card=modal.querySelector('[data-flow-page="'+CSS.escape(b.dataset.flowOverviewJump)+'"]');if(card){card.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});card.classList.add('ring-2','ring-cyan-400');setTimeout(()=>card.classList.remove('ring-2','ring-cyan-400'),1200);}}));\n  }\n  function openDesignFlowGraph() {
+  function updateChooseButton() {
+    if (!modal) return; const b=modal.querySelector('#designFlowChoose'); if (!b) return; b.textContent='Elegir: '+(chooseMode?'activado':'desactivado'); b.setAttribute('aria-pressed',String(chooseMode)); b.classList.toggle('bg-yellow-400/15',chooseMode);
+  }
+  function renderOverview() {
+    if (!modal) return; const panel=modal.querySelector('#designFlowOverview'); if (!panel) return;
+    const pages=designProjects(), connections=allConnections(), pageById=new Map(pages.map(p=>[p.id,p]));
+    const broken=connections.filter(c=>!pageById.has(c.targetProjectId)||!pageById.get(c.sourceProjectId)?.design.elements.some(el=>el.id===c.sourceElementId));
+    panel.innerHTML='<div class="mb-3 flex flex-wrap items-center gap-2"><strong class="text-sm text-slate-100">Mapa de conexiones</strong><span class="rounded-full bg-slate-800 px-2 py-1 text-xs">'+connections.length+' conexiones</span><span class="rounded-full '+(broken.length?'bg-red-500/15 text-red-300':'bg-emerald-500/15 text-emerald-300')+' px-2 py-1 text-xs">'+broken.length+' rotas</span></div>'+(connections.length?'<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">'+connections.map(c=>{const p=pageById.get(c.sourceProjectId),el=p&&p.design.elements.find(item=>item.id===c.sourceElementId),target=pageById.get(c.targetProjectId),bad=!p||!el||!target;return '<div class="flex min-w-0 items-center gap-2 rounded-lg border '+(bad?'border-red-500/40':'border-slate-800')+' bg-slate-900 px-3 py-2"><span class="min-w-0 flex-1"><span class="block truncate text-xs font-semibold">'+esc(p?p.name:'Proyecto eliminado')+' · '+esc(el?(el.label||el.text||el.name||el.type||'Capa'):'Capa eliminada')+'</span><span class="block truncate text-[11px] '+(bad?'text-red-300':'text-cyan-300')+'">→ '+esc(target?target.name:'Destino inexistente')+'</span></span><button type="button" data-flow-overview-jump="'+esc(c.sourceProjectId)+'" class="shrink-0 rounded-md bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700">Ver</button></div>';}).join('')+'</div>':'<p class="text-xs text-slate-400">Todavía no hay conexiones. Elige una capa existente y arrastra su conector a otra página.</p>');
+    panel.querySelectorAll('[data-flow-overview-jump]').forEach(b=>b.addEventListener('click',()=>{const card=modal.querySelector('[data-flow-page="'+CSS.escape(b.dataset.flowOverviewJump)+'"]');if(card){card.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});card.classList.add('ring-2','ring-cyan-400');setTimeout(()=>card.classList.remove('ring-2','ring-cyan-400'),1200);}}));
+  }
+  function openDesignFlowGraph() {
     ensureModal(); modal.classList.remove('hidden'); updateChooseButton(); renderGraph();
   }
   function closeDesignFlowGraph() { if (modal) modal.classList.add('hidden'); pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null; }
@@ -76,7 +88,8 @@
     });
     cards.querySelectorAll('[data-flow-source-port]').forEach(port => port.addEventListener('pointerdown', e => {
       e.preventDefault(); e.stopPropagation();
-      if (!chooseMode || !selectedSource || selectedSource.projectId !== port.dataset.flowProject || selectedSource.elementId !== port.dataset.flowSourcePort) { showToast('Activa Elegir y selecciona primero la capa.', 'warn'); return; }\n      pendingStart = { projectId: port.dataset.flowProject, elementId: port.dataset.flowSourcePort };
+      if (!chooseMode || !selectedSource || selectedSource.projectId !== port.dataset.flowProject || selectedSource.elementId !== port.dataset.flowSourcePort) { showToast('Activa Elegir y selecciona primero la capa.', 'warn'); return; }
+      pendingStart = { projectId: port.dataset.flowProject, elementId: port.dataset.flowSourcePort };
       draftPath = document.createElementNS('http://www.w3.org/2000/svg','path');
       draftPath.setAttribute('fill','none'); draftPath.setAttribute('stroke','#22d3ee'); draftPath.setAttribute('stroke-width','3'); draftPath.setAttribute('stroke-dasharray','7 5'); svg.appendChild(draftPath);
       moveDraft(e);
@@ -89,7 +102,8 @@
       if (!sourceProject || !source || sourceProject.id === targetId) { showToast('Conecta una opción con otra página distinta.', 'warn'); return; }
       if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra página.', 'warn'); pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null; return; }
       sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(c => c.sourceElementId !== source.id);
-      sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId });\n      selectedSource = { projectId: sourceProject.id, elementId: source.id };
+      sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId });
+      selectedSource = { projectId: sourceProject.id, elementId: source.id };
       source.flowRole = 'navigate';
       sourceProject.updatedAt = new Date().toISOString();
       saveProjectsToStorage(); renderGraph(); showToast('Conexión creada desde «' + (source.label || source.text || 'Opción') + '» a la página de destino.');
@@ -97,7 +111,8 @@
     cards.querySelectorAll('[data-flow-menu]').forEach(check => check.addEventListener('change', () => {
       const p = findProject(check.dataset.flowProject), el = p && p.design.elements.find(item => item.id === check.dataset.flowMenu);
       if (!p || !el) return;
-      el.flowRole = check.checked ? 'menu' : '';\n      if (check.checked && selectedSource && selectedSource.projectId === p.id && selectedSource.elementId === el.id) selectedSource = null;
+      el.flowRole = check.checked ? 'menu' : '';
+      if (check.checked && selectedSource && selectedSource.projectId === p.id && selectedSource.elementId === el.id) selectedSource = null;
       if (check.checked) p.design.flowConnections = (p.design.flowConnections || []).filter(c => c.sourceElementId !== el.id);
       p.updatedAt = new Date().toISOString(); saveProjectsToStorage(); renderGraph();
     }));
@@ -200,7 +215,10 @@
     return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(root.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.flow-screen{width:100%;min-height:100vh}.flow-viewport{position:relative;width:100%;overflow:hidden}.flow-frame{transform-origin:top left}.flow-frame.auto-layout{width:100%;max-width:100%}@media(max-width:768px){.flow-frame.auto-layout{flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}.flow-frame.auto-layout>*{max-width:100%}}</style></head><body>'+pages+'<script>(function(){var screens=[].slice.call(document.querySelectorAll(".flow-screen"));function show(id){var found=screens.find(function(s){return s.getAttribute("data-page-id")===id});if(!found)return;screens.forEach(function(s){s.hidden=s!==found});fit();window.scrollTo(0,0)}function fit(){var active=screens.find(function(s){return !s.hidden});if(!active)return;var f=active.querySelector(".flow-frame"),v=active.querySelector(".flow-viewport");if(!f||!v)return;if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return}var w=parseFloat(f.style.width)||1440,h=parseFloat(f.style.height)||900,s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px"}document.addEventListener("click",function(e){var nav=e.target.closest("[data-flow-to]");if(nav){e.preventDefault();show(nav.getAttribute("data-flow-to"));return}var menu=e.target.closest("[data-flow-menu]");if(menu){menu.setAttribute("aria-expanded",menu.getAttribute("aria-expanded")!=="true"?"true":"false")}});document.addEventListener("keydown",function(e){var nav=e.target.closest&&e.target.closest('[data-flow-to]');if(nav&&(e.key==='Enter'||e.key===' ')){e.preventDefault();show(nav.getAttribute('data-flow-to'))}});window.addEventListener("resize",fit,{passive:true});window.addEventListener("hashchange",function(){var id=decodeURIComponent(location.hash.slice(1));if(id)show(id)});fit()})();<\/script></body></html>';
   }
 
-  const graphLauncher = document.getElementById('openDesignFlowGraph');\n  if (graphLauncher) graphLauncher.addEventListener('click', openDesignFlowGraph);\n\n  window.buildFlowAwareWebHtml = buildFlowAwareWebHtml;
+  const graphLauncher = document.getElementById('openDesignFlowGraph');
+  if (graphLauncher) graphLauncher.addEventListener('click', openDesignFlowGraph);
+
+  window.buildFlowAwareWebHtml = buildFlowAwareWebHtml;
   window.__openDesignFlowGraph = openDesignFlowGraph;
   window.closeDesignFlowGraph = closeDesignFlowGraph;
 })();
