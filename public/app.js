@@ -3689,9 +3689,8 @@ function renderDesignWorkspace() {
   const p = activeDesignProject(); if (!p) return;
   const canvas = document.getElementById('designCanvas');
   const layers = document.getElementById('designLayers');
-  const props = document.getElementById('designProperties');
   const empty = document.getElementById('designCanvasEmpty');
-  if (!canvas || !layers || !props) return;
+  if (!canvas || !layers) return;
   const validIds = new Set(p.design.elements.map(el => el.id));
   selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
   if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
