@@ -422,7 +422,9 @@ async function waitForPersistedProject(page, projectName) {
       return Array.isArray(snapshot) &&
         snapshot.filter(project => project.name === 'Flujo integral web E2E (Copia)').length === 1 &&
         snapshot.some(project => project.name === 'Flujo integral web E2E (Copia)' &&
-          project.type === 'web' && /Construye el Futuro/.test(project.code?.html || ''));
+          project.type === 'web' && project.hasWebSpace === true && project.hasDesignSpace === true &&
+          project.design && Array.isArray(project.design.elements) &&
+          /Construye el Futuro/.test(project.code?.html || ''));
     }, null, { timeout: 10000 });
     await page.locator('#projectsGrid > div').filter({ hasText: 'Flujo integral web E2E (Copia)' }).waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(PROJECT_NAME, { exact: true }) }).locator('button[data-action="open"]').click();
@@ -866,7 +868,8 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(({ name, count }) => {
       const project = getCurrentProject();
       return project && project.type === 'design' && project.name === name + ' (Importado)' &&
-        Array.isArray(project.design?.elements) && project.design.elements.length === count;
+        project.hasWebSpace === true && project.hasDesignSpace === true &&
+        !!project.code && Array.isArray(project.design?.elements) && project.design.elements.length === count;
     }, { name: PROJECT_NAME, count: projectBackup.project.design.elements.length }, { timeout: 10000 });
     const restoredBackupCheck = await page.evaluate(() => {
       const project = getCurrentProject();
