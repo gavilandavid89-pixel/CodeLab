@@ -150,7 +150,7 @@ async function createProject(page, type, name) {
     assert.equal(await page.locator('#designProjectJsonFile').inputValue(), '');
 
     // Switch to Web and run the design-system actions that require a real web editor.
-    await page.locator('#designStudioPanel button').filter({ hasText: 'Proyectos' }).first().click();
+    await page.locator('button[onclick="returnToDashboard()"]:visible').first().click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
     await createProject(page, 'web', 'Stress web ' + stamp);
     await page.locator('#openDesignTools').click();
