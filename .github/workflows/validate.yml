@@ -95,6 +95,24 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
           node tests/offline-sync.e2e.test.js
+      - name: Test concurrent account isolation
+        shell: bash
+        run: |
+          export PORT=3190
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3190"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-account-isolation-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-account-isolation-secret"
+          node server.js > "$RUNNER_TEMP/codelab-account-isolation.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab account isolation server log ====="; cat "$RUNNER_TEMP/codelab-account-isolation.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/account-isolation.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
