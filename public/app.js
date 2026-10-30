@@ -2078,7 +2078,9 @@ async function toggleCopyBranch() {
   if (!proj || !proj.branch) return;
   if (inCopyBranch) {
     const saved = await saveInCopyBranch();
-    if (!saved) return;
+    // A server-sync failure should not trap the user inside the branch when its
+    // contents have already been retained in the local workspace snapshot.
+    if (saved === false && !saveLocalProjectsSnapshot()) return;
   }
   aiRequestGeneration++;
   inCopyBranch = !inCopyBranch;
