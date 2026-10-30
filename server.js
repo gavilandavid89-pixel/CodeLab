@@ -555,7 +555,8 @@ function createSession(user) {
       provider: user.provider,
       name: user.name || user.login || 'User',
       email: user.email || null,
-      avatar: user.avatar || user.avatar_url || null
+      avatar: user.avatar || user.avatar_url || null,
+      role: user.role || 'user'
     },
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS
