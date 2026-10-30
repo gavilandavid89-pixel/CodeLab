@@ -439,7 +439,9 @@ window.addEventListener('beforeunload', () => {
     autosaveTimer = null;
   }
   try {
-    if (currentProjectId) {
+    // A navigation can happen before Monaco finishes loading. In that case,
+    // editor values may be empty/stale; never copy them over durable project code.
+    if (currentProjectId && editorReadyProjectId === currentProjectId) {
       const code = {
         html: getEditorValue('html'),
         css: getEditorValue('css'),
@@ -460,7 +462,6 @@ window.addEventListener('beforeunload', () => {
       } else {
         const proj = projects.find(p => p.id === currentProjectId);
         // Design projects store their canvas in the design object, not in the code editor.
-        // Do not bump timestamps or replace their code when the page is merely closed.
         if (proj && proj.type !== 'design') {
           const existingCode = normalizeCode(proj.code);
           const changed = code.html !== existingCode.html || code.css !== existingCode.css || code.js !== existingCode.js;
