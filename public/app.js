@@ -3142,6 +3142,8 @@ function toggleDesignOptions(show) {
 function toggleDesignCanvasLock() {
   designCanvasLocked = !designCanvasLocked;
   const button = document.getElementById('designCanvasLockBtn');
+  const viewport = document.getElementById('designCanvasScroll');
+  if (viewport) viewport.style.touchAction = designCanvasLocked ? 'none' : 'pan-x pan-y';
   if (button) {
     button.setAttribute('aria-pressed', String(designCanvasLocked));
     button.textContent = designCanvasLocked ? '🔒 Lienzo bloqueado' : '🔓 Bloquear lienzo';
