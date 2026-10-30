@@ -1701,8 +1701,6 @@ async function waitForPersistedProject(page, projectName) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible', timeout: 15000 });
-    await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
-    await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
     const sourceCard = page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
     await sourceCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(expected => getCurrentProject()?.id === expected, sourceProjectId, { timeout: 15000 });
