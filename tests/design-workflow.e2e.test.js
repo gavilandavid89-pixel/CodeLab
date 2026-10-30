@@ -111,8 +111,15 @@ async function waitForPersistedProject(page, projectName) {
         const created = projects.find(project => project.name === 'Proyecto web offline E2E');
         const raw = JSON.parse(lsGet(STORAGE_KEY_PROJECTS) || '[]');
         const persistedLocally = Array.isArray(raw) && raw.some(project => project.id === created?.id);
+        const webHasBothSpaces = !!created?.code && !!created?.design && created?.hasWebSpace === true && created?.hasDesignSpace === true;
+        document.querySelector('input[name="newProjectType"][value="design"]').checked = true;
+        document.getElementById('newProjectNameInput').value = 'Proyecto diseño offline E2E';
+        await createNewProjectConfirm();
+        const designCreated = projects.find(project => project.name === 'Proyecto diseño offline E2E');
+        const designHasBothSpaces = !!designCreated?.code && !!designCreated?.design && designCreated?.hasWebSpace === true && designCreated?.hasDesignSpace === true;
         const feedbackIsHonest = /guardado localmente|sincronización queda pendiente/i.test(toast);
-        return { localSnapshotCalled, createdType: created?.type, persistedLocally, openedMatchesCreated: openedId === created?.id, feedbackIsHonest };
+        return { localSnapshotCalled, createdType: created?.type, persistedLocally, openedMatchesCreated: openedId === designCreated?.id,
+          feedbackIsHonest, webHasBothSpaces, designCreatedType: designCreated?.type, designHasBothSpaces };
       } finally {
         projects = saved.projects;
         maxProjects = saved.maxProjects;
@@ -134,6 +141,9 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(createFailureFeedbackCheck.persistedLocally, true, 'a server failure must not leave the new project only in memory');
     assert.equal(createFailureFeedbackCheck.openedMatchesCreated, true, 'the newly created project should open after the local snapshot attempt');
     assert.equal(createFailureFeedbackCheck.feedbackIsHonest, true, 'failed server sync must be reported as local-only');
+    assert.equal(createFailureFeedbackCheck.webHasBothSpaces, true, 'projects created from Web must also initialize the Design workspace');
+    assert.equal(createFailureFeedbackCheck.designCreatedType, 'design', 'the selected Design editor should open initially');
+    assert.equal(createFailureFeedbackCheck.designHasBothSpaces, true, 'projects created from Design must also initialize the Web workspace');
 
     // OAuth local import must obey the same project cap as manual creation.
     const importLimitCheck = await page.evaluate(() => {
