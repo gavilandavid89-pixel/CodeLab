@@ -1066,7 +1066,18 @@ async function resolvePublicProviderTarget(urlString) {
   const pinned = records.find(record => record.family === 4) || records[0];
   return {
     url: target.toString(),
-    lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family)
+    lookup: (_hostname, options, callback) => {
+      // Node may invoke custom lookup with either (hostname, callback) or
+      // (hostname, options, callback). Also honor all:true when requested.
+      if (typeof options === 'function') {
+        callback = options;
+        options = {};
+      }
+      if (options && options.all) {
+        return callback(null, [{ address: pinned.address, family: pinned.family }]);
+      }
+      return callback(null, pinned.address, pinned.family);
+    }
   };
 }
 
