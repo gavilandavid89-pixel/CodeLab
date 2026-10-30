@@ -3929,22 +3929,29 @@ async function switchProjectWorkspace(targetType) {
   if (!project.design || typeof project.design !== 'object') {
     project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
   }
+  const previousType = project.type;
   project.type = targetType;
   project.updatedAt = new Date().toISOString();
-  saveLocalProjectsSnapshot();
+  const localSaved = saveLocalProjectsSnapshot();
+  let serverSaved = false;
+  try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
+  if (!serverSaved && !localSaved) {
+    project.type = previousType;
+    showToast('No se pudo guardar el cambio de espacio; se mantuvo el editor actual.', 'error');
+    return;
+  }
   openProject(project.id);
   renderProjectsList();
-  showToast(targetType === 'design' ? 'Espacio Diseño abierto.' : 'Espacio Web abierto.');
+  showToast(targetType === 'design'
+    ? (serverSaved ? 'Espacio Diseño abierto y sincronizado.' : 'Espacio Diseño abierto localmente; sincronización pendiente.')
+    : (serverSaved ? 'Espacio Web abierto y sincronizado.' : 'Espacio Web abierto localmente; sincronización pendiente.'),
+    serverSaved ? 'info' : 'warn');
 }
 
 async function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
   if (creatingProjectInFlight) {
     showToast('Espera a que termine la operación actual antes de crear la web.', 'warn');
-    return;
-  }
-  if (projects.length >= maxProjects) {
-    showToast('Has alcanzado el límite de ' + maxProjects + ' proyectos de este workspace. Elimina o exporta uno antes de convertir el diseño.', 'warn');
     return;
   }
   const layout = getDesignLayoutPositions(p.design);
