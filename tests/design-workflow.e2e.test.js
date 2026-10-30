@@ -36,6 +36,7 @@ async function waitForPersistedProject(page, projectName) {
       viewport: { width: 1365, height: 900 },
       acceptDownloads: true
     });
+    await context.grantPermissions(['automatic-downloads'], { origin: BASE_URL });
     const page = await context.newPage();
     page.on('pageerror', error => failures.push(error.message));
 
