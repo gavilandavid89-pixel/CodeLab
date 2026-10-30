@@ -112,11 +112,8 @@
     #designStudioPanel > .design-toolbar { flex-wrap: wrap; }
     #designCanvas { transform-origin: top left; touch-action: none; user-select: none; }
     #designCanvasScroll { position: relative; }
-    #designLayersPanel[hidden], #designPropertiesPanel[hidden] { display: none !important; }
     #designStudioPanel.design-inspector-hidden #designLayersPanel { display: none !important; }
-    #designStudioPanel.design-properties-hidden #designPropertiesPanel { display: none !important; }
-    #designStudioPanel.design-inspector-hidden.design-properties-hidden #designCanvasScroll { flex: 1 1 100%; }
-    #designStudioPanel.design-inspector-hidden #designCanvasScroll, #designStudioPanel.design-properties-hidden #designCanvasScroll { flex: 1 1 auto; }
+    #designStudioPanel.design-inspector-hidden #designCanvasScroll { flex: 1 1 auto; }
     #designCanvasScroll.design-gesture-active { cursor: grabbing; }
     @media (max-width: 767px) {
       #designStudioPanel { overflow: hidden !important; }
@@ -124,20 +121,17 @@
       #designStudioPanel > .design-toolbar > .ml-auto { margin-left: 0 !important; flex-wrap: wrap; }
       #designStudioPanel #designCanvasScroll { padding: 12px !important; flex: 1 1 55%; min-height: 120px; }
       #designStudioPanel #designCanvasScroll > div:first-child { display: none; }
-      #designStudioPanel #designLayersPanel { display: flex !important; width: 100% !important; max-height: 22dvh; flex: 0 0 auto; border-right: 0 !important; border-top: 1px solid #1e293b; }
+      #designStudioPanel #designLayersPanel { display: flex !important; width: min(100%, 100vw) !important; max-height: min(38dvh, 320px); flex: 0 0 auto; border-right: 0 !important; border-top: 1px solid #1e293b; }
       #designStudioPanel #designLayersPanel > div:first-child { padding: 6px 10px !important; }
-      #designStudioPanel #designLayersPanel > div:last-child { display: none; }
-      #designStudioPanel aside:last-child { width: 100% !important; max-height: min(34dvh, 260px) !important; flex: 0 0 auto; border-left: 0 !important; border-top: 1px solid #1e293b; }
-      #designStudioPanel aside:last-child > div:first-child { padding: 6px 10px !important; }
+      #designStudioPanel #designLayers { min-height: 44px; }
       #designStudioPanel #designProperties { padding: 8px !important; }
-      #designStudioPanel aside:last-child > div:last-child { display: flex; gap: 8px; padding: 6px 8px !important; }
-      #designStudioPanel aside:last-child > div:last-child button { flex: 1; }
+      #designStudioPanel #designLayersPanel > div:last-child button { min-height: 36px; }
       #designStudioPanel .design-toolbar button { min-height: 36px; }
     }
     @media (orientation: landscape) and (max-width: 900px) {
       #designStudioPanel > .design-toolbar { max-height: 72px; }
       #designStudioPanel #designCanvasScroll { flex-basis: 65%; }
-      #designStudioPanel aside:last-child { max-height: 28dvh !important; }
+      #designStudioPanel #designLayersPanel { max-height: 30dvh !important; }
     }
     @media (max-width: 767px) {
       #welcomeDashboard > header { flex-wrap: wrap; }
@@ -475,7 +469,6 @@
       <section id="designStudioPanel" class="hidden flex-1 min-h-0 bg-slate-950 text-slate-100 flex-col">
         <div class="design-toolbar flex flex-wrap items-center gap-2 overflow-x-auto px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
           <button id="toggleDesignInspector" type="button" onclick="toggleDesignPanel('inspector')" aria-expanded="true" aria-controls="designLayersPanel" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar Inspector"><i class="fa-solid fa-panel-left"></i><span class="hidden sm:inline ml-1">Inspector</span></button>
-          <button id="toggleDesignProperties" type="button" onclick="toggleDesignPanel('properties')" aria-expanded="true" aria-controls="designPropertiesPanel" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar propiedades"><i class="fa-solid fa-sliders"></i><span class="hidden sm:inline ml-1">Propiedades</span></button>
           <div class="flex items-center gap-1">
             <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
             <button onclick="designRedo()" id="designRedoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
@@ -536,10 +529,19 @@
           </div>
         </div>
         <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden flex-col sm:flex-row">
-          <aside id="designLayersPanel" class="hidden sm:flex w-48 lg:w-56 flex-col border-r border-slate-800 bg-slate-900/80 shrink-0">
-            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Inspector</div>
-            <div id="designLayers" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
-            <div class="px-3 py-2 border-t border-slate-800 text-[10px] text-slate-500">Selecciona una capa para editarla.</div>
+          <aside id="designLayersPanel" class="hidden sm:flex w-64 lg:w-72 flex-col border-r border-slate-800 bg-slate-900/90 shrink-0 min-h-0 overflow-hidden">
+            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Inspector</div>
+            <div id="designLayers" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-1"></div>
+            <div class="border-t border-slate-800 shrink-0 max-h-[48%] overflow-y-auto">
+              <div class="px-3 py-2 border-b border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-500">Propiedades del elemento</div>
+              <div id="designProperties" class="p-3 space-y-3 text-xs">
+                <p class="text-slate-500 leading-relaxed">Selecciona un elemento para editar su contenido, posición, tamaño y color.</p>
+              </div>
+              <div class="p-3 border-t border-slate-800 space-y-2">
+                <button onclick="duplicateDesignElement()" class="w-full px-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-copy mr-1"></i> Duplicar capa</button>
+                <button onclick="deleteDesignElement()" class="w-full px-2 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs"><i class="fa-solid fa-trash mr-1"></i> Eliminar capa</button>
+              </div>
+            </div>
           </aside>
           <div id="designCanvasScroll" class="flex-1 min-w-0 w-full max-w-full overflow-auto p-4 sm:p-8 bg-[#171923]">
             <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Lienzo · arrastra elementos para moverlos</div>
@@ -549,16 +551,7 @@
               </div>
             </div>
           </div>
-          <aside class="w-full sm:w-56 lg:w-64 max-h-48 sm:max-h-none border-t sm:border-t-0 sm:border-l border-slate-800 bg-slate-900/90 shrink-0 overflow-y-auto">
-            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">Propiedades</div>
-            <div id="designProperties" class="p-3 space-y-3 text-xs">
-              <p class="text-slate-500 leading-relaxed">Selecciona un elemento para editar su contenido, posición, tamaño y color.</p>
-            </div>
-            <div class="p-3 border-t border-slate-800 space-y-2">
-              <button onclick="duplicateDesignElement()" class="w-full px-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-copy mr-1"></i> Duplicar capa</button>
-              <button onclick="deleteDesignElement()" class="w-full px-2 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs"><i class="fa-solid fa-trash mr-1"></i> Eliminar capa</button>
-            </div>
-          </aside>
+          
         </div>
       </section>
     </main>
