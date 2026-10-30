@@ -2202,8 +2202,9 @@ async function mergeToMainProject() {
   inCopyBranch = false;
 
   const ok = await persistWorkspace();
-  if (!ok) {
-    // Rollback local state
+  const localMergeSaved = ok === true || saveLocalProjectsSnapshot();
+  if (!localMergeSaved) {
+    // Rollback only when neither server nor local storage confirmed the merge.
     const idx = projects.findIndex(p => p.id === latest.id);
     if (idx >= 0) projects[idx] = snapshot;
     copyBaseCode = prevCopyState.copyBaseCode;
@@ -2246,7 +2247,8 @@ async function undoLastMerge() {
   else delete proj.branch;
 
   const ok = await persistWorkspace();
-  if (!ok) {
+  const localUndoSaved = ok === true || saveLocalProjectsSnapshot();
+  if (!localUndoSaved) {
     const idx = projects.findIndex(p => p.id === proj.id);
     if (idx >= 0) projects[idx] = snapshot;
     showToast('No se pudo guardar el deshacer en el servidor. Estado local revertido.', 'error');
