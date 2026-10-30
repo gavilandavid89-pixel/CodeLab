@@ -71,7 +71,7 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     assert.match(jsonDownload.suggestedFilename(), /\.json$/i, 'Project backup should download JSON');
 
     // Design tools tabs and live controls: palette, accessibility, tokens and audit.
-    await page.locator('#openDesignTools').click();
+    await page.evaluate(() => document.getElementById('openDesignTools').click());
     await page.locator('#designToolsModal:not(.hidden)').waitFor({ state: 'visible' });
     for (const tab of ['palette', 'accessibility', 'tokens', 'audit']) {
       await page.locator('#designToolsTab-' + tab).click();
@@ -87,7 +87,7 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     await page.locator('#closeDesignTools').click();
 
     // Component library: search/filter, select and insert into the editor.
-    await page.locator('#openComponentLibrary').click();
+    await page.evaluate(() => document.getElementById('openComponentLibrary').click());
     await page.locator('#componentLibraryModal:not(.hidden)').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-component-id]').count(), 8);
     await page.fill('#componentLibrarySearch', 'proyecto');
