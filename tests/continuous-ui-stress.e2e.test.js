@@ -27,6 +27,25 @@ async function createProject(page, type, name) {
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(e.stack || e.message));
     page.on('console', m => { if (m.type() === 'error') warnings.push(m.text()); });
+    // Agent Space bridge: inspect and operate the real same-origin UI before the broader stress journey.
+    await page.goto(BASE_URL + '/agent-space/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    assert.match(await page.title(), /Agent Space/, 'the isolated cockpit route should load');
+    const agentApp = page.frameLocator('#appFrame');
+    await agentApp.locator('#syncLoadingModal').waitFor({ state: 'hidden', timeout: 20000 });
+    await page.locator('#refreshState').click();
+    await page.waitForFunction(() => document.getElementById('snapshot').textContent.includes('"title"'));
+    assert.match(await page.locator('#snapshot').innerText(), /CodeLab/i, 'the bridge should inspect the actual app iframe');
+    // Use a trusted browser click to open the modal, then verify Agent Space can operate controls inside it.
+    await agentApp.locator('#openDesignTools').click();
+    await agentApp.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('#selector').fill('#designToolsTab-accessibility');
+    await page.locator('#clickElement').click();
+    await agentApp.locator('#designToolsTab-accessibility').waitFor({ state: 'visible' });
+    assert.equal(await agentApp.locator('#designToolsTab-accessibility').getAttribute('aria-selected'), 'true');
+    await page.locator('#selector').fill('#closeDesignTools');
+    await page.locator('#clickElement').click();
+    await agentApp.locator('#designToolsModal').waitFor({ state: 'hidden', timeout: 10000 });
+
     await waitForReady(page);
 
     // Repeat modal open/close through each supported path, then verify focus/visibility state.

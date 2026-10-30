@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeLab · Agent Space</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2d;--line:#283550;--text:#eef3ff;--muted:#9aabc9;--accent:#7c9cff;--ok:#70dfb2;--bad:#ff9a9a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;height:100vh;overflow:hidden}
+header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line);background:#0d1426}
+.brand{font-weight:750;letter-spacing:.2px}.brand span{color:var(--accent)}.pill{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 9px}
+main{height:calc(100vh - 52px);display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0}
+.stage{min-width:0;min-height:0;position:relative;background:#080d18}.stage iframe{border:0;width:100%;height:100%;background:white}.overlay{position:absolute;top:10px;left:10px;background:#0c1425e8;border:1px solid var(--line);border-radius:9px;padding:7px 10px;color:var(--muted);font-size:12px;pointer-events:none}
+aside{min-width:0;overflow:auto;background:var(--panel);border-left:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:17px;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px}
+p{color:var(--muted);margin:0}.section{border:1px solid var(--line);border-radius:10px;padding:11px;display:grid;gap:9px}
+label{display:grid;gap:5px;color:var(--muted);font-size:12px}
+input,textarea,select{width:100%;background:#0b1120;color:var(--text);border:1px solid #334360;border-radius:7px;padding:9px;font:inherit;min-width:0}
+textarea{resize:vertical;min-height:62px}button{background:#202d49;color:var(--text);border:1px solid #3a4b6d;border-radius:7px;padding:8px 10px;font:inherit;cursor:pointer}button:hover{border-color:var(--accent)}button.primary{background:#334e9b;border-color:#5876d3}.buttons{display:flex;flex-wrap:wrap;gap:7px}.buttons button{flex:1}.status{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ok);max-height:130px;overflow:auto}.status.error{color:var(--bad)}.snapshot{font:11px/1.45 ui-monospace,SFMono-Regular,monospace;color:#c9d5ed;white-space:pre-wrap;overflow-wrap:anywhere;max-height:190px;overflow:auto;background:#090f1c;border-radius:7px;padding:9px}
+@media(max-width:760px){main{grid-template-columns:minmax(0,1fr) 285px}aside{padding:10px}}
+@media(max-width:560px){main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 46vh}aside{border-left:0;border-top:1px solid var(--line)}.stage{min-height:45vh}}
+</style>
+</head>
+<body>
+<header><div class="brand">CodeLab <span>Agent Space</span></div><div class="pill">Puente de navegador · aislado del editor</div></header>
+<main>
+  <section class="stage" aria-label="Navegador de CodeLab">
+    <iframe id="appFrame" title="CodeLab real" src="/" referrerpolicy="same-origin"></iframe>
+    <div class="overlay">Vista real de CodeLab · usa el panel para interactuar</div>
+  </section>
+  <aside>
+    <div><h1>Cabina de interacción</h1><p>Acciones acotadas sobre la página abierta. No ejecuta código arbitrario en el servidor.</p></div>
+    <section class="section">
+      <h2>Estado de la página</h2>
+      <div class="buttons"><button id="refreshState" class="primary">Leer estado</button><button id="reloadApp">Recargar web</button></div>
+      <div id="pageStatus" class="status" role="status">Esperando a que CodeLab cargue…</div>
+      <div id="snapshot" class="snapshot">Sin lectura todavía.</div>
+    </section>
+    <section class="section">
+      <h2>Interactuar</h2>
+      <label>Selector CSS del elemento<input id="selector" placeholder="#openDesignTools o button" autocomplete="off"></label>
+      <div class="buttons"><button id="clickElement">Pulsar</button><button id="readElement">Leer texto</button></div>
+      <label>Texto / valor para introducir<textarea id="fillValue" placeholder="Texto que se escribirá en el campo seleccionado"></textarea></label>
+      <div class="buttons"><button id="fillElement" class="primary">Rellenar campo</button><button id="focusElement">Enfocar</button></div>
+      <label>Valor para seleccionar (select)<input id="selectValue" placeholder="value de la opción"></label>
+      <button id="selectElement">Seleccionar opción</button>
+    </section>
+    <section class="section">
+      <h2>Elementos visibles</h2>
+      <button id="listControls">Listar botones y campos</button>
+      <div id="controlsList" class="snapshot">Aún no se han listado.</div>
+    </section>
+    <p style="font-size:11px">Este panel opera en el navegador que lo tiene abierto. Para que un agente remoto lo use, hace falta conectar un navegador automatizado autorizado; esta página por sí sola no concede acceso a la sesión del usuario desde otros equipos.</p>
+  </aside>
+</main>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const frame=$('appFrame');
+  function doc(){try{const d=frame.contentDocument;if(!d)throw new Error('El documento no está disponible');return d}catch(e){throw new Error('No se puede leer CodeLab. Comprueba que la página cargó y que permanece en el mismo origen. '+e.message)}}
+  function target(){const s=$('selector').value.trim();if(!s)throw new Error('Escribe un selector CSS.');try{const el=doc().querySelector(s);if(!el)throw new Error('No se encontró ningún elemento para: '+s);return el}catch(e){if(e instanceof DOMException)throw new Error('Selector CSS no válido.');throw e}}
+  function status(message,bad){$('pageStatus').textContent=message;$('pageStatus').classList.toggle('error',!!bad)}
+  function visible(el){const r=el.getBoundingClientRect(),cs=getComputedStyle(el);return r.width>0&&r.height>0&&cs.visibility!=='hidden'&&cs.display!=='none'}
+  function readState(){const d=doc();const controls=[...d.querySelectorAll('button,input,textarea,select,[role="button"]')].filter(visible);const state={url:frame.contentWindow.location.href,title:d.title,readyState:d.readyState,visibleControls:controls.length,buttons:[...d.querySelectorAll('button,[role="button"]')].filter(visible).slice(0,60).map(e=>({text:(e.innerText||e.getAttribute('aria-label')||e.title||'').trim().slice(0,100),id:e.id||null,disabled:!!e.disabled})),inputs:[...d.querySelectorAll('input,textarea,select')].filter(visible).slice(0,40).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||null,id:e.id||null,name:e.name||null,placeholder:e.placeholder||null,value:('value'in e)?String(e.value).slice(0,80):null}))};$('snapshot').textContent=JSON.stringify(state,null,2);status('Lectura completada · '+new Date().toLocaleTimeString());return state}
+  $('refreshState').addEventListener('click',()=>{try{readState()}catch(e){status(e.message,true)}});
+  $('reloadApp').addEventListener('click',()=>{frame.src='/';status('Recargando CodeLab…')});
+  $('clickElement').addEventListener('click',()=>{try{const el=target();el.click();status('Clic enviado a '+($('selector').value.trim()))}catch(e){status(e.message,true)}});
+  $('readElement').addEventListener('click',()=>{try{const el=target();const text=(el.innerText||el.textContent||el.value||el.getAttribute('aria-label')||'').trim();$('snapshot').textContent=JSON.stringify({tag:el.tagName.toLowerCase(),id:el.id||null,text:text.slice(0,5000),value:('value'in el)?el.value:undefined,visible:visible(el),disabled:!!el.disabled,attributes:{role:el.getAttribute('role'),title:el.title||null,ariaLabel:el.getAttribute('aria-label')}},null,2);status('Elemento leído.')}catch(e){status(e.message,true)}});
+  $('fillElement').addEventListener('click',()=>{try{const el=target();if(!('value'in el))throw new Error('El selector no apunta a un campo editable.');const setter=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),'value')?.set;if(setter)setter.call(el,$('fillValue').value);else el.value=$('fillValue').value;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));status('Campo actualizado.');}catch(e){status(e.message,true)}});
+  $('focusElement').addEventListener('click',()=>{try{target().focus();status('Elemento enfocado.')}catch(e){status(e.message,true)}});
+  $('selectElement').addEventListener('click',()=>{try{const el=target();if(el.tagName!=='SELECT')throw new Error('El elemento seleccionado no es un <select>.');el.value=$('selectValue').value;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));status('Opción seleccionada: '+el.value)}catch(e){status(e.message,true)}});
+  $('listControls').addEventListener('click',()=>{try{const d=doc();const rows=[...d.querySelectorAll('button,input,textarea,select,[role="button"]')].filter(visible).slice(0,100).map(e=>({tag:e.tagName.toLowerCase(),id:e.id||'',name:e.name||'',text:(e.innerText||e.getAttribute('aria-label')||e.placeholder||e.value||'').trim().replace(/\s+/g,' ').slice(0,90),disabled:!!e.disabled}));$('controlsList').textContent=JSON.stringify(rows,null,2);status('Listados '+rows.length+' controles visibles.')}catch(e){status(e.message,true)}});
+  frame.addEventListener('load',()=>{status('CodeLab cargó. Puedes leer el estado.');try{readState()}catch(e){status(e.message,true)}});
+})();
+</script>
+</body>
+</html>
