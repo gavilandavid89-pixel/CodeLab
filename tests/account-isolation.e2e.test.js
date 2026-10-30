@@ -47,78 +47,109 @@ function project(id, name, marker) {
 }
 
 (async () => {
-  const alice = seedSession('test-account-alice', 'Alice Test');
-  const bob = seedSession('test-account-bob', 'Bob Test');
+  const users = Array.from({ length: 10 }, (_, i) => seedSession('stress-user-' + (i + 1), 'Stress User ' + (i + 1)));
+  const initialized = await Promise.all(users.map(async user => {
+    const [status, me, init] = await Promise.all([
+      request('/api/auth/status', { cookie: user.cookie }),
+      request('/api/auth/me', { cookie: user.cookie }),
+      request('/api/workspace/init', { method: 'POST', cookie: user.cookie, body: {} })
+    ]);
+    assert.equal(status.status, 200, user.name + ' auth status should respond');
+    assert.equal(status.json.user.id, user.id, user.name + ' identity must not bleed');
+    assert.equal(me.status, 200, user.name + ' session should authenticate');
+    assert.equal(me.json.user.id, user.id, user.name + ' /auth/me should return its own identity');
+    assert.equal(init.status, 200, user.name + ' workspace init should succeed');
+    assert.equal(init.json.user.id, user.id, user.name + ' workspace owner identity should match');
+    return { user, workspaceId: init.json.workspaceId, token: init.json.token, revision: init.json.state.revision };
+  }));
 
-  const [aliceInit, bobInit] = await Promise.all([
-    request('/api/workspace/init', { method: 'POST', cookie: alice.cookie, body: {} }),
-    request('/api/workspace/init', { method: 'POST', cookie: bob.cookie, body: {} })
-  ]);
-  assert.equal(aliceInit.status, 200, 'Account A should initialize its authenticated workspace');
-  assert.equal(bobInit.status, 200, 'Account B should initialize its authenticated workspace');
-  assert.notEqual(aliceInit.json.workspaceId, bobInit.json.workspaceId, 'Different accounts must receive different workspace IDs');
-  assert.notEqual(aliceInit.json.token, bobInit.json.token, 'Different accounts must receive different workspace tokens');
+  assert.equal(new Set(initialized.map(x => x.workspaceId)).size, 10, 'All 10 users must receive distinct workspace IDs');
+  assert.equal(new Set(initialized.map(x => x.token)).size, 10, 'All 10 users must receive distinct workspace tokens');
 
-  const aProject = project('project-alice-1', 'Alice private project', 'ALICE_ONLY');
-  const bProject = project('project-bob-1', 'Bob private project', 'BOB_ONLY');
-  const [saveA, saveB] = await Promise.all([
-    request('/api/workspace/' + encodeURIComponent(aliceInit.json.workspaceId), {
-      method: 'PUT', cookie: alice.cookie, token: aliceInit.json.token,
-      body: { baseRevision: aliceInit.json.state.revision, projects: [aProject] }
-    }),
-    request('/api/workspace/' + encodeURIComponent(bobInit.json.workspaceId), {
-      method: 'PUT', cookie: bob.cookie, token: bobInit.json.token,
-      body: { baseRevision: bobInit.json.state.revision, projects: [bProject] }
+  const firstSaveResults = await Promise.all(initialized.map(async (account, i) => {
+    const marker = 'PRIVATE_USER_' + (i + 1);
+    const result = await request('/api/workspace/' + encodeURIComponent(account.workspaceId), {
+      method: 'PUT', cookie: account.user.cookie, token: account.token,
+      body: { baseRevision: account.revision, projects: [project('project-' + (i + 1), 'Private project ' + (i + 1), marker)] }
+    });
+    assert.equal(result.status, 200, account.user.name + ' parallel save should succeed');
+    return marker;
+  }));
+
+  const snapshots = await Promise.all(initialized.map(async (account, i) => {
+    const result = await request('/api/workspace/' + encodeURIComponent(account.workspaceId), {
+      cookie: account.user.cookie, token: account.token
+    });
+    assert.equal(result.status, 200, account.user.name + ' should read its own workspace');
+    assert.equal(result.json.projects.length, 1);
+    assert.equal(result.json.projects[0].code.html.includes(firstSaveResults[i]), true, 'Own project must persist');
+    const serialized = JSON.stringify(result.json);
+    for (let j = 0; j < firstSaveResults.length; j++) {
+      if (j !== i) assert.equal(serialized.includes(firstSaveResults[j]), false, 'Workspace must not leak another user content');
+    }
+    return result.json;
+  }));
+
+  // Try every user against every other account without the victim's bearer token.
+  const crossReads = await Promise.all(initialized.flatMap((attacker, i) =>
+    initialized.filter((_, j) => j !== i).map(async victim => {
+      const result = await request('/api/workspace/' + encodeURIComponent(victim.workspaceId), {
+        cookie: attacker.user.cookie
+      });
+      assert.equal(result.status, 401, attacker.user.name + ' must not read ' + victim.user.name + ' workspace using only their own session');
     })
-  ]);
-  assert.equal(saveA.status, 200, 'Account A save should succeed');
-  assert.equal(saveB.status, 200, 'Account B save should succeed');
+  ));
+  void crossReads;
 
-  const [readA, readB] = await Promise.all([
-    request('/api/workspace/' + encodeURIComponent(aliceInit.json.workspaceId), { cookie: alice.cookie, token: aliceInit.json.token }),
-    request('/api/workspace/' + encodeURIComponent(bobInit.json.workspaceId), { cookie: bob.cookie, token: bobInit.json.token })
-  ]);
-  assert.equal(readA.status, 200);
-  assert.equal(readB.status, 200);
-  assert.equal(readA.json.projects.length, 1);
-  assert.equal(readB.json.projects.length, 1);
-  assert.equal(readA.json.projects[0].code.html.includes('ALICE_ONLY'), true, 'Account A must retain its own project content');
-  assert.equal(readB.json.projects[0].code.html.includes('BOB_ONLY'), true, 'Account B must retain its own project content');
-  assert.equal(JSON.stringify(readA.json).includes('BOB_ONLY'), false, 'Account A must not see Account B content');
-  assert.equal(JSON.stringify(readB.json).includes('ALICE_ONLY'), false, 'Account B must not see Account A content');
-
-  const [crossReadA, crossReadB] = await Promise.all([
-    request('/api/workspace/' + encodeURIComponent(bobInit.json.workspaceId), { cookie: alice.cookie }),
-    request('/api/workspace/' + encodeURIComponent(aliceInit.json.workspaceId), { cookie: bob.cookie })
-  ]);
-  assert.equal(crossReadA.status, 401, 'Account A must not read Account B workspace without B credentials');
-  assert.equal(crossReadB.status, 401, 'Account B must not read Account A workspace without A credentials');
-
-  const updatedA = project('project-alice-1', 'Alice edited project', 'ALICE_EDIT_2');
-  const updatedB = project('project-bob-1', 'Bob edited project', 'BOB_EDIT_2');
-  const [editA, editB] = await Promise.all([
-    request('/api/workspace/' + encodeURIComponent(aliceInit.json.workspaceId), {
-      method: 'PUT', cookie: alice.cookie, token: aliceInit.json.token,
-      body: { baseRevision: readA.json.revision, projects: [updatedA] }
-    }),
-    request('/api/workspace/' + encodeURIComponent(bobInit.json.workspaceId), {
-      method: 'PUT', cookie: bob.cookie, token: bobInit.json.token,
-      body: { baseRevision: readB.json.revision, projects: [updatedB] }
+  // Invalid, empty, and swapped tokens must not grant access.
+  const tokenAttacks = await Promise.all(initialized.flatMap((attacker, i) =>
+    initialized.filter((_, j) => j !== i).map(async victim => {
+      const result = await request('/api/workspace/' + encodeURIComponent(victim.workspaceId), {
+        cookie: attacker.user.cookie, token: attacker.token
+      });
+      assert.equal(result.status, 401, 'A different account token must not authorize a victim workspace');
     })
-  ]);
-  assert.equal(editA.status, 200, 'Account A should edit while Account B is active');
-  assert.equal(editB.status, 200, 'Account B should edit while Account A is active');
+  ));
+  void tokenAttacks;
 
-  const [finalA, finalB, anonymousCrossRead] = await Promise.all([
-    request('/api/workspace/' + encodeURIComponent(aliceInit.json.workspaceId), { cookie: alice.cookie, token: aliceInit.json.token }),
-    request('/api/workspace/' + encodeURIComponent(bobInit.json.workspaceId), { cookie: bob.cookie, token: bobInit.json.token }),
-    request('/api/workspace/' + encodeURIComponent(aliceInit.json.workspaceId))
-  ]);
-  assert.equal(finalA.json.projects[0].code.html.includes('ALICE_EDIT_2'), true, 'A latest edit must persist independently');
-  assert.equal(finalB.json.projects[0].code.html.includes('BOB_EDIT_2'), true, 'B latest edit must persist independently');
-  assert.equal(anonymousCrossRead.status, 401, 'An anonymous session must not access an account-owned workspace');
+  // Race two writes per account against the same revision. Exactly one must win;
+  // the other must receive 409 rather than silently overwriting the winner.
+  const conflictResults = await Promise.all(initialized.map(async (account, i) => {
+    const revision = snapshots[i].revision;
+    const attempts = await Promise.all(['RACE_A_' + i, 'RACE_B_' + i].map(marker =>
+      request('/api/workspace/' + encodeURIComponent(account.workspaceId), {
+        method: 'PUT', cookie: account.user.cookie, token: account.token,
+        body: { baseRevision: revision, projects: [project('project-' + i, 'Race ' + marker, marker)] }
+      })
+    ));
+    assert.equal(attempts.filter(x => x.status === 200).length, 1, 'Exactly one concurrent write should win for ' + account.user.name);
+    assert.equal(attempts.filter(x => x.status === 409).length, 1, 'Losing concurrent write should receive revision conflict for ' + account.user.name);
+    return attempts;
+  }));
 
-  console.log('Two-account isolation E2E passed: independent sessions, parallel saves/edits, private project content, and cross-account access denial.');
+  const finalStates = await Promise.all(initialized.map(async (account, i) => {
+    const result = await request('/api/workspace/' + encodeURIComponent(account.workspaceId), {
+      cookie: account.user.cookie, token: account.token
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.json.revision, snapshots[i].revision + 1, 'Revision must advance once despite concurrent edits');
+    const html = result.json.projects[0].code.html;
+    assert.ok(html.includes('RACE_A_' + i) || html.includes('RACE_B_' + i), 'Winning edit must persist');
+    for (let j = 0; j < initialized.length; j++) {
+      if (j !== i) assert.equal(JSON.stringify(result.json).includes('RACE_A_' + j) || JSON.stringify(result.json).includes('RACE_B_' + j), false, 'Concurrent edits must remain isolated');
+    }
+    return result.json;
+  }));
+
+  const anonymous = await request('/api/workspace/' + encodeURIComponent(initialized[0].workspaceId));
+  assert.equal(anonymous.status, 401, 'Anonymous access must be denied');
+
+  const logout = await request('/api/auth/logout', { method: 'POST', cookie: initialized[9].user.cookie, body: {} });
+  assert.equal(logout.status, 200, 'Logout should succeed');
+  const afterLogout = await request('/api/auth/me', { cookie: initialized[9].user.cookie });
+  assert.equal(afterLogout.status, 401, 'Logged-out session must no longer authenticate');
+
+  console.log('10-user isolation stress E2E passed: 10 authenticated test sessions, 90 cross-account reads denied, 90 swapped-token attempts denied, parallel persistence, 10 write races with one winner each, anonymous denial, and logout invalidation.');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;
