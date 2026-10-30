@@ -1683,7 +1683,24 @@ async function waitForPersistedProject(page, projectName) {
       const source = projects.find(item => item.id === sourceProjectId);
       return source?.design?.flowConnections?.filter(c => c.sourceElementId === flowButtonId).length || 0;
     }, { sourceProjectId, flowButtonId }), 1, 'one drag must create exactly one outgoing connection');
+    // Verify the connection reaches durable server storage, not only the in-memory UI.
+    await page.waitForFunction(async ({ sourceProjectId, flowButtonId, targetProjectId }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !token) return false;
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId), { headers: { 'x-workspace-token': token } });
+        if (!response.ok) return false;
+        const data = await response.json();
+        const source = data.projects?.find(item => item.id === sourceProjectId);
+        return source?.design?.flowConnections?.some(c => c.sourceElementId === flowButtonId && c.targetProjectId === targetProjectId) === true;
+      } catch (_) { return false; }
+    }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 15000 });
     await page.locator('#designFlowClose').click();
+    // A full browser reload must restore the connection from persisted workspace data.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible', timeout: 15000 });
     await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
     const sourceCard = page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
