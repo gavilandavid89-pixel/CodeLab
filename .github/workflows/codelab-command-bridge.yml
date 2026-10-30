@@ -16,7 +16,7 @@ jobs:
   execute-command:
     if: github.event.issue.user.login == github.repository_owner && startsWith(github.event.issue.title, '[CodeLab Bridge]')
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: Checkout trusted bridge implementation
         uses: actions/checkout@v4
