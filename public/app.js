@@ -1638,6 +1638,11 @@ function maybeOfferLocalImport() {
       id: typeof project.id === 'string' && project.id ? project.id : 'proj_import_' + Date.now() + '_' + index,
       name: typeof project.name === 'string' && project.name.trim() ? project.name.trim().slice(0, 200) : 'Proyecto importado',
       type: project.type === 'design' ? 'design' : 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      design: project.design && typeof project.design === 'object' && !Array.isArray(project.design)
+        ? { ...project.design, elements: Array.isArray(project.design.elements) ? project.design.elements : [], frame: project.design.frame || 'desktop', background: project.design.background || '#ffffff' }
+        : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
       code: normalizeCode(project.code)
     })).filter(project => {
       if (seenIds.has(project.id)) return false;
