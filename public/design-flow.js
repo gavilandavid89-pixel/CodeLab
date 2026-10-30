@@ -1,7 +1,7 @@
 /* CodeLab visual flow graph: explicit option-to-page connections. */
 (function () {
   'use strict';
-  let modal, canvas, svg, pendingStart = null, draftPath = null, chooseMode = false, selectedSource = null;
+  let modal, canvas, svg, pendingStart = null, draftPath = null, chooseMode = false, selectedSource = null, activeTarget = null, gestureOrigin = null;
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function designProjects() { return projects.filter(p => p && p.type === 'design' && p.design && Array.isArray(p.design.elements)); }
   function findProject(id) { return designProjects().find(p => p.id === id); }
@@ -22,7 +22,7 @@
     modal.className = 'hidden fixed inset-0 z-[100] bg-slate-950/95 p-1 sm:p-2';
     modal.innerHTML = '<section class="flex h-full w-full flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">' +
       '<header class="flex flex-wrap items-center gap-3 border-b border-slate-700 px-4 py-3"><div class="min-w-0 flex-1"><h2 class="font-bold">Nodos y conexiones</h2><p class="text-xs text-slate-400">Activa Elegir, selecciona una capa existente y arrastra su conector gris hasta una página. Los menús no navegan.</p></div><button id="designFlowClose" class="rounded-lg bg-slate-800 px-3 py-2 text-sm" type="button">Cerrar</button></header>' +
-      '<div class="flex flex-wrap items-center gap-2 border-b border-slate-800 px-4 py-2 text-xs"><span class="rounded bg-violet-500/15 px-2 py-1 text-violet-200">Página = destino</span><span class="rounded bg-cyan-500/15 px-2 py-1 text-cyan-200">Opción = origen</span><span class="text-slate-400">Marca un botón como menú para quitarle el puerto de navegación.</span><button id="designFlowChoose" type="button" aria-pressed="false" class="rounded-lg border border-yellow-400/60 px-3 py-2 text-yellow-200">Elegir: desactivado</button><span class="text-slate-400">Amarillo = capa elegida · gris = conector listo · dos dedos para mover el lienzo</span><button id="designFlowRefresh" class="ml-auto rounded-lg border border-slate-700 px-3 py-2">Actualizar nodos</button></div>' +
+      '<div class="flex flex-wrap items-center gap-2 border-b border-slate-800 px-4 py-2 text-xs"><span class="rounded bg-violet-500/15 px-2 py-1 text-violet-200">Página = destino</span><span class="rounded bg-cyan-500/15 px-2 py-1 text-cyan-200">Opción = origen</span><span class="text-slate-400">Marca un botón como menú para quitarle el puerto de navegación.</span><button id="designFlowChoose" type="button" aria-pressed="false" class="rounded-lg border border-yellow-400/60 px-3 py-2 text-yellow-200">Elegir: desactivado</button><button id="designFlowOverviewToggle" type="button" aria-expanded="false" class="rounded-lg border border-cyan-700/70 px-3 py-2 text-cyan-200">Ver mapa de conexiones</button><span class="text-slate-400">Amarillo = origen · blanco = destino · dos dedos para mover el lienzo</span><button id="designFlowRefresh" class="ml-auto rounded-lg border border-slate-700 px-3 py-2">Actualizar nodos</button></div>' +
       '<div id="designFlowOverview" class="hidden max-h-[32vh] overflow-auto border-b border-slate-800 bg-slate-950/80 px-4 py-3" aria-live="polite"></div><div id="designFlowCanvas" class="relative flex-1 min-h-0 overflow-auto bg-[#12141d]" style="touch-action:pan-x pan-y;overscroll-behavior:contain"><svg id="designFlowWires" class="pointer-events-none absolute left-0 top-0 z-10 overflow-visible" style="width:100%;height:100%;min-width:100%;min-height:100%"></svg><div id="designFlowCards" class="relative z-20 grid w-max min-w-full grid-cols-[minmax(280px,1fr)] gap-5 p-4 sm:grid-cols-[repeat(2,minmax(320px,1fr))] xl:grid-cols-[repeat(3,minmax(340px,1fr))] 2xl:grid-cols-[repeat(4,minmax(340px,1fr))]"></div></div>' +
       '<footer class="border-t border-slate-800 px-4 py-2 text-xs text-slate-400">Las conexiones se guardan con el proyecto de origen. Usa nombres de capa descriptivos para mantener el grafo legible.</footer></section>';
     document.body.appendChild(modal);
@@ -49,7 +49,7 @@
   function openDesignFlowGraph() {
     ensureModal(); modal.classList.remove('hidden'); updateChooseButton(); renderGraph();
   }
-  function closeDesignFlowGraph() { if (modal) modal.classList.add('hidden'); pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null; }
+  function closeDesignFlowGraph() { if (modal) modal.classList.add('hidden'); pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); }
   function renderGraph() {
     if (!modal || modal.classList.contains('hidden')) return;
     const cards = modal.querySelector('#designFlowCards');
@@ -58,8 +58,8 @@
     cards.innerHTML = list.map(p => {
       if (!Array.isArray(p.design.flowConnections)) p.design.flowConnections = [];
       const actions = p.design.elements;
-      return '<article data-flow-page="' + esc(p.id) + '" class="w-[min(88vw,420px)] rounded-xl border border-slate-700 bg-slate-900 shadow-xl">' +
-        '<div data-flow-target-project="' + esc(p.id) + '" class="flex min-h-16 items-center gap-3 border-b border-slate-700 bg-violet-500/10 p-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-500/20 text-violet-200"><i class="fa-solid fa-window-maximize"></i></span><div class="min-w-0 flex-1"><div class="truncate font-semibold">' + esc(p.name) + '</div><div class="text-[10px] text-slate-400">Página · soltar aquí para conectar</div></div><span class="text-[10px] text-slate-500">' + actions.length + ' capas</span></div>' +
+      return '<article data-flow-page="' + esc(p.id) + '" data-flow-target-project="' + esc(p.id) + '" class="w-[min(88vw,420px)] rounded-xl border border-slate-700 bg-slate-900 shadow-xl transition-[border-color,box-shadow] duration-100">' +
+        '<div class="flex min-h-16 items-center gap-3 border-b border-slate-700 bg-violet-500/10 p-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-500/20 text-violet-200"><i class="fa-solid fa-window-maximize"></i></span><div class="min-w-0 flex-1"><div class="truncate font-semibold">' + esc(p.name) + '</div><div class="text-[10px] text-slate-400">Página · soltar aquí para conectar</div></div><span class="text-[10px] text-slate-500">' + actions.length + ' capas</span></div>' +
         '<div class="space-y-2 p-3">' + (actions.length ? actions.map(el => {
           const isMenu = el.flowRole === 'menu', isSelected = selectedSource && selectedSource.projectId === p.id && selectedSource.elementId === el.id;
           const outgoing = p.design.flowConnections.filter(c => c.sourceElementId === el.id);
@@ -91,14 +91,15 @@
       if (!chooseMode || !selectedSource || selectedSource.projectId !== port.dataset.flowProject || selectedSource.elementId !== port.dataset.flowSourcePort) { showToast('Activa Elegir y selecciona primero la capa.', 'warn'); return; }
       pendingStart = { projectId: port.dataset.flowProject, elementId: port.dataset.flowSourcePort };
       draftPath = document.createElementNS('http://www.w3.org/2000/svg','path');
-      draftPath.setAttribute('fill','none'); draftPath.setAttribute('stroke','#22d3ee'); draftPath.setAttribute('stroke-width','3'); draftPath.setAttribute('stroke-dasharray','7 5'); svg.appendChild(draftPath);
+      draftPath.setAttribute('fill','none'); draftPath.setAttribute('stroke','#9ca3af'); draftPath.setAttribute('stroke-width','3'); draftPath.setAttribute('stroke-linecap','round'); draftPath.setAttribute('stroke-dasharray','7 5'); draftPath.setAttribute('data-draft-wire','true'); svg.appendChild(draftPath);
+      gestureOrigin = { x: e.clientX, y: e.clientY }; activeTarget = null;
       moveDraft(e);
     }));
     cards.querySelectorAll('[data-flow-target-project]').forEach(target => target.addEventListener('pointerup', e => {
       if (!pendingStart) return;
       e.preventDefault();
       const sourceProject = findProject(pendingStart.projectId), source = sourceProject && sourceProject.design.elements.find(el => el.id === pendingStart.elementId);
-      const targetId = target.dataset.flowTargetProject;
+      const targetId = (activeTarget || target).dataset.flowTargetProject;
       if (!sourceProject || !source || sourceProject.id === targetId) { showToast('Conecta una opción con otra página distinta.', 'warn'); return; }
       if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra página.', 'warn'); pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null; return; }
       sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(c => c.sourceElementId !== source.id);
@@ -147,7 +148,7 @@
       const tr=target.getBoundingClientRect(), end={x:tr.left-cr.left+canvas.scrollLeft+tr.width/2,y:tr.top-cr.top+canvas.scrollTop+tr.height/2};
       const mid=(start.x+end.x)/2, path=document.createElementNS('http://www.w3.org/2000/svg','path');
       path.setAttribute('d','M '+start.x+' '+start.y+' C '+mid+' '+start.y+', '+mid+' '+end.y+', '+end.x+' '+end.y);
-      path.setAttribute('fill','none'); path.setAttribute('stroke','#8b5cf6'); path.setAttribute('stroke-width','3'); path.setAttribute('data-connection','true'); svg.appendChild(path);
+      path.setAttribute('fill','none'); path.setAttribute('stroke','#9ca3af'); path.setAttribute('stroke-width','3'); path.setAttribute('stroke-linecap','round'); path.setAttribute('data-connection','true'); svg.appendChild(path);
     }
   }
   function moveDraft(e) {
@@ -156,15 +157,24 @@
     if (!port) return;
     const a=port.getBoundingClientRect(), c=canvas.getBoundingClientRect();
     const x1=a.left-c.left+canvas.scrollLeft+a.width/2, y1=a.top-c.top+canvas.scrollTop+a.height/2;
-    const x2=e.clientX-c.left+canvas.scrollLeft, y2=e.clientY-c.top+canvas.scrollTop, mid=(x1+x2)/2;
+    const sx=gestureOrigin?gestureOrigin.x:e.clientX, sy=gestureOrigin?gestureOrigin.y:e.clientY;
+    let dx=e.clientX-sx, dy=e.clientY-sy, length=Math.hypot(dx,dy);
+    if(length<1){dx=1;dy=0;length=1;}
+    dx/=length;dy/=length;
+    const rayLength=Math.max(260,Math.min(640,Math.max(canvas.clientWidth,canvas.clientHeight)*0.55));
+    const ex=sx+dx*rayLength, ey=sy+dy*rayLength;
+    const c=canvas.getBoundingClientRect(), x2=ex-c.left+canvas.scrollLeft, y2=ey-c.top+canvas.scrollTop, mid=(x1+x2)/2;
     draftPath.setAttribute('d','M '+x1+' '+y1+' C '+mid+' '+y1+', '+mid+' '+y2+', '+x2+' '+y2);
+    const targets=Array.from(modal.querySelectorAll('[data-flow-target-project]')); let hit=null, hitDistance=Infinity;
+    for(const card of targets){const r=card.getBoundingClientRect(); const vx=dx,vy=dy, rx=r.left-sx,ry=r.top-sy; const tx1=rx/vx, tx2=(r.right-sx)/vx, ty1=ry/vy, ty2=(r.bottom-sy)/vy; const near=Math.max(Math.min(tx1,tx2),Math.min(ty1,ty2)), far=Math.min(Math.max(tx1,tx2),Math.max(ty1,ty2)); const t=near>=0?near:far>=0?far:-1; if(t>=0&&t<hitDistance&&t<=rayLength&&sx+vx*t>=r.left&&sx+vx*t<=r.right&&sy+vy*t>=r.top&&sy+vy*t<=r.bottom){hit=card;hitDistance=t;}}
+    if(hit!==activeTarget){if(activeTarget)activeTarget.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');activeTarget=hit;if(activeTarget)activeTarget.classList.add('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');}
   }
   function finishDraft(e) {
     if (!pendingStart) return;
-    const target = e.target && e.target.closest ? e.target.closest('[data-flow-target-project]') : null;
+    const target = activeTarget || (e.target && e.target.closest ? e.target.closest('[data-flow-target-project]') : null);
     if (target) {
       // The target pointerup handler performs the save; leave cleanup to the next frame.
-      setTimeout(() => { pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null; drawWires(); }, 0);
+      setTimeout(() => { pendingStart = null; gestureOrigin = null; activeTarget = null; if (draftPath) draftPath.remove(); draftPath = null; modal.querySelectorAll('[data-flow-target-project]').forEach(t=>t.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]')); drawWires(); }, 0);
     } else {
       pendingStart = null; if (draftPath) draftPath.remove(); draftPath = null;
     }
