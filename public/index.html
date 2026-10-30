@@ -94,6 +94,36 @@
       #mobileBottomBar { display: none !important; }
     }
     #aiDrawer { padding-bottom: env(safe-area-inset-bottom); }
+
+    /* Reflow the whole application after orientation changes and browser zoom.
+       Do not scale the page globally: preserve native zoom and accessibility. */
+    html, body { width: 100%; min-width: 0; min-height: 100%; }
+    body { min-height: 100vh; min-height: 100dvh; }
+    #welcomeDashboard, #studioView { min-width: 0; max-width: 100%; }
+    #studioView { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+    #studioView > header, #studioView > main,
+    #studioView #mainSplit, #studioView #editorPanel,
+    #studioView #previewPanel, #studioView #designStudioPanel {
+      min-width: 0; min-height: 0;
+    }
+    #studioView #mainSplit { flex: 1 1 auto; }
+    #designStudioPanel { max-width: 100%; }
+    #designCanvasScroll { min-width: 0; overscroll-behavior: contain; }
+    @media (max-width: 767px) {
+      #welcomeDashboard > header { flex-wrap: wrap; }
+      #welcomeDashboard main { min-width: 0; width: 100%; }
+      #projectsGrid { grid-template-columns: minmax(0, 1fr) !important; }
+      #studioView > header { flex-wrap: wrap !important; align-items: flex-start !important; }
+      #studioView > header > div:first-child { width: 100%; gap: 6px !important; }
+      #studioView #statusBadge { flex: 0 1 auto; }
+      #studioView #mainSplit { min-height: 0; }
+      #designStudioPanel { overflow: auto; }
+      #mobileBottomBar { bottom: max(0px, env(safe-area-inset-bottom)) !important; }
+    }
+    @media (orientation: landscape) and (max-width: 900px) {
+      #studioView > header { padding-top: 4px !important; padding-bottom: 4px !important; }
+      #studioView #currentProjectTitle { max-width: 24vw; }
+    }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-full flex flex-col font-sans overflow-hidden">
