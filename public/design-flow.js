@@ -177,7 +177,7 @@
     dx/=length;dy/=length;
     const rayLength=Math.max(260,Math.min(640,Math.max(canvas.clientWidth,canvas.clientHeight)*0.55));
     const ex=sx+dx*rayLength, ey=sy+dy*rayLength;
-    const c=canvas.getBoundingClientRect(), x2=ex-c.left+canvas.scrollLeft, y2=ey-c.top+canvas.scrollTop, mid=(x1+x2)/2;
+    const canvasRect=canvas.getBoundingClientRect(), x2=ex-canvasRect.left+canvas.scrollLeft, y2=ey-canvasRect.top+canvas.scrollTop, mid=(x1+x2)/2;
     const d='M '+x1+' '+y1+' C '+mid+' '+y1+', '+mid+' '+y2+', '+x2+' '+y2; draftPath.setAttribute('d',d); const draftHalo=svg.querySelector('[data-draft-halo]'); if(draftHalo) draftHalo.setAttribute('d',d);
     const targets=Array.from(modal.querySelectorAll('[data-flow-target-project]')); let hit=null, hitDistance=Infinity;
     for(const card of targets){if(card.dataset.flowTargetProject===pendingStart.projectId)continue;const t=rayRectDistance(sx,sy,dx,dy,card.getBoundingClientRect(),rayLength);if(t!==null&&t<hitDistance){hit=card;hitDistance=t;}}
