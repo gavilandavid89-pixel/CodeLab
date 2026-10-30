@@ -757,6 +757,7 @@ async function waitForPersistedProject(page, projectName) {
           }
         };
         reader.readAsArrayBuffer(blob);
+        window.__nativeDesignAnchorClick.call(this);
       };
     });
     await page.selectOption('#designCaptureScale', '4');
