@@ -1605,7 +1605,7 @@ async function waitForPersistedProject(page, projectName) {
     // End-to-end node graph: a specific option routes to another design page,
     // and conversion emits both connected pages as a working single-page web app.
     const sourceProjectId = await page.evaluate(() => getCurrentProject().id);
-    await page.locator('button[onclick="addDesignElement(\\'button\\')"]').click();
+    await page.locator(`button[onclick="addDesignElement('button')"]`).click();
     const flowButtonId = await page.evaluate(() => getCurrentProject().design.elements.find(el => el.type === 'button').id);
     await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
     await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
@@ -1616,7 +1616,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#newProjectModal button').filter({ hasText: 'Crear Proyecto' }).click();
     await page.locator('#designStudioPanel').waitFor({ state: 'visible', timeout: 15000 });
     const targetProjectId = await page.evaluate(() => getCurrentProject().id);
-    await page.locator('button[onclick="addDesignElement(\\'heading\\')"]').click();
+    await page.locator(`button[onclick="addDesignElement('heading')"]`).click();
     await page.locator('#openDesignFlowGraph').click();
     await page.locator('#designFlowGraphModal').waitFor({ state: 'visible' });
     const flowSource = page.locator('[data-flow-source-port="' + flowButtonId + '"]');
