@@ -2,7 +2,7 @@ name: CodeLab GitHub command bridge
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
 
 permissions:
   contents: read
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   execute-command:
-    if: contains(github.event.issue.labels.*.name, 'agent-bridge:command') && startsWith(github.event.issue.title, '[CodeLab Bridge]')
+    if: github.event.issue.user.login == github.repository_owner && startsWith(github.event.issue.title, '[CodeLab Bridge]')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -32,7 +32,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Execute allowlisted browser command
         env:
-          ISSUE_BODY: ${{ toJSON(github.event.issue.body) }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
