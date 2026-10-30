@@ -32,6 +32,9 @@ try {
   const snapshotText = await page.locator('#snapshot').innerText();
   const snapshot = JSON.parse(snapshotText);
   if (!/CodeLab/i.test(snapshot.title || '')) throw new Error('Bridge did not inspect the CodeLab iframe');
+  if (!Number.isInteger(snapshot.visibleControls) || snapshot.visibleControls < 1) {
+    throw new Error('Bridge reported no visible controls despite the loaded CodeLab UI');
+  }
 
   // Use the native browser for a real user interaction, then let the bridge operate another control.
   await app.locator('#openDesignTools').click();
