@@ -1044,6 +1044,8 @@ async function waitForPersistedProject(page, projectName) {
     });
     assert.equal(conversionGuardCheck.oversizedBlocked, true, 'oversized generated HTML must be rejected without changing the project');
     assert.equal(conversionGuardCheck.sizeWarning, true, 'the size rejection must explain the HTML limit');
+    const reopenOptions = page.locator('#designOptionsReopen');
+    if (await reopenOptions.isVisible()) await reopenOptions.click();
     await page.locator('button[onclick="convertDesignToWeb()"]').click();
     await page.waitForFunction(() => {
       const design = document.getElementById('designStudioPanel');
