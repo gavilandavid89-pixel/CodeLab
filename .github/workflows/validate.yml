@@ -75,9 +75,26 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
           node tests/design-workflow.e2e.test.js
-          node tests/offline-sync.e2e.test.js
           node tests/interface-responsive.e2e.test.js
           node tests/web-editor-ui.e2e.test.js
+      - name: Test offline save and reconnect recovery
+        shell: bash
+        run: |
+          export PORT=3189
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3189"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-offline-e2e-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-offline-e2e-secret"
+          node server.js > "$RUNNER_TEMP/codelab-offline-e2e.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab offline E2E server log ====="; cat "$RUNNER_TEMP/codelab-offline-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/offline-sync.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
