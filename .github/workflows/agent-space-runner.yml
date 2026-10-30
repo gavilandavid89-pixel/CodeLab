@@ -1,0 +1,71 @@
+name: Agent Space Browser Runner
+
+on:
+  push:
+    branches:
+      - main
+      - feat/agent-space-browser-runner
+  pull_request:
+    paths:
+      - 'agent-space/**'
+      - 'public/agent-space/**'
+      - 'server.js'
+      - '.github/workflows/agent-space-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install browser runner
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Start isolated CodeLab instance
+        env:
+          PORT: 3188
+          CODELAB_DATA_DIR: ${{ runner.temp }}/codelab-agent-space-data
+          CODELAB_WORKSPACE_SECRET: agent-space-ci-only-secret-not-for-production
+        run: |
+          mkdir -p "$CODELAB_DATA_DIR"
+          node server.js > "$RUNNER_TEMP/codelab-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/codelab-server.pid"
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3188/agent-space/ > /dev/null; then
+              echo "CodeLab Agent Space is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/codelab-server.log"
+          exit 1
+
+      - name: Interact with CodeLab through Agent Space
+        env:
+          CODELAB_E2E_BASE_URL: http://127.0.0.1:3188
+          AGENT_SPACE_ARTIFACT_DIR: artifacts
+        run: node agent-space/runner/smoke.mjs
+
+      - name: Upload screenshots and interaction report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-space-browser-evidence
+          path: |
+            artifacts/
+            ${{ runner.temp }}/codelab-server.log
+          if-no-files-found: warn
+          retention-days: 7
