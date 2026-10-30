@@ -70,6 +70,7 @@ async function createProject(page, type, name) {
     await page.locator('#designToolsTab-audit').click();
     await page.locator('#runAccessibilityAudit').click();
     assert.ok((await page.locator('#designToolsStatus').innerText()).length > 0, 'audit should explain why it cannot audit without a web project');
+    await page.locator('#designToolsTab-tokens').click();
     await page.locator('#applyDesignTokens').click();
     assert.ok((await page.locator('#designToolsStatus').innerText()).length > 0, 'tokens should explain when no web editor is active');
     await page.locator('#closeDesignTools').click();
