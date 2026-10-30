@@ -1,0 +1,40 @@
+name: CodeLab GitHub command bridge
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: codelab-bridge-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-command:
+    if: contains(github.event.issue.labels.*.name, 'agent-bridge:command') && startsWith(github.event.issue.title, '[CodeLab Bridge]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout trusted bridge implementation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Execute allowlisted browser command
+        env:
+          ISSUE_BODY: ${{ toJSON(github.event.issue.body) }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET_URL: https://codelab-pbw9.onrender.com/
+        run: node .github/scripts/codelab-bridge.mjs
