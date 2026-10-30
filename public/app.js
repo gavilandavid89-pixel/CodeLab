@@ -578,7 +578,11 @@ async function loadProjectsFromStorage() {
       id: typeof p.id === 'string' ? p.id : 'proj_' + Date.now(),
       name: typeof p.name === 'string' && p.name.trim() ? p.name : 'Sin título',
       type: p.type === 'design' ? 'design' : 'web',
-      design: p.design && typeof p.design === 'object' ? { ...p.design, elements: Array.isArray(p.design.elements) ? p.design.elements : [], frame: p.design.frame || 'desktop', background: p.design.background || '#ffffff' } : (p.type === 'design' ? { elements: [], frame: 'desktop', background: '#ffffff' } : undefined),
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      design: p.design && typeof p.design === 'object' && !Array.isArray(p.design)
+        ? { ...p.design, elements: Array.isArray(p.design.elements) ? p.design.elements : [], frame: p.design.frame || 'desktop', background: p.design.background || '#ffffff' }
+        : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
       updatedAt: p.updatedAt || new Date().toISOString(),
       code: normalizeCode(p.code),
       branch: p.branch && typeof p.branch === 'object'
@@ -597,6 +601,10 @@ async function loadProjectsFromStorage() {
     projects.push({
       id: generatedDefaultProjectId,
       name: 'Mi Primer Proyecto',
+      type: 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
+      design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
       updatedAt: new Date().toISOString(),
       code: normalizeCode(defaultTemplate)
     });
@@ -859,6 +867,12 @@ function conflictKeepLocal() {
         id: 'srv_bak_' + sourceId.slice(0, 45) + '_' + Date.now().toString(36),
         serverBackupOf: sourceId,
         name: (String(sp.name || 'Proyecto').slice(0, 200 - backupSuffix.length) || 'Proyecto') + backupSuffix,
+        type: sp.type === 'design' ? 'design' : 'web',
+        hasWebSpace: true,
+        hasDesignSpace: true,
+        design: sp.design && typeof sp.design === 'object' && !Array.isArray(sp.design)
+          ? deepClone(sp.design)
+          : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false },
         updatedAt: sp.updatedAt || new Date().toISOString(),
         code: cloneCode(sp.code),
         branch: sp.branch ? deepClone(sp.branch) : undefined,
@@ -1113,9 +1127,13 @@ async function duplicateProjectFromDashboard(id, e) {
       id: 'proj_' + crypto.randomUUID(),
       name: String(orig.name || 'Proyecto').slice(0, 200 - ' (Copia)'.length) + ' (Copia)',
       type: orig.type === 'design' ? 'design' : 'web',
+      hasWebSpace: true,
+      hasDesignSpace: true,
       updatedAt: new Date().toISOString(),
       code: JSON.parse(JSON.stringify(normalizeCode(orig.code))),
-      ...(orig.design ? { design: JSON.parse(JSON.stringify(orig.design)) } : {})
+      design: orig.design && typeof orig.design === 'object' && !Array.isArray(orig.design)
+        ? JSON.parse(JSON.stringify(orig.design))
+        : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false }
     };
   } catch (_) {
     duplicatingProjectIds.delete(id);
@@ -4521,6 +4539,8 @@ async function importDesignProjectJson(file) {
     id: 'proj_' + crypto.randomUUID(),
     name: (sourceName.slice(0, 200 - ' (Importado)'.length) + ' (Importado)'),
     type: 'design',
+    hasWebSpace: true,
+    hasDesignSpace: true,
     updatedAt: new Date().toISOString(),
     code,
     design: {
