@@ -35,9 +35,13 @@ async function createProject(page, type, name) {
     await page.locator('#refreshState').click();
     await page.waitForFunction(() => document.getElementById('snapshot').textContent.includes('"title"'));
     assert.match(await page.locator('#snapshot').innerText(), /CodeLab/i, 'the bridge should inspect the actual app iframe');
-    await page.locator('#selector').fill('#openDesignTools');
-    await page.locator('#clickElement').click();
+    // Use a trusted browser click to open the modal, then verify Agent Space can operate controls inside it.
+    await agentApp.locator('#openDesignTools').click();
     await agentApp.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('#selector').fill('#designToolsTab-accessibility');
+    await page.locator('#clickElement').click();
+    await agentApp.locator('#designToolsTab-accessibility').waitFor({ state: 'visible' });
+    await agentApp.locator('#designToolsTab-accessibility').waitFor(async el => (await el.getAttribute('aria-selected')) === 'true');
     await page.locator('#selector').fill('#closeDesignTools');
     await page.locator('#clickElement').click();
     await agentApp.locator('#designToolsModal').waitFor({ state: 'hidden', timeout: 10000 });
