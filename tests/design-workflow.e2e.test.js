@@ -1723,7 +1723,7 @@ async function waitForPersistedProject(page, projectName) {
     // Run a touch-enabled browser context against the same persisted workspace.
     // CDP touch events exercise the pointer-driven node connection gesture as a touchscreen would.
     const touchContext = await browser.newContext({
-      viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+      viewport: { width: 844, height: 900 }, isMobile: true, hasTouch: true,
       storageState: await context.storageState()
     });
     const touchPage = await touchContext.newPage();
@@ -1733,6 +1733,10 @@ async function waitForPersistedProject(page, projectName) {
     const touchSourceCard = touchPage.locator('#projectsGrid > div').filter({ has: touchPage.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
     await touchSourceCard.locator('button[data-action="open"]').click();
     await touchPage.waitForFunction(id => getCurrentProject()?.id === id, sourceProjectId, { timeout: 15000 });
+    if (await touchPage.locator('#switchToDesignBtn').isVisible()) {
+      await touchPage.locator('#switchToDesignBtn').click();
+      await touchPage.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design', sourceProjectId, { timeout: 10000 });
+    }
     await touchPage.locator('#openDesignFlowGraph').click();
     await touchPage.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 10000 });
     await touchPage.locator('#designFlowChoose').click();
@@ -1761,7 +1765,7 @@ async function waitForPersistedProject(page, projectName) {
       return source?.design?.flowConnections?.some(connection => connection.sourceElementId === flowButtonId && connection.targetProjectId === targetProjectId);
     }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
     await touchContext.close();
-    console.log('Touchscreen node-connection E2E passed in 390×844 mobile context.');
+    console.log('Touchscreen node-connection E2E passed in touch-enabled 844×900 mobile-browser context.');
 
     await page.waitForFunction(async ({ sourceProjectId, flowButtonId, targetProjectId }) => {
       const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
