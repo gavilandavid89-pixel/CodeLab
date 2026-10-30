@@ -105,7 +105,7 @@ async function createProject(page, type, name) {
     const layer = page.locator('#designCanvas [data-design-id]').last();
     await layer.waitFor({ state: 'visible' });
     await layer.click();
-    await page.locator('#designProperties').waitFor({ state: 'visible' });
+    await page.locator('#designInspectorProperties').waitFor({ state: 'visible' });
     const beforeDup = await page.evaluate(() => getCurrentProject().design.elements.length);
     await page.locator('button[onclick="duplicateDesignElement()"]').click();
     await page.waitForFunction(n => getCurrentProject().design.elements.length === n + 1, beforeDup);

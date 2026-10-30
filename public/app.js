@@ -3069,6 +3069,7 @@ let designRedoStack = [];
 let designDragState = null;
 let designEventsBound = false;
 let designZoom = 1;
+let designCanvasLocked = false;
 const MAX_DESIGN_ELEMENTS = 500;
 
 function activeDesignProject() {
@@ -3130,18 +3131,47 @@ function initializeDesignProject(project) {
   updateDesignHistoryButtons();
 }
 
-// Touch-friendly canvas navigation: pinch zoom and one-finger pan on empty canvas.
-function toggleDesignPanel(panel) {
+// Overlay controls let the canvas use the full workspace underneath.
+function toggleDesignOptions(show) {
   const root = document.getElementById('designStudioPanel');
-  const button = document.getElementById(panel === 'inspector' ? 'toggleDesignInspector' : 'toggleDesignProperties');
-  if (!root || !button || !['inspector', 'properties'].includes(panel)) return;
-  const className = panel === 'inspector' ? 'design-inspector-hidden' : 'design-properties-hidden';
-  const isHidden = root.classList.toggle(className);
+  if (!root) return;
+  root.classList.toggle('design-options-hidden', !show);
+  const reopen = document.getElementById('designOptionsReopen');
+  if (reopen) reopen.setAttribute('aria-expanded', String(!!show));
+}
+function toggleDesignCanvasLock() {
+  designCanvasLocked = !designCanvasLocked;
+  const button = document.getElementById('designCanvasLockBtn');
+  const viewport = document.getElementById('designCanvasScroll');
+  if (viewport) {
+    viewport.style.touchAction = designCanvasLocked ? 'none' : 'pan-x pan-y';
+    viewport.style.overflow = designCanvasLocked ? 'hidden' : 'auto';
+  }
+  const zoomSlider = document.getElementById('designZoom');
+  const fitButton = document.getElementById('designFitBtn');
+  if (zoomSlider) zoomSlider.disabled = designCanvasLocked;
+  if (fitButton) fitButton.disabled = designCanvasLocked;
+  if (button) {
+    button.setAttribute('aria-pressed', String(designCanvasLocked));
+    button.textContent = designCanvasLocked ? '🔒 Lienzo bloqueado' : '🔓 Bloquear lienzo';
+    button.title = designCanvasLocked
+      ? 'Zoom y posición bloqueados; vuelve a pulsar para navegar'
+      : 'Bloquear zoom y posición del lienzo';
+    button.classList.toggle('bg-violet-700', designCanvasLocked);
+  }
+}
+
+// Touch-friendly canvas navigation: pinch zoom and one-finger pan on empty canvas.
+function toggleDesignPanel(panel = 'inspector') {
+  const root = document.getElementById('designStudioPanel');
+  const button = document.getElementById('toggleDesignInspector');
+  if (!root || !button || panel !== 'inspector') return;
+  const isHidden = root.classList.toggle('design-inspector-hidden');
   button.setAttribute('aria-expanded', String(!isHidden));
   button.classList.toggle('bg-violet-700', !isHidden);
-  button.title = (isHidden ? 'Mostrar ' : 'Ocultar ') + (panel === 'inspector' ? 'Inspector' : 'propiedades');
+  button.title = (isHidden ? 'Mostrar ' : 'Ocultar ') + 'Inspector';
   const viewport = document.getElementById('designCanvasScroll');
-  if (viewport) viewport.style.flex = root.classList.contains('design-inspector-hidden') && root.classList.contains('design-properties-hidden') ? '1 1 100%' : '1 1 auto';
+  if (viewport) viewport.style.flex = isHidden ? '1 1 100%' : '1 1 auto';
 }
 
 function setupDesignCanvasGestures() {
@@ -3151,7 +3181,7 @@ function setupDesignCanvasGestures() {
   const pointers = new Map(); let pinchStart = null; let panStart = null;
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   viewport.addEventListener('pointerdown', event => {
-    if (event.pointerType !== 'touch') return;
+    if (event.pointerType !== 'touch' || designCanvasLocked) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
       const pts = Array.from(pointers.values());
@@ -3162,7 +3192,7 @@ function setupDesignCanvasGestures() {
     }
   }, { passive: false });
   viewport.addEventListener('pointermove', event => {
-    if (!pointers.has(event.pointerId)) return;
+    if (designCanvasLocked || !pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size >= 2 && pinchStart) {
       const pts = Array.from(pointers.values()).slice(0, 2);
@@ -3178,6 +3208,7 @@ function setupDesignCanvasGestures() {
 }
 
 function setDesignZoom(value) {
+  if (designCanvasLocked) return;
   const next = Math.max(0.1, Math.min(1.5, Number(value) / 100 || 1));
   designZoom = next;
   const canvas = document.getElementById('designCanvas');
@@ -3372,7 +3403,7 @@ async function captureDesignForAI() {
   if (!project || !project.design) { showToast('Abre un proyecto de diseño primero.', 'warn'); return; }
   const captured = captureDesignSvg(project);
   const scaleControl = document.getElementById('designCaptureScale');
-  const scale = [1, 2, 3].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
+  const scale = [1, 2, 3, 4].includes(Number(scaleControl && scaleControl.value)) ? Number(scaleControl.value) : 2;
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const designLayout = getDesignLayoutPositions(project.design);
@@ -3411,7 +3442,17 @@ async function captureDesignForAI() {
     image: slug + '-captura-ia.png',
     canvas: { width: captured.width, height: captured.height, pixelWidth: captured.width * scale, pixelHeight: captured.height * scale, scale, background: project.design.background || '#ffffff' },
     elementCount: elements.length,
-    elements,
+    layout: {
+      mode: project.design.layoutMode === 'auto' ? 'auto' : 'free',
+      direction: ['row', 'column'].includes(project.design.layoutDirection) ? project.design.layoutDirection : 'column',
+      gap: Math.max(0, Math.min(200, Number(project.design.layoutGap) || 0)),
+      padding: Math.max(0, Math.min(300, Number(project.design.layoutPadding) || 0))
+    },
+    elements: elements.map((item, index) => {
+      const source = project.design.elements.filter(el => !!el && typeof el === 'object')[index];
+      if (source && source.type === 'image') item.image = { alt: String(source.alt || '').slice(0, 500) };
+      return item;
+    }),
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
   const json = JSON.stringify(context, null, 2);
@@ -3690,7 +3731,7 @@ function renderDesignWorkspace() {
   const p = activeDesignProject(); if (!p) return;
   const canvas = document.getElementById('designCanvas');
   const layers = document.getElementById('designLayers');
-  const props = document.getElementById('designProperties');
+  const props = document.getElementById('designInspectorProperties');
   const empty = document.getElementById('designCanvasEmpty');
   if (!canvas || !layers || !props) return;
   const validIds = new Set(p.design.elements.map(el => el.id));
@@ -3854,7 +3895,8 @@ function renderDesignWorkspace() {
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
     (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
-    '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>';
+    '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>' +
+    '<div class="grid grid-cols-2 gap-2 mt-2"><button type="button" onclick="duplicateDesignElement()" class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800"><i class="fa-regular fa-copy mr-1"></i>Duplicar</button><button type="button" onclick="deleteDesignElement()" class="px-2 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-[11px] text-rose-200 hover:bg-rose-900"><i class="fa-regular fa-trash-can mr-1"></i>Eliminar</button></div>';
   updateDesignHistoryButtons();
 }
 function updateDesignProperty(key, value) {

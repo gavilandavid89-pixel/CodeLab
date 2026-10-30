@@ -480,7 +480,7 @@ async function waitForPersistedProject(page, projectName) {
     } catch (error) {
       throw new Error('Design element did not render after addDesignElement. Browser errors: ' + failures.join(' | ') + '. ' + error.message);
     }
-    const textField = page.locator('#designProperties input[type="text"]').first();
+    const textField = page.locator('#designInspectorProperties input[type="text"]').first();
     await textField.fill('Prueba integral CodeLab');
     await page.waitForFunction(() => {
       const node = document.querySelector('#designCanvas [data-design-id]');
@@ -722,34 +722,68 @@ async function waitForPersistedProject(page, projectName) {
       'mobile app shell should not introduce document-level horizontal overflow: ' + JSON.stringify(mobileLayout));
 
     // 6b. Exercise the actual AI capture flow and inspect both generated artifacts.
-    const captureDownloads = [];
-    const captureDownloadsReady = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        page.off('download', onCaptureDownload);
-        reject(new Error('AI capture did not produce both context and image artifacts'));
-      }, 15000);
-      function onCaptureDownload(download) {
-        captureDownloads.push(download);
-        if (captureDownloads.length >= 2) {
-          clearTimeout(timeout);
-          page.off('download', onCaptureDownload);
-          resolve();
-        }
-      }
-      page.on('download', onCaptureDownload);
+    // Capture the download payloads at the app boundary: Chromium headless blocks
+    // multiple automatic downloads, which is unrelated to whether both artifacts were generated.
+    await page.evaluate(() => {
+      window.__designCaptureArtifacts = [];
+      window.__designCaptureBlobs = new Map();
+      window.__nativeDesignCreateObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+      window.__nativeDesignCreateObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        const url = window.__nativeDesignCreateObjectURL(blob);
+        window.__designCaptureBlobs.set(url, blob);
+        return url;
+      };
+      window.__designCaptureClickHandler = event => {
+        const link = event.target && event.target.closest ? event.target.closest('a[download]') : null;
+        if (!link) return;
+        const blob = window.__designCaptureBlobs.get(link.href);
+        if (!blob) return;
+        event.preventDefault();
+        const artifact = { name: link.download, type: blob.type, size: blob.size };
+        window.__designCaptureArtifacts.push(artifact);
+        const reader = new FileReader();
+        reader.onload = () => {
+          const buffer = reader.result;
+          if (/\.json$/.test(link.download) || /\.svg$/.test(link.download)) {
+            artifact.text = new TextDecoder().decode(buffer);
+          } else if (/\.png$/.test(link.download)) {
+            const bytes = new Uint8Array(buffer);
+            const view = new DataView(buffer);
+            artifact.signature = Array.from(bytes.slice(0, 8));
+            artifact.width = view.getUint32(16);
+            artifact.height = view.getUint32(20);
+          }
+        };
+        reader.readAsArrayBuffer(blob);
+      };
+      document.addEventListener('click', window.__designCaptureClickHandler, true);
     });
     await page.selectOption('#designCaptureScale', '4');
     await page.locator('button[onclick="captureDesignForAI()"]').click();
-    await captureDownloadsReady;
-    const captureFiles = await Promise.all(captureDownloads.map(async download => ({
-      name: download.suggestedFilename(),
-      path: await download.path()
-    })));
+    try {
+      await page.waitForFunction(() => {
+        const artifacts = window.__designCaptureArtifacts || [];
+        return artifacts.length >= 2 && artifacts.every(item =>
+          item.name.endsWith('-contexto-ia.json') ? !!item.text :
+          item.name.endsWith('-captura-ia.png') ? !!item.signature :
+          item.name.endsWith('-captura-ia.svg') ? !!item.text : false
+        );
+      }, null, { timeout: 20000 });
+    } catch (error) {
+      const debug = await page.evaluate(() => ({
+        artifacts: window.__designCaptureArtifacts,
+        project: typeof activeDesignProject === 'function' ? !!activeDesignProject()?.design : null,
+        toast: document.querySelector('[role="status"]')?.textContent || ''
+      }));
+      throw new Error('AI capture artifacts not ready: ' + JSON.stringify(debug) + '; ' + error.message);
+    }
+    const captureFiles = await page.evaluate(() => window.__designCaptureArtifacts);
     const contextFile = captureFiles.find(file => /-contexto-ia\.json$/.test(file.name));
     const imageFile = captureFiles.find(file => /-captura-ia\.(png|svg)$/.test(file.name));
     assert.ok(contextFile, 'AI capture should export structured context JSON');
-    assert.ok(imageFile, 'AI capture should export a visual artifact (PNG or SVG fallback)');
-    const captureContext = JSON.parse(await fs.readFile(contextFile.path, 'utf8'));
+    assert.ok(imageFile, 'AI capture should produce a visual artifact (PNG or SVG fallback)');
+    const captureContext = JSON.parse(contextFile.text);
     assert.equal(captureContext.format, 'codelab-ai-design-capture');
     assert.equal(captureContext.layout.mode, 'auto', 'AI context should record Auto Layout mode');
     assert.equal(captureContext.layout.direction, 'column', 'AI context should record Auto Layout direction');
@@ -764,15 +798,19 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(captureContext.elements.some(item => item.text === 'Prueba integral CodeLab'),
       'capture context should preserve the actual edited element text');
     if (/\.png$/.test(imageFile.name)) {
-      const png = await fs.readFile(imageFile.path);
-      assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a',
+      assert.deepEqual(imageFile.signature, [137, 80, 78, 71, 13, 10, 26, 10],
         'successful PNG capture should produce a valid PNG signature');
-      assert.equal(png.readUInt32BE(16), captureContext.canvas.pixelWidth, 'PNG width should match capture context');
-      assert.equal(png.readUInt32BE(20), captureContext.canvas.pixelHeight, 'PNG height should match capture context');
+      assert.equal(imageFile.width, captureContext.canvas.pixelWidth, 'PNG width should match capture context');
+      assert.equal(imageFile.height, captureContext.canvas.pixelHeight, 'PNG height should match capture context');
     } else {
-      assert.match(await fs.readFile(imageFile.path, 'utf8'), /<svg[\s>]/i,
-        'SVG fallback should contain an SVG document');
+      assert.match(imageFile.text, /<svg[\s>]/i, 'SVG fallback should contain an SVG document');
     }
+
+    await page.evaluate(() => {
+      document.removeEventListener('click', window.__designCaptureClickHandler, true);
+      if (window.__nativeDesignCreateObjectURLDescriptor) Object.defineProperty(URL, 'createObjectURL', window.__nativeDesignCreateObjectURLDescriptor);
+      else delete URL.createObjectURL;
+    });
 
     // 6c. Configure a safe button destination to exercise prototype navigation.
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
@@ -783,10 +821,36 @@ async function waitForPersistedProject(page, projectName) {
       internalTarget, 'choosing an internal target should update the prototype button');
     await page.click('#designExportMenuButton');
     await page.waitForSelector('#designExportMenu:not(.hidden)');
-    const internalHtmlReady = page.waitForEvent('download');
+    await page.evaluate(() => {
+      window.__capturedHtmlExport = null;
+      window.__htmlExportBlobs = new Map();
+      window.__htmlExportUrlDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+      window.__htmlExportCreateObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        const url = window.__htmlExportCreateObjectURL(blob);
+        window.__htmlExportBlobs.set(url, blob);
+        return url;
+      };
+      window.__htmlExportClickHandler = event => {
+        const link = event.target && event.target.closest ? event.target.closest('a[download$=".html"]') : null;
+        if (!link) return;
+        const blob = window.__htmlExportBlobs.get(link.href);
+        if (!blob) return;
+        event.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => { window.__capturedHtmlExport = new TextDecoder().decode(reader.result); };
+        reader.readAsArrayBuffer(blob);
+      };
+      document.addEventListener('click', window.__htmlExportClickHandler, true);
+    });
     await page.locator('#designExportMenu [role="menuitem"]').filter({ hasText: 'HTML adaptable' }).click();
-    const internalHtmlDownload = await internalHtmlReady;
-    const internalHtml = await fs.readFile(await internalHtmlDownload.path(), 'utf8');
+    await page.waitForFunction(() => typeof window.__capturedHtmlExport === 'string' && window.__capturedHtmlExport.length > 0);
+    const internalHtml = await page.evaluate(() => window.__capturedHtmlExport);
+    await page.evaluate(() => {
+      document.removeEventListener('click', window.__htmlExportClickHandler, true);
+      if (window.__htmlExportUrlDescriptor) Object.defineProperty(URL, 'createObjectURL', window.__htmlExportUrlDescriptor);
+      else delete URL.createObjectURL;
+    });
     assert.ok(internalHtml.includes('href="' + internalTarget + '"'), 'HTML export should preserve internal layer navigation');
     assert.ok(internalHtml.includes('id="' + internalTarget.slice(1) + '"'), 'HTML export should assign stable anchor IDs to target layers');
     await page.locator('#designProperty-href').fill('javascript:alert(1)');
@@ -933,9 +997,10 @@ async function waitForPersistedProject(page, projectName) {
     }, { timeout: 10000 });
     assert.equal(await page.locator('#designCanvas [data-design-id]').first().innerText(), 'Edición local recuperada',
       'a newer local edit must not be overwritten by the server snapshot');
-    // Selection is intentionally not persisted; select the element again to edit its properties.
+    // Selection is intentionally not persisted; hide the overlay before clicking the canvas element beneath it.
+    await page.locator('#designStudioPanel button[aria-label="Cerrar panel de opciones"]').click();
     await page.locator('#designCanvas [data-design-id]').first().click();
-    await page.locator('#designProperties input[type="text"]').first().fill('Prueba integral CodeLab');
+    await page.locator('#designInspectorProperties input[type="text"]').first().fill('Prueba integral CodeLab');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.textContent === 'Prueba integral CodeLab');
     await waitForPersistedProject(page, PROJECT_NAME);
     await page.waitForFunction(async id => {
@@ -979,6 +1044,8 @@ async function waitForPersistedProject(page, projectName) {
     });
     assert.equal(conversionGuardCheck.oversizedBlocked, true, 'oversized generated HTML must be rejected without changing the project');
     assert.equal(conversionGuardCheck.sizeWarning, true, 'the size rejection must explain the HTML limit');
+    const reopenOptions = page.locator('#designOptionsReopen');
+    if (await reopenOptions.isVisible()) await reopenOptions.click();
     await page.locator('button[onclick="convertDesignToWeb()"]').click();
     await page.waitForFunction(() => {
       const design = document.getElementById('designStudioPanel');
@@ -1601,7 +1668,7 @@ async function waitForPersistedProject(page, projectName) {
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
         const addedLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
         assert.ok(addedLayerId, type + ' layer should expose its stable ID in ' + frame + ' frame');
-        assert.equal(await page.locator('#designProperties').isVisible(), true,
+        assert.equal(await page.locator('#designInspectorProperties').isVisible(), true,
           type + ' properties must be visible after adding it in ' + frame + ' frame');
 
         await page.locator('button[onclick="duplicateDesignElement()"]').click();
