@@ -75,6 +75,7 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
           node tests/design-workflow.e2e.test.js
+          node tests/offline-sync.e2e.test.js
           node tests/interface-responsive.e2e.test.js
           node tests/web-editor-ui.e2e.test.js
       - name: Smoke test API and Groq model normalization
