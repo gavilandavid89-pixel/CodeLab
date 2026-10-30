@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use GitHub as an auditable mailbox between an external operator and CodeLab Agent Space. This is not a GitHub Actions test runner and must not execute arbitrary repository code.
+Use GitHub as an auditable mailbox between an external operator and CodeLab Agent Space. The bridge uses a short-lived GitHub Actions job as an immediate browser operator, not as a test suite; it never executes arbitrary repository code.
 
 ## Important boundary
 
@@ -11,7 +11,7 @@ A GitHub issue or comment is only a message. It does not itself grant ChatGPT ac
 ## Proposed protocol (v1)
 
 - Repository: `gavilandavid89-pixel/CodeLab`
-- Commands are GitHub issues labeled `agent-bridge:command`.
+- Commands are issues whose title starts with `[CodeLab Bridge]`; the workflow only accepts issues created by the repository owner.
 - Replies are comments from the CodeLab bridge bot, with a machine-readable JSON block.
 - Each command has a unique `command_id`, an allowlisted `action`, and bounded arguments.
 - Supported action names should be limited to `status`, `read_page`, `list_controls`, `click`, `read_element`, `fill`, and `select`.
@@ -43,4 +43,4 @@ A GitHub issue or comment is only a message. It does not itself grant ChatGPT ac
 
 ## Current status
 
-This document defines the protocol only. The operational mailbox adapter, browser relay, credentials, and end-to-end connectivity are not implemented yet. Do not describe the bridge as connected until a real command has been executed and its reply verified.
+The issue-triggered runner and protocol are implemented on the feature branch. They are not live until the PR is merged and a repository-owner command has run successfully. The runner controls a fresh, unauthenticated browser session against the public CodeLab URL; it does not control an existing signed-in user session.
