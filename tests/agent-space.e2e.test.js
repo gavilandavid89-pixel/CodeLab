@@ -20,9 +20,12 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     const snapshot = await page.locator('#snapshot').innerText();
     assert.match(snapshot, /CodeLab/i, 'the bridge should inspect the actual app iframe');
 
-    await page.locator('#selector').fill('#openDesignTools');
-    await page.locator('#clickElement').click();
+    await app.locator('#openDesignTools').click();
     await app.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
+
+    await page.locator('#selector').fill('#designToolsTab-accessibility');
+    await page.locator('#clickElement').click();
+    await app.locator('#designToolsTab-accessibility').waitFor(async el => (await el.getAttribute('aria-selected')) === 'true');
 
     await page.locator('#selector').fill('#closeDesignTools');
     await page.locator('#clickElement').click();
