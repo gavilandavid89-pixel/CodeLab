@@ -25,7 +25,7 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 
     await page.locator('#selector').fill('#designToolsTab-accessibility');
     await page.locator('#clickElement').click();
-    await app.locator('#designToolsTab-accessibility').waitFor(async el => (await el.getAttribute('aria-selected')) === 'true');
+    assert.equal(await app.locator('#designToolsTab-accessibility').getAttribute('aria-selected'), 'true');
 
     await page.locator('#selector').fill('#closeDesignTools');
     await page.locator('#clickElement').click();
