@@ -727,7 +727,8 @@ async function waitForPersistedProject(page, projectName) {
     await page.evaluate(() => {
       window.__designCaptureArtifacts = [];
       window.__designCaptureBlobs = new Map();
-      const nativeCreateObjectURL = URL.createObjectURL.bind(URL);
+      window.__nativeDesignCreateObjectURL = URL.createObjectURL.bind(URL);
+      window.__nativeDesignAnchorClick = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = blob => {
         const url = nativeCreateObjectURL(blob);
         window.__designCaptureBlobs.set(url, blob);
@@ -804,6 +805,11 @@ async function waitForPersistedProject(page, projectName) {
     } else {
       assert.match(imageFile.text, /<svg[\s>]/i, 'SVG fallback should contain an SVG document');
     }
+
+    await page.evaluate(() => {
+      HTMLAnchorElement.prototype.click = window.__nativeDesignAnchorClick;
+      URL.createObjectURL = window.__nativeDesignCreateObjectURL;
+    });
 
     // 6c. Configure a safe button destination to exercise prototype navigation.
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
