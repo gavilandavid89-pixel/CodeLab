@@ -3939,6 +3939,26 @@ async function switchProjectWorkspace(targetType) {
   if (!project || project.type === targetType) return;
   creatingProjectInFlight = true;
   try {
+    // Monaco may load asynchronously after openProject() changes the project type.
+    // Never read an uninitialized/stale editor and overwrite the saved generated HTML.
+    if (project.type === 'web') {
+      const startedAt = Date.now();
+      let editorReady = false;
+      while (Date.now() - startedAt < 15000) {
+        const active = projects.find(item => item.id === project.id);
+        const code = normalizeCode(active && active.code);
+        if (active && getEditorValue('html') === code.html &&
+            getEditorValue('css') === code.css && getEditorValue('js') === code.js) {
+          editorReady = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      if (!editorReady) {
+        showToast('El editor Web todavía está cargando. No se cambió de espacio para proteger tu código.', 'warn');
+        return;
+      }
+    }
     try {
       const saved = await saveCurrentCodeToActiveProject(true);
       const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
