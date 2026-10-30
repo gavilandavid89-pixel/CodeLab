@@ -141,10 +141,8 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 ## Editor visual: interacción táctil y organización
 
 - El zoom del lienzo es independiente del zoom de la interfaz. Usa el control de porcentaje para un ajuste preciso o pellizca con dos dedos sobre el área del lienzo en dispositivos táctiles.
-- En móvil, el lienzo conserva el espacio principal; la lista de capas se oculta para evitar una columna estrecha y el Inspector ocupa una franja inferior desplazable.
+- En móvil, el lienzo conserva el espacio principal; el Inspector reúne la lista de capas y los controles del elemento seleccionado en un único panel desplazable.
 - En orientación horizontal se reduce la altura de la barra de herramientas y del Inspector para aprovechar el espacio disponible.
-- Las acciones de diseño siguen disponibles desde la barra compacta. Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
-
-
-- El panel que antes se titulaba «Capas» ahora se titula «Inspector».
-- Los paneles Inspector y Propiedades se pueden ocultar y volver a abrir desde la barra del editor; al ocultarlos, el lienzo recupera el espacio disponible. Esto facilita trabajar con diagramas y conexiones de nodos.
+- El Inspector completo se puede plegar y volver a abrir desde la barra del editor para liberar el lienzo, por ejemplo al trabajar con diagramas y conexiones de nodos.
+- Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
+- El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
