@@ -2,45 +2,42 @@
 
 ## Purpose
 
-Use GitHub as an auditable mailbox between an external operator and CodeLab Agent Space. The bridge uses a short-lived GitHub Actions job as an immediate browser operator, not as a test suite; it never executes arbitrary repository code.
+Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub tools and the public CodeLab website. A repository-owner issue triggers a short-lived GitHub Actions job that runs a bounded browser command. This is an operational bridge, not a test suite; it does not execute arbitrary repository code.
 
-## Important boundary
-
-A GitHub issue or comment is only a message. It does not itself grant ChatGPT access to a browser. The CodeLab service and an authorized browser client must be running, and the ChatGPT side must have an available GitHub connection to write commands and read replies.
-
-## Proposed protocol (v1)
+## Current architecture and boundaries
 
 - Repository: `gavilandavid89-pixel/CodeLab`
-- Commands are issues whose title starts with `[CodeLab Bridge]`; the workflow only accepts issues created by the repository owner.
-- Replies are comments from the CodeLab bridge bot, with a machine-readable JSON block.
-- Each command has a unique `command_id`, an allowlisted `action`, and bounded arguments.
-- Supported action names should be limited to `status`, `read_page`, `list_controls`, `click`, `read_element`, `fill`, and `select`.
-- Every command must be validated against a strict schema; unknown actions, oversized input, malformed selectors, and expired commands must be rejected.
-- Commands that submit forms, delete data, purchase items, publish content, or otherwise cause consequential external changes require explicit per-command human approval.
-- Replies must include `command_id`, `status` (`accepted`, `running`, `succeeded`, `failed`, or `rejected`), timestamps, and a concise result/error.
-- Never put secrets, session cookies, access tokens, or full page contents into issues/comments. Redact personal data from snapshots.
+- Target: `https://codelab-pbw9.onrender.com/`
+- Commands are new issues titled `[CodeLab Bridge] ...`. The workflow accepts only issues opened by the repository owner.
+- The job uses a fresh, unauthenticated Playwright browser. It does not control the user's existing browser, inherit their login, or provide direct access to private server files.
+- Results are posted as a JSON comment on the same issue. ChatGPT can create commands and read replies through the connected GitHub integration.
+- The app's `/api/health` endpoint reports configuration booleans and non-secret AI metadata. The `connections_status` command returns those diagnostics without exposing API keys or profile data.
+- The bridge is intentionally allowlisted. Commands that click elements require `approval: "approved"`; avoid using the bridge for irreversible actions without explicit confirmation.
+- Command payloads require a valid future `expires_at`, a unique `command_id`, and protocol `codelab-agent-bridge/v1`.
 
-## Example command body
+## Supported actions
+
+- `status`: concise page/API readiness signals.
+- `connections_status`: API health, GitHub/Google OAuth configured booleans, and AI provider configuration.
+- `read_page`: a bounded text snapshot of the public page.
+- `list_controls`: visible DOM control metadata.
+- `read_element`, `fill`, `select`, `click`: allowlisted DOM interactions using a CSS selector; `click` requires explicit approval.
+
+Never place API keys, access tokens, cookies, or private project contents in issue bodies or comments. The browser is anonymous, but public page text may still be visible in the public issue thread; keep snapshots minimal.
+
+## Example command
 
 ```json
 {
   "protocol": "codelab-agent-bridge/v1",
   "command_id": "replace-with-unique-id",
-  "action": "status",
+  "action": "connections_status",
   "args": {},
-  "expires_at": "2026-10-30T23:00:00Z",
+  "expires_at": "2026-10-31T00:30:00Z",
   "approval": "not-required"
 }
 ```
 
-## Deployment plan
+## Deployment state
 
-1. Add the server-side GitHub mailbox adapter using a dedicated least-privilege credential stored only as a Render environment variable.
-2. Add a browser-client relay that receives validated commands and runs only the allowlisted DOM actions inside the same-origin Agent Space iframe.
-3. Add status/reply reporting back to the originating GitHub issue.
-4. Add a health endpoint that reports configuration state without exposing credentials.
-5. Deploy only the CodeLab Render service after reviewing the code diff. Do not trigger CI or browser tests unless explicitly requested.
-
-## Current status
-
-The issue-triggered runner and protocol are implemented on the feature branch. They are not live until the PR is merged and a repository-owner command has run successfully. The runner controls a fresh, unauthenticated browser session against the public CodeLab URL; it does not control an existing signed-in user session.
+The issue-triggered bridge is merged into `main` and a real `status` command succeeded on 2026-10-30. A follow-up change adds safer readiness handling and connection diagnostics; it is also merged into `main`. The operational connection still has an important limitation: it reaches the public, unauthenticated CodeLab site, not the user's signed-in workspace or private server internals. The CodeLab Render app itself is unchanged by the bridge-only updates.
