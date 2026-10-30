@@ -3995,7 +3995,6 @@ async function convertDesignToWeb() {
     return;
   }
   creatingProjectInFlight = true;
-  const suffix = ' · Web';
   // Generate the web representation inside this same project. Keep the design
   // document and project ID intact so switching editors never creates duplicates.
   p.code = normalizeCode({ html, css: '', js: '' });
