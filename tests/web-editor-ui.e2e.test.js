@@ -102,7 +102,6 @@ async function setCode(page, lang, value) {
       }));
       throw new Error('Merge did not complete: ' + JSON.stringify(state) + '; ' + error.message);
     }
-      null, { timeout: 15000 });
     await page.locator('#toggleCopyBranchBtn').click();
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>Rama editada</h1><button id=\"preview-action\">Acción</button></main>".trim(),
       null, { timeout: 10000 });
