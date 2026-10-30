@@ -244,6 +244,8 @@
   if (graphLauncher) graphLauncher.addEventListener('click', openDesignFlowGraph);
 
   window.buildFlowAwareWebHtml = buildFlowAwareWebHtml;
+  // Expose the launcher used by the HTML inline handler and automated UI checks.
+  window.openDesignFlowGraph = openDesignFlowGraph;
   window.__openDesignFlowGraph = openDesignFlowGraph;
   window.closeDesignFlowGraph = closeDesignFlowGraph;
 })();
