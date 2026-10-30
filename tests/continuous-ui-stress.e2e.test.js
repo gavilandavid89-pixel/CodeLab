@@ -127,7 +127,8 @@ async function createProject(page, type, name) {
     await page.locator('#designFrameSize').selectOption({ index: 1 });
     await page.locator('#designFitBtn').click();
     for (const template of ['designTemplateLanding', 'designTemplateDashboard', 'designTemplatePortfolio']) {
-      await page.locator('#designTemplatesButton').click();
+      if (!(await page.locator('#designTemplatesMenu').isVisible())) await page.locator('#designTemplatesButton').click();
+      await page.locator('#designTemplatesMenu').waitFor({ state: 'visible' });
       await page.locator('#' + template).click();
       await page.waitForFunction(() => (getCurrentProject()?.design?.elements || []).length > 0);
     }
