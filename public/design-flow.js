@@ -91,7 +91,7 @@
       if (!chooseMode || !selectedSource || selectedSource.projectId !== port.dataset.flowProject || selectedSource.elementId !== port.dataset.flowSourcePort) { showToast('Activa Elegir y selecciona primero la capa.', 'warn'); return; }
       pendingStart = { projectId: port.dataset.flowProject, elementId: port.dataset.flowSourcePort };
       draftPath = document.createElementNS('http://www.w3.org/2000/svg','path');
-      draftPath.setAttribute('fill','none'); draftPath.setAttribute('stroke','#9ca3af'); draftPath.setAttribute('stroke-width','3'); draftPath.setAttribute('stroke-linecap','round'); draftPath.setAttribute('stroke-dasharray','7 5'); draftPath.setAttribute('data-draft-wire','true'); svg.appendChild(draftPath);
+      draftPath.setAttribute('fill','none'); draftPath.setAttribute('stroke','#9ca3af'); draftPath.setAttribute('stroke-width','3'); draftPath.setAttribute('stroke-linecap','round'); draftPath.setAttribute('stroke-dasharray','7 5'); draftPath.setAttribute('data-draft-wire','true'); const draftHalo=draftPath.cloneNode(false); draftHalo.setAttribute('stroke','#ffffff'); draftHalo.setAttribute('stroke-width','6'); draftHalo.setAttribute('stroke-opacity','0.8'); draftHalo.setAttribute('data-draft-halo','true'); svg.appendChild(draftHalo); svg.appendChild(draftPath);
       gestureOrigin = { x: e.clientX, y: e.clientY }; activeTarget = null;
       moveDraft(e);
     }));
@@ -148,8 +148,18 @@
       const tr=target.getBoundingClientRect(), end={x:tr.left-cr.left+canvas.scrollLeft+tr.width/2,y:tr.top-cr.top+canvas.scrollTop+tr.height/2};
       const mid=(start.x+end.x)/2, path=document.createElementNS('http://www.w3.org/2000/svg','path');
       path.setAttribute('d','M '+start.x+' '+start.y+' C '+mid+' '+start.y+', '+mid+' '+end.y+', '+end.x+' '+end.y);
+      const halo=path.cloneNode(false); halo.setAttribute('fill','none'); halo.setAttribute('stroke','#ffffff'); halo.setAttribute('stroke-width','6'); halo.setAttribute('stroke-opacity','0.72'); halo.setAttribute('stroke-linecap','round'); halo.setAttribute('data-wire-halo','true'); svg.appendChild(halo);
       path.setAttribute('fill','none'); path.setAttribute('stroke','#9ca3af'); path.setAttribute('stroke-width','3'); path.setAttribute('stroke-linecap','round'); path.setAttribute('data-connection','true'); svg.appendChild(path);
     }
+  }
+  function rayRectDistance(sx, sy, dx, dy, rect, maxDistance) {
+    let near=0, far=maxDistance;
+    for (const [origin, direction, min, max] of [[sx,dx,rect.left,rect.right],[sy,dy,rect.top,rect.bottom]]) {
+      if (Math.abs(direction)<0.0001) { if(origin<min||origin>max) return null; continue; }
+      let a=(min-origin)/direction, b=(max-origin)/direction; if(a>b){const swap=a;a=b;b=swap;}
+      near=Math.max(near,a); far=Math.min(far,b); if(near>far) return null;
+    }
+    return far<0?null:Math.max(0,near);
   }
   function moveDraft(e) {
     if (!pendingStart || !draftPath || !canvas) return;
@@ -164,9 +174,9 @@
     const rayLength=Math.max(260,Math.min(640,Math.max(canvas.clientWidth,canvas.clientHeight)*0.55));
     const ex=sx+dx*rayLength, ey=sy+dy*rayLength;
     const c=canvas.getBoundingClientRect(), x2=ex-c.left+canvas.scrollLeft, y2=ey-c.top+canvas.scrollTop, mid=(x1+x2)/2;
-    draftPath.setAttribute('d','M '+x1+' '+y1+' C '+mid+' '+y1+', '+mid+' '+y2+', '+x2+' '+y2);
+    const d='M '+x1+' '+y1+' C '+mid+' '+y1+', '+mid+' '+y2+', '+x2+' '+y2; draftPath.setAttribute('d',d); const draftHalo=svg.querySelector('[data-draft-halo]'); if(draftHalo) draftHalo.setAttribute('d',d);
     const targets=Array.from(modal.querySelectorAll('[data-flow-target-project]')); let hit=null, hitDistance=Infinity;
-    for(const card of targets){const r=card.getBoundingClientRect(); const vx=dx,vy=dy, rx=r.left-sx,ry=r.top-sy; const tx1=rx/vx, tx2=(r.right-sx)/vx, ty1=ry/vy, ty2=(r.bottom-sy)/vy; const near=Math.max(Math.min(tx1,tx2),Math.min(ty1,ty2)), far=Math.min(Math.max(tx1,tx2),Math.max(ty1,ty2)); const t=near>=0?near:far>=0?far:-1; if(t>=0&&t<hitDistance&&t<=rayLength&&sx+vx*t>=r.left&&sx+vx*t<=r.right&&sy+vy*t>=r.top&&sy+vy*t<=r.bottom){hit=card;hitDistance=t;}}
+    for(const card of targets){const t=rayRectDistance(sx,sy,dx,dy,card.getBoundingClientRect(),rayLength);if(t!==null&&t<hitDistance){hit=card;hitDistance=t;}}
     if(hit!==activeTarget){if(activeTarget)activeTarget.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');activeTarget=hit;if(activeTarget)activeTarget.classList.add('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');}
   }
   function finishDraft(e) {
