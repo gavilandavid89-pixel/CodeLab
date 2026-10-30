@@ -27,6 +27,7 @@ try {
 
   const app = page.frameLocator('#appFrame');
   await app.locator('#syncLoadingModal').waitFor({ state: 'hidden', timeout: 30000 });
+  await app.locator('#openDesignTools').waitFor({ state: 'visible', timeout: 20000 });
   await page.locator('#refreshState').click();
   await page.waitForFunction(() => document.querySelector('#snapshot')?.textContent.includes('"title"'));
   const snapshotText = await page.locator('#snapshot').innerText();
