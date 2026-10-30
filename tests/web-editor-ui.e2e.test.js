@@ -83,7 +83,6 @@ async function setCode(page, lang, value) {
       return project?.branch?.code?.html === expected.html;
     }, { name, html: branchHtml }, { timeout: 10000 });
     await page.locator('#toggleCopyBranchBtn').click();
-    await page.waitForFunction(() => serverReady && !syncRunning && !syncRetryTimer, null, { timeout: 15000 });
     await page.waitForFunction(() => getEditorValue('html').trim() === "<main id=\"editor-check\"><h1>CodeLab listo</h1><button id=\"preview-action\">Acción</button></main>".trim(),
       null, { timeout: 10000 });
     await page.locator('#toggleCopyBranchBtn').click();
