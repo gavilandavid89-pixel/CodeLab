@@ -2146,18 +2146,19 @@ async function mergeToMainProject() {
   const proj = getCurrentProject();
   if (!proj || !proj.branch) return;
   const branchSaved = await saveInCopyBranch();
-  if (!branchSaved) {
-    showToast('No se puede fusionar todavía: guarda y sincroniza la copia antes de continuar.', 'warn');
+  const localBranchSaved = branchSaved === true || saveLocalProjectsSnapshot();
+  if (!localBranchSaved) {
+    showToast('No se pudo confirmar el guardado local de la copia; no se fusionó nada.', 'warn');
     return;
   }
   const refreshed = await refreshWorkspaceFromServer();
-  if (!refreshed) {
+  if (!refreshed && serverReady) {
     showToast('No se pudo verificar la versión principal del servidor. No se fusionó nada; inténtalo de nuevo cuando vuelva la conexión.', 'warn');
     return;
   }
   const latest = getCurrentProject();
   if (!latest) return;
-  if (latest.branch && latest.branch.id === copyBranchId) {
+  if (branchSaved && latest.branch && latest.branch.id === copyBranchId) {
     copyBaseCode = cloneCode(latest.branch.baseCode);
     copyProjectCode = cloneCode(latest.branch.code);
   }
