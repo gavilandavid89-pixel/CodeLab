@@ -123,10 +123,7 @@
       #designStudioPanel #designCanvasScroll > div:first-child { display: none; }
       #designStudioPanel #designLayersPanel { display: flex !important; width: min(100%, 100vw) !important; max-height: min(38dvh, 320px); flex: 0 0 auto; border-right: 0 !important; border-top: 1px solid #1e293b; }
       #designStudioPanel #designLayersPanel > div:first-child { padding: 6px 10px !important; }
-      #designStudioPanel #designLayers { min-height: 44px; }
-      #designStudioPanel #designProperties { padding: 8px !important; }
-      #designStudioPanel #designLayersPanel > div:last-child button { min-height: 36px; }
-      #designStudioPanel .design-toolbar button { min-height: 36px; }
+      #designStudioPanel #designLayers { min-height: 44px; }      #designStudioPanel .design-toolbar button { min-height: 36px; }
     }
     @media (orientation: landscape) and (max-width: 900px) {
       #designStudioPanel > .design-toolbar { max-height: 72px; }
@@ -532,16 +529,6 @@
           <aside id="designLayersPanel" class="hidden sm:flex w-64 lg:w-72 flex-col border-r border-slate-800 bg-slate-900/90 shrink-0 min-h-0 overflow-hidden">
             <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Inspector</div>
             <div id="designLayers" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-1"></div>
-            <div class="border-t border-slate-800 shrink-0 max-h-[48%] overflow-y-auto">
-              <div class="px-3 py-2 border-b border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-500">Propiedades del elemento</div>
-              <div id="designProperties" class="p-3 space-y-3 text-xs">
-                <p class="text-slate-500 leading-relaxed">Selecciona un elemento para editar su contenido, posición, tamaño y color.</p>
-              </div>
-              <div class="p-3 border-t border-slate-800 space-y-2">
-                <button onclick="duplicateDesignElement()" class="w-full px-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-copy mr-1"></i> Duplicar capa</button>
-                <button onclick="deleteDesignElement()" class="w-full px-2 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs"><i class="fa-solid fa-trash mr-1"></i> Eliminar capa</button>
-              </div>
-            </div>
           </aside>
           <div id="designCanvasScroll" class="flex-1 min-w-0 w-full max-w-full overflow-auto p-4 sm:p-8 bg-[#171923]">
             <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Lienzo · arrastra elementos para moverlos</div>
