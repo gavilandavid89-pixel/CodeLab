@@ -21,7 +21,7 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
     // Verify each primitive can be added and is represented in the layer list and canvas.
     for (const type of ['heading', 'text', 'button', 'rectangle', 'ellipse', 'image']) {
       const before = await page.evaluate(() => getCurrentProject().design.elements.length);
-      await page.locator('button[onclick="addDesignElement(\\'' + type + '\\')"]').click();
+      await page.locator(`button[onclick="addDesignElement('${type}')"]`).click();
       await page.waitForFunction(({ before, type }) => {
         const elements = getCurrentProject()?.design?.elements || [];
         return elements.length === before + 1 && elements.some(item => item.type === type);
