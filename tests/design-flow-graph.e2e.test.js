@@ -53,6 +53,14 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
       const p = projects.find(item => item.id === sourceId);
       return p?.design?.flowConnections?.some(c => c.sourceElementId === sourceElementId && c.targetProjectId === targetId);
     }, { sourceId, sourceElementId, targetId }, { timeout: 10000 });
+    assert.equal(await target.evaluate(el => el.tagName), 'ARTICLE', 'the whole destination sheet, not only its header, must be a valid target');
+    await page.locator('#designFlowRefresh').click();
+    await overviewToggle.click();
+    await page.locator('#designFlowOverview').getByText(sourceName, { exact: false }).waitFor({ state: 'visible' });
+    await page.locator('#designFlowOverview').getByText(targetName, { exact: false }).waitFor({ state: 'visible' });
+    assert.ok(await page.locator('#designFlowWires [data-connection]').count() >= 1, 'connected pages should display a wire');
+    assert.ok(await page.locator('#designFlowWires [data-wire-halo]').count() >= 1, 'wire should have a white contrast halo');
+    await overviewToggle.click();
     await page.locator('[data-flow-menu="' + sourceElementId + '"]').check();
     await page.waitForFunction(({ sourceId, sourceElementId }) => {
       const p = projects.find(item => item.id === sourceId);
