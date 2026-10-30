@@ -1679,6 +1679,19 @@ async function waitForPersistedProject(page, projectName) {
       const source = projects.find(item => item.id === sourceProjectId);
       return source?.design?.flowConnections?.some(c => c.sourceElementId === flowButtonId && c.targetProjectId === targetProjectId);
     }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
+    // Invalid self-links must be rejected and must not overwrite the valid route.
+    const selfSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
+    const selfCard = await page.locator('[data-flow-target-project="' + sourceProjectId + '"]').boundingBox();
+    assert.ok(selfSource && selfCard, 'source port and same-page target bounds must exist for invalid-link test');
+    await page.mouse.move(selfSource.x + selfSource.width / 2, selfSource.y + selfSource.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(selfCard.x + selfCard.width / 2, selfCard.y + selfCard.height / 2, { steps: 8 });
+    await page.mouse.up();
+    assert.equal(await page.evaluate(({ sourceProjectId, flowButtonId }) => {
+      const source = projects.find(item => item.id === sourceProjectId);
+      const outgoing = source?.design?.flowConnections?.filter(c => c.sourceElementId === flowButtonId) || [];
+      return outgoing.length === 1 && outgoing[0].targetProjectId !== sourceProjectId;
+    }, { sourceProjectId, flowButtonId }), true, 'self-links must be rejected without replacing the existing valid connection');
     assert.equal(await page.evaluate(({ sourceProjectId, flowButtonId }) => {
       const source = projects.find(item => item.id === sourceProjectId);
       return source?.design?.flowConnections?.filter(c => c.sourceElementId === flowButtonId).length || 0;
@@ -1758,6 +1771,31 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok((await page.evaluate(() => getCurrentProject().code.html)).includes('data-page-id="' + targetProjectId + '"'),
       'web code must remain on the shared project after switching editors');
     assert.ok(await page.evaluate(() => !!getCurrentProject().design), 'design data must survive web/design switching');
+
+    // Deleting a destination page must remove inbound graph links durably,
+    // without deleting the already-generated standalone web page content.
+    await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible', timeout: 10000 });
+    const targetCard = page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(targetName, { exact: true }) });
+    page.once('dialog', dialog => dialog.accept());
+    await targetCard.locator('button[data-action="delete"]').click();
+    await page.waitForFunction(id => !projects.some(project => project.id === id), targetProjectId, { timeout: 10000 });
+    assert.equal(await page.evaluate(({ sourceProjectId, targetProjectId }) => {
+      const source = projects.find(project => project.id === sourceProjectId);
+      return (source?.design?.flowConnections || []).some(connection => connection.targetProjectId === targetProjectId);
+    }, { sourceProjectId, targetProjectId }), false, 'deleted destination must not leave a dangling connection in the source design');
+    await page.waitForFunction(async ({ sourceProjectId, targetProjectId }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const token = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !token) return false;
+      try {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId), { headers: { 'x-workspace-token': token } });
+        if (!response.ok) return false;
+        const data = await response.json();
+        const source = data.projects?.find(project => project.id === sourceProjectId);
+        return !(source?.design?.flowConnections || []).some(connection => connection.targetProjectId === targetProjectId);
+      } catch (_) { return false; }
+    }, { sourceProjectId, targetProjectId }, { timeout: 15000 });
 
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
