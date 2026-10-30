@@ -1577,6 +1577,11 @@ async function waitForPersistedProject(page, projectName) {
       has: page.locator('h4').getByText(PROJECT_NAME, { exact: true })
     });
     await originalDesignCard.locator('button[data-action="open"]').click();
+    // Design → Web conversion intentionally keeps the same project and its
+    // current workspace type. Reopen that project, then explicitly switch back
+    // to Design before asserting the design canvas state.
+    await page.locator('#switchToDesignBtn').waitFor({ state: 'visible', timeout: 15000 });
+    await page.locator('#switchToDesignBtn').click();
     await page.waitForFunction(name => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
       const canvasCount = document.querySelectorAll('#designCanvas [data-design-id]').length;
