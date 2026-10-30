@@ -747,14 +747,23 @@ async function waitForPersistedProject(page, projectName) {
     });
     await page.selectOption('#designCaptureScale', '4');
     await page.locator('button[onclick="captureDesignForAI()"]').click();
-    await page.waitForFunction(() => {
-      const artifacts = window.__designCaptureArtifacts || [];
-      return artifacts.length >= 2 && artifacts.every(item =>
-        item.name.endsWith('-contexto-ia.json') ? !!item.text :
-        item.name.endsWith('-captura-ia.png') ? !!item.signature :
-        item.name.endsWith('-captura-ia.svg') ? !!item.text : false
-      );
-    }, null, { timeout: 20000 });
+    try {
+      await page.waitForFunction(() => {
+        const artifacts = window.__designCaptureArtifacts || [];
+        return artifacts.length >= 2 && artifacts.every(item =>
+          item.name.endsWith('-contexto-ia.json') ? !!item.text :
+          item.name.endsWith('-captura-ia.png') ? !!item.signature :
+          item.name.endsWith('-captura-ia.svg') ? !!item.text : false
+        );
+      }, null, { timeout: 20000 });
+    } catch (error) {
+      const debug = await page.evaluate(() => ({
+        artifacts: window.__designCaptureArtifacts,
+        project: typeof activeDesignProject === 'function' ? !!activeDesignProject()?.design : null,
+        toast: document.querySelector('[role="status"]')?.textContent || ''
+      }));
+      throw new Error('AI capture artifacts not ready: ' + JSON.stringify(debug) + '; ' + error.message);
+    }
     const captureFiles = await page.evaluate(() => window.__designCaptureArtifacts);
     const contextFile = captureFiles.find(file => /-contexto-ia\.json$/.test(file.name));
     const imageFile = captureFiles.find(file => /-captura-ia\.(png|svg)$/.test(file.name));
