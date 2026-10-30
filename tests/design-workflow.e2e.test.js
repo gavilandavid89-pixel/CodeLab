@@ -1602,6 +1602,46 @@ async function waitForPersistedProject(page, projectName) {
         document.querySelectorAll('#designCanvas [data-design-id]').length === expected.count;
     }, { name: PROJECT_NAME, count: matrixBaselineCount }, { timeout: 15000 });
 
+    // End-to-end node graph: a specific option routes to another design page,
+    // and conversion emits both connected pages as a working single-page web app.
+    const sourceProjectId = await page.evaluate(() => getCurrentProject().id);
+    await page.locator('button[onclick="addDesignElement(\\'button\\')"]').click();
+    const flowButtonId = await page.evaluate(() => getCurrentProject().design.elements.find(el => el.type === 'button').id);
+    await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
+    const targetName = 'Página destino de nodos ' + Date.now();
+    await page.getByRole('button', { name: /Crear proyecto/i }).click();
+    await page.locator('#newProjectNameInput').fill(targetName);
+    await page.locator('input[name="newProjectType"][value="design"]').check();
+    await page.locator('#newProjectModal button').filter({ hasText: 'Crear Proyecto' }).click();
+    await page.locator('#designStudioPanel').waitFor({ state: 'visible', timeout: 15000 });
+    const targetProjectId = await page.evaluate(() => getCurrentProject().id);
+    await page.locator('button[onclick="addDesignElement(\\'heading\\')"]').click();
+    await page.locator('#openDesignFlowGraph').click();
+    await page.locator('#designFlowGraphModal').waitFor({ state: 'visible' });
+    const flowSource = page.locator('[data-flow-source-port="' + flowButtonId + '"]');
+    const flowTarget = page.locator('[data-flow-target-project="' + targetProjectId + '"]');
+    await flowSource.waitFor({ state: 'visible' });
+    await flowSource.dragTo(flowTarget, { targetPosition: { x: 160, y: 25 } });
+    await page.waitForFunction(({ sourceProjectId, flowButtonId, targetProjectId }) => {
+      const source = projects.find(item => item.id === sourceProjectId);
+      return source?.design?.flowConnections?.some(c => c.sourceElementId === flowButtonId && c.targetProjectId === targetProjectId);
+    }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
+    await page.locator('#designFlowClose').click();
+    await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
+    await page.locator('#welcomeDashboard').waitFor({ state: 'visible' });
+    const sourceCard = page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
+    await sourceCard.locator('button[data-action="open"]').click();
+    await page.waitForFunction(expected => getCurrentProject()?.id === expected, sourceProjectId, { timeout: 15000 });
+    await page.locator('button[onclick="convertDesignToWeb()"]').click();
+    await page.waitForFunction(() => !document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
+      !document.getElementById('studioView')?.classList.contains('hidden') && typeof getCurrentProject === 'function' &&
+      getCurrentProject()?.type === 'web', null, { timeout: 15000 });
+    const generatedFlowHtml = await page.evaluate(() => getCurrentProject().code.html);
+    assert.ok(generatedFlowHtml.includes('data-page-id="' + sourceProjectId + '"'), 'generated web must include the source design page');
+    assert.ok(generatedFlowHtml.includes('data-page-id="' + targetProjectId + '"'), 'generated web must include the connected destination page');
+    assert.ok(generatedFlowHtml.includes('data-flow-to="' + targetProjectId + '"'), 'generated option must navigate to the connected destination');
+
     assert.deepEqual(failures, [], 'production page should not throw uncaught JavaScript errors');
     console.log('Full CodeLab system E2E passed: design create/edit → responsive canvas → AI PNG/JSON capture → reload/offline recovery → web conversion → workspace design-system save/export/reload → component insertion → 429 retry → 413 recovery → 400 validation recovery → server persistence.');
   } finally {
