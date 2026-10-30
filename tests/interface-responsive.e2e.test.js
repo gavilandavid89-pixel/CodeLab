@@ -133,10 +133,14 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#toggleDesignInspector').click();
     assert.equal(await page.locator('#designStudioPanel').evaluate(el => el.classList.contains('design-inspector-hidden')), false,
       'Inspector panel can be reopened');
-    await page.locator('#toggleDesignProperties').click();
-    assert.equal(await page.locator('#designStudioPanel').evaluate(el => el.classList.contains('design-properties-hidden')), true,
-      'properties panel can be collapsed to free canvas space');
-    await page.locator('#toggleDesignProperties').click();
+    assert.equal(await page.locator('#designProperties').count(), 1,
+      'property controls must exist exactly once inside the unified Inspector');
+    assert.equal(await page.locator('#designLayersPanel #designProperties').count(), 1,
+      'property controls must be nested inside Inspector');
+    assert.equal(await page.locator('#designPropertiesPanel').count(), 0,
+      'separate properties panel must be deleted, not hidden');
+    assert.equal(await page.locator('#toggleDesignProperties').count(), 0,
+      'separate properties toggle must be deleted');
     assert.equal(await page.locator('#designStudioPanel .design-toolbar').count(), 1,
       'design tools must be rendered in one toolbar, without duplicate toolbars');
     assert.ok(await page.locator('#designCanvasScroll').evaluate(el => el.clientWidth > 0),
