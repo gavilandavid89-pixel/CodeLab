@@ -1234,11 +1234,24 @@ function openProject(id) {
     if (designButton) designButton.setAttribute('aria-pressed', proj.type === 'design' ? 'true' : 'false');
   }
   const isDesignProject = proj.type === 'design';
-  document.getElementById('editorPanel').classList.toggle('hidden', isDesignProject);
-  document.getElementById('splitDivider').classList.toggle('hidden', isDesignProject);
-  document.getElementById('previewPanel').classList.toggle('hidden', isDesignProject);
-  document.getElementById('designStudioPanel').classList.toggle('hidden', !isDesignProject);
-  document.getElementById('designStudioPanel').classList.toggle('flex', isDesignProject);
+  const editorPanel = document.getElementById('editorPanel');
+  const splitDivider = document.getElementById('splitDivider');
+  const previewPanel = document.getElementById('previewPanel');
+  const designStudioPanel = document.getElementById('designStudioPanel');
+  // Set explicit display states as well as utility classes. This prevents a
+  // conflicting flex utility or responsive rule from leaving both toolbars
+  // mounted/visible when switching between the Web and Design workspaces.
+  if (editorPanel) editorPanel.style.display = isDesignProject ? 'none' : '';
+  if (splitDivider) splitDivider.style.display = isDesignProject ? 'none' : '';
+  if (previewPanel) previewPanel.style.display = isDesignProject ? 'none' : '';
+  if (designStudioPanel) designStudioPanel.style.display = isDesignProject ? 'flex' : 'none';
+  if (editorPanel) editorPanel.classList.toggle('hidden', isDesignProject);
+  if (splitDivider) splitDivider.classList.toggle('hidden', isDesignProject);
+  if (previewPanel) previewPanel.classList.toggle('hidden', isDesignProject);
+  if (designStudioPanel) {
+    designStudioPanel.classList.toggle('hidden', !isDesignProject);
+    designStudioPanel.classList.toggle('flex', isDesignProject);
+  }
   document.getElementById('mainSplit').classList.toggle('md:flex-row', !isDesignProject);
   document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
   const mobileBar = document.getElementById('mobileBottomBar');
