@@ -948,38 +948,32 @@ async function waitForPersistedProject(page, projectName) {
     }, deletedDefaultId, { timeout: 10000 });
     await page.evaluate(() => localStorage.removeItem('codelab_xd_deleted_project_id_for_e2e'));
 
-    // 8. Conversion must respect the project cap and per-file HTML limit before
-    // creating a web project, then persist the real conversion.
+    // 8. Conversion must enforce the per-file HTML safety limit, then update
+    // the Web workspace in-place (without a project-count cap or duplicate).
     const conversionGuardCheck = await page.evaluate(async () => {
-      const previousLimit = maxProjects;
       const previousToast = showToast;
       const before = projects.length;
       const project = activeDesignProject();
       const element = project && project.design.elements.find(item => item.type === 'heading') || project?.design.elements[0];
-      if (!element) throw new Error('conversion guard fixture needs a design element');
+      if (!project || !element) throw new Error('conversion guard fixture needs a design element');
+      const projectId = project.id;
       const previousText = element.text;
       let toast = '';
       try {
         showToast = message => { toast = message; };
-        maxProjects = before;
-        await convertDesignToWeb();
-        const capBlocked = projects.length === before;
-        maxProjects = previousLimit;
         element.text = 'x'.repeat(500001);
         await convertDesignToWeb();
-        const oversizedBlocked = projects.length === before;
+        const oversizedBlocked = projects.length === before && project.id === projectId && project.type === 'design';
         const sizeWarning = /500000 caracteres/i.test(toast);
-        return { capBlocked, oversizedBlocked, sizeWarning };
+        return { oversizedBlocked, sizeWarning };
       } finally {
-        maxProjects = previousLimit;
         element.text = previousText;
         showToast = previousToast;
         await saveProjectsToStorage();
         renderDesignWorkspace();
       }
     });
-    assert.equal(conversionGuardCheck.capBlocked, true, 'design-to-web conversion must obey the workspace project cap');
-    assert.equal(conversionGuardCheck.oversizedBlocked, true, 'oversized generated HTML must be rejected before creating a web project');
+    assert.equal(conversionGuardCheck.oversizedBlocked, true, 'oversized generated HTML must be rejected without changing the project');
     assert.equal(conversionGuardCheck.sizeWarning, true, 'the size rejection must explain the HTML limit');
     await page.locator('button[onclick="convertDesignToWeb()"]').click();
     await page.waitForFunction(() => {
