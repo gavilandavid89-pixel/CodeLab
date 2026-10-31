@@ -22,6 +22,8 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
+assert.match(bridge, /Source design changed during conversion/, 'design conversion must preserve its source');
+assert.match(bridge, /project_export_html[\\s\\S]{0,1000}truncated/, 'HTML export must report truncation');
 assert.match(bridge, /AI generation changes project code and may consume API quota/, 'AI generation must require explicit approval');
 assert.match(bridge, /await processAiInstruction\(\)/, 'AI generation must reuse the app copilot path');
 assert.match(bridge, /source\.design\.flowConnections\.push/, 'flow connections must update the actual design model');
