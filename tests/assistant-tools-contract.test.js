@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
-  'branch_status', 'branch_resume', 'branch_save'
+  'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read'
 ];
 
 for (const action of requiredActions) {
@@ -18,7 +18,7 @@ assert.match(bridge, /project_rename[\s\S]{0,300}args\.name\.trim\(\)\.length > 
   'rename must validate project name length');
 assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editorMatchesSavedBranch[\s\S]{0,300}true/,
   'branch resume must report editor-to-branch verification');
-assert.match(bridge, /localSnapshotVerified/,
+assert.match(bridge, /workspace_inspect[\\s\\S]{0,500}project_inspect[\\s\\S]{0,1200}project_code_read[\\s\\S]{0,1600}design_read/, 'read-only inspection tools must be implemented');\nassert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
 assert.match(bridge, /if \(commandSource === 'comment' && !\[[\s\S]*?\.includes\(command\.action\)\) \{[\s\S]{0,250}Comment mailbox is read-only/,
   'comment mailbox must remain read-only');
