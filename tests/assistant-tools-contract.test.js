@@ -32,6 +32,7 @@ assert.match(bridge, /Replacing existing design layers requires approval/, 'temp
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(bridge, /recordDesignHistory\(\)/, 'design edits must record undo history');
 assert.match(bridge, /sourceUnchanged/, 'project duplication must check that the source was preserved');
+assert.match(bridge, /exact local project state/, 'project save must verify exact persisted code or design, not only the project name');
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
