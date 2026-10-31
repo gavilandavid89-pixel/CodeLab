@@ -1486,7 +1486,8 @@ const server = http.createServer(async (req, res) => {
           oauth: cfg,
           demoFallback: !(cfg.github || cfg.google),
           user: user || null,
-          workspaceId: user ? userWorkspaceId(user) : null
+          workspaceId: user ? userWorkspaceId(user) : null,
+          mustChangePassword: !!(user && user.provider === 'local' && readLocalAccounts()[user.name] && readLocalAccounts()[user.name].mustChangePassword)
         });
       }
 
