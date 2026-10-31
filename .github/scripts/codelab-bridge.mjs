@@ -251,7 +251,7 @@ try {
         });
         preview.src = src || null;
         preview.frameUrl = safeUrl(previewFrame.url());
-        preview.empty = preview.elementCount === 0 || (!preview.title && !preview.text && preview.elementCount <= 2);
+        preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
         preview.selfTest = command.args.self_test === true;
       }
     }
