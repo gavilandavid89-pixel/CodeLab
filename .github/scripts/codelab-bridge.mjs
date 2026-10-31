@@ -276,14 +276,8 @@ try {
       setEditorValue('html', code.html, { silent: true });
       setEditorValue('css', code.css, { silent: true });
       setEditorValue('js', code.js, { silent: true });
-      // Monaco's change listeners schedule an automatic preview refresh even for silent programmatic edits.
-      // Cancel that pending refresh before the explicit update to avoid racing iframe navigation during assertions.
-      if (typeof previewTimer !== 'undefined' && previewTimer) {
-        clearTimeout(previewTimer);
-        previewTimer = null;
-      }
+      // Monaco emits content-change events after setValue; let its debounce settle before forcing one stable preview.
       const state = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
-      updatePreview();
       return state;
     }, fixture);
     if (editorState.html !== fixture.html || editorState.css !== fixture.css || editorState.js !== fixture.js) {
@@ -293,6 +287,16 @@ try {
         jsMatches: editorState.js === fixture.js
       }));
     }
+    stage = 'editor_preview_wait_debounce';
+    await page.waitForTimeout(500);
+    stage = 'editor_preview_force_stable_refresh';
+    await page.evaluate(() => {
+      if (typeof previewTimer !== 'undefined' && previewTimer) {
+        clearTimeout(previewTimer);
+        previewTimer = null;
+      }
+      updatePreview();
+    });
     const previewFrame = page.frameLocator('#previewIframe');
     stage = 'editor_preview_wait_fixture';
     await previewFrame.locator('#probe-increment').waitFor({ state: 'visible', timeout: 15000 });
