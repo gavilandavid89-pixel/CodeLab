@@ -271,12 +271,28 @@ try {
       js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");if(b&&c)b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});if(i&&e)i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_EDITOR_PREVIEW_READY");'
     };
     stage = 'editor_preview_set_fixture';
-    await page.evaluate(code => {
+    stage = 'editor_preview_set_fixture';
+    const editorState = await page.evaluate(code => {
       setEditorValue('html', code.html, { silent: true });
       setEditorValue('css', code.css, { silent: true });
       setEditorValue('js', code.js, { silent: true });
+      // Monaco's change listeners schedule an automatic preview refresh even for silent programmatic edits.
+      // Cancel that pending refresh before the explicit update to avoid racing iframe navigation during assertions.
+      if (typeof previewTimer !== 'undefined' && previewTimer) {
+        clearTimeout(previewTimer);
+        previewTimer = null;
+      }
+      const state = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
       updatePreview();
+      return state;
     }, fixture);
+    if (editorState.html !== fixture.html || editorState.css !== fixture.css || editorState.js !== fixture.js) {
+      throw new Error('Editor did not retain the complete HTML/CSS/JS fixture: ' + JSON.stringify({
+        htmlMatches: editorState.html === fixture.html,
+        cssMatches: editorState.css === fixture.css,
+        jsMatches: editorState.js === fixture.js
+      }));
+    }
     const previewFrame = page.frameLocator('#previewIframe');
     stage = 'editor_preview_wait_fixture';
     await previewFrame.locator('#probe-increment').waitFor({ state: 'visible', timeout: 15000 });
