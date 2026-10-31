@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -42,6 +42,10 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'project_create') {
+    if (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200) throw new Error('project_create requires a name between 1 and 200 characters.');
+    if (!['web', 'design'].includes(args.type || 'web')) throw new Error('project_create type must be web or design.');
+  }
   if (command.action === 'component_search') {
     if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) throw new Error('component_search query must be a string up to 200 characters.');
     if (args.category !== undefined && (typeof args.category !== 'string' || args.category.length > 100)) throw new Error('component_search category must be a string up to 100 characters.');
@@ -233,6 +237,46 @@ try {
   await page.waitForTimeout(2500);
   stage = 'execute_action';
 
+  if (command.action === 'project_create') {
+    stage = 'project_create';
+    result = await page.evaluate(async ({ name, type }) => {
+      const beforeIds = new Set(projects.map(item => item.id));
+      openNewProjectModal();
+      const input = document.getElementById('newProjectNameInput');
+      if (!input) throw new Error('New-project name input is unavailable.');
+      input.value = name.trim();
+      const radio = document.querySelector('input[name="newProjectType"][value="' + type + '"]');
+      if (radio) radio.checked = true;
+      await createNewProjectConfirm();
+      const created = projects.find(item => !beforeIds.has(item.id));
+      if (!created) throw new Error('Project creation did not produce a new project ID.');
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === created.id && item.name === name.trim());
+      const serverSyncStatus = document.getElementById('statusText')?.textContent || null;
+      if (!localVerified) throw new Error('Created project was not verified in the local snapshot.');
+      return { projectId: created.id, name: created.name, type: created.type, localSnapshotVerified: localVerified, serverSyncStatus };
+    }, { name: command.args.name, type: command.args.type || 'web' });
+  } else if (command.action === 'project_duplicate') {
+    stage = 'project_duplicate';
+    result = await page.evaluate(async projectId => {
+      const source = projects.find(item => item && item.id === projectId);
+      if (!source) throw new Error('Source project not found in the authenticated workspace.');
+      const beforeIds = new Set(projects.map(item => item.id));
+      const sourceCode = JSON.stringify(source.code || {});
+      const sourceDesign = JSON.stringify(source.design || {});
+      await duplicateProjectFromDashboard(projectId);
+      const duplicate = projects.find(item => !beforeIds.has(item.id));
+      if (!duplicate) throw new Error('Duplicate project was not created.');
+      const sourceUnchanged = JSON.stringify(source.code || {}) === sourceCode && JSON.stringify(source.design || {}) === sourceDesign;
+      let localVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === duplicate.id && item.name === duplicate.name);
+      } catch (_) {}
+      if (!sourceUnchanged) throw new Error('Source project changed during duplication.');
+      if (!localVerified) throw new Error('Duplicate was not verified in the local snapshot.');
+      return { sourceProjectId: projectId, projectId: duplicate.id, name: duplicate.name, type: duplicate.type, sourceUnchanged, localSnapshotVerified: localVerified };
+    }, command.args.project_id);
   if (command.action === 'workspace_inspect') {
     stage = 'workspace_inspect';
     result = await page.evaluate(() => ({
