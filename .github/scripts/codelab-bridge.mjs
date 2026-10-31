@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -42,6 +42,69 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'project_delete' && command.approval !== 'approved') throw new Error('Permanent project deletion requires approval: "approved".');
+  if (command.action === 'design_template_apply') {
+    if (!['landing', 'dashboard', 'portfolio'].includes(args.template_id)) throw new Error('design_template_apply requires a supported template_id.');
+    if (args.replace_existing !== undefined && typeof args.replace_existing !== 'boolean') throw new Error('replace_existing must be a boolean.');
+    if (args.replace_existing === true && command.approval !== 'approved') throw new Error('Replacing existing design layers requires approval: "approved".');
+  }
+  if (command.action === 'design_history' && !['undo', 'redo'].includes(args.operation)) throw new Error('design_history operation must be undo or redo.');
+  if (command.action === 'project_delete') {
+    stage = 'project_delete';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => true;
+        await deleteProject(projectId);
+      } finally {
+        window.confirm = originalConfirm;
+      }
+      const deleted = !projects.some(item => item && item.id === projectId);
+      let localVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        localVerified = Array.isArray(snapshot) && !snapshot.some(item => item && item.id === projectId);
+      } catch (_) {}
+      if (!deleted || !localVerified) throw new Error('Project deletion was not verified in memory and local snapshot.');
+      return { projectId, deleted, localSnapshotVerified: localVerified };
+    }, command.args.project_id);
+  } else if (command.action === 'design_template_apply') {
+    stage = 'design_template_apply';
+    result = await page.evaluate(async ({ projectId, templateId, replaceExisting }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      if (project.design.elements?.length && !replaceExisting) throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => !!replaceExisting;
+        applyDesignTemplate(templateId);
+      } finally {
+        window.confirm = originalConfirm;
+      }
+      const latest = projects.find(item => item && item.id === projectId);
+      const hasLayers = Array.isArray(latest?.design?.elements) && latest.design.elements.length > 0;
+      const saved = await saveProjectsToStorage();
+      if (!hasLayers) throw new Error('Template application produced no design layers.');
+      return { projectId, templateId, elementCount: latest.design.elements.length, saved: saved === true, verified: hasLayers };
+    }, { projectId: command.args.project_id, templateId: command.args.template_id, replaceExisting: command.args.replace_existing === true });
+  } else if (command.action === 'design_history') {
+    stage = 'design_history';
+    result = await page.evaluate(async ({ projectId, operation }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const before = JSON.stringify(project.design);
+      if (operation === 'undo') designUndo(); else designRedo();
+      const latest = projects.find(item => item && item.id === projectId);
+      const changed = JSON.stringify(latest.design) !== before;
+      const saved = await saveProjectsToStorage();
+      return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
+    }, { projectId: command.args.project_id, operation: command.args.operation });
   if (command.action === 'project_create') {
     if (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200) throw new Error('project_create requires a name between 1 and 200 characters.');
     if (!['web', 'design'].includes(args.type || 'web')) throw new Error('project_create type must be web or design.');
