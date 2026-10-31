@@ -10,6 +10,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 - Target: `https://codelab-pbw9.onrender.com/`
 - Commands may be sent by opening an issue titled `[CodeLab Bridge] ...` or, after the mailbox workflow is enabled, by posting a command as a new comment on an existing issue with that title.
 - Only commands authored by the repository owner are executed. Bot-generated result comments do not trigger commands.
+- Comment-triggered commands are restricted in the bridge script to the read-only actions `status`, `connections_status`, and `list_controls`. In comment mode, control text/labels are omitted; only structural metadata such as tag, ID, type, and disabled state is returned. Mutating actions remain on the explicit issue-command path.
 - Comment mailbox commands avoid creating a new issue for each read-only query. Reuse a dedicated bridge issue rather than creating repeated issues.
 - The job uses a fresh Playwright browser for each command. It does not control the user's existing browser or inherit their browser login.
 - When `use_admin_session: true`, the bridge signs in through CodeLab using GitHub Actions secrets. Credentials are never read from command payloads.
@@ -24,7 +25,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 - `connections_status`: API health, OAuth configured booleans, and AI provider configuration.
 - `ai_ping`: one low-token request through the existing AI provider endpoint; reports success/failure and model without returning model output.
 - `read_page`: bounded page text snapshot. Use only when the resulting text is safe to expose in the issue thread.
-- `list_controls`: visible DOM control metadata.
+- `list_controls`: visible DOM control metadata. In comment mailbox mode, labels/text are omitted to reduce accidental disclosure.
 - `read_element`, `fill`, `select`, `click`: bounded DOM interactions using a CSS selector; `click` requires explicit approval.
 
 ## Comment mailbox example
