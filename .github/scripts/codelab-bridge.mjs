@@ -224,7 +224,7 @@ try {
           // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
           const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
           await frameLocator.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
-          await frameLocator.locator('#codelab-diagnostic-probe').waitFor({ state: 'visible', timeout: 10000 });
+          await frameLocator.locator('#codelab-diagnostic-probe').waitFor({ state: 'attached', timeout: 10000 });
           await page.waitForTimeout(300);
         }
         preview = await frameLocator.locator('html').evaluate(() => {
