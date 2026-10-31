@@ -1460,6 +1460,65 @@ function loadAuthFromStorage() {
   }
 }
 
+async function openAdminAccountsModal() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  document.getElementById('adminAccountsModal')?.classList.remove('hidden');
+  await loadAdminAccounts();
+}
+function closeAdminAccountsModal() {
+  document.getElementById('adminAccountsModal')?.classList.add('hidden');
+  const password = document.getElementById('newAccountPassword');
+  if (password) password.value = '';
+}
+async function loadAdminAccounts() {
+  const list = document.getElementById('adminAccountsList');
+  if (!list) return;
+  list.textContent = 'Cargando…';
+  try {
+    const response = await fetch('/api/admin/accounts', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error('No se pudo cargar la lista de cuentas.');
+    list.replaceChildren();
+    (data.accounts || []).forEach(account => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between gap-3 rounded-lg bg-slate-950 border border-slate-800 px-3 py-2';
+      const name = document.createElement('span');
+      name.textContent = account.username + (account.mustChangePassword ? ' · cambio pendiente' : '');
+      const role = document.createElement('span');
+      role.className = 'text-slate-500 shrink-0';
+      role.textContent = account.role === 'admin' ? 'Administrador' : 'Usuario';
+      row.append(name, role);
+      list.appendChild(row);
+    });
+    if (!(data.accounts || []).length) list.textContent = 'Todavía no hay cuentas.';
+  } catch (e) { list.textContent = e.message || 'Error cargando cuentas.'; }
+}
+async function createNativeAccount() {
+  const username = (document.getElementById('newAccountUsername')?.value || '').trim().toUpperCase();
+  const password = document.getElementById('newAccountPassword')?.value || '';
+  const error = document.getElementById('createAccountError');
+  const submit = document.getElementById('createAccountSubmit');
+  if (error) { error.textContent = ''; error.classList.add('hidden'); }
+  if (submit) { submit.disabled = true; submit.textContent = 'Creando…'; }
+  try {
+    const response = await fetch('/api/admin/accounts', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || 'No se pudo crear la cuenta.');
+    document.getElementById('newAccountUsername').value = '';
+    document.getElementById('newAccountPassword').value = '';
+    showToast('Cuenta ' + data.account.username + ' creada.');
+    await loadAdminAccounts();
+  } catch (e) {
+    if (error) { error.textContent = e.message || 'Error creando la cuenta.'; error.classList.remove('hidden'); }
+  } finally {
+    if (submit) { submit.disabled = false; submit.textContent = 'Crear cuenta'; }
+  }
+}
+
 function openNativeLoginModal() {
   const modal = document.getElementById('authModal');
   const title = document.getElementById('authModalTitle');
