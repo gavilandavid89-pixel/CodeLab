@@ -4,6 +4,7 @@ const repo = process.env.GITHUB_REPOSITORY;
 const issueNumber = Number(process.env.ISSUE_NUMBER);
 const token = process.env.GITHUB_TOKEN;
 const targetUrl = new URL(process.env.TARGET_URL || 'https://codelab-pbw9.onrender.com/');
+const commandSource = process.env.COMMAND_SOURCE || 'issue';
 
 if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
   throw new Error('Target origin is not allowlisted.');
@@ -18,6 +19,10 @@ function parseCommand(raw) {
   const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'click', 'read_element', 'fill', 'select']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
+  // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
+  if (commandSource === 'comment' && !['status', 'connections_status', 'list_controls'].includes(command.action)) {
+    throw new Error('Comment mailbox is read-only; use a separately approved issue command for interactions.');
+  }
   if (!command.expires_at || !Number.isFinite(Date.parse(command.expires_at))) throw new Error('A valid expires_at is required.');
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
@@ -158,7 +163,7 @@ try {
     result = await page.locator('button,input,textarea,select,[role="button"]').evaluateAll(els =>
       els.slice(0, 100).map(el => ({
         tag: el.tagName.toLowerCase(),
-        text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
+        text: commandSource === 'comment' ? null : (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
         id: el.id || null,
         type: el.getAttribute('type'),
         disabled: Boolean(el.disabled)
