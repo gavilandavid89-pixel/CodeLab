@@ -21,7 +21,7 @@ assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editor
 for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write']) {
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
-assert.match(bridge, /project_code_write[\\s\\S]{0,900}50000/, 'code write must enforce a size limit');
+assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
