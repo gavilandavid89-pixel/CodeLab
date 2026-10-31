@@ -1499,7 +1499,7 @@ const server = http.createServer(async (req, res) => {
         if (newPassword.length < 16 || newPassword.length > 1024) {
           return sendJson(res, 400, { error: 'password_too_short', message: 'La nueva contraseña debe tener al menos 16 caracteres.' });
         }
-        const accounts = readLocalAccounts();
+        const accounts = await readLocalAccounts();
         const account = accounts[user.name];
         if (!account || !safePasswordEqual(passwordHash(currentPassword, account.salt), account.passwordHash)) {
           return sendJson(res, 401, { error: 'invalid_credentials' });
@@ -1523,7 +1523,7 @@ const server = http.createServer(async (req, res) => {
         if (!actor || actor.provider !== 'local' || actor.role !== 'admin') {
           return sendJson(res, 403, { error: 'admin_required' });
         }
-        const accounts = readLocalAccounts();
+        const accounts = await readLocalAccounts();
         if (req.method === 'GET') {
           return sendJson(res, 200, {
             accounts: Object.keys(accounts).sort().map(username => ({
@@ -1554,7 +1554,7 @@ const server = http.createServer(async (req, res) => {
           createdAt: new Date().toISOString(),
           mustChangePassword: false
         };
-        writeLocalAccounts(accounts);
+        await writeLocalAccounts(accounts);
         return sendJson(res, 201, { ok: true, account: { username, role: 'user', createdAt: accounts[username].createdAt } });
       }
 
