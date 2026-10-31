@@ -123,7 +123,15 @@ function parseCommand(raw) {
   }
   if (command.action === 'design_prototype_target_set') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_prototype_target_set requires a valid element_id.');
-    if (typeof args.target !== 'string' || args.target.length > 500 || /[<>\u0000-\u001f]/.test(args.target)) throw new Error('design_prototype_target_set target must be a safe string up to 500 characters.');
+    if (typeof args.target !== 'string' || args.target.length > 2048 || /[<>\u0000-\u001f]/.test(args.target)) throw new Error('design_prototype_target_set target must be a safe string up to 2048 characters.');
+    const target = args.target.trim();
+    const isLayerTarget = /^#layer-[a-z0-9_-]{1,120}$/i.test(target);
+    let isWebTarget = false;
+    try {
+      const url = new URL(target);
+      isWebTarget = (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password;
+    } catch (_) {}
+    if (target && !isLayerTarget && !isWebTarget) throw new Error('target must be an HTTP(S) URL without credentials or a #layer-<id> fragment supported by CodeLab.');
   }
   if (command.action === 'design_layout_configure') {
     const allowedLayoutKeys = ['mode', 'direction', 'gap', 'padding'];
