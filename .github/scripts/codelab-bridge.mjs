@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'click', 'read_element', 'fill', 'select']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'click', 'read_element', 'fill', 'select', 'sequence']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -39,6 +39,24 @@ function parseCommand(raw) {
   }
   if (command.action === 'click' && command.approval !== 'approved') {
     throw new Error('Click commands require approval: "approved".');
+  }
+  if (command.action === 'sequence') {
+    if (!Array.isArray(args.steps) || args.steps.length < 1 || args.steps.length > 8) {
+      throw new Error('Sequence requires between 1 and 8 steps.');
+    }
+    for (const step of args.steps) {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) throw new Error('Invalid sequence step.');
+      if (!['click', 'fill', 'select'].includes(step.action)) throw new Error('Sequence step action is not allowlisted.');
+      if (typeof step.selector !== 'string' || !step.selector.trim() || step.selector.length > 2000) {
+        throw new Error('Each sequence step requires a valid selector.');
+      }
+      if (['fill', 'select'].includes(step.action) && (typeof step.value !== 'string' || step.value.length > 2000)) {
+        throw new Error('Fill/select sequence steps require a string value of at most 2000 characters.');
+      }
+      if (step.action === 'click' && command.approval !== 'approved') {
+        throw new Error('Sequence click steps require approval: "approved".');
+      }
+    }
   }
   return { ...command, args };
 }
@@ -172,6 +190,31 @@ try {
       })),
       commandSource !== 'comment'
     );
+  } else if (command.action === 'sequence') {
+    result = [];
+    for (let index = 0; index < command.args.steps.length; index += 1) {
+      const step = command.args.steps[index];
+      const locator = page.locator(step.selector).first();
+      if (await locator.count() === 0) throw new Error('Sequence step ' + (index + 1) + ': selector did not match an element.');
+      if (step.action === 'click') {
+        const tag = await locator.evaluate(el => el.tagName.toLowerCase());
+        if (tag === 'a') {
+          const href = await locator.getAttribute('href');
+          if (href) {
+            const u = new URL(href, page.url());
+            if (u.origin !== targetUrl.origin) throw new Error('External navigation is blocked by the bridge.');
+          }
+        }
+        await locator.click({ timeout: 10000 });
+        result.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, urlAfter: page.url() });
+      } else if (step.action === 'fill') {
+        await locator.fill(step.value, { timeout: 10000 });
+        result.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true });
+      } else if (step.action === 'select') {
+        await locator.selectOption(step.value, { timeout: 10000 });
+        result.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true });
+      }
+    }
   } else {
     const locator = page.locator(command.args.selector).first();
     if (await locator.count() === 0) throw new Error('Selector did not match an element.');
@@ -197,7 +240,7 @@ try {
   }
   // Capture post-interaction layout evidence only after masking text and user-provided content.
   // The repository is public, so screenshots must not expose project names, code, inputs, previews, or images.
-  if (['click', 'fill', 'select'].includes(command.action)) {
+  if (['click', 'fill', 'select', 'sequence'].includes(command.action)) {
     await page.addStyleTag({ content: [
       'body * { color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }',
       'input, textarea, select, [contenteditable="true"], pre, code, iframe, canvas, img, video, .monaco-editor, .CodeMirror, .cm-editor { visibility: hidden !important; }',
@@ -206,7 +249,9 @@ try {
     const screenshotPath = process.env.CODELAB_SCREENSHOT_PATH || '.codelab-artifacts/bridge-ui.png';
     await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
     await page.screenshot({ path: screenshotPath, fullPage: false, animations: 'disabled' });
-    if (result && typeof result === 'object' && !Array.isArray(result)) {
+    if (Array.isArray(result)) {
+      result = { steps: result, redactedScreenshotCaptured: true };
+    } else if (result && typeof result === 'object') {
       result = { ...result, redactedScreenshotCaptured: true };
     }
   }
