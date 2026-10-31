@@ -20,6 +20,6 @@ assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editor
   'branch resume must report editor-to-branch verification');
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
-assert.match(bridge, /commandSource === 'comment'[\s\S]{0,220}read-only mailbox/,
+assert.match(bridge, /if \(commandSource === 'comment' && !\[[\s\S]*?\.includes\(command\.action\)\) \{[\s\S]{0,250}Comment mailbox is read-only/,
   'comment mailbox must remain read-only');
 console.log('Assistant project lifecycle tool contract checks passed.');
