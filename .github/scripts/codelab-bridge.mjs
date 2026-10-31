@@ -288,7 +288,14 @@ try {
       if (command.args.self_test === true) {
         // Disposable fixture only: this replaces srcdoc in the isolated bridge browser, not a saved project.
         const probeHtml = '<!doctype html><html><head><title>CodeLab interaction probe</title></head><body><main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main><script>const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");</script></body></html>';
-        await frameElement.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
+        await frameElement.evaluate((el, html) => {
+          const probe = document.createElement('iframe');
+          probe.id = 'previewIframe';
+          probe.setAttribute('sandbox', 'allow-scripts allow-forms');
+          probe.style.cssText = 'position:fixed;left:12px;bottom:12px;width:640px;height:360px;z-index:2147483000;background:white;border:2px solid #64748b';
+          probe.srcdoc = html;
+          el.replaceWith(probe);
+        }, probeHtml);
         await previewFrame.locator('#probe-increment').waitFor({ state: 'attached', timeout: 10000 });
       }
       const isVisible = await frameElement.isVisible();
