@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -49,6 +49,10 @@ function parseCommand(raw) {
     if (args.replace_existing === true && command.approval !== 'approved') throw new Error('Replacing existing design layers requires approval: "approved".');
   }
   if (command.action === 'design_history' && !['undo', 'redo'].includes(args.operation)) throw new Error('design_history operation must be undo or redo.');
+  if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
+  if (command.action === 'design_tokens_generate') {
+    if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
+  }
   if (command.action === 'project_create') {
     if (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200) throw new Error('project_create requires a name between 1 and 200 characters.');
     if (!['web', 'design'].includes(args.type || 'web')) throw new Error('project_create type must be web or design.');
@@ -244,6 +248,59 @@ try {
   await page.waitForTimeout(2500);
   stage = 'execute_action';
 
+  if (command.action === 'ai_settings_inspect') {
+    stage = 'ai_settings_inspect';
+    result = await page.evaluate(() => ({
+      mode: typeof aiSettings !== 'undefined' ? aiSettings.mode : null,
+      model: typeof aiSettings !== 'undefined' ? aiSettings.model : null,
+      baseUrl: typeof aiSettings !== 'undefined' ? aiSettings.baseUrl : null,
+      apiKeyConfigured: !!(typeof aiSettings !== 'undefined' && aiSettings.apiKey),
+      serverKeyConfigured: !!(typeof serverAi !== 'undefined' && serverAi.serverKey),
+      serverModel: typeof serverAi !== 'undefined' ? serverAi.model : null,
+      hint: typeof serverAi !== 'undefined' ? serverAi.hint : null,
+      apiKeyExposed: false
+    }));
+  } else if (command.action === 'accessibility_audit') {
+    stage = 'accessibility_audit';
+    result = await page.evaluate(projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      const api = window.CodeLabDesignTools;
+      if (!api || typeof api.auditHtml !== 'function') throw new Error('Accessibility audit API is not ready.');
+      const report = api.auditHtml(project.code?.html || '');
+      return { projectId, projectName: project.name, report };
+    }, command.args.project_id);
+  } else if (command.action === 'design_tokens_generate') {
+    stage = 'design_tokens_generate';
+    result = await page.evaluate(settings => {
+      const api = window.CodeLabDesignTools;
+      if (!api || typeof api.sanitizeSettings !== 'function' || typeof api.buildDesignTokens !== 'function' || typeof api.toCssVariables !== 'function') {
+        throw new Error('Design token API is not ready.');
+      }
+      const normalized = api.sanitizeSettings(settings || api.defaults);
+      const tokens = api.buildDesignTokens(normalized);
+      const css = api.toCssVariables(normalized);
+      return { settings: normalized, tokens, css, verified: !!tokens && typeof css === 'string' };
+    }, command.args.settings || null);
+  } else if (command.action === 'design_export') {
+    stage = 'design_export';
+    result = await page.evaluate(({ projectId, format }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      let content, mimeType;
+      if (format === 'svg') {
+        const api = window.CodeLabCapture;
+        if (!api || typeof api.captureDesignSvg !== 'function') throw new Error('SVG export API is not ready.');
+        const capture = api.captureDesignSvg(project);
+        content = capture.svg;
+        mimeType = 'image/svg+xml';
+      } else {
+        content = JSON.stringify({ format: 'codelab-design-project', version: 1, exportedAt: new Date().toISOString(), project }, null, 2);
+        mimeType = 'application/json';
+      }
+      const max = 7000;
+      return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
+    }, { projectId: command.args.project_id, format: command.args.format });
   if (command.action === 'project_delete') {
     stage = 'project_delete';
     result = await page.evaluate(async projectId => {
