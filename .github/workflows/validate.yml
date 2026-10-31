@@ -32,6 +32,7 @@ jobs:
           node --check public/design-tools.js
           node --check public/design-flow.js
           node --check public/component-library.js
+          node --check .github/scripts/codelab-bridge.mjs
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
           node --check tests/ai-settings-isolation.test.js
