@@ -22,6 +22,8 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
+assert.match(bridge, /apiKeyExposed: false/, 'AI settings inspection must not expose secrets');
+assert.match(bridge, /auditHtml\(project\.code\?\.html/, 'accessibility audit must use actual project HTML');
 assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
 assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
