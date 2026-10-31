@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -112,6 +112,18 @@ function parseCommand(raw) {
   if (command.action === 'design_elements_align') {
     if (!['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(args.mode)) throw new Error('design_elements_align requires a supported alignment mode.');
     if (!Array.isArray(args.element_ids) || args.element_ids.length < 1 || args.element_ids.length > 50 || args.element_ids.some(id => typeof id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(id))) throw new Error('design_elements_align requires 1 to 50 valid element_ids.');
+  }
+  if (command.action === 'design_elements_distribute') {
+    if (!Array.isArray(args.element_ids) || args.element_ids.length < 3 || args.element_ids.length > 100 ||
+        args.element_ids.some(id => typeof id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(id)) ||
+        new Set(args.element_ids).size !== args.element_ids.length) {
+      throw new Error('design_elements_distribute requires 3 to 100 unique valid element_ids.');
+    }
+    if (!['horizontal', 'vertical'].includes(args.axis)) throw new Error('design_elements_distribute axis must be horizontal or vertical.');
+  }
+  if (command.action === 'design_prototype_target_set') {
+    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_prototype_target_set requires a valid element_id.');
+    if (typeof args.target !== 'string' || args.target.length > 500 || /[<>\u0000-\u001f]/.test(args.target)) throw new Error('design_prototype_target_set target must be a safe string up to 500 characters.');
   }
   if (command.action === 'design_layout_configure') {
     const allowedLayoutKeys = ['mode', 'direction', 'gap', 'padding'];
@@ -1042,6 +1054,53 @@ try {
       if (!localVerified) throw new Error('Alignment was not verified in the local snapshot.');
       return { projectId, mode, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
     }, { projectId: command.args.project_id, elementIds: command.args.element_ids, mode: command.args.mode });
+  } else if (command.action === 'design_elements_distribute') {
+    stage = 'design_elements_distribute';
+    result = await page.evaluate(async ({ projectId, elementIds, axis }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design) throw new Error('Design project not found.');
+      const selected = project.design.elements.filter(item => elementIds.includes(item.id));
+      if (selected.length !== elementIds.length) throw new Error('One or more design elements were not found.');
+      if (project.design.layoutMode === 'auto') throw new Error('Switch the design to free layout before manual distribution.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      selectedDesignElementId = selected[0].id; selectedDesignElementIds = selected.map(item => item.id);
+      const key = axis === 'vertical' ? 'y' : 'x';
+      const before = selected.map(item => ({ id: item.id, x: item.x, y: item.y }));
+      distributeDesignElements(axis);
+      const latest = projects.find(item => item && item.id === projectId);
+      const after = latest.design.elements.filter(item => elementIds.includes(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y }));
+      const changed = JSON.stringify(before) !== JSON.stringify(after);
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localVerified = !!local && after.every(item => {
+        const stored = local.design?.elements?.find(el => el.id === item.id);
+        return stored && stored.x === item.x && stored.y === item.y;
+      });
+      if (!changed || !localVerified) throw new Error('Distribution did not change and persist the selected element positions.');
+      return { projectId, axis, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
+    }, { projectId: command.args.project_id, elementIds: command.args.element_ids, axis: command.args.axis });
+  } else if (command.action === 'design_prototype_target_set') {
+    stage = 'design_prototype_target_set';
+    result = await page.evaluate(async ({ projectId, elementId, target }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design) throw new Error('Design project not found.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      const element = project.design.elements.find(item => item && item.id === elementId);
+      if (!element) throw new Error('Design element not found.');
+      if (!['button', 'text', 'heading', 'image'].includes(element.type)) throw new Error('Prototype targets can only be assigned to interactive or content elements supported by the editor.');
+      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
+      const before = element.href || '';
+      setDesignPrototypeTarget(target);
+      const latest = projects.find(item => item && item.id === projectId);
+      const updated = latest.design.elements.find(item => item && item.id === elementId);
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const stored = local?.design?.elements?.find(item => item && item.id === elementId);
+      if (!updated || updated.href !== target || !stored || stored.href !== target) throw new Error('Prototype target was not persisted exactly.');
+      return { projectId, elementId, previousTarget: before, target: updated.href, saved: saved === true, localSnapshotVerified: true };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id, target: command.args.target });
   } else if (command.action === 'design_layout_configure') {
     stage = 'design_layout_configure';
     result = await page.evaluate(async ({ projectId, settings }) => {
