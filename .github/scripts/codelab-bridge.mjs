@@ -160,14 +160,15 @@ try {
       text: (await page.locator('body').innerText({ timeout: 10000 })).slice(0, 2500)
     };
   } else if (command.action === 'list_controls') {
-    result = await page.locator('button,input,textarea,select,[role="button"]').evaluateAll(els =>
+    result = await page.locator('button,input,textarea,select,[role="button"]').evaluateAll((els, includeText) =>
       els.slice(0, 100).map(el => ({
         tag: el.tagName.toLowerCase(),
-        text: commandSource === 'comment' ? null : (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
+        text: includeText ? (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100) : null,
         id: el.id || null,
         type: el.getAttribute('type'),
         disabled: Boolean(el.disabled)
-      }))
+      })),
+      commandSource !== 'comment'
     );
   } else {
     const locator = page.locator(command.args.selector).first();
