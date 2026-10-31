@@ -41,6 +41,7 @@ jobs:
       - name: Execute allowlisted browser command
         env:
           ISSUE_BODY: ${{ github.event.comment.body || github.event.issue.body }}
+          COMMAND_SOURCE: ${{ github.event_name == 'issue_comment' && 'comment' || 'issue' }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
