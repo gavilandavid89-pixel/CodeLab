@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
-  'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete'
+  'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate'
 ];
 
 for (const action of requiredActions) {
@@ -24,6 +24,8 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(bridge, /recordDesignHistory\(\)/, 'design edits must record undo history');
+assert.match(bridge, /project_create[\\s\\S]{0,1600}localSnapshotVerified/, 'project creation must verify the local snapshot');
+assert.match(bridge, /sourceUnchanged/, 'project duplication must check that the source was preserved');
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
