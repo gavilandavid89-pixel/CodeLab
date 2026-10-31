@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
