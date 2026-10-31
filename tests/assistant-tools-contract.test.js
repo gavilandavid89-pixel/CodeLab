@@ -72,6 +72,13 @@ assert.match(bridge, /design_prototype_target_set target must be a safe string/)
 assert.match(bridge, /setDesignPrototypeTarget\(target\)/, 'prototype target must use the existing editor operation');
 
 
+assert.match(bridge, /'objectFit', 'textAlign'/,
+  'design element updates must expose text alignment supported by the editor');
+assert.match(bridge, /key === 'textAlign' && !\['left', 'center', 'right'\]\.includes\(value\)/,
+  'text alignment must be validated against the editor options');
+assert.match(bridge, /key === 'objectFit' && !\['contain', 'cover', 'fill'\]\.includes\(value\)/,
+  'image fit must be validated against the editor options');
+
 assert.ok(bridge.includes("const isLayerTarget = /^#layer-[a-z0-9_-]{1,120}$/i;"),
   'prototype targets must support the same #layer-id fragments as the app');
 assert.match(bridge, /isWebTarget = \(url\.protocol === 'https:' \|\| url\.protocol === 'http:'\) && !url\.username && !url\.password/,
