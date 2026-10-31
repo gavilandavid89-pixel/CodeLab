@@ -49,62 +49,6 @@ function parseCommand(raw) {
     if (args.replace_existing === true && command.approval !== 'approved') throw new Error('Replacing existing design layers requires approval: "approved".');
   }
   if (command.action === 'design_history' && !['undo', 'redo'].includes(args.operation)) throw new Error('design_history operation must be undo or redo.');
-  if (command.action === 'project_delete') {
-    stage = 'project_delete';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const originalConfirm = window.confirm;
-      try {
-        window.confirm = () => true;
-        await deleteProject(projectId);
-      } finally {
-        window.confirm = originalConfirm;
-      }
-      const deleted = !projects.some(item => item && item.id === projectId);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && !snapshot.some(item => item && item.id === projectId);
-      } catch (_) {}
-      if (!deleted || !localVerified) throw new Error('Project deletion was not verified in memory and local snapshot.');
-      return { projectId, deleted, localSnapshotVerified: localVerified };
-    }, command.args.project_id);
-  } else if (command.action === 'design_template_apply') {
-    stage = 'design_template_apply';
-    result = await page.evaluate(async ({ projectId, templateId, replaceExisting }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      if (project.design.elements?.length && !replaceExisting) throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const originalConfirm = window.confirm;
-      try {
-        window.confirm = () => !!replaceExisting;
-        applyDesignTemplate(templateId);
-      } finally {
-        window.confirm = originalConfirm;
-      }
-      const latest = projects.find(item => item && item.id === projectId);
-      const hasLayers = Array.isArray(latest?.design?.elements) && latest.design.elements.length > 0;
-      const saved = await saveProjectsToStorage();
-      if (!hasLayers) throw new Error('Template application produced no design layers.');
-      return { projectId, templateId, elementCount: latest.design.elements.length, saved: saved === true, verified: hasLayers };
-    }, { projectId: command.args.project_id, templateId: command.args.template_id, replaceExisting: command.args.replace_existing === true });
-  } else if (command.action === 'design_history') {
-    stage = 'design_history';
-    result = await page.evaluate(async ({ projectId, operation }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const before = JSON.stringify(project.design);
-      if (operation === 'undo') designUndo(); else designRedo();
-      const latest = projects.find(item => item && item.id === projectId);
-      const changed = JSON.stringify(latest.design) !== before;
-      const saved = await saveProjectsToStorage();
-      return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
-    }, { projectId: command.args.project_id, operation: command.args.operation });
   if (command.action === 'project_create') {
     if (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200) throw new Error('project_create requires a name between 1 and 200 characters.');
     if (!['web', 'design'].includes(args.type || 'web')) throw new Error('project_create type must be web or design.');
@@ -300,7 +244,63 @@ try {
   await page.waitForTimeout(2500);
   stage = 'execute_action';
 
-  if (command.action === 'project_create') {
+  if (command.action === 'project_delete') {
+    stage = 'project_delete';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => true;
+        await deleteProject(projectId);
+      } finally {
+        window.confirm = originalConfirm;
+      }
+      const deleted = !projects.some(item => item && item.id === projectId);
+      let localVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        localVerified = Array.isArray(snapshot) && !snapshot.some(item => item && item.id === projectId);
+      } catch (_) {}
+      if (!deleted || !localVerified) throw new Error('Project deletion was not verified in memory and local snapshot.');
+      return { projectId, deleted, localSnapshotVerified: localVerified };
+    }, command.args.project_id);
+  } else if (command.action === 'design_template_apply') {
+    stage = 'design_template_apply';
+    result = await page.evaluate(async ({ projectId, templateId, replaceExisting }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      if (project.design.elements?.length && !replaceExisting) throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => !!replaceExisting;
+        applyDesignTemplate(templateId);
+      } finally {
+        window.confirm = originalConfirm;
+      }
+      const latest = projects.find(item => item && item.id === projectId);
+      const hasLayers = Array.isArray(latest?.design?.elements) && latest.design.elements.length > 0;
+      const saved = await saveProjectsToStorage();
+      if (!hasLayers) throw new Error('Template application produced no design layers.');
+      return { projectId, templateId, elementCount: latest.design.elements.length, saved: saved === true, verified: hasLayers };
+    }, { projectId: command.args.project_id, templateId: command.args.template_id, replaceExisting: command.args.replace_existing === true });
+  } else if (command.action === 'design_history') {
+    stage = 'design_history';
+    result = await page.evaluate(async ({ projectId, operation }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const before = JSON.stringify(project.design);
+      if (operation === 'undo') designUndo(); else designRedo();
+      const latest = projects.find(item => item && item.id === projectId);
+      const changed = JSON.stringify(latest.design) !== before;
+      const saved = await saveProjectsToStorage();
+      return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
+    }, { projectId: command.args.project_id, operation: command.args.operation });
+  } else if (command.action === 'project_create') {
     stage = 'project_create';
     result = await page.evaluate(async ({ name, type }) => {
       const beforeIds = new Set(projects.map(item => item.id));
