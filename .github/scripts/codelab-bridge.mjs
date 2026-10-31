@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -42,6 +42,10 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'project_export_html' && args.max_chars !== undefined &&
+      (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
+    throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
+  }
   if (command.action === 'ai_generate') {
     if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
     if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
@@ -314,6 +318,42 @@ try {
       const max = 7000;
       return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
     }, { projectId: command.args.project_id, format: command.args.format });
+  } else if (command.action === 'project_export_html') {
+    stage = 'project_export_html';
+    result = await page.evaluate(({ projectId, maxChars }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (project.type === 'design') throw new Error('HTML export requires a web project.');
+      const code = project.code || {};
+      const content = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>' +
+        String(code.css || '') + '</style></head><body>' + String(code.html || '') + '<script>' +
+        String(code.js || '').replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
+      const limit = maxChars || 7000;
+      return { projectId, name: project.name, mimeType: 'text/html', length: content.length, content: content.slice(0, limit), truncated: content.length > limit };
+    }, { projectId: command.args.project_id, maxChars: command.args.max_chars || 7000 });
+  } else if (command.action === 'project_convert_design_to_web') {
+    stage = 'project_convert_design_to_web';
+    result = await page.evaluate(async projectId => {
+      const source = projects.find(item => item && item.id === projectId);
+      if (!source || source.type !== 'design' || !source.design) throw new Error('Source must be an existing design project.');
+      const sourceSnapshot = JSON.stringify(source.design);
+      const beforeIds = new Set(projects.map(item => item.id));
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 250));
+      convertDesignToWeb();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const created = projects.find(item => !beforeIds.has(item.id));
+      if (!created || created.type === 'design' || !created.code) throw new Error('Design conversion did not create a web project.');
+      const sourceUnchanged = JSON.stringify(source.design) === sourceSnapshot;
+      let localVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === created.id && item.code?.html === created.code?.html);
+      } catch (_) {}
+      if (!sourceUnchanged) throw new Error('Source design changed during conversion.');
+      if (!localVerified) throw new Error('Converted web project was not verified in the local snapshot.');
+      return { sourceProjectId: projectId, projectId: created.id, name: created.name, type: created.type, codeLengths: { html: created.code.html?.length || 0, css: created.code.css?.length || 0, js: created.code.js?.length || 0 }, sourceUnchanged, localSnapshotVerified: localVerified };
+    }, command.args.project_id);
   } else if (command.action === 'ai_generate') {
     stage = 'ai_generate';
     result = await page.evaluate(async ({ projectId, source, prompt }) => {
