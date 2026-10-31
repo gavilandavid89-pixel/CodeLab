@@ -1452,6 +1452,116 @@ function loadAuthFromStorage() {
   }
 }
 
+function openNativeLoginModal() {
+  const modal = document.getElementById('authModal');
+  const title = document.getElementById('authModalTitle');
+  const icon = document.getElementById('authModalIcon');
+  const hint = document.getElementById('authModalHint');
+  if (title) title.textContent = 'Cuenta de CodeLab';
+  if (icon) icon.className = 'fa-solid fa-user-lock text-cyan-400';
+  if (hint) hint.textContent = 'Inicia sesión con tu usuario y contraseña de CodeLab. No necesitas Google.';
+  const error = document.getElementById('nativeLoginError');
+  if (error) { error.textContent = ''; error.classList.add('hidden'); }
+  const user = document.getElementById('authUsernameInput');
+  const pass = document.getElementById('authPasswordInput');
+  if (user) { user.value = ''; user.placeholder = 'ADMIN'; }
+  if (pass) pass.value = '';
+  if (modal) modal.classList.remove('hidden');
+  setTimeout(() => { if (user) user.focus(); }, 50);
+}
+
+async function loginNativeAccount() {
+  const username = (document.getElementById('authUsernameInput')?.value || '').trim();
+  const password = document.getElementById('authPasswordInput')?.value || '';
+  const error = document.getElementById('nativeLoginError');
+  const submit = document.getElementById('nativeLoginSubmit');
+  if (error) { error.textContent = ''; error.classList.add('hidden'); }
+  if (submit) { submit.disabled = true; submit.textContent = 'Entrando…'; }
+  try {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.message || 'No se pudo iniciar sesión. Revisa el usuario y la contraseña.');
+    closeAuthModal();
+    if (document.getElementById('authPasswordInput')) document.getElementById('authPasswordInput').value = '';
+    await loadAuthFromServer();
+    if (data.mustChangePassword) {
+      const hint = document.getElementById('changePasswordHint');
+      if (hint) hint.textContent = 'Por seguridad, debes cambiar la contraseña inicial antes de continuar.';
+      openChangePasswordModal(true);
+    } else {
+      showToast('Sesión iniciada en CodeLab.');
+      await refreshWorkspaceAfterNativeLogin();
+    }
+  } catch (e) {
+    if (error) { error.textContent = e.message || 'Error al iniciar sesión.'; error.classList.remove('hidden'); }
+  } finally {
+    if (submit) { submit.disabled = false; submit.textContent = 'Iniciar sesión'; }
+  }
+}
+
+function openChangePasswordModal(required) {
+  const modal = document.getElementById('changePasswordModal');
+  const hint = document.getElementById('changePasswordHint');
+  const error = document.getElementById('changePasswordError');
+  if (hint && !required) hint.textContent = 'Usa una contraseña única de al menos 16 caracteres.';
+  if (error) { error.textContent = ''; error.classList.add('hidden'); }
+  if (modal) modal.classList.remove('hidden');
+}
+
+async function changeNativePassword() {
+  const currentPassword = document.getElementById('currentPasswordInput')?.value || '';
+  const newPassword = document.getElementById('newPasswordInput')?.value || '';
+  const confirmPassword = document.getElementById('confirmNewPasswordInput')?.value || '';
+  const error = document.getElementById('changePasswordError');
+  const submit = document.getElementById('changePasswordSubmit');
+  if (newPassword !== confirmPassword) {
+    if (error) { error.textContent = 'Las contraseñas nuevas no coinciden.'; error.classList.remove('hidden'); }
+    return;
+  }
+  if (newPassword.length < 16) {
+    if (error) { error.textContent = 'Usa al menos 16 caracteres.'; error.classList.remove('hidden'); }
+    return;
+  }
+  if (submit) { submit.disabled = true; submit.textContent = 'Actualizando…'; }
+  try {
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || 'No se pudo cambiar la contraseña.');
+    ['currentPasswordInput','newPasswordInput','confirmNewPasswordInput'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('changePasswordModal')?.classList.add('hidden');
+    showToast('Contraseña actualizada correctamente.');
+    await loadAuthFromServer();
+    await refreshWorkspaceAfterNativeLogin();
+  } catch (e) {
+    if (error) { error.textContent = e.message || 'Error al cambiar la contraseña.'; error.classList.remove('hidden'); }
+  } finally {
+    if (submit) { submit.disabled = false; submit.textContent = 'Actualizar contraseña'; }
+  }
+}
+
+async function refreshWorkspaceAfterNativeLogin() {
+  workspaceId = null;
+  initialWorkspaceId = null;
+  workspaceToken = '';
+  workspaceRevision = 0;
+  serverReady = false;
+  projects = [];
+  currentProjectId = null;
+  lsRemove(STORAGE_KEY_WORKSPACE_TOKEN);
+  await loadProjectsFromStorage();
+  window.dispatchEvent(new Event('codelab-workspace-ready'));
+  renderProjectsList();
+  updateDashboardStatus();
+}
+
 function openAuthModal(provider) {
   provider = provider === 'google' ? 'google' : 'github';
   // Real OAuth redirect when configured
