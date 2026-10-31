@@ -39,6 +39,7 @@ let serverAi = { serverKey: false, model: 'gpt-4o-mini', baseUrl: null, hint: ''
 let maxProjects = 50;
 let pendingAuthProvider = null;
 let oauthConfig = { github: false, google: false, demoFallback: true };
+let nativePasswordChangeRequired = false;
 let mobileStudioMode = 'code';
 let editors = {};
 let editorInitGeneration = 0;
@@ -428,6 +429,11 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       updateOauthDemoBanner();
       maybeOfferLocalImport();
+      if (nativePasswordChangeRequired && currentUser && currentUser.provider === 'local') {
+        const hint = document.getElementById('changePasswordHint');
+        if (hint) hint.textContent = 'Por seguridad, debes cambiar la contraseña inicial antes de continuar.';
+        openChangePasswordModal(true);
+      }
     })
     .finally(() => {
       showBootLoading(false);
@@ -1409,6 +1415,7 @@ async function loadAuthFromServer() {
       google: !!(data.oauth && data.oauth.google),
       demoFallback: !!data.demoFallback
     };
+    nativePasswordChangeRequired = !!data.mustChangePassword;
     if (data.user) {
       currentUser = {
         id: data.user.id,
@@ -1416,6 +1423,7 @@ async function loadAuthFromServer() {
         name: data.user.name,
         email: data.user.email || null,
         avatar: data.user.avatar || null,
+        role: data.user.role || 'user',
         real: true
       };
       lsSet(STORAGE_KEY_AUTH, JSON.stringify(currentUser));
