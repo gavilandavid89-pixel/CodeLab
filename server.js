@@ -528,7 +528,7 @@ function readState(id) {
       Array.isArray(parsed.owner) ||
       typeof parsed.owner.id !== 'string' ||
       !parsed.owner.id ||
-      (parsed.owner.provider !== 'github' && parsed.owner.provider !== 'google')
+      (parsed.owner.provider !== 'github' && parsed.owner.provider !== 'google' && parsed.owner.provider !== 'local')
     )) {
     throw new Error('workspace_owner_invalid');
   }
