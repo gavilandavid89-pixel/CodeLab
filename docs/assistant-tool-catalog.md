@@ -91,3 +91,12 @@ Do not mark this section fully verified until the unchecked tests pass. Continue
 ## Section 13 — Component inspection and bounded standalone export
 
 Added read-only `component_inspect`, which resolves a component by its real catalog ID, returns its metadata and uses the library's existing `standaloneHtml` function to generate a standalone HTML preview. The output is capped at 1,000–7,000 characters (5,000 by default) and explicitly reports original length and truncation, so large components can be inspected safely before inserting them into a project. It does not mutate project state or expose arbitrary project code. CI contract tests verify registration and output bounds; live validation should query a known catalog item and an invalid ID.
+
+
+## Section 14 — Manual layer distribution and prototype targets
+
+Added two design-specific operations backed by the existing editor:
+- `design_elements_distribute`: distribute 3–100 unique selected layer IDs horizontally or vertically, reject Auto Layout (which distributes automatically), and verify every final position in the durable local project snapshot.
+- `design_prototype_target_set`: assign a bounded, validated target to an eligible layer using the editor's existing prototype-target handler and verify the saved `href` value.
+
+Both require the exact design project ID and the admin session, validate IDs and arguments, and return before/after evidence. They do not call AI providers. Contract tests check registration, validation, and use of the original editor functions. Live tests should use a disposable design project and clean it up after verification.
