@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
-  'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate'
+  'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
 ];
 
 for (const action of requiredActions) {
@@ -22,6 +22,8 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
+assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
+assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(bridge, /recordDesignHistory\(\)/, 'design edits must record undo history');
 assert.match(bridge, /sourceUnchanged/, 'project duplication must check that the source was preserved');
