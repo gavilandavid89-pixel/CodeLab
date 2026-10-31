@@ -1501,6 +1501,47 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, mustChangePassword: false });
       }
 
+      // Minimal administrator-only account directory and user creation.
+      if (pathname === '/api/admin/accounts' && (req.method === 'GET' || req.method === 'POST')) {
+        const actor = getSessionUser(req);
+        if (!actor || actor.provider !== 'local' || actor.role !== 'admin') {
+          return sendJson(res, 403, { error: 'admin_required' });
+        }
+        const accounts = readLocalAccounts();
+        if (req.method === 'GET') {
+          return sendJson(res, 200, {
+            accounts: Object.keys(accounts).sort().map(username => ({
+              username,
+              role: accounts[username].role || 'user',
+              createdAt: accounts[username].createdAt || null,
+              mustChangePassword: !!accounts[username].mustChangePassword
+            }))
+          });
+        }
+        const body = await readBody(req);
+        const username = typeof body.username === 'string' ? body.username.trim().toUpperCase() : '';
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!/^[A-Z0-9_]{3,32}$/.test(username)) {
+          return sendJson(res, 400, { error: 'invalid_username', message: 'El usuario debe tener entre 3 y 32 caracteres: letras, números o guion bajo.' });
+        }
+        if (password.length < 16 || password.length > 1024) {
+          return sendJson(res, 400, { error: 'password_too_short', message: 'La contraseña debe tener al menos 16 caracteres.' });
+        }
+        if (accounts[username]) return sendJson(res, 409, { error: 'account_exists', message: 'Ese usuario ya existe.' });
+        const salt = crypto.randomBytes(16).toString('hex');
+        accounts[username] = {
+          id: crypto.randomUUID(),
+          username,
+          role: 'user',
+          salt,
+          passwordHash: passwordHash(password, salt),
+          createdAt: new Date().toISOString(),
+          mustChangePassword: false
+        };
+        writeLocalAccounts(accounts);
+        return sendJson(res, 201, { ok: true, account: { username, role: 'user', createdAt: accounts[username].createdAt } });
+      }
+
       // Auth status / me
       if (req.method === 'GET' && pathname === '/api/auth/status') {
         const cfg = oauthConfigured();
