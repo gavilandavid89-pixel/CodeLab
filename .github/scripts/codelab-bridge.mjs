@@ -235,6 +235,7 @@ try {
   } else if (command.action === 'preview_editor_smoke_test') {
     stage = 'editor_preview_smoke_test';
     const projectName = 'CodeLab Preview Probe ' + commandId.slice(-12);
+    stage = 'editor_preview_wait_boot';
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
     await page.getByRole('button', { name: /Crear proyecto/i }).click();
     await page.locator('#newProjectNameInput').fill(projectName);
