@@ -70,3 +70,11 @@ assert.match(bridge, /design_elements_distribute requires 3 to 100 unique valid 
 assert.match(bridge, /distributeDesignElements\(axis\)/, 'distribution must call the existing design editor operation');
 assert.match(bridge, /design_prototype_target_set target must be a safe string/);
 assert.match(bridge, /setDesignPrototypeTarget\(target\)/, 'prototype target must use the existing editor operation');
+
+
+assert.match(bridge, /isLayerTarget = \/\^#layer-\[a-z0-9_\\-\]\{1,120\}\$\/i/,
+  'prototype targets must support the same #layer-id fragments as the app');
+assert.match(bridge, /isWebTarget = \(url\.protocol === 'https:' \|\| url\.protocol === 'http:'\) && !url\.username && !url\.password/,
+  'prototype targets must allow only credential-free HTTP(S) URLs');
+assert.match(bridge, /target && !isLayerTarget && !isWebTarget/,
+  'unsupported prototype targets must fail before changing the design');
