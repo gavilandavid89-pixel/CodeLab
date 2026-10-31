@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,17 +29,25 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
   if (command.action === 'project_rename' &&
       (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
+  }
+  if (command.action === 'project_code_write') {
+    if (!['main', 'branch'].includes(args.source || 'main')) throw new Error('project_code_write source must be main or branch.');
+    const codeKeys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(args, key));
+    if (!codeKeys.length) throw new Error('project_code_write requires at least one of html, css, or js.');
+    for (const key of codeKeys) {
+      if (typeof args[key] !== 'string' || args[key].length > 50000) throw new Error('Each supplied code field must be a string of at most 50000 characters.');
+    }
   }
   if (commandSource === 'comment' && args.self_test === true) throw new Error('Preview diagnostic self-test is not allowed from the read-only comment mailbox.');
   for (const key of ['selector', 'value']) {
@@ -269,6 +277,44 @@ try {
         truncated: (project.design.elements?.length || 0) > 200
       };
     }, command.args.project_id);
+  } else if (command.action === 'project_code_write') {
+    stage = 'project_code_write';
+    result = await page.evaluate(async ({ projectId, source, patch }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (project.type === 'design') throw new Error('Code editing is not supported for design-only projects.');
+      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (source === 'branch' && !inCopyBranch) await toggleCopyBranch();
+      if (source === 'main' && inCopyBranch) await toggleCopyBranch();
+      const before = {
+        html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js')
+      };
+      const next = { ...before, ...patch };
+      for (const key of ['html', 'css', 'js']) setEditorValue(key, next[key]);
+      const saved = source === 'branch' ? await saveInCopyBranch() : await saveCurrentCodeToActiveProject(true);
+      const latest = projects.find(item => item && item.id === projectId);
+      const persisted = source === 'branch' ? latest?.branch?.code : latest?.code;
+      const exact = !!persisted && ['html', 'css', 'js'].every(key => persisted[key] === next[key]);
+      let localSnapshotVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+        const localCode = source === 'branch' ? localProject?.branch?.code : localProject?.code;
+        localSnapshotVerified = !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === next[key]);
+      } catch (_) {}
+      if (!exact && !localSnapshotVerified) throw new Error('Code write was not verified in project state or local snapshot.');
+      return {
+        projectId, source, changedFields: Object.keys(patch), saved: saved === true,
+        persistedCodeMatchesRequested: exact, localSnapshotVerified,
+        codeLengths: { html: next.html.length, css: next.css.length, js: next.js.length }
+      };
+    }, {
+      projectId: command.args.project_id,
+      source: command.args.source === 'branch' ? 'branch' : 'main',
+      patch: Object.fromEntries(['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(command.args, key)).map(key => [key, command.args[key]]))
+    });
   } else if (command.action === 'project_list') {
     stage = 'project_list';
     result = await page.evaluate(() => {
