@@ -16,6 +16,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 - When `use_admin_session: true`, the bridge signs in through CodeLab using GitHub Actions secrets. Credentials are never read from command payloads.
 - Results are posted as JSON comments on the same issue. Treat this repository's issue threads as potentially public: never send passwords, tokens, cookies, API keys, or private workspace/project contents in command results.
 - The app's `/api/health` endpoint reports configuration booleans and non-secret AI metadata. The `connections_status` command returns those diagnostics without exposing API keys.
+- After `click`, `fill`, or `select`, the bridge captures a viewport screenshot after hiding text, inputs, code editors, frames, canvases, and images. The screenshot is uploaded as a GitHub Actions artifact with a one-day retention period so layout can be inspected without exposing readable project content.
 - The bridge is intentionally allowlisted. Commands that click elements require `approval: "approved"`; avoid irreversible actions without explicit confirmation.
 - Command payloads require protocol `codelab-agent-bridge/v1`, a unique `command_id`, and a valid future `expires_at`.
 

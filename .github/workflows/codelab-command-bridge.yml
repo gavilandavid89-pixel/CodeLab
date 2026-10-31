@@ -49,3 +49,11 @@ jobs:
           CODELAB_ADMIN_USERNAME: ${{ secrets.CODELAB_ADMIN_USERNAME }}
           CODELAB_ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
         run: node .github/scripts/codelab-bridge.mjs
+      - name: Upload redacted UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-ui-evidence-${{ github.run_id }}
+          path: .codelab-artifacts/bridge-ui.png
+          if-no-files-found: ignore
+          retention-days: 1
