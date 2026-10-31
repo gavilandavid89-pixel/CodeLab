@@ -8,6 +8,7 @@ const dns = require('dns').promises;
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
@@ -42,6 +43,8 @@ const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInt
 const COOKIE_NAME = 'codelab_sid';
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
 const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
+const DATABASE_URL = process.env.DATABASE_URL || ''; 
+const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
 const localLoginAttempts = new Map();
 const LOCAL_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOCAL_LOGIN_MAX_ATTEMPTS = 8;
@@ -63,25 +66,39 @@ function allowLocalLoginAttempt(req, username) {
   return entry.count <= LOCAL_LOGIN_MAX_ATTEMPTS;
 }
 
-function readLocalAccounts() {
-  try {
-    const data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
-    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-  } catch (error) {
-    if (error.code === 'ENOENT') return {};
-    throw new Error('local_account_store_unavailable');
+async function readLocalAccounts() {
+  if (!accountPool) throw new Error('database_not_configured');
+  const result = await accountPool.query('SELECT username, id, role, salt, password_hash, created_at, password_changed_at, must_change_password FROM codelab_accounts');
+  const accounts = {};
+  for (const row of result.rows) {
+    accounts[row.username] = {
+      id: row.id, username: row.username, role: row.role, salt: row.salt,
+      passwordHash: row.password_hash,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+      passwordChangedAt: row.password_changed_at ? new Date(row.password_changed_at).toISOString() : null,
+      mustChangePassword: !!row.must_change_password
+    };
   }
+  return accounts;
 }
 
-function writeLocalAccounts(accounts) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const tmp = ACCOUNTS_FILE + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+async function writeLocalAccounts(accounts) {
+  if (!accountPool) throw new Error('database_not_configured');
+  const client = await accountPool.connect();
   try {
-    fs.writeFileSync(tmp, JSON.stringify(accounts), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-    fs.renameSync(tmp, ACCOUNTS_FILE);
+    await client.query('BEGIN');
+    for (const [username, account] of Object.entries(accounts)) {
+      await client.query(
+        'INSERT INTO codelab_accounts (username, id, role, salt, password_hash, created_at, password_changed_at, must_change_password) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role=EXCLUDED.role, salt=EXCLUDED.salt, password_hash=EXCLUDED.password_hash, password_changed_at=EXCLUDED.password_changed_at, must_change_password=EXCLUDED.must_change_password',
+        [username, String(account.id), account.role || 'user', account.salt, account.passwordHash, account.createdAt || new Date().toISOString(), account.passwordChangedAt || null, !!account.mustChangePassword]
+      );
+    }
+    await client.query('COMMIT');
   } catch (error) {
-    try { fs.unlinkSync(tmp); } catch (_) {}
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -95,25 +112,24 @@ function safePasswordEqual(a, b) {
   return aa.length === bb.length && aa.length > 0 && crypto.timingSafeEqual(aa, bb);
 }
 
-function seedAdminAccountIfConfigured() {
-  if (!ADMIN_BOOTSTRAP_PASSWORD) return;
-  if (ADMIN_BOOTSTRAP_PASSWORD.length < 16) {
-    console.error('ADMIN_BOOTSTRAP_PASSWORD must contain at least 16 characters; local admin bootstrap skipped.');
+async function seedAdminAccountIfConfigured() {
+  if (!ADMIN_BOOTSTRAP_PASSWORD) {
+    console.log('ADMIN bootstrap skipped: ADMIN_BOOTSTRAP_PASSWORD not configured.');
     return;
   }
-  const accounts = readLocalAccounts();
-  if (accounts.ADMIN) return; // Never overwrite an existing account/password on restart.
+  if (ADMIN_BOOTSTRAP_PASSWORD.length < 16) {
+    console.error('ADMIN_BOOTSTRAP_PASSWORD must contain at least 16 characters; ADMIN bootstrap skipped.');
+    return;
+  }
+  if (!accountPool) {
+    console.error('DATABASE_URL is required for native accounts; ADMIN bootstrap skipped.');
+    return;
+  }
   const salt = crypto.randomBytes(16).toString('hex');
-  accounts.ADMIN = {
-    id: 'admin',
-    username: 'ADMIN',
-    role: 'admin',
-    salt,
-    passwordHash: passwordHash(ADMIN_BOOTSTRAP_PASSWORD, salt),
-    createdAt: new Date().toISOString(),
-    mustChangePassword: true
-  };
-  writeLocalAccounts(accounts);
+  await accountPool.query(
+    'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO NOTHING',
+    ['ADMIN','admin','admin',salt,passwordHash(ADMIN_BOOTSTRAP_PASSWORD,salt),true]
+  );
 }
 
 
@@ -1452,7 +1468,7 @@ const server = http.createServer(async (req, res) => {
         if (!allowLocalLoginAttempt(req, username)) {
           return sendJson(res, 429, { error: 'login_rate_limited', message: 'Demasiados intentos. Espera 10 minutos e inténtalo de nuevo.' });
         }
-        const accounts = readLocalAccounts();
+        const accounts = await readLocalAccounts();
         const account = accounts[username];
         // Perform a comparable scrypt operation even when the account does not exist.
         const salt = account?.salt || 'codelab-invalid-login-salt';
@@ -1493,7 +1509,7 @@ const server = http.createServer(async (req, res) => {
         account.passwordHash = passwordHash(newPassword, salt);
         account.mustChangePassword = false;
         account.passwordChangedAt = new Date().toISOString();
-        writeLocalAccounts(accounts);
+        await writeLocalAccounts(accounts);
         const cookies = parseCookies(req);
         destroySession(cookies[COOKIE_NAME]);
         const session = createSession({ ...user, id: account.id, role: account.role });
@@ -1551,7 +1567,7 @@ const server = http.createServer(async (req, res) => {
           demoFallback: !(cfg.github || cfg.google),
           user: user || null,
           workspaceId: user ? userWorkspaceId(user) : null,
-          mustChangePassword: !!(user && user.provider === 'local' && readLocalAccounts()[user.name] && readLocalAccounts()[user.name].mustChangePassword)
+          mustChangePassword: !!(user && user.provider === 'local' && (await readLocalAccounts())[user.name]?.mustChangePassword)
         });
       }
 
@@ -1963,6 +1979,7 @@ try {
   console.error('WARNING: DATA_DIR not writable:', DATA_DIR, e.message);
 }
 
+seedAdminAccountIfConfigured().then(() => {
 server.listen(PORT, () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
@@ -1984,6 +2001,10 @@ server.listen(PORT, () => {
   if (_rawModel && _rawModel !== AI_MODEL) {
     console.log('AI_MODEL normalizado:', JSON.stringify(_rawModel), '→', AI_MODEL);
   }
+});
+}).catch(error => {
+  console.error('Native account database initialization failed:', error.message);
+  process.exit(1);
 });
 
 function shutdown() {
