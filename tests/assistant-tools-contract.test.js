@@ -18,7 +18,9 @@ assert.match(bridge, /project_rename[\s\S]{0,300}args\.name\.trim\(\)\.length > 
   'rename must validate project name length');
 assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editorMatchesSavedBranch[\s\S]{0,300}true/,
   'branch resume must report editor-to-branch verification');
-assert.match(bridge, /workspace_inspect[\\s\\S]{0,500}project_inspect[\\s\\S]{0,1200}project_code_read[\\s\\S]{0,1600}design_read/, 'read-only inspection tools must be implemented');
+for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read', 'design_read']) {
+  assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
+}
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
 assert.match(bridge, /if \(commandSource === 'comment' && !\[[\s\S]*?\.includes\(command\.action\)\) \{[\s\S]{0,250}Comment mailbox is read-only/,
