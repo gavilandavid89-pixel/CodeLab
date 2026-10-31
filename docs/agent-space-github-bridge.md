@@ -67,6 +67,18 @@ Use an issue command (not a comment mailbox command) to perform a bounded sequen
 }
 ```
 
+## Diagnosing blocked or failed commands
+
+Every bridge result includes structured diagnostics. Successful commands report the action, source, elapsed time, GitHub Actions run ID/attempt, and issue number. Failed commands additionally report a stage, a bounded error code, current sequence step (when relevant), and the page URL. Error text is stripped of HTML tags before it is posted.
+
+Use the distinction below when diagnosing a tool block:
+
+- **A GitHub Actions run exists:** inspect that run's job steps and logs. The bridge was invoked; its diagnostics identify where it failed.
+- **The command comment/issue exists but no matching workflow run exists:** the GitHub workflow was not started or its event/condition did not match. Check the event type and owner-only condition.
+- **ChatGPT rejected the tool call before a comment/issue was created:** CodeLab and GitHub Actions have no record of the rejected invocation. The bridge cannot reveal ChatGPT's internal refusal reason; record the time and attempted operation and use the platform's surfaced error/support route.
+
+Never log or return passwords, cookies, session storage, API keys, or full private workspace contents. Because this repository is public, issue comments and workflow logs must be treated as public.
+
 ## Deployment state
 
 The issue-triggered bridge is merged into `main`; real `status`, `list_controls`, and `connections_status` commands succeeded previously. The first AI ping exposed a DNS callback compatibility bug, which was fixed; a subsequent live ping returned HTTP 200 using `openai/gpt-oss-120b` via Groq. The live health response reported GitHub OAuth and Google OAuth as not configured, while the server-side AI key was configured. The bridge starts a fresh browser per command; session persistence is a separate planned improvement.
