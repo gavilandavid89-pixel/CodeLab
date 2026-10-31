@@ -256,6 +256,7 @@ try {
       css: '#codelab-e2e { color: rgb(1, 2, 3); }',
       js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");if(b&&c)b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});if(i&&e)i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_EDITOR_PREVIEW_READY");'
     };
+    stage = 'editor_preview_set_fixture';
     await page.evaluate(code => {
       setEditorValue('html', code.html, { silent: true });
       setEditorValue('css', code.css, { silent: true });
@@ -263,8 +264,11 @@ try {
       updatePreview();
     }, fixture);
     const previewFrame = page.frameLocator('#previewIframe');
+    stage = 'editor_preview_wait_fixture';
     await previewFrame.locator('#probe-increment').waitFor({ state: 'visible', timeout: 15000 });
+    stage = 'editor_preview_click_fixture';
     await previewFrame.locator('#probe-increment').click({ timeout: 10000 });
+    stage = 'editor_preview_fill_fixture';
     await previewFrame.locator('#probe-input').fill('CodeLab funciona', { timeout: 10000 });
     const observed = await previewFrame.locator('body').evaluate(body => ({
       title: document.title || '',
