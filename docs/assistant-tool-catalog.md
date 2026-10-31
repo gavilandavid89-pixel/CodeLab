@@ -75,3 +75,5 @@ Use a fresh, unique `command_id` and an expiry in the near future for every comm
 - [ ] Confirm Render is serving the commit after merge/deploy.
 
 Do not mark this section fully verified until the unchecked tests pass. Continue the next capability section only after this section's validation is complete.
+
+\n## Section 2 — Read-only workspace, code, and design inspection\n\nNew authenticated read tools: `workspace_inspect` (workspace/editor/sync summary), `project_inspect` (project metadata, code lengths, design summary, branch metadata), `project_code_read` (main or saved-branch HTML/CSS/JS with explicit truncation metadata), and `design_read` (saved design frame and layer geometry/content). These operations do not change project state. Code reads cap each language at 20,000 characters; design layer reads cap at 200 elements and report truncation. All require `use_admin_session: true` and exact project IDs from `project_list`. CI and live checks remain separate evidence.\n
