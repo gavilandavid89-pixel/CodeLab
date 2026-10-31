@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -42,6 +42,11 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'ai_generate') {
+    if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
+    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
+    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
+  }
   if (command.action === 'project_delete' && command.approval !== 'approved') throw new Error('Permanent project deletion requires approval: "approved".');
   if (command.action === 'design_template_apply') {
     if (!['landing', 'dashboard', 'portfolio'].includes(args.template_id)) throw new Error('design_template_apply requires a supported template_id.');
@@ -309,6 +314,36 @@ try {
       const max = 7000;
       return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
     }, { projectId: command.args.project_id, format: command.args.format });
+  } else if (command.action === 'ai_generate') {
+    stage = 'ai_generate';
+    result = await page.evaluate(async ({ projectId, source, prompt }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (project.type === 'design') throw new Error('AI code generation requires a web project.');
+      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (source === 'branch' && !inCopyBranch) await toggleCopyBranch();
+      if (source === 'main' && inCopyBranch) await toggleCopyBranch();
+      const before = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
+      const input = document.getElementById('aiPromptInput');
+      if (!input) throw new Error('AI prompt input is unavailable.');
+      input.value = prompt;
+      await processAiInstruction();
+      const after = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
+      const changedFields = ['html', 'css', 'js'].filter(key => before[key] !== after[key]);
+      const latest = projects.find(item => item && item.id === projectId);
+      const persisted = source === 'branch' ? latest?.branch?.code : latest?.code;
+      const persistedMatches = !!persisted && ['html', 'css', 'js'].every(key => persisted[key] === after[key]);
+      let localSnapshotVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+        const localCode = source === 'branch' ? localProject?.branch?.code : localProject?.code;
+        localSnapshotVerified = !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === after[key]);
+      } catch (_) {}
+      return { projectId, source, changedFields, changed: changedFields.length > 0, persistedMatches, localSnapshotVerified, codeLengths: { html: after.html.length, css: after.css.length, js: after.js.length } };
+    }, { projectId: command.args.project_id, source: command.args.source || 'main', prompt: command.args.prompt });
   } else if (command.action === 'design_flow_read') {
     stage = 'design_flow_read';
     result = await page.evaluate(projectId => {
