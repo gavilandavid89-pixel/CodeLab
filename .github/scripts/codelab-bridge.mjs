@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'click', 'read_element', 'fill', 'select', 'sequence']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'click', 'read_element', 'fill', 'select', 'sequence']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -41,6 +41,25 @@ function parseCommand(raw) {
   }
   if (command.action === 'click' && command.approval !== 'approved') {
     throw new Error('Click commands require approval: "approved".');
+  }
+  if (command.action === 'preview_interact') {
+    if (!Array.isArray(args.steps) || args.steps.length < 1 || args.steps.length > 20) {
+      throw new Error('preview_interact requires between 1 and 20 steps.');
+    }
+    for (const step of args.steps) {
+      if (!step || typeof step !== 'object' || Array.isArray(step) || !['click', 'fill', 'select', 'read'].includes(step.action)) {
+        throw new Error('Invalid preview interaction step.');
+      }
+      if (typeof step.selector !== 'string' || !step.selector.trim() || step.selector.length > 2000) {
+        throw new Error('Each preview interaction step requires a valid selector.');
+      }
+      if (['fill', 'select'].includes(step.action) && (typeof step.value !== 'string' || step.value.length > 2000)) {
+        throw new Error('Preview fill/select steps require a string value of at most 2000 characters.');
+      }
+      if (step.action === 'click' && command.approval !== 'approved') {
+        throw new Error('Preview click steps require approval: "approved".');
+      }
+    }
   }
   if (command.action === 'sequence') {
     if (!Array.isArray(args.steps) || args.steps.length < 1 || args.steps.length > 50) {
@@ -259,6 +278,60 @@ try {
       preview,
       browserDiagnostics
     };
+  } else if (command.action === 'preview_interact') {
+    stage = 'interact_with_preview';
+    const frameElement = page.locator('#previewIframe');
+    if (await frameElement.count() === 0) {
+      result = { ok: false, reason: 'No se encontró la vista previa en esta pantalla.', steps: [] };
+    } else {
+      const previewFrame = page.frameLocator('#previewIframe');
+      if (command.args.self_test === true) {
+        // Disposable fixture only: this replaces srcdoc in the isolated bridge browser, not a saved project.
+        const probeHtml = '<!doctype html><html><head><title>CodeLab interaction probe</title></head><body><main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main><script>const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");</script></body></html>';
+        await frameElement.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
+        await previewFrame.locator('#probe-increment').waitFor({ state: 'attached', timeout: 10000 });
+      }
+      const isVisible = await frameElement.isVisible();
+      if (!isVisible && command.args.self_test !== true) {
+        result = { ok: false, reason: 'La vista previa está presente pero oculta; abre un proyecto web en el editor antes de interactuar.', steps: [] };
+      } else {
+        const steps = [];
+        for (let index = 0; index < command.args.steps.length; index += 1) {
+          currentStep = index + 1;
+          const step = command.args.steps[index];
+          const locator = previewFrame.locator(step.selector).first();
+          if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside #previewIframe.');
+          if (step.action === 'click') {
+            const tag = await locator.evaluate(el => el.tagName.toLowerCase());
+            if (tag === 'a') {
+              const href = await locator.getAttribute('href') || '';
+              if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
+            }
+            await locator.click({ timeout: 10000 });
+          } else if (step.action === 'fill') {
+            await locator.fill(step.value, { timeout: 10000 });
+          } else if (step.action === 'select') {
+            await locator.selectOption(step.value, { timeout: 10000 });
+          }
+          const observed = await locator.evaluate(el => ({
+            tag: el.tagName.toLowerCase(),
+            text: (el.innerText || el.textContent || '').trim().slice(0, 300),
+            value: ('value' in el) ? String(el.value).slice(0, 300) : null,
+            disabled: Boolean(el.disabled)
+          })).catch(() => null);
+          steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
+        }
+        currentStep = null;
+        result = {
+          ok: true,
+          previewTitle: await previewFrame.locator('html').evaluate(() => document.title || ''),
+          text: await previewFrame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200)),
+          steps,
+          selfTest: command.args.self_test === true,
+          browserDiagnostics
+        };
+      }
+    }
   } else if (command.action === 'read_page') {
     result = {
       url: page.url(),
