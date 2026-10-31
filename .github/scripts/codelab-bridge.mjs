@@ -229,8 +229,14 @@ try {
       project.updatedAt = new Date().toISOString();
       const saved = await saveProjectsToStorage();
       const persisted = projects.find(item => item && item.id === projectId);
-      const verified = !!persisted && persisted.name === name.trim();
-      if (saved !== true && !verified) {
+      let localVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        localVerified = Array.isArray(snapshot) && snapshot.some(item =>
+          item && item.id === projectId && item.name === name.trim()
+        );
+      } catch (_) {}
+      if (saved !== true && !localVerified) {
         project.name = previousName;
         project.updatedAt = previousUpdatedAt;
         saveLocalProjectsSnapshot();
@@ -241,7 +247,7 @@ try {
         if (title) title.textContent = project.name;
       }
       if (typeof renderProjectsList === 'function') renderProjectsList();
-      return { projectId, previousName, name: project.name, serverSynced: saved === true, localSnapshotVerified: verified };
+      return { projectId, previousName, name: project.name, serverSynced: saved === true, localSnapshotVerified: localVerified };
     }, { projectId: command.args.project_id, name: command.args.name });
   } else if (command.action === 'project_save') {
     stage = 'project_save';
