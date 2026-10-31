@@ -28,6 +28,8 @@ function parseCommand(raw) {
   if (!command.expires_at || !Number.isFinite(Date.parse(command.expires_at))) throw new Error('A valid expires_at is required.');
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
+  if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
+  if (commandSource === 'comment' && args.self_test === true) throw new Error('Preview diagnostic self-test is not allowed from the read-only comment mailbox.');
   for (const key of ['selector', 'value']) {
     if (args[key] !== undefined && (typeof args[key] !== 'string' || args[key].length > 2000)) throw new Error('Invalid ' + key + '.');
   }
@@ -209,33 +211,50 @@ try {
     };
   } else if (command.action === 'preview_diagnostics') {
     stage = 'inspect_preview';
-    const preview = await page.evaluate(() => {
-      const frame = document.querySelector('#previewIframe');
-      if (!frame) return { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
-      const src = frame.getAttribute('src') || '';
-      const doc = frame.contentDocument;
-      if (!doc || !doc.documentElement) {
-        return { available: false, reason: 'La vista previa no tiene un documento accesible todavía.', src: src || null };
+    const frameLocator = page.locator('#previewIframe');
+    const frameExists = await frameLocator.count() > 0;
+    let preview = { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
+    if (frameExists) {
+      const src = await frameLocator.getAttribute('src');
+      const previewFrame = await frameLocator.contentFrame();
+      if (!previewFrame) {
+        preview = { available: false, reason: 'Playwright no pudo resolver el frame de la vista previa.', src: src || null };
+      } else {
+        if (command.args.self_test === true) {
+          // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
+          await previewFrame.setContent('<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>', { waitUntil: 'load', timeout: 10000 });
+          await page.waitForTimeout(300);
+        }
+        preview = await previewFrame.evaluate(() => {
+          const body = document.body;
+          const elements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
+            tag: el.tagName.toLowerCase(),
+            text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
+            id: el.id || null,
+            type: el.getAttribute('type') || null,
+            disabled: Boolean(el.disabled)
+          }));
+          const tagCounts = {};
+          for (const el of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
+            const tag = el.tagName.toLowerCase();
+            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+          }
+          return {
+            available: true,
+            readyState: document.readyState,
+            title: document.title || '',
+            text: (body?.innerText || '').trim().slice(0, 1200),
+            elementCount: document.querySelectorAll('*').length,
+            tagCounts,
+            interactiveElements: elements
+          };
+        });
+        preview.src = src || null;
+        preview.frameUrl = safeUrl(previewFrame.url());
+        preview.empty = preview.elementCount === 0 || (!preview.title && !preview.text && preview.elementCount <= 2);
+        preview.selfTest = command.args.self_test === true;
       }
-      const body = doc.body;
-      const text = (body?.innerText || '').trim().slice(0, 1800);
-      const elements = Array.from(doc.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
-        tag: el.tagName.toLowerCase(),
-        text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
-        id: el.id || null,
-        type: el.getAttribute('type') || null,
-        disabled: Boolean(el.disabled)
-      }));
-      return {
-        available: true,
-        src: src || null,
-        readyState: doc.readyState,
-        title: doc.title || '',
-        text,
-        elementCount: doc.querySelectorAll('*').length,
-        interactiveElements: elements
-      };
-    });
+    }
     result = {
       page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
       preview,
