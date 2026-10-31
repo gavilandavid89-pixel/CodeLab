@@ -372,7 +372,7 @@ function showBootLoading(show, title, subtitle) {
 const defaultTemplate = {
   html: `<div class="card">\n  <h2>CodeLab XD Studio Pro</h2>\n  <p>Edita tu HTML, CSS y JS con persistencia automática.</p>\n  <button id="demoBtn">Probar Interacción</button>\n</div>`,
   css: `body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }\n.card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; text-align: center; border: 1px solid #334155; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }\nh2 { margin-top: 0; color: #38bdf8; }\nbutton { background: #06b6d4; color: #fff; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 1rem; }\nbutton:hover { background: #0891b2; transform: translateY(-2px); }`,
-  js: `document.getElementById('demoBtn').addEventListener('click', () => {\n  console.log('¡Acción ejecutada correctamente!');\n  alert('¡Proyecto guardado y sincronizado correctamente!');\n});`
+  js: `const demoBtn = document.getElementById('demoBtn');\nif (demoBtn) demoBtn.addEventListener('click', () => {\n  console.log('¡Acción ejecutada correctamente!');\n  alert('¡Proyecto guardado y sincronizado correctamente!');\n});`
 };
 
 // ---------- Status badge ----------
@@ -2937,7 +2937,7 @@ async function processAiInstruction() {
       generated.css =
         "body { font-family: 'Inter', system-ui, sans-serif; background: #030712; color: #f3f4f6; margin: 0; padding: 2rem; text-align: center; }\n.hero { padding: 4rem 1rem; background: linear-gradient(180deg, rgba(6, 182, 212, 0.1) 0%, transparent 100%); border-radius: 1.5rem; border: 1px solid #1e293b; }\nh1 { font-size: 2.5rem; color: #38bdf8; margin-bottom: 0.5rem; }\n.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 2rem; }\n.feat-card { background: #0f172a; padding: 1.5rem; border-radius: 1rem; border: 1px solid #1e293b; font-weight: bold; }\n#ctaBtn { background: #06b6d4; color: white; border: none; padding: 0.8rem 2rem; font-weight: bold; border-radius: 0.75rem; cursor: pointer; margin-top: 1rem; transition: 0.2s; }\n#ctaBtn:hover { background: #0891b2; transform: scale(1.05); }";
       generated.js =
-        "document.getElementById('ctaBtn').addEventListener('click', () => {\n  console.log('Landing interactiva activa!');\n  alert('¡Bienvenido a la Landing Page!');\n});";
+        "const ctaBtn = document.getElementById('ctaBtn');\nif (ctaBtn) ctaBtn.addEventListener('click', () => {\n  console.log('Landing interactiva activa!');\n  alert('¡Bienvenido a la Landing Page!');\n});";
       generated.message = 'Landing page de plantilla aplicada.';
     } else if (pLower.includes('form') || pLower.includes('formulario')) {
       generated.html =
@@ -2945,7 +2945,7 @@ async function processAiInstruction() {
       generated.css =
         'body { font-family: system-ui; background: #0f172a; color: white; display: grid; place-content: center; min-height: 100vh; margin: 0; }\n.form-card { background: #1e293b; padding: 2rem; border-radius: 1rem; border: 1px solid #334155; display: flex; flex-direction: column; gap: 1rem; width: min(100%, 320px); }\ninput { padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #475569; background: #0f172a; color: white; outline: none; }\nbutton { padding: 0.75rem; border-radius: 0.5rem; border: none; background: #10b981; color: white; font-weight: bold; cursor: pointer; }\n.status { font-size: 0.8rem; text-align: center; margin: 0; }';
       generated.js =
-        "document.getElementById('contactForm').addEventListener('submit', (e) => {\n  e.preventDefault();\n  const email = document.getElementById('email').value;\n  const status = document.getElementById('formStatus');\n  status.innerText = '✅ Validado: ' + email;\n  status.style.color = '#34d399';\n});";
+        "const contactForm = document.getElementById('contactForm');\nif (contactForm) contactForm.addEventListener('submit', (e) => {\n  e.preventDefault();\n  const emailInput = document.getElementById('email');\n  const status = document.getElementById('formStatus');\n  if (!emailInput || !status) return;\n  status.innerText = '✅ Validado: ' + emailInput.value;\n  status.style.color = '#34d399';\n});";
       generated.message = 'Formulario de plantilla aplicado.';
     } else if (pLower.includes('oscuro') || pLower.includes('dark')) {
       generated.css =
