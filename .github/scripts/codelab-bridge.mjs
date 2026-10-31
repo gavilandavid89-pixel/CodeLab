@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -101,6 +101,31 @@ function parseCommand(raw) {
   }
   if (command.action === 'design_element_delete' && (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id))) {
     throw new Error('design_element_delete requires a valid element_id.');
+  }
+  if (command.action === 'design_element_duplicate' && (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id))) throw new Error('design_element_duplicate requires a valid element_id.');
+  if (command.action === 'design_layer_move') {
+    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_layer_move requires a valid element_id.');
+    if (!['front', 'back'].includes(args.direction)) throw new Error('design_layer_move direction must be front or back.');
+  }
+  if (command.action === 'design_elements_align') {
+    if (!['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(args.mode)) throw new Error('design_elements_align requires a supported alignment mode.');
+    if (!Array.isArray(args.element_ids) || args.element_ids.length < 1 || args.element_ids.length > 50 || args.element_ids.some(id => typeof id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(id))) throw new Error('design_elements_align requires 1 to 50 valid element_ids.');
+  }
+  if (command.action === 'design_layout_configure') {
+    const allowedLayoutKeys = ['mode', 'direction', 'gap', 'padding'];
+    if (!allowedLayoutKeys.some(key => Object.prototype.hasOwnProperty.call(args, key))) throw new Error('design_layout_configure requires at least one layout property.');
+    if (args.mode !== undefined && !['free', 'auto'].includes(args.mode)) throw new Error('Layout mode must be free or auto.');
+    if (args.direction !== undefined && !['row', 'column'].includes(args.direction)) throw new Error('Layout direction must be row or column.');
+    for (const key of ['gap', 'padding']) if (args[key] !== undefined && (!Number.isFinite(args[key]) || args[key] < 0 || args[key] > 200)) throw new Error(key + ' must be a number between 0 and 200.');
+  }
+  if (command.action === 'design_canvas_configure') {
+    const allowedCanvasKeys = ['frame', 'grid', 'snap_to_grid', 'grid_size', 'zoom', 'background'];
+    if (!allowedCanvasKeys.some(key => Object.prototype.hasOwnProperty.call(args, key))) throw new Error('design_canvas_configure requires at least one canvas property.');
+    if (args.frame !== undefined && !['desktop', 'tablet', 'mobile'].includes(args.frame)) throw new Error('Frame must be desktop, tablet, or mobile.');
+    for (const key of ['grid', 'snap_to_grid']) if (args[key] !== undefined && typeof args[key] !== 'boolean') throw new Error(key + ' must be boolean.');
+    if (args.grid_size !== undefined && ![4, 8, 16, 32].includes(args.grid_size)) throw new Error('grid_size must be 4, 8, 16, or 32.');
+    if (args.zoom !== undefined && (!Number.isFinite(args.zoom) || args.zoom < 10 || args.zoom > 150)) throw new Error('zoom must be between 10 and 150.');
+    if (args.background !== undefined && (typeof args.background !== 'string' || !/^#[0-9a-f]{6}$/i.test(args.background))) throw new Error('background must be a six-digit hex color.');
   }
     if (!['main', 'branch'].includes(args.source || 'main')) throw new Error('project_code_write source must be main or branch.');
     const codeKeys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(args, key));
@@ -936,6 +961,111 @@ try {
       if (!deleted) throw new Error('Design element deletion could not be verified.');
       return { projectId, elementId, deleted, saved: saved === true, remainingElements: latest.design.elements.length };
     }, { projectId: command.args.project_id, elementId: command.args.element_id });
+  } else if (command.action === 'design_element_duplicate') {
+    stage = 'design_element_duplicate';
+    result = await page.evaluate(async ({ projectId, elementId }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      const source = project.design.elements.find(item => item && item.id === elementId);
+      if (!source) throw new Error('Design element not found.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
+      const before = new Set(project.design.elements.map(item => item.id));
+      duplicateDesignElement();
+      const latest = projects.find(item => item && item.id === projectId);
+      const created = latest.design.elements.find(item => !before.has(item.id));
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const persisted = !!local?.design?.elements?.some(item => item.id === created?.id && item.type === source.type && item.x === (Number(source.x)||0)+24 && item.y === (Number(source.y)||0)+24);
+      if (!created || !persisted) throw new Error('Duplicate element was not verified in the local snapshot.');
+      return { projectId, sourceElementId: elementId, elementId: created.id, duplicated: true, saved: saved === true, localSnapshotVerified: true };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id });
+  } else if (command.action === 'design_layer_move') {
+    stage = 'design_layer_move';
+    result = await page.evaluate(async ({ projectId, elementId, direction }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design) throw new Error('Design project not found.');
+      const before = project.design.elements.map(item => item.id);
+      if (!before.includes(elementId)) throw new Error('Design element not found.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
+      moveDesignLayer(direction === 'back' ? -1 : 1);
+      const latest = projects.find(item => item && item.id === projectId);
+      const after = latest.design.elements.map(item => item.id);
+      const moved = after.indexOf(elementId) !== before.indexOf(elementId);
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localOrder = local?.design?.elements?.map(item => item.id) || [];
+      const verified = localOrder.length === after.length && localOrder.every((id, index) => id === after[index]);
+      if (!verified) throw new Error('Layer order was not verified in the local snapshot.');
+      return { projectId, elementId, direction, moved, saved: saved === true, localSnapshotVerified: true, order: after };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id, direction: command.args.direction });
+  } else if (command.action === 'design_elements_align') {
+    stage = 'design_elements_align';
+    result = await page.evaluate(async ({ projectId, elementIds, mode }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design) throw new Error('Design project not found.');
+      const selected = project.design.elements.filter(item => elementIds.includes(item.id));
+      if (selected.length !== elementIds.length) throw new Error('One or more design elements were not found.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      selectedDesignElementId = selected[0].id; selectedDesignElementIds = selected.map(item => item.id);
+      const before = selected.map(item => ({ id: item.id, x: item.x, y: item.y }));
+      alignDesignElement(mode);
+      const latest = projects.find(item => item && item.id === projectId);
+      const after = latest.design.elements.filter(item => elementIds.includes(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y }));
+      const changed = JSON.stringify(before) !== JSON.stringify(after);
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localVerified = !!local && after.every(item => { const savedItem = local.design?.elements?.find(el => el.id === item.id); return savedItem && savedItem.x === item.x && savedItem.y === item.y; });
+      if (!localVerified) throw new Error('Alignment was not verified in the local snapshot.');
+      return { projectId, mode, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
+    }, { projectId: command.args.project_id, elementIds: command.args.element_ids, mode: command.args.mode });
+  } else if (command.action === 'design_layout_configure') {
+    stage = 'design_layout_configure';
+    result = await page.evaluate(async ({ projectId, settings }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design) throw new Error('Design project not found.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      if (settings.mode !== undefined) setDesignLayoutMode(settings.mode);
+      if (settings.direction !== undefined) setDesignLayoutDirection(settings.direction);
+      if (settings.gap !== undefined) setDesignLayoutGap(settings.gap);
+      if (settings.padding !== undefined) setDesignLayoutPadding(settings.padding);
+      const latest = projects.find(item => item && item.id === projectId);
+      const actual = { mode: latest.design.layoutMode || 'free', direction: latest.design.layoutDirection || 'row', gap: latest.design.layoutGap ?? 0, padding: latest.design.layoutPadding ?? 0 };
+      const exact = Object.entries(settings).every(([key, value]) => actual[{mode:'mode',direction:'direction',gap:'gap',padding:'padding'}[key]] === value);
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localVerified = !!local && Object.entries(settings).every(([key, value]) => local.design?.[{mode:'layoutMode',direction:'layoutDirection',gap:'layoutGap',padding:'layoutPadding'}[key]] === value);
+      if (!exact || !localVerified) throw new Error('Layout settings were not verified.');
+      return { projectId, settings: actual, changed: Object.keys(settings), saved: saved === true, localSnapshotVerified: true };
+    }, { projectId: command.args.project_id, settings: Object.fromEntries(['mode','direction','gap','padding'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
+  } else if (command.action === 'design_canvas_configure') {
+    stage = 'design_canvas_configure';
+    result = await page.evaluate(async ({ projectId, settings }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design) throw new Error('Design project not found.');
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      if (settings.frame !== undefined) setDesignFrame(settings.frame);
+      if (settings.grid !== undefined) { if (!!project.design.grid !== settings.grid) toggleDesignGrid(); }
+      if (settings.snap_to_grid !== undefined) { if (!!project.design.snapToGrid !== settings.snap_to_grid) toggleDesignSnap(); }
+      if (settings.grid_size !== undefined) setDesignGridSize(settings.grid_size);
+      if (settings.background !== undefined) setDesignBackground(settings.background);
+      if (settings.zoom !== undefined) setDesignZoom(settings.zoom);
+      const latest = projects.find(item => item && item.id === projectId);
+      const actual = { frame: latest.design.frame || 'desktop', grid: latest.design.grid ?? true, snap_to_grid: latest.design.snapToGrid ?? false, grid_size: latest.design.gridSize ?? 8, background: latest.design.background || '#ffffff', zoom: Math.round(designZoom * 100) };
+      const keys = Object.keys(settings).filter(key => key !== 'zoom');
+      const exact = keys.every(key => actual[key] === settings[key]) && (settings.zoom === undefined || actual.zoom === settings.zoom);
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localVerified = !!local && keys.every(key => local.design?.[{frame:'frame',grid:'grid',snap_to_grid:'snapToGrid',grid_size:'gridSize',background:'background'}[key]] === settings[key]);
+      if (!exact || !localVerified) throw new Error('Canvas settings were not verified; zoom is session-only.');
+      return { projectId, settings: actual, changed: Object.keys(settings), saved: saved === true, localSnapshotVerified: true, zoomSessionOnly: settings.zoom !== undefined };
+    }, { projectId: command.args.project_id, settings: Object.fromEntries(['frame','grid','snap_to_grid','grid_size','zoom','background'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
   } else if (command.action === 'ai_ping') {
     const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
       timeout: 70000,
