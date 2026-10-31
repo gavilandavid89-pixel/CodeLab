@@ -270,15 +270,20 @@ try {
     await previewFrame.locator('#probe-increment').click({ timeout: 10000 });
     stage = 'editor_preview_fill_fixture';
     await previewFrame.locator('#probe-input').fill('CodeLab funciona', { timeout: 10000 });
+    stage = 'editor_preview_verify_dom';
+    const previewRoot = previewFrame.locator('#codelab-e2e');
+    await previewRoot.waitFor({ state: 'attached', timeout: 5000 });
+    const color = await previewRoot.evaluate(el => window.getComputedStyle(el).color);
     const observed = await previewFrame.locator('body').evaluate(body => ({
       title: document.title || '',
       text: (body.innerText || '').trim().slice(0, 800),
       count: document.getElementById('probe-count')?.textContent || null,
       echo: document.getElementById('probe-echo')?.textContent || null,
       inputValue: document.getElementById('probe-input')?.value || null,
-      color: getComputedStyle(document.getElementById('codelab-e2e')).color
+      rootPresent: !!document.getElementById('codelab-e2e')
     }));
-    const passed = observed.count === '1' && observed.echo === 'CodeLab funciona' && observed.inputValue === 'CodeLab funciona' && observed.color === 'rgb(1, 2, 3)';
+    observed.color = color;
+    const passed = observed.rootPresent && observed.count === '1' && observed.echo === 'CodeLab funciona' && observed.inputValue === 'CodeLab funciona' && observed.color === 'rgb(1, 2, 3)';
     if (!passed) throw new Error('Editor preview smoke test did not match expected DOM/CSS/interaction results: ' + JSON.stringify(observed));
     result = {
       ok: true,
