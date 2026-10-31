@@ -182,6 +182,7 @@
       </div>
       <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <div id="authContainer" class="flex items-center gap-1.5">
+          <button onclick="openNativeLoginModal()" id="btnNativeLogin" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-medium border border-cyan-600 transition" title="Iniciar sesión en CodeLab"><i class="fa-solid fa-user-lock" aria-hidden="true"></i><span>Cuenta</span></button>
           <button onclick="openAuthModal('github')" id="btnAuthGithub" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition" title="Conectar GitHub" aria-label="Conectar GitHub">
             <i class="fa-brands fa-github text-base" aria-hidden="true"></i>
             <span class="hidden sm:inline">GitHub</span>
@@ -196,6 +197,7 @@
         <div id="userProfileBadge" class="hidden flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-300 text-xs max-w-[140px] sm:max-w-none">
           <img id="userAvatar" src="https://ui-avatars.com/api/?name=Usuario&background=0891b2&color=fff" alt="" class="w-5 h-5 rounded-full shrink-0" width="20" height="20">
           <span id="userName" class="truncate hidden sm:inline">Usuario</span>
+          <button onclick="openChangePasswordModal(false)" class="touch-target text-slate-400 hover:text-cyan-300 p-1" title="Cambiar contraseña" aria-label="Cambiar contraseña"><i class="fa-solid fa-key"></i></button>
           <button onclick="logoutAuth()" class="touch-target text-slate-400 hover:text-red-400 p-1"><i class="fa-solid fa-right-from-bracket"></i></button>
         </div>
       </div>
@@ -746,17 +748,31 @@
         </h3>
         <button onclick="closeAuthModal()" class="touch-target text-slate-400 hover:text-white p-2"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <p id="authModalHint" class="text-xs text-slate-400 leading-relaxed">
-        Si OAuth está configurado en el servidor, este botón te redirige a GitHub/Google.
-        Si no, puedes usar un <strong class="text-amber-300">perfil demo local</strong>.
-      </p>
-      <div>
-        <label class="text-[11px] text-slate-400 block mb-1">Nombre de usuario</label>
-        <input id="authUsernameInput" type="text" placeholder="tu_usuario" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+      <p id="authModalHint" class="text-xs text-slate-400 leading-relaxed">Inicia sesión con tu cuenta de CodeLab. También puedes usar un perfil demo local sin cuenta.</p>
+      <form onsubmit="event.preventDefault(); loginNativeAccount();" class="space-y-3">
+        <div><label for="authUsernameInput" class="text-[11px] text-slate-400 block mb-1">Usuario</label><input id="authUsernameInput" autocomplete="username" autocapitalize="none" spellcheck="false" type="text" maxlength="32" placeholder="ADMIN" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"></div>
+        <div><label for="authPasswordInput" class="text-[11px] text-slate-400 block mb-1">Contraseña</label><input id="authPasswordInput" autocomplete="current-password" type="password" maxlength="1024" placeholder="Tu contraseña" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"></div>
+        <p id="nativeLoginError" class="hidden text-xs text-red-300" role="alert"></p>
+        <button type="submit" id="nativeLoginSubmit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition">Iniciar sesión</button>
+      </form>
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="openAuthModal('github')" class="touch-target py-2 rounded-xl border border-slate-700 text-slate-300 text-xs">GitHub / demo</button>
+        <button onclick="openAuthModal('google')" class="touch-target py-2 rounded-xl border border-slate-700 text-slate-300 text-xs">Google / demo</button>
       </div>
-      <button onclick="confirmAuthModal()" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition">
-        Guardar perfil demo
-      </button>
+    </div>
+  </div>
+
+  <div id="changePasswordModal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[95] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <h3 id="changePasswordTitle" class="text-base font-bold text-white">Cambia tu contraseña</h3>
+      <p id="changePasswordHint" class="text-xs text-slate-400">Usa una contraseña única de al menos 16 caracteres.</p>
+      <form onsubmit="event.preventDefault(); changeNativePassword();" class="space-y-3">
+        <div><label for="currentPasswordInput" class="text-[11px] text-slate-400 block mb-1">Contraseña actual</label><input id="currentPasswordInput" type="password" autocomplete="current-password" required maxlength="1024" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100"></div>
+        <div><label for="newPasswordInput" class="text-[11px] text-slate-400 block mb-1">Nueva contraseña (mínimo 16 caracteres)</label><input id="newPasswordInput" type="password" autocomplete="new-password" minlength="16" required maxlength="1024" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100"></div>
+        <div><label for="confirmNewPasswordInput" class="text-[11px] text-slate-400 block mb-1">Repite la nueva contraseña</label><input id="confirmNewPasswordInput" type="password" autocomplete="new-password" minlength="16" required maxlength="1024" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100"></div>
+        <p id="changePasswordError" class="hidden text-xs text-red-300" role="alert"></p>
+        <button id="changePasswordSubmit" type="submit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold">Actualizar contraseña</button>
+      </form>
     </div>
   </div>
 
