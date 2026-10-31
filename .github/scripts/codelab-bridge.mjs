@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'click', 'read_element', 'fill', 'select', 'sequence']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -146,6 +146,10 @@ try {
       resourceType: request.resourceType()
     });
   });
+  if (command.action === 'preview_editor_smoke_test') {
+    // Keep this E2E project local to the disposable browser context; do not write its workspace to the server.
+    await page.route('**/api/workspace**', route => route.abort());
+  }
   stage = 'initial_navigation';
   await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
   // Credentials are read only from GitHub Actions secrets, never from issue bodies.
@@ -227,6 +231,52 @@ try {
         ['Conectando…', 'Iniciando CodeLab…', 'Proyectos', 'No conectado', 'Plantillas locales']
           .filter(signal => text.includes(signal))
       )
+    };
+  } else if (command.action === 'preview_editor_smoke_test') {
+    stage = 'editor_preview_smoke_test';
+    const projectName = 'CodeLab Preview Probe ' + commandId.slice(-12);
+    await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+    await page.getByRole('button', { name: /Crear proyecto/i }).click();
+    await page.locator('#newProjectNameInput').fill(projectName);
+    await page.locator('input[name="newProjectType"][value="web"]').check();
+    await page.locator('#newProjectModal button[onclick="createNewProjectConfirm()"]').click();
+    await page.locator('#studioView').waitFor({ state: 'visible', timeout: 15000 });
+    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent === expected, projectName, { timeout: 15000 });
+    await page.waitForFunction(() => typeof setEditorValue === 'function' && typeof updatePreview === 'function' && typeof getEditorValue === 'function', null, { timeout: 15000 });
+    const fixture = {
+      html: '<main id="codelab-e2e"><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Name <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
+      css: '#codelab-e2e { color: rgb(1, 2, 3); }',
+      js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");if(b&&c)b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});if(i&&e)i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_EDITOR_PREVIEW_READY");'
+    };
+    await page.evaluate(code => {
+      setEditorValue('html', code.html, { silent: true });
+      setEditorValue('css', code.css, { silent: true });
+      setEditorValue('js', code.js, { silent: true });
+      updatePreview();
+    }, fixture);
+    const previewFrame = page.frameLocator('#previewIframe');
+    await previewFrame.locator('#probe-increment').waitFor({ state: 'visible', timeout: 15000 });
+    await previewFrame.locator('#probe-increment').click({ timeout: 10000 });
+    await previewFrame.locator('#probe-input').fill('CodeLab funciona', { timeout: 10000 });
+    const observed = await previewFrame.locator('body').evaluate(body => ({
+      title: document.title || '',
+      text: (body.innerText || '').trim().slice(0, 800),
+      count: document.getElementById('probe-count')?.textContent || null,
+      echo: document.getElementById('probe-echo')?.textContent || null,
+      inputValue: document.getElementById('probe-input')?.value || null,
+      color: getComputedStyle(document.getElementById('codelab-e2e')).color
+    }));
+    const passed = observed.count === '1' && observed.echo === 'CodeLab funciona' && observed.inputValue === 'CodeLab funciona' && observed.color === 'rgb(1, 2, 3)';
+    if (!passed) throw new Error('Editor preview smoke test did not match expected DOM/CSS/interaction results: ' + JSON.stringify(observed));
+    result = {
+      ok: true,
+      projectCreatedInDisposableBrowser: true,
+      serverWorkspaceWritesBlocked: true,
+      projectName,
+      editorToPreview: { html: true, css: true, js: true },
+      interactionResults: observed,
+      browserDiagnostics,
+      message: 'El editor real ejecutó HTML/CSS/JS en su vista previa; el botón, el campo y los estilos respondieron como se esperaba.'
     };
   } else if (command.action === 'preview_diagnostics') {
     stage = 'inspect_preview';
