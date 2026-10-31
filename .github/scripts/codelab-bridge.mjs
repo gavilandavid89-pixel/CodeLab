@@ -16,6 +16,7 @@ function parseCommand(raw) {
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
   const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'click', 'read_element', 'fill', 'select']);
+  if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   if (!command.expires_at || !Number.isFinite(Date.parse(command.expires_at))) throw new Error('A valid expires_at is required.');
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
@@ -70,6 +71,21 @@ try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
+  // Credentials are read only from GitHub Actions secrets, never from issue bodies.
+  if (command.use_admin_session === true) {
+    const username = process.env.CODELAB_ADMIN_USERNAME || '';
+    const password = process.env.CODELAB_ADMIN_PASSWORD || '';
+    if (!username || !password) throw new Error('Authenticated bridge unavailable: configure CODELAB_ADMIN_USERNAME and CODELAB_ADMIN_PASSWORD as repository Actions secrets.');
+    const login = await page.request.post(new URL('/api/auth/login', targetUrl).href, {
+      timeout: 20000,
+      headers: { 'content-type': 'application/json' },
+      data: { username, password }
+    });
+    const loginData = await login.json().catch(() => ({}));
+    if (!login.ok() || loginData.ok !== true) throw new Error('CodeLab ADMIN login failed (HTTP ' + login.status() + '). Check the Actions secrets and account status.');
+    result = { authenticatedAs: loginData.user?.name || username, role: loginData.user?.role || null, mustChangePassword: !!loginData.mustChangePassword };
+    await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
+  }
   // Let the app's own initialization and initial API calls finish before inspecting it.
   await page.waitForTimeout(2500);
 
