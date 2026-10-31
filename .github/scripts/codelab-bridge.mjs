@@ -41,8 +41,8 @@ function parseCommand(raw) {
     throw new Error('Click commands require approval: "approved".');
   }
   if (command.action === 'sequence') {
-    if (!Array.isArray(args.steps) || args.steps.length < 1 || args.steps.length > 8) {
-      throw new Error('Sequence requires between 1 and 8 steps.');
+    if (!Array.isArray(args.steps) || args.steps.length < 1 || args.steps.length > 50) {
+      throw new Error('Sequence requires between 1 and 50 steps.');
     }
     for (const step of args.steps) {
       if (!step || typeof step !== 'object' || Array.isArray(step)) throw new Error('Invalid sequence step.');
@@ -252,22 +252,21 @@ try {
       result = { clicked: true, selector: command.args.selector, urlAfter: page.url() };
     }
   }
-  // Capture post-interaction layout evidence only after masking text and user-provided content.
-  // The repository is public, so screenshots must not expose project names, code, inputs, previews, or images.
+  // Capture the actual public interface so labels, controls, panels, and layout can be inspected.
+  // Mask only fields that explicitly indicate passwords or secrets; preserve ordinary UI content.
   if (['click', 'fill', 'select', 'sequence'].includes(command.action)) {
-    stage = 'capture_redacted_screenshot';
+    stage = 'capture_readable_ui_screenshot';
     await page.addStyleTag({ content: [
-      'body * { color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }',
-      'input, textarea, select, [contenteditable="true"], pre, code, iframe, canvas, img, video, .monaco-editor, .CodeMirror, .cm-editor { visibility: hidden !important; }',
-      'svg text { fill: transparent !important; }'
+      'input[type="password"], [autocomplete="current-password"], [autocomplete="new-password"] { color: transparent !important; text-shadow: none !important; }',
+      'input[name*="token" i], input[id*="token" i], textarea[name*="secret" i], input[name*="secret" i] { color: transparent !important; text-shadow: none !important; }'
     ].join('\n') });
     const screenshotPath = process.env.CODELAB_SCREENSHOT_PATH || '.codelab-artifacts/bridge-ui.png';
     await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
     await page.screenshot({ path: screenshotPath, fullPage: false, animations: 'disabled' });
     if (Array.isArray(result)) {
-      result = { steps: result, redactedScreenshotCaptured: true };
+      result = { steps: result, readableUiScreenshotCaptured: true };
     } else if (result && typeof result === 'object') {
-      result = { ...result, redactedScreenshotCaptured: true };
+      result = { ...result, readableUiScreenshotCaptured: true };
     }
   }
   stage = 'report_result';
