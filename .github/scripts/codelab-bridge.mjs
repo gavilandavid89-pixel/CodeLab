@@ -1,4 +1,6 @@
 import { chromium } from 'playwright';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 const repo = process.env.GITHUB_REPOSITORY;
 const issueNumber = Number(process.env.ISSUE_NUMBER);
@@ -191,6 +193,21 @@ try {
       }
       await locator.click({ timeout: 10000 });
       result = { clicked: true, selector: command.args.selector, urlAfter: page.url() };
+    }
+  }
+  // Capture post-interaction layout evidence only after masking text and user-provided content.
+  // The repository is public, so screenshots must not expose project names, code, inputs, previews, or images.
+  if (['click', 'fill', 'select'].includes(command.action)) {
+    await page.addStyleTag({ content: [
+      'body * { color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }',
+      'input, textarea, select, [contenteditable="true"], pre, code, iframe, canvas, img, video, .monaco-editor, .CodeMirror, .cm-editor { visibility: hidden !important; }',
+      'svg text { fill: transparent !important; }'
+    ].join('\n') });
+    const screenshotPath = process.env.CODELAB_SCREENSHOT_PATH || '.codelab-artifacts/bridge-ui.png';
+    await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
+    await page.screenshot({ path: screenshotPath, fullPage: false, animations: 'disabled' });
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+      result = { ...result, redactedScreenshotCaptured: true };
     }
   }
   await comment('## CodeLab Bridge result\n\n```json\n' + JSON.stringify({
