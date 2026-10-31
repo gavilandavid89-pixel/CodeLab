@@ -592,7 +592,7 @@ function readSession(sid) {
       session.user &&
       typeof session.user === 'object' &&
       typeof session.user.id === 'string' &&
-      (session.user.provider === 'github' || session.user.provider === 'google');
+      (session.user.provider === 'github' || session.user.provider === 'google' || session.user.provider === 'local');
     if (!valid) {
       try { fs.unlinkSync(file); } catch (_) {}
       return null;
