@@ -301,7 +301,7 @@ try {
       const max = 7000;
       return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
     }, { projectId: command.args.project_id, format: command.args.format });
-  if (command.action === 'project_delete') {
+  } else if (command.action === 'project_delete') {
     stage = 'project_delete';
     result = await page.evaluate(async projectId => {
       const project = projects.find(item => item && item.id === projectId);
