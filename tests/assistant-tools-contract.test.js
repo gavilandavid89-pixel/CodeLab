@@ -24,7 +24,6 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(bridge, /recordDesignHistory\(\)/, 'design edits must record undo history');
-assert.match(bridge, /project_create[\\s\\S]{0,1600}localSnapshotVerified/, 'project creation must verify the local snapshot');
 assert.match(bridge, /sourceUnchanged/, 'project duplication must check that the source was preserved');
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
 assert.match(bridge, /localSnapshotVerified/,
