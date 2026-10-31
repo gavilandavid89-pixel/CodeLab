@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
-  'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
+  'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
 ];
 
 for (const action of requiredActions) {
@@ -41,6 +41,19 @@ assert.match(bridge, /Permanent project deletion requires approval/, 'project de
 assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(bridge, /recordDesignHistory\(\)/, 'design edits must record undo history');
+assert.match(bridge, /design_element_duplicate[\\s\\S]{0,1800}localSnapshotVerified/,
+  'duplicating a design element must verify the persisted duplicate');
+assert.match(bridge, /design_layer_move[\\s\\S]{0,2000}localSnapshotVerified/,
+  'moving a design layer must verify persisted layer order');
+assert.match(bridge, /design_elements_align[\\s\\S]{0,2300}localSnapshotVerified/,
+  'aligning design elements must verify persisted positions');
+assert.match(bridge, /design_layout_configure[\\s\\S]{0,2600}localSnapshotVerified/,
+  'layout configuration must verify persisted settings');
+assert.match(bridge, /design_canvas_configure[\\s\\S]{0,2800}localSnapshotVerified/,
+  'canvas configuration must verify persisted settings');
+assert.match(bridge, /design_canvas_configure requires at least one canvas property/,
+  'canvas configuration must reject empty requests');
+
 assert.match(bridge, /sourceUnchanged/, 'project duplication must check that the source was preserved');
 assert.match(bridge, /exact local project state/, 'project save must verify exact persisted code or design, not only the project name');
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
