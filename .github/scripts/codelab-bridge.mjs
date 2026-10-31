@@ -257,7 +257,6 @@ try {
         preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
         preview.selfTest = command.args.self_test === true;
       }
-      }
     }
     result = {
       page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
