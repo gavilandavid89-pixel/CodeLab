@@ -306,7 +306,7 @@ try {
     workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
     issue_number: Number.isFinite(issueNumber) ? issueNumber : null,
     current_step: currentStep,
-    page_url: page ? await page.url().catch(() => null) : null
+    page_url: page ? page.url() : null
   };
   try {
     await comment('## CodeLab Bridge result\n\n```json\n' + JSON.stringify({
