@@ -586,7 +586,7 @@ try {
         const localCode = source === 'branch' ? localProject?.branch?.code : localProject?.code;
         localSnapshotVerified = !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === next[key]);
       } catch (_) {}
-      if (!exact && !localSnapshotVerified) throw new Error('Code write was not verified in project state or local snapshot.');
+      if (!exact || (saved !== true && !localSnapshotVerified)) throw new Error('Code write was not verified by server sync or exact local snapshot.');
       return {
         projectId, source, changedFields: Object.keys(patch), saved: saved === true,
         persistedCodeMatchesRequested: exact, localSnapshotVerified,
@@ -658,12 +658,18 @@ try {
       else saved = await saveCurrentCodeToActiveProject(true);
       const projectAfter = projects.find(item => item && item.id === projectId);
       const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localVerified = Array.isArray(snapshot) && snapshot.some(item =>
-        item && item.id === projectId && item.name === projectAfter?.name
-      );
+      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      let localVerified = false;
+      if (projectAfter?.type === 'design') {
+        localVerified = !!localProject?.design && JSON.stringify(localProject.design) === JSON.stringify(projectAfter.design);
+      } else {
+        const expectedCode = inCopyBranch ? projectAfter?.branch?.code : projectAfter?.code;
+        const localCode = inCopyBranch ? localProject?.branch?.code : localProject?.code;
+        localVerified = !!expectedCode && !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === expectedCode[key]);
+      }
       return { projectId, saved: saved === true, localSnapshotVerified: localVerified, branchPresent: !!projectAfter?.branch };
     }, command.args.project_id);
-    if (!result.saved && !result.localSnapshotVerified) throw new Error('Save could not be verified on server or local snapshot.');
+    if (!result.saved && !result.localSnapshotVerified) throw new Error('Save could not be verified on server or exact local project state.');
   } else if (command.action === 'branch_status') {
     stage = 'branch_status';
     result = await page.evaluate(projectId => {
@@ -755,7 +761,7 @@ try {
         const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
         localSnapshotVerified = String(localProject?.code?.html || '') === next;
       } catch (_) {}
-      if (!exact && !localSnapshotVerified) throw new Error('Component insertion was not verified in saved project state.');
+      if (!exact || (saved !== true && !localSnapshotVerified)) throw new Error('Component insertion was not verified by server sync or exact local snapshot.');
       return { projectId, componentId, alreadyInserted: false, saved: saved === true, persistedCodeMatches: exact, localSnapshotVerified };
     }, { projectId: command.args.project_id, componentId: command.args.component_id });
   } else if (command.action === 'design_element_add') {
@@ -788,8 +794,15 @@ try {
       renderDesignWorkspace();
       const saved = await saveProjectsToStorage();
       const exact = Object.entries(properties).every(([key, value]) => element[key] === value);
-      if (!exact) throw new Error('Design element update could not be verified.');
-      return { projectId, elementId, changedProperties: Object.keys(properties), saved: saved === true, verified: exact };
+      let localVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+        const localElement = localProject?.design?.elements?.find(item => item && item.id === elementId);
+        localVerified = !!localElement && Object.entries(properties).every(([key, value]) => localElement[key] === value);
+      } catch (_) {}
+      if (!exact || (saved !== true && !localVerified)) throw new Error('Design element update was not verified by server sync or local snapshot.');
+      return { projectId, elementId, changedProperties: Object.keys(properties), saved: saved === true, verified: exact, localSnapshotVerified: localVerified };
     }, { projectId: command.args.project_id, elementId: command.args.element_id, properties: command.args.properties });
   } else if (command.action === 'design_element_delete') {
     stage = 'design_element_delete';
