@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,6 +29,18 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save'];
+  if (projectActions.includes(command.action) && command.use_admin_session !== true) {
+    throw new Error('Project and branch tools require use_admin_session: true.');
+  }
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save'].includes(command.action) &&
+      (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
+    throw new Error('This project action requires a valid args.project_id.');
+  }
+  if (command.action === 'project_rename' &&
+      (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
+    throw new Error('project_rename requires args.name between 1 and 200 characters.');
+  }
   if (commandSource === 'comment' && args.self_test === true) throw new Error('Preview diagnostic self-test is not allowed from the read-only comment mailbox.');
   for (const key of ['selector', 'value']) {
     if (args[key] !== undefined && (typeof args[key] !== 'string' || args[key].length > 2000)) throw new Error('Invalid ' + key + '.');
@@ -188,7 +200,122 @@ try {
   await page.waitForTimeout(2500);
   stage = 'execute_action';
 
-  if (command.action === 'ai_ping') {
+  if (command.action === 'project_list') {
+    stage = 'project_list';
+    result = await page.evaluate(() => {
+      if (!Array.isArray(projects)) throw new Error('Workspace projects are not initialized.');
+      return {
+        count: projects.length,
+        projects: projects.map(project => ({
+          id: project.id,
+          name: project.name,
+          type: project.type === 'design' ? 'design' : 'web',
+          updatedAt: project.updatedAt || null,
+          hasBranch: !!project.branch,
+          branchId: project.branch?.id || null,
+          branchUpdatedAt: project.branch?.updatedAt || null,
+          mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0
+        }))
+      };
+    });
+  } else if (command.action === 'project_rename') {
+    stage = 'project_rename';
+    result = await page.evaluate(async ({ projectId, name }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      const previousName = project.name;
+      const previousUpdatedAt = project.updatedAt;
+      project.name = name.trim();
+      project.updatedAt = new Date().toISOString();
+      const saved = await saveProjectsToStorage();
+      const persisted = projects.find(item => item && item.id === projectId);
+      const verified = !!persisted && persisted.name === name.trim();
+      if (saved !== true && !verified) {
+        project.name = previousName;
+        project.updatedAt = previousUpdatedAt;
+        saveLocalProjectsSnapshot();
+        throw new Error('Rename was not durably confirmed; previous name restored.');
+      }
+      if (currentProjectId === projectId) {
+        const title = document.getElementById('currentProjectTitle');
+        if (title) title.textContent = project.name;
+      }
+      if (typeof renderProjectsList === 'function') renderProjectsList();
+      return { projectId, previousName, name: project.name, serverSynced: saved === true, localSnapshotVerified: verified };
+    }, { projectId: command.args.project_id, name: command.args.name });
+  } else if (command.action === 'project_save') {
+    stage = 'project_save';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (currentProjectId !== projectId) openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 250));
+      let saved;
+      if (inCopyBranch) saved = await saveInCopyBranch();
+      else saved = await saveCurrentCodeToActiveProject(true);
+      const projectAfter = projects.find(item => item && item.id === projectId);
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const localVerified = Array.isArray(snapshot) && snapshot.some(item =>
+        item && item.id === projectId && item.name === projectAfter?.name
+      );
+      return { projectId, saved: saved === true, localSnapshotVerified: localVerified, branchPresent: !!projectAfter?.branch };
+    }, command.args.project_id);
+    if (!result.saved && !result.localSnapshotVerified) throw new Error('Save could not be verified on server or local snapshot.');
+  } else if (command.action === 'branch_status') {
+    stage = 'branch_status';
+    result = await page.evaluate(projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      const branch = project.branch;
+      return {
+        projectId,
+        projectName: project.name,
+        hasBranch: !!branch,
+        branchId: branch?.id || null,
+        baseMainUpdatedAt: branch?.baseMainUpdatedAt || null,
+        branchUpdatedAt: branch?.updatedAt || null,
+        codeLengths: branch?.code ? { html: branch.code.html?.length || 0, css: branch.code.css?.length || 0, js: branch.code.js?.length || 0 } : null,
+        currentViewIsBranch: currentProjectId === projectId && inCopyBranch
+      };
+    }, command.args.project_id);
+  } else if (command.action === 'branch_resume') {
+    stage = 'branch_resume';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.branch) throw new Error('Project has no saved copy branch to resume.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (!inCopyBranch) await toggleCopyBranch();
+      const resumed = getCurrentProject();
+      const verified = !!(inCopyBranch && resumed?.branch && resumed.branch.id === copyBranchId &&
+        getEditorValue('html') === resumed.branch.code.html &&
+        getEditorValue('css') === resumed.branch.code.css &&
+        getEditorValue('js') === resumed.branch.code.js);
+      if (!verified) throw new Error('The saved branch could not be verified in the editor.');
+      return { projectId, projectName: resumed.name, branchId: copyBranchId, resumed: true, editorMatchesSavedBranch: verified };
+    }, command.args.project_id);
+  } else if (command.action === 'branch_save') {
+    stage = 'branch_save';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.branch) throw new Error('Project has no copy branch to save.');
+      if (currentProjectId !== projectId || !inCopyBranch) {
+        openProject(projectId);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        if (!inCopyBranch) await toggleCopyBranch();
+      }
+      const saved = await saveInCopyBranch();
+      const latest = projects.find(item => item && item.id === projectId);
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const localBranch = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId)?.branch : null;
+      const localVerified = !!localBranch && localBranch.id === latest?.branch?.id &&
+        localBranch.code?.html === latest.branch.code?.html &&
+        localBranch.code?.css === latest.branch.code?.css &&
+        localBranch.code?.js === latest.branch.code?.js;
+      if (!saved && !localVerified) throw new Error('Copy branch save could not be verified.');
+      return { projectId, branchId: latest.branch.id, serverSynced: saved === true, localSnapshotVerified: localVerified, updatedAt: latest.branch.updatedAt };
+    }, command.args.project_id);
+  } else if (command.action === 'ai_ping') {
     const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
       timeout: 70000,
       headers: { 'content-type': 'application/json' },
