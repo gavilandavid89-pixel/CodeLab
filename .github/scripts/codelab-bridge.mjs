@@ -211,23 +211,20 @@ try {
     };
   } else if (command.action === 'preview_diagnostics') {
     stage = 'inspect_preview';
-    const frameLocator = page.locator('#previewIframe');
-    const frameExists = await frameLocator.count() > 0;
+    const frameElement = page.locator('#previewIframe');
+    const frameExists = await frameElement.count() > 0;
+    const previewFrame = page.frameLocator('#previewIframe');
     let preview = { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
     if (frameExists) {
-      const src = await frameLocator.getAttribute('src');
-      const previewFrame = await frameLocator.contentFrame();
-      if (!previewFrame) {
-        preview = { available: false, reason: 'Playwright no pudo resolver el frame de la vista previa.', src: src || null };
-      } else {
-        if (command.args.self_test === true) {
-          // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
-          const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
-          await frameLocator.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
-          await frameLocator.locator('#codelab-diagnostic-probe').waitFor({ state: 'attached', timeout: 10000 });
-          await page.waitForTimeout(300);
-        }
-        preview = await frameLocator.locator('html').evaluate(() => {
+      const src = await frameElement.getAttribute('src');
+      if (command.args.self_test === true) {
+        // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
+        const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
+        await frameElement.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
+        await previewFrame.locator('#codelab-diagnostic-probe').waitFor({ state: 'attached', timeout: 10000 });
+        await page.waitForTimeout(300);
+      }
+      preview = await previewFrame.locator('html').evaluate(() => {
           const body = document.body;
           const elements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
             tag: el.tagName.toLowerCase(),
@@ -251,12 +248,11 @@ try {
             tagCounts,
             interactiveElements: elements
           };
-        });
-        preview.src = src || null;
-        preview.frameUrl = safeUrl(preview.frameUrl);
-        preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
-        preview.selfTest = command.args.self_test === true;
-      }
+      });
+      preview.src = src || null;
+      preview.frameUrl = safeUrl(preview.frameUrl);
+      preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
+      preview.selfTest = command.args.self_test === true;
     }
     result = {
       page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
