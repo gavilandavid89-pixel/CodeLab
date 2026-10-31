@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -42,6 +42,31 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'component_search') {
+    if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) throw new Error('component_search query must be a string up to 200 characters.');
+    if (args.category !== undefined && (typeof args.category !== 'string' || args.category.length > 100)) throw new Error('component_search category must be a string up to 100 characters.');
+  }
+  if (command.action === 'component_insert' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) {
+    throw new Error('component_insert requires a valid component_id.');
+  }
+  if (command.action === 'design_element_add' && !['heading', 'text', 'button', 'rectangle', 'ellipse', 'image'].includes(args.type)) {
+    throw new Error('design_element_add requires a supported element type.');
+  }
+  if (command.action === 'design_element_update') {
+    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
+    if (!args.properties || typeof args.properties !== 'object' || Array.isArray(args.properties)) throw new Error('design_element_update requires a properties object.');
+    const allowedProperties = ['label', 'text', 'x', 'y', 'width', 'height', 'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit'];
+    for (const [key, value] of Object.entries(args.properties)) {
+      if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
+      if (typeof value === 'string' && value.length > 2000) throw new Error('Design element string properties are limited to 2000 characters.');
+      if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Design element numeric properties must be finite.');
+      if (!['string', 'number'].includes(typeof value)) throw new Error('Design element properties must be strings or numbers.');
+    }
+    if (!Object.keys(args.properties).length) throw new Error('design_element_update requires at least one property.');
+  }
+  if (command.action === 'design_element_delete' && (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id))) {
+    throw new Error('design_element_delete requires a valid element_id.');
+  }
     if (!['main', 'branch'].includes(args.source || 'main')) throw new Error('project_code_write source must be main or branch.');
     const codeKeys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(args, key));
     if (!codeKeys.length) throw new Error('project_code_write requires at least one of html, css, or js.');
@@ -436,6 +461,97 @@ try {
       if (!saved && !localVerified) throw new Error('Copy branch save could not be verified.');
       return { projectId, branchId: latest.branch.id, serverSynced: saved === true, localSnapshotVerified: localVerified, updatedAt: latest.branch.updatedAt };
     }, command.args.project_id);
+  } else if (command.action === 'component_search') {
+    stage = 'component_search';
+    result = await page.evaluate(({ query, category }) => {
+      const api = window.CodeLabComponentLibrary;
+      if (!api || typeof api.searchComponents !== 'function') throw new Error('Component library API is not ready.');
+      const matches = api.searchComponents(query || '', category || 'Todas');
+      return { count: matches.length, components: matches.slice(0, 100).map(item => ({
+        id: item.id, name: item.name, category: item.category, description: item.description, tags: item.tags
+      })), truncated: matches.length > 100 };
+    }, { query: command.args.query || '', category: command.args.category || 'Todas' });
+  } else if (command.action === 'component_insert') {
+    stage = 'component_insert';
+    result = await page.evaluate(async ({ projectId, componentId }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (project.type === 'design') throw new Error('Components can only be inserted into a web project.');
+      const api = window.CodeLabComponentLibrary;
+      const component = api?.getComponent?.(componentId);
+      if (!component) throw new Error('Component ID was not found in the library.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const marker = '<!-- codelab-component:' + componentId + ' -->';
+      const current = String(getEditorValue('html') || '');
+      if (current.includes(marker)) return { projectId, componentId, alreadyInserted: true, saved: true, localSnapshotVerified: true };
+      const next = current + '\n' + marker + '\n' + component.html + '\n';
+      if (next.length > 500000) throw new Error('Insertion would exceed the 500000-character HTML limit.');
+      setEditorValue('html', next);
+      if (typeof updatePreview === 'function') updatePreview();
+      const saved = await saveCurrentCodeToActiveProject(true);
+      const latest = projects.find(item => item && item.id === projectId);
+      const exact = String(latest?.code?.html || '') === next;
+      let localSnapshotVerified = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+        localSnapshotVerified = String(localProject?.code?.html || '') === next;
+      } catch (_) {}
+      if (!exact && !localSnapshotVerified) throw new Error('Component insertion was not verified in saved project state.');
+      return { projectId, componentId, alreadyInserted: false, saved: saved === true, persistedCodeMatches: exact, localSnapshotVerified };
+    }, { projectId: command.args.project_id, componentId: command.args.component_id });
+  } else if (command.action === 'design_element_add') {
+    stage = 'design_element_add';
+    result = await page.evaluate(async ({ projectId, type }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (project.type !== 'design' || !project.design) throw new Error('This action requires a design project.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const before = project.design.elements.length;
+      addDesignElement(type);
+      const latest = projects.find(item => item && item.id === projectId);
+      const element = latest?.design?.elements?.find(item => !project.design.elements.slice(0, before).some(old => old.id === item.id));
+      await saveProjectsToStorage();
+      if (!element) throw new Error('Design element was not created.');
+      return { projectId, elementId: element.id, type: element.type, elementCount: latest.design.elements.length };
+    }, { projectId: command.args.project_id, type: command.args.type });
+  } else if (command.action === 'design_element_update') {
+    stage = 'design_element_update';
+    result = await page.evaluate(async ({ projectId, elementId, properties }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const element = project.design.elements.find(item => item && item.id === elementId);
+      if (!element) throw new Error('Design element not found.');
+      recordDesignHistory();
+      Object.assign(element, properties);
+      renderDesignWorkspace();
+      const saved = await saveProjectsToStorage();
+      const exact = Object.entries(properties).every(([key, value]) => element[key] === value);
+      if (!exact) throw new Error('Design element update could not be verified.');
+      return { projectId, elementId, changedProperties: Object.keys(properties), saved: saved === true, verified: exact };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id, properties: command.args.properties });
+  } else if (command.action === 'design_element_delete') {
+    stage = 'design_element_delete';
+    result = await page.evaluate(async ({ projectId, elementId }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (!project.design.elements.some(item => item && item.id === elementId)) throw new Error('Design element not found.');
+      selectedDesignElementId = elementId;
+      selectedDesignElementIds = [elementId];
+      deleteDesignElement();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const latest = projects.find(item => item && item.id === projectId);
+      const deleted = !latest.design.elements.some(item => item && item.id === elementId);
+      const saved = await saveProjectsToStorage();
+      if (!deleted) throw new Error('Design element deletion could not be verified.');
+      return { projectId, elementId, deleted, saved: saved === true, remainingElements: latest.design.elements.length };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id });
   } else if (command.action === 'ai_ping') {
     const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
       timeout: 70000,
