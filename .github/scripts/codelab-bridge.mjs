@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -200,7 +200,76 @@ try {
   await page.waitForTimeout(2500);
   stage = 'execute_action';
 
-  if (command.action === 'project_list') {
+  if (command.action === 'workspace_inspect') {
+    stage = 'workspace_inspect';
+    result = await page.evaluate(() => ({
+      initialized: Array.isArray(projects),
+      projectCount: Array.isArray(projects) ? projects.length : 0,
+      currentProjectId: currentProjectId || null,
+      currentProjectName: getCurrentProject()?.name || null,
+      activeEditor: document.getElementById('studioView')?.classList.contains('hidden') ? 'dashboard' : (getCurrentProject()?.type === 'design' ? 'design' : 'web'),
+      copyBranchActive: !!inCopyBranch,
+      syncStatus: document.getElementById('statusText')?.textContent || null,
+      authVisible: !document.getElementById('authContainer')?.classList.contains('hidden'),
+      version: typeof APP_VERSION === 'string' ? APP_VERSION : null
+    }));
+  } else if (command.action === 'project_inspect') {
+    stage = 'project_inspect';
+    result = await page.evaluate(projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      return {
+        id: project.id, name: project.name, type: project.type === 'design' ? 'design' : 'web',
+        updatedAt: project.updatedAt || null, hasWebSpace: !!project.hasWebSpace, hasDesignSpace: !!project.hasDesignSpace,
+        codeLengths: { html: project.code?.html?.length || 0, css: project.code?.css?.length || 0, js: project.code?.js?.length || 0 },
+        design: project.design ? {
+          elementCount: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
+          frame: project.design.frame || null, background: project.design.background || null,
+          grid: project.design.grid ?? null, gridSize: project.design.gridSize ?? null,
+          snapToGrid: project.design.snapToGrid ?? null
+        } : null,
+        branch: project.branch ? {
+          id: project.branch.id || null, updatedAt: project.branch.updatedAt || null,
+          codeLengths: { html: project.branch.code?.html?.length || 0, css: project.branch.code?.css?.length || 0, js: project.branch.code?.js?.length || 0 }
+        } : null,
+        mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
+        isActive: currentProjectId === projectId
+      };
+    }, command.args.project_id);
+  } else if (command.action === 'project_code_read') {
+    stage = 'project_code_read';
+    result = await page.evaluate(({ projectId, source }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      const code = source === 'branch' ? project.branch?.code : project.code;
+      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
+      if (project.type === 'design' && source !== 'branch') return { projectId, source, designProject: true, message: 'This is a design project; use design_read for its layer structure.' };
+      const max = 20000;
+      const clip = value => ({ content: String(value || '').slice(0, max), length: String(value || '').length, truncated: String(value || '').length > max });
+      return { projectId, source, html: clip(code?.html), css: clip(code?.css), js: clip(code?.js) };
+    }, { projectId: command.args.project_id, source: command.args.source === 'branch' ? 'branch' : 'main' });
+  } else if (command.action === 'design_read') {
+    stage = 'design_read';
+    result = await page.evaluate(projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (!project.design) throw new Error('Project has no saved design state.');
+      return {
+        projectId, projectName: project.name, frame: project.design.frame || 'desktop',
+        background: project.design.background || '#ffffff', grid: project.design.grid ?? true,
+        gridSize: project.design.gridSize ?? 8, snapToGrid: project.design.snapToGrid ?? false,
+        elements: (Array.isArray(project.design.elements) ? project.design.elements : []).slice(0, 200).map(element => ({
+          id: element.id || null, type: element.type || null, name: element.name || null,
+          x: element.x ?? null, y: element.y ?? null, width: element.width ?? null, height: element.height ?? null,
+          text: typeof element.text === 'string' ? element.text.slice(0, 500) : null,
+          src: typeof element.src === 'string' ? element.src.slice(0, 500) : null,
+          zIndex: element.zIndex ?? null
+        })),
+        totalElements: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
+        truncated: (project.design.elements?.length || 0) > 200
+      };
+    }, command.args.project_id);
+  } else if (command.action === 'project_list') {
     stage = 'project_list';
     result = await page.evaluate(() => {
       if (!Array.isArray(projects)) throw new Error('Workspace projects are not initialized.');
