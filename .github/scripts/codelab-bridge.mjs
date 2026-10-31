@@ -237,12 +237,19 @@ try {
     const projectName = 'CodeLab Preview Probe ' + commandId.slice(-12);
     stage = 'editor_preview_wait_boot';
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+    stage = 'editor_preview_open_create_modal';
     await page.getByRole('button', { name: /Crear proyecto/i }).click();
+    stage = 'editor_preview_fill_project_name';
     await page.locator('#newProjectNameInput').fill(projectName);
+    stage = 'editor_preview_select_web_type';
     await page.locator('input[name="newProjectType"][value="web"]').check();
+    stage = 'editor_preview_confirm_create';
     await page.locator('#newProjectModal button[onclick="createNewProjectConfirm()"]').click();
+    stage = 'editor_preview_wait_studio';
     await page.locator('#studioView').waitFor({ state: 'visible', timeout: 15000 });
-    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent === expected, projectName, { timeout: 15000 });
+    stage = 'editor_preview_wait_project_title';
+    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent?.trim() === expected, projectName, { timeout: 15000 });
+    stage = 'editor_preview_wait_editor_api';
     await page.waitForFunction(() => typeof setEditorValue === 'function' && typeof updatePreview === 'function' && typeof getEditorValue === 'function', null, { timeout: 15000 });
     const fixture = {
       html: '<main id="codelab-e2e"><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Name <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
