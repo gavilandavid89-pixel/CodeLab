@@ -123,15 +123,18 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   page = await context.newPage();
-  const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [] };
+  const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], expectedBlockedRequests: [] };
+  const intentionallyBlockedUrls = new Set();
   const safeUrl = value => {
     try { const url = new URL(value); return url.origin + url.pathname; } catch (_) { return String(value || '').slice(0, 180); }
   };
   page.on('console', message => {
+    const location = message.location()?.url || '';
+    if (message.type() === 'error' && /net::ERR_FAILED/.test(message.text() || '') && intentionallyBlockedUrls.has(location)) return;
     if (message.type() === 'error' && browserDiagnostics.consoleErrors.length < 30) {
       browserDiagnostics.consoleErrors.push({
         text: String(message.text() || '').slice(0, 500),
-        location: safeUrl(message.location()?.url || '')
+        location: safeUrl(location)
       });
     }
   });
@@ -139,6 +142,14 @@ try {
     if (browserDiagnostics.pageErrors.length < 30) browserDiagnostics.pageErrors.push(String(error?.message || error).slice(0, 500));
   });
   page.on('requestfailed', request => {
+    if (intentionallyBlockedUrls.has(request.url())) {
+      if (browserDiagnostics.expectedBlockedRequests.length < 30) browserDiagnostics.expectedBlockedRequests.push({
+        url: safeUrl(request.url()),
+        method: request.method(),
+        reason: 'Intentionally blocked by the isolated preview test to prevent workspace persistence.'
+      });
+      return;
+    }
     if (browserDiagnostics.failedRequests.length < 30) browserDiagnostics.failedRequests.push({
       url: safeUrl(request.url()),
       method: request.method(),
@@ -147,8 +158,11 @@ try {
     });
   });
   if (command.action === 'preview_editor_smoke_test') {
-    // Keep this E2E project local to the disposable browser context; do not write its workspace to the server.
-    await page.route('**/api/workspace**', route => route.abort());
+    // Keep all workspace API traffic blocked in this disposable browser so the test cannot persist projects.
+    await page.route('**/api/workspace**', route => {
+      intentionallyBlockedUrls.add(route.request().url());
+      return route.abort();
+    });
   }
   stage = 'initial_navigation';
   await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
