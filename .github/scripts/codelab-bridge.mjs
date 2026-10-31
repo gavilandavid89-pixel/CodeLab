@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -81,6 +81,8 @@ function parseCommand(raw) {
     if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) throw new Error('component_search query must be a string up to 200 characters.');
     if (args.category !== undefined && (typeof args.category !== 'string' || args.category.length > 100)) throw new Error('component_search category must be a string up to 100 characters.');
   }
+  if (command.action === 'component_inspect' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) throw new Error('component_inspect requires a valid component_id.');
+  if (command.action === 'component_inspect' && args.max_chars !== undefined && (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
   if (command.action === 'component_insert' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) {
     throw new Error('component_insert requires a valid component_id.');
   }
@@ -873,6 +875,23 @@ try {
         id: item.id, name: item.name, category: item.category, description: item.description, tags: item.tags
       })), truncated: matches.length > 100 };
     }, { query: command.args.query || '', category: command.args.category || 'Todas' });
+  } else if (command.action === 'component_inspect') {
+    stage = 'component_inspect';
+    result = await page.evaluate(({ componentId, maxChars }) => {
+      const api = window.CodeLabComponentLibrary;
+      if (!api || typeof api.getComponent !== 'function' || typeof api.standaloneHtml !== 'function') {
+        throw new Error('Component library inspection API is not ready.');
+      }
+      const item = api.getComponent(componentId);
+      if (!item) throw new Error('Component ID was not found in the library.');
+      const html = api.standaloneHtml(item);
+      const limit = Number.isInteger(maxChars) ? Math.max(1000, Math.min(7000, maxChars)) : 5000;
+      return {
+        id: item.id, name: item.name, category: item.category, description: item.description,
+        tags: item.tags, htmlLength: html.length, html: html.slice(0, limit),
+        truncated: html.length > limit, format: 'text/html'
+      };
+    }, { componentId: command.args.component_id, maxChars: command.args.max_chars });
   } else if (command.action === 'component_insert') {
     stage = 'component_insert';
     result = await page.evaluate(async ({ projectId, componentId }) => {
