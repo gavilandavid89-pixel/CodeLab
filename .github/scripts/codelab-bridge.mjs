@@ -87,17 +87,26 @@ async function getJson(page, path) {
 }
 
 let browser;
+let page;
 let result;
 let commandId = 'unknown';
+let commandAction = 'unknown';
+let stage = 'parse_command';
+let currentStep = null;
+const startedAt = Date.now();
 try {
   const command = parseCommand(process.env.ISSUE_BODY || '');
   commandId = command.command_id;
+  commandAction = command.action;
+  stage = 'launch_browser';
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const page = await context.newPage();
+  page = await context.newPage();
+  stage = 'initial_navigation';
   await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
   // Credentials are read only from GitHub Actions secrets, never from issue bodies.
   if (command.use_admin_session === true) {
+    stage = 'admin_authentication';
     const username = process.env.CODELAB_ADMIN_USERNAME || '';
     const password = process.env.CODELAB_ADMIN_PASSWORD || '';
     if (!username || !password) throw new Error('Authenticated bridge unavailable: configure CODELAB_ADMIN_USERNAME and CODELAB_ADMIN_PASSWORD as repository Actions secrets.');
@@ -109,10 +118,13 @@ try {
     const loginData = await login.json().catch(() => ({}));
     if (!login.ok() || loginData.ok !== true) throw new Error('CodeLab ADMIN login failed (HTTP ' + login.status() + '). Check the Actions secrets and account status.');
     result = { authenticatedAs: loginData.user?.name || username, role: loginData.user?.role || null, mustChangePassword: !!loginData.mustChangePassword };
+    stage = 'post_login_navigation';
     await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
   }
   // Let the app's own initialization and initial API calls finish before inspecting it.
+  stage = 'page_initialization';
   await page.waitForTimeout(2500);
+  stage = 'execute_action';
 
   if (command.action === 'ai_ping') {
     const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
@@ -193,6 +205,7 @@ try {
   } else if (command.action === 'sequence') {
     result = [];
     for (let index = 0; index < command.args.steps.length; index += 1) {
+      currentStep = index + 1;
       const step = command.args.steps[index];
       const locator = page.locator(step.selector).first();
       if (await locator.count() === 0) throw new Error('Sequence step ' + (index + 1) + ': selector did not match an element.');
@@ -215,6 +228,7 @@ try {
         result.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true });
       }
     }
+    currentStep = null;
   } else {
     const locator = page.locator(command.args.selector).first();
     if (await locator.count() === 0) throw new Error('Selector did not match an element.');
@@ -241,6 +255,7 @@ try {
   // Capture post-interaction layout evidence only after masking text and user-provided content.
   // The repository is public, so screenshots must not expose project names, code, inputs, previews, or images.
   if (['click', 'fill', 'select', 'sequence'].includes(command.action)) {
+    stage = 'capture_redacted_screenshot';
     await page.addStyleTag({ content: [
       'body * { color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }',
       'input, textarea, select, [contenteditable="true"], pre, code, iframe, canvas, img, video, .monaco-editor, .CodeMirror, .cm-editor { visibility: hidden !important; }',
@@ -255,21 +270,51 @@ try {
       result = { ...result, redactedScreenshotCaptured: true };
     }
   }
+  stage = 'report_result';
   await comment('## CodeLab Bridge result\n\n```json\n' + JSON.stringify({
     protocol: 'codelab-agent-bridge/v1',
     command_id: commandId,
     status: 'succeeded',
     completed_at: new Date().toISOString(),
+    diagnostics: {
+      stage,
+      command_action: commandAction,
+      command_source: commandSource,
+      elapsed_ms: Date.now() - startedAt,
+      workflow_run_id: process.env.GITHUB_RUN_ID || null,
+      workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
+      issue_number: Number.isFinite(issueNumber) ? issueNumber : null
+    },
     result
   }, null, 2).slice(0, 9000) + '\n```');
 } catch (error) {
-  const safeMessage = String(error?.message || error).slice(0, 1000);
+  const rawMessage = String(error?.message || error);
+  const safeMessage = rawMessage.replace(/<[^>]*>/g, '<element>').slice(0, 1000);
+  const errorCode = stage === 'parse_command' ? 'command_validation_failed'
+    : stage === 'admin_authentication' ? 'authentication_failed'
+    : stage === 'capture_redacted_screenshot' ? 'screenshot_failed'
+    : /timeout/i.test(rawMessage) ? 'interaction_timeout'
+    : /selector did not match/i.test(rawMessage) ? 'selector_not_found'
+    : 'bridge_execution_failed';
+  const diagnostic = {
+    stage,
+    error_code: errorCode,
+    command_action: commandAction,
+    command_source: commandSource,
+    elapsed_ms: Date.now() - startedAt,
+    workflow_run_id: process.env.GITHUB_RUN_ID || null,
+    workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
+    issue_number: Number.isFinite(issueNumber) ? issueNumber : null,
+    current_step: currentStep,
+    page_url: page ? await page.url().catch(() => null) : null
+  };
   try {
     await comment('## CodeLab Bridge result\n\n```json\n' + JSON.stringify({
       protocol: 'codelab-agent-bridge/v1',
       command_id: commandId,
       status: 'failed',
       completed_at: new Date().toISOString(),
+      diagnostics: diagnostic,
       error: safeMessage
     }, null, 2) + '\n```');
   } catch (reportError) {
