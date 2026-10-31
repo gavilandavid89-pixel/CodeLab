@@ -429,11 +429,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       updateOauthDemoBanner();
       maybeOfferLocalImport();
-      if (nativePasswordChangeRequired && currentUser && currentUser.provider === 'local') {
-        const hint = document.getElementById('changePasswordHint');
-        if (hint) hint.textContent = 'Por seguridad, debes cambiar la contraseña inicial antes de continuar.';
-        openChangePasswordModal(true);
-      }
+      // Initial-password rotation is temporarily optional; do not block the workspace UI.
     })
     .finally(() => {
       showBootLoading(false);
@@ -1483,7 +1479,7 @@ async function loadAdminAccounts() {
       const row = document.createElement('div');
       row.className = 'flex items-center justify-between gap-3 rounded-lg bg-slate-950 border border-slate-800 px-3 py-2';
       const name = document.createElement('span');
-      name.textContent = account.username + (account.mustChangePassword ? ' · cambio pendiente' : '');
+      name.textContent = account.username;
       const role = document.createElement('span');
       role.className = 'text-slate-500 shrink-0';
       role.textContent = account.role === 'admin' ? 'Administrador' : 'Usuario';
@@ -1555,14 +1551,8 @@ async function loginNativeAccount() {
     closeAuthModal();
     if (document.getElementById('authPasswordInput')) document.getElementById('authPasswordInput').value = '';
     await loadAuthFromServer();
-    if (data.mustChangePassword) {
-      const hint = document.getElementById('changePasswordHint');
-      if (hint) hint.textContent = 'Por seguridad, debes cambiar la contraseña inicial antes de continuar.';
-      openChangePasswordModal(true);
-    } else {
-      showToast('Sesión iniciada en CodeLab.');
-      await refreshWorkspaceAfterNativeLogin();
-    }
+    showToast('Sesión iniciada en CodeLab.');
+    await refreshWorkspaceAfterNativeLogin();
   } catch (e) {
     if (error) { error.textContent = e.message || 'Error al iniciar sesión.'; error.classList.remove('hidden'); }
   } finally {
