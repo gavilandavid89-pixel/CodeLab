@@ -266,7 +266,7 @@ try {
     if (Array.isArray(result)) {
       result = { steps: result, readableUiScreenshotCaptured: true };
     } else if (result && typeof result === 'object') {
-      result = { ...result, redactedScreenshotCaptured: true };
+      result = { ...result, readableUiScreenshotCaptured: true };
     }
   }
   stage = 'report_result';
