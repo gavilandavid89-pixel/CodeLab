@@ -42,6 +42,26 @@ const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInt
 const COOKIE_NAME = 'codelab_sid';
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
 const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
+const localLoginAttempts = new Map();
+const LOCAL_LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOCAL_LOGIN_MAX_ATTEMPTS = 8;
+
+function allowLocalLoginAttempt(req, username) {
+  const now = Date.now();
+  const key = clientIp(req) + ':' + username;
+  let entry = localLoginAttempts.get(key);
+  if (!entry || now - entry.startedAt > LOCAL_LOGIN_WINDOW_MS) {
+    entry = { startedAt: now, count: 0 };
+    localLoginAttempts.set(key, entry);
+  }
+  entry.count += 1;
+  if (localLoginAttempts.size > 5000) {
+    for (const [k, value] of localLoginAttempts) {
+      if (now - value.startedAt > LOCAL_LOGIN_WINDOW_MS) localLoginAttempts.delete(k);
+    }
+  }
+  return entry.count <= LOCAL_LOGIN_MAX_ATTEMPTS;
+}
 
 function readLocalAccounts() {
   try {
@@ -1428,6 +1448,9 @@ const server = http.createServer(async (req, res) => {
         const password = typeof body.password === 'string' ? body.password : '';
         if (!/^[A-Z0-9_]{3,32}$/.test(username) || password.length < 1 || password.length > 1024) {
           return sendJson(res, 400, { error: 'invalid_credentials_format' });
+        }
+        if (!allowLocalLoginAttempt(req, username)) {
+          return sendJson(res, 429, { error: 'login_rate_limited', message: 'Demasiados intentos. Espera 10 minutos e inténtalo de nuevo.' });
         }
         const accounts = readLocalAccounts();
         const account = accounts[username];
