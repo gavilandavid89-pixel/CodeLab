@@ -28,6 +28,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 - `read_page`: bounded page text snapshot. Use only when the resulting text is safe to expose in the issue thread.
 - `list_controls`: visible DOM control metadata. In comment mailbox mode, labels/text are omitted to reduce accidental disclosure.
 - `read_element`, `fill`, `select`, `click`: bounded DOM interactions using a CSS selector; `click` requires explicit approval.
+- `sequence`: execute 1–8 approved `click`, `fill`, and/or `select` steps in order within the same authenticated browser page and context. Any click requires `approval: "approved"`. Each step reports success metadata only, and the final viewport screenshot is redacted. The browser context is not persisted after the workflow ends.
 
 ## Comment mailbox example
 
@@ -42,6 +43,27 @@ Post the JSON command as a new comment on an existing issue titled `[CodeLab Bri
   "use_admin_session": true,
   "expires_at": "2026-11-01T00:30:00Z",
   "approval": "not-required"
+}
+```
+
+## Multi-step interaction example
+
+Use an issue command (not a comment mailbox command) to perform a bounded sequence in one authenticated browser session:
+
+```json
+{
+  "protocol": "codelab-agent-bridge/v1",
+  "command_id": "replace-with-unique-id",
+  "action": "sequence",
+  "args": {
+    "steps": [
+      { "action": "click", "selector": "#openDesignTools" },
+      { "action": "click", "selector": "#toggleDesignInspector" }
+    ]
+  },
+  "use_admin_session": true,
+  "expires_at": "2026-11-01T00:30:00Z",
+  "approval": "approved"
 }
 ```
 
