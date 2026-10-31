@@ -8,6 +8,7 @@ const dns = require('dns').promises;
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
@@ -40,6 +41,98 @@ const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInt
   ? Math.min(60 * 60 * 1000, Math.max(1000, configuredSessionCleanupInterval))
   : 15 * 60 * 1000;
 const COOKIE_NAME = 'codelab_sid';
+const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
+const DATABASE_URL = process.env.DATABASE_URL || ''; 
+const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
+const localLoginAttempts = new Map();
+const LOCAL_LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOCAL_LOGIN_MAX_ATTEMPTS = 8;
+
+function allowLocalLoginAttempt(req, username) {
+  const now = Date.now();
+  const key = clientIp(req) + ':' + username;
+  let entry = localLoginAttempts.get(key);
+  if (!entry || now - entry.startedAt > LOCAL_LOGIN_WINDOW_MS) {
+    entry = { startedAt: now, count: 0 };
+    localLoginAttempts.set(key, entry);
+  }
+  entry.count += 1;
+  if (localLoginAttempts.size > 5000) {
+    for (const [k, value] of localLoginAttempts) {
+      if (now - value.startedAt > LOCAL_LOGIN_WINDOW_MS) localLoginAttempts.delete(k);
+    }
+  }
+  return entry.count <= LOCAL_LOGIN_MAX_ATTEMPTS;
+}
+
+async function readLocalAccounts() {
+  if (!accountPool) throw new Error('database_not_configured');
+  const result = await accountPool.query('SELECT username, id, role, salt, password_hash, created_at, password_changed_at, must_change_password FROM codelab_accounts');
+  const accounts = {};
+  for (const row of result.rows) {
+    accounts[row.username] = {
+      id: row.id, username: row.username, role: row.role, salt: row.salt,
+      passwordHash: row.password_hash,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+      passwordChangedAt: row.password_changed_at ? new Date(row.password_changed_at).toISOString() : null,
+      mustChangePassword: !!row.must_change_password
+    };
+  }
+  return accounts;
+}
+
+async function writeLocalAccounts(accounts) {
+  if (!accountPool) throw new Error('database_not_configured');
+  const client = await accountPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const [username, account] of Object.entries(accounts)) {
+      await client.query(
+        'INSERT INTO codelab_accounts (username, id, role, salt, password_hash, created_at, password_changed_at, must_change_password) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role=EXCLUDED.role, salt=EXCLUDED.salt, password_hash=EXCLUDED.password_hash, password_changed_at=EXCLUDED.password_changed_at, must_change_password=EXCLUDED.must_change_password',
+        [username, String(account.id), account.role || 'user', account.salt, account.passwordHash, account.createdAt || new Date().toISOString(), account.passwordChangedAt || null, !!account.mustChangePassword]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function passwordHash(password, salt) {
+  return crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+}
+
+function safePasswordEqual(a, b) {
+  const aa = Buffer.from(String(a || ''), 'hex');
+  const bb = Buffer.from(String(b || ''), 'hex');
+  return aa.length === bb.length && aa.length > 0 && crypto.timingSafeEqual(aa, bb);
+}
+
+async function seedAdminAccountIfConfigured() {
+  if (!ADMIN_BOOTSTRAP_PASSWORD) {
+    console.log('ADMIN bootstrap skipped: ADMIN_BOOTSTRAP_PASSWORD not configured.');
+    return;
+  }
+  if (ADMIN_BOOTSTRAP_PASSWORD.length < 16) {
+    console.error('ADMIN_BOOTSTRAP_PASSWORD must contain at least 16 characters; ADMIN bootstrap skipped.');
+    return;
+  }
+  if (!accountPool) {
+    console.error('DATABASE_URL is required for native accounts; ADMIN bootstrap skipped.');
+    return;
+  }
+  const salt = crypto.randomBytes(16).toString('hex');
+  await accountPool.query(
+    'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO NOTHING',
+    ['ADMIN','admin','admin',salt,passwordHash(ADMIN_BOOTSTRAP_PASSWORD,salt),true]
+  );
+}
+
+
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
@@ -498,7 +591,8 @@ function createSession(user) {
       provider: user.provider,
       name: user.name || user.login || 'User',
       email: user.email || null,
-      avatar: user.avatar || user.avatar_url || null
+      avatar: user.avatar || user.avatar_url || null,
+      role: user.role || 'user'
     },
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS
@@ -534,7 +628,7 @@ function readSession(sid) {
       session.user &&
       typeof session.user === 'object' &&
       typeof session.user.id === 'string' &&
-      (session.user.provider === 'github' || session.user.provider === 'google');
+      (session.user.provider === 'github' || session.user.provider === 'google' || session.user.provider === 'local');
     if (!valid) {
       try { fs.unlinkSync(file); } catch (_) {}
       return null;
@@ -958,7 +1052,7 @@ async function handleGoogleCallback(code, redirectUri) {
 }
 
 function ensureUserWorkspace(user) {
-  if (!user || (user.provider !== 'github' && user.provider !== 'google') ||
+  if (!user || (user.provider !== 'github' && user.provider !== 'google' && user.provider !== 'local') ||
       user.id == null || !String(user.id).trim()) {
     throw new Error('workspace_owner_invalid');
   }
@@ -1313,6 +1407,8 @@ function parseAiJsonContent(content, fallbackCode) {
   );
 }
 
+seedAdminAccountIfConfigured();
+
 const server = http.createServer(async (req, res) => {
   const ip = clientIp(req);
   let pathname;
@@ -1361,6 +1457,107 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, body);
       }
 
+      // Native CodeLab account login. Public registration is intentionally disabled.
+      if (req.method === 'POST' && pathname === '/api/auth/login') {
+        const body = await readBody(req);
+        const username = typeof body.username === 'string' ? body.username.trim().toUpperCase() : '';
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!/^[A-Z0-9_]{3,32}$/.test(username) || password.length < 1 || password.length > 1024) {
+          return sendJson(res, 400, { error: 'invalid_credentials_format' });
+        }
+        if (!allowLocalLoginAttempt(req, username)) {
+          return sendJson(res, 429, { error: 'login_rate_limited', message: 'Demasiados intentos. Espera 10 minutos e inténtalo de nuevo.' });
+        }
+        const accounts = await readLocalAccounts();
+        const account = accounts[username];
+        // Perform a comparable scrypt operation even when the account does not exist.
+        const salt = account?.salt || 'codelab-invalid-login-salt';
+        const candidate = passwordHash(password, salt);
+        if (!account || !safePasswordEqual(candidate, account.passwordHash)) {
+          return sendJson(res, 401, { error: 'invalid_credentials', message: 'Usuario o contraseña incorrectos.' });
+        }
+        const user = {
+          id: account.id,
+          provider: 'local',
+          name: account.username,
+          email: null,
+          avatar: null,
+          role: account.role
+        };
+        ensureUserWorkspace(user);
+        const session = createSession(user);
+        setSessionCookie(res, session.id, req);
+        return sendJson(res, 200, { ok: true, user, workspaceId: userWorkspaceId(user), mustChangePassword: !!account.mustChangePassword });
+      }
+
+      if (req.method === 'POST' && pathname === '/api/auth/change-password') {
+        const user = getSessionUser(req);
+        if (!user || user.provider !== 'local') return sendJson(res, 401, { error: 'not_authenticated' });
+        const body = await readBody(req);
+        const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+        const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+        if (newPassword.length < 16 || newPassword.length > 1024) {
+          return sendJson(res, 400, { error: 'password_too_short', message: 'La nueva contraseña debe tener al menos 16 caracteres.' });
+        }
+        const accounts = await readLocalAccounts();
+        const account = accounts[user.name];
+        if (!account || !safePasswordEqual(passwordHash(currentPassword, account.salt), account.passwordHash)) {
+          return sendJson(res, 401, { error: 'invalid_credentials' });
+        }
+        const salt = crypto.randomBytes(16).toString('hex');
+        account.salt = salt;
+        account.passwordHash = passwordHash(newPassword, salt);
+        account.mustChangePassword = false;
+        account.passwordChangedAt = new Date().toISOString();
+        await writeLocalAccounts(accounts);
+        const cookies = parseCookies(req);
+        destroySession(cookies[COOKIE_NAME]);
+        const session = createSession({ ...user, id: account.id, role: account.role });
+        setSessionCookie(res, session.id, req);
+        return sendJson(res, 200, { ok: true, mustChangePassword: false });
+      }
+
+      // Minimal administrator-only account directory and user creation.
+      if (pathname === '/api/admin/accounts' && (req.method === 'GET' || req.method === 'POST')) {
+        const actor = getSessionUser(req);
+        if (!actor || actor.provider !== 'local' || actor.role !== 'admin') {
+          return sendJson(res, 403, { error: 'admin_required' });
+        }
+        const accounts = await readLocalAccounts();
+        if (req.method === 'GET') {
+          return sendJson(res, 200, {
+            accounts: Object.keys(accounts).sort().map(username => ({
+              username,
+              role: accounts[username].role || 'user',
+              createdAt: accounts[username].createdAt || null,
+              mustChangePassword: !!accounts[username].mustChangePassword
+            }))
+          });
+        }
+        const body = await readBody(req);
+        const username = typeof body.username === 'string' ? body.username.trim().toUpperCase() : '';
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!/^[A-Z0-9_]{3,32}$/.test(username)) {
+          return sendJson(res, 400, { error: 'invalid_username', message: 'El usuario debe tener entre 3 y 32 caracteres: letras, números o guion bajo.' });
+        }
+        if (password.length < 16 || password.length > 1024) {
+          return sendJson(res, 400, { error: 'password_too_short', message: 'La contraseña debe tener al menos 16 caracteres.' });
+        }
+        if (accounts[username]) return sendJson(res, 409, { error: 'account_exists', message: 'Ese usuario ya existe.' });
+        const salt = crypto.randomBytes(16).toString('hex');
+        accounts[username] = {
+          id: crypto.randomUUID(),
+          username,
+          role: 'user',
+          salt,
+          passwordHash: passwordHash(password, salt),
+          createdAt: new Date().toISOString(),
+          mustChangePassword: false
+        };
+        await writeLocalAccounts(accounts);
+        return sendJson(res, 201, { ok: true, account: { username, role: 'user', createdAt: accounts[username].createdAt } });
+      }
+
       // Auth status / me
       if (req.method === 'GET' && pathname === '/api/auth/status') {
         const cfg = oauthConfigured();
@@ -1369,7 +1566,8 @@ const server = http.createServer(async (req, res) => {
           oauth: cfg,
           demoFallback: !(cfg.github || cfg.google),
           user: user || null,
-          workspaceId: user ? userWorkspaceId(user) : null
+          workspaceId: user ? userWorkspaceId(user) : null,
+          mustChangePassword: !!(user && user.provider === 'local' && (await readLocalAccounts())[user.name]?.mustChangePassword)
         });
       }
 
@@ -1781,6 +1979,7 @@ try {
   console.error('WARNING: DATA_DIR not writable:', DATA_DIR, e.message);
 }
 
+seedAdminAccountIfConfigured().then(() => {
 server.listen(PORT, () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
@@ -1802,6 +2001,10 @@ server.listen(PORT, () => {
   if (_rawModel && _rawModel !== AI_MODEL) {
     console.log('AI_MODEL normalizado:', JSON.stringify(_rawModel), '→', AI_MODEL);
   }
+});
+}).catch(error => {
+  console.error('Native account database initialization failed:', error.message);
+  process.exit(1);
 });
 
 function shutdown() {
