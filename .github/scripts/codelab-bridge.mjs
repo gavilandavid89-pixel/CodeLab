@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,13 +29,16 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
+  }
+  if (['branch_merge', 'branch_undo_merge'].includes(command.action) && command.approval !== 'approved') {
+    throw new Error(command.action + ' changes the main project state; approval: "approved" is required.');
   }
   if (command.action === 'project_rename' &&
       (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
@@ -763,6 +766,77 @@ try {
         localBranch.code?.js === latest.branch.code?.js;
       if (!saved && !localVerified) throw new Error('Copy branch save could not be verified.');
       return { projectId, branchId: latest.branch.id, serverSynced: saved === true, localSnapshotVerified: localVerified, updatedAt: latest.branch.updatedAt };
+    }, command.args.project_id);
+  } else if (command.action === 'branch_create') {
+    stage = 'branch_create';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project) throw new Error('Project not found in the authenticated workspace.');
+      if (project.type === 'design') throw new Error('Copy branches currently support web projects only.');
+      if (project.branch) return { projectId, branchId: project.branch.id, created: false, alreadyExists: true };
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (inCopyBranch) await toggleCopyBranch();
+      const originalCode = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
+      await duplicateProject();
+      const latest = projects.find(item => item && item.id === projectId);
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const branch = latest?.branch;
+      const localVerified = !!(localProject?.branch && branch &&
+        localProject.branch.id === branch.id &&
+        ['html', 'css', 'js'].every(key => localProject.branch.code?.[key] === branch.code?.[key]) &&
+        ['html', 'css', 'js'].every(key => branch.baseCode?.[key] === originalCode[key]));
+      if (!branch || !localVerified) throw new Error('Copy branch creation was not verified against the local durable snapshot.');
+      return { projectId, branchId: branch.id, created: true, alreadyExists: false, localSnapshotVerified: true, branchMatchesMainAtCreation: ['html', 'css', 'js'].every(key => branch.code[key] === originalCode[key]), updatedAt: branch.updatedAt };
+    }, command.args.project_id);
+  } else if (command.action === 'branch_merge') {
+    stage = 'branch_merge';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.branch) throw new Error('Project has no saved copy branch to merge.');
+      const branchId = project.branch.id;
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (!inCopyBranch) await toggleCopyBranch();
+      const previousHistoryLength = Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0;
+      const previousBranchCode = { html: project.branch.code.html, css: project.branch.code.css, js: project.branch.code.js };
+      const oldConfirm = window.confirm;
+      window.confirm = () => true;
+      try { await mergeToMainProject(); } finally { window.confirm = oldConfirm; }
+      const latest = projects.find(item => item && item.id === projectId);
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const merged = !!latest && !latest.branch && (latest.mergeHistory?.length || 0) > previousHistoryLength;
+      const localVerified = !!localProject && !localProject.branch &&
+        ['html', 'css', 'js'].every(key => localProject.code?.[key] === latest.code?.[key]) &&
+        (localProject.mergeHistory?.length || 0) === (latest.mergeHistory?.length || 0);
+      if (!merged) throw new Error('Merge was not completed; the branch remains available or a conflict prevented the merge.');
+      if (!localVerified) throw new Error('Merge result could not be verified in the durable local snapshot.');
+      return { projectId, branchId, merged: true, mainCodeLengths: { html: latest.code.html.length, css: latest.code.css.length, js: latest.code.js.length }, backupCreated: true, localSnapshotVerified: true, serverSynced: !serverSyncError };
+    }, command.args.project_id);
+  } else if (command.action === 'branch_undo_merge') {
+    stage = 'branch_undo_merge';
+    result = await page.evaluate(async projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !Array.isArray(project.mergeHistory) || !project.mergeHistory.length) throw new Error('Project has no merge to undo.');
+      openProject(projectId);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const previousHistoryLength = project.mergeHistory.length;
+      const previousBackup = project.mergeHistory[previousHistoryLength - 1];
+      const expectedCode = { html: previousBackup.code.html, css: previousBackup.code.css, js: previousBackup.code.js };
+      const oldConfirm = window.confirm;
+      window.confirm = () => true;
+      try { await undoLastMerge(); } finally { window.confirm = oldConfirm; }
+      const latest = projects.find(item => item && item.id === projectId);
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const restored = !!latest && (latest.mergeHistory?.length || 0) === previousHistoryLength - 1 &&
+        ['html', 'css', 'js'].every(key => latest.code?.[key] === expectedCode[key]);
+      const localVerified = !!localProject && ['html', 'css', 'js'].every(key => localProject.code?.[key] === expectedCode[key]) &&
+        (localProject.mergeHistory?.length || 0) === previousHistoryLength - 1;
+      if (!restored || !localVerified) throw new Error('Undo merge was not verified against the saved code and history.');
+      return { projectId, undone: true, branchRestored: !!latest.branch, mergeHistoryRemaining: latest.mergeHistory.length, localSnapshotVerified: true, serverSynced: !serverSyncError };
     }, command.args.project_id);
   } else if (command.action === 'component_search') {
     stage = 'component_search';
