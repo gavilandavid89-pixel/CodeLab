@@ -18,11 +18,11 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'click', 'read_element', 'fill', 'select', 'sequence']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'click', 'read_element', 'fill', 'select', 'sequence']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
-  if (commandSource === 'comment' && !['status', 'connections_status', 'list_controls'].includes(command.action)) {
+  if (commandSource === 'comment' && !['status', 'connections_status', 'list_controls', 'preview_diagnostics'].includes(command.action)) {
     throw new Error('Comment mailbox is read-only; use a separately approved issue command for interactions.');
   }
   if (!command.expires_at || !Number.isFinite(Date.parse(command.expires_at))) throw new Error('A valid expires_at is required.');
@@ -102,6 +102,29 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   page = await context.newPage();
+  const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [] };
+  const safeUrl = value => {
+    try { const url = new URL(value); return url.origin + url.pathname; } catch (_) { return String(value || '').slice(0, 180); }
+  };
+  page.on('console', message => {
+    if (message.type() === 'error' && browserDiagnostics.consoleErrors.length < 30) {
+      browserDiagnostics.consoleErrors.push({
+        text: String(message.text() || '').slice(0, 500),
+        location: safeUrl(message.location()?.url || '')
+      });
+    }
+  });
+  page.on('pageerror', error => {
+    if (browserDiagnostics.pageErrors.length < 30) browserDiagnostics.pageErrors.push(String(error?.message || error).slice(0, 500));
+  });
+  page.on('requestfailed', request => {
+    if (browserDiagnostics.failedRequests.length < 30) browserDiagnostics.failedRequests.push({
+      url: safeUrl(request.url()),
+      method: request.method(),
+      failure: String(request.failure()?.errorText || 'request failed').slice(0, 200),
+      resourceType: request.resourceType()
+    });
+  });
   stage = 'initial_navigation';
   await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
   // Credentials are read only from GitHub Actions secrets, never from issue bodies.
@@ -183,6 +206,40 @@ try {
         ['Conectando…', 'Iniciando CodeLab…', 'Proyectos', 'No conectado', 'Plantillas locales']
           .filter(signal => text.includes(signal))
       )
+    };
+  } else if (command.action === 'preview_diagnostics') {
+    stage = 'inspect_preview';
+    const preview = await page.evaluate(() => {
+      const frame = document.querySelector('#previewIframe');
+      if (!frame) return { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
+      const src = frame.getAttribute('src') || '';
+      const doc = frame.contentDocument;
+      if (!doc || !doc.documentElement) {
+        return { available: false, reason: 'La vista previa no tiene un documento accesible todavía.', src: src || null };
+      }
+      const body = doc.body;
+      const text = (body?.innerText || '').trim().slice(0, 1800);
+      const elements = Array.from(doc.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
+        tag: el.tagName.toLowerCase(),
+        text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
+        id: el.id || null,
+        type: el.getAttribute('type') || null,
+        disabled: Boolean(el.disabled)
+      }));
+      return {
+        available: true,
+        src: src || null,
+        readyState: doc.readyState,
+        title: doc.title || '',
+        text,
+        elementCount: doc.querySelectorAll('*').length,
+        interactiveElements: elements
+      };
+    });
+    result = {
+      page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
+      preview,
+      browserDiagnostics
     };
   } else if (command.action === 'read_page') {
     result = {
