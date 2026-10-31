@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
-  'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
+  'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
 ];
 
 for (const action of requiredActions) {
@@ -18,6 +18,14 @@ assert.match(bridge, /project_rename[\s\S]{0,300}args\.name\.trim\(\)\.length > 
   'rename must validate project name length');
 assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editorMatchesSavedBranch[\s\S]{0,300}true/,
   'branch resume must report editor-to-branch verification');
+assert.match(bridge, /branch_create[\s\S]{0,2200}localSnapshotVerified/,
+  'branch creation must verify its durable snapshot');
+assert.match(bridge, /branch_merge[\s\S]{0,2500}backupCreated/,
+  'branch merge must verify the merged state and backup');
+assert.match(bridge, /branch_undo_merge[\s\S]{0,2500}mergeHistoryRemaining/,
+  'undo merge must verify restored code and history');
+assert.match(bridge, /\['branch_merge', 'branch_undo_merge'\][\s\S]{0,180}approval !== 'approved'/,
+  'main-project merge and undo must require explicit approval');
 for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete']) {
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
