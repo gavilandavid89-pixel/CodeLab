@@ -68,5 +68,5 @@ assert.match(bridge, /component_inspect max_chars must be an integer from 1000 t
 
 assert.match(bridge, /design_elements_distribute requires 3 to 100 unique valid element_ids/);
 assert.match(bridge, /distributeDesignElements\(axis\)/, 'distribution must call the existing design editor operation');
-assert.match(bridge, /design_prototype_target_set requires a safe string/);
+assert.match(bridge, /design_prototype_target_set target must be a safe string/);
 assert.match(bridge, /setDesignPrototypeTarget\(target\)/, 'prototype target must use the existing editor operation');
