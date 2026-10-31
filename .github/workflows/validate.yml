@@ -33,6 +33,7 @@ jobs:
           node --check public/design-flow.js
           node --check public/component-library.js
           node --check .github/scripts/codelab-bridge.mjs
+          node --check tests/assistant-tools-contract.test.js
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
           node --check tests/ai-settings-isolation.test.js
@@ -42,6 +43,8 @@ jobs:
           node --check tests/interface-responsive.e2e.test.js
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
+      - name: Check assistant project lifecycle tool contracts
+        run: node tests/assistant-tools-contract.test.js
       - name: Check version metadata consistency
         run: node tests/version-consistency.test.js
       - name: Audit static UI event wiring and IDs
