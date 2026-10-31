@@ -197,6 +197,7 @@
         <div id="userProfileBadge" class="hidden flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-300 text-xs max-w-[140px] sm:max-w-none">
           <img id="userAvatar" src="https://ui-avatars.com/api/?name=Usuario&background=0891b2&color=fff" alt="" class="w-5 h-5 rounded-full shrink-0" width="20" height="20">
           <span id="userName" class="truncate hidden sm:inline">Usuario</span>
+          <button id="adminAccountsButton" onclick="openAdminAccountsModal()" class="hidden touch-target text-slate-400 hover:text-cyan-300 p-1" title="Administrar cuentas" aria-label="Administrar cuentas"><i class="fa-solid fa-users-gear"></i></button>
           <button onclick="openChangePasswordModal(false)" class="touch-target text-slate-400 hover:text-cyan-300 p-1" title="Cambiar contraseña" aria-label="Cambiar contraseña"><i class="fa-solid fa-key"></i></button>
           <button onclick="logoutAuth()" class="touch-target text-slate-400 hover:text-red-400 p-1"><i class="fa-solid fa-right-from-bracket"></i></button>
         </div>
@@ -773,6 +774,19 @@
         <p id="changePasswordError" class="hidden text-xs text-red-300" role="alert"></p>
         <button id="changePasswordSubmit" type="submit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold">Actualizar contraseña</button>
       </form>
+    </div>
+  </div>
+
+  <div id="adminAccountsModal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="adminAccountsTitle">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <div class="flex items-center justify-between"><h3 id="adminAccountsTitle" class="text-base font-bold text-white">Administrar cuentas</h3><button onclick="closeAdminAccountsModal()" class="touch-target text-slate-400 hover:text-white p-2" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button></div>
+      <p class="text-xs text-slate-400">Crea cuentas de usuario. Las contraseñas nunca se muestran después de crearlas.</p>
+      <form onsubmit="event.preventDefault(); createNativeAccount();" class="space-y-2">
+        <label for="newAccountUsername" class="text-[11px] text-slate-400 block">Nombre de usuario</label><input id="newAccountUsername" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+" autocomplete="off" placeholder="USUARIO_NUEVO" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100">
+        <label for="newAccountPassword" class="text-[11px] text-slate-400 block">Contraseña inicial (mínimo 16 caracteres)</label><input id="newAccountPassword" required minlength="16" maxlength="1024" type="password" autocomplete="new-password" placeholder="Genera una contraseña única" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100">
+        <p id="createAccountError" class="hidden text-xs text-red-300" role="alert"></p><button id="createAccountSubmit" type="submit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold">Crear cuenta</button>
+      </form>
+      <div class="border-t border-slate-800 pt-3"><h4 class="text-sm font-semibold text-slate-200 mb-2">Cuentas existentes</h4><div id="adminAccountsList" class="space-y-2 text-xs text-slate-300"><p class="text-slate-500">Cargando…</p></div></div>
     </div>
   </div>
 
