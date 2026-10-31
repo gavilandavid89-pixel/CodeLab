@@ -91,3 +91,35 @@ The live tests used disposable design project `proj_f3edbfbb-b2e7-4bf0-9d5c-625c
 - [Cleanup](https://github.com/gavilandavid89-pixel/CodeLab/issues/103): deletion and snapshot verified.
 
 The tests verify these happy paths, not every invalid input, conflict state, or browser viewport variation.
+
+
+## Full design coverage program — eight workstreams
+
+This checklist is intentionally explicit: the presence of a UI control or a bridge action does not count as complete until the operation has a contract test and evidence that the underlying application state changed and persisted where applicable.
+
+| # | Workstream | UI inventory to cover | Assistant operations already present | Remaining completion criteria |
+|---|---|---|---|---|
+| 1 | Layers and properties | Add heading/text/button/rectangle/ellipse/image; select one or many; label/text; geometry; foreground/background; font size/weight; radius; image source/alt/object-fit; duplicate/delete; layer order; align/distribute | `design_read`, `design_element_add/update/delete/duplicate`, `design_layer_move`, `design_elements_align/distribute` | Inventory every property control and allowed enum; expose missing supported properties; test bounds, unsupported types, selection semantics, and durable state after each mutation. |
+| 2 | Canvas and composition | Frame, background, zoom, fit, grid visibility/size, snap, canvas lock, free/auto layout, direction, gap, padding, toolbar/inspector visibility | `design_canvas_configure`, `design_layout_configure` | Add readback for session-only controls; test lock/fit/visibility through browser controls; document persistence boundaries instead of claiming session-only values were saved. |
+| 3 | Responsive design | Desktop/tablet/mobile frame; viewport fit; mobile portrait/landscape; reflow; preview at each frame; overflow and hit-target checks | `design_canvas_configure` plus browser viewport tools | Add viewport-specific automated and live checks; compare element geometry and overflow at each frame; verify no control is unreachable at phone widths. |
+| 4 | Components and resources | Search, category filtering, details, HTML preview, copy/download, insertion, resource safety and missing IDs | `component_search`, `component_inspect`, `component_insert` | Verify category enumeration from source, insertion into each supported project type, sanitization and failure paths; expose resource export only where the app has a real operation. |
+| 5 | Prototypes and flows | External links; internal layer targets; flow graph; connect/disconnect; menu-role toggles; broken targets; export of multi-screen navigation | `design_prototype_target_set`, `design_flow_read/connect/disconnect` | Enforce the exact app link policy before mutation; test internal fragment targets, safe HTTP(S), credential rejection, menu behavior, broken edges and generated navigation. |
+| 6 | Design systems | Color palette; primary/secondary/accent/surface/background/text; contrast foreground/background; type scale/base font/ratio; spacing; radius; save/reset; import/export JSON; CSS variables; apply tokens; accessibility audit | `design_tokens_generate`, `accessibility_audit` | Add inspect/export/import/apply operations only by invoking the existing `CodeLabDesignTools` API; verify workspace/local persistence, invalid imports are atomic, generated CSS/tokens match saved settings, and contrast calculations use actual values. |
+| 7 | Templates and exchange | Landing/dashboard/portfolio templates; replace-existing confirmation; SVG/JSON design export; HTML project export; design-to-web conversion; design JSON import and recovery prompts | `design_template_apply`, `design_export`, `project_export_html`, `project_convert_design_to_web` | Enumerate all import entry points and schema versions; test malformed/oversized files, no partial mutation on failure, export truncation metadata, conversion source preservation, and round-trip fidelity. |
+| 8 | History and reliability | Undo/redo; save/autosave; local snapshots; server sync/reconnect; import recovery; branch/merge recovery; invalid property errors; concurrent writes | `design_history`, workspace inspection and project save/branch tools | Test undo/redo across each mutation category, reload/reopen persistence, offline/local fallback, conflict behavior, recovery, and user-visible failure reporting. |
+
+### Targeted regression added in the complete-coverage branch
+
+The prototype-target operation previously accepted strings such as `#pricing` that the actual app's `safeDesignLink()` deliberately rejects. The bridge now validates the same two supported target classes before interacting with the app: credential-free HTTP(S) URLs and `#layer-<id>` fragments. Unsupported targets are rejected before mutation, avoiding false claims of successful target changes. Contract assertions cover this policy.
+
+### Acceptance gate for each workstream
+
+1. Trace every visible control and its event handler in `public/index.html`, `public/app.js`, `public/design-tools.js`, `public/design-flow.js`, and `public/component-library.js`.
+2. Map the control to the existing application function and an allowlisted bridge action; add a new action only when a real capability is missing.
+3. Validate required fields, enums, limits, unsafe URLs/content, permissions and approval requirements before mutating state.
+4. Add contract tests for normal, boundary, and rejection paths.
+5. Run CI; then use a disposable project on the CodeLab deployment for live verification when the action mutates project state.
+6. Verify the state from a fresh read or snapshot; clean up disposable data and verify cleanup.
+7. Mark a row complete only after evidence exists. Session-only browser state, locally persisted state, and server-synced state must be reported separately.
+
+**Status note:** this program defines the required coverage, not a claim that all eight workstreams are finished. Workstreams 1, 2 and parts of 4–7 already have direct actions and some live smoke tests; the remaining criteria above are still open until implemented and verified.
