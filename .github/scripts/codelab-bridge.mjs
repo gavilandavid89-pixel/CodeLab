@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_resume', 'branch_save', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -49,6 +49,14 @@ function parseCommand(raw) {
     if (args.replace_existing === true && command.approval !== 'approved') throw new Error('Replacing existing design layers requires approval: "approved".');
   }
   if (command.action === 'design_history' && !['undo', 'redo'].includes(args.operation)) throw new Error('design_history operation must be undo or redo.');
+  if (command.action === 'design_flow_connect') {
+    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_flow_connect requires a valid element_id.');
+    if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_connect requires a valid target_project_id.');
+  }
+  if (command.action === 'design_flow_disconnect') {
+    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_flow_disconnect requires a valid element_id.');
+    if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
+  }
   if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
   if (command.action === 'design_tokens_generate') {
     if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
@@ -301,6 +309,56 @@ try {
       const max = 7000;
       return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
     }, { projectId: command.args.project_id, format: command.args.format });
+  } else if (command.action === 'design_flow_read') {
+    stage = 'design_flow_read';
+    result = await page.evaluate(projectId => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project || !project.design) throw new Error('Design project not found.');
+      const elements = Array.isArray(project.design.elements) ? project.design.elements : [];
+      const connections = Array.isArray(project.design.flowConnections) ? project.design.flowConnections : [];
+      const targets = new Map(projects.filter(item => item?.type === 'design').map(item => [item.id, item]));
+      return {
+        projectId, projectName: project.name,
+        connections: connections.map(connection => ({
+          sourceElementId: connection.sourceElementId,
+          sourceLabel: elements.find(element => element.id === connection.sourceElementId)?.label || null,
+          targetProjectId: connection.targetProjectId,
+          targetProjectName: targets.get(connection.targetProjectId)?.name || null,
+          broken: !elements.some(element => element.id === connection.sourceElementId) || !targets.has(connection.targetProjectId)
+        })),
+        count: connections.length
+      };
+    }, command.args.project_id);
+  } else if (command.action === 'design_flow_connect') {
+    stage = 'design_flow_connect';
+    result = await page.evaluate(async ({ projectId, elementId, targetProjectId }) => {
+      const source = projects.find(item => item && item.id === projectId);
+      const target = projects.find(item => item && item.id === targetProjectId);
+      if (!source?.design || source.type !== 'design' || !target?.design || target.type !== 'design') throw new Error('Source and target must be design projects.');
+      if (!source.design.elements?.some(element => element.id === elementId)) throw new Error('Source design element not found.');
+      if (!Array.isArray(source.design.flowConnections)) source.design.flowConnections = [];
+      if (source.design.flowConnections.some(connection => connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId)) {
+        return { projectId, elementId, targetProjectId, alreadyConnected: true, verified: true };
+      }
+      source.design.flowConnections.push({ sourceElementId: elementId, targetProjectId });
+      const saved = await saveProjectsToStorage();
+      const verified = source.design.flowConnections.some(connection => connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId);
+      if (!verified) throw new Error('Design flow connection could not be verified.');
+      return { projectId, elementId, targetProjectId, alreadyConnected: false, saved: saved === true, verified };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetProjectId: command.args.target_project_id });
+  } else if (command.action === 'design_flow_disconnect') {
+    stage = 'design_flow_disconnect';
+    result = await page.evaluate(async ({ projectId, elementId, targetProjectId }) => {
+      const source = projects.find(item => item && item.id === projectId);
+      if (!source?.design || source.type !== 'design') throw new Error('Source design project not found.');
+      const before = Array.isArray(source.design.flowConnections) ? source.design.flowConnections.length : 0;
+      source.design.flowConnections = (source.design.flowConnections || []).filter(connection => !(connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId));
+      const removed = source.design.flowConnections.length < before;
+      const saved = await saveProjectsToStorage();
+      const verified = !source.design.flowConnections.some(connection => connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId);
+      if (!verified) throw new Error('Design flow disconnection could not be verified.');
+      return { projectId, elementId, targetProjectId, removed, saved: saved === true, verified };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetProjectId: command.args.target_project_id });
   } else if (command.action === 'project_delete') {
     stage = 'project_delete';
     result = await page.evaluate(async projectId => {
