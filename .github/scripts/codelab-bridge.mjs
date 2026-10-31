@@ -277,7 +277,7 @@ try {
     status: 'succeeded',
     completed_at: new Date().toISOString(),
     diagnostics: {
-      stage,
+      stage: 'completed',
       command_action: commandAction,
       command_source: commandSource,
       elapsed_ms: Date.now() - startedAt,
