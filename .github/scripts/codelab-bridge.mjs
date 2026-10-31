@@ -277,7 +277,7 @@ try {
       if (!localVerified) throw new Error('Duplicate was not verified in the local snapshot.');
       return { sourceProjectId: projectId, projectId: duplicate.id, name: duplicate.name, type: duplicate.type, sourceUnchanged, localSnapshotVerified: localVerified };
     }, command.args.project_id);
-  if (command.action === 'workspace_inspect') {
+  } else if (command.action === 'workspace_inspect') {
     stage = 'workspace_inspect';
     result = await page.evaluate(() => ({
       initialized: Array.isArray(projects),
