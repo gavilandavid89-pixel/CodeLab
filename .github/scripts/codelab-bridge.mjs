@@ -265,6 +265,12 @@ try {
     await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent?.trim() === expected, projectName, { timeout: 15000 });
     stage = 'editor_preview_wait_editor_api';
     await page.waitForFunction(() => typeof setEditorValue === 'function' && typeof updatePreview === 'function' && typeof getEditorValue === 'function', null, { timeout: 15000 });
+    stage = 'editor_preview_wait_editor_ready';
+    await page.waitForFunction(() =>
+      typeof editorReadyProjectId !== 'undefined' &&
+      typeof currentProjectId !== 'undefined' &&
+      editorReadyProjectId === currentProjectId,
+      null, { timeout: 20000 });
     const fixture = {
       html: '<main id="codelab-e2e"><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Name <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
       css: '#codelab-e2e { color: rgb(1, 2, 3); }',
