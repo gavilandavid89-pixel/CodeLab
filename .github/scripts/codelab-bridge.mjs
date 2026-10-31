@@ -294,7 +294,8 @@ try {
           probe.setAttribute('sandbox', 'allow-scripts allow-forms');
           probe.style.cssText = 'position:fixed;left:12px;bottom:12px;width:640px;height:360px;z-index:2147483000;background:white;border:2px solid #64748b';
           probe.srcdoc = html;
-          el.replaceWith(probe);
+          el.remove();
+          document.body.appendChild(probe);
         }, probeHtml);
         await previewFrame.locator('#probe-increment').waitFor({ state: 'attached', timeout: 10000 });
       }
