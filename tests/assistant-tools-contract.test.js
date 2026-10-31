@@ -70,3 +70,11 @@ assert.match(bridge, /design_elements_distribute requires 3 to 100 unique valid 
 assert.match(bridge, /distributeDesignElements\(axis\)/, 'distribution must call the existing design editor operation');
 assert.match(bridge, /design_prototype_target_set target must be a safe string/);
 assert.match(bridge, /setDesignPrototypeTarget\(target\)/, 'prototype target must use the existing editor operation');
+
+
+assert.match(bridge, /'objectFit', 'textAlign'/,
+  'design element updates must expose text alignment supported by the editor');
+assert.match(bridge, /key === 'textAlign' && !\['left', 'center', 'right'\]\.includes\(value\)/,
+  'text alignment must be validated against the editor options');
+assert.match(bridge, /key === 'objectFit' && !\['contain', 'cover', 'fill'\]\.includes\(value\)/,
+  'image fit must be validated against the editor options');
