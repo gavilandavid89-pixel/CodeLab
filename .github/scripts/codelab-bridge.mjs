@@ -235,19 +235,28 @@ try {
   } else if (command.action === 'preview_editor_smoke_test') {
     stage = 'editor_preview_smoke_test';
     const projectName = 'CodeLab Preview Probe ' + commandId.slice(-12);
+    stage = 'editor_preview_wait_boot';
     await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
+    stage = 'editor_preview_open_create_modal';
     await page.getByRole('button', { name: /Crear proyecto/i }).click();
+    stage = 'editor_preview_fill_project_name';
     await page.locator('#newProjectNameInput').fill(projectName);
+    stage = 'editor_preview_select_web_type';
     await page.locator('input[name="newProjectType"][value="web"]').check();
+    stage = 'editor_preview_confirm_create';
     await page.locator('#newProjectModal button[onclick="createNewProjectConfirm()"]').click();
+    stage = 'editor_preview_wait_studio';
     await page.locator('#studioView').waitFor({ state: 'visible', timeout: 15000 });
-    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent === expected, projectName, { timeout: 15000 });
+    stage = 'editor_preview_wait_project_title';
+    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent?.trim() === expected, projectName, { timeout: 15000 });
+    stage = 'editor_preview_wait_editor_api';
     await page.waitForFunction(() => typeof setEditorValue === 'function' && typeof updatePreview === 'function' && typeof getEditorValue === 'function', null, { timeout: 15000 });
     const fixture = {
       html: '<main id="codelab-e2e"><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Name <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
       css: '#codelab-e2e { color: rgb(1, 2, 3); }',
       js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");if(b&&c)b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});if(i&&e)i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_EDITOR_PREVIEW_READY");'
     };
+    stage = 'editor_preview_set_fixture';
     await page.evaluate(code => {
       setEditorValue('html', code.html, { silent: true });
       setEditorValue('css', code.css, { silent: true });
@@ -255,8 +264,11 @@ try {
       updatePreview();
     }, fixture);
     const previewFrame = page.frameLocator('#previewIframe');
+    stage = 'editor_preview_wait_fixture';
     await previewFrame.locator('#probe-increment').waitFor({ state: 'visible', timeout: 15000 });
+    stage = 'editor_preview_click_fixture';
     await previewFrame.locator('#probe-increment').click({ timeout: 10000 });
+    stage = 'editor_preview_fill_fixture';
     await previewFrame.locator('#probe-input').fill('CodeLab funciona', { timeout: 10000 });
     const observed = await previewFrame.locator('body').evaluate(body => ({
       title: document.title || '',
