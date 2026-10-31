@@ -222,10 +222,12 @@ try {
       } else {
         if (command.args.self_test === true) {
           // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
-          await previewFrame.setContent('<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>', { waitUntil: 'load', timeout: 10000 });
+          const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
+          await frameLocator.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
+          await frameLocator.locator('#codelab-diagnostic-probe').waitFor({ state: 'visible', timeout: 10000 });
           await page.waitForTimeout(300);
         }
-        preview = await previewFrame.evaluate(() => {
+        preview = await frameLocator.locator('html').evaluate(() => {
           const body = document.body;
           const elements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
             tag: el.tagName.toLowerCase(),
@@ -243,6 +245,7 @@ try {
             available: true,
             readyState: document.readyState,
             title: document.title || '',
+            frameUrl: location.href,
             text: (body?.innerText || '').trim().slice(0, 1200),
             elementCount: document.querySelectorAll('*').length,
             tagCounts,
@@ -250,7 +253,7 @@ try {
           };
         });
         preview.src = src || null;
-        preview.frameUrl = safeUrl(previewFrame.url());
+        preview.frameUrl = safeUrl(preview.frameUrl);
         preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
         preview.selfTest = command.args.self_test === true;
       }
