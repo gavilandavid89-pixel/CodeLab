@@ -734,7 +734,18 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(reloadedWorkspaceResponse.status, 200,
       'A workspace token created before restart must remain valid with the persisted secret');
     const reloadedWorkspace = await reloadedWorkspaceResponse.json();
-    assert.equal(reloadedWorkspace.revision, 0);
+    assert.equal(reloadedWorkspace.revision, 3,
+      'Headless project creation, design edits, and the regular editor save must persist across a server restart');
+    assert.equal(reloadedWorkspace.projects.length, 1);
+    assert.equal(reloadedWorkspace.projects[0].design.canvasWidth, 720);
+    const retryAfterServerRestart = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify(createHeadlessRequest)
+    });
+    assert.equal(retryAfterServerRestart.status, 200);
+    assert.equal((await retryAfterServerRestart.json()).replayed, true,
+      'Idempotency receipts must survive server restarts so an uncertain retry cannot duplicate a project');
     const reloadedDesignSystemResponse = await fetch(designSystemUrl, { headers: authHeaders });
     assert.equal(reloadedDesignSystemResponse.status, 200);
     assert.equal((await reloadedDesignSystemResponse.json()).settings.name, 'Persisted system',
