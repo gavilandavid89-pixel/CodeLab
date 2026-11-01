@@ -464,3 +464,80 @@ test('lists available design templates without changing the workspace and reject
     { type: 'design.template.apply', projectId: 'proj_design1', templateId: 'unknown' }
   ])), error => error.code === 'HEADLESS_TEMPLATE_NOT_FOUND');
 });
+
+test('exports design projects as CodeLab JSON, responsive HTML, and SVG without mutation', () => {
+  const project = designProject();
+  project.name = 'Export demo';
+  project.design.canvasWidth = 720;
+  project.design.canvasHeight = 1600;
+  project.design.elements = [{ id: 'el_title', type: 'heading', label: 'Title', text: 'Export me', x: 20, y: 30, width: 500, height: 70 }];
+  const original = state([project]);
+  const before = JSON.stringify(original);
+  const json = queryHeadlessWorkspace(original, { action: 'design.export.json', args: { projectId: project.id } });
+  assert.equal(json.result.payload.format, 'codelab-design-project');
+  assert.equal(json.result.payload.version, 1);
+  assert.equal(JSON.parse(json.result.json).project.name, 'Export demo');
+  const svg = queryHeadlessWorkspace(original, { action: 'design.export.svg', args: { projectId: project.id } });
+  assert.match(svg.result.svg, /^<svg/);
+  assert.match(svg.result.svg, /width="720"/);
+  const html = queryHeadlessWorkspace(original, { action: 'design.export.html', args: { projectId: project.id } });
+  assert.match(html.result.html, /<meta name="viewport"/);
+  assert.match(html.result.html, /<svg/);
+  assert.equal(JSON.stringify(original), before);
+});
+
+test('imports a CodeLab design backup as a new project with remapped internal links', () => {
+  const source = designProject();
+  source.name = 'Source design';
+  source.code = { html: '<main>included</main>', css: 'h1{color:red}', js: '' };
+  source.design.canvasWidth = 720;
+  source.design.canvasHeight = 1600;
+  source.design.elements = [
+    { id: 'el_button', type: 'button', label: 'Go', text: 'Go', href: '#layer-el_box', x: 0, y: 0, width: 100, height: 40 },
+    { id: 'el_box', type: 'rectangle', label: 'Box', text: '', x: 120, y: 0, width: 100, height: 100 }
+  ];
+  const exported = queryHeadlessWorkspace(state([source]), { action: 'design.export.json', args: { projectId: source.id } });
+  const imported = applyHeadlessBatch(state([source]), request([
+    { type: 'design.import.json', json: exported.result.json }
+  ]));
+  const project = imported.state.projects[1];
+  assert.equal(project.type, 'design');
+  assert.equal(project.name, 'Source design (Importado)');
+  assert.equal(project.design.canvasWidth, 720);
+  assert.equal(project.design.canvasHeight, 1600);
+  assert.equal(project.code.html, '<main>included</main>');
+  assert.notEqual(project.design.elements[0].id, 'el_button');
+  assert.equal(project.design.elements[0].href, '#layer-' + project.design.elements[1].id);
+});
+
+test('rejects invalid and unsafe design imports without partially adding a project', () => {
+  assert.throws(() => applyHeadlessBatch(state(), request([
+    { type: 'design.import.json', json: '{not json' }
+  ])), error => error.code === 'HEADLESS_INVALID_DESIGN_IMPORT');
+  const unsafe = {
+    format: 'codelab-design-project', version: 1,
+    project: { type: 'design', name: 'Unsafe', code: {}, design: {
+      elements: [{ id: 'el_image', type: 'image', src: 'javascript:alert(1)' }]
+    } }
+  };
+  assert.throws(() => applyHeadlessBatch(state(), request([
+    { type: 'design.import.json', json: JSON.stringify(unsafe) }
+  ])), error => error.code === 'HEADLESS_INVALID_DESIGN_IMPORT');
+});
+
+test('converts a design project to a web project while preserving its design source', () => {
+  const project = designProject();
+  project.design.elements = [{ id: 'el_title', type: 'heading', label: 'Title', text: 'Converted', x: 10, y: 20, width: 400, height: 60 }];
+  const result = applyHeadlessBatch(state([project]), request([
+    { type: 'design.convert.toWeb', projectId: project.id }
+  ]));
+  const converted = result.state.projects[0];
+  assert.equal(converted.type, 'web');
+  assert.equal(converted.hasWebSpace, true);
+  assert.equal(converted.hasDesignSpace, true);
+  assert.ok(converted.design);
+  assert.match(converted.code.html, /<svg/);
+  assert.match(converted.code.html, /Converted/);
+  assert.equal(converted.code.css, '');
+  assert.equal(converted.code.js, '');
+});
