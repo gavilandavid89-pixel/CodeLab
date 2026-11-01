@@ -2,9 +2,7 @@
 
 ## Purpose
 
-This module is the first isolated step toward a real headless design editor. It operates directly on CodeLab's saved design-project JSON model. It does **not** open a browser, click UI controls, depend on the DOM, or automate the existing editor.
-
-The browser-based Agent Space / Playwright runner remains a separate visual-inspection and screenshot mechanism. It is not the headless engine.
+This is the first implementation of a **headless CodeLab runtime**: it operates on the same saved workspace and project model as the website, but applies changes without opening the editor UI or depending on the DOM. The browser-based GitHub bridge is a separate delivery and verification layer: it submits authenticated headless batches to the server, refreshes the actual web workspace, and can open the changed project for visual evidence.
 
 ## Compatibility
 
@@ -16,7 +14,7 @@ The engine accepts existing CodeLab projects with `type: "design"` and the exist
 
 Custom canvas dimensions use CodeLab's existing `design.canvasWidth` and `design.canvasHeight` fields (the same fields consumed by the editor and capture pipeline). The engine also returns a structured `design.canvas` view for its own inspection API; the scalar fields remain synchronized for compatibility. Canvas dimensions are integer pixel values and follow the editor's 100 px minimum, 4,000 px maximum width, and 10,000 px maximum height. These dimensions are independent of individual layer geometry and do not overwrite the legacy `frame` preset.
 
-## API
+## Design engine API
 
 ```js
 const { createDesignEngine } = require('./headless/design-engine');
@@ -46,13 +44,23 @@ Supported operations:
 
 The current first cut caps designs at 500 layers, batches at 500 operations, canvas width at 4,000 px, and height at 10,000 px. The SVG renderer escapes text/attributes, validates paint colors and URL schemes, preserves text backgrounds, alignment/rotation, and image fit, and skips hidden layers.
 
-## Important integration boundary
+## Workspace runtime API
 
-This module deliberately does not write directly to disk, bypass workspace ownership, or create its own storage format. The next integration step is to call it from the existing authenticated server/assistant action layer, then persist the returned project using CodeLab's existing workspace revision and account-isolation mechanisms. Do not expose an unauthenticated HTTP endpoint that accepts arbitrary project JSON.
+`headless/workspace-runtime.js` applies atomic batches against a workspace snapshot. It supports:
+
+- `project.create`: create a `web` or `design` project; the server can generate the stable project ID.
+- `project.rename`: rename without changing identity or content.
+- `project.duplicate`: duplicate project data into a new ID, excluding active copy-branch and merge-undo state.
+- `web.code.write`: replace selected HTML/CSS/JS fields on the main project or an existing copy branch.
+- `design.batch`: apply the design-engine operations to a saved design project and return an SVG preview.
+
+Each request has `baseRevision`, a stable `operationId`, and 1–100 operations. Workspace revision checks prevent stale writes; the bounded receipt log makes exact retries idempotent. Reusing an operation ID with different content is rejected. Failed batches leave the input snapshot unchanged. The authenticated `POST /api/workspace/:id/headless` endpoint uses the existing workspace token/session ownership checks and existing atomic workspace file persistence. Receipt metadata stays server-side and is not exposed in workspace reads.
+
+The bridge action `headless_batch` calls that endpoint using the authenticated admin browser session, reads the saved workspace back, and opens the affected project in the normal web app when possible. This is the bridge from invisible/headless authoring to the visible CodeLab website. The headless runtime does not bypass account ownership or write directly to project files.
 
 ## Concurrency and multiple chats
 
-The revision check is a first guard against lost updates, not a complete multi-session lock manager. Before enabling concurrent agents against the same project, the integration layer must add per-project/per-resource leases or compare-and-swap persistence, operation IDs for idempotency, and explicit conflict results. Independent projects can be processed concurrently.
+Workspace-level compare-and-swap revisions and idempotent operation IDs are now implemented. This prevents a stale batch from silently overwriting a newer workspace save and makes exact retries safe. It is not yet a per-layer or per-resource lease manager: two agents editing the same project will conflict at workspace revision level and must refresh/rebase before retrying. Independent workspaces can proceed independently. Per-project/resource leases can be added later if parallel edits to one project become a real requirement.
 
 ## Verification
 
@@ -60,7 +68,7 @@ Run:
 
 ```sh
 node --check headless/design-engine.js
-node --test headless/design-engine.test.js
+node --test headless/design-engine.test.js headless/workspace-runtime.test.js
 ```
 
-The tests cover legacy and editor-schema canvas compatibility, custom 720 × 1600 dimensions, add/update/delete, text alignment and rotation, optimistic revision conflicts, atomic rollback, property allowlisting, size limits, safe image/link/color handling, and SVG escaping.
+The tests cover legacy/editor canvas compatibility, custom dimensions, layer operations, text alignment and rotation, optimistic design/workspace revision conflicts, project creation/duplication/rename, web code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping.
