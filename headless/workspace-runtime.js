@@ -5,6 +5,7 @@ const { createDesignEngine } = require('./design-engine');
 const componentLibrary = require('../public/component-library');
 const designTools = require('../public/design-tools');
 const { createDesignTemplate, TEMPLATE_INFO } = require('./design-templates');
+const designExport = require('./design-export');
 
 const MAX_OPERATIONS = 100;
 const MAX_RECEIPTS = 200;
@@ -234,6 +235,27 @@ function applyOperation(state, operation) {
         tokens: designTools.buildDesignTokens(settings)
       };
     }
+    case 'design.import.json': {
+      assert(state.projects.length < 500, 'Workspace project limit reached.');
+      assert(typeof operation.json === 'string' && operation.json.length >= 2,
+        'design.import.json requires a JSON string.');
+      const project = designExport.importDesignJson(operation.json);
+      assert(!state.projects.some(item => item.id === project.id), 'Imported project ID already exists.');
+      state.projects.push(project);
+      return { type: operation.type, projectId: project.id, name: project.name, elementCount: project.design.elements.length };
+    }
+    case 'design.convert.toWeb': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type === 'design' && project.design, 'design.convert.toWeb requires a design project.');
+      const code = designExport.convertDesignToWeb(project);
+      assert(code.html.length <= 500000, 'The converted HTML exceeds the 500000 character project limit.');
+      project.code = code;
+      project.type = 'web';
+      project.hasWebSpace = true;
+      project.hasDesignSpace = true;
+      project.updatedAt = new Date().toISOString();
+      return { type: operation.type, projectId: project.id, updatedFields: ['type', 'code'], htmlLength: code.html.length, designPreserved: !!project.design };
+    }
     case 'design.template.apply': {
       const project = findProject(state, operation.projectId);
       assert(project.type === 'design' && project.design, 'design.template.apply requires an existing design project.');
@@ -343,6 +365,24 @@ function queryHeadlessWorkspace(inputState, request) {
   let result;
 
   switch (request.action) {
+    case 'design.export.json': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.export.json requires a design project.', 'HEADLESS_INVALID_QUERY');
+      result = designExport.exportDesignJson(project);
+      break;
+    }
+    case 'design.export.svg': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.export.svg requires a design project.', 'HEADLESS_INVALID_QUERY');
+      result = { svg: designExport.exportDesignSvg(project) };
+      break;
+    }
+    case 'design.export.html': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.export.html requires a design project.', 'HEADLESS_INVALID_QUERY');
+      result = { html: designExport.exportDesignHtml(project) };
+      break;
+    }
     case 'design.template.list': {
       result = clone(TEMPLATE_INFO);
       break;
