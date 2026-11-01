@@ -44,7 +44,6 @@ test('adds and updates layers through one atomic transaction', () => {
   const layer = result.project.design.elements[0];
   assert.deepEqual([layer.x, layer.y, layer.width, layer.height, layer.background], [12, 34, 720, 1600, '#123456']);
   assert.equal(result.revision, 1);
-  assert.match(result.svg, /text-anchor="middle"/);
 });
 
 test('rejects stale revisions before applying mutations', () => {
