@@ -22,7 +22,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Check headless engine syntax
-        run: node --check headless/design-engine.js
-      - name: Run isolated headless engine tests
-        run: node --test headless/design-engine.test.js
+      - name: Check headless engine and workspace runtime syntax
+        run: |
+          node --check headless/design-engine.js
+          node --check headless/workspace-runtime.js
+          node --check server.js
+      - name: Run isolated headless engine and workspace runtime tests
+        run: node --test headless/design-engine.test.js headless/workspace-runtime.test.js
