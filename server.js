@@ -1947,6 +1947,9 @@ const server = http.createServer(async (req, res) => {
             results: result.results
           });
         } catch (error) {
+          if (error.code === 'REVISION_CONFLICT') {
+            return sendJson(res, 409, { error: 'design_revision_conflict', revision: error.revision });
+          }
           if (error.code === 'HEADLESS_REVISION_CONFLICT') {
             return sendJson(res, 409, { error: 'revision_conflict', revision: error.revision });
           }
