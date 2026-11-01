@@ -434,6 +434,22 @@ async function waitForPersistedProject(page, projectName) {
         getCurrentProject()?.type === 'design';
     }, null, { timeout: 10000 });
 
+    // The canvas size controls must be available in the Inspector before any layer is selected.
+    assert.equal(await page.locator('#designCanvasWidth').count(), 1, 'Inspector must expose canvas width with no selected layer');
+    assert.equal(await page.locator('#designCanvasHeight').count(), 1, 'Inspector must expose canvas height with no selected layer');
+    await page.locator('#designCanvasWidth').fill('720');
+    await page.waitForFunction(() => document.getElementById('designCanvas')?.style.width === '720px');
+    await page.locator('#designCanvasHeight').fill('1600');
+    await page.waitForFunction(() => document.getElementById('designCanvas')?.style.height === '1600px');
+    assert.equal(await page.locator('#designCanvasWidth').inputValue(), '720', 'Inspector should retain custom canvas width');
+    assert.equal(await page.locator('#designCanvasHeight').inputValue(), '1600', 'Inspector should retain custom canvas height');
+    await page.locator('button[onclick="resetDesignCanvasDimensions()"]').click();
+    await page.waitForFunction(() => {
+      const canvas = document.getElementById('designCanvas');
+      return canvas?.style.width === '1440px' && canvas?.style.height === '900px';
+    });
+    assert.equal(await page.locator('#designCanvasHeight').inputValue(), '', 'reset should restore automatic canvas height');
+
     const layerLimitCheck = await page.evaluate(() => {
       const project = window.activeDesignProject();
       project.design = [];
