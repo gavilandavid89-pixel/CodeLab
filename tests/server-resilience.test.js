@@ -341,6 +341,22 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       'A stale design revision must return a conflict instead of a server error');
     assert.equal((await staleDesignRevisionResponse.json()).error, 'design_revision_conflict');
 
+    const overLimitHeadlessResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 2,
+        operationId: 'headless_over_limit_01',
+        operations: Array.from({ length: 50 }, (_, index) => ({
+          type: 'project.create',
+          name: 'Extra project ' + index
+        }))
+      })
+    });
+    assert.equal(overLimitHeadlessResponse.status, 400,
+      'Headless operations must still enforce the configured workspace project limit');
+    assert.equal((await overLimitHeadlessResponse.json()).detail, 'too_many_projects');
+
     const headlessReadbackResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
       headers: { 'x-workspace-token': workspace.token }
     });
