@@ -192,3 +192,65 @@ test('rejects code writes that exceed the total project field limit', () => {
   ])), /500000 character project limit/);
 });
 
+
+test('inserts a real library component into web HTML and stays idempotent across operation IDs', () => {
+  const first = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'component.insert', projectId: 'proj_web1', componentId: 'hero' }
+  ]));
+  const html = first.state.projects[0].code.html;
+  assert.match(html, /codelab-component:hero:v1/);
+  assert.match(html, /Convierte tus ideas en algo extraordinario/);
+  assert.match(html, /<\\/body>/);
+  const second = applyHeadlessBatch(first.state, request([
+    { type: 'component.insert', projectId: 'proj_web1', componentId: 'hero' }
+  ], { operationId: 'test_op_0002', baseRevision: 4 }));
+  assert.equal(second.state.projects[0].code.html, html);
+  assert.equal(second.results[0].alreadyPresent, true);
+});
+
+test('rejects unknown components and insertion into design-only projects', () => {
+  assert.throws(() => applyHeadlessBatch(state([webProject()]), request([
+    { type: 'component.insert', projectId: 'proj_web1', componentId: 'missing' }
+  ])), error => error.code === 'HEADLESS_COMPONENT_NOT_FOUND');
+  assert.throws(() => applyHeadlessBatch(state([designProject()]), request([
+    { type: 'component.insert', projectId: 'proj_design1', componentId: 'hero' }
+  ])), /requires a web project/);
+});
+
+test('applies sanitized design tokens through the existing CodeLab token generator', () => {
+  const project = webProject();
+  project.code.css = 'body{margin:0}';
+  const result = applyHeadlessBatch(state([project]), request([
+    { type: 'design.tokens.apply', projectId: project.id, settings: {
+      name: 'Brand', primary: '#123456', secondary: '#234567', accent: '#345678',
+      surface: '#ffffff', background: '#f8fafc', text: '#0f172a',
+      contrastForeground: '#0f172a', contrastBackground: '#ffffff',
+      baseFont: 18, typeRatio: 1.2, baseSpacing: 6, baseRadius: 10
+    } }
+  ]));
+  const css = result.state.projects[0].code.css;
+  assert.match(css, /body\\{margin:0\\}/);
+  assert.match(css, /CodeLab Design Tokens START/);
+  assert.match(css, /--color-primary: #123456/);
+  assert.equal(result.results[0].tokens.name, 'Brand');
+  assert.equal((css.match(/CodeLab Design Tokens START/g) || []).length, 1);
+});
+
+test('reapplying design tokens replaces the managed block instead of duplicating it', () => {
+  const project = webProject();
+  const settings = {
+    name: 'Brand', primary: '#123456', secondary: '#234567', accent: '#345678',
+    surface: '#ffffff', background: '#f8fafc', text: '#0f172a',
+    contrastForeground: '#0f172a', contrastBackground: '#ffffff',
+    baseFont: 18, typeRatio: 1.2, baseSpacing: 6, baseRadius: 10
+  };
+  const first = applyHeadlessBatch(state([project]), request([
+    { type: 'design.tokens.apply', projectId: project.id, settings }
+  ]));
+  const second = applyHeadlessBatch(first.state, request([
+    { type: 'design.tokens.apply', projectId: project.id, settings: { ...settings, primary: '#abcdef' } }
+  ], { operationId: 'test_op_0002', baseRevision: 4 }));
+  const css = second.state.projects[0].code.css;
+  assert.match(css, /--color-primary: #abcdef/);
+  assert.equal((css.match(/CodeLab Design Tokens START/g) || []).length, 1);
+});
