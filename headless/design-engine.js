@@ -50,8 +50,9 @@ function normalizeDesignProject(input) {
   }
   project.design.frame = project.design.frame || 'desktop';
   project.design.background = project.design.background || '#ffffff';
+  const defaultCanvas = legacyCanvas(project.design.frame);
   project.design.canvas = project.design.canvas && typeof project.design.canvas === 'object'
-    ? project.design.canvas : legacyCanvas(project.design.frame);
+    ? { ...defaultCanvas, ...project.design.canvas } : defaultCanvas;
   project.design.canvas.width = finiteNumber(project.design.canvas.width, 'canvas.width', 1, MAX_CANVAS_SIZE);
   project.design.canvas.height = finiteNumber(project.design.canvas.height, 'canvas.height', 1, MAX_CANVAS_SIZE);
   project.design.canvas.unit = 'px';
@@ -87,14 +88,14 @@ function applyOperation(project, operation) {
       assert(typeof id === 'string' && id.length <= 120, 'Invalid layer id.');
       assert(!project.design.elements.some(item => item.id === id), 'Layer id already exists: ' + id);
       const element = { id, type: operation.elementType, ...clone(DEFAULTS[operation.elementType]), ...(operation.properties || {}) };
-      validateProperties(element, Object.keys(operation.properties || {}));
+      validateProperties(operation.properties || {});
       project.design.elements.push(element);
       return { type: operation.type, element: clone(element) };
     }
     case 'element.update': {
       assert(operation.properties && typeof operation.properties === 'object' && !Array.isArray(operation.properties), 'Layer properties are required.');
       const element = findElement(project, operation.id);
-      validateProperties(element, Object.keys(operation.properties));
+      validateProperties(operation.properties);
       Object.assign(element, clone(operation.properties));
       return { type: operation.type, id: element.id, element: clone(element) };
     }
@@ -109,10 +110,9 @@ function applyOperation(project, operation) {
   }
 }
 
-function validateProperties(element, keys) {
-  for (const key of keys) {
+function validateProperties(properties) {
+  for (const [key, value] of Object.entries(properties)) {
     assert(ELEMENT_FIELDS.has(key), 'Layer property is not editable: ' + key);
-    const value = element[key];
     if (['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'opacity', 'rotation'].includes(key)) {
       const min = key === 'width' || key === 'height' || key === 'fontSize' ? 0 : -MAX_CANVAS_SIZE;
       const max = key === 'opacity' ? 1 : MAX_CANVAS_SIZE;
