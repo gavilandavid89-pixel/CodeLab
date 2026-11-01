@@ -85,12 +85,57 @@ function applyOperation(project, operation) {
   assert(operation && typeof operation === 'object' && typeof operation.type === 'string', 'A valid operation is required.');
   switch (operation.type) {
     case 'canvas.set': {
-      const width = integerNumber(operation.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
-      const height = integerNumber(operation.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
-      project.design.canvasWidth = width;
-      project.design.canvasHeight = height;
-      project.design.canvas = { width, height, unit: 'px' };
-      return { type: operation.type, canvas: clone(project.design.canvas) };
+      const hasSize = operation.width !== undefined || operation.height !== undefined;
+      const hasFrame = operation.frame !== undefined;
+      assert(hasSize || hasFrame || operation.background !== undefined || operation.grid !== undefined ||
+        operation.snapToGrid !== undefined || operation.gridSize !== undefined, 'canvas.set requires at least one canvas property.');
+      if (hasFrame) {
+        assert(['desktop', 'tablet', 'mobile'].includes(operation.frame), 'frame must be desktop, tablet, or mobile.');
+        project.design.frame = operation.frame;
+        if (!hasSize) {
+          const preset = legacyCanvas(operation.frame);
+          project.design.canvasWidth = preset.width;
+          project.design.canvasHeight = preset.height;
+        }
+      }
+      if (operation.width !== undefined) project.design.canvasWidth = integerNumber(operation.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
+      if (operation.height !== undefined) project.design.canvasHeight = integerNumber(operation.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
+      if (operation.background !== undefined) {
+        assert(typeof operation.background === 'string' && isSafeColor(operation.background), 'background must be a safe CSS color.');
+        project.design.background = operation.background;
+      }
+      if (operation.grid !== undefined) {
+        assert(typeof operation.grid === 'boolean', 'grid must be boolean.');
+        project.design.grid = operation.grid;
+      }
+      if (operation.snapToGrid !== undefined) {
+        assert(typeof operation.snapToGrid === 'boolean', 'snapToGrid must be boolean.');
+        project.design.snapToGrid = operation.snapToGrid;
+      }
+      if (operation.gridSize !== undefined) {
+        assert([4, 8, 16, 32].includes(operation.gridSize), 'gridSize must be 4, 8, 16, or 32.');
+        project.design.gridSize = operation.gridSize;
+      }
+      project.design.canvas = {
+        width: project.design.canvasWidth,
+        height: project.design.canvasHeight,
+        unit: 'px'
+      };
+      return { type: operation.type, canvas: clone(project.design.canvas), frame: project.design.frame };
+    }
+    case 'layout.set': {
+      if (operation.mode !== undefined) {
+        assert(['free', 'auto'].includes(operation.mode), 'layout mode must be free or auto.');
+        project.design.layoutMode = operation.mode;
+      }
+      if (operation.direction !== undefined) {
+        assert(['row', 'column'].includes(operation.direction), 'layout direction must be row or column.');
+        project.design.layoutDirection = operation.direction;
+      }
+      if (operation.gap !== undefined) project.design.layoutGap = integerNumber(operation.gap, 'layout gap', 0, 200);
+      if (operation.padding !== undefined) project.design.layoutPadding = integerNumber(operation.padding, 'layout padding', 0, 200);
+      assert(['mode', 'direction', 'gap', 'padding'].some(key => operation[key] !== undefined), 'layout.set requires at least one layout property.');
+      return { type: operation.type, mode: project.design.layoutMode || 'free', direction: project.design.layoutDirection || 'row', gap: project.design.layoutGap ?? 16, padding: project.design.layoutPadding ?? 24 };
     }
     case 'element.add': {
       assert(TYPES.has(operation.elementType), 'Unsupported layer type.');
@@ -110,10 +155,77 @@ function applyOperation(project, operation) {
       Object.assign(element, clone(operation.properties));
       return { type: operation.type, id: element.id, element: clone(element) };
     }
+    case 'element.duplicate': {
+      assert(project.design.elements.length < MAX_ELEMENTS, 'The design reached the ' + MAX_ELEMENTS + ' layer limit.');
+      const source = findElement(project, operation.id);
+      const id = operation.newId || 'el_' + crypto.randomUUID();
+      assert(typeof id === 'string' && id.length <= 100 && !project.design.elements.some(item => item.id === id), 'Invalid or duplicate new layer id.');
+      const copy = { ...clone(source), id, x: (Number(source.x) || 0) + 24, y: (Number(source.y) || 0) + 24, label: (source.label || 'Capa') + ' copia' };
+      project.design.elements.push(copy);
+      return { type: operation.type, sourceId: source.id, element: clone(copy) };
+    }
+    case 'element.reorder': {
+      const index = project.design.elements.findIndex(item => item.id === operation.id);
+      assert(index >= 0, 'Layer not found: ' + operation.id);
+      assert(Number.isInteger(operation.targetIndex) && operation.targetIndex >= 0 && operation.targetIndex < project.design.elements.length, 'targetIndex is outside the layer range.');
+      const [element] = project.design.elements.splice(index, 1);
+      project.design.elements.splice(operation.targetIndex, 0, element);
+      return { type: operation.type, id: element.id, index: operation.targetIndex };
+    }
+    case 'elements.delete': {
+      assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 100, 'elements.delete requires 1 to 100 layer IDs.');
+      assert(new Set(operation.ids).size === operation.ids.length, 'elements.delete IDs must be unique.');
+      for (const id of operation.ids) findElement(project, id);
+      const deleted = new Set(operation.ids);
+      project.design.elements = project.design.elements.filter(item => !deleted.has(item.id));
+      if (Array.isArray(project.design.flowConnections)) {
+        project.design.flowConnections = project.design.flowConnections.filter(connection => !deleted.has(connection.sourceElementId));
+      }
+      return { type: operation.type, deletedIds: Array.from(deleted) };
+    }
+    case 'elements.align': {
+      assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 50, 'elements.align requires 1 to 50 layer IDs.');
+      assert(['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(operation.mode), 'Unsupported alignment mode.');
+      const elements = operation.ids.map(id => findElement(project, id));
+      const rects = elements.map(el => ({ el, x: Number(el.x) || 0, y: Number(el.y) || 0, width: Number(el.width) || 120, height: Number(el.height) || 48 }));
+      const left = Math.min(...rects.map(r => r.x)), top = Math.min(...rects.map(r => r.y));
+      const right = Math.max(...rects.map(r => r.x + r.width)), bottom = Math.max(...rects.map(r => r.y + r.height));
+      for (const r of rects) {
+        if (operation.mode === 'left') r.el.x = left;
+        if (operation.mode === 'center-x') r.el.x = left + (right - left - r.width) / 2;
+        if (operation.mode === 'right') r.el.x = right - r.width;
+        if (operation.mode === 'top') r.el.y = top;
+        if (operation.mode === 'center-y') r.el.y = top + (bottom - top - r.height) / 2;
+        if (operation.mode === 'bottom') r.el.y = bottom - r.height;
+      }
+      return { type: operation.type, mode: operation.mode, ids: operation.ids.slice() };
+    }
+    case 'elements.distribute': {
+      assert(Array.isArray(operation.ids) && operation.ids.length >= 3 && operation.ids.length <= 100, 'elements.distribute requires 3 to 100 layer IDs.');
+      assert(new Set(operation.ids).size === operation.ids.length, 'elements.distribute IDs must be unique.');
+      assert(['horizontal', 'vertical'].includes(operation.axis), 'axis must be horizontal or vertical.');
+      const items = operation.ids.map(id => findElement(project, id)).map(el => ({
+        el, position: Number(operation.axis === 'horizontal' ? el.x : el.y) || 0,
+        size: Number(operation.axis === 'horizontal' ? el.width : el.height) || (operation.axis === 'horizontal' ? 120 : 48)
+      })).sort((a, b) => a.position - b.position);
+      const start = items[0].position;
+      const end = items[items.length - 1].position + items[items.length - 1].size;
+      const totalSize = items.reduce((sum, item) => sum + item.size, 0);
+      const gap = (end - start - totalSize) / (items.length - 1);
+      let cursor = start;
+      for (const item of items) {
+        if (operation.axis === 'horizontal') item.el.x = cursor; else item.el.y = cursor;
+        cursor += item.size + gap;
+      }
+      return { type: operation.type, axis: operation.axis, ids: operation.ids.slice(), gap };
+    }
     case 'element.delete': {
       const index = project.design.elements.findIndex(item => item.id === operation.id);
       assert(index >= 0, 'Layer not found: ' + operation.id);
       const [removed] = project.design.elements.splice(index, 1);
+      if (Array.isArray(project.design.flowConnections)) {
+        project.design.flowConnections = project.design.flowConnections.filter(connection => connection.sourceElementId !== removed.id);
+      }
       return { type: operation.type, id: removed.id };
     }
     default:
