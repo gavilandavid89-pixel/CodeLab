@@ -53,8 +53,8 @@ function normalizeDesignProject(input) {
   project.design.background = project.design.background || '#ffffff';
   const defaultCanvas = legacyCanvas(project.design.frame);
   const storedCanvas = project.design.canvas && typeof project.design.canvas === 'object' && !Array.isArray(project.design.canvas) ? project.design.canvas : {};
-  const width = finiteNumber(project.design.canvasWidth ?? storedCanvas.width ?? defaultCanvas.width, 'canvas.width', 1, MAX_CANVAS_WIDTH);
-  const height = finiteNumber(project.design.canvasHeight ?? storedCanvas.height ?? defaultCanvas.height, 'canvas.height', 1, MAX_CANVAS_SIZE);
+  const width = finiteNumber(project.design.canvasWidth ?? storedCanvas.width ?? defaultCanvas.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
+  const height = finiteNumber(project.design.canvasHeight ?? storedCanvas.height ?? defaultCanvas.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
   project.design.canvasWidth = width;
   project.design.canvasHeight = height;
   project.design.canvas = { width, height, unit: 'px' };
@@ -63,7 +63,8 @@ function normalizeDesignProject(input) {
 }
 
 function legacyCanvas(frame) {
-  const sizes = { desktop: [1440, 900], tablet: [768, 1024], mobile: [390, 844] };
+  // CodeLab's existing capture pipeline uses a 900px fallback height for all presets.
+  const sizes = { desktop: [1440, 900], tablet: [768, 900], mobile: [390, 900] };
   const size = sizes[frame] || sizes.desktop;
   return { width: size[0], height: size[1], unit: 'px' };
 }
@@ -78,8 +79,8 @@ function applyOperation(project, operation) {
   assert(operation && typeof operation === 'object' && typeof operation.type === 'string', 'A valid operation is required.');
   switch (operation.type) {
     case 'canvas.set': {
-      const width = finiteNumber(operation.width, 'canvas.width', 1, MAX_CANVAS_WIDTH);
-      const height = finiteNumber(operation.height, 'canvas.height', 1, MAX_CANVAS_SIZE);
+      const width = finiteNumber(operation.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
+      const height = finiteNumber(operation.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
       project.design.canvasWidth = width;
       project.design.canvasHeight = height;
       project.design.canvas = { width, height, unit: 'px' };
