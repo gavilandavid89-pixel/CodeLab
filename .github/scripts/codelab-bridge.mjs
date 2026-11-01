@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['headless_design_system', 'headless_query', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
+  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -50,6 +50,15 @@ function parseCommand(raw) {
     if (args.operations.some(operation => operation && operation.type === 'branch.create' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing an existing headless branch requires approval: "approved".');
     if (args.operations.some(operation => operation && operation.type === 'design.template.apply' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing existing design layers with a template requires approval: "approved".');
   }
+  if (command.action === 'headless_ai_generate') {
+    if (command.approval !== 'approved') throw new Error('Headless AI generation consumes provider quota and changes project code; approval: "approved" is required.');
+    if (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id)) throw new Error('headless_ai_generate requires a valid project_id.');
+    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('headless_ai_generate prompt must contain 1 to 4000 characters.');
+    if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_ai_generate requires a non-negative base_revision.');
+    if (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id)) throw new Error('headless_ai_generate requires a safe operation_id.');
+    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('headless_ai_generate source must be main or branch.');
+    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('headless_ai_generate max_tokens must be from 256 to 32768.');
+  }
   if (command.action === 'headless_design_system') {
     if (!['read', 'write', 'import', 'export'].includes(args.operation)) throw new Error('headless_design_system operation must be read, write, import, or export.');
     if (['write', 'import'].includes(args.operation)) {
@@ -65,7 +74,7 @@ function parseCommand(raw) {
     if (args.settings && JSON.stringify(args.settings).length > 20000) throw new Error('headless_design_system settings exceed 20000 characters.');
   }
   if (command.action === 'headless_query') {
-    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.template.list', 'design.export.json', 'design.export.svg', 'design.export.html'];
+    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.template.list', 'design.export.json', 'design.export.svg', 'design.export.html', 'headless.operation.status'];
     if (!supportedQueries.includes(args.query_action)) throw new Error('headless_query requires a supported query_action.');
     if (args.query_args !== undefined && (!args.query_args || typeof args.query_args !== 'object' || Array.isArray(args.query_args))) throw new Error('headless_query query_args must be an object.');
     if (args.expected_revision !== undefined && (!Number.isInteger(args.expected_revision) || args.expected_revision < 0)) throw new Error('headless_query expected_revision must be a non-negative integer.');
@@ -588,6 +597,160 @@ try {
         localSnapshotVerified: localVerified
       };
     }, command.args.project_id);
+  } else if (command.action === 'headless_ai_generate') {
+    stage = 'headless_ai_generate';
+    result = await page.evaluate(async ({ projectId, source, prompt, baseRevision, operationId, maxTokens }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId);
+      const postHeadless = async (path, body) => {
+        const response = await fetch(endpoint + path, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          const error = new Error(data.error === 'revision_conflict'
+            ? 'Workspace changed while the AI was preparing code. The provider request may have consumed quota, but no code was saved; refresh and rebase before trying again.'
+            : 'Headless AI request conflict (HTTP 409): ' + (data.error || 'conflict'));
+          error.status = 409;
+          error.data = data;
+          throw error;
+        }
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Headless API failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const settings = aiSettings && typeof aiSettings === 'object' ? aiSettings : {};
+      const serverSettings = serverAi && typeof serverAi === 'object' ? serverAi : {};
+      const providerConfig = {
+        projectId, source, prompt, baseRevision,
+        model: settings.model || 'gpt-4o-mini',
+        baseUrl: serverSettings.serverKey ? 'server-configured' : (settings.baseUrl || ''),
+        serverKey: !!serverSettings.serverKey
+      };
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(providerConfig)));
+      const requestKey = Array.from(new Uint8Array(digest)).map(value => value.toString(16).padStart(2, '0')).join('');
+
+      const status = await postHeadless('/headless/query', {
+        action: 'headless.operation.status',
+        args: { operationId, requestKey }
+      });
+      if (status.result.found) {
+        const readback = await postHeadless('/headless/query', {
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 }
+        });
+        return {
+          operationId, replayed: true, revision: status.result.revision,
+          currentRevision: readback.revision, previousResults: status.result.results,
+          readbackAvailable: Object.values(readback.result.fields).every(field => !field.truncated)
+        };
+      }
+
+      const current = await postHeadless('/headless/query', {
+        action: 'project.code.read',
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        expectedRevision: baseRevision
+      });
+      const code = {};
+      for (const key of ['html', 'css', 'js']) {
+        const field = current.result.fields[key];
+        if (!field || field.truncated) throw new Error('Project ' + key.toUpperCase() + ' exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
+        code[key] = field.value;
+      }
+      if (code.html.length + code.css.length + code.js.length > 200000) {
+        throw new Error('Combined project code exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
+      }
+
+      const payload = { prompt, code };
+      if (serverSettings.serverKey) {
+        if (settings.model && settings.model !== 'gpt-4o-mini') payload.model = settings.model;
+      } else {
+        payload.model = settings.model || 'gpt-4o-mini';
+        if (settings.baseUrl) payload.baseUrl = settings.baseUrl;
+        if (settings.apiKey) payload.apiKey = settings.apiKey;
+      }
+      if (maxTokens !== undefined) payload.maxTokens = maxTokens;
+      const aiResponse = await fetch('/api/ai/complete', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const aiData = await aiResponse.json().catch(() => ({}));
+      if (!aiResponse.ok) {
+        if (aiResponse.status === 429) {
+          const wait = aiData.retryAfterSeconds || (aiData.retryAfter ? Number(aiData.retryAfter) : 60);
+          throw new Error('AI rate limit reached (' + (aiData.rateLimitScope || 'provider/server') + '). Wait approximately ' + wait + ' seconds. No project code was changed.');
+        }
+        throw new Error('AI generation failed (' + aiResponse.status + '): ' + (aiData.message || aiData.error || 'provider error') +
+          (aiData.rateLimit ? ' | provider rate-limit data: ' + JSON.stringify(aiData.rateLimit) : ''));
+      }
+
+      const generated = {
+        html: typeof aiData.html === 'string' ? aiData.html : code.html,
+        css: typeof aiData.css === 'string' ? aiData.css : code.css,
+        js: typeof aiData.js === 'string' ? aiData.js : code.js
+      };
+      for (const key of ['html', 'css', 'js']) {
+        if (generated[key].length > 500000) throw new Error('Generated ' + key.toUpperCase() + ' exceeds the 500000-character project limit; no code was saved.');
+      }
+      const changedFields = ['html', 'css', 'js'].filter(key => generated[key] !== code[key]);
+      if (!changedFields.length) {
+        return {
+          operationId, noChanges: true, model: aiData.model, via: aiData.via,
+          usage: aiData.usage || null, rateLimit: aiData.rateLimit || null,
+          message: aiData.message || 'The provider returned no code changes.'
+        };
+      }
+
+      const operations = [];
+      let requestKeyAttached = false;
+      for (const key of changedFields) {
+        const value = generated[key];
+        const chunks = value.length ? Array.from({ length: Math.ceil(value.length / 50000) }, (_, index) => value.slice(index * 50000, (index + 1) * 50000)) : [''];
+        chunks.forEach((chunk, index) => {
+          const operation = { type: 'web.code.write', projectId, source, mode: index === 0 ? 'replace' : 'append' };
+          operation[key] = chunk;
+          if (!requestKeyAttached) {
+            operation.headlessAiRequestKey = requestKey;
+            requestKeyAttached = true;
+          }
+          operations.push(operation);
+        });
+      }
+      if (operations.length > 100) throw new Error('Generated code requires more than 100 safe chunks; split the task before saving.');
+      const saved = await postHeadless('/headless', { baseRevision, operationId, operations });
+      const readback = await postHeadless('/headless/query', {
+        action: 'project.code.read',
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        expectedRevision: saved.revision
+      });
+      const readbackVerified = changedFields.every(key =>
+        readback.result.fields[key] && !readback.result.fields[key].truncated &&
+        readback.result.fields[key].value === generated[key]
+      );
+      if (!readbackVerified) throw new Error('AI code was saved, but server readback did not match the generated output.');
+      return {
+        operationId, replayed: !!saved.replayed, revision: saved.revision,
+        changedFields, message: aiData.message || 'AI changes saved.',
+        model: aiData.model, via: aiData.via,
+        usage: aiData.usage || null, rateLimit: aiData.rateLimit || null,
+        readbackVerified
+      };
+    }, {
+      projectId: command.args.project_id,
+      source: command.args.source || 'main',
+      prompt: command.args.prompt,
+      baseRevision: command.args.base_revision,
+      operationId: command.args.operation_id,
+      maxTokens: command.args.max_tokens
+    });
   } else if (command.action === 'ai_generate') {
     stage = 'ai_generate';
     result = await page.evaluate(async ({ projectId, source, prompt }) => {
