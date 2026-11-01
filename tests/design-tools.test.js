@@ -98,6 +98,8 @@ console.log('Design tools unit tests passed: WCAG contrast, palette generation, 
 
 
 const appSource = fs.readFileSync('public/app.js', 'utf8');
+const designToolsSource = fs.readFileSync('public/design-tools.js', 'utf8');
+assert.match(designToolsSource, /parseDesignSystemImport\(await file\.text\(\)\)/, 'the UI import path must use the same pure JSON validator as headless imports');
 assert.match(appSource, /if \(!Array\.isArray\(p\.designUndoStack\)\) p\.designUndoStack = \[\]/,
   'each design project must initialize its own undo history');
 assert.match(appSource, /if \(!Array\.isArray\(p\.designRedoStack\)\) p\.designRedoStack = \[\]/,
