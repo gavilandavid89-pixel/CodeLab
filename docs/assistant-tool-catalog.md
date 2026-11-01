@@ -126,3 +126,14 @@ The direct headless workspace runtime now exposes two operations backed by the s
 - `design.tokens.apply` sanitizes settings and uses `public/design-tools.js` to generate CSS variables and replace only the managed token block, preserving unmanaged CSS.
 
 Both operations run in an atomic authenticated workspace batch, respect the canonical 500,000-character project-field limit, and persist through the existing workspace path. This does not yet expose the separate workspace-level design-system settings file for headless read/import/save; that remains explicitly pending.
+
+## Section 16 — Read-only headless inspection and catalog queries
+
+Added authenticated `POST /api/workspace/:id/headless/query` and the bridge action `headless_query`. These are read-only and do not increment the workspace revision:
+
+- `component.search` and `component.inspect` use the real website catalog and return bounded results/standalone HTML.
+- `design.tokens.generate` reuses the real design-tools sanitizer and token generator.
+- `project.inspect`, `project.code.read`, and `design.read` inspect saved workspace data with explicit size limits and truncation metadata. Image payloads are summarized by presence/length instead of returned as large base64 strings.
+- `accessibility.audit` runs the existing static HTML audit against the saved web project.
+
+The endpoint requires workspace authorization and owner enforcement. Optional `expectedRevision` rejects stale reads with HTTP 409. The bridge reads directly through the endpoint and does not open a project or click editor controls.
