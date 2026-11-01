@@ -154,13 +154,15 @@ function parseCommand(raw) {
     for (const key of ['gap', 'padding']) if (args[key] !== undefined && (!Number.isFinite(args[key]) || args[key] < 0 || args[key] > 200)) throw new Error(key + ' must be a number between 0 and 200.');
   }
   if (command.action === 'design_canvas_configure') {
-    const allowedCanvasKeys = ['frame', 'grid', 'snap_to_grid', 'grid_size', 'zoom', 'background'];
+    const allowedCanvasKeys = ['frame', 'grid', 'snap_to_grid', 'grid_size', 'zoom', 'background', 'canvas_width', 'canvas_height'];
     if (!allowedCanvasKeys.some(key => Object.prototype.hasOwnProperty.call(args, key))) throw new Error('design_canvas_configure requires at least one canvas property.');
     if (args.frame !== undefined && !['desktop', 'tablet', 'mobile'].includes(args.frame)) throw new Error('Frame must be desktop, tablet, or mobile.');
     for (const key of ['grid', 'snap_to_grid']) if (args[key] !== undefined && typeof args[key] !== 'boolean') throw new Error(key + ' must be boolean.');
     if (args.grid_size !== undefined && ![4, 8, 16, 32].includes(args.grid_size)) throw new Error('grid_size must be 4, 8, 16, or 32.');
     if (args.zoom !== undefined && (!Number.isFinite(args.zoom) || args.zoom < 10 || args.zoom > 150)) throw new Error('zoom must be between 10 and 150.');
     if (args.background !== undefined && (typeof args.background !== 'string' || !/^#[0-9a-f]{6}$/i.test(args.background))) throw new Error('background must be a six-digit hex color.');
+    if (args.canvas_width !== undefined && (!Number.isInteger(args.canvas_width) || args.canvas_width < 100 || args.canvas_width > 4000)) throw new Error('canvas_width must be an integer between 100 and 4000.');
+    if (args.canvas_height !== undefined && (!Number.isInteger(args.canvas_height) || args.canvas_height < 100 || args.canvas_height > 10000)) throw new Error('canvas_height must be an integer between 100 and 10000.');
   }
     if (!['main', 'branch'].includes(args.source || 'main')) throw new Error('project_code_write source must be main or branch.');
     const codeKeys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(args, key));
@@ -1348,22 +1350,27 @@ try {
       if (!project?.design) throw new Error('Design project not found.');
       openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
       if (settings.frame !== undefined) setDesignFrame(settings.frame);
+      if (settings.canvas_width !== undefined || settings.canvas_height !== undefined) {
+        const width = settings.canvas_width !== undefined ? settings.canvas_width : getDesignCanvasWidth(project.design);
+        const height = settings.canvas_height !== undefined ? settings.canvas_height : (getDesignCanvasHeight(project.design) || '');
+        setDesignCanvasDimensions(width, height);
+      }
       if (settings.grid !== undefined) { if (!!project.design.grid !== settings.grid) toggleDesignGrid(); }
       if (settings.snap_to_grid !== undefined) { if (!!project.design.snapToGrid !== settings.snap_to_grid) toggleDesignSnap(); }
       if (settings.grid_size !== undefined) setDesignGridSize(settings.grid_size);
       if (settings.background !== undefined) setDesignBackground(settings.background);
       if (settings.zoom !== undefined) setDesignZoom(settings.zoom);
       const latest = projects.find(item => item && item.id === projectId);
-      const actual = { frame: latest.design.frame || 'desktop', grid: latest.design.grid ?? true, snap_to_grid: latest.design.snapToGrid ?? false, grid_size: latest.design.gridSize ?? 8, background: latest.design.background || '#ffffff', zoom: Math.round(designZoom * 100) };
+      const actual = { frame: latest.design.frame || 'desktop', grid: latest.design.grid ?? true, snap_to_grid: latest.design.snapToGrid ?? false, grid_size: latest.design.gridSize ?? 8, background: latest.design.background || '#ffffff', canvas_width: getDesignCanvasWidth(latest.design), canvas_height: getDesignCanvasHeight(latest.design) || null, zoom: Math.round(designZoom * 100) };
       const keys = Object.keys(settings).filter(key => key !== 'zoom');
       const exact = keys.every(key => actual[key] === settings[key]) && (settings.zoom === undefined || actual.zoom === settings.zoom);
       const saved = await saveProjectsToStorage();
       const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
       const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && keys.every(key => local.design?.[{frame:'frame',grid:'grid',snap_to_grid:'snapToGrid',grid_size:'gridSize',background:'background'}[key]] === settings[key]);
+      const localVerified = !!local && keys.every(key => local.design?.[{frame:'frame',grid:'grid',snap_to_grid:'snapToGrid',grid_size:'gridSize',background:'background',canvas_width:'canvasWidth',canvas_height:'canvasHeight'}[key]] === settings[key]);
       if (!exact || !localVerified) throw new Error('Canvas settings were not verified; zoom is session-only.');
       return { projectId, settings: actual, changed: Object.keys(settings), saved: saved === true, localSnapshotVerified: true, zoomSessionOnly: settings.zoom !== undefined };
-    }, { projectId: command.args.project_id, settings: Object.fromEntries(['frame','grid','snap_to_grid','grid_size','zoom','background'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
+    }, { projectId: command.args.project_id, settings: Object.fromEntries(['frame','grid','snap_to_grid','grid_size','zoom','background','canvas_width','canvas_height'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
   } else if (command.action === 'ai_ping') {
     const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
       timeout: 70000,
