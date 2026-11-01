@@ -3913,7 +3913,7 @@ function getDesignLayoutPositions(design) {
     }
   }
   const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
-  return { positions, height: Math.min(6000, Math.max(900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
+  return { positions, height: Math.min(6000, Math.max(getDesignCanvasHeight(design) || 900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
 }
 function setDesignLayoutMode(value) {
   const p = activeDesignProject(); if (!p) return;
