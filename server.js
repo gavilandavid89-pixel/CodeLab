@@ -1941,6 +1941,7 @@ const server = http.createServer(async (req, res) => {
           // Exact operation receipts are checked before revision matching so a lost-response retry cannot duplicate a saved change.
           const result = applyHeadlessBatch(current, body);
           if (!result.replayed) {
+            // Reuse the canonical workspace validator; headless operations must not bypass limits enforced on regular saves.
             const validationError = validateProjects(result.state.projects);
             if (validationError) {
               return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
