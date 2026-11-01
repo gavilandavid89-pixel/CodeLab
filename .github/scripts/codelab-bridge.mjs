@@ -583,7 +583,19 @@ try {
       const localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === created.id && item.name === name.trim());
       const serverSyncStatus = document.getElementById('statusText')?.textContent || null;
       if (!localVerified) throw new Error('Created project was not verified in the local snapshot.');
-      return { projectId: created.id, name: created.name, type: created.type, localSnapshotVerified: localVerified, serverSyncStatus };
+      if (serverSyncStatus !== 'Sincronizado') {
+        throw new Error('Project creation was not confirmed by server sync (status: ' + (serverSyncStatus || 'unknown') + ').');
+      }
+      // A successful local snapshot and a stale status badge are not enough:
+      // reload the authoritative workspace before reporting the project as created.
+      if (typeof refreshWorkspaceFromServer !== 'function' || !(await refreshWorkspaceFromServer())) {
+        throw new Error('Project creation could not be verified by reading the workspace back from the server.');
+      }
+      const serverReadbackVerified = projects.some(item => item?.id === created.id && item.name === name.trim() && item.type === (type || 'web'));
+      if (!serverReadbackVerified) {
+        throw new Error('Project creation was acknowledged but the project was missing from the server workspace readback.');
+      }
+      return { projectId: created.id, name: created.name, type: created.type, localSnapshotVerified: localVerified, serverSyncStatus, serverReadbackVerified };
     }, { name: command.args.name, type: command.args.type || 'web' });
   } else if (command.action === 'project_duplicate') {
     stage = 'project_duplicate';
