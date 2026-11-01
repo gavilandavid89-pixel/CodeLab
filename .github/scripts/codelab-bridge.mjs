@@ -13,12 +13,12 @@ if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
 }
 
 function parseCommand(raw) {
-  if (typeof raw !== 'string' || raw.length > 12000) throw new Error('Issue body missing or too large.');
+  if (typeof raw !== 'string' || raw.length > 60000) throw new Error('Issue body missing or too large.');
   const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '');
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['headless_batch', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -39,6 +39,12 @@ function parseCommand(raw) {
   }
   if (['branch_merge', 'branch_undo_merge'].includes(command.action) && command.approval !== 'approved') {
     throw new Error(command.action + ' changes the main project state; approval: "approved" is required.');
+  }
+  if (command.action === 'headless_batch') {
+    if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_batch requires a non-negative base_revision.');
+    if (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id)) throw new Error('headless_batch requires a safe operation_id.');
+    if (!Array.isArray(args.operations) || args.operations.length < 1 || args.operations.length > 100) throw new Error('headless_batch requires 1 to 100 operations.');
+    if (JSON.stringify(args.operations).length > 50000) throw new Error('headless_batch operations exceed 50000 characters.');
   }
   if (command.action === 'project_rename' &&
       (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
@@ -685,6 +691,55 @@ try {
       const saved = await saveProjectsToStorage();
       return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
     }, { projectId: command.args.project_id, operation: command.args.operation });
+  } else if (command.action === 'headless_batch') {
+    stage = 'headless_batch';
+    result = await page.evaluate(async ({ baseRevision, operationId, operations }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision, operationId, operations })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error('Headless workspace conflict (HTTP 409). Refresh workspace and retry with a new base_revision; keep the same operation_id only for an exact retry.');
+      }
+      if (!response.ok || data.ok !== true) {
+        throw new Error('Headless workspace request failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      }
+      if (typeof refreshWorkspaceFromServer !== 'function' || !(await refreshWorkspaceFromServer())) {
+        throw new Error('Headless operation was accepted, but the web app could not read the saved workspace back.');
+      }
+      const createdId = data.results.map(item => item.projectId).find(Boolean);
+      const requestedId = [...operations].reverse().map(item => item.projectId).find(Boolean);
+      const visibleProjectId = createdId || requestedId || null;
+      if (visibleProjectId && typeof openProject === 'function') {
+        openProject(visibleProjectId);
+        await new Promise(resolve => setTimeout(resolve, 900));
+      }
+      return {
+        revision: data.revision,
+        replayed: data.replayed === true,
+        operationCount: operations.length,
+        results: data.results.map(item => {
+          const copy = { ...item };
+          if (typeof copy.previewSvg === 'string') {
+            copy.previewSvgLength = copy.previewSvg.length;
+            delete copy.previewSvg;
+          }
+          return copy;
+        }),
+        serverReadbackVerified: true,
+        openedProjectId: visibleProjectId
+      };
+    }, {
+      baseRevision: command.args.base_revision,
+      operationId: command.args.operation_id,
+      operations: command.args.operations
+    });
   } else if (command.action === 'project_create') {
     stage = 'project_create';
     result = await page.evaluate(async ({ name, type }) => {
