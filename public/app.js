@@ -3251,6 +3251,10 @@ function activeDesignProject() {
   p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
   p.design.layoutPadding = Number.isFinite(Number(p.design.layoutPadding)) ? Math.max(0, Math.min(200, Number(p.design.layoutPadding))) : 24;
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
+  if (!Array.isArray(p.designUndoStack)) p.designUndoStack = [];
+  if (!Array.isArray(p.designRedoStack)) p.designRedoStack = [];
+  designUndoStack = p.designUndoStack;
+  designRedoStack = p.designRedoStack;
   return p;
 }
 function designSnapshot() {
