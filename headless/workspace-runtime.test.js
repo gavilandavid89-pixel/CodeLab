@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { applyHeadlessBatch } = require('./workspace-runtime');
+const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./workspace-runtime');
 
 function state(projects = []) {
   return { version: 5, revision: 3, updatedAt: '2026-11-01T00:00:00.000Z', projects, owner: { provider: 'local', id: 'test' } };
@@ -255,4 +255,70 @@ test('reapplying design tokens replaces the managed block instead of duplicating
   const css = second.state.projects[0].code.css;
   assert.match(css, /--color-primary: #abcdef/);
   assert.equal((css.match(/CodeLab Design Tokens START/g) || []).length, 1);
+});
+
+test('queries the real component catalog without mutating workspace state', () => {
+  const original = state([webProject()]);
+  const before = JSON.stringify(original);
+  const found = queryHeadlessWorkspace(original, { action: 'component.search', args: { query: 'hero', limit: 5 } });
+  assert.ok(found.result.some(item => item.id === 'hero'));
+  const inspected = queryHeadlessWorkspace(original, { action: 'component.inspect', args: { componentId: 'hero', maxChars: 7000 } });
+  assert.match(inspected.result.standaloneHtml, /<!doctype html>/i);
+  assert.equal(inspected.result.truncated, false);
+  assert.equal(JSON.stringify(original), before);
+});
+
+test('generates design tokens and CSS through the shared design-tools module', () => {
+  const result = queryHeadlessWorkspace(state(), { action: 'design.tokens.generate', args: { settings: {
+    name: 'Query system', primary: '#123456', secondary: '#234567', accent: '#345678',
+    surface: '#ffffff', background: '#f8fafc', text: '#0f172a',
+    contrastForeground: '#0f172a', contrastBackground: '#ffffff',
+    baseFont: 18, typeRatio: 1.2, baseSpacing: 6, baseRadius: 10
+  } } });
+  assert.equal(result.result.tokens.name, 'Query system');
+  assert.match(result.result.cssVariables, /--color-primary: #123456/);
+});
+
+test('inspects saved project and reads bounded main or branch code without mutation', () => {
+  const project = webProject();
+  project.code.html = 'h'.repeat(25000);
+  project.branch = { id: 'branch_1', code: { html: 'branch source', css: '', js: '' }, updatedAt: '2026-11-01T00:00:00Z' };
+  const original = state([project]);
+  const info = queryHeadlessWorkspace(original, { action: 'project.inspect', args: { projectId: project.id } });
+  assert.equal(info.result.codeLengths.html, 25000);
+  assert.equal(info.result.branch.id, 'branch_1');
+  const read = queryHeadlessWorkspace(original, { action: 'project.code.read', args: {
+    projectId: project.id, source: 'main', languages: ['html'], maxChars: 100
+  } });
+  assert.equal(read.result.fields.html.value.length, 100);
+  assert.equal(read.result.fields.html.truncated, true);
+  const branchRead = queryHeadlessWorkspace(original, { action: 'project.code.read', args: {
+    projectId: project.id, source: 'branch', languages: ['html']
+  } });
+  assert.equal(branchRead.result.fields.html.value, 'branch source');
+  assert.equal(original.projects[0].code.html.length, 25000);
+});
+
+test('reads design geometry without returning embedded image payloads', () => {
+  const project = designProject();
+  project.design.elements = [{
+    id: 'el_image', type: 'image', x: 10, y: 20, width: 100, height: 80,
+    src: 'data:image/png;base64,' + 'x'.repeat(5000), alt: 'Preview'
+  }];
+  const result = queryHeadlessWorkspace(state([project]), { action: 'design.read', args: { projectId: project.id } });
+  assert.equal(result.result.elements[0].hasImageSource, true);
+  assert.equal(result.result.elements[0].imageSourceLength, 5022);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.result.elements[0], 'src'), false);
+});
+
+test('runs the existing static accessibility audit against saved web HTML', () => {
+  const project = webProject();
+  project.code.html = '<html><head></head><body><img src="x.png"></body></html>';
+  const result = queryHeadlessWorkspace(state([project]), { action: 'accessibility.audit', args: { projectId: project.id } });
+  assert.ok(result.result.issues.some(item => item.code === 'image-missing-alt'));
+});
+
+test('rejects invalid headless query types and unknown components', () => {
+  assert.throws(() => queryHeadlessWorkspace(state(), { action: 'not.real', args: {} }), error => error.code === 'HEADLESS_INVALID_QUERY');
+  assert.throws(() => queryHeadlessWorkspace(state(), { action: 'component.inspect', args: { componentId: 'not-real' } }), error => error.code === 'HEADLESS_COMPONENT_NOT_FOUND');
 });
