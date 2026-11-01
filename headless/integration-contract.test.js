@@ -55,3 +55,18 @@ test('server and bridge expose authenticated read-only headless queries without 
   assert.match(bridge, /\/headless\/query/);
   assert.match(bridge, /readOnly: true/);
 });
+
+test('server and bridge expose authenticated headless design-system read/write/import/export', () => {
+  assert.match(server, /readDesignSystemRecord/);
+  const route = server.indexOf('const headlessDesignSystemMatch = pathname.match');
+  assert.notEqual(route, -1);
+  const routeEnd = server.indexOf('const designSystemMatch = pathname.match', route);
+  const routeBody = server.slice(route, routeEnd);
+  assert.ok(routeBody.indexOf('isAuthorized(req, id)') < routeBody.indexOf('writeDesignSystem(id, settings, body.baseRevision)'));
+  assert.match(routeBody, /parseDesignSystemImport\(body\.json\)/);
+  assert.match(routeBody, /DESIGN_SYSTEM_REVISION_CONFLICT/);
+  assert.match(bridge, /'headless_design_system'/);
+  assert.match(bridge, /command.action === 'headless_design_system'/);
+  assert.match(bridge, /\/headless\/design-system/);
+  assert.match(bridge, /readbackVerified/);
+});
