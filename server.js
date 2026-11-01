@@ -2093,6 +2093,7 @@ const server = http.createServer(async (req, res) => {
           if (error.code === 'HEADLESS_PROJECT_NOT_FOUND') return sendJson(res, 404, { error: 'project_not_found' });
           if (error.code === 'HEADLESS_COMPONENT_NOT_FOUND') return sendJson(res, 404, { error: 'component_not_found' });
           if (error.code === 'HEADLESS_DESIGN_EXPORT_TOO_LARGE') return sendJson(res, 413, { error: 'design_export_too_large', detail: error.message });
+          if (error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT') return sendJson(res, 409, { error: 'operation_id_conflict' });
           if (error.code === 'HEADLESS_INVALID_QUERY') return sendJson(res, 400, { error: 'invalid_headless_query', detail: error.message });
           console.error('workspace_headless_query_failed', id, error.message);
           return sendJson(res, 500, { error: 'headless_query_failed' });
