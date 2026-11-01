@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['headless_batch', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
+  const projectActions = ['headless_query', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -46,6 +46,21 @@ function parseCommand(raw) {
     if (!Array.isArray(args.operations) || args.operations.length < 1 || args.operations.length > 100) throw new Error('headless_batch requires 1 to 100 operations.');
     if (JSON.stringify(args.operations).length > 50000) throw new Error('headless_batch operations exceed 50000 characters.');
     if (args.operations.some(operation => operation && operation.type === 'project.delete') && command.approval !== 'approved') throw new Error('Headless project deletion requires approval: "approved".');
+  }
+  if (command.action === 'headless_query') {
+    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit'];
+    if (!supportedQueries.includes(args.query_action)) throw new Error('headless_query requires a supported query_action.');
+    if (args.query_args !== undefined && (!args.query_args || typeof args.query_args !== 'object' || Array.isArray(args.query_args))) throw new Error('headless_query query_args must be an object.');
+    if (args.expected_revision !== undefined && (!Number.isInteger(args.expected_revision) || args.expected_revision < 0)) throw new Error('headless_query expected_revision must be a non-negative integer.');
+    if (JSON.stringify(args.query_args || {}).length > 20000) throw new Error('headless_query query_args exceed 20000 characters.');
+    const queryArgs = args.query_args || {};
+    if (['project.inspect', 'project.code.read', 'design.read', 'accessibility.audit'].includes(args.query_action) &&
+        (typeof queryArgs.projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.projectId))) {
+      throw new Error(args.query_action + ' requires a valid query_args.projectId.');
+    }
+    if (args.query_action === 'component.inspect' && (typeof queryArgs.componentId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.componentId))) {
+      throw new Error('component.inspect requires a valid query_args.componentId.');
+    }
   }
   if (command.action === 'project_rename' &&
       (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
@@ -740,6 +755,31 @@ try {
       baseRevision: command.args.base_revision,
       operationId: command.args.operation_id,
       operations: command.args.operations
+    });
+  } else if (command.action === 'headless_query') {
+    stage = 'headless_query';
+    result = await page.evaluate(async ({ action, args, expectedRevision }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action, args, expectedRevision })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error('Headless query revision conflict (HTTP 409). Refresh the workspace and repeat the read against the current revision.');
+      }
+      if (!response.ok || data.ok !== true) {
+        throw new Error('Headless query failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      }
+      return { revision: data.revision, action: data.action, result: data.result, readOnly: true };
+    }, {
+      action: command.args.query_action,
+      args: command.args.query_args || {},
+      expectedRevision: command.args.expected_revision
     });
   } else if (command.action === 'project_create') {
     stage = 'project_create';
