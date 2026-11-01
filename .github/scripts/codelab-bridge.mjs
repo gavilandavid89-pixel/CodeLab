@@ -394,6 +394,8 @@ try {
   } else if (command.action === 'design_system_export_json') {
     stage = 'design_system_export_json';
     result = await (async () => {
+      await page.locator('#openDesignTools').click({ timeout: 10000 });
+      await page.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
       const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
       await page.locator('#exportDesignSystemJson').click({ timeout: 10000 });
       const download = await downloadPromise;
