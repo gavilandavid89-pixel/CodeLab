@@ -45,7 +45,8 @@ test('server and bridge expose authenticated read-only headless queries without 
   assert.match(server, /queryHeadlessWorkspace/);
   const route = server.indexOf('const headlessQueryMatch = pathname.match');
   assert.notEqual(route, -1);
-  const routeBody = server.slice(route, route + 2600);
+  const routeEnd = server.indexOf("if (req.method === 'PUT' && getMatch)", route);
+  const routeBody = server.slice(route, routeEnd);
   assert.ok(routeBody.indexOf('isAuthorized(req, id)') < routeBody.indexOf('queryHeadlessWorkspace(current, body)'));
   assert.match(routeBody, /expectedRevision/);
   assert.doesNotMatch(routeBody, /writeState\(id/);
