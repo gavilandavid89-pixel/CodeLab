@@ -30,8 +30,9 @@ function applyOperation(state, operation) {
   switch (operation.type) {
     case 'project.create': {
       assert(state.projects.length < 500, 'Workspace project limit reached.');
-      assert(typeof operation.projectId === 'string' && PROJECT_ID.test(operation.projectId), 'project.create requires a valid projectId.');
-      assert(!state.projects.some(item => item.id === operation.projectId), 'Project ID already exists.');
+      const projectId = operation.projectId || 'proj_' + crypto.randomUUID();
+      assert(typeof projectId === 'string' && PROJECT_ID.test(projectId), 'project.create requires a valid projectId.');
+      assert(!state.projects.some(item => item.id === projectId), 'Project ID already exists.');
       assert(typeof operation.name === 'string' && operation.name.trim() && operation.name.trim().length <= 200, 'project.create requires a name up to 200 characters.');
       const type = operation.projectType || 'web';
       assert(type === 'web' || type === 'design', 'Project type must be web or design.');
@@ -53,10 +54,11 @@ function applyOperation(state, operation) {
     case 'project.duplicate': {
       assert(state.projects.length < 500, 'Workspace project limit reached.');
       const source = findProject(state, operation.projectId);
-      assert(typeof operation.newProjectId === 'string' && PROJECT_ID.test(operation.newProjectId), 'project.duplicate requires a valid newProjectId.');
-      assert(!state.projects.some(item => item.id === operation.newProjectId), 'Duplicate project ID already exists.');
+      const newProjectId = operation.newProjectId || 'proj_' + crypto.randomUUID();
+      assert(typeof newProjectId === 'string' && PROJECT_ID.test(newProjectId), 'project.duplicate requires a valid newProjectId.');
+      assert(!state.projects.some(item => item.id === newProjectId), 'Duplicate project ID already exists.');
       const duplicate = clone(source);
-      duplicate.id = operation.newProjectId;
+      duplicate.id = newProjectId;
       duplicate.name = typeof operation.name === 'string' && operation.name.trim() ? operation.name.trim().slice(0, 200) : source.name + ' copy';
       duplicate.createdAt = new Date().toISOString();
       duplicate.updatedAt = duplicate.createdAt;
@@ -121,7 +123,13 @@ function applyHeadlessBatch(inputState, request) {
   const results = request.operations.map(operation => applyOperation(state, operation));
   state.revision = inputState.revision + 1;
   state.updatedAt = new Date().toISOString();
-  state.headlessOperations = receipts.concat([{ id: request.operationId, hash: operationHash, revision: state.revision, results: clone(results) }]).slice(-MAX_RECEIPTS);
+  const receiptResults = results.map(item => {
+    if (!item || typeof item !== 'object' || typeof item.previewSvg !== 'string') return clone(item);
+    const compact = { ...item, previewSvgLength: item.previewSvg.length };
+    delete compact.previewSvg;
+    return compact;
+  });
+  state.headlessOperations = receipts.concat([{ id: request.operationId, hash: operationHash, revision: state.revision, results: receiptResults }]).slice(-MAX_RECEIPTS);
   return { state, replayed: false, revision: state.revision, results };
 }
 
