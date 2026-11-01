@@ -2,6 +2,8 @@
 
 const crypto = require('node:crypto');
 const { createDesignEngine } = require('./design-engine');
+const componentLibrary = require('../public/component-library');
+const designTools = require('../public/design-tools');
 
 const MAX_OPERATIONS = 100;
 const MAX_RECEIPTS = 200;
@@ -88,6 +90,45 @@ function applyOperation(state, operation) {
       project.updatedAt = new Date().toISOString();
       if (source === 'branch') project.branch.updatedAt = project.updatedAt;
       return { type: operation.type, projectId: project.id, source, updatedFields: keys };
+    }
+    case 'component.insert': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type !== 'design', 'component.insert requires a web project.');
+      assert(typeof operation.componentId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(operation.componentId),
+        'component.insert requires a valid componentId.');
+      const component = componentLibrary.getComponent(operation.componentId);
+      assert(component, 'Component not found: ' + operation.componentId, 'HEADLESS_COMPONENT_NOT_FOUND');
+      const marker = '<!-- codelab-component:' + component.id + ':v1 -->';
+      const current = typeof project.code.html === 'string' ? project.code.html : '';
+      if (current.includes(marker)) {
+        return { type: operation.type, projectId: project.id, componentId: component.id, alreadyPresent: true };
+      }
+      const insertion = marker + '\\n' + component.html;
+      const next = /<\\/body\\s*>/i.test(current)
+        ? current.replace(/<\\/body\\s*>/i, insertion + '\\n</body>')
+        : current + (current ? '\\n' : '') + insertion;
+      assert(next.length <= 500000, 'component.insert would exceed the 500000 character HTML project limit.');
+      project.code.html = next;
+      project.updatedAt = new Date().toISOString();
+      return { type: operation.type, projectId: project.id, componentId: component.id, componentName: component.name, inserted: true };
+    }
+    case 'design.tokens.apply': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type !== 'design', 'design.tokens.apply requires a web project.');
+      assert(operation.settings && typeof operation.settings === 'object' && !Array.isArray(operation.settings),
+        'design.tokens.apply requires a settings object.');
+      const settings = designTools.sanitizeSettings(operation.settings);
+      const css = typeof project.code.css === 'string' ? project.code.css : '';
+      const next = designTools.injectTokenBlock(css, designTools.toCssVariables(settings));
+      assert(next.length <= 500000, 'design.tokens.apply would exceed the 500000 character CSS project limit.');
+      project.code.css = next;
+      project.updatedAt = new Date().toISOString();
+      return {
+        type: operation.type,
+        projectId: project.id,
+        updatedFields: ['css'],
+        tokens: designTools.buildDesignTokens(settings)
+      };
     }
     case 'design.batch': {
       const project = findProject(state, operation.projectId);
