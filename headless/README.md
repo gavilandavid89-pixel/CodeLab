@@ -117,3 +117,11 @@ Headless batches now support the website's isolated web-project branch model:
 - `branch.inspect` reports branch metadata and backup count without returning large code bodies.
 
 Design batches now save the prior design snapshot into the same `designUndoStack` / `designRedoStack` fields used by CodeLab. `design.history.undo` and `design.history.redo` restore those snapshots while keeping design revisions monotonic, preventing an undo from making stale revision numbers valid again. `design.history.inspect` reports available history without changing state.
+
+## Responsive design templates
+
+The browser-independent `headless/design-templates.js` module implements the same three website templates: `landing`, `dashboard`, and `portfolio`. It uses the saved custom canvas width to choose compact (<=768px) or desktop geometry, and returns normal CodeLab design elements.
+
+- `design.template.list` returns available templates without mutation.
+- `design.template.apply` replaces the design layers, updates the canvas background, increments the design revision, and records an undo snapshot.
+- Applying a template to a non-empty design requires `replaceExisting:true` and `approved:true`; the bridge additionally requires outer command approval. The previous design can be restored through `design.history.undo`.
