@@ -188,5 +188,5 @@ PR #170 moved all layer ordering, alignment/distribution, prototype-target, layo
 - [Create disposable design project](https://github.com/gavilandavid89-pixel/CodeLab/issues/266), [add rectangle](https://github.com/gavilandavid89-pixel/CodeLab/issues/267), and [edit its geometry/background](https://github.com/gavilandavid89-pixel/CodeLab/issues/268).
 - [Undo from a new bridge execution](https://github.com/gavilandavid89-pixel/CodeLab/issues/269) returned `changed: true` and `saved: true`. A fresh [design readback](https://github.com/gavilandavid89-pixel/CodeLab/issues/270) showed the original x/y values (100, 340).
 - [Redo from another execution](https://github.com/gavilandavid89-pixel/CodeLab/issues/271) returned `changed: true` and `saved: true`. A fresh [readback](https://github.com/gavilandavid89-pixel/CodeLab/issues/272) showed the edited x/y values (240, 180).
-- [Cleanup](https://github.com/gavilandavid-pixel/CodeLab/issues/273) deleted the disposable project and verified the local snapshot.
+- [Cleanup](https://github.com/gavilandavid89-pixel/CodeLab/issues/273) deleted the disposable project and verified the local snapshot.
 - This resolves the prior single-step undo/redo uncertainty across separate executions, but does not prove restart durability or cover long multi-step history stacks.
