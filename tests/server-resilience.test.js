@@ -234,6 +234,130 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(privateWorkspaceRead.status, 200);
     assert.equal(privateWorkspaceRead.headers.get('cache-control'), 'no-store',
       'Private workspace snapshots must never be cached');
+
+    const headlessUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/headless';
+    const unauthenticatedHeadlessResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseRevision: 0, operationId: 'headless_noauth_01', operations: [
+        { type: 'project.create', name: 'Unauthorized' }
+      ] })
+    });
+    assert.equal(unauthenticatedHeadlessResponse.status, 401,
+      'Headless mutations must require the same workspace authorization as normal saves');
+
+    const createHeadlessRequest = {
+      baseRevision: 0,
+      operationId: 'headless_create_01',
+      operations: [{ type: 'project.create', name: 'Headless design', projectType: 'design' }]
+    };
+    const createHeadlessResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify(createHeadlessRequest)
+    });
+    assert.equal(createHeadlessResponse.status, 200,
+      'An authenticated headless batch should create a project without opening the editor');
+    const createdHeadless = await createHeadlessResponse.json();
+    assert.equal(createdHeadless.ok, true);
+    assert.equal(createdHeadless.replayed, false);
+    const headlessProjectId = createdHeadless.results[0].projectId;
+    assert.match(headlessProjectId, /^proj_[a-f0-9-]{36}$/);
+
+    const retryHeadlessResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify(createHeadlessRequest)
+    });
+    assert.equal(retryHeadlessResponse.status, 200);
+    const retriedHeadless = await retryHeadlessResponse.json();
+    assert.equal(retriedHeadless.replayed, true,
+      'An exact retry must replay the saved result instead of creating a duplicate project');
+    assert.equal(retriedHeadless.revision, 1);
+
+    const reusedHeadlessIdResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        ...createHeadlessRequest,
+        operations: [{ type: 'project.create', name: 'Different payload', projectType: 'design' }]
+      })
+    });
+    assert.equal(reusedHeadlessIdResponse.status, 409,
+      'An operation ID must not be reused for a different payload');
+    assert.equal((await reusedHeadlessIdResponse.json()).error, 'operation_id_conflict');
+
+    const staleHeadlessResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 0,
+        operationId: 'headless_stale_01',
+        operations: [{ type: 'project.rename', projectId: headlessProjectId, name: 'Stale overwrite' }]
+      })
+    });
+    assert.equal(staleHeadlessResponse.status, 409,
+      'A stale headless batch must not overwrite a newer workspace revision');
+    assert.equal((await staleHeadlessResponse.json()).error, 'revision_conflict');
+
+    const designHeadlessResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 1,
+        operationId: 'headless_design_01',
+        operations: [{
+          type: 'design.batch',
+          projectId: headlessProjectId,
+          expectedDesignRevision: 0,
+          operations: [
+            { type: 'canvas.set', width: 720, height: 1600 },
+            { type: 'element.add', elementType: 'heading', id: 'el_headless_title', properties: { text: 'Created without UI' } }
+          ]
+        }]
+      })
+    });
+    assert.equal(designHeadlessResponse.status, 200,
+      'The headless server must apply design operations to the same saved project model');
+    const designHeadless = await designHeadlessResponse.json();
+    assert.equal(designHeadless.results[0].designRevision, 1);
+    assert.match(designHeadless.results[0].previewSvg, /Created without UI/);
+
+    const headlessReadbackResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      headers: { 'x-workspace-token': workspace.token }
+    });
+    assert.equal(headlessReadbackResponse.status, 200);
+    const headlessReadback = await headlessReadbackResponse.json();
+    assert.equal(Object.prototype.hasOwnProperty.call(headlessReadback, 'headlessOperations'), false,
+      'Private idempotency receipts must not be exposed to browser workspace reads');
+    const savedHeadlessProject = headlessReadback.projects.find(item => item.id === headlessProjectId);
+    assert.equal(savedHeadlessProject.design.canvasWidth, 720);
+    assert.equal(savedHeadlessProject.design.canvasHeight, 1600);
+    assert.equal(savedHeadlessProject.design.elements[0].text, 'Created without UI');
+
+    const regularSaveAfterHeadless = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({ baseRevision: 2, projects: headlessReadback.projects })
+    });
+    assert.equal(regularSaveAfterHeadless.status, 200,
+      'A regular editor save must preserve headless idempotency receipts');
+    const regularSaveData = await regularSaveAfterHeadless.json();
+    assert.equal(regularSaveData.revision, 3);
+
+    const retryAfterRegularSave = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify(createHeadlessRequest)
+    });
+    assert.equal(retryAfterRegularSave.status, 200);
+    assert.equal((await retryAfterRegularSave.json()).replayed, true,
+      'A regular web save must not erase headless retry protection');
+    const finalHeadlessReadback = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
+      headers: { 'x-workspace-token': workspace.token }
+    });
+    assert.equal((await finalHeadlessReadback.json()).projects.length, 1,
+      'Exact retries must not duplicate projects after regular workspace saves');
     const nullWorkspaceUpdate = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
