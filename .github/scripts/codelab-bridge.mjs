@@ -396,6 +396,8 @@ try {
     result = await (async () => {
       await page.locator('#openDesignTools').click({ timeout: 10000 });
       await page.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
+      await page.locator('#designToolsTab-tokens').click({ timeout: 10000 });
+      await page.locator('#designToolsPanel-tokens').waitFor({ state: 'visible', timeout: 10000 });
       const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
       await page.locator('#exportDesignSystemJson').click({ timeout: 10000 });
       const download = await downloadPromise;
