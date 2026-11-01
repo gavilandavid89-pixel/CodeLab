@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -71,6 +71,7 @@ function parseCommand(raw) {
   }
   if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
   if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_import_json requires a JSON string between 2 and 10000 characters.');
+  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_system_import_json requires a JSON string between 2 and 10000 characters.');
   if (command.action === 'design_tokens_generate') {
     if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
   }
@@ -361,6 +362,35 @@ try {
       const css = api.toCssVariables(normalized);
       return { settings: normalized, tokens, css, verified: !!tokens && typeof css === 'string' };
     }, command.args.settings || null);
+  } else if (command.action === 'design_system_import_json') {
+    stage = 'design_system_import_json';
+    result = await (async () => {
+      const before = await page.evaluate(() => ({
+        values: Object.fromEntries(['systemName','colorPrimary','colorSecondary','colorAccent','colorSurface','colorBackground','colorText','contrastForeground','contrastBackground','baseFont','typeRatio','baseSpacing','baseRadius'].map(id => [id, document.getElementById(id)?.value ?? null])),
+        status: document.getElementById('designToolsStatus')?.textContent || ''
+      }));
+      await page.locator('#designSystemJsonFile').setInputFiles({
+        name: 'codelab-design-system-import.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(command.args.json, 'utf8')
+      });
+      await page.waitForFunction(previousStatus => {
+        const status = document.getElementById('designToolsStatus')?.textContent || '';
+        return status && status !== previousStatus;
+      }, before.status, { timeout: 15000 }).catch(() => {});
+      return await page.evaluate(beforeValues => {
+        const values = Object.fromEntries(['systemName','colorPrimary','colorSecondary','colorAccent','colorSurface','colorBackground','colorText','contrastForeground','contrastBackground','baseFont','typeRatio','baseSpacing','baseRadius'].map(id => [id, document.getElementById(id)?.value ?? null]));
+        const changed = Object.keys(values).some(key => values[key] !== beforeValues[key]);
+        const status = document.getElementById('designToolsStatus')?.textContent || '';
+        return {
+          imported: changed && !status.startsWith('No se pudo importar:'),
+          rejected: !changed && status.startsWith('No se pudo importar:'),
+          values,
+          status,
+          changedFields: Object.keys(values).filter(key => values[key] !== beforeValues[key])
+        };
+      }, before.values);
+    })();
   } else if (command.action === 'design_export') {
     stage = 'design_export';
     result = await page.evaluate(({ projectId, format }) => {
