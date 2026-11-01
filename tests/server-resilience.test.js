@@ -262,6 +262,58 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(createdHeadless.ok, true);
     assert.equal(createdHeadless.replayed, false);
     const headlessProjectId = createdHeadless.results[0].projectId;
+    const headlessQueryUrl = headlessUrl + '/query';
+    const unauthenticatedQuery = await fetch(headlessQueryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'component.search', args: { query: 'hero' } })
+    });
+    assert.equal(unauthenticatedQuery.status, 401,
+      'Headless reads must require the same workspace authorization as mutations');
+
+    const componentSearchResponse = await fetch(headlessQueryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({ action: 'component.search', args: { query: 'hero', limit: 5 }, expectedRevision: 1 })
+    });
+    assert.equal(componentSearchResponse.status, 200);
+    const componentSearch = await componentSearchResponse.json();
+    assert.equal(componentSearch.revision, 1);
+    assert.ok(componentSearch.result.some(item => item.id === 'hero'));
+
+    const componentInspectResponse = await fetch(headlessQueryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({ action: 'component.inspect', args: { componentId: 'hero', maxChars: 3000 } })
+    });
+    assert.equal(componentInspectResponse.status, 200);
+    assert.match((await componentInspectResponse.json()).result.standaloneHtml, /<!doctype html>/i);
+
+    const projectInspectResponse = await fetch(headlessQueryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({ action: 'project.inspect', args: { projectId: headlessProjectId }, expectedRevision: 1 })
+    });
+    assert.equal(projectInspectResponse.status, 200);
+    assert.equal((await projectInspectResponse.json()).result.type, 'design');
+
+    const designReadResponse = await fetch(headlessQueryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({ action: 'design.read', args: { projectId: headlessProjectId } })
+    });
+    assert.equal(designReadResponse.status, 200);
+    assert.equal((await designReadResponse.json()).result.elementCount, 0);
+
+    const staleQueryResponse = await fetch(headlessQueryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({ action: 'project.inspect', args: { projectId: headlessProjectId }, expectedRevision: 0 })
+    });
+    assert.equal(staleQueryResponse.status, 409,
+      'Read-only queries with a supplied stale revision must report the current workspace revision');
+    assert.equal((await staleQueryResponse.json()).revision, 1);
+
     assert.match(headlessProjectId, /^proj_[a-f0-9-]{36}$/);
 
     const retryHeadlessResponse = await fetch(headlessUrl, {
