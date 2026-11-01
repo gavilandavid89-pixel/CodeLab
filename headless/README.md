@@ -11,10 +11,10 @@ The browser-based Agent Space / Playwright runner remains a separate visual-insp
 The engine accepts existing CodeLab projects with `type: "design"` and the existing `design.elements` layer array. Existing projects that only have the legacy `frame` preset are normalized to a canvas size:
 
 - desktop: 1440 × 900
-- tablet: 768 × 1024
-- mobile: 390 × 844
+- tablet: 768 × 900
+- mobile: 390 × 900
 
-Custom canvas dimensions use CodeLab's existing `design.canvasWidth` and `design.canvasHeight` fields (the same fields consumed by the editor and capture pipeline). The engine also returns a structured `design.canvas` view for its own inspection API; the scalar fields remain synchronized for compatibility. Canvas width is capped at 4,000 px and height at 10,000 px. These dimensions are independent of individual layer geometry and do not overwrite the legacy `frame` preset.
+Custom canvas dimensions use CodeLab's existing `design.canvasWidth` and `design.canvasHeight` fields (the same fields consumed by the editor and capture pipeline). The engine also returns a structured `design.canvas` view for its own inspection API; the scalar fields remain synchronized for compatibility. Canvas dimensions follow the editor's 100 px minimum, 4,000 px maximum width, and 10,000 px maximum height. These dimensions are independent of individual layer geometry and do not overwrite the legacy `frame` preset.
 
 ## API
 
