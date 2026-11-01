@@ -12,7 +12,7 @@ const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
-const { applyHeadlessBatch } = require('./headless/workspace-runtime');
+const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -1972,6 +1972,37 @@ const server = http.createServer(async (req, res) => {
           }
           console.error('workspace_headless_failed', id, error.message);
           return sendJson(res, 500, { error: 'headless_operation_failed' });
+        }
+      }
+
+      const headlessQueryMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless\\/query$/);
+      if (req.method === 'POST' && headlessQueryMatch) {
+        const id = safeId(headlessQueryMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) ||
+            typeof body.action !== 'string' || (body.args != null && (typeof body.args !== 'object' || Array.isArray(body.args)))) {
+          return sendJson(res, 400, { error: 'invalid_headless_query' });
+        }
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        try {
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          if (body.expectedRevision !== undefined) {
+            if (!Number.isInteger(body.expectedRevision) || body.expectedRevision < 0) {
+              return sendJson(res, 400, { error: 'invalid_expected_revision' });
+            }
+            if (body.expectedRevision !== current.revision) {
+              return sendJson(res, 409, { error: 'revision_conflict', revision: current.revision });
+            }
+          }
+          const query = queryHeadlessWorkspace(current, body);
+          return sendJson(res, 200, { ok: true, revision: query.revision, action: query.action, result: query.result });
+        } catch (error) {
+          if (error.code === 'HEADLESS_PROJECT_NOT_FOUND') return sendJson(res, 404, { error: 'project_not_found' });
+          if (error.code === 'HEADLESS_COMPONENT_NOT_FOUND') return sendJson(res, 404, { error: 'component_not_found' });
+          if (error.code === 'HEADLESS_INVALID_QUERY') return sendJson(res, 400, { error: 'invalid_headless_query', detail: error.message });
+          console.error('workspace_headless_query_failed', id, error.message);
+          return sendJson(res, 500, { error: 'headless_query_failed' });
         }
       }
 
