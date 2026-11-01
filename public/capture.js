@@ -66,7 +66,9 @@
         positions.set(el.id, { x: x, y: y });
         contentBottom = Math.max(contentBottom, y + height);
       });
-      return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + 24)) };
+      const customHeight = Number(design && design.canvasHeight);
+      const minHeight = Number.isInteger(customHeight) && customHeight >= 100 && customHeight <= 10000 ? customHeight : 900;
+      return { positions: positions, height: Math.min(6000, Math.max(minHeight, contentBottom + 24)) };
     }
     const direction = design.layoutDirection === 'column' ? 'column' : 'row';
     const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
