@@ -125,3 +125,14 @@ The browser-independent `headless/design-templates.js` module implements the sam
 - `design.template.list` returns available templates without mutation.
 - `design.template.apply` replaces the design layers, updates the canvas background, increments the design revision, and records an undo snapshot.
 - Applying a template to a non-empty design requires `replaceExisting:true` and `approved:true`; the bridge additionally requires outer command approval. The previous design can be restored through `design.history.undo`.
+
+## Design import, export, and conversion
+
+The headless runtime now supports the CodeLab design-project backup format and the existing SVG renderer:
+
+- Read-only `design.export.json` returns the `codelab-design-project` version-1 backup, including project metadata, design layers, and code.
+- Read-only `design.export.svg` and `design.export.html` produce an SVG and a responsive HTML wrapper using the same normalized design renderer.
+- `design.import.json` validates a CodeLab JSON backup, enforces the 5 MB / 500-layer / 500,000-character code limits, sanitizes image and link sources, remaps layer IDs and internal prototype links, and creates a new project.
+- `design.convert.toWeb` changes the project to web mode, stores a responsive HTML export in its code field, and preserves the original design source.
+
+The HTML conversion currently embeds the SVG renderer output rather than reproducing every DOM-level behavior of the website's richer converter; interactive prototype navigation and semantic per-layer HTML remain a parity item.
