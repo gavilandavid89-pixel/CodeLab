@@ -1940,7 +1940,13 @@ const server = http.createServer(async (req, res) => {
           const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
           // Exact operation receipts are checked before revision matching so a lost-response retry cannot duplicate a saved change.
           const result = applyHeadlessBatch(current, body);
-          if (!result.replayed) writeState(id, result.state);
+          if (!result.replayed) {
+            const validationError = validateProjects(result.state.projects);
+            if (validationError) {
+              return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
+            }
+            writeState(id, result.state);
+          }
           return sendJson(res, 200, {
             ok: true,
             replayed: result.replayed,
