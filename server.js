@@ -375,9 +375,9 @@ function workspaceFile(id) {
 function designSystemFile(id) {
   return path.join(WORKSPACES_DIR, safeId(id) + '.design-system.json');
 }
-function readDesignSystem(id) {
+function readDesignSystemRecord(id) {
   const file = designSystemFile(id);
-  if (!fs.existsSync(file)) return null;
+  if (!fs.existsSync(file)) return { version: 2, revision: 0, updatedAt: null, settings: null };
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -389,29 +389,47 @@ function readDesignSystem(id) {
     'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'
   ];
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
-      parsed.version !== 1 || typeof parsed.updatedAt !== 'string' ||
+      ![1, 2].includes(parsed.version) || typeof parsed.updatedAt !== 'string' ||
       !Number.isFinite(Date.parse(parsed.updatedAt)) ||
+      (parsed.version === 2 && (!Number.isInteger(parsed.revision) || parsed.revision < 1)) ||
       !parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings) ||
       !requiredSettings.every(key => Object.prototype.hasOwnProperty.call(parsed.settings, key))) {
     throw new Error('design_system_state_invalid');
   }
-  return designTools.sanitizeSettings(parsed.settings);
+  return {
+    version: 2,
+    revision: parsed.version === 2 ? parsed.revision : 0,
+    updatedAt: parsed.updatedAt,
+    settings: designTools.sanitizeSettings(parsed.settings)
+  };
 }
-function writeDesignSystem(id, settings) {
+function readDesignSystem(id) {
+  return readDesignSystemRecord(id).settings;
+}
+function writeDesignSystem(id, settings, expectedRevision) {
+  const current = readDesignSystemRecord(id);
+  if (expectedRevision !== undefined && expectedRevision !== current.revision) {
+    const error = new Error('design_system_revision_conflict');
+    error.code = 'DESIGN_SYSTEM_REVISION_CONFLICT';
+    error.revision = current.revision;
+    throw error;
+  }
+  const record = {
+    version: 2,
+    revision: current.revision + 1,
+    updatedAt: new Date().toISOString(),
+    settings: settings
+  };
   const file = designSystemFile(id);
   const tmp = file + '.tmp.' + process.pid + '.' + Date.now();
   try {
-    fs.writeFileSync(tmp, JSON.stringify({
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      settings: settings
-    }), { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tmp, file);
   } catch (error) {
-    // Keep failed settings writes from leaving sensitive workspace temp files behind.
     try { fs.unlinkSync(tmp); } catch (_) {}
     throw error;
   }
+  return record;
 }
 function emptyState(owner) {
   return {
@@ -1829,6 +1847,59 @@ const server = http.createServer(async (req, res) => {
         } catch (e) {
           console.error('Google OAuth error', e.message);
           return redirect(res, '/?auth=error&reason=google');
+        }
+      }
+
+      const headlessDesignSystemMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless\\/design-system$/);
+      if (req.method === 'POST' && headlessDesignSystemMatch) {
+        const id = safeId(headlessDesignSystemMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) ||
+            !['read', 'write', 'import', 'export'].includes(body.action)) {
+          return sendJson(res, 400, { error: 'invalid_headless_design_system_request' });
+        }
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        try {
+          enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          const current = readDesignSystemRecord(id);
+          if (body.action === 'read') {
+            return sendJson(res, 200, { ok: true, ...current });
+          }
+          if (body.action === 'export') {
+            const settings = current.settings || designTools.defaults;
+            const tokens = designTools.buildDesignTokens(settings);
+            return sendJson(res, 200, {
+              ok: true, revision: current.revision, updatedAt: current.updatedAt,
+              json: tokens, css: designTools.toCssVariables(settings)
+            });
+          }
+          if (!Number.isInteger(body.baseRevision) || body.baseRevision < 0) {
+            return sendJson(res, 400, { error: 'invalid_design_system_base_revision' });
+          }
+          let settings;
+          if (body.action === 'write') {
+            if (!body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) {
+              return sendJson(res, 400, { error: 'invalid_design_system' });
+            }
+            settings = designTools.sanitizeSettings(body.settings);
+          } else {
+            if (typeof body.json !== 'string' || body.json.length < 2 || body.json.length > 10 * 1024 * 1024) {
+              return sendJson(res, 400, { error: 'invalid_design_system_json' });
+            }
+            settings = designTools.parseDesignSystemImport(body.json);
+          }
+          const saved = writeDesignSystem(id, settings, body.baseRevision);
+          return sendJson(res, 200, { ok: true, ...saved });
+        } catch (error) {
+          if (error.code === 'DESIGN_SYSTEM_REVISION_CONFLICT') {
+            return sendJson(res, 409, { error: 'design_system_revision_conflict', revision: error.revision });
+          }
+          if (error instanceof SyntaxError || /sistema visual CodeLab|colores inválidos|fuera de rango/.test(error.message || '')) {
+            return sendJson(res, 400, { error: 'invalid_design_system_json', detail: error.message });
+          }
+          console.error('workspace_headless_design_system_failed', id, error.message);
+          return sendJson(res, 500, { error: 'headless_design_system_failed' });
         }
       }
 
