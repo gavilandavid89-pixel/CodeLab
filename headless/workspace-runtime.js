@@ -97,7 +97,14 @@ function applyOperation(state, operation) {
       const result = createDesignEngine().transact(project, operation.operations, { expectedRevision: operation.expectedDesignRevision });
       Object.assign(project, result.project);
       project.updatedAt = new Date().toISOString();
-      return { type: operation.type, projectId: project.id, designRevision: result.revision, operationResults: result.results, previewSvg: result.svg };
+      return {
+        type: operation.type,
+        projectId: project.id,
+        designRevision: result.revision,
+        operationCount: result.results.length,
+        operationTypes: result.results.map(item => item.type),
+        previewSvg: result.svg
+      };
     }
     case 'design.flow.connect': {
       const sourceProject = findProject(state, operation.sourceProjectId);
