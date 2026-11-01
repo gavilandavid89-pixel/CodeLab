@@ -125,8 +125,8 @@ assert.doesNotMatch(conversionHandler, /beforeIds|projects\.find\(item => !befor
   'conversion must not expect the app to create a separate project when it converts the existing project in place');
 
 const projectCreateHandler = bridge.slice(
-  bridge.indexOf("command.action === 'project_create'"),
-  bridge.indexOf("command.action === 'project_duplicate'", bridge.indexOf("command.action === 'project_create'"))
+  bridge.indexOf("else if (command.action === 'project_create')"),
+  bridge.indexOf("else if (command.action === 'project_duplicate')", bridge.indexOf("else if (command.action === 'project_create')"))
 );
 assert.match(projectCreateHandler, /serverSyncStatus !== 'Sincronizado'/,
   'project creation must not report success from a local snapshot without confirmed server sync');
