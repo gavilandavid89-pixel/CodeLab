@@ -197,3 +197,13 @@ test('deleting a layer also removes its visual-flow connection', () => {
   assert.deepEqual(result.project.design.flowConnections, []);
 });
 
+
+test('preserves the editor flow navigation role', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'button', id: 'nav', properties: { text: 'Go' } },
+    { type: 'element.update', id: 'nav', properties: { flowRole: 'navigate' } }
+  ]);
+  assert.equal(result.project.design.elements[0].flowRole, 'navigate');
+});
+
