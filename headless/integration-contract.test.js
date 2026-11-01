@@ -103,3 +103,15 @@ test('headless design templates use responsive shared data and protect layer rep
   assert.match(server, /template_replace_requires_approval/);
   assert.match(server, /template_not_found/);
 });
+
+test('headless design import export and conversion use the shared design renderer', () => {
+  assert.match(runtime, /require\(['"]\.\/design-export['"]\)/);
+  assert.match(runtime, /case 'design\.import\.json'/);
+  assert.match(runtime, /case 'design\.convert\.toWeb'/);
+  assert.match(runtime, /case 'design\.export\.json'/);
+  assert.match(runtime, /case 'design\.export\.svg'/);
+  assert.match(runtime, /case 'design\.export\.html'/);
+  assert.match(bridge, /'design\.export\.json', 'design\.export\.svg', 'design\.export\.html'/);
+  assert.match(server, /invalid_design_import/);
+  assert.match(server, /design_export_too_large/);
+});
