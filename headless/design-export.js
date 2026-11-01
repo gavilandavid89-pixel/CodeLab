@@ -24,7 +24,7 @@ function safeColor(value, fallback) {
 }
 
 function safeImageSource(value) {
-  if (typeof value !== 'string' || value.length > MAX_IMAGE_BYTES * 1.5) return '';
+  if (typeof value !== 'string' || value.length > MAX_IMAGE_BYTES) return '';
   if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(value)) return value;
   try {
     const url = new URL(value);
