@@ -252,7 +252,7 @@ function validateProperties(properties) {
       if (key === 'src') assert(isSafeImageSource(value), 'src must be a safe image URL or image data URL.');
       if (key === 'objectFit') assert(['contain', 'cover', 'fill'].includes(value), 'objectFit must be contain, cover, or fill.');
       if (key === 'textAlign') assert(['left', 'center', 'right'].includes(value), 'textAlign must be left, center, or right.');
-      if (key === 'flowRole') assert(['', 'menu'].includes(value), 'flowRole is not supported by the headless engine.');
+      if (key === 'flowRole') assert(['', 'menu', 'navigate'].includes(value), 'flowRole is not supported by the headless engine.');
     } else if (['visible', 'locked'].includes(key)) {
       assert(typeof value === 'boolean', key + ' must be boolean.');
     }
