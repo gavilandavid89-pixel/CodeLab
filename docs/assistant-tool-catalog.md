@@ -109,9 +109,11 @@ Supported runtime operations:
 - **project.create**: create a web or design project; the runtime generates a stable project ID when omitted.
 - **project.rename**: rename an existing project while preserving its ID and content.
 - **project.duplicate**: copy an existing project into a new ID without carrying an active copy branch or merge-undo history.
-- **web.code.write**: update selected HTML/CSS/JS fields on a web project or existing copy branch.
-- **design.batch**: apply canvas and layer operations through the shared headless design engine, including an SVG preview result.
+- **project.delete**: permanently delete a project only with explicit approval and remove incoming visual-flow links.
+- **web.code.write**: replace, append, or prepend bounded HTML/CSS/JS chunks on a web project or existing copy branch.
+- **design.batch**: apply canvas, grid, Auto Layout, layer, alignment, distribution, duplication, reordering, and deletion operations through the shared headless design engine, including an SVG preview result.
+- **design.flow.connect / design.flow.disconnect**: create or remove navigation links between design projects.
 
-Every batch supplies base_revision, operation_id, and 1–100 operations. Workspace revision conflicts return HTTP 409; exact retries with the same operation ID and payload replay the prior result without applying changes twice; reusing an ID with different content is rejected. Receipt records are bounded and remain server-side. Failed batches are atomic and do not partially modify the workspace.
+Every batch supplies base_revision, operation_id, and 1–100 operations. Workspace revision conflicts return HTTP 409; exact retries with the same operation ID and payload replay the prior result without applying changes twice; reusing an ID with different content is rejected. Large code fields can be written in ordered chunks, up to the same 500,000-character field limit enforced by the workspace validator. Receipt records are bounded and remain server-side. Failed batches are atomic and do not partially modify the workspace.
 
 After the server accepts a batch, the bridge reads the workspace back through the existing authenticated web session and opens the affected project in the regular CodeLab UI for visual evidence. The bridge is therefore the delivery/verification path, not the editing engine itself. No Render deployment or production mutation is implied by CI success; live verification requires the updated server and bridge to be deployed.
