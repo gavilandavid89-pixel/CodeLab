@@ -14,7 +14,7 @@ The engine accepts existing CodeLab projects with `type: "design"` and the exist
 - tablet: 768 × 1024
 - mobile: 390 × 844
 
-A project may additionally persist an explicit `design.canvas` object with custom pixel dimensions. This is independent of individual layer dimensions and does not overwrite the legacy `frame` field.
+Custom canvas dimensions use CodeLab's existing `design.canvasWidth` and `design.canvasHeight` fields (the same fields consumed by the editor and capture pipeline). The engine also returns a structured `design.canvas` view for its own inspection API; the scalar fields remain synchronized for compatibility. Canvas width is capped at 4,000 px and height at 10,000 px. These dimensions are independent of individual layer geometry and do not overwrite the legacy `frame` preset.
 
 ## API
 
@@ -44,7 +44,7 @@ Supported operations:
 
 `transact` is immutable from the caller's perspective: it works on a cloned project and returns a new project. A failed batch returns no partial project. Optional `expectedRevision` provides optimistic concurrency protection; stale writes fail with `REVISION_CONFLICT`. Each successful batch increments `design.revision` once.
 
-The current first cut caps designs at 200 layers, batches at 500 operations, and canvas dimensions at 10,000 px per side. The SVG renderer escapes text/attributes and skips hidden layers.
+The current first cut caps designs at 200 layers, batches at 500 operations, canvas width at 4,000 px, and height at 10,000 px. The SVG renderer escapes text/attributes, validates paint colors and URL schemes, preserves text alignment/rotation/image fit, and skips hidden layers.
 
 ## Important integration boundary
 
@@ -63,4 +63,4 @@ node --check headless/design-engine.js
 node --test headless/design-engine.test.js
 ```
 
-The tests cover legacy compatibility, custom 720 × 1600 canvas dimensions, add/update/delete, optimistic revision conflicts, atomic rollback, property allowlisting, size limits, and SVG escaping.
+The tests cover legacy and editor-schema canvas compatibility, custom 720 × 1600 dimensions, add/update/delete, text alignment and rotation, optimistic revision conflicts, atomic rollback, property allowlisting, size limits, safe image/link/color handling, and SVG escaping.
