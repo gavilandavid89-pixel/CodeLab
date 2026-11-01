@@ -105,3 +105,15 @@ The separate workspace design-system store is now available without the editor t
 - `export` returns the canonical JSON token object and generated CSS variables.
 
 Design-system settings have their own monotonic revision, separate from the project workspace revision, so changing tokens does not pretend that project code changed. Stale writes return HTTP 409. The bridge action `headless_design_system` exposes read/export directly and requires explicit approval for write/import; it reads the saved settings back after a mutation before reporting success. The UI import handler now calls the same pure `parseDesignSystemImport` function, avoiding divergent validation logic.
+
+## Branch lifecycle and design undo/redo
+
+Headless batches now support the website's isolated web-project branch model:
+
+- `branch.create` snapshots the current main HTML/CSS/JS into `baseCode` and a working `code` copy.
+- Existing branch code can be edited through `web.code.write` with `source: "branch"`.
+- `branch.merge` applies the same three-way per-file merge rule as the website. Non-overlapping main/branch changes merge; conflicting edits return HTTP 409 and leave both sides untouched. Merge writes a bounded backup containing main code and branch state.
+- `branch.undo_merge` restores the previous main code and the saved branch. Merge and undo require explicit approval.
+- `branch.inspect` reports branch metadata and backup count without returning large code bodies.
+
+Design batches now save the prior design snapshot into the same `designUndoStack` / `designRedoStack` fields used by CodeLab. `design.history.undo` and `design.history.redo` restore those snapshots while keeping design revisions monotonic, preventing an undo from making stale revision numbers valid again. `design.history.inspect` reports available history without changing state.
