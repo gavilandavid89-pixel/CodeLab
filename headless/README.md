@@ -44,7 +44,7 @@ Supported operations:
 
 `transact` is immutable from the caller's perspective: it works on a cloned project and returns a new project. A failed batch returns no partial project. Optional `expectedRevision` provides optimistic concurrency protection; stale writes fail with `REVISION_CONFLICT`. Each successful batch increments `design.revision` once.
 
-The current first cut caps designs at 200 layers, batches at 500 operations, canvas width at 4,000 px, and height at 10,000 px. The SVG renderer escapes text/attributes, validates paint colors and URL schemes, preserves text alignment/rotation/image fit, and skips hidden layers.
+The current first cut caps designs at 500 layers, batches at 500 operations, canvas width at 4,000 px, and height at 10,000 px. The SVG renderer escapes text/attributes, validates paint colors and URL schemes, preserves text alignment/rotation/image fit, and skips hidden layers.
 
 ## Important integration boundary
 
