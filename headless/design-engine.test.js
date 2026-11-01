@@ -16,6 +16,8 @@ test('normalizes a legacy project without changing the original', () => {
   const original = project();
   const normalized = normalizeDesignProject(original);
   assert.deepEqual(normalized.design.canvas, { width: 390, height: 844, unit: 'px' });
+  assert.equal(normalized.design.canvasWidth, 390);
+  assert.equal(normalized.design.canvasHeight, 844);
   assert.equal(original.design.canvas, undefined);
 });
 
@@ -28,6 +30,8 @@ test('sets an arbitrary canvas size independent of element dimensions', () => {
   const engine = createDesignEngine();
   const result = engine.transact(project(), [{ type: 'canvas.set', width: 720, height: 1600 }]);
   assert.deepEqual(result.project.design.canvas, { width: 720, height: 1600, unit: 'px' });
+  assert.equal(result.project.design.canvasWidth, 720);
+  assert.equal(result.project.design.canvasHeight, 1600);
   assert.match(result.svg, /width="720" height="1600" viewBox="0 0 720 1600"/);
 });
 
@@ -40,6 +44,7 @@ test('adds and updates layers through one atomic transaction', () => {
   const layer = result.project.design.elements[0];
   assert.deepEqual([layer.x, layer.y, layer.width, layer.height, layer.background], [12, 34, 720, 1600, '#123456']);
   assert.equal(result.revision, 1);
+  assert.match(result.svg, /text-anchor="middle"/);
 });
 
 test('rejects stale revisions before applying mutations', () => {
@@ -92,3 +97,43 @@ test('deletes only the requested stable layer id', () => {
   ] }), [{ type: 'element.delete', id: 'a' }]);
   assert.deepEqual(result.project.design.elements.map(layer => layer.id), ['b']);
 });
+
+test('reads existing editor canvasWidth and canvasHeight fields as authoritative', () => {
+  const normalized = normalizeDesignProject(project({ canvasWidth: 720, canvasHeight: 1600, canvas: { width: 390, height: 844 } }));
+  assert.equal(normalized.design.canvas.width, 720);
+  assert.equal(normalized.design.canvas.height, 1600);
+});
+
+test('preserves existing editor text alignment and rotation in SVG', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'heading', id: 'centered', properties: { text: 'Hola', textAlign: 'center', rotation: 12 } }
+  ]);
+  assert.match(result.svg, /text-anchor="middle"/);
+  assert.match(result.svg, /transform="rotate\(12 /);
+});
+
+test('rejects unsafe colors, href schemes, and image sources', () => {
+  const engine = createDesignEngine();
+  assert.throws(() => engine.transact(project(), [
+    { type: 'element.add', elementType: 'rectangle', id: 'bad-color', properties: { background: 'url(javascript:alert(1))' } }
+  ]), /safe CSS color/);
+  assert.throws(() => engine.transact(project(), [
+    { type: 'element.add', elementType: 'button', id: 'bad-link', properties: { href: 'javascript:alert(1)' } }
+  ]), /safe URL scheme/);
+  assert.throws(() => engine.transact(project(), [
+    { type: 'element.add', elementType: 'image', id: 'bad-image', properties: { src: 'javascript:alert(1)' } }
+  ]), /safe image URL/);
+});
+
+test('supports safe image URLs and text alignment from saved design layers', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'image', id: 'hero', properties: { src: 'https://images.example.test/hero.png', objectFit: 'contain' } },
+    { type: 'element.add', elementType: 'text', id: 'copy', properties: { text: 'Centered', textAlign: 'right' } }
+  ]);
+  assert.match(result.svg, /<image href="https:\/\/images\.example\.test\/hero\.png"/);
+  assert.match(result.svg, /preserveAspectRatio="xMidYMid meet"/);
+  assert.match(result.svg, /text-anchor="end"/);
+});
+
