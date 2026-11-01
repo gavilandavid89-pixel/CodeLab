@@ -136,3 +136,16 @@ The headless runtime now supports the CodeLab design-project backup format and t
 - `design.convert.toWeb` changes the project to web mode, stores a responsive HTML export in its code field, and preserves the original design source.
 
 The HTML conversion currently embeds the SVG renderer output rather than reproducing every DOM-level behavior of the website's richer converter; interactive prototype navigation and semantic per-layer HTML remain a parity item.
+
+## Headless AI code generation and provider feedback
+
+The bridge action `headless_ai_generate` performs AI generation without opening the editor or clicking UI controls:
+
+1. Reads the saved main/branch code through the authenticated headless query API and checks the workspace revision before any provider call.
+2. Uses the same `/api/ai/complete` proxy and the user's saved `aiSettings` (or the configured server key). The user's API key is never returned in the bridge result.
+3. Splits generated HTML/CSS/JS into bounded 50,000-character writes and saves them through the authenticated headless batch API.
+4. Reads the saved code back and verifies the result.
+
+The action requires explicit approval because it changes code and consumes provider quota. It supports a caller-supplied operation ID and a SHA-256 request fingerprint stored in the private workspace receipt. A retry after a lost response checks that receipt first, so it does not call the provider again; reusing the ID for a different prompt/configuration is rejected.
+
+The AI proxy now returns provider-reported token usage and recognized rate-limit headers when the provider supplies them. CodeLab's own default rate limit is 20 requests per minute per client IP and returns a 60-second retry hint. Provider daily quotas are not universally queryable; when the provider sends no quota headers, Headless reports them as unavailable rather than inventing a remaining quota. No automatic retry is made after a 429.
