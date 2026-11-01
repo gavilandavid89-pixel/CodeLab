@@ -117,3 +117,12 @@ Supported runtime operations:
 Every batch supplies base_revision, operation_id, and 1–100 operations. Workspace revision conflicts return HTTP 409; exact retries with the same operation ID and payload replay the prior result without applying changes twice; reusing an ID with different content is rejected. Large code fields can be written in ordered chunks, up to the same 500,000-character field limit enforced by the workspace validator. Receipt records are bounded and remain server-side. Failed batches are atomic and do not partially modify the workspace.
 
 After the server accepts a batch, the bridge reads the workspace back through the existing authenticated web session and opens the affected project in the regular CodeLab UI for visual evidence. The bridge is therefore the delivery/verification path, not the editing engine itself. No Render deployment or production mutation is implied by CI success; live verification requires the updated server and bridge to be deployed.
+
+## Section 15 — Headless component insertion and design-token application
+
+The direct headless workspace runtime now exposes two operations backed by the same browser-independent modules used by the website:
+
+- `component.insert` resolves a real component from `public/component-library.js`, inserts its HTML into a web project, and writes a stable component marker. The marker prevents duplicate insertion even if a caller retries using a different operation ID.
+- `design.tokens.apply` sanitizes settings and uses `public/design-tools.js` to generate CSS variables and replace only the managed token block, preserving unmanaged CSS.
+
+Both operations run in an atomic authenticated workspace batch, respect the canonical 500,000-character project-field limit, and persist through the existing workspace path. This does not yet expose the separate workspace-level design-system settings file for headless read/import/save; that remains explicitly pending.
