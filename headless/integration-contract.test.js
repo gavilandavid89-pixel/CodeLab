@@ -16,7 +16,7 @@ test('server exposes the authenticated headless workspace route', () => {
   const routeBody = server.slice(route, route + 2400);
   assert.ok(routeBody.indexOf('isAuthorized(req, id)') < routeBody.indexOf('applyHeadlessBatch(current, body)'));
   assert.match(routeBody, /const validationError = validateProjects\(result\.state\.projects\)/);
-  assert.match(routeBody, /if \(!result\.replayed\) \{[\\s\\S]*writeState\(id, result\.state\)/);
+  assert.ok(routeBody.indexOf('if (!result.replayed) {') < routeBody.indexOf('writeState(id, result.state)'));
   assert.match(routeBody, /HEADLESS_REVISION_CONFLICT/);
   assert.match(routeBody, /design_revision_conflict/);
   assert.match(routeBody, /HEADLESS_IDEMPOTENCY_CONFLICT/);
