@@ -40,3 +40,17 @@ test('bridge requires admin session and sends a headless batch to the web server
   assert.match(bridge, /project\.delete.*command\.approval !== 'approved'/s);
   assert.match(bridge, /projects\.some\(item => item && item\.id === visibleProjectId\)/);
 });
+
+test('server and bridge expose authenticated read-only headless queries without editor clicks', () => {
+  assert.match(server, /queryHeadlessWorkspace/);
+  const route = server.indexOf('const headlessQueryMatch = pathname.match');
+  assert.notEqual(route, -1);
+  const routeBody = server.slice(route, route + 2600);
+  assert.ok(routeBody.indexOf('isAuthorized(req, id)') < routeBody.indexOf('queryHeadlessWorkspace(current, body)'));
+  assert.match(routeBody, /expectedRevision/);
+  assert.doesNotMatch(routeBody, /writeState\(id/);
+  assert.match(bridge, /'headless_batch', 'headless_query'/);
+  assert.match(bridge, /command.action === 'headless_query'/);
+  assert.match(bridge, /\/headless\/query/);
+  assert.match(bridge, /readOnly: true/);
+});
