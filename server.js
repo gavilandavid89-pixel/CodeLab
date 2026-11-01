@@ -1705,6 +1705,10 @@ const server = http.createServer(async (req, res) => {
         if (code.html.length + code.css.length + code.js.length > 200000) {
           return sendJson(res, 413, { error: 'code_too_large' });
         }
+        const requestedMaxTokens = body && body.maxTokens !== undefined ? body.maxTokens : AI_MAX_TOKENS;
+        if (!Number.isInteger(requestedMaxTokens) || requestedMaxTokens < 256 || requestedMaxTokens > AI_MAX_TOKENS) {
+          return sendJson(res, 400, { error: 'invalid_max_tokens', maxAllowed: AI_MAX_TOKENS });
+        }
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
         if (clientKey.length > 4096) {
           return sendJson(res, 400, { error: 'invalid_api_key' });
@@ -1753,7 +1757,7 @@ const server = http.createServer(async (req, res) => {
             model,
             messages,
             temperature: 0.1,
-            maxTokens: AI_MAX_TOKENS,
+            maxTokens: requestedMaxTokens,
             publicUrl: publicBaseUrl(req)
           });
           const result = parseAiJsonContent(content, code);
@@ -1766,7 +1770,8 @@ const server = http.createServer(async (req, res) => {
             model: providerModel || model,
             via: usingServerKey ? 'server' : 'client-key',
             usage,
-            rateLimit
+            rateLimit,
+            maxTokens: requestedMaxTokens
           });
         } catch (e) {
           console.error('AI proxy error:', e.message, e.body || '');
