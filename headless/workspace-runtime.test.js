@@ -541,3 +541,23 @@ test('converts a design project to a web project while preserving its design sou
   assert.equal(converted.code.css, '');
   assert.equal(converted.code.js, '');
 });
+
+test('records and verifies an AI request fingerprint for idempotent headless retries', () => {
+  const requestKey = 'a'.repeat(64);
+  const saved = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'web.code.write', projectId: 'proj_web1', html: '<h1>Generated</h1>', mode: 'replace', headlessAiRequestKey: requestKey }
+  ], { operationId: 'test_ai_0001' }));
+  const status = queryHeadlessWorkspace(saved.state, { action: 'headless.operation.status', args: {
+    operationId: 'test_ai_0001', requestKey
+  } });
+  assert.equal(status.result.found, true);
+  assert.equal(status.result.revision, saved.revision);
+  assert.equal(status.result.requestKey, requestKey);
+  assert.throws(() => queryHeadlessWorkspace(saved.state, { action: 'headless.operation.status', args: {
+    operationId: 'test_ai_0001', requestKey: 'b'.repeat(64)
+  } }), error => error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT');
+  const missing = queryHeadlessWorkspace(saved.state, { action: 'headless.operation.status', args: {
+    operationId: 'test_ai_0002', requestKey: 'c'.repeat(64)
+  } });
+  assert.equal(missing.result.found, false);
+});
