@@ -145,6 +145,8 @@ assert.match(importHandler, /localSnapshotVerified/, 'design JSON import must ve
 
 const systemExportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_export_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_export_json') {")));
 assert.match(bridge, /'design_system_import_json', 'design_system_export_json'/, 'design system JSON export must be explicitly allowlisted');
+assert.match(systemExportHandler, /locator\('#openDesignTools'\)\.click/, 'design system JSON export must open the real design tools modal first');
+assert.match(systemExportHandler, /locator\('#designToolsModal'\)\.waitFor\(\{ state: 'visible'/, 'design system JSON export must wait for the modal to become visible');
 assert.match(systemExportHandler, /locator\('#exportDesignSystemJson'\)\.click/, 'design system JSON export must use the actual export control');
 assert.match(systemExportHandler, /waitForEvent\('download'/, 'design system JSON export must capture the real browser download');
 assert.match(systemExportHandler, /parsed\.format !== 'codelab-design-system'/, 'design system JSON export must validate the exported schema');
