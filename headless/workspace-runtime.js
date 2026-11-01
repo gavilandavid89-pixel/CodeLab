@@ -383,6 +383,24 @@ function queryHeadlessWorkspace(inputState, request) {
       result = { html: designExport.exportDesignHtml(project) };
       break;
     }
+    case 'headless.operation.status': {
+      assert(typeof args.operationId === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(args.operationId),
+        'headless.operation.status requires a valid operationId.', 'HEADLESS_INVALID_QUERY');
+      const requestKey = args.requestKey;
+      if (requestKey !== undefined) {
+        assert(typeof requestKey === 'string' && /^[a-f0-9]{64}$/i.test(requestKey),
+          'headless.operation.status requestKey must be a SHA-256 hex digest.', 'HEADLESS_INVALID_QUERY');
+      }
+      const receipts = Array.isArray(inputState.headlessOperations) ? inputState.headlessOperations : [];
+      const previous = receipts.find(item => item && item.id === args.operationId);
+      if (previous && requestKey !== undefined && previous.requestKey !== requestKey) {
+        assert(false, 'operationId was already used for a different request.', 'HEADLESS_IDEMPOTENCY_CONFLICT');
+      }
+      result = previous
+        ? { found: true, revision: previous.revision, requestKey: previous.requestKey || null, results: clone(previous.results || []) }
+        : { found: false, revision: inputState.revision };
+      break;
+    }
     case 'design.template.list': {
       result = clone(TEMPLATE_INFO);
       break;
@@ -580,7 +598,9 @@ function applyHeadlessBatch(inputState, request) {
     delete compact.previewSvg;
     return compact;
   });
-  state.headlessOperations = receipts.concat([{ id: request.operationId, hash: operationHash, revision: state.revision, results: receiptResults }]).slice(-MAX_RECEIPTS);
+  const requestKey = request.operations[0] && request.operations[0].headlessAiRequestKey;
+  if (requestKey !== undefined) assert(typeof requestKey === 'string' && /^[a-f0-9]{64}$/i.test(requestKey), 'headlessAiRequestKey must be a SHA-256 hex digest.');
+  state.headlessOperations = receipts.concat([{ id: request.operationId, hash: operationHash, revision: state.revision, requestKey: requestKey || null, results: receiptResults }]).slice(-MAX_RECEIPTS);
   return { state, replayed: false, revision: state.revision, results };
 }
 
