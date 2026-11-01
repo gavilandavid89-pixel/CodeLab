@@ -220,3 +220,12 @@ PR #170 moved all layer ordering, alignment/distribution, prototype-target, layo
 - Valid import through the actual `#designSystemJsonFile` input changed all 13 tracked design-system fields (name, palette, contrast colors, base font, ratio, spacing and radius), reported `imported: true`, and announced local save ([live test #307](https://github.com/gavilandavid89-pixel/CodeLab/issues/307)). A follow-up import restored the default visual-system values after the test ([#309](https://github.com/gavilandavid89-pixel/CodeLab/issues/309)).
 - Incompatible JSON was rejected with `imported: false`, `rejected: true`, no changed fields, and a clear UI error ([negative test #308](https://github.com/gavilandavid89-pixel/CodeLab/issues/308)).
 - This validates the import control and its field validation against the live app. It does not yet verify durable server-side sync after a page reload or workspace restart; the success message itself says syncing is still in progress.
+
+
+### Live regression — design-system JSON export and roundtrip (2026-11-01)
+
+- Added `design_system_export_json` to the assistant bridge. The action opens the design-tools modal, selects the Tokens tab, triggers the actual `#exportDesignSystemJson` browser download, parses the downloaded file, and checks the `codelab-design-system` schema.
+- The first live attempt exposed two real UI-state requirements: the button is inside a hidden modal and on the Tokens tab, not the default tab. Both were corrected in [PR #314](https://github.com/gavilandavid89-pixel/CodeLab/pull/314) and [PR #316](https://github.com/gavilandavid89-pixel/CodeLab/pull/316); both CI runs passed.
+- Live export succeeded with filename `codelab-design-system.json`, 2,352 characters, valid JSON, format `codelab-design-system`, version 1, 8 spacing tokens, 4 radius tokens and `truncated: false` ([#317](https://github.com/gavilandavid89-pixel/CodeLab/issues/317)).
+- Roundtrip test reused that actual exported JSON, changed only the system name and primary color, then imported it via the real file-input handler. The import succeeded and the changed fields were exactly `systemName` and `colorPrimary` ([#318](https://github.com/gavilandavid89-pixel/CodeLab/issues/318)). A second import restored the original exported values ([#319](https://github.com/gavilandavid89-pixel/CodeLab/issues/319)).
+- Remaining limitation: the UI reports that the settings are saved locally and syncing is in progress; this test does not yet establish durable server-side sync or reload/restart persistence.
