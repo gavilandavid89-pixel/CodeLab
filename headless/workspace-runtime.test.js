@@ -322,3 +322,92 @@ test('rejects invalid headless query types and unknown components', () => {
   assert.throws(() => queryHeadlessWorkspace(state(), { action: 'not.real', args: {} }), error => error.code === 'HEADLESS_INVALID_QUERY');
   assert.throws(() => queryHeadlessWorkspace(state(), { action: 'component.inspect', args: { componentId: 'not-real' } }), error => error.code === 'HEADLESS_COMPONENT_NOT_FOUND');
 });
+
+test('creates an isolated branch, performs a three-way merge, and can undo it', () => {
+  const initial = state([webProject()]);
+  const created = applyHeadlessBatch(initial, request([
+    { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_work1' }
+  ], { operationId: 'test_branch_01' }));
+  assert.equal(created.state.projects[0].branch.id, 'branch_work1');
+  assert.deepEqual(created.state.projects[0].branch.code, initial.projects[0].code);
+
+  const edited = applyHeadlessBatch(created.state, request([
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'branch', html: '<h1>Branch work</h1>' },
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'main', css: 'body{color:navy}' }
+  ], { operationId: 'test_branch_02', baseRevision: 4 }));
+  const merged = applyHeadlessBatch(edited.state, request([
+    { type: 'branch.merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_branch_03', baseRevision: 5 }));
+  assert.equal(merged.state.projects[0].code.html, '<h1>Branch work</h1>');
+  assert.equal(merged.state.projects[0].code.css, 'body{color:navy}');
+  assert.equal(merged.state.projects[0].branch, undefined);
+  assert.equal(merged.state.projects[0].mergeHistory.length, 1);
+
+  const undone = applyHeadlessBatch(merged.state, request([
+    { type: 'branch.undo_merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_branch_04', baseRevision: 6 }));
+  assert.equal(undone.state.projects[0].code.html, '<main>old</main>');
+  assert.equal(undone.state.projects[0].code.css, '');
+  assert.equal(undone.state.projects[0].branch.id, 'branch_work1');
+  assert.equal(undone.state.projects[0].branch.code.html, '<h1>Branch work</h1>');
+  assert.equal(undone.state.projects[0].mergeHistory.length, 0);
+});
+
+test('rejects conflicting branch merges without changing main or branch data', () => {
+  const created = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_conflict' }
+  ], { operationId: 'test_branch_11' }));
+  const edited = applyHeadlessBatch(created.state, request([
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'branch', html: '<h1>Branch</h1>' },
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'main', html: '<h1>Main</h1>' }
+  ], { operationId: 'test_branch_12', baseRevision: 4 }));
+  assert.throws(() => applyHeadlessBatch(edited.state, request([
+    { type: 'branch.merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_branch_13', baseRevision: 5 })), error => {
+    assert.equal(error.code, 'HEADLESS_BRANCH_CONFLICT');
+    assert.deepEqual(error.conflicts, ['HTML']);
+    return true;
+  });
+  assert.equal(edited.state.projects[0].code.html, '<h1>Main</h1>');
+  assert.equal(edited.state.projects[0].branch.code.html, '<h1>Branch</h1>');
+});
+
+test('records persistent design undo/redo history and keeps design revisions monotonic', () => {
+  const created = applyHeadlessBatch(state([designProject()]), request([
+    { type: 'design.batch', projectId: 'proj_design1', expectedDesignRevision: 0, operations: [
+      { type: 'element.add', elementType: 'rectangle', id: 'el_box', properties: { x: 10, y: 20, width: 100, height: 80 } }
+    ] }
+  ]));
+  assert.equal(created.state.projects[0].designUndoStack.length, 1);
+  assert.equal(created.state.projects[0].design.elements.length, 1);
+
+  const undone = applyHeadlessBatch(created.state, request([
+    { type: 'design.history.undo', projectId: 'proj_design1' }
+  ], { operationId: 'test_history_02', baseRevision: 4 }));
+  assert.equal(undone.state.projects[0].design.elements.length, 0);
+  assert.equal(undone.state.projects[0].design.revision, 2);
+  assert.equal(undone.state.projects[0].designRedoStack.length, 1);
+
+  const redone = applyHeadlessBatch(undone.state, request([
+    { type: 'design.history.redo', projectId: 'proj_design1' }
+  ], { operationId: 'test_history_03', baseRevision: 5 }));
+  assert.equal(redone.state.projects[0].design.elements.length, 1);
+  assert.equal(redone.state.projects[0].design.revision, 3);
+  assert.equal(redone.state.projects[0].designUndoStack.length, 1);
+});
+
+test('queries branch and design history state without mutating the workspace', () => {
+  const project = webProject();
+  project.branch = { id: 'branch_inspect', baseCode: project.code, code: { html: 'draft', css: '', js: '' }, updatedAt: '2026-11-01T00:00:00Z' };
+  const design = designProject();
+  design.designUndoStack = ['{}'];
+  const original = state([project, design]);
+  const before = JSON.stringify(original);
+  const branch = queryHeadlessWorkspace(original, { action: 'branch.inspect', args: { projectId: project.id } });
+  assert.equal(branch.result.exists, true);
+  assert.equal(branch.result.branch.id, 'branch_inspect');
+  const history = queryHeadlessWorkspace(original, { action: 'design.history.inspect', args: { projectId: design.id } });
+  assert.equal(history.result.canUndo, true);
+  assert.equal(history.result.canRedo, false);
+  assert.equal(JSON.stringify(original), before);
+});
