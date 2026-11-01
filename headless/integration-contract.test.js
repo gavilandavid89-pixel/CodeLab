@@ -81,3 +81,15 @@ test('headless design-system bridge requires approval and exposes the revisioned
   assert.match(server, /revision: current\.revision \+ 1/);
   assert.match(server, /parseDesignSystemImport\(body\.json\)/);
 });
+
+test('headless branch merge and design history are exposed with approval and conflict semantics', () => {
+  assert.match(runtime, /case 'branch.create'/);
+  assert.match(runtime, /case 'branch.merge'/);
+  assert.match(runtime, /case 'branch.undo_merge'/);
+  assert.match(runtime, /case 'design.history.undo'/);
+  assert.match(runtime, /case 'design.history.redo'/);
+  assert.match(server, /HEADLESS_BRANCH_CONFLICT/);
+  assert.match(server, /branch_merge_conflict/);
+  assert.match(bridge, /Headless branch merge\/undo requires approval/);
+  assert.match(bridge, /'branch.inspect', 'design.history.inspect'/);
+});
