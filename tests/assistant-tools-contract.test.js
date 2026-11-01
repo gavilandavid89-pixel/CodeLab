@@ -139,5 +139,5 @@ assert.match(projectCreateHandler, /serverReadbackVerified/,
 const importHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_import_json') {"), bridge.indexOf("} else if (command.action === 'project_export_html') {", bridge.indexOf("} else if (command.action === 'design_import_json') {")));
 assert.match(bridge, /'design_export', 'design_import_json'/, 'design JSON import must be explicitly allowlisted');
 assert.match(bridge, /design_import_json requires a JSON string between 2 and 10000 characters/, 'design JSON import must enforce a bounded payload');
-assert.match(importHandler, /setInputFiles\([\s\S]{0,300}designProjectJsonFile/, 'design JSON import must use the actual file input and app import handler');
+assert.match(importHandler, /locator\('#designProjectJsonFile'\)\.setInputFiles/, 'design JSON import must use the actual file input and app import handler');
 assert.match(importHandler, /localSnapshotVerified/, 'design JSON import must verify the imported project in the local snapshot');
