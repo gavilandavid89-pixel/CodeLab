@@ -17,6 +17,7 @@ test('server exposes the authenticated headless workspace route', () => {
   assert.ok(routeBody.indexOf('isAuthorized(req, id)') < routeBody.indexOf('applyHeadlessBatch(current, body)'));
   assert.match(routeBody, /if \(!result\.replayed\) writeState\(id, result\.state\)/);
   assert.match(routeBody, /HEADLESS_REVISION_CONFLICT/);
+  assert.match(routeBody, /design_revision_conflict/);
   assert.match(routeBody, /HEADLESS_IDEMPOTENCY_CONFLICT/);
 });
 
@@ -35,4 +36,6 @@ test('bridge requires admin session and sends a headless batch to the web server
   assert.match(bridge, /\/api\/workspace\/'\s*\+\s*encodeURIComponent\(workspaceId\)\s*\+\s*'\/headless/);
   assert.match(bridge, /refreshWorkspaceFromServer\(\)/);
   assert.match(bridge, /openProject\(visibleProjectId\)/);
+  assert.match(bridge, /project\.delete.*command\.approval !== 'approved'/s);
+  assert.match(bridge, /projects\.some\(item => item && item\.id === visibleProjectId\)/);
 });
