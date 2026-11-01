@@ -1975,7 +1975,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const headlessQueryMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless\\/query$/);
+      const headlessQueryMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/query$/);
       if (req.method === 'POST' && headlessQueryMatch) {
         const id = safeId(headlessQueryMatch[1]);
         const body = await readBody(req);
