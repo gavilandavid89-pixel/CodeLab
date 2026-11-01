@@ -37,7 +37,7 @@ function applyOperation(state, operation) {
       const type = operation.projectType || 'web';
       assert(type === 'web' || type === 'design', 'Project type must be web or design.');
       const now = new Date().toISOString();
-      const project = { id: operation.projectId, name: operation.name.trim(), type, code: { html: '', css: '', js: '' }, createdAt: now, updatedAt: now };
+      const project = { id: projectId, name: operation.name.trim(), type, code: { html: '', css: '', js: '' }, createdAt: now, updatedAt: now };
       if (type === 'design') project.design = {
         frame: 'desktop', background: '#ffffff', canvasWidth: 1440, canvasHeight: 900, elements: [], revision: 0
       };
