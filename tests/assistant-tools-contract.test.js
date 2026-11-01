@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
+const app = fs.readFileSync('public/app.js', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
   'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
@@ -64,6 +65,14 @@ assert.match(bridge, /if \(commandSource === 'comment' && !\[[\s\S]*?\.includes\
 assert.match(bridge, /allowedCanvasKeys = \[[^\]]*'canvas_width'[^\]]*'canvas_height'/, 'canvas tool must expose custom dimensions');
 assert.match(bridge, /canvas_width[\s\S]{0,180}4000/, 'custom canvas width must be bounded');
 assert.match(bridge, /canvas_height[\s\S]{0,180}10000/, 'custom canvas height must be bounded');
+assert.match(bridge, /allowedCanvasKeys = \[[^\]]*'canvas_width'[^\]]*'canvas_height'/, 'canvas bridge must expose custom dimensions');
+assert.match(bridge, /canvas_width[\s\S]{0,180}4000/, 'custom canvas width must be bounded');
+assert.match(bridge, /canvas_height[\s\S]{0,180}10000/, 'custom canvas height must be bounded');
+assert.match(app, /function getDesignCanvasWidth\(design\)/, 'app must resolve custom canvas width');
+assert.match(app, /function setDesignCanvasDimensions\(widthValue, heightValue\)/, 'Inspector must expose a persisted custom canvas dimension setter');
+assert.match(app, /id="designCanvasWidth"/, 'Inspector must expose canvas width control');
+assert.match(app, /id="designCanvasHeight"/, 'Inspector must expose canvas height control');
+assert.match(app, /function resetDesignCanvasDimensions\(\)/, 'Inspector must support resetting canvas dimensions');
 console.log('Assistant project lifecycle tool contract checks passed.');
 
 assert.match(bridge, /component_inspect[\s\S]{0,1600}truncated: html\.length > limit/, 'component inspection must expose bounded standalone HTML with truncation metadata');
