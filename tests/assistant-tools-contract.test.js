@@ -86,3 +86,18 @@ assert.match(bridge, /isWebTarget = \(url\.protocol === 'https:' \|\| url\.proto
   'prototype targets must allow only credential-free HTTP(S) URLs');
 assert.match(bridge, /target && !isLayerTarget && !isWebTarget/,
   'unsupported targets must be rejected before mutating the design');
+
+
+const scopedDesignActions = [
+  'design_element_duplicate', 'design_layer_move', 'design_elements_align',
+  'design_elements_distribute', 'design_prototype_target_set',
+  'design_layout_configure', 'design_canvas_configure'
+];
+const projectActionsBlock = bridge.match(/const projectActions = \[([^\]]+)\]/)?.[1] || '';
+const projectIdActionsBlock = bridge.match(/if \(\[([^\]]+)\]\.includes\(command\.action\) &&[\s\S]{0,220}args\.project_id !== 'string'/)?.[1] || '';
+for (const action of scopedDesignActions) {
+  assert.ok(projectActionsBlock.includes("'" + action + "'"),
+    action + ' must require an authenticated admin session like other project mutations');
+  assert.ok(projectIdActionsBlock.includes("'" + action + "'"),
+    action + ' must require an explicit project_id to avoid acting on an ambiguous project');
+}
