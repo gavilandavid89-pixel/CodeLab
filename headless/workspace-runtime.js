@@ -94,6 +94,51 @@ function applyOperation(state, operation) {
       project.updatedAt = new Date().toISOString();
       return { type: operation.type, projectId: project.id, designRevision: result.revision, operationResults: result.results, previewSvg: result.svg };
     }
+    case 'design.flow.connect': {
+      const sourceProject = findProject(state, operation.sourceProjectId);
+      const targetProject = findProject(state, operation.targetProjectId);
+      assert(sourceProject.type === 'design' && sourceProject.design, 'Flow source must be a design project.');
+      assert(targetProject.type === 'design' && targetProject.design, 'Flow target must be a design project.');
+      assert(sourceProject.id !== targetProject.id, 'A flow connection must target a different project.');
+      const source = sourceProject.design.elements.find(item => item.id === operation.sourceElementId);
+      assert(source, 'Flow source layer not found.');
+      assert(source.flowRole !== 'menu', 'Menu layers cannot navigate to another project.');
+      if (!Array.isArray(sourceProject.design.flowConnections)) sourceProject.design.flowConnections = [];
+      sourceProject.design.flowConnections = sourceProject.design.flowConnections.filter(item => item.sourceElementId !== source.id);
+      sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetProject.id });
+      source.flowRole = 'navigate';
+      sourceProject.updatedAt = new Date().toISOString();
+      return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: source.id, targetProjectId: targetProject.id };
+    }
+    case 'design.flow.disconnect': {
+      const sourceProject = findProject(state, operation.sourceProjectId);
+      assert(sourceProject.type === 'design' && sourceProject.design, 'Flow source must be a design project.');
+      assert(typeof operation.sourceElementId === 'string', 'sourceElementId is required.');
+      const before = Array.isArray(sourceProject.design.flowConnections) ? sourceProject.design.flowConnections.length : 0;
+      sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(item =>
+        !(item.sourceElementId === operation.sourceElementId && (!operation.targetProjectId || item.targetProjectId === operation.targetProjectId))
+      );
+      const removed = before - sourceProject.design.flowConnections.length;
+      if (!sourceProject.design.flowConnections.length) {
+        const source = sourceProject.design.elements.find(item => item.id === operation.sourceElementId);
+        if (source && source.flowRole === 'navigate') source.flowRole = '';
+      }
+      sourceProject.updatedAt = new Date().toISOString();
+      return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: operation.sourceElementId, removed };
+    }
+    case 'project.delete': {
+      assert(operation.approved === true, 'project.delete requires explicit approval.');
+      const project = findProject(state, operation.projectId);
+      const index = state.projects.findIndex(item => item.id === project.id);
+      state.projects.splice(index, 1);
+      for (const other of state.projects) {
+        if (other.type === 'design' && other.design && Array.isArray(other.design.flowConnections)) {
+          other.design.flowConnections = other.design.flowConnections.filter(item => item.targetProjectId !== project.id);
+        }
+        if (other.sourceDesignProjectId === project.id) delete other.sourceDesignProjectId;
+      }
+      return { type: operation.type, projectId: project.id, deleted: true };
+    }
     default:
       assert(false, 'Unsupported headless operation: ' + String(operation.type));
   }
