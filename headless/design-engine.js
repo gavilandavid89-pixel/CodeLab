@@ -385,6 +385,7 @@ function createDesignEngine() {
       if (expectedRevision !== undefined && expectedRevision !== project.design.revision) {
         const error = new Error('Revision conflict: expected ' + expectedRevision + ', current ' + project.design.revision + '.');
         error.code = 'REVISION_CONFLICT';
+        error.revision = project.design.revision;
         throw error;
       }
       const results = operations.map(operation => applyOperation(project, operation));
