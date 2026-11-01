@@ -61,6 +61,9 @@ assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
 assert.match(bridge, /if \(commandSource === 'comment' && !\[[\s\S]*?\.includes\(command\.action\)\) \{[\s\S]{0,250}Comment mailbox is read-only/,
   'comment mailbox must remain read-only');
+assert.match(bridge, /allowedCanvasKeys = \[[^\]]*'canvas_width'[^\]]*'canvas_height'/, 'canvas tool must expose custom dimensions');
+assert.match(bridge, /canvas_width[\s\S]{0,180}4000/, 'custom canvas width must be bounded');
+assert.match(bridge, /canvas_height[\s\S]{0,180}10000/, 'custom canvas height must be bounded');
 console.log('Assistant project lifecycle tool contract checks passed.');
 
 assert.match(bridge, /component_inspect[\s\S]{0,1600}truncated: html\.length > limit/, 'component inspection must expose bounded standalone HTML with truncation metadata');
