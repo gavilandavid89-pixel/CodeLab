@@ -1776,6 +1776,8 @@ const server = http.createServer(async (req, res) => {
             message: String(e.message || 'AI request failed').slice(0, 400),
             model: e.model || model,
             baseUrl: baseUrl.replace(/\/+$/, '')
+            rateLimit: e.rateLimit || null,
+            retryAfter: e.rateLimit && e.rateLimit['retry-after'] ? e.rateLimit['retry-after'] : null,
           });
         }
       }
