@@ -200,7 +200,7 @@ test('inserts a real library component into web HTML and stays idempotent across
   const html = first.state.projects[0].code.html;
   assert.match(html, /codelab-component:hero:v1/);
   assert.match(html, /Convierte tus ideas en algo extraordinario/);
-  assert.match(html, /<\\/body>/);
+  assert.match(html, /<\/body>/);
   const second = applyHeadlessBatch(first.state, request([
     { type: 'component.insert', projectId: 'proj_web1', componentId: 'hero' }
   ], { operationId: 'test_op_0002', baseRevision: 4 }));
@@ -229,7 +229,7 @@ test('applies sanitized design tokens through the existing CodeLab token generat
     } }
   ]));
   const css = result.state.projects[0].code.css;
-  assert.match(css, /body\\{margin:0\\}/);
+  assert.match(css, /body\{margin:0\}/);
   assert.match(css, /CodeLab Design Tokens START/);
   assert.match(css, /--color-primary: #123456/);
   assert.equal(result.results[0].tokens.name, 'Brand');
