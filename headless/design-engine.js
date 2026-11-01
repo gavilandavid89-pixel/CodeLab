@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const MAX_ELEMENTS = 200;
+const MAX_ELEMENTS = 500;
 const MAX_CANVAS_SIZE = 10000;
 const MAX_CANVAS_WIDTH = 4000;
 const TYPES = new Set(['heading', 'text', 'button', 'rectangle', 'ellipse', 'image']);
@@ -45,7 +45,7 @@ function normalizeDesignProject(input) {
   assert(project.design.elements.length <= MAX_ELEMENTS, 'The design exceeds the ' + MAX_ELEMENTS + ' layer limit.');
   const ids = new Set();
   for (const element of project.design.elements) {
-    assert(element && typeof element === 'object' && typeof element.id === 'string' && element.id, 'Every layer must have a stable id.');
+    assert(element && typeof element === 'object' && typeof element.id === 'string' && element.id.trim() && element.id.length <= 100, 'Every layer must have a stable id of at most 100 characters.');
     assert(!ids.has(element.id), 'Duplicate layer id: ' + element.id);
     ids.add(element.id);
   }
