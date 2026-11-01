@@ -104,8 +104,8 @@ function applyOperation(state, operation) {
         return { type: operation.type, projectId: project.id, componentId: component.id, alreadyPresent: true };
       }
       const insertion = marker + '\\n' + component.html;
-      const next = /<\\/body\\s*>/i.test(current)
-        ? current.replace(/<\\/body\\s*>/i, insertion + '\\n</body>')
+      const next = /<\/body\s*>/i.test(current)
+        ? current.replace(/<\/body\s*>/i, insertion + '\\n</body>')
         : current + (current ? '\\n' : '') + insertion;
       assert(next.length <= 500000, 'component.insert would exceed the 500000 character HTML project limit.');
       project.code.html = next;
