@@ -71,14 +71,19 @@ function applyOperation(state, operation) {
       const project = findProject(state, operation.projectId);
       assert(project.type !== 'design', 'web.code.write requires a web project.');
       const source = operation.source || 'main';
+      const mode = operation.mode || 'replace';
       assert(source === 'main' || source === 'branch', 'Code source must be main or branch.');
+      assert(['replace', 'append', 'prepend'].includes(mode), 'Code write mode must be replace, append, or prepend.');
       const target = source === 'branch' ? project.branch?.code : project.code;
       assert(target && typeof target === 'object', 'The requested code branch does not exist.');
       const keys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(operation, key));
       assert(keys.length > 0, 'web.code.write requires html, css, or js.');
       for (const key of keys) {
-        assert(typeof operation[key] === 'string' && operation[key].length <= 500000, key + ' must be a string up to 500000 characters.');
-        target[key] = operation[key];
+        assert(typeof operation[key] === 'string' && operation[key].length <= 50000, key + ' chunk must be a string up to 50000 characters.');
+        const current = typeof target[key] === 'string' ? target[key] : '';
+        const next = mode === 'append' ? current + operation[key] : mode === 'prepend' ? operation[key] + current : operation[key];
+        assert(next.length <= 500000, key + ' exceeds the 500000 character project limit.');
+        target[key] = next;
       }
       project.updatedAt = new Date().toISOString();
       if (source === 'branch') project.branch.updatedAt = project.updatedAt;
