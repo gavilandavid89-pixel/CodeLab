@@ -120,4 +120,16 @@ assert.equal(boundedViewportContext.viewport.pixelWidth, 7680, 'Context raster w
 assert.equal(webContext.sourceCode.javascript, 'document.querySelector("button").textContent = "Changed";');
 assert.equal(webContext.page.javascriptIncludedInScreenshot, false);
 assert.match(webContext.aiInstructions, /JavaScript/);
-console.log('AI capture tests passed: design SVG, responsive sizes, safe HTML isolation, web metadata and source context.');
+const customCanvasCapture = capture.captureDesignSvg({
+  ...design,
+  design: { ...design.design, canvasWidth: 720, canvasHeight: 1600 }
+});
+assert.equal(customCanvasCapture.width, 720, 'SVG capture must use arbitrary custom canvas width');
+assert.equal(customCanvasCapture.height, 1600, 'SVG capture must preserve arbitrary custom canvas height');
+const invalidCustomCanvasCapture = capture.captureDesignSvg({
+  ...design,
+  design: { ...design.design, canvasWidth: 99999, canvasHeight: -10 }
+});
+assert.equal(invalidCustomCanvasCapture.width, 390, 'Invalid custom width must fall back to selected preset');
+assert.ok(invalidCustomCanvasCapture.height >= 900, 'Invalid custom height must fall back to content height');
+console.log('AI capture tests passed: design SVG, custom canvas dimensions, responsive sizes, safe HTML isolation, web metadata and source context.');

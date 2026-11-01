@@ -53,7 +53,9 @@
     if (elements.length > MAX_CAPTURE_DESIGN_ELEMENTS) {
       throw new Error('El diseño supera el límite de ' + MAX_CAPTURE_DESIGN_ELEMENTS + ' capas para capturar.');
     }
-    const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+    const presetWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+    const customWidth = Number(design && design.canvasWidth);
+    const frameWidth = Number.isInteger(customWidth) && customWidth >= 100 && customWidth <= 4000 ? customWidth : presetWidth;
     const positions = new Map();
     if (!design || design.layoutMode !== 'auto') {
       let contentBottom = 0;
@@ -64,7 +66,9 @@
         positions.set(el.id, { x: x, y: y });
         contentBottom = Math.max(contentBottom, y + height);
       });
-      return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + 24)) };
+      const customHeight = Number(design && design.canvasHeight);
+      const minHeight = Number.isInteger(customHeight) && customHeight >= 100 && customHeight <= 10000 ? customHeight : 900;
+      return { positions: positions, height: Math.min(6000, Math.max(minHeight, contentBottom + 24)) };
     }
     const direction = design.layoutDirection === 'column' ? 'column' : 'row';
     const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
@@ -84,14 +88,19 @@
     });
     const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
     // Keep generated SVG dimensions bounded even for huge projects or corrupted layout metadata.
-    return { positions: positions, height: Math.min(6000, Math.max(900, contentBottom + padding)) };
+    const customHeight = Number(design && design.canvasHeight);
+    const minHeight = Number.isInteger(customHeight) && customHeight >= 100 && customHeight <= 10000 ? customHeight : 900;
+    return { positions: positions, height: Math.min(6000, Math.max(minHeight, contentBottom + padding)) };
   }
 
   function captureDesignSvg(project) {
     const design = project && project.design ? project.design : {};
-    const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[design.frame] || 1440;
+    const presetWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design.frame] || 1440;
+    const customWidth = Number(design.canvasWidth);
+    const width = Number.isInteger(customWidth) && customWidth >= 100 && customWidth <= 4000 ? customWidth : presetWidth;
     const layout = getCaptureLayoutPositions(design);
-    const height = layout.height;
+    const customHeight = Number(design.canvasHeight);
+    const height = Math.max(layout.height, Number.isInteger(customHeight) && customHeight >= 100 && customHeight <= 10000 ? customHeight : 0);
     const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };

@@ -3406,8 +3406,7 @@ function fitDesignToViewport() {
   const canvas = document.getElementById('designCanvas');
   const viewport = document.getElementById('designCanvasScroll');
   if (!project || !canvas || !viewport) return;
-  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
-  const frameWidth = widths[project.design.frame] || widths.desktop;
+  const frameWidth = getDesignCanvasWidth(project.design);
   const availableWidth = Math.max(200, viewport.clientWidth - 64);
   const fitScale = Math.min(1, availableWidth / frameWidth);
   const snappedScale = Math.max(0.1, Math.floor(fitScale * 20) / 20);
@@ -3714,14 +3713,15 @@ function exportDesignHtml() {
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
-  const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const frameWidth = getDesignCanvasWidth(p.design);
+  const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
   const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
   const frameStyle = autoLayout
-    ? 'position:relative;width:100%;max-width:'+frameWidth+'px;min-height:900px;height:auto;display:flex;flex-direction:'+layoutDirection+';flex-wrap:'+(layoutDirection==='row'?'wrap':'nowrap')+';gap:'+layoutGap+'px;padding:'+layoutPadding+'px;align-items:flex-start;background:'+frameBackground+';margin:0 auto;'
-    : 'position:relative;width:'+frameWidth+'px;height:900px;background:'+frameBackground+';transform-origin:top left;margin:0';
+    ? 'position:relative;width:100%;max-width:'+frameWidth+'px;min-height:'+frameHeight+'px;height:auto;display:flex;flex-direction:'+layoutDirection+';flex-wrap:'+(layoutDirection==='row'?'wrap':'nowrap')+';gap:'+layoutGap+'px;padding:'+layoutPadding+'px;align-items:flex-start;background:'+frameBackground+';margin:0 auto;'
+    : 'position:relative;width:'+frameWidth+'px;height:'+frameHeight+'px;background:'+frameBackground+';transform-origin:top left;margin:0';
   const frameClass = 'design-frame' + (autoLayout ? ' auto-layout' : '');
   const mobileCss = autoLayout ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}' : '';
-  let html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
+  let html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h='+frameHeight+';function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
   const slug = (p.name || 'codelab-design').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'codelab-design';
   downloadDesignAsset(slug + '.html', html, 'text/html;charset=utf-8');
   showToast('Diseño exportado como HTML adaptable.');
@@ -3731,10 +3731,32 @@ function setDesignFrame(frame) {
   const p = activeDesignProject(); if (!p) return;
   recordDesignHistory();
   p.design.frame = ['desktop','tablet','mobile'].includes(frame) ? frame : 'desktop';
-  const canvas = document.getElementById('designCanvas');
-  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
-  if (canvas) canvas.style.width = widths[p.design.frame] + 'px';
-  renderDesignWorkspace(); saveProjectsToStorage();
+  delete p.design.canvasWidth;
+  delete p.design.canvasHeight;
+  renderDesignWorkspace(); fitDesignToViewport(); saveProjectsToStorage();
+}
+function setDesignCanvasDimensions(widthValue, heightValue) {
+  const p = activeDesignProject(); if (!p || !p.design) return;
+  const width = Number(widthValue);
+  const heightText = String(heightValue == null ? '' : heightValue).trim();
+  const height = heightText ? Number(heightText) : null;
+  if (!Number.isInteger(width) || width < 100 || width > 4000) { showToast('El ancho del lienzo debe estar entre 100 y 4000 px.', 'warn'); return; }
+  if (height !== null && (!Number.isInteger(height) || height < 100 || height > 10000)) { showToast('El alto del lienzo debe estar entre 100 y 10000 px, o quedar vacío para usar altura automática.', 'warn'); return; }
+  if (Number(p.design.canvasWidth) === width && getDesignCanvasHeight(p.design) === (height || 0)) return;
+  recordDesignHistory();
+  p.design.canvasWidth = width;
+  if (height === null) delete p.design.canvasHeight; else p.design.canvasHeight = height;
+  p.updatedAt = new Date().toISOString();
+  renderDesignWorkspace(); fitDesignToViewport(); saveProjectsToStorage();
+}
+function resetDesignCanvasDimensions() {
+  const p = activeDesignProject(); if (!p || !p.design) return;
+  if (p.design.canvasWidth === undefined && p.design.canvasHeight === undefined) return;
+  recordDesignHistory();
+  delete p.design.canvasWidth;
+  delete p.design.canvasHeight;
+  p.updatedAt = new Date().toISOString();
+  renderDesignWorkspace(); fitDesignToViewport(); saveProjectsToStorage();
 }
 function addDesignElement(type) {
   const p = activeDesignProject(); if (!p) return;
@@ -3847,9 +3869,18 @@ function importDesignImage(file) {
   };
   reader.readAsDataURL(file);
 }
+function getDesignCanvasWidth(design) {
+  const fallback = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const width = Number(design && design.canvasWidth);
+  return Number.isInteger(width) && width >= 100 && width <= 4000 ? width : fallback;
+}
+function getDesignCanvasHeight(design) {
+  const height = Number(design && design.canvasHeight);
+  return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
+}
 function getDesignLayoutPositions(design) {
   const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
-  const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const frameWidth = getDesignCanvasWidth(design);
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
   if (mode === 'free') {
@@ -3861,7 +3892,7 @@ function getDesignLayoutPositions(design) {
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
     }
-    return { positions, height: Math.min(6000, Math.max(900, contentBottom + 24)), mode, frameWidth };
+    return { positions, height: Math.min(6000, Math.max(getDesignCanvasHeight(design) || 900, contentBottom + 24)), mode, frameWidth };
   }
   const direction = design.layoutDirection === 'column' ? 'column' : 'row';
   const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
@@ -3882,7 +3913,7 @@ function getDesignLayoutPositions(design) {
     }
   }
   const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
-  return { positions, height: Math.min(6000, Math.max(900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
+  return { positions, height: Math.min(6000, Math.max(getDesignCanvasHeight(design) || 900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
 }
 function setDesignLayoutMode(value) {
   const p = activeDesignProject(); if (!p) return;
@@ -3920,10 +3951,9 @@ function renderDesignWorkspace() {
   const validIds = new Set(p.design.elements.map(el => el.id));
   selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
   if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
-  const widths = { desktop: 1440, tablet: 768, mobile: 390 };
   const layout = getDesignLayoutPositions(p.design);
-  canvas.style.width = (widths[p.design.frame] || widths.desktop) + 'px';
-  canvas.style.height = layout.height + 'px';
+  canvas.style.width = getDesignCanvasWidth(p.design) + 'px';
+  canvas.style.height = Math.max(layout.height, getDesignCanvasHeight(p.design)) + 'px';
   canvas.style.zoom = String(designZoom);
   const zoomLabel = document.getElementById('designZoomLabel');
   if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
@@ -4043,6 +4073,9 @@ function renderDesignWorkspace() {
     '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
+  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Lienzo</div>' +
+    '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Ancho (px)</span><input id="designCanvasWidth" type="number" min="100" max="4000" step="1" value="'+getDesignCanvasWidth(p.design)+'" onchange="setDesignCanvasDimensions(this.value,document.getElementById(\'designCanvasHeight\').value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Alto (px)</span><input id="designCanvasHeight" type="number" min="100" max="10000" step="1" value="'+(getDesignCanvasHeight(p.design)||'')+'" placeholder="Auto" onchange="setDesignCanvasDimensions(document.getElementById(\'designCanvasWidth\').value,this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label></div>' +
+    '<button type="button" onclick="resetDesignCanvasDimensions()" class="w-full px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800">Restablecer tamaño automático</button></section>';
   const layoutControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Distribución del diseño</div>' +
     '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Modo de colocación</span><select id="designLayoutMode" aria-label="Modo de colocación" onchange="setDesignLayoutMode(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="free" '+((p.design.layoutMode||'free')==='free'?'selected':'')+'>Libre (posiciones manuales)</option><option value="auto" '+(p.design.layoutMode==='auto'?'selected':'')+'>Auto Layout (flujo)</option></select></label>' +
     (p.design.layoutMode === 'auto' ? '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Dirección</span><select id="designLayoutDirection" aria-label="Dirección Auto Layout" onchange="setDesignLayoutDirection(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="row" '+((p.design.layoutDirection||'row')==='row'?'selected':'')+'>Fila con ajuste de línea</option><option value="column" '+(p.design.layoutDirection==='column'?'selected':'')+'>Columna</option></select></label>' +
@@ -4050,7 +4083,7 @@ function renderDesignWorkspace() {
     : '<p class="text-[10px] text-slate-500">Auto Layout organiza las capas por orden, espacio y relleno; al activarlo se deshabilita el arrastre libre.</p>') + '</section>';
   const el = selectedDesignElement();
   if (!el) {
-    props.innerHTML = layoutControls + '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
+    props.innerHTML = canvasControls + layoutControls + '<p class="text-slate-500 leading-relaxed">Selecciona una capa para editar su contenido, posición, tamaño y color.</p>';
     updateDesignHistoryButtons(); return;
   }
   const field = (label, key, type='number', extra='') => {
@@ -4071,7 +4104,7 @@ function renderDesignWorkspace() {
       '<label class="block space-y-1"><span class="text-slate-400">Ajuste de imagen</span><select id="designProperty-objectFit" onchange="updateDesignProperty(\'objectFit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="cover" '+((el.objectFit||'cover')==='cover'?'selected':'')+'>Cubrir</option><option value="contain" '+(el.objectFit==='contain'?'selected':'')+'>Contener</option><option value="fill" '+(el.objectFit==='fill'?'selected':'')+'>Estirar</option></select></label>'
     : '';
   const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
-  props.innerHTML = layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
+  props.innerHTML = canvasControls + layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
     field('Nombre de capa','label','text') + buttonControls + imageControls +
     (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
@@ -4111,7 +4144,7 @@ function updateDesignProperty(key, value) {
       if (pos) { item.style.left = pos.x + 'px'; item.style.top = pos.y + 'px'; }
     });
     const canvas = document.getElementById('designCanvas');
-    if (canvas) canvas.style.height = layout.height + 'px';
+    if (canvas) canvas.style.height = Math.max(layout.height, getDesignCanvasHeight(p.design)) + 'px';
   }
   if (key === 'label') {
     const layerButtons = document.querySelectorAll('#designLayers button');
@@ -4361,14 +4394,15 @@ async function convertDesignToWeb() {
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
-  const frameWidth = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
+  const frameWidth = getDesignCanvasWidth(p.design);
+  const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
   const frameBackground = safeDesignExportColor(p.design.background, '#ffffff');
   const frameStyle = autoLayout
-    ? 'position:relative;width:100%;max-width:'+frameWidth+'px;min-height:900px;height:auto;display:flex;flex-direction:'+layoutDirection+';flex-wrap:'+(layoutDirection==='row'?'wrap':'nowrap')+';gap:'+layoutGap+'px;padding:'+layoutPadding+'px;align-items:flex-start;background:'+safeDesignExportColor(p.design.background, '#ffffff')+';margin:0 auto;'
-    : 'position:relative;width:'+frameWidth+'px;min-height:900px;height:900px;background:'+safeDesignExportColor(p.design.background, '#ffffff')+';transform-origin:top left;margin:0 auto;';
+    ? 'position:relative;width:100%;max-width:'+frameWidth+'px;min-height:'+frameHeight+'px;height:auto;display:flex;flex-direction:'+layoutDirection+';flex-wrap:'+(layoutDirection==='row'?'wrap':'nowrap')+';gap:'+layoutGap+'px;padding:'+layoutPadding+'px;align-items:flex-start;background:'+safeDesignExportColor(p.design.background, '#ffffff')+';margin:0 auto;'
+    : 'position:relative;width:'+frameWidth+'px;min-height:'+frameHeight+'px;height:'+frameHeight+'px;background:'+safeDesignExportColor(p.design.background, '#ffffff')+';transform-origin:top left;margin:0 auto;';
   const frameClass = 'design-frame' + (autoLayout ? ' auto-layout' : '');
   const mobileCss = autoLayout ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}' : '';
-  let html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h=900;function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
+  let html = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(p.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}'+mobileCss+'</style></head><body><div class="design-viewport"><main id="designFrame" class="'+frameClass+'" style="'+frameStyle+'">'+elements+'</main></div><script>(function(){var f=document.getElementById("designFrame");var v=f.parentNode;var w='+frameWidth+';var h='+frameHeight+';function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var s=Math.min(1,Math.max(0.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>'
   if (typeof window !== 'undefined' && typeof window.buildFlowAwareWebHtml === 'function') html = window.buildFlowAwareWebHtml(p, html);
   if (html.length > 500000) {
     showToast('La web generada supera el límite de 500000 caracteres de HTML. Reduce las capas o imágenes y vuelve a intentarlo.', 'warn');
@@ -4711,7 +4745,7 @@ async function applyDesignTemplate(templateId) {
   }
   if (project.design.elements.length && !window.confirm('Esta plantilla reemplazará las capas actuales. Puedes usar Deshacer para recuperar el diseño anterior. ¿Continuar?')) return;
   recordDesignHistory();
-  const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
+  const frameWidth = getDesignCanvasWidth(project.design);
   const compact = frameWidth <= 768;
   const pad = compact ? 24 : 80;
   const contentWidth = Math.max(250, frameWidth - pad * 2);
@@ -4964,7 +4998,9 @@ async function importDesignProjectJson(file) {
       layoutMode: ['free','auto'].includes(sourceDesign.layoutMode) ? sourceDesign.layoutMode : 'free',
       layoutDirection: ['row','column'].includes(sourceDesign.layoutDirection) ? sourceDesign.layoutDirection : 'row',
       layoutGap: finite(sourceDesign.layoutGap, 16, 0, 200),
-      layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200)
+      layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200),
+      ...(Number.isInteger(Number(sourceDesign.canvasWidth)) && Number(sourceDesign.canvasWidth) >= 100 && Number(sourceDesign.canvasWidth) <= 4000 ? { canvasWidth: Number(sourceDesign.canvasWidth) } : {}),
+      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {})
     }
   };
   projects.unshift(newProject);
