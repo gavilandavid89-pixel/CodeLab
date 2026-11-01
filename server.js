@@ -1747,7 +1747,7 @@ const server = http.createServer(async (req, res) => {
                 '\n\nResponde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
             }
           ];
-          const { content, usage, rateLimit } = await proxyChatCompletions({
+          const { content, usage, rateLimit, model: providerModel } = await proxyChatCompletions({
             apiKey,
             baseUrl,
             model,
@@ -1763,7 +1763,7 @@ const server = http.createServer(async (req, res) => {
             css: result.css,
             js: result.js,
             message: result.message,
-            model: model,
+            model: providerModel || model,
             via: usingServerKey ? 'server' : 'client-key',
             usage,
             rateLimit
@@ -1774,7 +1774,7 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, status >= 500 ? 502 : status, {
             error: 'ai_upstream_failed',
             message: String(e.message || 'AI request failed').slice(0, 400),
-            model: model,
+            model: e.model || model,
             baseUrl: baseUrl.replace(/\/+$/, '')
           });
         }
