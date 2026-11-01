@@ -1200,6 +1200,21 @@ async function resolvePublicProviderTarget(urlString) {
   };
 }
 
+function pickAiRateLimitHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return null;
+  const names = [
+    'x-ratelimit-limit-requests', 'x-ratelimit-remaining-requests', 'x-ratelimit-reset-requests',
+    'x-ratelimit-limit-tokens', 'x-ratelimit-remaining-tokens', 'x-ratelimit-reset-tokens',
+    'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after'
+  ];
+  const result = {};
+  for (const name of names) {
+    const value = headers[name];
+    if (value !== undefined && value !== null) result[name] = String(value).slice(0, 120);
+  }
+  return Object.keys(result).length ? result : null;
+}
+
 async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperature, maxTokens, publicUrl }) {
   const base = (baseUrl || AI_BASE_URL).replace(/\/$/, '');
   const groq = isGroqBase(base);
@@ -1247,7 +1262,8 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
       throw Object.assign(new Error('Respuesta no JSON del proveedor (HTTP ' + res.status + ')'), {
         status: res.status,
         body: (res.body || '').slice(0, 400),
-        model: modelId
+        model: modelId,
+        rateLimit: pickAiRateLimitHeaders(res.headers)
       });
     }
     return { res, parsed, modelId };
@@ -1298,7 +1314,7 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
       ('HTTP ' + res.status);
     throw Object.assign(
       new Error(String(msg) + ' [modelo=' + modelId + ']'),
-      { status: res.status, body: (res.body || '').slice(0, 400), model: modelId }
+      { status: res.status, body: (res.body || '').slice(0, 400), model: modelId, rateLimit: pickAiRateLimitHeaders(res.headers) }
     );
   }
 
@@ -1314,7 +1330,7 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
       model: modelId
     });
   }
-  return { content: String(content), raw: parsed, model: modelId };
+  return { content: String(content), raw: parsed, model: modelId, usage: parsed.usage || null, rateLimit: pickAiRateLimitHeaders(res.headers) };
 }
 
 function buildAiSystemPrompt(code) {
@@ -1673,7 +1689,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST' && pathname === '/api/ai/complete') {
         if (!checkAiRateLimit(ip)) {
-          return sendJson(res, 429, { error: 'ai_rate_limited', message: 'Demasiadas peticiones al copiloto. Espera un minuto.' });
+          return sendJson(res, 429, { error: 'ai_rate_limited', message: 'Demasiadas peticiones al copiloto. Espera un minuto.', retryAfterSeconds: 60, rateLimitScope: 'codelab-server-ip-window' });
         }
         const body = await readBody(req);
         const prompt = body && typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -1731,7 +1747,7 @@ const server = http.createServer(async (req, res) => {
                 '\n\nResponde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
             }
           ];
-          const { content } = await proxyChatCompletions({
+          const { content, usage, rateLimit } = await proxyChatCompletions({
             apiKey,
             baseUrl,
             model,
@@ -1748,7 +1764,9 @@ const server = http.createServer(async (req, res) => {
             js: result.js,
             message: result.message,
             model: model,
-            via: usingServerKey ? 'server' : 'client-key'
+            via: usingServerKey ? 'server' : 'client-key',
+            usage,
+            rateLimit
           });
         } catch (e) {
           console.error('AI proxy error:', e.message, e.body || '');
