@@ -94,3 +94,12 @@ test('headless branch merge and design history are exposed with approval and con
   assert.match(bridge, /Headless branch merge\/undo requires approval/);
   assert.match(bridge, /'branch.inspect', 'design.history.inspect'/);
 });
+
+test('headless design templates use responsive shared data and protect layer replacement', () => {
+  assert.match(runtime, /require\(['"]\.\/design-templates['"]\)/);
+  assert.match(runtime, /case 'design\.template\.apply'/);
+  assert.match(runtime, /case 'design\.template\.list'/);
+  assert.match(bridge, /Replacing existing design layers with a template requires approval/);
+  assert.match(server, /template_replace_requires_approval/);
+  assert.match(server, /template_not_found/);
+});
