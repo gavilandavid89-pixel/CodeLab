@@ -123,3 +123,14 @@ assert.match(conversionHandler, /item\.type !== 'design'[\s\S]{0,180}JSON\.strin
   'conversion must verify the local snapshot stores web code and preserves the design model');
 assert.doesNotMatch(conversionHandler, /beforeIds|projects\.find\(item => !beforeIds\.has/,
   'conversion must not expect the app to create a separate project when it converts the existing project in place');
+
+const projectCreateHandler = bridge.slice(
+  bridge.indexOf("else if (command.action === 'project_create')"),
+  bridge.indexOf("else if (command.action === 'project_duplicate')", bridge.indexOf("else if (command.action === 'project_create')"))
+);
+assert.match(projectCreateHandler, /serverSyncStatus !== 'Sincronizado'/,
+  'project creation must not report success from a local snapshot without confirmed server sync');
+assert.match(projectCreateHandler, /await refreshWorkspaceFromServer\(\)/,
+  'project creation must read the authoritative workspace back from the server');
+assert.match(projectCreateHandler, /serverReadbackVerified/,
+  'project creation must verify the new project ID, name, and type in the server readback');
