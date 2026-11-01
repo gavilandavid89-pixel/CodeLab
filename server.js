@@ -2035,6 +2035,15 @@ const server = http.createServer(async (req, res) => {
           if (error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT') {
             return sendJson(res, 409, { error: 'operation_id_conflict' });
           }
+          if (error.code === 'HEADLESS_BRANCH_CONFLICT') {
+            return sendJson(res, 409, { error: 'branch_merge_conflict', conflicts: error.conflicts || [] });
+          }
+          if (['HEADLESS_NO_MERGE_HISTORY', 'HEADLESS_NO_DESIGN_UNDO', 'HEADLESS_NO_DESIGN_REDO'].includes(error.code)) {
+            return sendJson(res, 409, { error: 'headless_history_unavailable', detail: error.message });
+          }
+          if (error.code === 'HEADLESS_INVALID_DESIGN_HISTORY') {
+            return sendJson(res, 400, { error: 'invalid_design_history', detail: error.message });
+          }
           if (error.code === 'HEADLESS_PROJECT_NOT_FOUND') {
             return sendJson(res, 404, { error: 'project_not_found' });
           }
