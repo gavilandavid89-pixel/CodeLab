@@ -220,3 +220,9 @@ PR #170 moved all layer ordering, alignment/distribution, prototype-target, layo
 - Valid import through the actual `#designSystemJsonFile` input changed all 13 tracked design-system fields (name, palette, contrast colors, base font, ratio, spacing and radius), reported `imported: true`, and announced local save ([live test #307](https://github.com/gavilandavid89-pixel/CodeLab/issues/307)). A follow-up import restored the default visual-system values after the test ([#309](https://github.com/gavilandavid89-pixel/CodeLab/issues/309)).
 - Incompatible JSON was rejected with `imported: false`, `rejected: true`, no changed fields, and a clear UI error ([negative test #308](https://github.com/gavilandavid89-pixel/CodeLab/issues/308)).
 - This validates the import control and its field validation against the live app. It does not yet verify durable server-side sync after a page reload or workspace restart; the success message itself says syncing is still in progress.
+
+
+### Custom canvas dimensions and Inspector
+
+- The design Inspector exposes canvas width (100–4000 px) and height (100–10000 px, or automatic height) alongside layout controls, whether or not a layer is selected. Preset frames remain available; choosing a preset resets custom dimensions.
+- Custom dimensions are persisted with the project, restored by JSON import, used by Auto Layout wrapping, and included in SVG/HTML exports. Automated and live browser evidence is pending the feature PR validation.
