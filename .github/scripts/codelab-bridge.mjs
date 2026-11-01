@@ -46,6 +46,8 @@ function parseCommand(raw) {
     if (!Array.isArray(args.operations) || args.operations.length < 1 || args.operations.length > 100) throw new Error('headless_batch requires 1 to 100 operations.');
     if (JSON.stringify(args.operations).length > 50000) throw new Error('headless_batch operations exceed 50000 characters.');
     if (args.operations.some(operation => operation && operation.type === 'project.delete') && command.approval !== 'approved') throw new Error('Headless project deletion requires approval: "approved".');
+    if (args.operations.some(operation => operation && ['branch.merge', 'branch.undo_merge'].includes(operation.type)) && command.approval !== 'approved') throw new Error('Headless branch merge/undo requires approval: "approved".');
+    if (args.operations.some(operation => operation && operation.type === 'branch.create' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing an existing headless branch requires approval: "approved".');
   }
   if (command.action === 'headless_design_system') {
     if (!['read', 'write', 'import', 'export'].includes(args.operation)) throw new Error('headless_design_system operation must be read, write, import, or export.');
@@ -62,13 +64,13 @@ function parseCommand(raw) {
     if (args.settings && JSON.stringify(args.settings).length > 20000) throw new Error('headless_design_system settings exceed 20000 characters.');
   }
   if (command.action === 'headless_query') {
-    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit'];
+    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect'];
     if (!supportedQueries.includes(args.query_action)) throw new Error('headless_query requires a supported query_action.');
     if (args.query_args !== undefined && (!args.query_args || typeof args.query_args !== 'object' || Array.isArray(args.query_args))) throw new Error('headless_query query_args must be an object.');
     if (args.expected_revision !== undefined && (!Number.isInteger(args.expected_revision) || args.expected_revision < 0)) throw new Error('headless_query expected_revision must be a non-negative integer.');
     if (JSON.stringify(args.query_args || {}).length > 20000) throw new Error('headless_query query_args exceed 20000 characters.');
     const queryArgs = args.query_args || {};
-    if (['project.inspect', 'project.code.read', 'design.read', 'accessibility.audit'].includes(args.query_action) &&
+    if (['project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect'].includes(args.query_action) &&
         (typeof queryArgs.projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.projectId))) {
       throw new Error(args.query_action + ' requires a valid query_args.projectId.');
     }
