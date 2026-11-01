@@ -389,22 +389,37 @@ try {
       const source = projects.find(item => item && item.id === projectId);
       if (!source || source.type !== 'design' || !source.design) throw new Error('Source must be an existing design project.');
       const sourceSnapshot = JSON.stringify(source.design);
-      const beforeIds = new Set(projects.map(item => item.id));
       openProject(projectId);
       await new Promise(resolve => setTimeout(resolve, 250));
-      convertDesignToWeb();
+      await convertDesignToWeb();
       await new Promise(resolve => setTimeout(resolve, 500));
-      const created = projects.find(item => !beforeIds.has(item.id));
-      if (!created || created.type === 'design' || !created.code) throw new Error('Design conversion did not create a web project.');
-      const sourceUnchanged = JSON.stringify(source.design) === sourceSnapshot;
+      const converted = projects.find(item => item && item.id === projectId);
+      if (!converted || converted.type === 'design' || !converted.code?.html) {
+        throw new Error('Design conversion did not convert the source project in place.');
+      }
+      const sourceUnchanged = JSON.stringify(converted.design) === sourceSnapshot;
       let localVerified = false;
       try {
         const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === created.id && item.code?.html === created.code?.html);
+        localVerified = Array.isArray(snapshot) && snapshot.some(item =>
+          item?.id === projectId &&
+          item.type !== 'design' &&
+          item.code?.html === converted.code.html &&
+          JSON.stringify(item.design) === sourceSnapshot
+        );
       } catch (_) {}
       if (!sourceUnchanged) throw new Error('Source design changed during conversion.');
-      if (!localVerified) throw new Error('Converted web project was not verified in the local snapshot.');
-      return { sourceProjectId: projectId, projectId: created.id, name: created.name, type: created.type, codeLengths: { html: created.code.html?.length || 0, css: created.code.css?.length || 0, js: created.code.js?.length || 0 }, sourceUnchanged, localSnapshotVerified: localVerified };
+      if (!localVerified) throw new Error('Converted web project and preserved design were not verified in the local snapshot.');
+      return {
+        sourceProjectId: projectId,
+        projectId: converted.id,
+        name: converted.name,
+        type: converted.type,
+        convertedInPlace: true,
+        sourceDesignPreserved: sourceUnchanged,
+        codeLengths: { html: converted.code.html?.length || 0, css: converted.code.css?.length || 0, js: converted.code.js?.length || 0 },
+        localSnapshotVerified: localVerified
+      };
     }, command.args.project_id);
   } else if (command.action === 'ai_generate') {
     stage = 'ai_generate';

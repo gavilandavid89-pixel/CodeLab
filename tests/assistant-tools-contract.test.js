@@ -109,3 +109,17 @@ assert.match(bridge, /getBoundingClientRect\(\)[\s\S]{0,240}style\.visibility !=
   'control inventory must filter invisible elements so results reflect actionable UI');
 assert.match(bridge, /ariaLabel:[\s\S]{0,240}dataAction:[\s\S]{0,160}href:/,
   'control inventory must return accessible labels and action/link metadata for reliable follow-up actions');
+
+
+const conversionHandler = bridge.slice(
+  bridge.indexOf("command.action === 'project_convert_design_to_web'"),
+  bridge.indexOf("command.action === 'ai_generate'", bridge.indexOf("command.action === 'project_convert_design_to_web'"))
+);
+assert.match(conversionHandler, /const converted = projects\.find\(item => item && item\.id === projectId\)/,
+  'design-to-web conversion must verify the app-supported in-place conversion of the same project');
+assert.match(conversionHandler, /convertedInPlace: true[\s\S]{0,220}sourceDesignPreserved: sourceUnchanged/,
+  'conversion must report that the source design remains available alongside generated web code');
+assert.match(conversionHandler, /item\.type !== 'design'[\s\S]{0,180}JSON\.stringify\(item\.design\) === sourceSnapshot/,
+  'conversion must verify the local snapshot stores web code and preserves the design model');
+assert.doesNotMatch(conversionHandler, /beforeIds|projects\.find\(item => !beforeIds\.has/,
+  'conversion must not expect the app to create a separate project when it converts the existing project in place');
