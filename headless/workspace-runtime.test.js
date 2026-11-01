@@ -194,7 +194,9 @@ test('rejects code writes that exceed the total project field limit', () => {
 
 
 test('inserts a real library component into web HTML and stays idempotent across operation IDs', () => {
-  const first = applyHeadlessBatch(state([webProject()]), request([
+  const project = webProject();
+  project.code.html = '<html><body><main>old</main></body></html>';
+  const first = applyHeadlessBatch(state([project]), request([
     { type: 'component.insert', projectId: 'proj_web1', componentId: 'hero' }
   ]));
   const html = first.state.projects[0].code.html;
