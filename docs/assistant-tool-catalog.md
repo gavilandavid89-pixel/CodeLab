@@ -172,3 +172,14 @@ Added a browser-independent template module for the website's `landing`, `dashbo
 - Replacing existing layers requires explicit operation approval and bridge-level command approval; the previous design is recoverable through `design.history.undo`.
 
 Templates use the same layer schema and SVG renderer as manually authored design elements.
+
+## Section 20 — Design backup, SVG/HTML export, and web conversion
+
+Added direct headless design-project export/import and conversion:
+
+- `design.export.json` returns the existing `codelab-design-project` v1 backup format.
+- `design.export.svg` and `design.export.html` use the browser-independent design engine renderer.
+- `design.import.json` validates and sanitizes a backup, enforces size/layer/code limits, remaps element IDs and internal layer links, and creates a new design project.
+- `design.convert.toWeb` stores a responsive HTML export in the same project while preserving its original design data.
+
+The current HTML conversion embeds the renderer's SVG for visual fidelity. It does not yet reproduce the website's richer semantic DOM export or interactive prototype navigation; those remain explicit parity work.
