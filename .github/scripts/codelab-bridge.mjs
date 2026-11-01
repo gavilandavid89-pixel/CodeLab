@@ -667,6 +667,7 @@ try {
         throw new Error('Combined project code exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
       }
 
+      if (!serverSettings.serverKey && !settings.apiKey) throw new Error('No AI provider key is configured for this user, and no server key is available. No provider request was made.');
       const payload = { prompt, code };
       if (serverSettings.serverKey) {
         if (settings.model && settings.model !== 'gpt-4o-mini') payload.model = settings.model;
