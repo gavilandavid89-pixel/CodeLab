@@ -543,7 +543,7 @@ function readState(id) {
   if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
     throw new Error('workspace_updated_at_invalid');
   }
-  if (parsed.headlessOperations != null && (!Array.isArray(parsed.headlessOperations) || parsed.headlessOperations.length > 200 || parsed.headlessOperations.some(item => !item || typeof item.id !== 'string' || typeof item.hash !== 'string' || !Number.isInteger(item.revision) || !Array.isArray(item.results)))) {
+  if (parsed.headlessOperations != null && (!Array.isArray(parsed.headlessOperations) || parsed.headlessOperations.length > 200 || parsed.headlessOperations.some(item => !item || typeof item.id !== 'string' || typeof item.hash !== 'string' || !Number.isInteger(item.revision) || !Array.isArray(item.results) || (item.requestKey != null && (typeof item.requestKey !== 'string' || !/^[a-f0-9]{64}$/i.test(item.requestKey)))))) {
     throw new Error('workspace_headless_operations_invalid');
   }
   if (parsed.owner != null && (
