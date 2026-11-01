@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -110,6 +110,10 @@ function parseCommand(raw) {
   if (command.action === 'design_layer_move') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_layer_move requires a valid element_id.');
     if (!['front', 'back'].includes(args.direction)) throw new Error('design_layer_move direction must be front or back.');
+  }
+  if (command.action === 'design_layer_reorder') {
+    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_layer_reorder requires a valid element_id.');
+    if (!Number.isInteger(args.target_index) || args.target_index < 0 || args.target_index > 499) throw new Error('design_layer_reorder target_index must be an integer from 0 to 499.');
   }
   if (command.action === 'design_elements_align') {
     if (!['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(args.mode)) throw new Error('design_elements_align requires a supported alignment mode.');
@@ -1058,6 +1062,38 @@ try {
       if (!verified) throw new Error('Layer order was not verified in the local snapshot.');
       return { projectId, elementId, direction, moved, saved: saved === true, localSnapshotVerified: true, order: after };
     }, { projectId: command.args.project_id, elementId: command.args.element_id, direction: command.args.direction });
+  } else if (command.action === 'design_layer_reorder') {
+    stage = 'design_layer_reorder';
+    result = await page.evaluate(async ({ projectId, elementId, targetIndex }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design || !Array.isArray(project.design.elements)) throw new Error('Design project not found.');
+      const elements = project.design.elements;
+      const currentIndex = elements.findIndex(item => item && item.id === elementId);
+      if (currentIndex < 0) throw new Error('Design element not found.');
+      if (targetIndex >= elements.length) throw new Error('target_index exceeds the current layer count.');
+      if (currentIndex !== targetIndex) {
+        openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+        const active = projects.find(item => item && item.id === projectId);
+        const list = active.design.elements;
+        const from = list.findIndex(item => item && item.id === elementId);
+        if (from < 0 || targetIndex >= list.length) throw new Error('Layer order changed before reorder could be applied.');
+        recordDesignHistory();
+        const [element] = list.splice(from, 1);
+        list.splice(targetIndex, 0, element);
+        active.updatedAt = new Date().toISOString();
+        renderDesignWorkspace();
+      }
+      const latest = projects.find(item => item && item.id === projectId);
+      const order = latest.design.elements.map(item => item.id);
+      const verified = order[targetIndex] === elementId;
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localOrder = local?.design?.elements?.map(item => item.id) || [];
+      const localSnapshotVerified = localOrder.length === order.length && localOrder.every((id, index) => id === order[index]);
+      if (!verified || !localSnapshotVerified) throw new Error('Layer reorder could not be verified.');
+      return { projectId, elementId, fromIndex: currentIndex, targetIndex, changed: currentIndex !== targetIndex, saved: saved === true, localSnapshotVerified, order };
+    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetIndex: command.args.target_index });
   } else if (command.action === 'design_elements_align') {
     stage = 'design_elements_align';
     result = await page.evaluate(async ({ projectId, elementIds, mode }) => {
