@@ -706,7 +706,7 @@ try {
       });
       const data = await response.json().catch(() => ({}));
       if (response.status === 409) {
-        throw new Error('Headless workspace conflict (HTTP 409). Refresh workspace and retry with a new base_revision; keep the same operation_id only for an exact retry.');
+        throw new Error('Headless revision conflict (HTTP 409). Read the latest workspace and design revisions, rebase the batch, and retry with a new operation_id. Keep the same operation_id only for an exact retry.');
       }
       if (!response.ok || data.ok !== true) {
         throw new Error('Headless workspace request failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
