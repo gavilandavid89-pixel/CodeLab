@@ -69,6 +69,109 @@ function applyOperation(state, operation) {
       state.projects.push(duplicate);
       return { type: operation.type, sourceProjectId: source.id, projectId: duplicate.id, name: duplicate.name };
     }
+    case 'branch.create': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type !== 'design', 'branch.create requires a web project.');
+      if (project.branch && operation.replaceExisting !== true) {
+        assert(false, 'A working branch already exists; inspect it or explicitly approve replacing it.');
+      }
+      if (project.branch && operation.replaceExisting === true) {
+        assert(operation.approved === true, 'Replacing an existing branch requires approved:true.');
+      }
+      const branchId = operation.branchId || 'branch_' + crypto.randomUUID();
+      assert(typeof branchId === 'string' && /^branch_[a-zA-Z0-9_-]{1,100}$/.test(branchId),
+        'branch.create requires a valid branchId.');
+      const baseCode = clone(project.code || { html: '', css: '', js: '' });
+      const now = new Date().toISOString();
+      project.branch = {
+        id: branchId,
+        baseCode,
+        code: clone(baseCode),
+        baseMainUpdatedAt: project.updatedAt || now,
+        updatedAt: now
+      };
+      project.updatedAt = now;
+      return { type: operation.type, projectId: project.id, branchId, created: true };
+    }
+    case 'branch.merge': {
+      const project = findProject(state, operation.projectId);
+      assert(operation.approved === true, 'Merging a working branch requires approved:true.');
+      assert(project.type !== 'design' && project.branch, 'branch.merge requires an existing web-project branch.');
+      const main = project.code || {};
+      const base = project.branch.baseCode || {};
+      const branchCode = project.branch.code || {};
+      const merged = {};
+      const conflicts = [];
+      for (const key of ['html', 'css', 'js']) {
+        const mainValue = main[key] || '';
+        const baseValue = base[key] || '';
+        const branchValue = branchCode[key] || '';
+        if (mainValue === baseValue) merged[key] = branchValue;
+        else if (branchValue === baseValue || mainValue === branchValue) merged[key] = mainValue;
+        else conflicts.push(key.toUpperCase());
+      }
+      if (conflicts.length) {
+        const error = new Error('Branch merge conflict in: ' + conflicts.join(', ') + '. No main-project changes were applied.');
+        error.code = 'HEADLESS_BRANCH_CONFLICT';
+        error.conflicts = conflicts;
+        throw error;
+      }
+      const now = new Date().toISOString();
+      const backup = {
+        code: clone(project.code || { html: '', css: '', js: '' }),
+        updatedAt: project.updatedAt || now,
+        branch: clone(project.branch),
+        createdAt: now
+      };
+      project.mergeHistory = Array.isArray(project.mergeHistory) ? project.mergeHistory : [];
+      project.mergeHistory.push(backup);
+      project.mergeHistory = project.mergeHistory.slice(-10);
+      project.code = merged;
+      project.updatedAt = now;
+      delete project.branch;
+      return { type: operation.type, projectId: project.id, mergedFields: ['html', 'css', 'js'], backupCount: project.mergeHistory.length };
+    }
+    case 'branch.undo_merge': {
+      const project = findProject(state, operation.projectId);
+      assert(operation.approved === true, 'Undoing a branch merge requires approved:true.');
+      assert(Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
+        'branch.undo_merge requires a saved merge backup.', 'HEADLESS_NO_MERGE_HISTORY');
+      const backup = project.mergeHistory[project.mergeHistory.length - 1];
+      project.mergeHistory = project.mergeHistory.slice(0, -1);
+      project.code = clone(backup.code || { html: '', css: '', js: '' });
+      project.updatedAt = backup.updatedAt || new Date().toISOString();
+      if (backup.branch) project.branch = clone(backup.branch);
+      else delete project.branch;
+      return { type: operation.type, projectId: project.id, restoredBranch: !!backup.branch, remainingBackups: project.mergeHistory.length };
+    }
+    case 'design.history.undo':
+    case 'design.history.redo': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type === 'design' && project.design, operation.type + ' requires a design project.');
+      if (!Array.isArray(project.designUndoStack)) project.designUndoStack = [];
+      if (!Array.isArray(project.designRedoStack)) project.designRedoStack = [];
+      const undo = operation.type === 'design.history.undo';
+      const source = undo ? project.designUndoStack : project.designRedoStack;
+      const target = undo ? project.designRedoStack : project.designUndoStack;
+      assert(source.length > 0, operation.type + ' has no saved history entry.',
+        undo ? 'HEADLESS_NO_DESIGN_UNDO' : 'HEADLESS_NO_DESIGN_REDO');
+      const snapshot = source.pop();
+      let restored;
+      try {
+        restored = typeof snapshot === 'string' ? JSON.parse(snapshot) : clone(snapshot);
+      } catch (_) {
+        assert(false, 'Saved design history entry is invalid.', 'HEADLESS_INVALID_DESIGN_HISTORY');
+      }
+      assert(restored && typeof restored === 'object' && Array.isArray(restored.elements),
+        'Saved design history entry has an invalid shape.', 'HEADLESS_INVALID_DESIGN_HISTORY');
+      target.push(JSON.stringify(project.design));
+      if (target.length > 60) target.shift();
+      const nextRevision = (Number.isInteger(project.design.revision) ? project.design.revision : 0) + 1;
+      project.design = restored;
+      project.design.revision = nextRevision;
+      project.updatedAt = new Date().toISOString();
+      return { type: operation.type, projectId: project.id, designRevision: nextRevision, canUndo: project.designUndoStack.length > 0, canRedo: project.designRedoStack.length > 0 };
+    }
     case 'web.code.write': {
       const project = findProject(state, operation.projectId);
       assert(project.type !== 'design', 'web.code.write requires a web project.');
@@ -135,6 +238,11 @@ function applyOperation(state, operation) {
       assert(project.type === 'design' && project.design, 'design.batch requires an existing design project.');
       assert(Array.isArray(operation.operations) && operation.operations.length > 0 && operation.operations.length <= 500,
         'design.batch requires 1 to 500 design operations.');
+      if (!Array.isArray(project.designUndoStack)) project.designUndoStack = [];
+      if (!Array.isArray(project.designRedoStack)) project.designRedoStack = [];
+      project.designUndoStack.push(JSON.stringify(project.design));
+      if (project.designUndoStack.length > 60) project.designUndoStack.shift();
+      project.designRedoStack = [];
       const result = createDesignEngine().transact(project, operation.operations, { expectedRevision: operation.expectedDesignRevision });
       Object.assign(project, result.project);
       project.updatedAt = new Date().toISOString();
@@ -246,6 +354,34 @@ function queryHeadlessWorkspace(inputState, request) {
         settings,
         tokens: designTools.buildDesignTokens(settings),
         cssVariables: designTools.toCssVariables(settings)
+      };
+      break;
+    }
+    case 'branch.inspect': {
+      const project = findProject(inputState, args.projectId);
+      result = {
+        projectId: project.id,
+        exists: !!project.branch,
+        mergeHistoryCount: Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0,
+        branch: project.branch ? {
+          id: project.branch.id || null,
+          baseMainUpdatedAt: project.branch.baseMainUpdatedAt || null,
+          updatedAt: project.branch.updatedAt || null,
+          codeLengths: Object.fromEntries(['html', 'css', 'js'].map(key => [key, typeof project.branch.code?.[key] === 'string' ? project.branch.code[key].length : 0]))
+        } : null,
+        mergeHistoryCount: Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0
+      };
+      break;
+    }
+    case 'design.history.inspect': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.history.inspect requires a design project.', 'HEADLESS_INVALID_QUERY');
+      result = {
+        projectId: project.id,
+        canUndo: Array.isArray(project.designUndoStack) && project.designUndoStack.length > 0,
+        canRedo: Array.isArray(project.designRedoStack) && project.designRedoStack.length > 0,
+        undoCount: Array.isArray(project.designUndoStack) ? project.designUndoStack.length : 0,
+        redoCount: Array.isArray(project.designRedoStack) ? project.designRedoStack.length : 0
       };
       break;
     }
