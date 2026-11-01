@@ -715,10 +715,10 @@ try {
         throw new Error('Headless operation was accepted, but the web app could not read the saved workspace back.');
       }
       const createdId = data.results.map(item => item.projectId).find(Boolean);
-      const requestedId = [...operations].reverse().map(item => item.projectId).find(Boolean);
+      const requestedId = [...operations].reverse().map(item => item.projectId || item.sourceProjectId).find(Boolean);
       const visibleProjectId = createdId || requestedId || null;
-      if (visibleProjectId && typeof openProject === 'function') {
-        openProject(visibleProjectId);
+      if (visibleProjectId && projects.some(item => item && item.id === visibleProjectId) && typeof openProject === 'function') {
+        await openProject(visibleProjectId);
         await new Promise(resolve => setTimeout(resolve, 900));
       }
       return {
