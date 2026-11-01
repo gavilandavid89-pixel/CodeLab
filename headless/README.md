@@ -94,3 +94,14 @@ The authenticated `POST /api/workspace/:id/headless/query` endpoint reads the cu
 - `accessibility.audit` against saved web-project HTML using the existing static audit.
 
 The endpoint requires the same workspace token/session ownership checks as normal workspace operations. An optional `expectedRevision` detects stale reads and returns HTTP 409. Query operations are read-only and do not create idempotency receipts or increment the workspace revision. The bridge action `headless_query` exposes these reads to the assistant without opening a project or simulating editor clicks.
+
+## Workspace-level design-system settings
+
+The separate workspace design-system store is now available without the editor through authenticated `POST /api/workspace/:id/headless/design-system`:
+
+- `read` returns saved settings and their independent revision.
+- `write` saves sanitized settings against a required `baseRevision`.
+- `import` parses the same `codelab-design-system` JSON format used by the website and validates colors, typography, spacing, and radius before saving.
+- `export` returns the canonical JSON token object and generated CSS variables.
+
+Design-system settings have their own monotonic revision, separate from the project workspace revision, so changing tokens does not pretend that project code changed. Stale writes return HTTP 409. The bridge action `headless_design_system` exposes read/export directly and requires explicit approval for write/import; it reads the saved settings back after a mutation before reporting success. The UI import handler now calls the same pure `parseDesignSystemImport` function, avoiding divergent validation logic.
