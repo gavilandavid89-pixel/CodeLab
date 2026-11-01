@@ -91,3 +91,22 @@ The live tests used disposable design project `proj_f3edbfbb-b2e7-4bf0-9d5c-625c
 - [Cleanup](https://github.com/gavilandavid89-pixel/CodeLab/issues/103): deletion and snapshot verified.
 
 The tests verify these happy paths, not every invalid input, conflict state, or browser viewport variation.
+
+
+## Live cross-tool verification — 2026-11-01
+
+These are disposable-project results from the deployed bridge, not inferred from source presence alone:
+
+- Layers: created rectangle/button/heading; updated geometry and styling; moved rectangle to front; duplicated and deleted only the duplicate. A fresh `design_read` showed the original button and rectangle remained after deletion. Evidence: issues [#133](https://github.com/gavilandavid89-pixel/CodeLab/issues/133), [#134](https://github.com/gavilandavid89-pixel/CodeLab/issues/134), [#135](https://github.com/gavilandavid89-pixel/CodeLab/issues/135), [#136](https://github.com/gavilandavid89-pixel/CodeLab/issues/136), [#137](https://github.com/gavilandavid89-pixel/CodeLab/issues/137), [#138](https://github.com/gavilandavid89-pixel/CodeLab/issues/138), [#139](https://github.com/gavilandavid89-pixel/CodeLab/issues/139), [#140](https://github.com/gavilandavid89-pixel/CodeLab/issues/140).
+- Alignment and distribution: three elements were aligned left and then distributed horizontally; results returned changed positions, `saved: true`, and local snapshot verification. Evidence: [#143](https://github.com/gavilandavid89-pixel/CodeLab/issues/143), [#145](https://github.com/gavilandavid89-pixel/CodeLab/issues/145).
+- Canvas/layout: mobile frame, grid, snap, grid size, background and zoom accepted; zoom is explicitly session-only. Auto Layout column mode, gap and padding were saved. Evidence: [#147](https://github.com/gavilandavid89-pixel/CodeLab/issues/147), [#148](https://github.com/gavilandavid89-pixel/CodeLab/issues/148).
+- Templates: applying a landing template to a clean disposable design created four layers and verified the save. Attempting additive template application to a non-empty design was correctly rejected before replacement. Evidence: [#149](https://github.com/gavilandavid89-pixel/CodeLab/issues/149), [#150](https://github.com/gavilandavid89-pixel/CodeLab/issues/150), [#151](https://github.com/gavilandavid89-pixel/CodeLab/issues/151).
+- Design system/export/flows: token generation returned normalized settings, tokens and CSS variables; JSON design export returned a 2,968-character payload without truncation; a button-to-project flow connection was saved and verified. Evidence: [#152](https://github.com/gavilandavid89-pixel/CodeLab/issues/152), [#153](https://github.com/gavilandavid89-pixel/CodeLab/issues/153), [#154](https://github.com/gavilandavid89-pixel/CodeLab/issues/154).
+- Reopening/readback: a separate bridge execution read the same design project and confirmed three layers and persisted mobile canvas settings. Evidence: [#155](https://github.com/gavilandavid89-pixel/CodeLab/issues/155).
+- Cleanup: both disposable design projects were deleted and local snapshots verified. Evidence: [#156](https://github.com/gavilandavid89-pixel/CodeLab/issues/156), [#157](https://github.com/gavilandavid89-pixel/CodeLab/issues/157).
+
+### Remaining known gaps
+
+- The bridge's standalone undo call returned `changed: false`; undo/redo needs a same-session test because history may be scoped to the editor session. Do not mark history complete yet. Evidence: [#146](https://github.com/gavilandavid89-pixel/CodeLab/issues/146).
+- Render logs warn that `CODELAB_DATA_DIR` and `CODELAB_WORKSPACE_SECRET` are not configured. Current tests verified saves/readback while the service remained running, but restart-safe workspace persistence has not been proven and must be fixed or configured before claiming durable production storage.
+- The landing page footer version was stale (2.6.4 while the title/server report 2.6.6); this PR aligns the footer to 2.6.6.
