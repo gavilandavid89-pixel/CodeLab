@@ -678,6 +678,66 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(reloadSettingsResponse.status, 200);
     const reloadedSettings = await reloadSettingsResponse.json();
     assert.equal(reloadedSettings.settings.name, 'Persisted system');
+    const headlessDesignSystemUrl = BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId) + '/headless/design-system';
+    const unauthenticatedDesignSystem = await fetch(headlessDesignSystemUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'read' })
+    });
+    assert.equal(unauthenticatedDesignSystem.status, 401,
+      'Headless design-system operations must require workspace authorization');
+
+    const workspaceRevisionBeforeDesignSystem = (await (await fetch(
+      BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), { headers: authHeaders }
+    )).json()).revision;
+    const headlessDesignSystemRead = await fetch(headlessDesignSystemUrl, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'read' })
+    });
+    assert.equal(headlessDesignSystemRead.status, 200);
+    const designSystemRecord = await headlessDesignSystemRead.json();
+    assert.equal(designSystemRecord.revision, 1);
+    assert.equal(designSystemRecord.settings.name, 'Persisted system');
+
+    const headlessDesignSystemExport = await fetch(headlessDesignSystemUrl, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'export' })
+    });
+    assert.equal(headlessDesignSystemExport.status, 200);
+    const exportedHeadlessDesignSystem = await headlessDesignSystemExport.json();
+    assert.equal(exportedHeadlessDesignSystem.json.format, 'codelab-design-system');
+    assert.match(exportedHeadlessDesignSystem.css, /--color-primary: #123456/);
+
+    const headlessDesignSystemImport = await fetch(headlessDesignSystemUrl, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'import',
+        baseRevision: 1,
+        json: JSON.stringify(exportedHeadlessDesignSystem.json)
+      })
+    });
+    assert.equal(headlessDesignSystemImport.status, 200);
+    const importedHeadlessDesignSystem = await headlessDesignSystemImport.json();
+    assert.equal(importedHeadlessDesignSystem.revision, 2);
+    assert.equal(importedHeadlessDesignSystem.settings.name, 'Persisted system');
+
+    const staleHeadlessDesignSystemWrite = await fetch(headlessDesignSystemUrl, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'write', baseRevision: 1, settings: { name: 'Stale' } })
+    });
+    assert.equal(staleHeadlessDesignSystemWrite.status, 409);
+    assert.equal((await staleHeadlessDesignSystemWrite.json()).revision, 2);
+
+    const workspaceRevisionAfterDesignSystem = (await (await fetch(
+      BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), { headers: authHeaders }
+    )).json()).revision;
+    assert.equal(workspaceRevisionAfterDesignSystem, workspaceRevisionBeforeDesignSystem,
+      'Workspace design-system settings use their own revision and must not mutate project workspace revision');
+
     const persistedDesignSystemText = await fs.readFile(path.join(dataDir, 'workspaces', designSystemFile), 'utf8');
     await fs.writeFile(path.join(dataDir, 'workspaces', designSystemFile), '{"settings":', { mode: 0o600 });
     const corruptDesignSystemResponse = await fetch(designSystemUrl, { headers: authHeaders });
