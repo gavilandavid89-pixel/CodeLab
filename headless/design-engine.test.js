@@ -15,15 +15,15 @@ function project(overrides = {}) {
 test('normalizes a legacy project without changing the original', () => {
   const original = project();
   const normalized = normalizeDesignProject(original);
-  assert.deepEqual(normalized.design.canvas, { width: 390, height: 844, unit: 'px' });
+  assert.deepEqual(normalized.design.canvas, { width: 390, height: 900, unit: 'px' });
   assert.equal(normalized.design.canvasWidth, 390);
-  assert.equal(normalized.design.canvasHeight, 844);
+  assert.equal(normalized.design.canvasHeight, 900);
   assert.equal(original.design.canvas, undefined);
 });
 
 test('preserves partial canvas settings and fills the missing dimension', () => {
   const normalized = normalizeDesignProject(project({ canvas: { width: 720 } }));
-  assert.deepEqual(normalized.design.canvas, { width: 720, height: 844, unit: 'px' });
+  assert.deepEqual(normalized.design.canvas, { width: 720, height: 900, unit: 'px' });
 });
 
 test('sets an arbitrary canvas size independent of element dimensions', () => {
@@ -95,6 +95,11 @@ test('deletes only the requested stable layer id', () => {
     { id: 'b', type: 'ellipse', x: 0, y: 0, width: 1, height: 1 }
   ] }), [{ type: 'element.delete', id: 'a' }]);
   assert.deepEqual(result.project.design.elements.map(layer => layer.id), ['b']);
+});
+
+test('enforces editor canvas minimum dimensions', () => {
+  const engine = createDesignEngine();
+  assert.throws(() => engine.transact(project(), [{ type: 'canvas.set', width: 99, height: 1600 }]), /canvas.width/);
 });
 
 test('reads existing editor canvasWidth and canvasHeight fields as authoritative', () => {
