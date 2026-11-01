@@ -135,6 +135,8 @@ test('stores compact replay receipts instead of large SVG previews', () => {
   assert.equal(typeof result.results[0].previewSvg, 'string');
   assert.equal(typeof receipt.results[0].previewSvg, 'undefined');
   assert.ok(receipt.results[0].previewSvgLength > 0);
+  assert.equal(receipt.results[0].operationCount, 1);
+  assert.equal(typeof receipt.results[0].operationResults, 'undefined');
 });
 
 test('rejects a stale design revision inside a current workspace revision', () => {
