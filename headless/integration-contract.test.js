@@ -115,3 +115,21 @@ test('headless design import export and conversion use the shared design rendere
   assert.match(server, /invalid_design_import/);
   assert.match(server, /design_export_too_large/);
 });
+
+test('headless AI generation uses saved workspace APIs, explicit approval, and quota telemetry without editor clicks', () => {
+  const start = bridge.indexOf("} else if (command.action === 'headless_ai_generate') {");
+  const end = bridge.indexOf("} else if (command.action === 'ai_generate') {", start + 10);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const action = bridge.slice(start, end);
+  assert.match(action, /headless\.operation\.status/);
+  assert.match(action, /\/api\/ai\/complete/);
+  assert.match(action, /headlessAiRequestKey/);
+  assert.match(action, /rateLimit/);
+  assert.doesNotMatch(action, /openProject\(|processAiInstruction\(|toggleCopyBranch\(/);
+  assert.match(bridge, /Headless AI generation consumes provider quota and changes project code/);
+  assert.match(server, /retryAfterSeconds: 60/);
+  assert.match(server, /usage,/);
+  assert.match(server, /rateLimit/);
+  assert.match(runtime, /case 'headless\.operation\.status'/);
+});
