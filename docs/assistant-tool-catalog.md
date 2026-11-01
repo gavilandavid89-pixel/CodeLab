@@ -137,3 +137,14 @@ Added authenticated `POST /api/workspace/:id/headless/query` and the bridge acti
 - `accessibility.audit` runs the existing static HTML audit against the saved web project.
 
 The endpoint requires workspace authorization and owner enforcement. Optional `expectedRevision` rejects stale reads with HTTP 409. The bridge reads directly through the endpoint and does not open a project or click editor controls.
+
+## Section 17 — Workspace-level design-system persistence
+
+Added authenticated `POST /api/workspace/:id/headless/design-system` and bridge action `headless_design_system` for the workspace-scoped settings file that lives separately from project code:
+
+- `read` returns saved settings and the design-system revision.
+- `write` saves sanitized settings with optimistic `baseRevision` checks.
+- `import` uses the shared `public/design-tools.js` JSON parser, also used by the website's import button.
+- `export` returns the same canonical CodeLab JSON tokens and CSS variables as the website.
+
+The design-system store now has its own monotonic revision (legacy version-1 records migrate as revision 0); it does not increment the project workspace revision. Stale writes return HTTP 409. Bridge writes/imports require explicit approval and verify the saved settings by reading them back.
