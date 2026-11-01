@@ -455,6 +455,15 @@ async function waitForPersistedProject(page, projectName) {
       return canvas?.style.width === '1440px' && canvas?.style.height === '900px';
     });
     assert.equal(await page.locator('#designCanvasHeight').inputValue(), '', 'reset should restore automatic canvas height');
+    // The custom-size edits intentionally create undo history; clear it so the
+    // independent layer-limit assertion starts from a clean history state.
+    await page.evaluate(() => {
+      const project = getCurrentProject();
+      project.designUndoStack = [];
+      project.designRedoStack = [];
+      designUndoStack = [];
+      designRedoStack = [];
+    });
 
     const layerLimitCheck = await page.evaluate(() => {
       const project = window.activeDesignProject();
