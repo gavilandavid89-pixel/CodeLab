@@ -100,3 +100,18 @@ Added two design-specific operations backed by the existing editor:
 - `design_prototype_target_set`: assign a bounded, validated target to an eligible layer using the editor's existing prototype-target handler and verify the saved `href` value.
 
 Both require the exact design project ID and the admin session, validate IDs and arguments, and return before/after evidence. They do not call AI providers. Contract tests check registration, validation, and use of the original editor functions. Live tests should use a disposable design project and clean it up after verification.
+
+## Section 15 — Headless workspace runtime
+
+Added **headless_batch**, an authenticated bridge operation that applies a batch directly to the saved workspace without driving editor controls. The server uses the same workspace ownership checks, project validation, revision counter, and atomic persistence as the visible web app.
+
+Supported runtime operations:
+- **project.create**: create a web or design project; the runtime generates a stable project ID when omitted.
+- **project.rename**: rename an existing project while preserving its ID and content.
+- **project.duplicate**: copy an existing project into a new ID without carrying an active copy branch or merge-undo history.
+- **web.code.write**: update selected HTML/CSS/JS fields on a web project or existing copy branch.
+- **design.batch**: apply canvas and layer operations through the shared headless design engine, including an SVG preview result.
+
+Every batch supplies base_revision, operation_id, and 1–100 operations. Workspace revision conflicts return HTTP 409; exact retries with the same operation ID and payload replay the prior result without applying changes twice; reusing an ID with different content is rejected. Receipt records are bounded and remain server-side. Failed batches are atomic and do not partially modify the workspace.
+
+After the server accepts a batch, the bridge reads the workspace back through the existing authenticated web session and opens the affected project in the regular CodeLab UI for visual evidence. The bridge is therefore the delivery/verification path, not the editing engine itself. No Render deployment or production mutation is implied by CI success; live verification requires the updated server and bridge to be deployed.
