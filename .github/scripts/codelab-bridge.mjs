@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -70,6 +70,7 @@ function parseCommand(raw) {
     if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
   }
   if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
+  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_import_json requires a JSON string between 2 and 10000 characters.');
   if (command.action === 'design_tokens_generate') {
     if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
   }
@@ -379,6 +380,59 @@ try {
       const max = 7000;
       return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
     }, { projectId: command.args.project_id, format: command.args.format });
+  } else if (command.action === 'design_import_json') {
+    stage = 'design_import_json';
+    result = await (async () => {
+      const before = await page.evaluate(() => ({
+        ids: projects.map(project => project.id),
+        count: projects.length,
+        maxProjects: typeof maxProjects === 'number' ? maxProjects : null
+      }));
+      await page.locator('#designProjectJsonFile').setInputFiles({
+        name: 'codelab-design-project-import.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(command.args.json, 'utf8')
+      });
+      try {
+        await page.waitForFunction(
+          beforeIds => projects.some(project => !beforeIds.includes(project.id)),
+          before.ids,
+          { timeout: 15000 }
+        );
+        await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight, null, { timeout: 20000 });
+      } catch (_) {
+        const state = await page.evaluate(beforeIds => ({
+          projectCount: projects.length,
+          newProjects: projects.filter(project => !beforeIds.includes(project.id)).map(project => ({ id: project.id, name: project.name })),
+          toastText: document.querySelector('[role="status"]')?.textContent || document.querySelector('#toastContainer')?.textContent || null,
+          syncStatus: document.getElementById('statusText')?.textContent || null
+        }), before.ids);
+        if (!state.newProjects.length) {
+          return { imported: false, rejected: true, reason: 'The app rejected the JSON or did not create a project.', ...state };
+        }
+        throw new Error('Import started but did not settle: ' + JSON.stringify(state));
+      }
+      return await page.evaluate(beforeIds => {
+        const added = projects.filter(project => !beforeIds.includes(project.id));
+        if (added.length !== 1) throw new Error('Expected exactly one imported project; found ' + added.length + '.');
+        const project = added[0];
+        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+        const localSnapshotVerified = Array.isArray(snapshot) && snapshot.some(item =>
+          item?.id === project.id && item.name === project.name && item.design?.elements?.length === project.design?.elements?.length
+        );
+        return {
+          imported: true,
+          projectId: project.id,
+          name: project.name,
+          type: project.type,
+          elementCount: project.design?.elements?.length || 0,
+          frame: project.design?.frame || null,
+          newProjectCount: added.length,
+          localSnapshotVerified,
+          syncStatus: document.getElementById('statusText')?.textContent || null
+        };
+      }, before.ids);
+    })();
   } else if (command.action === 'project_export_html') {
     stage = 'project_export_html';
     result = await page.evaluate(({ projectId, maxChars }) => {
