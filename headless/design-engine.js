@@ -85,6 +85,8 @@ function applyOperation(project, operation) {
   assert(operation && typeof operation === 'object' && typeof operation.type === 'string', 'A valid operation is required.');
   switch (operation.type) {
     case 'canvas.set': {
+      const allowed = new Set(['type', 'width', 'height', 'frame', 'background', 'grid', 'snapToGrid', 'gridSize']);
+      assert(Object.keys(operation).every(key => allowed.has(key)), 'canvas.set contains an unsupported property.');
       const hasSize = operation.width !== undefined || operation.height !== undefined;
       const hasFrame = operation.frame !== undefined;
       assert(hasSize || hasFrame || operation.background !== undefined || operation.grid !== undefined ||
@@ -124,6 +126,8 @@ function applyOperation(project, operation) {
       return { type: operation.type, canvas: clone(project.design.canvas), frame: project.design.frame };
     }
     case 'layout.set': {
+      const allowed = new Set(['type', 'mode', 'direction', 'gap', 'padding']);
+      assert(Object.keys(operation).every(key => allowed.has(key)), 'layout.set contains an unsupported property.');
       if (operation.mode !== undefined) {
         assert(['free', 'auto'].includes(operation.mode), 'layout mode must be free or auto.');
         project.design.layoutMode = operation.mode;
@@ -185,6 +189,7 @@ function applyOperation(project, operation) {
     }
     case 'elements.align': {
       assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 50, 'elements.align requires 1 to 50 layer IDs.');
+      assert(new Set(operation.ids).size === operation.ids.length, 'elements.align IDs must be unique.');
       assert(['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(operation.mode), 'Unsupported alignment mode.');
       const elements = operation.ids.map(id => findElement(project, id));
       const rects = elements.map(el => ({ el, x: Number(el.x) || 0, y: Number(el.y) || 0, width: Number(el.width) || 120, height: Number(el.height) || 48 }));
