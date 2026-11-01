@@ -438,8 +438,10 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(await page.locator('#designCanvasWidth').count(), 1, 'Inspector must expose canvas width with no selected layer');
     assert.equal(await page.locator('#designCanvasHeight').count(), 1, 'Inspector must expose canvas height with no selected layer');
     await page.locator('#designCanvasWidth').fill('720');
+    await page.locator('#designCanvasWidth').press('Tab');
     await page.waitForFunction(() => document.getElementById('designCanvas')?.style.width === '720px');
     await page.locator('#designCanvasHeight').fill('1600');
+    await page.locator('#designCanvasHeight').press('Tab');
     await page.waitForFunction(() => document.getElementById('designCanvas')?.style.height === '1600px');
     assert.equal(await page.locator('#designCanvasWidth').inputValue(), '720', 'Inspector should retain custom canvas width');
     assert.equal(await page.locator('#designCanvasHeight').inputValue(), '1600', 'Inspector should retain custom canvas height');
