@@ -3892,7 +3892,7 @@ function getDesignLayoutPositions(design) {
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
     }
-    return { positions, height: Math.min(6000, Math.max(900, contentBottom + 24)), mode, frameWidth };
+    return { positions, height: Math.min(6000, Math.max(getDesignCanvasHeight(design) || 900, contentBottom + 24)), mode, frameWidth };
   }
   const direction = design.layoutDirection === 'column' ? 'column' : 'row';
   const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
