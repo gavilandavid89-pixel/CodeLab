@@ -28,4 +28,4 @@ jobs:
           node --check headless/workspace-runtime.js
           node --check server.js
       - name: Run isolated headless engine and workspace runtime tests
-        run: node --test headless/design-engine.test.js headless/workspace-runtime.test.js
+        run: node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
