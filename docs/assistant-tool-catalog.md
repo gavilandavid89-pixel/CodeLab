@@ -148,3 +148,16 @@ Added authenticated `POST /api/workspace/:id/headless/design-system` and bridge 
 - `export` returns the same canonical CodeLab JSON tokens and CSS variables as the website.
 
 The design-system store now has its own monotonic revision (legacy version-1 records migrate as revision 0); it does not increment the project workspace revision. Stale writes return HTTP 409. Bridge writes/imports require explicit approval and verify the saved settings by reading them back.
+
+## Section 18 — Headless branches and design history
+
+The workspace runtime now supports the saved copy-branch model and persistent design undo/redo:
+
+- `branch.create` creates an isolated working copy with base and branch code.
+- `web.code.write` can target that branch.
+- `branch.merge` uses the same per-file three-way merge rule as the website. Conflicts return HTTP 409 and do not modify either side. Successful merges keep a bounded backup.
+- `branch.undo_merge` restores the prior main code and branch. Both merge and undo require explicit approval.
+- `branch.inspect` and `design.history.inspect` expose read-only status.
+- `design.batch` records snapshots in the existing project `designUndoStack` / `designRedoStack` fields; `design.history.undo` and `design.history.redo` restore them with monotonic design revisions.
+
+This is project-state functionality; it does not simulate the web editor's branch toggle, confirmation dialog, or undo buttons.
