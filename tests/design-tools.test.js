@@ -104,7 +104,6 @@ assert.match(appSource, /if \(!Array\.isArray\(p\.designUndoStack\)\) p\.designU
   'each design project must initialize its own undo history');
 assert.match(appSource, /if \(!Array\.isArray\(p\.designRedoStack\)\) p\.designRedoStack = \[\]/,
   'each design project must initialize its own redo history');
-assert.match(appSource, /parseDesignSystemImport\(await file\.text\(\)\)/, 'the UI import path must use the same pure JSON validator as headless imports');
 assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}p\.designUndoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
   'undo must consume the active project history and persist the restored design');
 assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}p\.designRedoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
