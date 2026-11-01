@@ -51,8 +51,10 @@ The current first cut caps designs at 500 layers, batches at 500 operations, can
 - `project.create`: create a `web` or `design` project; the server can generate the stable project ID.
 - `project.rename`: rename without changing identity or content.
 - `project.duplicate`: duplicate project data into a new ID, excluding active copy-branch and merge-undo state.
-- `web.code.write`: replace selected HTML/CSS/JS fields on the main project or an existing copy branch.
-- `design.batch`: apply the design-engine operations to a saved design project and return an SVG preview.
+- `project.delete`: delete a project only with explicit approval and remove incoming visual-flow links.
+- `web.code.write`: replace, append, or prepend HTML/CSS/JS chunks on the main project or an existing copy branch; each chunk is bounded and the final field cannot exceed 500,000 characters.
+- `design.batch`: apply canvas, layout, layer, alignment, distribution, duplication, reordering, and deletion operations to a saved design project and return an SVG preview.
+- `design.flow.connect` / `design.flow.disconnect`: connect one design layer to another design project or remove that connection.
 
 Each request has `baseRevision`, a stable `operationId`, and 1–100 operations. Workspace revision checks prevent stale writes; the bounded receipt log makes exact retries idempotent. Reusing an operation ID with different content is rejected. Failed batches leave the input snapshot unchanged. The authenticated `POST /api/workspace/:id/headless` endpoint uses the existing workspace token/session ownership checks and existing atomic workspace file persistence. Receipt metadata stays server-side and is not exposed in workspace reads.
 
@@ -71,4 +73,4 @@ node --check headless/design-engine.js
 node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
 ```
 
-The tests cover legacy/editor canvas compatibility, custom dimensions, layer operations, text alignment and rotation, optimistic design/workspace revision conflicts, project creation/duplication/rename, web code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping.
+The tests cover legacy/editor canvas compatibility, custom dimensions, Auto Layout, grid settings, layer alignment/distribution/duplication/reordering/deletion, text alignment and rotation, flow connections, optimistic design/workspace revision conflicts, project creation/duplication/rename/approved deletion, chunked web-code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping.
