@@ -145,3 +145,31 @@ test('rejects a stale design revision inside a current workspace revision', () =
   ])), error => error.code === 'REVISION_CONFLICT');
 });
 
+
+test('connects design flow between separate design projects', () => {
+  const source = designProject('proj_source');
+  source.design.elements = [{ id: 'el_link', type: 'button', flowRole: '' }];
+  const target = designProject('proj_target');
+  const result = applyHeadlessBatch(state([source, target]), request([
+    { type: 'design.flow.connect', sourceProjectId: source.id, sourceElementId: 'el_link', targetProjectId: target.id }
+  ]));
+  assert.deepEqual(result.state.projects[0].design.flowConnections, [
+    { sourceElementId: 'el_link', targetProjectId: 'proj_target' }
+  ]);
+  assert.equal(result.state.projects[0].design.elements[0].flowRole, 'navigate');
+});
+
+test('requires explicit approval to delete a project and cleans incoming flow links', () => {
+  const source = designProject('proj_source');
+  source.design.flowConnections = [{ sourceElementId: 'el_link', targetProjectId: 'proj_target' }];
+  const target = designProject('proj_target');
+  assert.throws(() => applyHeadlessBatch(state([source, target]), request([
+    { type: 'project.delete', projectId: 'proj_target' }
+  ])), /explicit approval/);
+  const result = applyHeadlessBatch(state([source, target]), request([
+    { type: 'project.delete', projectId: 'proj_target', approved: true }
+  ]));
+  assert.equal(result.state.projects.length, 1);
+  assert.deepEqual(result.state.projects[0].design.flowConnections, []);
+});
+
