@@ -161,3 +161,14 @@ The workspace runtime now supports the saved copy-branch model and persistent de
 - `design.batch` records snapshots in the existing project `designUndoStack` / `designRedoStack` fields; `design.history.undo` and `design.history.redo` restore them with monotonic design revisions.
 
 This is project-state functionality; it does not simulate the web editor's branch toggle, confirmation dialog, or undo buttons.
+
+## Section 19 — Responsive design templates
+
+Added a browser-independent template module for the website's `landing`, `dashboard`, and `portfolio` templates:
+
+- `design.template.list` inspects available templates.
+- `design.template.apply` generates regular design-layer records using the saved custom canvas width, selecting compact geometry at 768px or below.
+- Template application updates the design revision and records an undo snapshot.
+- Replacing existing layers requires explicit operation approval and bridge-level command approval; the previous design is recoverable through `design.history.undo`.
+
+Templates use the same layer schema and SVG renderer as manually authored design elements.
