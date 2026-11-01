@@ -68,7 +68,7 @@ Run:
 
 ```sh
 node --check headless/design-engine.js
-node --test headless/design-engine.test.js headless/workspace-runtime.test.js
+node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
 ```
 
 The tests cover legacy/editor canvas compatibility, custom dimensions, layer operations, text alignment and rotation, optimistic design/workspace revision conflicts, project creation/duplication/rename, web code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping.
