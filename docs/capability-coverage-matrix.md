@@ -162,4 +162,14 @@ PR #170 moved all layer ordering, alignment/distribution, prototype-target, layo
 
 ### Bulk layer deletion tool
 
-`design_elements_delete` accepts 1–100 unique layer IDs, validates all targets before mutation, uses the existing app deletion flow for multi-selection, and verifies the requested layers are absent from the resulting project snapshot. It also checks that deleted layers do not leave outgoing flow connections. Contract tests pass/fail through CI; live testing is pending until deployment.
+`design_elements_delete` accepts 1–100 unique layer IDs, validates all targets before mutation, uses the existing app deletion flow for multi-selection, and verifies the requested layers are absent from the resulting project snapshot. It also checks that deleted layers do not leave outgoing flow connections. CI and live testing passed: [bulk-delete command](https://github.com/gavilandavid89-pixel/CodeLab/issues/213) removed two requested layers, verified `remainingElements: 1`, `danglingConnections: 0`, and `localSnapshotVerified: true`; [readback](https://github.com/gavilandavid89-pixel/CodeLab/issues/214) confirmed only the button remained, and [cleanup](https://github.com/gavilandavid89-pixel/CodeLab/issues/215) deleted the disposable project.
+
+
+### Live evidence — composable layer operations (2026-11-01)
+
+- [PR #198](https://github.com/gavilandavid89-pixel/CodeLab/pull/198) added `design_layer_reorder`, which moves a layer to an arbitrary valid index and verifies the complete local order.
+- [Live reorder](https://github.com/gavilandavid89-pixel/CodeLab/issues/203): rectangle moved from index 0 to index 2; `changed: true`, `saved: true`, `localSnapshotVerified: true`.
+- [Property edit after reorder](https://github.com/gavilandavid89-pixel/CodeLab/issues/204): changed x/y/width/height/background and verified the exact values in the snapshot.
+- [Delete a different layer](https://github.com/gavilandavid89-pixel/CodeLab/issues/205) then [read back](https://github.com/gavilandavid89-pixel/CodeLab/issues/206): remaining layer order and properties matched expectations; disposable project cleanup succeeded in [issue #207](https://github.com/gavilandavid89-pixel/CodeLab/issues/207).
+- [PR #208](https://github.com/gavilandavid89-pixel/CodeLab/pull/208) added `design_elements_delete` for 1–100 unique IDs. [Live bulk delete](https://github.com/gavilandavid89-pixel/CodeLab/issues/213) removed two of three layers and reported zero dangling outgoing connections; [readback](https://github.com/gavilandavid89-pixel/CodeLab/issues/214) confirmed exactly one layer remained; [cleanup](https://github.com/gavilandavid89-pixel/CodeLab/issues/215) succeeded.
+- These tests prove tool composition on a running deployed instance, not restart durability. Continue covering other workstreams independently.
