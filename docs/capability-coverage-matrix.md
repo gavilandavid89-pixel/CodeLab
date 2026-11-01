@@ -110,3 +110,17 @@ These are disposable-project results from the deployed bridge, not inferred from
 - The bridge's standalone undo call returned `changed: false`; undo/redo needs a same-session test because history may be scoped to the editor session. Do not mark history complete yet. Evidence: [#146](https://github.com/gavilandavid89-pixel/CodeLab/issues/146).
 - Render logs warn that `CODELAB_DATA_DIR` and `CODELAB_WORKSPACE_SECRET` are not configured. Current tests verified saves/readback while the service remained running, but restart-safe workspace persistence has not been proven and must be fixed or configured before claiming durable production storage.
 - The landing page footer version was stale (2.6.4 while the title/server report 2.6.6); this PR aligns the footer to 2.6.6.
+
+
+## Cross-workstream live regression — prototype links (2026-11-01)
+
+The deployed bridge accepted a button target pointing to another design layer using the editor-supported `#layer-<id>` form. A separate JSON export then contained the exact same `href`, proving the value survived a new browser execution rather than only existing in the mutation response. The disposable project was deleted afterward.
+
+- [Create test project](https://github.com/gavilandavid89-pixel/CodeLab/issues/161)
+- [Add button and target heading](https://github.com/gavilandavid89-pixel/CodeLab/issues/162) · [add heading](https://github.com/gavilandavid89-pixel/CodeLab/issues/163)
+- [Set internal target](https://github.com/gavilandavid89-pixel/CodeLab/issues/164)
+- [Read design in a fresh execution](https://github.com/gavilandavid89-pixel/CodeLab/issues/165)
+- [Export and verify exact href](https://github.com/gavilandavid89-pixel/CodeLab/issues/166)
+- [Delete disposable project](https://github.com/gavilandavid89-pixel/CodeLab/issues/167)
+
+**Cross-workstream rule:** bridge actions are globally available by their declared action name, not gated by which visual section the user happens to be viewing. A workflow may combine layer mutations, canvas/layout settings, component/library operations, prototype navigation, exports, tokens and audits against the same project when their input types and preconditions match. Keep each mutation permission-checked, verify the resulting state, and do not claim session-only operations are persisted.
