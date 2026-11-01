@@ -124,3 +124,37 @@ The deployed bridge accepted a button target pointing to another design layer us
 - [Delete disposable project](https://github.com/gavilandavid89-pixel/CodeLab/issues/167)
 
 **Cross-workstream rule:** bridge actions are globally available by their declared action name, not gated by which visual section the user happens to be viewing. A workflow may combine layer mutations, canvas/layout settings, component/library operations, prototype navigation, exports, tokens and audits against the same project when their input types and preconditions match. Keep each mutation permission-checked, verify the resulting state, and do not claim session-only operations are persisted.
+
+
+## Authoritative coverage reconciliation — 2026-11-01
+
+This section supersedes the older action count and pending rows above where newer live evidence is linked. The current allowlist contains **55 unique actions** (60 entries before duplicate-name cleanup; five names were repeated in the literal array). All visual design actions require an authenticated admin session and an explicit `project_id` after PR #170. UI section does not restrict tool choice: actions can be combined across workstreams when the target project and action preconditions are valid.
+
+### Eight workstreams — current status
+
+| Workstream | Available operations | Evidence-backed status | Still not proven / not exposed |
+|---|---|---|---|
+| 1. Layers and properties | Add/update/delete/duplicate, move layer order, align/distribute, set prototype target; geometry and style properties through `design_element_update` | Live add/update/reorder/duplicate/delete, alignment and distribution; deleting a duplicate left original layers intact. [Layer evidence](https://github.com/gavilandavid89-pixel/CodeLab/issues/133)–[#145](https://github.com/gavilandavid89-pixel/CodeLab/issues/145) | Not every property/type combination or boundary value has been tested. Selection is editor state, not a persistent design mutation. |
+| 2. Canvas and composition | Frame, background, grid, snap, grid size, zoom; free/Auto Layout direction/gap/padding | Mobile frame, grid/snap, background and Auto Layout settings were saved and read back. [Canvas](https://github.com/gavilandavid89-pixel/CodeLab/issues/147), [layout](https://github.com/gavilandavid89-pixel/CodeLab/issues/148) | Zoom is session-only; no dedicated pan/fit-to-viewport operation. |
+| 3. Responsive design | Desktop/tablet/mobile frame selection and the existing responsive web preview/browser controls | Mobile canvas setting persisted; editor/browser bridge is available. | Tablet-specific geometry, orientation, breakpoints and actual responsive viewport rendering still need live tests. A frame selection alone does not prove responsive layout quality. |
+| 4. Components and resources | Search, inspect component metadata/standalone HTML, insert into a project | Search and inspect were live-tested; component HTML was returned without truncation. [Search](https://github.com/gavilandavid89-pixel/CodeLab/issues/107), [inspect](https://github.com/gavilandavid89-pixel/CodeLab/issues/108) | Component insertion still needs an isolated live test with exact saved-code verification; library images/download UX are not all separate bridge actions. |
+| 5. Prototype and flows | Set internal/external prototype target; read/connect/disconnect flow graph | Internal `#layer-<id>` target survived a fresh read and JSON export. Flow connection was saved and verified. [Target roundtrip](https://github.com/gavilandavid89-pixel/CodeLab/issues/164)–[#166](https://github.com/gavilandavid89-pixel/CodeLab/issues/166), [flow](https://github.com/gavilandavid89-pixel/CodeLab/issues/154) | Full multi-screen preview playback and every disconnect/error path need tests. |
+| 6. Design systems and accessibility | Generate normalized design tokens/CSS variables; run HTML accessibility audit | Token generation returned settings, tokens and CSS variables. [Tokens](https://github.com/gavilandavid89-pixel/CodeLab/issues/152) | Palette CRUD, import/export of design-system JSON, contrast query and audit export are not all direct typed operations. Audit needs live verification on known accessible/inaccessible fixtures. |
+| 7. Templates and exchange | Apply landing/dashboard/portfolio template; export SVG/JSON; convert design to web | Landing template generated four layers on a clean disposable project; JSON export returned 2,968 characters without truncation. [Template](https://github.com/gavilandavid89-pixel/CodeLab/issues/150), [export](https://github.com/gavilandavid89-pixel/CodeLab/issues/153) | Dashboard/portfolio templates, SVG output, JSON import validation and design-to-web conversion still need live roundtrip tests. |
+| 8. History, persistence and reliability | Design undo/redo; web branch create/save/resume/merge/undo; project save/readback; validation and sync diagnostics | Web branch happy path, merge backup and undo-merge were live-tested. Design edits/readback and cross-tool operations were verified while the service remained running. | Design undo returned `changed:false` when invoked from a separate execution; same-session undo/redo is unresolved. Render logs warn that `CODELAB_DATA_DIR` and `CODELAB_WORKSPACE_SECRET` are not configured, so restart-safe storage/token stability is not proven. Do not label this production-durable until persistent storage is configured and tested across a restart/redeploy. |
+
+### Control inventory regression
+
+After PR #172, live `list_controls` returned **24 visible interactive controls** from the deployed landing page, including project create/open/duplicate/delete, project search, design tools, component library and AI prompt controls. The result includes accessible labels, data-action metadata, IDs and disabled state. Evidence: [issue #173](https://github.com/gavilandavid89-pixel/CodeLab/issues/173). This is a landing-page inventory; the editor and each modal still need their own inventory pass.
+
+### Permission and project-scope regression
+
+PR #170 moved all layer ordering, alignment/distribution, prototype-target, layout and canvas mutation actions under the authenticated-session/project-scope policy. CI passed and Render reached `live`. A live negative test without `project_id` was rejected during command validation before page interaction: [issue #171](https://github.com/gavilandavid89-pixel/CodeLab/issues/171). This confirms the safety guard, not the success path for every action; existing live evidence remains the basis for each operation above.
+
+### Next tests, in priority order
+
+1. Fix/validate durable workspace persistence without repurposing an unrelated database or silently adding paid infrastructure.
+2. Add a same-session undo/redo test harness and verify state after undo and redo.
+3. Live-test component insertion, accessibility audit fixtures, SVG export, design-to-web conversion, tablet/orientation preview, and branch conflict handling.
+4. Add a per-screen control inventory for editor, design tools, component library, prototype/flow, and settings dialogs.
+5. Keep each result marked pending until a real deployed test verifies exact before/after state and disposable resources are cleaned up.
