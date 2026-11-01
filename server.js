@@ -1850,7 +1850,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const headlessDesignSystemMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless\\/design-system$/);
+      const headlessDesignSystemMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/design-system$/);
       if (req.method === 'POST' && headlessDesignSystemMatch) {
         const id = safeId(headlessDesignSystemMatch[1]);
         const body = await readBody(req);
