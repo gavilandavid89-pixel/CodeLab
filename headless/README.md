@@ -83,3 +83,14 @@ The workspace runtime imports the same browser-independent modules used by the w
 - `design.tokens.apply`: calls `public/design-tools.js` for settings sanitization, CSS variable generation, and managed token-block replacement. Existing unmanaged CSS is preserved, and the canonical 500,000-character field limit is enforced.
 
 These operations are part of the same atomic workspace batch, use the existing project code fields, and are persisted by the authenticated headless endpoint. They do not open the editor or require a DOM. The separate workspace design-system settings file and its cross-device save/import workflow remain a distinct capability to expose through an authenticated headless API; generating/applying tokens to a project does not claim that workspace-level settings were saved.
+
+## Read-only headless query API
+
+The authenticated `POST /api/workspace/:id/headless/query` endpoint reads the current saved workspace without changing its revision or writing any project state. It supports:
+
+- `component.search` and `component.inspect` against the actual website catalog, with bounded standalone HTML output.
+- `design.tokens.generate` through the website's existing design-tools module.
+- `project.inspect`, `project.code.read`, and `design.read` for saved project state, with explicit field/layer limits and truncation metadata.
+- `accessibility.audit` against saved web-project HTML using the existing static audit.
+
+The endpoint requires the same workspace token/session ownership checks as normal workspace operations. An optional `expectedRevision` detects stale reads and returns HTTP 409. Query operations are read-only and do not create idempotency receipts or increment the workspace revision. The bridge action `headless_query` exposes these reads to the assistant without opening a project or simulating editor clicks.
