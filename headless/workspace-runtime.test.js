@@ -411,3 +411,56 @@ test('queries branch and design history state without mutating the workspace', (
   assert.equal(history.result.canRedo, false);
   assert.equal(JSON.stringify(original), before);
 });
+
+test('applies responsive landing and dashboard templates through the shared design schema', () => {
+  const mobile = designProject();
+  mobile.design.canvasWidth = 720;
+  mobile.design.canvasHeight = 1600;
+  const landing = applyHeadlessBatch(state([mobile]), request([
+    { type: 'design.template.apply', projectId: mobile.id, templateId: 'landing' }
+  ]));
+  const landingDesign = landing.state.projects[0].design;
+  assert.equal(landingDesign.elements.length, 4);
+  assert.equal(landingDesign.background, '#ffffff');
+  assert.equal(landingDesign.elements[0].x, 24);
+  assert.equal(landingDesign.elements[0].width, 672);
+  assert.equal(landingDesign.elements[0].fontSize, 30);
+  assert.equal(landingDesign.elements[3].height, 220);
+  assert.equal(landingDesign.revision, 1);
+  assert.equal(landing.state.projects[0].designUndoStack.length, 1);
+
+  const desktop = designProject('proj_dashboard');
+  desktop.design.canvasWidth = 1440;
+  const dashboard = applyHeadlessBatch(state([desktop]), request([
+    { type: 'design.template.apply', projectId: desktop.id, templateId: 'dashboard' }
+  ]));
+  assert.equal(dashboard.state.projects[0].design.elements.length, 11);
+  assert.equal(dashboard.state.projects[0].design.background, '#f8fafc');
+  assert.equal(dashboard.state.projects[0].design.elements[0].fontSize, 36);
+});
+
+test('requires approval before replacing existing design layers with a template', () => {
+  const project = designProject();
+  project.design.elements = [{ id: 'el_existing', type: 'rectangle', x: 0, y: 0, width: 20, height: 20 }];
+  assert.throws(() => applyHeadlessBatch(state([project]), request([
+    { type: 'design.template.apply', projectId: project.id, templateId: 'portfolio' }
+  ])), error => error.code === 'HEADLESS_TEMPLATE_REPLACE_REQUIRED');
+  assert.throws(() => applyHeadlessBatch(state([project]), request([
+    { type: 'design.template.apply', projectId: project.id, templateId: 'portfolio', replaceExisting: true }
+  ])), /requires approved:true/);
+  const result = applyHeadlessBatch(state([project]), request([
+    { type: 'design.template.apply', projectId: project.id, templateId: 'portfolio', replaceExisting: true, approved: true }
+  ]));
+  assert.equal(result.state.projects[0].design.elements.length, 8);
+});
+
+test('lists available design templates without changing the workspace and rejects unknown templates', () => {
+  const original = state([designProject()]);
+  const before = JSON.stringify(original);
+  const list = queryHeadlessWorkspace(original, { action: 'design.template.list', args: {} });
+  assert.deepEqual(list.result.map(item => item.id), ['landing', 'dashboard', 'portfolio']);
+  assert.equal(JSON.stringify(original), before);
+  assert.throws(() => applyHeadlessBatch(original, request([
+    { type: 'design.template.apply', projectId: 'proj_design1', templateId: 'unknown' }
+  ])), error => error.code === 'HEADLESS_TEMPLATE_NOT_FOUND');
+});
