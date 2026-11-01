@@ -74,3 +74,12 @@ node --test headless/design-engine.test.js headless/workspace-runtime.test.js he
 ```
 
 The tests cover legacy/editor canvas compatibility, custom dimensions, Auto Layout, grid settings, layer alignment/distribution/duplication/reordering/deletion, text alignment and rotation, flow connections, optimistic design/workspace revision conflicts, project creation/duplication/rename/approved deletion, chunked web-code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping.
+
+## Shared CodeLab capabilities added to the headless runtime
+
+The workspace runtime imports the same browser-independent modules used by the website instead of maintaining a second catalog or token implementation:
+
+- `component.insert`: resolves the component by ID from `public/component-library.js`, inserts its actual HTML before the closing body tag (or appends it), and adds a stable marker so a retry with a new operation ID does not duplicate it.
+- `design.tokens.apply`: calls `public/design-tools.js` for settings sanitization, CSS variable generation, and managed token-block replacement. Existing unmanaged CSS is preserved, and the canonical 500,000-character field limit is enforced.
+
+These operations are part of the same atomic workspace batch, use the existing project code fields, and are persisted by the authenticated headless endpoint. They do not open the editor or require a DOM. The separate workspace design-system settings file and its cross-device save/import workflow remain a distinct capability to expose through an authenticated headless API; generating/applying tokens to a project does not claim that workspace-level settings were saved.
