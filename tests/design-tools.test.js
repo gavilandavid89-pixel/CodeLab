@@ -33,6 +33,15 @@ assert.equal(exportedRoundTrip.version, 1);
 assert.equal(exportedRoundTrip.typography.baseFontPx, 20);
 assert.equal(exportedRoundTrip.spacing[0].px, 8);
 assert.equal(exportedRoundTrip.radius.find(item => item.name === 'radius-lg').px, 16);
+const parsedRoundTrip = tools.parseDesignSystemImport(JSON.stringify(exportedRoundTrip));
+assert.equal(parsedRoundTrip.name, 'Round trip');
+assert.equal(parsedRoundTrip.primary, '#123456');
+assert.equal(parsedRoundTrip.baseFont, 20);
+assert.equal(parsedRoundTrip.baseSpacing, 8);
+assert.equal(parsedRoundTrip.baseRadius, 16);
+assert.throws(() => tools.parseDesignSystemImport({ ...exportedRoundTrip, colors: { ...exportedRoundTrip.colors, primary: 'not-a-color' } }), /colores inválidos/);
+assert.throws(() => tools.parseDesignSystemImport({ ...exportedRoundTrip, typography: { ...exportedRoundTrip.typography, baseFontPx: 99 } }), /fuera de rango/);
+
 
 const css = tools.toCssVariables({ primary: '#123456', baseFont: 18, baseSpacing: 6 });
 assert.match(css, /--color-primary: #123456;/);
@@ -93,6 +102,7 @@ assert.match(appSource, /if \(!Array\.isArray\(p\.designUndoStack\)\) p\.designU
   'each design project must initialize its own undo history');
 assert.match(appSource, /if \(!Array\.isArray\(p\.designRedoStack\)\) p\.designRedoStack = \[\]/,
   'each design project must initialize its own redo history');
+assert.match(appSource, /parseDesignSystemImport\(await file\.text\(\)\)/, 'the UI import path must use the same pure JSON validator as headless imports');
 assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}p\.designUndoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
   'undo must consume the active project history and persist the restored design');
 assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}p\.designRedoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
