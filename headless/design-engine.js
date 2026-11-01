@@ -35,6 +35,12 @@ function finiteNumber(value, name, min = -MAX_CANVAS_SIZE, max = MAX_CANVAS_SIZE
   return number;
 }
 
+function integerNumber(value, name, min, max) {
+  const number = finiteNumber(value, name, min, max);
+  assert(Number.isInteger(number), name + ' must be an integer.');
+  return number;
+}
+
 function normalizeDesignProject(input) {
   assert(input && typeof input === 'object' && !Array.isArray(input), 'A project object is required.');
   assert(input.type === 'design', 'The project must be a design project.');
@@ -53,8 +59,8 @@ function normalizeDesignProject(input) {
   project.design.background = project.design.background || '#ffffff';
   const defaultCanvas = legacyCanvas(project.design.frame);
   const storedCanvas = project.design.canvas && typeof project.design.canvas === 'object' && !Array.isArray(project.design.canvas) ? project.design.canvas : {};
-  const width = finiteNumber(project.design.canvasWidth ?? storedCanvas.width ?? defaultCanvas.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
-  const height = finiteNumber(project.design.canvasHeight ?? storedCanvas.height ?? defaultCanvas.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
+  const width = integerNumber(project.design.canvasWidth ?? storedCanvas.width ?? defaultCanvas.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
+  const height = integerNumber(project.design.canvasHeight ?? storedCanvas.height ?? defaultCanvas.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
   project.design.canvasWidth = width;
   project.design.canvasHeight = height;
   project.design.canvas = { width, height, unit: 'px' };
@@ -79,8 +85,8 @@ function applyOperation(project, operation) {
   assert(operation && typeof operation === 'object' && typeof operation.type === 'string', 'A valid operation is required.');
   switch (operation.type) {
     case 'canvas.set': {
-      const width = finiteNumber(operation.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
-      const height = finiteNumber(operation.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
+      const width = integerNumber(operation.width, 'canvas.width', 100, MAX_CANVAS_WIDTH);
+      const height = integerNumber(operation.height, 'canvas.height', 100, MAX_CANVAS_SIZE);
       project.design.canvasWidth = width;
       project.design.canvasHeight = height;
       project.design.canvas = { width, height, unit: 'px' };
@@ -179,8 +185,8 @@ function renderSvg(input) {
     const common = ' opacity="' + opacity + '"' + transform;
     if (el.type === 'ellipse') {
       parts.push('<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '" fill="' + escapeXml(fill) + '"' + common + '/>');
-    } else if (el.type === 'rectangle' || el.type === 'button') {
-      parts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + escapeXml(fill) + '"' + common + '/>');
+    } else if (el.type === 'rectangle' || el.type === 'button' || el.type === 'heading' || el.type === 'text') {
+      if (fill !== 'transparent') parts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + escapeXml(fill) + '"' + common + '/>');
     } else if (el.type === 'image') {
       if (fill !== 'transparent') parts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + escapeXml(fill) + '"' + common + '/>');
       if (el.src && isSafeImageSource(el.src)) {
