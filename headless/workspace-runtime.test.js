@@ -117,3 +117,31 @@ test('bounds batch size and requires safe project IDs', () => {
     { type: 'project.create', projectId: 'not-a-project-id', name: 'New' }
   ])), /valid projectId/);
 });
+
+test('generates project IDs when the caller leaves them out', () => {
+  const result = applyHeadlessBatch(state(), request([
+    { type: 'project.create', name: 'Generated ID' }
+  ]));
+  assert.match(result.state.projects[0].id, /^proj_[a-f0-9-]{36}$/);
+});
+
+test('stores compact replay receipts instead of large SVG previews', () => {
+  const result = applyHeadlessBatch(state([designProject()]), request([
+    { type: 'design.batch', projectId: 'proj_design1', operations: [
+      { type: 'element.add', elementType: 'heading', id: 'el_h', properties: { text: 'Preview' } }
+    ] }
+  ]));
+  const receipt = result.state.headlessOperations[0];
+  assert.equal(typeof result.results[0].previewSvg, 'string');
+  assert.equal(typeof receipt.results[0].previewSvg, 'undefined');
+  assert.ok(receipt.results[0].previewSvgLength > 0);
+});
+
+test('rejects a stale design revision inside a current workspace revision', () => {
+  assert.throws(() => applyHeadlessBatch(state([designProject()]), request([
+    { type: 'design.batch', projectId: 'proj_design1', expectedDesignRevision: 9, operations: [
+      { type: 'element.add', elementType: 'rectangle', id: 'el_rect' }
+    ] }
+  ])), error => error.code === 'REVISION_CONFLICT');
+});
+
