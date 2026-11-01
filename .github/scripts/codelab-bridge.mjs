@@ -1415,12 +1415,22 @@ try {
       text: (await page.locator('body').innerText({ timeout: 10000 })).slice(0, 2500)
     };
   } else if (command.action === 'list_controls') {
-    result = await page.locator('button,input,textarea,select,[role="button"]').evaluateAll((els, includeText) =>
-      els.slice(0, 100).map(el => ({
+    result = await page.locator('button,a,input,textarea,select,summary,[role="button"],[onclick],[data-action],[tabindex]:not([tabindex="-1"]),[contenteditable="true"]').evaluateAll((els, includeText) =>
+      els.filter(el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      }).slice(0, 150).map(el => ({
         tag: el.tagName.toLowerCase(),
-        text: includeText ? (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100) : null,
+        role: el.getAttribute('role'),
+        text: includeText ? (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || '').trim().replace(/\\s+/g, ' ').slice(0, 120) : null,
         id: el.id || null,
         type: el.getAttribute('type'),
+        name: el.getAttribute('name'),
+        title: el.getAttribute('title'),
+        ariaLabel: el.getAttribute('aria-label'),
+        dataAction: el.getAttribute('data-action'),
+        href: el.getAttribute('href'),
         disabled: Boolean(el.disabled)
       })),
       commandSource !== 'comment'

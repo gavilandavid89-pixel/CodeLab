@@ -101,3 +101,11 @@ for (const action of scopedDesignActions) {
   assert.ok(projectIdActionsBlock.includes("'" + action + "'"),
     action + ' must require an explicit project_id to avoid acting on an ambiguous project');
 }
+
+
+assert.match(bridge, /button,a,input,textarea,select,summary,\[role="button"\],\[onclick\],\[data-action\]/,
+  'control inventory must include links and app-specific clickable elements, not only native buttons');
+assert.match(bridge, /getBoundingClientRect\(\)[\s\S]{0,240}style\.visibility !== 'hidden'/,
+  'control inventory must filter invisible elements so results reflect actionable UI');
+assert.match(bridge, /ariaLabel:[\s\S]{0,240}dataAction:[\s\S]{0,160}href:/,
+  'control inventory must return accessible labels and action/link metadata for reliable follow-up actions');
