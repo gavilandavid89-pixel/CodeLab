@@ -4745,7 +4745,7 @@ async function applyDesignTemplate(templateId) {
   }
   if (project.design.elements.length && !window.confirm('Esta plantilla reemplazará las capas actuales. Puedes usar Deshacer para recuperar el diseño anterior. ¿Continuar?')) return;
   recordDesignHistory();
-  const frameWidth = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
+  const frameWidth = getDesignCanvasWidth(project.design);
   const compact = frameWidth <= 768;
   const pad = compact ? 24 : 80;
   const contentWidth = Math.max(250, frameWidth - pad * 2);
