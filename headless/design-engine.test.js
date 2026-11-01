@@ -100,6 +100,7 @@ test('deletes only the requested stable layer id', () => {
 test('enforces editor canvas minimum dimensions', () => {
   const engine = createDesignEngine();
   assert.throws(() => engine.transact(project(), [{ type: 'canvas.set', width: 99, height: 1600 }]), /canvas.width/);
+  assert.throws(() => engine.transact(project(), [{ type: 'canvas.set', width: 720.5, height: 1600 }]), /integer/);
 });
 
 test('reads existing editor canvasWidth and canvasHeight fields as authoritative', () => {
@@ -139,5 +140,14 @@ test('supports safe image URLs and text alignment from saved design layers', () 
   assert.match(result.svg, /<image href="https:\/\/images\.example\.test\/hero\.png"/);
   assert.match(result.svg, /preserveAspectRatio="xMidYMid meet"/);
   assert.match(result.svg, /text-anchor="end"/);
+});
+
+
+test('renders text layer backgrounds instead of silently dropping them', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'text', id: 'card-copy', properties: { text: 'Card', background: '#f1f5f9', width: 200, height: 80 } }
+  ]);
+  assert.match(result.svg, /<rect x="84" y="165" width="200" height="80" rx="0" fill="#f1f5f9"/);
 });
 
