@@ -197,6 +197,152 @@ function applyOperation(state, operation) {
   }
 }
 
+
+function queryHeadlessWorkspace(inputState, request) {
+  assert(inputState && typeof inputState === 'object' && Array.isArray(inputState.projects),
+    'A valid workspace state is required.', 'HEADLESS_INVALID_QUERY');
+  assert(request && typeof request === 'object' && !Array.isArray(request),
+    'A headless query is required.', 'HEADLESS_INVALID_QUERY');
+  assert(typeof request.action === 'string', 'A query action is required.', 'HEADLESS_INVALID_QUERY');
+  const args = request.args && typeof request.args === 'object' && !Array.isArray(request.args) ? request.args : {};
+  let result;
+
+  switch (request.action) {
+    case 'component.search': {
+      const query = args.query === undefined ? '' : args.query;
+      const category = args.category === undefined ? '' : args.category;
+      const limit = args.limit === undefined ? 20 : args.limit;
+      assert(typeof query === 'string' && query.length <= 200, 'component.search query must be a string up to 200 characters.', 'HEADLESS_INVALID_QUERY');
+      assert(typeof category === 'string' && category.length <= 100, 'component.search category must be a string up to 100 characters.', 'HEADLESS_INVALID_QUERY');
+      assert(Number.isInteger(limit) && limit >= 1 && limit <= 50, 'component.search limit must be from 1 to 50.', 'HEADLESS_INVALID_QUERY');
+      result = componentLibrary.searchComponents(query, category).slice(0, limit).map(item => ({
+        id: item.id, name: item.name, category: item.category, description: item.description, tags: item.tags
+      }));
+      break;
+    }
+    case 'component.inspect': {
+      assert(typeof args.componentId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(args.componentId),
+        'component.inspect requires a valid componentId.', 'HEADLESS_INVALID_QUERY');
+      const component = componentLibrary.getComponent(args.componentId);
+      assert(component, 'Component not found: ' + args.componentId, 'HEADLESS_COMPONENT_NOT_FOUND');
+      const maxChars = args.maxChars === undefined ? 5000 : args.maxChars;
+      assert(Number.isInteger(maxChars) && maxChars >= 1000 && maxChars <= 7000,
+        'component.inspect maxChars must be from 1000 to 7000.', 'HEADLESS_INVALID_QUERY');
+      const standaloneHtml = componentLibrary.standaloneHtml(component);
+      result = {
+        id: component.id, name: component.name, category: component.category,
+        description: component.description, tags: component.tags,
+        standaloneHtml: standaloneHtml.slice(0, maxChars),
+        originalLength: standaloneHtml.length,
+        truncated: standaloneHtml.length > maxChars
+      };
+      break;
+    }
+    case 'design.tokens.generate': {
+      assert(args.settings && typeof args.settings === 'object' && !Array.isArray(args.settings),
+        'design.tokens.generate requires a settings object.', 'HEADLESS_INVALID_QUERY');
+      const settings = designTools.sanitizeSettings(args.settings);
+      result = {
+        settings,
+        tokens: designTools.buildDesignTokens(settings),
+        cssVariables: designTools.toCssVariables(settings)
+      };
+      break;
+    }
+    case 'project.inspect': {
+      const project = findProject(inputState, args.projectId);
+      result = {
+        id: project.id, name: project.name, type: project.type,
+        createdAt: project.createdAt || null, updatedAt: project.updatedAt || null,
+        codeLengths: Object.fromEntries(['html', 'css', 'js'].map(key => [key, typeof project.code?.[key] === 'string' ? project.code[key].length : 0])),
+        branch: project.branch ? {
+          id: project.branch.id || null,
+          updatedAt: project.branch.updatedAt || null,
+          codeLengths: Object.fromEntries(['html', 'css', 'js'].map(key => [key, typeof project.branch.code?.[key] === 'string' ? project.branch.code[key].length : 0]))
+        } : null,
+        design: project.design ? {
+          frame: project.design.frame || null,
+          canvasWidth: project.design.canvasWidth || null,
+          canvasHeight: project.design.canvasHeight || null,
+          revision: Number.isInteger(project.design.revision) ? project.design.revision : 0,
+          elementCount: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
+          layoutMode: project.design.layoutMode || 'free'
+        } : null
+      };
+      break;
+    }
+    case 'project.code.read': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type !== 'design', 'project.code.read requires a web project.', 'HEADLESS_INVALID_QUERY');
+      const source = args.source || 'main';
+      assert(source === 'main' || source === 'branch', 'project.code.read source must be main or branch.', 'HEADLESS_INVALID_QUERY');
+      const target = source === 'branch' ? project.branch?.code : project.code;
+      assert(target && typeof target === 'object', 'The requested code branch does not exist.', 'HEADLESS_INVALID_QUERY');
+      const languages = args.languages === undefined ? ['html', 'css', 'js'] : args.languages;
+      assert(Array.isArray(languages) && languages.length >= 1 && languages.length <= 3 &&
+        languages.every(key => ['html', 'css', 'js'].includes(key)) && new Set(languages).size === languages.length,
+        'project.code.read languages must be unique html/css/js fields.', 'HEADLESS_INVALID_QUERY');
+      const maxChars = args.maxChars === undefined ? 20000 : args.maxChars;
+      assert(Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 20000,
+        'project.code.read maxChars must be from 1 to 20000.', 'HEADLESS_INVALID_QUERY');
+      result = { projectId: project.id, source, fields: {} };
+      for (const key of languages) {
+        const value = typeof target[key] === 'string' ? target[key] : '';
+        result.fields[key] = { value: value.slice(0, maxChars), originalLength: value.length, truncated: value.length > maxChars };
+      }
+      break;
+    }
+    case 'design.read': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.read requires a design project.', 'HEADLESS_INVALID_QUERY');
+      const elements = Array.isArray(project.design.elements) ? project.design.elements : [];
+      const limit = args.limit === undefined ? 200 : args.limit;
+      assert(Number.isInteger(limit) && limit >= 1 && limit <= 500, 'design.read limit must be from 1 to 500.', 'HEADLESS_INVALID_QUERY');
+      result = {
+        projectId: project.id,
+        canvas: {
+          frame: project.design.frame || null,
+          width: project.design.canvasWidth || 1440,
+          height: project.design.canvasHeight || 900,
+          background: project.design.background || '#ffffff',
+          grid: !!project.design.grid,
+          snapToGrid: !!project.design.snapToGrid,
+          gridSize: project.design.gridSize || 8
+        },
+        layout: {
+          mode: project.design.layoutMode || 'free',
+          direction: project.design.layoutDirection || 'row',
+          gap: project.design.layoutGap || 0,
+          padding: project.design.layoutPadding || 0
+        },
+        revision: Number.isInteger(project.design.revision) ? project.design.revision : 0,
+        elements: elements.slice(0, limit).map(item => ({
+          id: item.id, type: item.type, label: item.label || '', text: String(item.text || '').slice(0, 2000),
+          x: item.x, y: item.y, width: item.width, height: item.height,
+          color: item.color, background: item.background, fontSize: item.fontSize,
+          weight: item.weight, radius: item.radius, href: item.href, alt: item.alt,
+          objectFit: item.objectFit, visible: item.visible, locked: item.locked, flowRole: item.flowRole,
+          hasImageSource: typeof item.src === 'string' && item.src.length > 0,
+          imageSourceLength: typeof item.src === 'string' ? item.src.length : 0
+        })),
+        elementCount: elements.length,
+        truncated: elements.length > limit,
+        flowConnections: Array.isArray(project.design.flowConnections) ? clone(project.design.flowConnections) : []
+      };
+      break;
+    }
+    case 'accessibility.audit': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type !== 'design', 'accessibility.audit requires a web project.', 'HEADLESS_INVALID_QUERY');
+      result = designTools.auditHtml(project.code.html || '');
+      break;
+    }
+    default:
+      assert(false, 'Unsupported headless query: ' + request.action, 'HEADLESS_INVALID_QUERY');
+  }
+  return { revision: inputState.revision, action: request.action, result };
+}
+
 function applyHeadlessBatch(inputState, request) {
   assert(inputState && typeof inputState === 'object' && Array.isArray(inputState.projects), 'A valid workspace state is required.');
   assert(request && typeof request === 'object' && !Array.isArray(request), 'A headless request is required.');
@@ -231,4 +377,4 @@ function applyHeadlessBatch(inputState, request) {
   return { state, replayed: false, revision: state.revision, results };
 }
 
-module.exports = { applyHeadlessBatch, MAX_OPERATIONS, MAX_RECEIPTS };
+module.exports = { applyHeadlessBatch, queryHeadlessWorkspace, MAX_OPERATIONS, MAX_RECEIPTS };
