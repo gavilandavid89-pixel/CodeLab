@@ -1,0 +1,128 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const { createDesignEngine } = require('./design-engine');
+
+const MAX_OPERATIONS = 100;
+const MAX_RECEIPTS = 200;
+const PROJECT_ID = /^proj_[a-zA-Z0-9_-]{1,100}$/;
+
+function assert(condition, message, code = 'HEADLESS_INVALID_OPERATION') {
+  if (!condition) {
+    const error = new Error(message);
+    error.code = code;
+    throw error;
+  }
+}
+function clone(value) { return JSON.parse(JSON.stringify(value)); }
+function hash(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+function findProject(state, id) {
+  assert(typeof id === 'string' && PROJECT_ID.test(id), 'A valid projectId is required.');
+  const project = state.projects.find(item => item.id === id);
+  assert(project, 'Project not found: ' + id, 'HEADLESS_PROJECT_NOT_FOUND');
+  return project;
+}
+
+function applyOperation(state, operation) {
+  assert(operation && typeof operation === 'object' && !Array.isArray(operation), 'Each operation must be an object.');
+  switch (operation.type) {
+    case 'project.create': {
+      assert(state.projects.length < 500, 'Workspace project limit reached.');
+      assert(typeof operation.projectId === 'string' && PROJECT_ID.test(operation.projectId), 'project.create requires a valid projectId.');
+      assert(!state.projects.some(item => item.id === operation.projectId), 'Project ID already exists.');
+      assert(typeof operation.name === 'string' && operation.name.trim() && operation.name.trim().length <= 200, 'project.create requires a name up to 200 characters.');
+      const type = operation.projectType || 'web';
+      assert(type === 'web' || type === 'design', 'Project type must be web or design.');
+      const now = new Date().toISOString();
+      const project = { id: operation.projectId, name: operation.name.trim(), type, code: { html: '', css: '', js: '' }, createdAt: now, updatedAt: now };
+      if (type === 'design') project.design = {
+        frame: 'desktop', background: '#ffffff', canvasWidth: 1440, canvasHeight: 900, elements: [], revision: 0
+      };
+      state.projects.push(project);
+      return { type: operation.type, projectId: project.id, projectType: project.type };
+    }
+    case 'project.rename': {
+      const project = findProject(state, operation.projectId);
+      assert(typeof operation.name === 'string' && operation.name.trim() && operation.name.trim().length <= 200, 'project.rename requires a name up to 200 characters.');
+      project.name = operation.name.trim();
+      project.updatedAt = new Date().toISOString();
+      return { type: operation.type, projectId: project.id, name: project.name };
+    }
+    case 'project.duplicate': {
+      assert(state.projects.length < 500, 'Workspace project limit reached.');
+      const source = findProject(state, operation.projectId);
+      assert(typeof operation.newProjectId === 'string' && PROJECT_ID.test(operation.newProjectId), 'project.duplicate requires a valid newProjectId.');
+      assert(!state.projects.some(item => item.id === operation.newProjectId), 'Duplicate project ID already exists.');
+      const duplicate = clone(source);
+      duplicate.id = operation.newProjectId;
+      duplicate.name = typeof operation.name === 'string' && operation.name.trim() ? operation.name.trim().slice(0, 200) : source.name + ' copy';
+      duplicate.createdAt = new Date().toISOString();
+      duplicate.updatedAt = duplicate.createdAt;
+      delete duplicate.branch;
+      delete duplicate.mergeHistory;
+      state.projects.push(duplicate);
+      return { type: operation.type, sourceProjectId: source.id, projectId: duplicate.id, name: duplicate.name };
+    }
+    case 'web.code.write': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type !== 'design', 'web.code.write requires a web project.');
+      const source = operation.source || 'main';
+      assert(source === 'main' || source === 'branch', 'Code source must be main or branch.');
+      const target = source === 'branch' ? project.branch?.code : project.code;
+      assert(target && typeof target === 'object', 'The requested code branch does not exist.');
+      const keys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(operation, key));
+      assert(keys.length > 0, 'web.code.write requires html, css, or js.');
+      for (const key of keys) {
+        assert(typeof operation[key] === 'string' && operation[key].length <= 500000, key + ' must be a string up to 500000 characters.');
+        target[key] = operation[key];
+      }
+      project.updatedAt = new Date().toISOString();
+      if (source === 'branch') project.branch.updatedAt = project.updatedAt;
+      return { type: operation.type, projectId: project.id, source, updatedFields: keys };
+    }
+    case 'design.batch': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type === 'design' && project.design, 'design.batch requires an existing design project.');
+      assert(Array.isArray(operation.operations) && operation.operations.length > 0 && operation.operations.length <= 500,
+        'design.batch requires 1 to 500 design operations.');
+      const result = createDesignEngine().transact(project, operation.operations, { expectedRevision: operation.expectedDesignRevision });
+      Object.assign(project, result.project);
+      project.updatedAt = new Date().toISOString();
+      return { type: operation.type, projectId: project.id, designRevision: result.revision, operationResults: result.results, previewSvg: result.svg };
+    }
+    default:
+      assert(false, 'Unsupported headless operation: ' + String(operation.type));
+  }
+}
+
+function applyHeadlessBatch(inputState, request) {
+  assert(inputState && typeof inputState === 'object' && Array.isArray(inputState.projects), 'A valid workspace state is required.');
+  assert(request && typeof request === 'object' && !Array.isArray(request), 'A headless request is required.');
+  assert(typeof request.operationId === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(request.operationId), 'operationId must contain 8 to 100 safe characters.');
+  assert(Number.isInteger(request.baseRevision) && request.baseRevision >= 0, 'baseRevision must be a non-negative integer.');
+  assert(Array.isArray(request.operations) && request.operations.length > 0 && request.operations.length <= MAX_OPERATIONS,
+    'A headless batch must contain 1 to ' + MAX_OPERATIONS + ' operations.');
+  const operationHash = hash(request.operations);
+  const receipts = Array.isArray(inputState.headlessOperations) ? inputState.headlessOperations : [];
+  const previous = receipts.find(item => item && item.id === request.operationId);
+  if (previous) {
+    assert(previous.hash === operationHash, 'operationId was already used with a different payload.', 'HEADLESS_IDEMPOTENCY_CONFLICT');
+    return { state: clone(inputState), replayed: true, revision: inputState.revision, results: previous.results };
+  }
+  if (request.baseRevision !== inputState.revision) {
+    const error = new Error('Workspace revision conflict: expected ' + request.baseRevision + ', current ' + inputState.revision + '.');
+    error.code = 'HEADLESS_REVISION_CONFLICT';
+    error.revision = inputState.revision;
+    throw error;
+  }
+  const state = clone(inputState);
+  const results = request.operations.map(operation => applyOperation(state, operation));
+  state.revision = inputState.revision + 1;
+  state.updatedAt = new Date().toISOString();
+  state.headlessOperations = receipts.concat([{ id: request.operationId, hash: operationHash, revision: state.revision, results: clone(results) }]).slice(-MAX_RECEIPTS);
+  return { state, replayed: false, revision: state.revision, results };
+}
+
+module.exports = { applyHeadlessBatch, MAX_OPERATIONS, MAX_RECEIPTS };
