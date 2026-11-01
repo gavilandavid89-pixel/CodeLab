@@ -1938,6 +1938,7 @@ const server = http.createServer(async (req, res) => {
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
           const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          // Exact operation receipts are checked before revision matching so a lost-response retry cannot duplicate a saved change.
           const result = applyHeadlessBatch(current, body);
           if (!result.replayed) writeState(id, result.state);
           return sendJson(res, 200, {
