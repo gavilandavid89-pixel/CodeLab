@@ -12,6 +12,7 @@ const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
+const { applyHeadlessBatch } = require('./headless/workspace-runtime');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -418,6 +419,7 @@ function emptyState(owner) {
     revision: 0,
     updatedAt: new Date().toISOString(),
     projects: [],
+    headlessOperations: [],
     owner: owner || null
   };
 }
@@ -523,6 +525,9 @@ function readState(id) {
   if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
     throw new Error('workspace_updated_at_invalid');
   }
+  if (parsed.headlessOperations != null && (!Array.isArray(parsed.headlessOperations) || parsed.headlessOperations.length > 200 || parsed.headlessOperations.some(item => !item || typeof item.id !== 'string' || typeof item.hash !== 'string' || !Number.isInteger(item.revision) || !Array.isArray(item.results)))) {
+    throw new Error('workspace_headless_operations_invalid');
+  }
   if (parsed.owner != null && (
       typeof parsed.owner !== 'object' ||
       Array.isArray(parsed.owner) ||
@@ -537,6 +542,7 @@ function readState(id) {
     revision: Number.isInteger(parsed.revision) ? parsed.revision : 0,
     updatedAt: parsed.updatedAt || new Date().toISOString(),
     projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+    headlessOperations: Array.isArray(parsed.headlessOperations) ? parsed.headlessOperations : [],
     owner: parsed.owner || null
   };
 }
@@ -549,6 +555,7 @@ function writeState(id, state) {
     revision: state.revision,
     updatedAt: state.updatedAt,
     projects: state.projects,
+    headlessOperations: Array.isArray(state.headlessOperations) ? state.headlessOperations.slice(-200) : [],
     owner: state.owner || null
   };
   try {
@@ -1895,11 +1902,12 @@ const server = http.createServer(async (req, res) => {
           console.error('workspace_corrupt', id, error.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
         }
+        const { headlessOperations: _privateHeadlessReceipts, ...clientState } = state;
         return sendJson(res, 200, {
           ok: true,
           workspaceId: id,
           token: signWorkspace(id),
-          state: state,
+          state: clientState,
           user: sessionUser || null
         });
       }
@@ -1911,10 +1919,47 @@ const server = http.createServer(async (req, res) => {
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
           const state = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
-          return sendJson(res, 200, state);
+          const { headlessOperations: _privateHeadlessReceipts, ...clientState } = state;
+          return sendJson(res, 200, clientState);
         } catch (e) {
           console.error('workspace_corrupt', id, e.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
+        }
+      }
+
+      const headlessMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless$/);
+      if (req.method === 'POST' && headlessMatch) {
+        const id = safeId(headlessMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body)) {
+          return sendJson(res, 400, { error: 'invalid_headless_request' });
+        }
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        try {
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          const result = applyHeadlessBatch(current, body);
+          if (!result.replayed) writeState(id, result.state);
+          return sendJson(res, 200, {
+            ok: true,
+            replayed: result.replayed,
+            revision: result.revision,
+            results: result.results
+          });
+        } catch (error) {
+          if (error.code === 'HEADLESS_REVISION_CONFLICT') {
+            return sendJson(res, 409, { error: 'revision_conflict', revision: error.revision });
+          }
+          if (error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT') {
+            return sendJson(res, 409, { error: 'operation_id_conflict' });
+          }
+          if (error.code === 'HEADLESS_PROJECT_NOT_FOUND') {
+            return sendJson(res, 404, { error: 'project_not_found' });
+          }
+          if (error.code === 'HEADLESS_INVALID_OPERATION') {
+            return sendJson(res, 400, { error: 'invalid_headless_operation', detail: error.message });
+          }
+          console.error('workspace_headless_failed', id, error.message);
+          return sendJson(res, 500, { error: 'headless_operation_failed' });
         }
       }
 
@@ -1944,6 +1989,7 @@ const server = http.createServer(async (req, res) => {
             revision: current.revision + 1,
             updatedAt: new Date().toISOString(),
             projects: body.projects,
+            headlessOperations: current.headlessOperations || [],
             owner: current.owner
           };
           writeState(id, next);
