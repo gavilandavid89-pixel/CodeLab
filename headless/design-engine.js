@@ -276,9 +276,50 @@ function isSafeImageSource(value) {
   return /^(https?:\/\/|\/|\.\.?\/)/i.test(src) && !/[\x00-\x20]/.test(src);
 }
 
+function getDesignLayout(design) {
+  const elements = Array.isArray(design.elements) ? design.elements : [];
+  const frameWidth = Number(design.canvasWidth) || legacyCanvas(design.frame).width;
+  const mode = design.layoutMode === 'auto' ? 'auto' : 'free';
+  const positions = new Map();
+  if (mode === 'free') {
+    let contentBottom = 0;
+    for (const element of elements) {
+      const x = Number.isFinite(Number(element.x)) ? Number(element.x) : 0;
+      const y = Number.isFinite(Number(element.y)) ? Number(element.y) : 0;
+      const height = Math.max(20, Math.min(4000, Number(element.height) || 48));
+      positions.set(element.id, { x, y });
+      contentBottom = Math.max(contentBottom, y + height);
+    }
+    return { positions, height: Math.min(6000, Math.max(Number(design.canvasHeight) || 900, contentBottom + 24)) };
+  }
+  const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+  const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+  const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 24));
+  let x = padding, y = padding, rowHeight = 0;
+  for (const element of elements) {
+    const width = Math.max(20, Math.min(4000, Number(element.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(element.height) || 48));
+    if (direction === 'row') {
+      if (x > padding && x + width > frameWidth - padding) {
+        x = padding; y += rowHeight + gap; rowHeight = 0;
+      }
+      positions.set(element.id, { x, y });
+      x += width + gap;
+      rowHeight = Math.max(rowHeight, height);
+    } else {
+      positions.set(element.id, { x: padding, y });
+      y += height + gap;
+    }
+  }
+  const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+  return { positions, height: Math.min(6000, Math.max(Number(design.canvasHeight) || 900, contentBottom + padding)) };
+}
+
 function renderSvg(input) {
   const project = normalizeDesignProject(input);
-  const { width, height } = project.design.canvas;
+  const { width } = project.design.canvas;
+  const layout = getDesignLayout(project.design);
+  const height = layout.height;
   const background = isSafeColor(project.design.background) ? project.design.background : '#ffffff';
   const parts = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
@@ -286,7 +327,8 @@ function renderSvg(input) {
   ];
   for (const el of project.design.elements) {
     if (el.visible === false) continue;
-    const x = finiteNumber(el.x ?? 0, 'x'), y = finiteNumber(el.y ?? 0, 'y');
+    const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+    const x = finiteNumber(position.x ?? 0, 'x'), y = finiteNumber(position.y ?? 0, 'y');
     const w = finiteNumber(el.width ?? 0, 'width', 0), h = finiteNumber(el.height ?? 0, 'height', 0);
     const fill = isSafeColor(el.background) ? el.background : 'transparent';
     const color = isSafeColor(el.color) ? el.color : '#111827';
