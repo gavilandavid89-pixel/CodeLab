@@ -143,6 +143,12 @@ assert.match(importHandler, /locator\('#designProjectJsonFile'\)\.setInputFiles/
 assert.match(importHandler, /localSnapshotVerified/, 'design JSON import must verify the imported project in the local snapshot');
 
 
+const systemExportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_export_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_export_json') {")));
+assert.match(bridge, /'design_system_import_json', 'design_system_export_json'/, 'design system JSON export must be explicitly allowlisted');
+assert.match(systemExportHandler, /locator\('#exportDesignSystemJson'\)\.click/, 'design system JSON export must use the actual export control');
+assert.match(systemExportHandler, /waitForEvent\('download'/, 'design system JSON export must capture the real browser download');
+assert.match(systemExportHandler, /parsed\.format !== 'codelab-design-system'/, 'design system JSON export must validate the exported schema');
+
 const systemImportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_import_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_import_json') {")));
 assert.match(bridge, /'design_import_json', 'design_system_import_json'/, 'design system JSON import must be explicitly allowlisted');
 assert.match(bridge, /design_system_import_json requires a JSON string between 2 and 10000 characters/, 'design system JSON import must enforce a bounded payload');
