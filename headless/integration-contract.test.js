@@ -8,6 +8,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const bridge = fs.readFileSync(path.join(root, '.github/scripts/codelab-bridge.mjs'), 'utf8');
+const runtime = fs.readFileSync(path.join(root, 'headless/workspace-runtime.js'), 'utf8');
 
 test('server exposes the authenticated headless workspace route', () => {
   assert.match(server, /require\(['"]\.\/headless\/workspace-runtime['"]\)/);
