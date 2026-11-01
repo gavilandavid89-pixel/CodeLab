@@ -323,6 +323,24 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     assert.equal(designHeadless.results[0].designRevision, 1);
     assert.match(designHeadless.results[0].previewSvg, /Created without UI/);
 
+    const staleDesignRevisionResponse = await fetch(headlessUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspace.token },
+      body: JSON.stringify({
+        baseRevision: 2,
+        operationId: 'headless_stale_design_01',
+        operations: [{
+          type: 'design.batch',
+          projectId: headlessProjectId,
+          expectedDesignRevision: 0,
+          operations: [{ type: 'element.add', elementType: 'rectangle', id: 'el_stale' }]
+        }]
+      })
+    });
+    assert.equal(staleDesignRevisionResponse.status, 409,
+      'A stale design revision must return a conflict instead of a server error');
+    assert.equal((await staleDesignRevisionResponse.json()).error, 'design_revision_conflict');
+
     const headlessReadbackResponse = await fetch(BASE_URL + '/api/workspace/' + encodeURIComponent(workspace.workspaceId), {
       headers: { 'x-workspace-token': workspace.token }
     });
