@@ -2035,6 +2035,12 @@ const server = http.createServer(async (req, res) => {
           if (error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT') {
             return sendJson(res, 409, { error: 'operation_id_conflict' });
           }
+          if (error.code === 'HEADLESS_TEMPLATE_REPLACE_REQUIRED') {
+            return sendJson(res, 409, { error: 'template_replace_requires_approval' });
+          }
+          if (error.code === 'HEADLESS_TEMPLATE_NOT_FOUND') {
+            return sendJson(res, 404, { error: 'template_not_found' });
+          }
           if (error.code === 'HEADLESS_BRANCH_CONFLICT') {
             return sendJson(res, 409, { error: 'branch_merge_conflict', conflicts: error.conflicts || [] });
           }
