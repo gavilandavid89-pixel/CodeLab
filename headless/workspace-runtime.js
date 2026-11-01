@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { createDesignEngine } = require('./design-engine');
 const componentLibrary = require('../public/component-library');
 const designTools = require('../public/design-tools');
+const { createDesignTemplate, TEMPLATE_INFO } = require('./design-templates');
 
 const MAX_OPERATIONS = 100;
 const MAX_RECEIPTS = 200;
@@ -233,6 +234,32 @@ function applyOperation(state, operation) {
         tokens: designTools.buildDesignTokens(settings)
       };
     }
+    case 'design.template.apply': {
+      const project = findProject(state, operation.projectId);
+      assert(project.type === 'design' && project.design, 'design.template.apply requires an existing design project.');
+      if (Array.isArray(project.design.elements) && project.design.elements.length > 0 && operation.replaceExisting !== true) {
+        assert(false, 'The template would replace existing layers; set replaceExisting:true and approved:true to continue.',
+          'HEADLESS_TEMPLATE_REPLACE_REQUIRED');
+      }
+      if (operation.replaceExisting === true) {
+        assert(operation.approved === true, 'Replacing design layers with a template requires approved:true.');
+      }
+      const template = createDesignTemplate(operation.templateId, project.design);
+      if (!Array.isArray(project.designUndoStack)) project.designUndoStack = [];
+      if (!Array.isArray(project.designRedoStack)) project.designRedoStack = [];
+      project.designUndoStack.push(JSON.stringify(project.design));
+      if (project.designUndoStack.length > 60) project.designUndoStack.shift();
+      project.designRedoStack = [];
+      project.design.background = template.background;
+      project.design.elements = template.elements;
+      project.design.revision = (Number.isInteger(project.design.revision) ? project.design.revision : 0) + 1;
+      project.updatedAt = new Date().toISOString();
+      return {
+        type: operation.type, projectId: project.id, templateId: template.templateId,
+        elementCount: template.elements.length, canvasWidth: template.canvasWidth,
+        compact: template.compact, designRevision: project.design.revision
+      };
+    }
     case 'design.batch': {
       const project = findProject(state, operation.projectId);
       assert(project.type === 'design' && project.design, 'design.batch requires an existing design project.');
@@ -316,6 +343,10 @@ function queryHeadlessWorkspace(inputState, request) {
   let result;
 
   switch (request.action) {
+    case 'design.template.list': {
+      result = clone(TEMPLATE_INFO);
+      break;
+    }
     case 'component.search': {
       const query = args.query === undefined ? '' : args.query;
       const category = args.category === undefined ? '' : args.category;
