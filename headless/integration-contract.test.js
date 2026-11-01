@@ -70,3 +70,14 @@ test('server and bridge expose authenticated headless design-system read/write/i
   assert.match(bridge, /\/headless\/design-system/);
   assert.match(bridge, /readbackVerified/);
 });
+
+test('headless design-system bridge requires approval and exposes the revisioned API', () => {
+  assert.match(bridge, /'headless_design_system'/);
+  assert.match(bridge, /Changing workspace design-system settings requires approval/);
+  assert.match(bridge, /headless_design_system writes require a non-negative base_revision/);
+  assert.match(bridge, /\/headless\/design-system/);
+  assert.match(bridge, /readbackVerified/);
+  assert.match(server, /function readDesignSystemRecord/);
+  assert.match(server, /revision: current\.revision \+ 1/);
+  assert.match(server, /parseDesignSystemImport\(body\.json\)/);
+});
