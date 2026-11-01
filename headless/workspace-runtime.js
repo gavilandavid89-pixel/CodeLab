@@ -5,7 +5,7 @@ const { createDesignEngine } = require('./design-engine');
 
 const MAX_OPERATIONS = 100;
 const MAX_RECEIPTS = 200;
-const PROJECT_ID = /^proj_[a-zA-Z0-9_-]{1,100}$/;
+const PROJECT_ID = /^proj_[a-zA-Z0-9_-]{1,75}$/;
 
 function assert(condition, message, code = 'HEADLESS_INVALID_OPERATION') {
   if (!condition) {
