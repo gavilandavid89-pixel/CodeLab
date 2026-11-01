@@ -368,8 +368,7 @@ function queryHeadlessWorkspace(inputState, request) {
           baseMainUpdatedAt: project.branch.baseMainUpdatedAt || null,
           updatedAt: project.branch.updatedAt || null,
           codeLengths: Object.fromEntries(['html', 'css', 'js'].map(key => [key, typeof project.branch.code?.[key] === 'string' ? project.branch.code[key].length : 0]))
-        } : null,
-        mergeHistoryCount: Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0
+        } : null
       };
       break;
     }
@@ -391,6 +390,7 @@ function queryHeadlessWorkspace(inputState, request) {
         id: project.id, name: project.name, type: project.type,
         createdAt: project.createdAt || null, updatedAt: project.updatedAt || null,
         codeLengths: Object.fromEntries(['html', 'css', 'js'].map(key => [key, typeof project.code?.[key] === 'string' ? project.code[key].length : 0])),
+        mergeHistoryCount: Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0,
         branch: project.branch ? {
           id: project.branch.id || null,
           updatedAt: project.branch.updatedAt || null,
