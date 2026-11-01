@@ -1927,6 +1927,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // Headless batches share workspace authentication, revision checks, and atomic persistence with the regular web editor.
       const headlessMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless$/);
       if (req.method === 'POST' && headlessMatch) {
         const id = safeId(headlessMatch[1]);
