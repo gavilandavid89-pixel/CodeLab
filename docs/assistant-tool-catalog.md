@@ -183,3 +183,15 @@ Added direct headless design-project export/import and conversion:
 - `design.convert.toWeb` stores a responsive HTML export in the same project while preserving its original design data.
 
 The current HTML conversion embeds the renderer's SVG for visual fidelity. It does not yet reproduce the website's richer semantic DOM export or interactive prototype navigation; those remain explicit parity work.
+
+## Section 21 — Headless AI generation and provider quota telemetry
+
+Added approved bridge action `headless_ai_generate`:
+
+- Reads the saved main or branch code through `headless_query`; it does not open a project, switch branches in the UI, or invoke the chat composer.
+- Calls the same `/api/ai/complete` proxy used by CodeLab and reads the current user's saved provider settings, keeping the API key out of bridge results.
+- Enforces prompt/code/output limits, supports a bounded `max_tokens` budget, chunks generated files into 50k writes, persists through `headless_batch`, and verifies server readback.
+- Uses a SHA-256 request fingerprint in the private headless operation receipt. Exact retries after a lost response are detected before a second provider call; a different request under the same operation ID is rejected.
+- Returns actual provider usage and recognized rate-limit headers when available. CodeLab's own 20-requests/minute per-IP limiter reports a 60-second retry hint. Providers that do not expose daily quota data are reported as unknown; no quota is fabricated and 429s are not retried automatically.
+
+The legacy `ai_generate` UI action remains available for the browser workflow; the new `headless_ai_generate` is the direct saved-workspace path.
