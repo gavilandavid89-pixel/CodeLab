@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -88,6 +88,11 @@ function parseCommand(raw) {
   }
   if (command.action === 'design_element_add' && !['heading', 'text', 'button', 'rectangle', 'ellipse', 'image'].includes(args.type)) {
     throw new Error('design_element_add requires a supported element type.');
+  }
+  if (command.action === 'design_elements_delete') {
+    if (!Array.isArray(args.element_ids) || args.element_ids.length < 1 || args.element_ids.length > 100 || args.element_ids.some(id => typeof id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(id)) || new Set(args.element_ids).size !== args.element_ids.length) {
+      throw new Error('design_elements_delete requires 1 to 100 unique valid element_ids.');
+    }
   }
   if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
@@ -1021,6 +1026,31 @@ try {
       if (!deleted) throw new Error('Design element deletion could not be verified.');
       return { projectId, elementId, deleted, saved: saved === true, remainingElements: latest.design.elements.length };
     }, { projectId: command.args.project_id, elementId: command.args.element_id });
+  } else if (command.action === 'design_elements_delete') {
+    stage = 'design_elements_delete';
+    result = await page.evaluate(async ({ projectId, elementIds }) => {
+      const project = projects.find(item => item && item.id === projectId);
+      if (!project?.design || !Array.isArray(project.design.elements)) throw new Error('Design project not found.');
+      const existing = new Set(project.design.elements.map(item => item && item.id));
+      const missing = elementIds.filter(id => !existing.has(id));
+      if (missing.length) throw new Error('One or more design elements were not found: ' + missing.join(', '));
+      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
+      selectedDesignElementId = elementIds[0]; selectedDesignElementIds = [...elementIds];
+      deleteDesignElement();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const latest = projects.find(item => item && item.id === projectId);
+      const remainingIds = new Set(latest.design.elements.map(item => item.id));
+      const deleted = elementIds.every(id => !remainingIds.has(id));
+      const danglingConnections = Array.isArray(latest.design.flowConnections)
+        ? latest.design.flowConnections.filter(connection => elementIds.includes(connection.sourceElementId)) : [];
+      const saved = await saveProjectsToStorage();
+      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
+      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
+      const localIds = new Set(local?.design?.elements?.map(item => item.id) || []);
+      const localSnapshotVerified = elementIds.every(id => !localIds.has(id));
+      if (!deleted || danglingConnections.length || !localSnapshotVerified) throw new Error('Bulk deletion could not be fully verified.');
+      return { projectId, deletedElementIds: elementIds, deleted, saved: saved === true, remainingElements: latest.design.elements.length, danglingConnections: danglingConnections.length, localSnapshotVerified };
+    }, { projectId: command.args.project_id, elementIds: command.args.element_ids });
   } else if (command.action === 'design_element_duplicate') {
     stage = 'design_element_duplicate';
     result = await page.evaluate(async ({ projectId, elementId }) => {

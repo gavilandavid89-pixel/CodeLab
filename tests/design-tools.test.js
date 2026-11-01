@@ -104,3 +104,10 @@ assert.match(bridgeSource, /design_layer_reorder requires a valid element_id/, '
 assert.match(bridgeSource, /target_index must be an integer from 0 to 499/, 'layer reorder must validate target index bounds');
 assert.match(bridgeSource, /list\.splice\(targetIndex, 0, element\)/, 'layer reorder must place the selected layer at the requested index');
 assert.match(bridgeSource, /localSnapshotVerified, order/, 'layer reorder must verify the final order in the local project snapshot');
+
+const bridgeBulkDeleteSource = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
+assert.match(bridgeBulkDeleteSource, /'design_elements_delete'/, 'bulk layer deletion must be exposed and authorized by the bridge');
+assert.match(bridgeBulkDeleteSource, /1 to 100 unique valid element_ids/, 'bulk layer deletion must validate a bounded unique ID list');
+assert.match(bridgeBulkDeleteSource, /selectedDesignElementIds = \[\.\.\.elementIds\]/, 'bulk deletion must select all requested layers before invoking the app deletion function');
+assert.match(bridgeBulkDeleteSource, /danglingConnections\.length/, 'bulk deletion must verify it did not leave dangling outgoing flow connections');
+assert.match(bridgeBulkDeleteSource, /localSnapshotVerified/, 'bulk deletion must verify the deleted IDs are absent from the project snapshot');
