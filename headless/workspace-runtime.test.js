@@ -347,7 +347,7 @@ test('creates an isolated branch, performs a three-way merge, and can undo it', 
     { type: 'branch.undo_merge', projectId: 'proj_web1', approved: true }
   ], { operationId: 'test_branch_04', baseRevision: 6 }));
   assert.equal(undone.state.projects[0].code.html, '<main>old</main>');
-  assert.equal(undone.state.projects[0].code.css, '');
+  assert.equal(undone.state.projects[0].code.css, 'body{color:navy}', 'undo must restore the exact main code state immediately before merge');
   assert.equal(undone.state.projects[0].branch.id, 'branch_work1');
   assert.equal(undone.state.projects[0].branch.code.html, '<h1>Branch work</h1>');
   assert.equal(undone.state.projects[0].mergeHistory.length, 0);
