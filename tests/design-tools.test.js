@@ -97,3 +97,10 @@ assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}p\.designUndoSta
   'undo must consume the active project history and persist the restored design');
 assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}p\.designRedoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
   'redo must consume the active project history and persist the restored design');
+
+const bridgeSource = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
+assert.match(bridgeSource, /'design_layer_reorder'/, 'arbitrary layer reordering must be exposed as a bridge action');
+assert.match(bridgeSource, /design_layer_reorder requires a valid element_id/, 'layer reorder must validate the element identifier');
+assert.match(bridgeSource, /target_index must be an integer from 0 to 499/, 'layer reorder must validate target index bounds');
+assert.match(bridgeSource, /list\.splice\(targetIndex, 0, element\)/, 'layer reorder must place the selected layer at the requested index');
+assert.match(bridgeSource, /localSnapshotVerified, order/, 'layer reorder must verify the final order in the local project snapshot');
