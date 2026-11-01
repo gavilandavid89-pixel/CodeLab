@@ -1927,7 +1927,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const headlessMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless$/);
+      const headlessMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless$/);
       if (req.method === 'POST' && headlessMatch) {
         const id = safeId(headlessMatch[1]);
         const body = await readBody(req);
