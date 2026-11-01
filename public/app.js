@@ -3251,6 +3251,10 @@ function activeDesignProject() {
   p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
   p.design.layoutPadding = Number.isFinite(Number(p.design.layoutPadding)) ? Math.max(0, Math.min(200, Number(p.design.layoutPadding))) : 24;
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
+  if (!Array.isArray(p.designUndoStack)) p.designUndoStack = [];
+  if (!Array.isArray(p.designRedoStack)) p.designRedoStack = [];
+  designUndoStack = p.designUndoStack;
+  designRedoStack = p.designRedoStack;
   return p;
 }
 function designSnapshot() {
@@ -3258,27 +3262,39 @@ function designSnapshot() {
   return p ? JSON.stringify(p.design) : null;
 }
 function recordDesignHistory() {
-  const snap = designSnapshot();
-  if (snap) {
-    designUndoStack.push(snap);
-    if (designUndoStack.length > 60) designUndoStack.shift();
-    designRedoStack = [];
-    updateDesignHistoryButtons();
-  }
+  const p = activeDesignProject();
+  const snap = p ? JSON.stringify(p.design) : null;
+  if (!p || !snap) return;
+  designUndoStack = p.designUndoStack;
+  designRedoStack = p.designRedoStack;
+  designUndoStack.push(snap);
+  if (designUndoStack.length > 60) designUndoStack.shift();
+  p.designRedoStack = [];
+  designRedoStack = p.designRedoStack;
+  updateDesignHistoryButtons();
 }
 function updateDesignHistoryButtons() {
+  const p = activeDesignProject();
+  if (p) {
+    designUndoStack = p.designUndoStack;
+    designRedoStack = p.designRedoStack;
+  }
   const u = document.getElementById('designUndoBtn'), r = document.getElementById('designRedoBtn');
   if (u) u.disabled = !designUndoStack.length;
   if (r) r.disabled = !designRedoStack.length;
 }
 function designUndo() {
-  const p = activeDesignProject(); if (!p || !designUndoStack.length) return;
+  const p = activeDesignProject(); if (!p || !p.designUndoStack.length) return;
+  designUndoStack = p.designUndoStack;
+  designRedoStack = p.designRedoStack;
   designRedoStack.push(JSON.stringify(p.design));
   p.design = JSON.parse(designUndoStack.pop());
   selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
 }
 function designRedo() {
-  const p = activeDesignProject(); if (!p || !designRedoStack.length) return;
+  const p = activeDesignProject(); if (!p || !p.designRedoStack.length) return;
+  designUndoStack = p.designUndoStack;
+  designRedoStack = p.designRedoStack;
   designUndoStack.push(JSON.stringify(p.design));
   p.design = JSON.parse(designRedoStack.pop());
   selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();

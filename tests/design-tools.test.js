@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const tools = require('../public/design-tools.js');
 
 assert.equal(tools.normalizeHex('#abc'), '#aabbcc');
@@ -85,3 +86,14 @@ const duplicatedBlocks = tools.injectTokenBlock(injected + '\n\n' + injected, ':
 assert.equal((duplicatedBlocks.match(/CodeLab Design Tokens START/g) || []).length, 1, 'managed CSS token blocks should be deduplicated');
 assert.match(duplicatedBlocks, /--color-primary: #abcdef;/);
 console.log('Design tools unit tests passed: WCAG contrast, palette generation, typography, spacing, radius and CSS token export.');
+
+
+const appSource = fs.readFileSync('public/app.js', 'utf8');
+assert.match(appSource, /if \(!Array\.isArray\(p\.designUndoStack\)\) p\.designUndoStack = \[\]/,
+  'each design project must initialize its own undo history');
+assert.match(appSource, /if \(!Array\.isArray\(p\.designRedoStack\)\) p\.designRedoStack = \[\]/,
+  'each design project must initialize its own redo history');
+assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}p\.designUndoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
+  'undo must consume the active project history and persist the restored design');
+assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}p\.designRedoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
+  'redo must consume the active project history and persist the restored design');
