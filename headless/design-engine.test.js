@@ -151,3 +151,49 @@ test('renders text layer backgrounds instead of silently dropping them', () => {
   assert.match(result.svg, /<rect x="84" y="165" width="200" height="80" rx="0" fill="#f1f5f9"/);
 });
 
+
+test('configures canvas, grid, snap, and auto layout in one transaction', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'canvas.set', frame: 'mobile', width: 720, height: 1600, background: '#f8fafc', grid: true, snapToGrid: true, gridSize: 16 },
+    { type: 'layout.set', mode: 'auto', direction: 'column', gap: 16, padding: 20 },
+    { type: 'element.add', elementType: 'rectangle', id: 'first', properties: { width: 200, height: 100 } },
+    { type: 'element.add', elementType: 'rectangle', id: 'second', properties: { width: 200, height: 80 } }
+  ]);
+  assert.equal(result.project.design.frame, 'mobile');
+  assert.equal(result.project.design.canvasWidth, 720);
+  assert.equal(result.project.design.canvasHeight, 1600);
+  assert.equal(result.project.design.snapToGrid, true);
+  assert.equal(result.project.design.gridSize, 16);
+  assert.match(result.svg, /<rect x="20" y="20" width="200" height="100"/);
+  assert.match(result.svg, /<rect x="20" y="136" width="200" height="80"/);
+});
+
+test('duplicates, reorders, aligns, and distributes layers by stable IDs', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'rectangle', id: 'a', properties: { x: 10, y: 10, width: 100, height: 50 } },
+    { type: 'element.add', elementType: 'rectangle', id: 'b', properties: { x: 200, y: 30, width: 100, height: 50 } },
+    { type: 'element.add', elementType: 'rectangle', id: 'c', properties: { x: 400, y: 60, width: 100, height: 50 } },
+    { type: 'element.duplicate', id: 'a', newId: 'copy_a' },
+    { type: 'element.reorder', id: 'copy_a', targetIndex: 0 },
+    { type: 'elements.align', ids: ['a', 'b', 'c'], mode: 'top' },
+    { type: 'elements.distribute', ids: ['a', 'b', 'c'], axis: 'horizontal' }
+  ]);
+  assert.equal(result.project.design.elements[0].id, 'copy_a');
+  const byId = Object.fromEntries(result.project.design.elements.map(el => [el.id, el]));
+  assert.equal(byId.a.y, 10);
+  assert.equal(byId.b.y, 10);
+  assert.equal(byId.c.y, 10);
+  assert.ok(byId.a.x < byId.b.x && byId.b.x < byId.c.x);
+});
+
+test('deleting a layer also removes its visual-flow connection', () => {
+  const source = project();
+  source.design.flowConnections = [{ sourceElementId: 'linked', targetProjectId: 'proj_other' }];
+  source.design.elements = [{ id: 'linked', type: 'button' }];
+  const result = createDesignEngine().transact(source, [{ type: 'element.delete', id: 'linked' }]);
+  assert.equal(result.project.design.elements.length, 0);
+  assert.deepEqual(result.project.design.flowConnections, []);
+});
+
