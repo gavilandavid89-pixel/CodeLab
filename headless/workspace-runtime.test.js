@@ -173,3 +173,20 @@ test('requires explicit approval to delete a project and cleans incoming flow li
   assert.deepEqual(result.state.projects[0].design.flowConnections, []);
 });
 
+
+test('appends and prepends bounded web-code chunks without replacing existing code', () => {
+  const result = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'web.code.write', projectId: 'proj_web1', html: '<section>middle</section>', mode: 'append' },
+    { type: 'web.code.write', projectId: 'proj_web1', html: '<header>start</header>', mode: 'prepend' }
+  ]));
+  assert.equal(result.state.projects[0].code.html, '<header>start</header><main>old</main><section>middle</section>');
+});
+
+test('rejects code writes that exceed the total project field limit', () => {
+  const original = webProject();
+  original.code.html = 'x'.repeat(500000);
+  assert.throws(() => applyHeadlessBatch(state([original]), request([
+    { type: 'web.code.write', projectId: 'proj_web1', html: 'y', mode: 'append' }
+  ])), /500000 character project limit/);
+});
+
