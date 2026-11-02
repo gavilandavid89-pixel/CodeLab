@@ -4325,16 +4325,27 @@ function bindDesignCanvasEvents() {
 function moveDesignLayer(direction) {
   const project = activeDesignProject(), element = selectedDesignElement();
   if (!project || !element || !Array.isArray(project.design.elements)) return;
-  const currentIndex = project.design.elements.findIndex(item => item.id === element.id);
-  const nextIndex = Math.max(0, Math.min(project.design.elements.length - 1, currentIndex + (direction < 0 ? -1 : 1)));
-  if (currentIndex < 0 || nextIndex === currentIndex) return;
+  const elements = project.design.elements;
+  const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [element.id]);
+  const selectedIndices = elements.map((item, index) => selectedIds.has(item.id) ? index : -1).filter(index => index >= 0);
+  if (!selectedIndices.length) return;
+  const step = direction < 0 ? -1 : 1;
+  const orderedIndices = step > 0 ? selectedIndices.slice().reverse() : selectedIndices;
+  const nextOrder = elements.slice();
+  let changed = false;
+  for (const index of orderedIndices) {
+    const target = index + step;
+    if (target < 0 || target >= nextOrder.length || selectedIds.has(nextOrder[target].id)) continue;
+    [nextOrder[index], nextOrder[target]] = [nextOrder[target], nextOrder[index]];
+    changed = true;
+  }
+  if (!changed) return;
   recordDesignHistory();
-  project.design.elements.splice(currentIndex, 1);
-  project.design.elements.splice(nextIndex, 0, element);
+  project.design.elements = nextOrder;
   project.updatedAt = new Date().toISOString();
   renderDesignWorkspace();
   saveProjectsToStorage();
-  showToast(nextIndex > currentIndex ? 'Capa traída al frente.' : 'Capa enviada atrás.');
+  showToast(step > 0 ? (selectedIndices.length > 1 ? 'Capas traídas al frente.' : 'Capa traída al frente.') : (selectedIndices.length > 1 ? 'Capas enviadas atrás.' : 'Capa enviada atrás.'));
 }
 function duplicateDesignElement() {
   const p = activeDesignProject();
