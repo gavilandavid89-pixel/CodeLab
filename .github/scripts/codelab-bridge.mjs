@@ -1773,18 +1773,90 @@ try {
   } else if (command.action === 'branch_resume') {
     stage = 'branch_resume';
     result = await page.evaluate(async projectId => {
+      if (typeof refreshWorkspaceFromServer !== 'function') {
+        throw new Error('Authenticated saved-workspace refresh is unavailable; branch resume was not attempted.');
+      }
+      const workspaceRefreshed = await refreshWorkspaceFromServer();
+      if (!workspaceRefreshed) {
+        throw new Error('Could not refresh the authenticated workspace; refusing to resume a potentially stale local branch.');
+      }
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch verification query failed.');
+        return data;
+      };
+
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Copy branches currently support web projects only.');
+      const branchId = before.result.branch?.id;
+      if (!branchId) throw new Error('The authoritative saved workspace has no copy branch to resume.');
+
+      // Read every branch code field from the authenticated server, paging safely
+      // and pinning all pages to the same workspace revision.
+      const serverCode = {};
+      for (const language of ['html', 'css', 'js']) {
+        let offset = 0;
+        let expectedLength = null;
+        let value = '';
+        for (let pageIndex = 0; pageIndex < 3; pageIndex += 1) {
+          const page = await query('project.code.read', {
+            projectId, source: 'branch', languages: [language], offset, maxChars: 200000
+          });
+          if (page.revision !== before.revision) {
+            throw new Error('Workspace revision changed while verifying the saved branch; retry branch resume.');
+          }
+          const field = page.result.fields?.[language];
+          if (!field || field.offset !== offset || typeof field.value !== 'string') {
+            throw new Error('The saved branch returned an invalid paged code response.');
+          }
+          if (expectedLength === null) expectedLength = field.originalLength;
+          if (field.originalLength !== expectedLength) {
+            throw new Error('Saved branch code length changed during verification; retry branch resume.');
+          }
+          value += field.value;
+          if (field.nextOffset === null) break;
+          if (!Number.isInteger(field.nextOffset) || field.nextOffset <= offset || pageIndex === 2) {
+            throw new Error('Saved branch code could not be fully read within the supported size limit.');
+          }
+          offset = field.nextOffset;
+        }
+        if (value.length !== expectedLength) {
+          throw new Error('Saved branch code readback was incomplete; refusing to resume.');
+        }
+        serverCode[language] = value;
+      }
+
+      const after = await query('project.inspect', { projectId });
+      if (after.revision !== before.revision || after.result.branch?.id !== branchId) {
+        throw new Error('The saved branch changed during verification; retry branch resume.');
+      }
       const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.branch) throw new Error('Project has no saved copy branch to resume.');
+      if (!project?.branch || project.branch.id !== branchId ||
+          ['html', 'css', 'js'].some(key => project.branch.code?.[key] !== serverCode[key])) {
+        throw new Error('Refreshed local branch does not exactly match authoritative server code; branch resume was stopped.');
+      }
+
       openProject(projectId);
       await new Promise(resolve => setTimeout(resolve, 300));
       if (!inCopyBranch) await toggleCopyBranch();
       const resumed = getCurrentProject();
-      const verified = !!(inCopyBranch && resumed?.branch && resumed.branch.id === copyBranchId &&
-        getEditorValue('html') === resumed.branch.code.html &&
-        getEditorValue('css') === resumed.branch.code.css &&
-        getEditorValue('js') === resumed.branch.code.js);
-      if (!verified) throw new Error('The saved branch could not be verified in the editor.');
-      return { projectId, projectName: resumed.name, branchId: copyBranchId, resumed: true, editorMatchesSavedBranch: verified };
+      const verified = !!(inCopyBranch && resumed?.branch && resumed.branch.id === branchId &&
+        ['html', 'css', 'js'].every(key => getEditorValue(key) === serverCode[key]));
+      if (!verified) throw new Error('The editor session could not be verified against the authoritative saved branch.');
+      return {
+        projectId, projectName: resumed.name, branchId, resumed: true,
+        editorMatchesSavedBranch: verified, serverReadbackVerified: true,
+        workspaceRefreshed: true, workspaceRevision: after.revision,
+        sessionOnly: true, persistenceScope: 'editor-session-only'
+      };
     }, command.args.project_id);
   } else if (command.action === 'branch_save') {
     stage = 'branch_save';
@@ -1796,16 +1868,79 @@ try {
         await new Promise(resolve => setTimeout(resolve, 300));
         if (!inCopyBranch) await toggleCopyBranch();
       }
-      const saved = await saveInCopyBranch();
+      await saveInCopyBranch();
       const latest = projects.find(item => item && item.id === projectId);
+      if (!latest?.branch) throw new Error('Copy branch disappeared during save.');
+      const expectedBranchCode = JSON.parse(JSON.stringify(latest.branch.code || {}));
       const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
       const localBranch = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId)?.branch : null;
-      const localVerified = !!localBranch && localBranch.id === latest?.branch?.id &&
-        localBranch.code?.html === latest.branch.code?.html &&
-        localBranch.code?.css === latest.branch.code?.css &&
-        localBranch.code?.js === latest.branch.code?.js;
-      if (!saved && !localVerified) throw new Error('Copy branch save could not be verified.');
-      return { projectId, branchId: latest.branch.id, serverSynced: saved === true, localSnapshotVerified: localVerified, updatedAt: latest.branch.updatedAt };
+      const localVerified = !!localBranch && localBranch.id === latest.branch.id &&
+        ['html', 'css', 'js'].every(key => localBranch.code?.[key] === expectedBranchCode[key]);
+
+      let serverReadbackVerified = false;
+      let workspaceRevision = null;
+      try {
+        const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+        const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+        if (workspaceId && workspaceToken) {
+          const query = async (action, args) => {
+            const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+              body: JSON.stringify({ action, args })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch readback failed.');
+            return data;
+          };
+          const before = await query('project.inspect', { projectId });
+          if (before.result.branch?.id === latest.branch.id) {
+            const serverCode = {};
+            let complete = true;
+            for (const language of ['html', 'css', 'js']) {
+              let offset = 0;
+              let expectedLength = null;
+              let value = '';
+              let finished = false;
+              for (let pageIndex = 0; pageIndex < 3; pageIndex += 1) {
+                const page = await query('project.code.read', {
+                  projectId, source: 'branch', languages: [language], offset, maxChars: 200000
+                });
+                if (page.revision !== before.revision) { complete = false; break; }
+                const field = page.result.fields?.[language];
+                if (!field || field.offset !== offset || typeof field.value !== 'string') { complete = false; break; }
+                if (expectedLength === null) expectedLength = field.originalLength;
+                if (field.originalLength !== expectedLength) { complete = false; break; }
+                value += field.value;
+                if (field.nextOffset === null) { finished = true; break; }
+                if (!Number.isInteger(field.nextOffset) || field.nextOffset <= offset || pageIndex === 2) {
+                  complete = false;
+                  break;
+                }
+                offset = field.nextOffset;
+              }
+              if (!complete || !finished || value.length !== expectedLength) { complete = false; break; }
+              serverCode[language] = value;
+            }
+            const after = complete ? await query('project.inspect', { projectId }) : null;
+            if (after && after.revision === before.revision && after.result.branch?.id === latest.branch.id &&
+                ['html', 'css', 'js'].every(key => serverCode[key] === expectedBranchCode[key])) {
+              serverReadbackVerified = true;
+              workspaceRevision = after.revision;
+            }
+          }
+        }
+      } catch (_) {
+        // Keep the local snapshot result visible; a failed server readback must never be called a server sync.
+      }
+
+      if (!serverReadbackVerified && !localVerified) throw new Error('Copy branch save could not be verified on server or in the exact local snapshot.');
+      return {
+        projectId, branchId: latest.branch.id, serverSynced: serverReadbackVerified,
+        serverReadbackVerified, localSnapshotVerified: localVerified,
+        persistenceScope: serverReadbackVerified ? 'server-confirmed' : 'local-snapshot-only',
+        workspaceRevision, updatedAt: latest.branch.updatedAt
+      };
     }, command.args.project_id);
   } else if (command.action === 'branch_create') {
     stage = 'branch_create';

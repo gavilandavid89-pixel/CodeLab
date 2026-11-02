@@ -22,6 +22,32 @@ assert.match(bridge, /project_rename[\s\S]{0,300}args\.name\.trim\(\)\.length > 
   'rename must validate project name length');
 assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editorMatchesSavedBranch[\s\S]{0,300}true/,
   'branch resume must report editor-to-branch verification');
+const branchResumeStart = bridge.indexOf("} else if (command.action === 'branch_resume') {");
+const branchResumeEnd = bridge.indexOf("} else if (command.action ===", branchResumeStart + 40);
+const branchResumeHandler = bridge.slice(branchResumeStart, branchResumeEnd);
+assert.match(branchResumeHandler, /refreshWorkspaceFromServer\(\)/,
+  'branch resume must refresh authoritative saved workspace before touching editor session');
+assert.match(branchResumeHandler, /query\('project\.inspect'/,
+  'branch resume must inspect the authoritative saved project before resuming');
+assert.match(branchResumeHandler, /query\('project\.code\.read'/,
+  'branch resume must verify branch HTML/CSS/JS through the saved-workspace query API');
+assert.match(branchResumeHandler, /serverReadbackVerified: true/,
+  'branch resume must report successful authoritative server readback');
+assert.match(branchResumeHandler, /persistenceScope: 'editor-session-only'/,
+  'branch resume must remain explicitly session-scoped, not claim a persistence write');
+const branchSaveStart = bridge.indexOf("} else if (command.action === 'branch_save') {");
+const branchSaveEnd = bridge.indexOf("} else if (command.action ===", branchSaveStart + 40);
+const branchSaveHandler = bridge.slice(branchSaveStart, branchSaveEnd);
+assert.match(branchSaveHandler, /query\('project\.inspect'/,
+  'branch save must inspect the authoritative saved branch after attempting a session save');
+assert.match(branchSaveHandler, /query\('project\.code\.read'/,
+  'branch save must compare exact server HTML/CSS/JS, not infer sync from a local boolean');
+assert.match(branchSaveHandler, /serverSynced: serverReadbackVerified/,
+  'branch save must only claim server sync after authoritative code readback');
+assert.match(branchSaveHandler, /persistenceScope: serverReadbackVerified \? 'server-confirmed' : 'local-snapshot-only'/,
+  'branch save must report the actual persistence scope');
+assert.doesNotMatch(branchSaveHandler, /serverSynced:\s*saved\s*===\s*true/,
+  'branch save must not treat local snapshot success as proof of server sync');
 for (const [action, operation] of [
   ['branch_create', 'branch.create'],
   ['branch_merge', 'branch.merge'],
