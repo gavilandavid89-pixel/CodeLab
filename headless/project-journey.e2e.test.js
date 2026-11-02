@@ -85,11 +85,14 @@ test('integral project journey: create, design, revise, convert, read back, and 
   // than relying on stale references captured before the writes.
   const reread = queryHeadlessWorkspace(saved, {
     action: 'project.code.read',
-    args: { projectId, fields: ['html', 'css', 'js'] }
+    args: { projectId, languages: ['html', 'css', 'js'] }
   });
-  assert.ok(reread, 'saved project must be readable after the chained mutations');
+  assert.equal(reread.projectId, projectId);
+  assert.equal(reread.fields.html.value, saved.projects[0].code.html);
+  assert.equal(reread.fields.css.value, saved.projects[0].code.css);
+  assert.equal(reread.fields.js.value, saved.projects[0].code.js);
   const projectAfterRead = saved.projects.find(p => p.id === projectId);
-  assert.equal(projectAfterRead.code.html, saved.projects[0].code.html);
+  assert.equal(projectAfterRead.code.html, reread.fields.html.value);
   assert.equal(projectAfterRead.design.elements.find(e => e.id === 'el_title').text, 'Pril Videos');
 
   // Stage 6: open the code from that same saved project in Chromium and verify
