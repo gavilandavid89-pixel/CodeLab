@@ -3665,6 +3665,7 @@ async function captureDesignForAI() {
     return {
       order: index + 1,
     id: el.id || null,
+    identifier: el.identifier || null,
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
     text: el.text || '',
@@ -3675,6 +3676,7 @@ async function captureDesignForAI() {
       fontSize,
       fontWeight,
       radius,
+      rotation: Math.max(-360, Math.min(360, finite(el.rotation, 0))),
       textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
       }
     };
@@ -3778,8 +3780,9 @@ function exportDesignHtml() {
     const rotation = Math.max(-360, Math.min(360, Number(el.rotation) || 0));
     const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
-    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+    const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>>';
   }).join('\n');
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
