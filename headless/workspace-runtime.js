@@ -365,6 +365,13 @@ function queryHeadlessWorkspace(inputState, request) {
   let result;
 
   switch (request.action) {
+    case 'design.capture.context': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.capture.context requires a design project.', 'HEADLESS_INVALID_QUERY');
+      const scale = args.scale === undefined ? 2 : args.scale;
+      result = designExport.buildAiDesignCaptureContext(project, scale);
+      break;
+    }
     case 'design.export.json': {
       const project = findProject(inputState, args.projectId);
       assert(project.type === 'design' && project.design, 'design.export.json requires a design project.', 'HEADLESS_INVALID_QUERY');
