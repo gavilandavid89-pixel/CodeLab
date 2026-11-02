@@ -6,7 +6,7 @@ This is the first implementation of a **headless CodeLab runtime**: it operates 
 
 ## AI design capture context
 
-The read-only headless query `design.capture.context` returns the same structured `codelab-ai-design-capture` context used by the website's AI design capture flow, including ordered layer bounds, styles, image alt text, custom canvas dimensions, scale, and analysis instructions. The query defaults to scale 2 and accepts only scales 1–4, with a 32-million-pixel safety ceiling. It never mutates the project or workspace revision.
+The read-only headless query `design.capture.context` returns the same structured `codelab-ai-design-capture` context used by the website's AI design capture flow, including ordered layer bounds, styles, image alt text, custom canvas dimensions, scale, and analysis instructions. The query defaults to scale 2 and accepts only scales 1–4, with a 32-million-pixel safety ceiling. It never mutates the project or workspace revision. The assistant bridge exposes it through `headless_query` with `query_action: "design.capture.context"` and a required `query_args.projectId`; callers no longer need to fall back to editor-dependent capture controls to obtain this structured context.
 
 This operation prepares the context JSON, not the PNG binary. PNG rendering remains a separate isolated-browser responsibility; callers can also use `design.export.svg` for deterministic vector output. Full screenshot parity is not considered complete until PNG rendering and image/context pairing are exercised end-to-end.
 
