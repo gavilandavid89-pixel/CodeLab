@@ -83,6 +83,8 @@ function applyOperation(state, operation) {
       duplicate.updatedAt = duplicate.createdAt;
       delete duplicate.branch;
       delete duplicate.mergeHistory;
+      delete duplicate.designUndoStack;
+      delete duplicate.designRedoStack;
       state.projects.push(duplicate);
       return { type: operation.type, sourceProjectId: source.id, projectId: duplicate.id, name: duplicate.name };
     }
