@@ -271,7 +271,11 @@ function exportDesignHtml(project, workspaceProjects = [project]) {
     seen.add(item.id);
     reachable.push(item);
     for (const connection of (Array.isArray(item.design.flowConnections) ? item.design.flowConnections : [])) {
-      if (connection && typeof connection.targetProjectId === 'string') visit(projectsById.get(connection.targetProjectId));
+      if (!connection || typeof connection.targetProjectId !== 'string') continue;
+      const sourceElement = (Array.isArray(item.design.elements) ? item.design.elements : [])
+        .find(element => element && element.id === connection.sourceElementId);
+      if (!sourceElement || sourceElement.visible === false) continue;
+      visit(projectsById.get(connection.targetProjectId));
     }
   }
   visit(project);
