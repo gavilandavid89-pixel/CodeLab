@@ -3702,8 +3702,10 @@ function exportDesignHtml() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Number.isFinite(Number(position.x)) ? Number(position.x) : 0;
     const y = Number.isFinite(Number(position.y)) ? Number(position.y) : 0;
-    const width = getDesignElementDimension(el, 'width', frameWidth);
-    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(design) || 900);
+    const width = getDesignElementDimension(el, 'width', layout.frameWidth);
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
+    const widthCss = getDesignElementDimensionCss(el, 'width');
+    const heightCss = getDesignElementDimensionCss(el, 'height');
     const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
@@ -3924,10 +3926,8 @@ function getDesignLayoutPositions(design) {
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
   let x = padding, y = padding, rowHeight = 0;
   for (const el of elements) {
-    const width = getDesignElementDimension(el, 'width', layout.frameWidth);
-    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
-    const widthCss = getDesignElementDimensionCss(el, 'width');
-    const heightCss = getDesignElementDimensionCss(el, 'height');
+    const width = getDesignElementDimension(el, 'width', frameWidth);
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(design) || 900);
     if (direction === 'row') {
       if (x > padding && x + width > frameWidth - padding) {
         x = padding; y += rowHeight + gap; rowHeight = 0;
@@ -4048,10 +4048,10 @@ function renderDesignWorkspace() {
         ev.preventDefault(); ev.stopPropagation();
         recordDesignHistory();
         const step = ev.shiftKey ? 10 : 1;
-        if (ev.key === 'ArrowLeft') el.width = Math.max(20, (Number(el.width)||120) - step);
-        if (ev.key === 'ArrowRight') el.width = Math.min(4000, (Number(el.width)||120) + step);
-        if (ev.key === 'ArrowUp') el.height = Math.max(20, (Number(el.height)||48) - step);
-        if (ev.key === 'ArrowDown') el.height = Math.min(4000, (Number(el.height)||48) + step);
+        if (ev.key === 'ArrowLeft') { el.widthUnit = 'px'; el.width = Math.max(20, (Number(el.width)||120) - step); }
+        if (ev.key === 'ArrowRight') { el.widthUnit = 'px'; el.width = Math.min(4000, (Number(el.width)||120) + step); }
+        if (ev.key === 'ArrowUp') { el.heightUnit = 'px'; el.height = Math.max(20, (Number(el.height)||48) - step); }
+        if (ev.key === 'ArrowDown') { el.heightUnit = 'px'; el.height = Math.min(4000, (Number(el.height)||48) + step); }
         const resizeId = el.id;
         renderDesignWorkspace();
         const nextHandle = Array.from(document.querySelectorAll('[data-design-resize-handle]')).find(item => item.dataset.designResizeHandle === resizeId);
@@ -4195,6 +4195,7 @@ function bindDesignCanvasEvents() {
     const dy = (ev.clientY - designDragState.startY) / (designDragState.scaleX || 1);
     const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
     if (designDragState.mode === 'resize') {
+      el.widthUnit = 'px'; el.heightUnit = 'px';
       el.width = Math.max(20, Math.min(4000, Math.round(designDragState.width + dx)));
       el.height = Math.max(20, Math.min(4000, Math.round(designDragState.height + dy)));
       if (node) { node.style.width = el.width + 'px'; node.style.height = el.height + 'px'; }
@@ -4417,13 +4418,15 @@ async function convertDesignToWeb() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
     const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
-    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const width = getDesignElementDimension(el, 'width', getDesignCanvasWidth(p.design));
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
+    const widthCss = getDesignElementDimensionCss(el, 'width');
+    const heightCss = getDesignElementDimensionCss(el, 'height');
     const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
