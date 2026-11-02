@@ -3289,7 +3289,9 @@ function designUndo() {
   designRedoStack = p.designRedoStack;
   designRedoStack.push(JSON.stringify(p.design));
   p.design = JSON.parse(designUndoStack.pop());
-  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+  selectedDesignElementId = null;
+  selectedDesignElementIds = [];
+  renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
 }
 function designRedo() {
   const p = activeDesignProject(); if (!p || !p.designRedoStack.length) return;
@@ -3303,7 +3305,7 @@ function initializeDesignProject(project) {
   if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
   if (project.design.grid == null) project.design.grid = true;
   if (!Array.isArray(project.design.elements)) project.design.elements = [];
-  selectedDesignElementId = null; designUndoStack = []; designRedoStack = [];
+  selectedDesignElementId = null; selectedDesignElementIds = []; designUndoStack = []; designRedoStack = [];
   designZoom = 1;
   const zoomInput = document.getElementById('designZoom');
   if (zoomInput) zoomInput.value = '100';
