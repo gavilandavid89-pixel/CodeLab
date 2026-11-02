@@ -5019,6 +5019,8 @@ async function importDesignProjectJson(file) {
       text: String(raw.text || '').slice(0, 10000),
       x: finite(raw.x, 0, -6000, 6000),
       y: finite(raw.y, 0, -6000, 6000),
+      xUnit: ['px','%'].includes(raw.xUnit) ? raw.xUnit : 'px',
+      yUnit: ['px','%'].includes(raw.yUnit) ? raw.yUnit : 'px',
       width: finite(raw.width, 120, 20, 4000),
       height: finite(raw.height, 48, 20, 4000),
       widthUnit: ['px','%','auto'].includes(raw.widthUnit) ? raw.widthUnit : 'px',
