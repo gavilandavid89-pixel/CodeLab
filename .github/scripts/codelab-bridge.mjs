@@ -2026,212 +2026,35 @@ try {
     result = await executeSavedDesignBatch('design_layout_configure', command.args);
   } else if (command.action === 'design_canvas_configure') {
     stage = 'design_canvas_configure';
-    result = await page.evaluate(async ({ projectId, settings }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      if (settings.frame !== undefined) setDesignFrame(settings.frame);
-      if (settings.canvas_width !== undefined || settings.canvas_height !== undefined) {
-        const width = settings.canvas_width !== undefined ? settings.canvas_width : getDesignCanvasWidth(project.design);
-        const height = settings.canvas_height !== undefined ? settings.canvas_height : (getDesignCanvasHeight(project.design) || '');
-        setDesignCanvasDimensions(width, height);
-      }
-      if (settings.grid !== undefined) { if (!!project.design.grid !== settings.grid) toggleDesignGrid(); }
-      if (settings.snap_to_grid !== undefined) { if (!!project.design.snapToGrid !== settings.snap_to_grid) toggleDesignSnap(); }
-      if (settings.grid_size !== undefined) setDesignGridSize(settings.grid_size);
-      if (settings.background !== undefined) setDesignBackground(settings.background);
-      if (settings.zoom !== undefined) setDesignZoom(settings.zoom);
-      const latest = projects.find(item => item && item.id === projectId);
-      const actual = { frame: latest.design.frame || 'desktop', grid: latest.design.grid ?? true, snap_to_grid: latest.design.snapToGrid ?? false, grid_size: latest.design.gridSize ?? 8, background: latest.design.background || '#ffffff', canvas_width: getDesignCanvasWidth(latest.design), canvas_height: getDesignCanvasHeight(latest.design) || null, zoom: Math.round(designZoom * 100) };
-      const keys = Object.keys(settings).filter(key => key !== 'zoom');
-      const exact = keys.every(key => actual[key] === settings[key]) && (settings.zoom === undefined || actual.zoom === settings.zoom);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && keys.every(key => local.design?.[{frame:'frame',grid:'grid',snap_to_grid:'snapToGrid',grid_size:'gridSize',background:'background',canvas_width:'canvasWidth',canvas_height:'canvasHeight'}[key]] === settings[key]);
-      if (!exact || !localVerified) throw new Error('Canvas settings were not verified; zoom is session-only.');
-      return { projectId, settings: actual, changed: Object.keys(settings), saved: saved === true, localSnapshotVerified: true, zoomSessionOnly: settings.zoom !== undefined };
-    }, { projectId: command.args.project_id, settings: Object.fromEntries(['frame','grid','snap_to_grid','grid_size','zoom','background','canvas_width','canvas_height'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
-  } else if (command.action === 'ai_ping') {
-    const response = await page.request.post(new URL('/api/ai/ping', targetUrl).href, {
-      timeout: 70000,
-      headers: { 'content-type': 'application/json' },
-      data: {}
-    });
-    let data = {};
-    try { data = await response.json(); } catch (_) {}
-    result = {
-      httpStatus: response.status(),
-      ok: response.ok() && data.ok === true,
-      model: data.model || null,
-      error: data.error || null,
-      message: data.ok === true ? 'El proveedor de IA respondió al ping.' : (data.message || data.error || 'El ping de IA no fue exitoso.')
-    };
-  } else if (command.action === 'connections_status') {
-    const [health, auth] = await Promise.all([
-      getJson(page, '/api/health'),
-      getJson(page, '/api/auth/status')
-    ]);
-    const healthData = health.data || {};
-    const authData = auth.data || {};
-    const oauth = healthData.oauth || authData.oauth || {};
-    const ai = healthData.ai || {};
-    result = {
-      page: { url: page.url(), title: await page.title() },
-      apiHealth: { httpStatus: health.httpStatus, ok: health.ok, version: healthData.version || null },
-      githubOAuthConfigured: Boolean(oauth.github),
-      googleOAuthConfigured: Boolean(oauth.google),
-      authenticatedInBridgeSession: Boolean(authData.user),
-      ai: {
-        serverKeyConfigured: Boolean(ai.serverKey),
-        provider: ai.groq ? 'Groq' : ai.openRouter ? 'OpenRouter' : (ai.baseUrl ? 'OpenAI-compatible' : null),
-        model: ai.model || null,
-        availableModes: ai.modes || ['auto', 'api', 'local'],
-        hint: ai.hint || null
-      }
-    };
-  } else if (command.action === 'status') {
-    const [health, auth] = await Promise.all([
-      getJson(page, '/api/health'),
-      getJson(page, '/api/auth/status')
-    ]);
-    const healthData = health.data || {};
-    const authData = auth.data || {};
-    result = {
-      url: page.url(),
-      title: await page.title(),
-      documentReady: await page.evaluate(() => document.readyState),
-      apiHealth: { httpStatus: health.httpStatus, ok: health.ok, version: healthData.version || null },
-      githubOAuthConfigured: Boolean((healthData.oauth || authData.oauth || {}).github),
-      googleOAuthConfigured: Boolean((healthData.oauth || authData.oauth || {}).google),
-      authenticatedInBridgeSession: Boolean(authData.user),
-      visibleSignals: await page.locator('body').innerText({ timeout: 10000 }).then(text =>
-        ['Conectando…', 'Iniciando CodeLab…', 'Proyectos', 'No conectado', 'Plantillas locales']
-          .filter(signal => text.includes(signal))
-      )
-    };
-  } else if (command.action === 'preview_editor_smoke_test') {
-    stage = 'editor_preview_smoke_test';
-    const projectName = 'CodeLab Preview Probe ' + commandId.slice(-12);
-    stage = 'editor_preview_wait_boot';
-    await page.waitForFunction(() => document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
-    stage = 'editor_preview_open_create_modal';
-    await page.getByRole('button', { name: /Crear proyecto/i }).click();
-    stage = 'editor_preview_fill_project_name';
-    await page.locator('#newProjectNameInput').fill(projectName);
-    stage = 'editor_preview_select_web_type';
-    await page.locator('input[name="newProjectType"][value="web"]').check();
-    stage = 'editor_preview_confirm_create';
-    await page.locator('#newProjectModal button[onclick="createNewProjectConfirm()"]').click();
-    stage = 'editor_preview_wait_studio';
-    await page.locator('#studioView').waitFor({ state: 'visible', timeout: 15000 });
-    stage = 'editor_preview_wait_project_title';
-    await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent?.trim() === expected, projectName, { timeout: 15000 });
-    stage = 'editor_preview_wait_editor_api';
-    await page.waitForFunction(() => typeof setEditorValue === 'function' && typeof updatePreview === 'function' && typeof getEditorValue === 'function', null, { timeout: 15000 });
-    const fixture = {
-      html: '<main id="codelab-e2e"><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Name <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
-      css: '#codelab-e2e { color: rgb(1, 2, 3); }',
-      js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");if(b&&c)b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});if(i&&e)i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_EDITOR_PREVIEW_READY");'
-    };
-    stage = 'editor_preview_set_fixture';
-    stage = 'editor_preview_set_fixture';
-    const editorState = await page.evaluate(code => {
-      setEditorValue('html', code.html, { silent: true });
-      setEditorValue('css', code.css, { silent: true });
-      setEditorValue('js', code.js, { silent: true });
-      // Monaco emits content-change events after setValue; let its debounce settle before forcing one stable preview.
-      const state = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
-      return state;
-    }, fixture);
-    if (editorState.html !== fixture.html || editorState.css !== fixture.css || editorState.js !== fixture.js) {
-      throw new Error('Editor did not retain the complete HTML/CSS/JS fixture: ' + JSON.stringify({
-        htmlMatches: editorState.html === fixture.html,
-        cssMatches: editorState.css === fixture.css,
-        jsMatches: editorState.js === fixture.js
-      }));
-    }
-    stage = 'editor_preview_wait_debounce';
-    await page.waitForTimeout(500);
-    stage = 'editor_preview_force_stable_refresh';
-    await page.evaluate(() => {
-      if (typeof previewTimer !== 'undefined' && previewTimer) {
-        clearTimeout(previewTimer);
-        previewTimer = null;
-      }
-      updatePreview();
-    });
-    const previewFrame = page.frameLocator('#previewIframe');
-    stage = 'editor_preview_wait_fixture';
-    await previewFrame.locator('#probe-increment').waitFor({ state: 'visible', timeout: 15000 });
-    stage = 'editor_preview_click_fixture';
-    await previewFrame.locator('#probe-increment').click({ timeout: 10000 });
-    stage = 'editor_preview_fill_fixture';
-    await previewFrame.locator('#probe-input').fill('CodeLab funciona', { timeout: 10000 });
-    stage = 'editor_preview_verify_dom';
-    const previewRoot = previewFrame.locator('#codelab-e2e');
-    await previewRoot.waitFor({ state: 'attached', timeout: 5000 });
-    const color = await previewRoot.evaluate(el => window.getComputedStyle(el).color);
-    const observed = await previewFrame.locator('body').evaluate(body => ({
-      title: document.title || '',
-      text: (body.innerText || '').trim().slice(0, 800),
-      count: document.getElementById('probe-count')?.textContent || null,
-      echo: document.getElementById('probe-echo')?.textContent || null,
-      inputValue: document.getElementById('probe-input')?.value || null,
-      rootPresent: !!document.getElementById('codelab-e2e')
-    }));
-    observed.color = color;
-    const passed = observed.rootPresent && observed.count === '1' && observed.echo === 'CodeLab funciona' && observed.inputValue === 'CodeLab funciona' && observed.color === 'rgb(1, 2, 3)';
-    if (!passed) throw new Error('Editor preview smoke test did not match expected DOM/CSS/interaction results: ' + JSON.stringify(observed));
-    result = {
-      ok: true,
-      projectCreatedInDisposableBrowser: true,
-      serverWorkspaceWritesBlocked: true,
-      projectName,
-      editorToPreview: { html: true, css: true, js: true },
-      interactionResults: observed,
-      browserDiagnostics,
-      message: 'El editor real ejecutó HTML/CSS/JS en su vista previa; el botón, el campo y los estilos respondieron como se esperaba.'
-    };
-  } else if (command.action === 'preview_diagnostics') {
-    stage = 'inspect_headless_preview';
-    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
-    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'diagnostics');
-    try {
-      const preview = await previewSession.frame.locator('html').evaluate(() => {
-        const body = document.body;
-        const interactiveElements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[role="link"]')).slice(0, 60).map(element => ({
-          tag: element.tagName.toLowerCase(),
-          text: (element.innerText || element.getAttribute('aria-label') || element.getAttribute('placeholder') || '').trim().slice(0, 100),
-          id: element.id || null,
-          type: element.getAttribute('type') || null,
-          disabled: Boolean(element.disabled)
-        }));
-        const tagCounts = {};
-        for (const element of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
-          const tag = element.tagName.toLowerCase();
-          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-        }
-        return {
-          available: true, readyState: document.readyState, title: document.title || '',
-          frameUrl: location.href, text: (body?.innerText || '').trim().slice(0, 1200),
-          elementCount: document.querySelectorAll('*').length, tagCounts, interactiveElements
-        };
-      });
-      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
-      preview.previewMessages = messages.slice(0, 60);
-      preview.consoleErrors = messages.filter(message => message.logType === 'error').slice(0, 30);
-      preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
-      preview.selfTest = command.args.self_test === true;
-      preview.workspaceRevision = previewSession.revision;
-      result = {
-        page: { url: safeUrl(targetUrl), title: 'CodeLab headless preview host', documentReady: 'complete' },
-        preview,
-        browserDiagnostics: previewSession.diagnostics
+    result = await page.evaluate(async ({projectId,settings}) => {
+      const workspaceId=localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken=localStorage.getItem('codelab_xd_workspace_token_v1');
+      if(!workspaceId||!workspaceToken)throw new Error('Authenticated workspace credentials are unavailable.');
+      if(settings.zoom!==undefined)throw new Error('Canvas zoom is view-only and cannot be persisted by headless mode; configure saved canvas settings separately.');
+      const query=async(action,args)=>{
+        const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless/query',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},body:JSON.stringify({action,args})});
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Saved design query failed.');
+        return data;
       };
-    } finally {
-      await previewSession.context.close().catch(() => {});
-    }
+      const before=await query('design.read',{projectId,limit:500});
+      const operation={type:'canvas.set'};
+      if(settings.frame!==undefined)operation.frame=settings.frame;
+      if(settings.canvas_width!==undefined)operation.width=settings.canvas_width;
+      if(settings.canvas_height!==undefined)operation.height=settings.canvas_height;
+      if(settings.background!==undefined)operation.background=settings.background;
+      if(settings.grid!==undefined)operation.grid=settings.grid;
+      if(settings.snap_to_grid!==undefined)operation.snapToGrid=settings.snap_to_grid;
+      if(settings.grid_size!==undefined)operation.gridSize=settings.grid_size;
+      const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},body:JSON.stringify({baseRevision:before.revision,operationId:'canvas_config_'+crypto.randomUUID().replace(/-/g,''),operations:[{type:'design.batch',projectId,expectedDesignRevision:before.result.revision,operations:[operation]}]})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Headless canvas configuration failed.');
+      const after=await query('design.read',{projectId,limit:500});
+      const actual=after.result.canvas;
+      const mapping={frame:'frame',canvas_width:'width',canvas_height:'height',background:'background',grid:'grid',snap_to_grid:'snapToGrid',grid_size:'gridSize'};
+      if(!Object.entries(settings).every(([key,value])=>actual[mapping[key]]===value))throw new Error('Canvas configuration failed authoritative server readback.');
+      return {projectId,settings:actual,changed:Object.keys(settings),saved:true,serverReadbackVerified:true,workspaceRevision:after.revision,designRevision:after.result.revision,zoomSupported:false};
+    },{projectId:command.args.project_id,settings:Object.fromEntries(['frame','grid','snap_to_grid','grid_size','zoom','background','canvas_width','canvas_height'].filter(key=>command.args[key]!==undefined).map(key=>[key,command.args[key]]))});
   } else if (command.action === 'preview_interact') {
     stage = 'interact_with_headless_preview';
     const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));

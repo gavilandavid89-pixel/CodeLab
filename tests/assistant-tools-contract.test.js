@@ -74,7 +74,7 @@ assert.match(bridge, /codelab-component:/, 'component insertion must be idempote
 assert.match(headlessRuntime, /project\.designUndoStack\.push\(JSON\.stringify\(project\.design\)\)/, 'atomic design batches must preserve saved undo history');
 assert.match(bridge, /executeSavedDesignBatch/, 'core design operations must use atomic saved-state batches');
 assert.match(bridge, /serverReadbackVerified/, 'design mutations must verify authoritative server readback');
-assert.match(bridge, /design_canvas_configure[\s\S]{0,2800}localSnapshotVerified/,
+assert.match(bridge, /design_canvas_configure[\s\S]{0,2800}serverReadbackVerified/,
   'canvas configuration must verify persisted settings');
 assert.match(bridge, /design_canvas_configure requires at least one canvas property/,
   'canvas configuration must reject empty requests');
@@ -298,3 +298,9 @@ const prototypeHandler = bridge.slice(bridge.indexOf("} else if (command.action 
 assert.match(prototypeHandler, /\/headless\/query/, 'prototype target must read saved design state');
 assert.match(prototypeHandler, /serverReadbackVerified/, 'prototype target must verify saved href');
 assert.doesNotMatch(prototypeHandler, /projects\.find\(|openProject\(|setDesignPrototypeTarget\(/, 'prototype target must not depend on editor state');
+
+const canvasHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_canvas_configure') {"), bridge.indexOf("} else if (command.action === 'preview_interact') {", bridge.indexOf("} else if (command.action === 'design_canvas_configure') {")));
+assert.match(canvasHandler, /type: 'canvas\.set'/, 'canvas settings must use the shared headless design engine');
+assert.match(canvasHandler, /serverReadbackVerified/, 'canvas settings must verify saved canvas state');
+assert.match(canvasHandler, /zoom is view-only/, 'headless canvas config must report that zoom cannot be persisted');
+assert.doesNotMatch(canvasHandler, /projects\.find\(|openProject\(|saveProjectsToStorage\(|setDesignCanvasDimensions\(/, 'canvas configuration must not depend on editor state');
