@@ -4228,7 +4228,10 @@ function updateDesignProperty(key, value) {
     if (identifierInput && identifierInput.value !== unique) identifierInput.value = unique;
     const p = activeDesignProject();
     if (p) p.updatedAt = new Date().toISOString();
-    renderDesignWorkspace(); scheduleAutosave(); return;
+    const layerButton = document.querySelector('[data-design-select="' + CSS.escape(el.id) + '"]');
+    const layerIdentifier = layerButton && layerButton.querySelector('code');
+    if (layerIdentifier) layerIdentifier.textContent = unique;
+    scheduleAutosave(); return;
   }
   if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
   else if (key === 'src') el.src = safeDesignImageSource(value);
