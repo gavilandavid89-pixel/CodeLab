@@ -20,8 +20,8 @@ function createDesignTemplate(templateId, design = {}, options = {}) {
     ? design.canvasWidth
     : (frameWidths[design.frame] || 1440);
   const compact = frameWidth <= 768;
-  const pad = compact ? 24 : 80;
-  const contentWidth = Math.max(250, frameWidth - pad * 2);
+  const pad = Math.min(compact ? 24 : 80, Math.floor(frameWidth / 12));
+  const contentWidth = Math.max(1, frameWidth - pad * 2);
   const idFactory = typeof options.idFactory === 'function'
     ? options.idFactory
     : () => 'el_' + crypto.randomUUID();
