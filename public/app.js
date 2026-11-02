@@ -4501,10 +4501,10 @@ function moveDesignLayer(direction) {
   const project = activeDesignProject(), element = selectedDesignElement();
   if (!project || !element || !Array.isArray(project.design.elements)) return;
   const elements = project.design.elements;
-  const selectedIds = new Set((selectedDesignElementIds.length ? selectedDesignElementIds : [element.id]).filter(id => {
-    const item = elements.find(candidate => candidate.id === id);
-    return item && !item.locked;
-  }));
+  const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [element.id]);
+  elements.forEach(item => {
+    if (item.locked) selectedIds.delete(item.id);
+  });
   const selectedIndices = elements.map((item, index) => selectedIds.has(item.id) ? index : -1).filter(index => index >= 0);
   if (!selectedIndices.length) return;
   const step = direction < 0 ? -1 : 1;
