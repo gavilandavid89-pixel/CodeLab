@@ -85,6 +85,13 @@ test('semantic HTML export preserves safe rotation and opacity values', () => {
 
   assert.match(html, /transform:rotate\(15deg\);transform-origin:center center;/);
   assert.match(html, /opacity:0\.4;/);
+
+  const context = buildAiDesignCaptureContext(project([
+    { id: 'rotated-layer', type: 'rectangle', rotation: 15, opacity: 1, x: 10, y: 10, width: 100, height: 60 },
+    { id: 'translucent-layer', type: 'text', text: 'Translucent', opacity: 0.4, x: 10, y: 90, width: 200, height: 40 }
+  ]));
+  assert.equal(context.elements.find(element => element.id === 'rotated-layer').style.rotation, 15);
+  assert.equal(context.elements.find(element => element.id === 'translucent-layer').style.opacity, 0.4);
 });
 
 test('semantic HTML export preserves safe mailto and tel actions but rejects unsafe schemes', () => {
