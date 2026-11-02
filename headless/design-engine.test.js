@@ -280,3 +280,27 @@ test('rejects unsupported percentage positioning units', () => {
     { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
   ]), /xUnit must be px or %/);
 });
+
+test('validates opacity in the rendered range from zero to one', () => {
+  const engine = createDesignEngine();
+  const source = project({ elements: [{ id: 'el_opacity', type: 'rectangle', opacity: 0.4 }] });
+
+  const valid = engine.transact(source, [{
+    type: 'element.update',
+    id: 'el_opacity',
+    properties: { opacity: 0 }
+  }]);
+  assert.equal(valid.project.design.elements[0].opacity, 0);
+
+  assert.throws(() => engine.transact(source, [{
+    type: 'element.update',
+    id: 'el_opacity',
+    properties: { opacity: -0.1 }
+  }]), /opacity must be a finite number between 0 and 1/);
+
+  assert.throws(() => engine.transact(source, [{
+    type: 'element.update',
+    id: 'el_opacity',
+    properties: { opacity: 1.1 }
+  }]), /opacity must be a finite number between 0 and 1/);
+});
