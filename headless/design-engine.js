@@ -7,7 +7,7 @@ const MAX_CANVAS_SIZE = 10000;
 const MAX_CANVAS_WIDTH = 4000;
 const TYPES = new Set(['heading', 'text', 'button', 'rectangle', 'ellipse', 'image']);
 const ELEMENT_FIELDS = new Set([
-  'label', 'text', 'x', 'y', 'width', 'height', 'color', 'background',
+  'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'color', 'background',
   'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
   'opacity', 'rotation', 'visible', 'locked', 'textAlign', 'flowRole'
 ]);
@@ -261,6 +261,8 @@ function validateProperties(properties) {
       const min = key === 'width' || key === 'height' || key === 'fontSize' ? 0 : -MAX_CANVAS_SIZE;
       const max = key === 'opacity' ? 1 : MAX_CANVAS_SIZE;
       finiteNumber(value, key, min, max);
+    } else if (['xUnit', 'yUnit'].includes(key)) {
+      assert(['px', '%'].includes(value), key + ' must be px or %.');
     } else if (['label', 'text', 'color', 'background', 'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole'].includes(key)) {
       assert(typeof value === 'string' && value.length <= (key === 'src' ? 2800000 : 10000), key + ' must be a bounded string.');
       if (key === 'color' || key === 'background') assert(isSafeColor(value), key + ' must be a safe CSS color.');
@@ -317,8 +319,11 @@ function getDesignLayout(design) {
   if (mode === 'free') {
     let contentBottom = 0;
     for (const element of elements) {
-      const x = Number.isFinite(Number(element.x)) ? Number(element.x) : 0;
-      const y = Number.isFinite(Number(element.y)) ? Number(element.y) : 0;
+      const rawX = Number.isFinite(Number(element.x)) ? Number(element.x) : 0;
+      const rawY = Number.isFinite(Number(element.y)) ? Number(element.y) : 0;
+      const x = element.xUnit === '%' ? (rawX / 100) * frameWidth : rawX;
+      const canvasHeight = Number(design.canvasHeight) || legacyCanvas(design.frame).height;
+      const y = element.yUnit === '%' ? (rawY / 100) * canvasHeight : rawY;
       const height = Math.max(20, Math.min(4000, Number(element.height) || 48));
       positions.set(element.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
