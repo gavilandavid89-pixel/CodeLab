@@ -51,6 +51,14 @@ test('design accessibility audit warns when partial layer opacity makes contrast
   assert.equal(finding.severity, 'warning');
   assert.equal(finding.opacity, 0.5);
   assert.equal(finding.contrastBasis, 'opacity-not-composited');
+
+  const invalidOpacity = auditDesignAccessibility(designProject([
+    { id: 'invalid-opacity-copy', type: 'text', text: 'Read me', fontSize: 16, color: '#000000', background: '#ffffff', opacity: 2 }
+  ]));
+  const invalidFinding = invalidOpacity.findings.find(item => item.ruleId === 'text-opacity-contrast');
+  assert.ok(invalidFinding);
+  assert.equal(invalidFinding.opacity, 1);
+  assert.equal(invalidFinding.declaredOpacity, 2);
 });
 
 test('design accessibility audit is read-only and exposed through the canonical query envelope', () => {
