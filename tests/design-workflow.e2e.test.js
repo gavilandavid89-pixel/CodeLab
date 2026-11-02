@@ -581,7 +581,10 @@ async function waitForPersistedProject(page, projectName) {
       const width = document.getElementById('designCanvasWidth');
       const height = document.getElementById('designCanvasHeight');
       const canvas = document.getElementById('designCanvas');
-      return width?.value === '720' && height?.value === '1600' && canvas?.style.width === '720px';
+      return width?.value === '720' && height?.value === '1600' &&
+        canvas?.style.width === '720px' && canvas?.style.boxSizing === 'border-box' &&
+        canvas?.style.border === '1px solid rgb(203, 213, 225)' &&
+        canvas?.style.backgroundColor === 'rgb(255, 255, 255)';
     });
     // Zoom changes only the displayed scale; the frame's real dimensions remain 720×1600.
     await page.locator('#designZoom').fill('80');
