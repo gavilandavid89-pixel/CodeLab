@@ -4991,6 +4991,8 @@ async function importDesignProjectJson(file) {
       y: finite(raw.y, 0, -6000, 6000),
       width: finite(raw.width, 120, 20, 4000),
       height: finite(raw.height, 48, 20, 4000),
+      widthUnit: ['px','%','auto'].includes(raw.widthUnit) ? raw.widthUnit : 'px',
+      heightUnit: ['px','%','auto'].includes(raw.heightUnit) ? raw.heightUnit : 'px',
       color: color(raw.color, '#111827'),
       background: color(raw.background, 'transparent'),
       fontSize: finite(raw.fontSize, 16, 8, 200),
