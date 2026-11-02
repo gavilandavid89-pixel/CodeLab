@@ -131,6 +131,44 @@ test('rejects unsafe colors, href schemes, and image sources', () => {
   ]), /safe image URL/);
 });
 
+test('attaches an editor-compatible image file to an image layer', () => {
+  const engine = createDesignEngine();
+  const pixel = Buffer.from('tiny-image').toString('base64');
+  const result = engine.transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Imagen del diseño', src: '' }] }), [
+    { type: 'image.attach', id: 'hero', filename: 'hero-banner.webp', dataUrl: 'data:image/webp;base64,' + pixel }
+  ]);
+  const image = result.project.design.elements[0];
+  assert.equal(image.src, 'data:image/webp;base64,' + pixel);
+  assert.equal(image.alt, 'hero-banner');
+  assert.equal(result.results[0].mimeType, 'image/webp');
+  assert.equal(result.results[0].byteLength, Buffer.from('tiny-image').length);
+});
+
+test('preserves a custom image alt text when attaching a replacement file', () => {
+  const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Descripción accesible', src: '' }] }), [
+    { type: 'image.attach', id: 'hero', filename: 'new-image.png', dataUrl: 'data:image/png;base64,' + Buffer.from('image').toString('base64') }
+  ]);
+  assert.equal(result.project.design.elements[0].alt, 'Descripción accesible');
+});
+
+test('rejects image uploads that do not match the editor file policy', () => {
+  const engine = createDesignEngine();
+  const image = { elements: [{ id: 'hero', type: 'image', src: '' }] };
+  assert.throws(() => engine.transact(project(image), [
+    { type: 'image.attach', id: 'hero', filename: 'bad.svg', dataUrl: 'data:image/svg+xml;base64,PHN2Zz4=' }
+  ]), /PNG, JPEG, WebP, or GIF/);
+  assert.throws(() => engine.transact(project(image), [
+    { type: 'image.attach', id: 'hero', filename: 'bad.png', dataUrl: 'data:image/png;base64,not-valid!' }
+  ]), /PNG, JPEG, WebP, or GIF/);
+  const tooLarge = Buffer.alloc(2 * 1024 * 1024 + 1).toString('base64');
+  assert.throws(() => engine.transact(project(image), [
+    { type: 'image.attach', id: 'hero', filename: 'large.png', dataUrl: 'data:image/png;base64,' + tooLarge }
+  ]), /2 MB upload limit/);
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'copy', type: 'text' }] }), [
+    { type: 'image.attach', id: 'copy', filename: 'image.png', dataUrl: 'data:image/png;base64,' + Buffer.from('x').toString('base64') }
+  ]), /requires an image layer/);
+});
+
 test('supports safe image URLs and text alignment from saved design layers', () => {
   const engine = createDesignEngine();
   const result = engine.transact(project(), [
