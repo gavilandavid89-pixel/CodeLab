@@ -269,3 +269,136 @@ test('duplicating a design project does not copy its transient undo and redo his
   assert.equal(Object.hasOwn(duplicate, 'designUndoStack'), false);
   assert.equal(Object.hasOwn(duplicate, 'designRedoStack'), false);
 });
+
+
+test('design flow connections advance design revisions and participate in undo/redo', () => {
+  const initialDesign = {
+    revision: 4,
+    canvasWidth: 720,
+    canvasHeight: 900,
+    elements: [
+      { id: 'nav', type: 'button', flowRole: 'navigate', text: 'Open' },
+      { id: 'other', type: 'button', flowRole: 'navigate', text: 'Other' }
+    ],
+    flowConnections: [
+      { sourceElementId: 'nav', targetProjectId: 'proj_target_a' },
+      { sourceElementId: 'other', targetProjectId: 'proj_target_a' }
+    ]
+  };
+  const initial = {
+    revision: 0,
+    projects: [
+      { id: 'proj_source', type: 'design', design: initialDesign },
+      { id: 'proj_target_a', type: 'design', design: { revision: 0, elements: [] } },
+      { id: 'proj_target_b', type: 'design', design: { revision: 0, elements: [] } }
+    ]
+  };
+  const connected = applyHeadlessBatch(initial, {
+    operationId: 'flow-connect-revision-001',
+    baseRevision: 0,
+    operations: [{
+      type: 'design.flow.connect',
+      sourceProjectId: 'proj_source',
+      sourceElementId: 'nav',
+      targetProjectId: 'proj_target_b'
+    }]
+  });
+  const sourceAfterConnect = connected.state.projects.find(project => project.id === 'proj_source');
+  assert.equal(sourceAfterConnect.design.revision, 5);
+  assert.deepEqual(sourceAfterConnect.design.flowConnections, [
+    { sourceElementId: 'other', targetProjectId: 'proj_target_a' },
+    { sourceElementId: 'nav', targetProjectId: 'proj_target_b' }
+  ]);
+  assert.equal(sourceAfterConnect.designUndoStack.length, 1);
+  assert.deepEqual(JSON.parse(sourceAfterConnect.designUndoStack[0]).flowConnections, initialDesign.flowConnections);
+  assert.equal(connected.results[0].changed, true);
+  assert.equal(connected.results[0].designRevision, 5);
+
+  const noOp = applyHeadlessBatch(connected.state, {
+    operationId: 'flow-connect-noop-001',
+    baseRevision: connected.state.revision,
+    operations: [{
+      type: 'design.flow.connect',
+      sourceProjectId: 'proj_source',
+      sourceElementId: 'nav',
+      targetProjectId: 'proj_target_b'
+    }]
+  });
+  assert.equal(noOp.state.projects.find(project => project.id === 'proj_source').design.revision, 5);
+  assert.equal(noOp.results[0].changed, false);
+  assert.equal(noOp.state.projects.find(project => project.id === 'proj_source').designUndoStack.length, 1);
+
+  const undone = applyHeadlessBatch(connected.state, {
+    operationId: 'flow-connect-undo-001',
+    baseRevision: connected.state.revision,
+    operations: [{ type: 'design.history.undo', projectId: 'proj_source' }]
+  });
+  const restored = undone.state.projects.find(project => project.id === 'proj_source');
+  assert.equal(restored.design.revision, 6);
+  assert.deepEqual(restored.design.flowConnections, initialDesign.flowConnections);
+
+  const redone = applyHeadlessBatch(undone.state, {
+    operationId: 'flow-connect-redo-001',
+    baseRevision: undone.state.revision,
+    operations: [{ type: 'design.history.redo', projectId: 'proj_source' }]
+  });
+  const restoredRedo = redone.state.projects.find(project => project.id === 'proj_source');
+  assert.equal(restoredRedo.design.revision, 7);
+  assert.deepEqual(restoredRedo.design.flowConnections, sourceAfterConnect.design.flowConnections);
+});
+
+test('design flow disconnect clears only the selected layer role and records history', () => {
+  const initial = {
+    revision: 0,
+    projects: [
+      {
+        id: 'proj_source',
+        type: 'design',
+        design: {
+          revision: 2,
+          elements: [
+            { id: 'nav', type: 'button', flowRole: 'navigate' },
+            { id: 'other', type: 'button', flowRole: 'navigate' }
+          ],
+          flowConnections: [
+            { sourceElementId: 'nav', targetProjectId: 'proj_target_a' },
+            { sourceElementId: 'other', targetProjectId: 'proj_target_b' }
+          ]
+        }
+      },
+      { id: 'proj_target_a', type: 'design', design: { revision: 0, elements: [] } },
+      { id: 'proj_target_b', type: 'design', design: { revision: 0, elements: [] } }
+    ]
+  };
+  const disconnected = applyHeadlessBatch(initial, {
+    operationId: 'flow-disconnect-revision-001',
+    baseRevision: 0,
+    operations: [{
+      type: 'design.flow.disconnect',
+      sourceProjectId: 'proj_source',
+      sourceElementId: 'nav',
+      targetProjectId: 'proj_target_a'
+    }]
+  });
+  const source = disconnected.state.projects.find(project => project.id === 'proj_source');
+  assert.equal(source.design.revision, 3);
+  assert.deepEqual(source.design.flowConnections, [{ sourceElementId: 'other', targetProjectId: 'proj_target_b' }]);
+  assert.equal(source.design.elements.find(element => element.id === 'nav').flowRole, '');
+  assert.equal(source.design.elements.find(element => element.id === 'other').flowRole, 'navigate');
+  assert.equal(source.designUndoStack.length, 1);
+  assert.equal(disconnected.results[0].changed, true);
+
+  const noOp = applyHeadlessBatch(disconnected.state, {
+    operationId: 'flow-disconnect-noop-001',
+    baseRevision: disconnected.state.revision,
+    operations: [{
+      type: 'design.flow.disconnect',
+      sourceProjectId: 'proj_source',
+      sourceElementId: 'nav',
+      targetProjectId: 'proj_target_a'
+    }]
+  });
+  assert.equal(noOp.state.projects.find(project => project.id === 'proj_source').design.revision, 3);
+  assert.equal(noOp.results[0].changed, false);
+  assert.equal(noOp.state.projects.find(project => project.id === 'proj_source').designUndoStack.length, 1);
+});
