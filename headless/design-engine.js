@@ -272,7 +272,7 @@ function validateProperties(properties) {
   for (const [key, value] of Object.entries(properties)) {
     assert(ELEMENT_FIELDS.has(key), 'Layer property is not editable: ' + key);
     if (['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'opacity', 'rotation'].includes(key)) {
-      const min = key === 'width' || key === 'height' || key === 'fontSize' ? 0 : -MAX_CANVAS_SIZE;
+      const min = ['width', 'height', 'fontSize', 'opacity'].includes(key) ? 0 : -MAX_CANVAS_SIZE;
       const max = key === 'opacity' ? 1 : MAX_CANVAS_SIZE;
       finiteNumber(value, key, min, max);
     } else if (['xUnit', 'yUnit'].includes(key)) {
