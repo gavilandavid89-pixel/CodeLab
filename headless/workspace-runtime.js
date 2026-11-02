@@ -275,12 +275,16 @@ function applyOperation(state, operation) {
       project.designRedoStack = [];
       project.design.background = template.background;
       project.design.elements = template.elements;
+      project.design.canvasHeight = template.canvasHeight;
+      if (project.design.canvas && typeof project.design.canvas === 'object' && !Array.isArray(project.design.canvas)) {
+        project.design.canvas.height = template.canvasHeight;
+      }
       project.design.revision = (Number.isInteger(project.design.revision) ? project.design.revision : 0) + 1;
       project.updatedAt = new Date().toISOString();
       return {
         type: operation.type, projectId: project.id, templateId: template.templateId,
         elementCount: template.elements.length, canvasWidth: template.canvasWidth,
-        compact: template.compact, designRevision: project.design.revision
+        canvasHeight: template.canvasHeight, compact: template.compact, designRevision: project.design.revision
       };
     }
     case 'design.batch': {
