@@ -341,27 +341,47 @@ function applyOperation(state, operation) {
       assert(source, 'Flow source layer not found.');
       assert(source.flowRole !== 'menu', 'Menu layers cannot navigate to another project.');
       if (!Array.isArray(sourceProject.design.flowConnections)) sourceProject.design.flowConnections = [];
-      sourceProject.design.flowConnections = sourceProject.design.flowConnections.filter(item => item.sourceElementId !== source.id);
+      const existingForSource = sourceProject.design.flowConnections.filter(item => item && item.sourceElementId === source.id);
+      if (existingForSource.length === 1 && existingForSource[0].targetProjectId === targetProject.id && source.flowRole === 'navigate') {
+        return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: source.id, targetProjectId: targetProject.id, designRevision: sourceProject.design.revision || 0, changed: false };
+      }
+      if (!Array.isArray(sourceProject.designUndoStack)) sourceProject.designUndoStack = [];
+      if (!Array.isArray(sourceProject.designRedoStack)) sourceProject.designRedoStack = [];
+      sourceProject.designUndoStack.push(JSON.stringify(sourceProject.design));
+      if (sourceProject.designUndoStack.length > 60) sourceProject.designUndoStack.shift();
+      sourceProject.designRedoStack = [];
+      sourceProject.design.flowConnections = sourceProject.design.flowConnections.filter(item => !item || item.sourceElementId !== source.id);
       sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetProject.id });
       source.flowRole = 'navigate';
+      sourceProject.design.revision = (Number.isInteger(sourceProject.design.revision) ? sourceProject.design.revision : 0) + 1;
       sourceProject.updatedAt = new Date().toISOString();
-      return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: source.id, targetProjectId: targetProject.id };
+      return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: source.id, targetProjectId: targetProject.id, designRevision: sourceProject.design.revision, changed: true };
     }
     case 'design.flow.disconnect': {
       const sourceProject = findProject(state, operation.sourceProjectId);
-      assert(sourceProject.type === 'design' && sourceProject.design, 'Flow source must be a design project.');
+      assert(sourceProject.type === 'design' && sourceProject.design, 'design.flow.disconnect requires a design source project.');
       assert(typeof operation.sourceElementId === 'string', 'sourceElementId is required.');
-      const before = Array.isArray(sourceProject.design.flowConnections) ? sourceProject.design.flowConnections.length : 0;
-      sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(item =>
-        !(item.sourceElementId === operation.sourceElementId && (!operation.targetProjectId || item.targetProjectId === operation.targetProjectId))
+      const source = sourceProject.design.elements.find(item => item.id === operation.sourceElementId);
+      const connections = Array.isArray(sourceProject.design.flowConnections) ? sourceProject.design.flowConnections : [];
+      const remainingConnections = connections.filter(item =>
+        !(item && item.sourceElementId === operation.sourceElementId && (!operation.targetProjectId || item.targetProjectId === operation.targetProjectId))
       );
-      const removed = before - sourceProject.design.flowConnections.length;
-      if (!sourceProject.design.flowConnections.length) {
-        const source = sourceProject.design.elements.find(item => item.id === operation.sourceElementId);
-        if (source && source.flowRole === 'navigate') source.flowRole = '';
+      const removed = connections.length - remainingConnections.length;
+      const hasRemainingConnectionForSource = remainingConnections.some(item => item && item.sourceElementId === operation.sourceElementId);
+      const clearStaleRole = !!source && source.flowRole === 'navigate' && !hasRemainingConnectionForSource;
+      if (removed === 0 && !clearStaleRole) {
+        return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: operation.sourceElementId, removed: 0, designRevision: sourceProject.design.revision || 0, changed: false };
       }
+      if (!Array.isArray(sourceProject.designUndoStack)) sourceProject.designUndoStack = [];
+      if (!Array.isArray(sourceProject.designRedoStack)) sourceProject.designRedoStack = [];
+      sourceProject.designUndoStack.push(JSON.stringify(sourceProject.design));
+      if (sourceProject.designUndoStack.length > 60) sourceProject.designUndoStack.shift();
+      sourceProject.designRedoStack = [];
+      sourceProject.design.flowConnections = remainingConnections;
+      if (clearStaleRole) source.flowRole = '';
+      sourceProject.design.revision = (Number.isInteger(sourceProject.design.revision) ? sourceProject.design.revision : 0) + 1;
       sourceProject.updatedAt = new Date().toISOString();
-      return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: operation.sourceElementId, removed };
+      return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: operation.sourceElementId, removed, designRevision: sourceProject.design.revision, changed: true };
     }
     case 'project.delete': {
       assert(operation.approved === true, 'project.delete requires explicit approval.');
