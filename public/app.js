@@ -3604,6 +3604,7 @@ function captureDesignSvg(project) {
     const modelRotation = finite(el.rotation, 0);
     // Keep exports faithful to the active inspector and rendered canvas during live edits.
     const rotation = Math.max(-360, Math.min(360, modelRotation || (Number.isFinite(inspectorRotation) ? inspectorRotation : renderedRotationMatch ? Number(renderedRotationMatch[1]) : 0)));
+    if (el.type === 'button' && (el.id === selectedDesignElementId || rotationField)) console.log('[design-rotation-debug]', JSON.stringify({ id: el.id, selectedId: selectedDesignElementId, model: el.rotation, modelRotation, inspector: rotationField && rotationField.value, inspectorRotation, rendered: renderedNode && renderedNode.style.transform, rotation }));
     const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
