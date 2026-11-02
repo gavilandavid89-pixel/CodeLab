@@ -319,3 +319,9 @@ assert.match(bridge, /'click', 'fill', 'select', 'read', 'check', 'uncheck', 'pr
   'isolated preview must expose common form interactions and assertions');
 assert.match(bridge, /Preview press steps only allow non-submitting navigation keys/,
   'preview keyboard actions must block submit-capable keys');
+assert.match(bridge, /'click', 'fill', 'select', 'upload', 'read', 'check'/,
+  'isolated preview must support bounded file uploads');
+assert.match(bridge, /Preview upload target must be an input\[type="file"\]/);
+assert.match(bridge, /Preview upload content does not match its declared MIME type/);
+assert.match(bridge, /step\.data_base64\.length > 32000/);
+assert.match(bridge, /locator\.setInputFiles\(/);

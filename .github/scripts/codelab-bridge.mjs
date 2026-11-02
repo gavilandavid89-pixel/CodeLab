@@ -239,7 +239,7 @@ function parseCommand(raw) {
       throw new Error('preview_interact requires between 1 and 20 steps.');
     }
     for (const step of args.steps) {
-      if (!step || typeof step !== 'object' || Array.isArray(step) || !['click', 'fill', 'select', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'].includes(step.action)) {
+      if (!step || typeof step !== 'object' || Array.isArray(step) || !['click', 'fill', 'select', 'upload', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'].includes(step.action)) {
         throw new Error('Invalid preview interaction step.');
       }
       if (typeof step.selector !== 'string' || !step.selector.trim() || step.selector.length > 2000) {
@@ -247,6 +247,23 @@ function parseCommand(raw) {
       }
       if (['fill', 'select', 'assert_text'].includes(step.action) && (typeof step.value !== 'string' || step.value.length > 2000)) {
         throw new Error('Preview fill/select/assert_text steps require a string value of at most 2000 characters.');
+      }
+      if (step.action === 'upload') {
+        const allowedMimeTypes = new Set(['text/plain', 'image/png', 'image/jpeg', 'image/webp', 'application/pdf']);
+        if (typeof step.file_name !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(step.file_name) ||
+            typeof step.mime_type !== 'string' || !allowedMimeTypes.has(step.mime_type) ||
+            typeof step.data_base64 !== 'string' || step.data_base64.length < 4 || step.data_base64.length > 32000 ||
+            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(step.data_base64)) {
+          throw new Error('Preview upload requires a safe filename, an allowed MIME type, and valid Base64 of at most 32000 characters.');
+        }
+        const uploadBytes = Buffer.from(step.data_base64, 'base64');
+        if (!uploadBytes.length || uploadBytes.length > 24000) throw new Error('Preview upload file must be between 1 and 24000 bytes.');
+        const matchesMime = step.mime_type === 'text/plain' ||
+          (step.mime_type === 'image/png' && uploadBytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+          (step.mime_type === 'image/jpeg' && uploadBytes[0] === 255 && uploadBytes[1] === 216 && uploadBytes[2] === 255) ||
+          (step.mime_type === 'image/webp' && uploadBytes.toString('ascii', 0, 4) === 'RIFF' && uploadBytes.toString('ascii', 8, 12) === 'WEBP') ||
+          (step.mime_type === 'application/pdf' && uploadBytes.toString('ascii', 0, 5) === '%PDF-');
+        if (!matchesMime) throw new Error('Preview upload content does not match its declared MIME type.');
       }
       if (step.action === 'press' && !['Escape', 'Tab', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(step.value)) {
         throw new Error('Preview press steps only allow non-submitting navigation keys.');
@@ -2152,6 +2169,16 @@ try {
           await locator.fill(step.value, { timeout: 10000 });
         } else if (step.action === 'select') {
           await locator.selectOption(step.value, { timeout: 10000 });
+        } else if (step.action === 'upload') {
+          const inputType = await locator.getAttribute('type');
+          if ((await locator.evaluate(element => element.tagName.toLowerCase())) !== 'input' || inputType !== 'file') {
+            throw new Error('Preview upload target must be an input[type="file"].');
+          }
+          await locator.setInputFiles({
+            name: step.file_name,
+            mimeType: step.mime_type,
+            buffer: Buffer.from(step.data_base64, 'base64')
+          }, { timeout: 10000 });
         } else if (step.action === 'check') {
           await locator.check({ timeout: 10000 });
         } else if (step.action === 'uncheck') {
@@ -2169,7 +2196,8 @@ try {
           text: (element.innerText || element.textContent || '').trim().slice(0, 300),
           value: ('value' in element) ? String(element.value).slice(0, 300) : null,
           disabled: Boolean(element.disabled),
-          checked: ('checked' in element) ? Boolean(element.checked) : null
+          checked: ('checked' in element) ? Boolean(element.checked) : null,
+          files: element.files ? Array.from(element.files).slice(0, 5).map(file => ({ name: file.name, size: file.size, type: file.type })) : null
         })).catch(() => null);
         if (step.action === 'assert_text' && (!observed || !observed.text.includes(step.value))) {
           throw new Error('Preview step ' + (index + 1) + ': expected text was not found.');
