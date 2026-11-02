@@ -30,6 +30,20 @@ function findProject(state, id) {
   return project;
 }
 
+function removeDeletedTargetFromDesignSnapshot(snapshot, targetProjectId) {
+  let design;
+  try {
+    design = typeof snapshot === 'string' ? JSON.parse(snapshot) : clone(snapshot);
+  } catch (_) {
+    return snapshot;
+  }
+  if (!design || typeof design !== 'object' || Array.isArray(design)) return snapshot;
+  if (Array.isArray(design.flowConnections)) {
+    design.flowConnections = design.flowConnections.filter(item => item && item.targetProjectId !== targetProjectId);
+  }
+  return typeof snapshot === 'string' ? JSON.stringify(design) : design;
+}
+
 function applyOperation(state, operation) {
   assert(operation && typeof operation === 'object' && !Array.isArray(operation), 'Each operation must be an object.');
   switch (operation.type) {
@@ -354,6 +368,12 @@ function applyOperation(state, operation) {
           if (remainingConnections.length !== other.design.flowConnections.length) {
             other.design.flowConnections = remainingConnections;
             other.design.revision = (Number.isInteger(other.design.revision) ? other.design.revision : 0) + 1;
+            for (const historyName of ['designUndoStack', 'designRedoStack']) {
+              if (Array.isArray(other[historyName])) {
+                other[historyName] = other[historyName].map(snapshot =>
+                  removeDeletedTargetFromDesignSnapshot(snapshot, project.id));
+              }
+            }
             changed = true;
           }
         }
