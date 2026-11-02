@@ -35,6 +35,8 @@ jobs:
         run: node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
       - name: Check headless assistant bridge contracts
         run: node tests/assistant-tools-contract.test.js
+      - name: Verify one complete project journey through Chromium
+        run: node --test headless/project-journey.e2e.test.js
       - name: Verify real PNG and context revision pairing
         run: node --test headless/design-capture-browser.test.js
       - name: Verify isolated preview form and file interactions
