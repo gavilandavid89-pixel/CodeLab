@@ -4530,9 +4530,11 @@ function duplicateDesignElement() {
   if (!p || !Array.isArray(p.design.elements) || !selectedDesignElementId) return;
   const selectedIdSet = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
   const selected = p.design.elements.filter(item => selectedIdSet.has(item.id));
-  const duplicableSelected = selected.filter(item => !item.locked);
-  if (!duplicableSelected.length) return;
-  if (p.design.elements.length + duplicableSelected.length > MAX_DESIGN_ELEMENTS) {
+  for (let i = selected.length - 1; i >= 0; i--) {
+    if (selected[i].locked) selected.splice(i, 1);
+  }
+  if (!selected.length) return;
+  if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
     showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
   }
@@ -4550,7 +4552,7 @@ function duplicateDesignElement() {
     return id;
   };
   const copies = [];
-  duplicableSelected.forEach(el => copies.push({
+  selected.forEach(el => copies.push({
     ...el,
     id: makeId(),
     identifier: nextDesignElementIdentifier(p.design.elements.concat(copies), '__reserved__'),
@@ -4560,10 +4562,10 @@ function duplicateDesignElement() {
     yUnit: 'px',
     label: (el.label || 'Capa') + ' copia'
   }));
-  const duplicateIds = new Map(duplicableSelected.map((el, index) => [el.id, copies[index].id]));
+  const duplicateIds = new Map(selected.map((el, index) => [el.id, copies[index].id]));
   copies.forEach((copy, index) => {
-    const original = duplicableSelected[index];
-    const internalTarget = duplicableSelected.find(target => original.href === '#' + designLayerDomId(target.id));
+    const original = selected[index];
+    const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
     if (internalTarget) copy.href = '#' + designLayerDomId(duplicateIds.get(internalTarget.id));
   });
   p.design.elements.push(...copies);
