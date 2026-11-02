@@ -194,7 +194,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const elementBackground = safeExportColor(element.background, 'transparent');
     const fontSize = Math.max(8, Math.min(256, Number(element.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(element.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(element.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(element.radius) || 0));
     const rotation = Number.isFinite(Number(element.rotation)) ? Math.max(-3600, Math.min(3600, Number(element.rotation))) : 0;
     const opacity = Number.isFinite(Number(element.opacity)) ? Math.max(0, Math.min(1, Number(element.opacity))) : 1;
     const align = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : 'left';
