@@ -127,6 +127,8 @@ assert.match(dimensionUnitAppSource, /for \(const el of selectedElements\)[\s\S]
   'keyboard nudging must move every selected layer by the same bounded delta');
 assert.match(dimensionUnitAppSource, /selectedElements\.length \|\| p\.design\.layoutMode === 'auto'/,
   'keyboard nudging must not silently fight Auto Layout positioning');
+assert.match(dimensionUnitAppSource, /const canvasWidth = getDesignCanvasWidth\(p\.design\);[\s\S]{0,300}x: Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)[\s\S]{0,180}xUnit: 'px',[\s\S]{0,100}yUnit: 'px'/,
+  'duplicating percentage-positioned layers must offset the copy by 24 pixels, not 24 percentage points');
 assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', heightUnit: el\.heightUnit \|\| 'px'/,
   'AI design capture must preserve dimension units');
 assert.match(bridgeSource, /'widthUnit', 'heightUnit'/,
