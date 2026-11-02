@@ -655,6 +655,48 @@ async function waitForPersistedProject(page, projectName) {
     assert.deepEqual(alignedTops.slice(0, 3), [420, 420, 420],
       'multi-select alignment should align all selected layer tops to the shared selection edge');
 
+    // 4c. Multi-selection keyboard movement and duplication must affect the whole selection.
+    const selectedLayerIds = await Promise.all([0, 1, 2].map(index =>
+      layerRows.nth(index).getAttribute('data-design-select')));
+    const selectedPositionsBefore = await page.evaluate(ids => ids.map(id => {
+      const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
+      return { id, left: parseFloat(node.style.left), top: parseFloat(node.style.top) };
+    }), selectedLayerIds);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(ids => ids.every(id => {
+      const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
+      return node && parseFloat(node.style.left) === Number(node.dataset.beforeLeft || NaN);
+    }) === false, selectedLayerIds).catch(() => {});
+    const selectedPositionsAfter = await page.evaluate(ids => ids.map(id => {
+      const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
+      return { id, left: parseFloat(node.style.left), top: parseFloat(node.style.top) };
+    }), selectedLayerIds);
+    assert.deepEqual(selectedPositionsAfter.map(item => item.left), selectedPositionsBefore.map(item => item.left + 1),
+      'ArrowRight should nudge every selected layer by one pixel');
+    assert.deepEqual(selectedPositionsAfter.map(item => item.top), selectedPositionsBefore.map(item => item.top),
+      'horizontal nudging must not change selected layers vertical positions');
+
+    await page.keyboard.press('Control+d');
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 7);
+    const copiedPositions = await page.evaluate(ids => Array.from(document.querySelectorAll('#designCanvas [data-design-id]'))
+      .filter(node => !ids.includes(node.dataset.designId))
+      .map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) })), selectedLayerIds);
+    assert.equal(copiedPositions.length, 3, 'multi-duplicate should create one copy per selected layer');
+    assert.deepEqual(copiedPositions.map(item => item.left).sort((a, b) => a - b),
+      selectedPositionsAfter.map(item => item.left + 24).sort((a, b) => a - b),
+      'each duplicate should be offset by 24 px horizontally');
+    assert.deepEqual(copiedPositions.map(item => item.top).sort((a, b) => a - b),
+      selectedPositionsAfter.map(item => item.top + 24).sort((a, b) => a - b),
+      'each duplicate should be offset by 24 px vertically');
+    await page.locator('button[onclick="deleteDesignElement()"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 4,
+      null, { timeout: 5000 });
+    // Restore the original three-layer selection for the Auto Layout and bulk-delete checks below.
+    await page.locator('#designLayers [data-design-select="' + selectedLayerIds[0] + '"]').click();
+    await page.locator('#designLayers [data-design-select="' + selectedLayerIds[1] + '"]').click({ modifiers: ['Shift'] });
+    await page.locator('#designLayers [data-design-select="' + selectedLayerIds[2] + '"]').click({ modifiers: ['Shift'] });
+
     // 4e. Auto Layout uses direction, spacing and padding to calculate live layer positions.
     await page.locator('#designLayoutMode').selectOption('auto');
     await page.locator('#designLayoutDirection').selectOption('column');
