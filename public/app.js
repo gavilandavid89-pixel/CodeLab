@@ -4040,7 +4040,7 @@ function renderDesignWorkspace() {
         selectedDesignElementId = el.id;
         recordDesignHistory();
         const rect = canvas.getBoundingClientRect();
-        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: Number(el.width)||120, height: Number(el.height)||48, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: getDesignElementDimension(el, 'width', getDesignCanvasWidth(activeDesignProject()?.design)), height: getDesignElementDimension(el, 'height', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
         try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
       });
       resizeHandle.addEventListener('keydown', ev => {
@@ -4048,10 +4048,12 @@ function renderDesignWorkspace() {
         ev.preventDefault(); ev.stopPropagation();
         recordDesignHistory();
         const step = ev.shiftKey ? 10 : 1;
-        if (ev.key === 'ArrowLeft') { el.widthUnit = 'px'; el.width = Math.max(20, (Number(el.width)||120) - step); }
-        if (ev.key === 'ArrowRight') { el.widthUnit = 'px'; el.width = Math.min(4000, (Number(el.width)||120) + step); }
-        if (ev.key === 'ArrowUp') { el.heightUnit = 'px'; el.height = Math.max(20, (Number(el.height)||48) - step); }
-        if (ev.key === 'ArrowDown') { el.heightUnit = 'px'; el.height = Math.min(4000, (Number(el.height)||48) + step); }
+        const currentWidth = getDesignElementDimension(el, 'width', getDesignCanvasWidth(activeDesignProject()?.design));
+        const currentHeight = getDesignElementDimension(el, 'height', getDesignCanvasHeight(activeDesignProject()?.design) || 900);
+        if (ev.key === 'ArrowLeft') { el.widthUnit = 'px'; el.width = Math.max(20, currentWidth - step); }
+        if (ev.key === 'ArrowRight') { el.widthUnit = 'px'; el.width = Math.min(4000, currentWidth + step); }
+        if (ev.key === 'ArrowUp') { el.heightUnit = 'px'; el.height = Math.max(20, currentHeight - step); }
+        if (ev.key === 'ArrowDown') { el.heightUnit = 'px'; el.height = Math.min(4000, currentHeight + step); }
         const resizeId = el.id;
         renderDesignWorkspace();
         const nextHandle = Array.from(document.querySelectorAll('[data-design-resize-handle]')).find(item => item.dataset.designResizeHandle === resizeId);
