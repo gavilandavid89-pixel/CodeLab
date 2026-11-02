@@ -468,6 +468,7 @@ module.exports = {
   exportDesignJson,
   exportDesignSvg,
   exportDesignHtml,
+  buildAiDesignCaptureContext,
   importDesignJson,
   convertDesignToWeb
 };
