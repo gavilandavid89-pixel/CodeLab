@@ -228,3 +228,9 @@ assert.match(capturePngHandler, /design-capture\.json/);
 assert.match(capturePngHandler, /deviceScaleFactor: captureScale/);
 assert.match(capturePngHandler, /route\.abort\(\)/, 'PNG capture must block external network requests');
 assert.match(capturePngHandler, /await captureContext\.close\(\)/, 'PNG capture must close its isolated browser context');
+
+const projectListHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'project_list') {"), bridge.indexOf("} else if (command.action === 'project_rename') {", bridge.indexOf("} else if (command.action === 'project_list') {")));
+assert.match(bridge, /'component\.inspect', 'design\.tokens\.generate', 'project\.list', 'project\.inspect'/, 'saved project list must be an available headless query');
+assert.match(projectListHandler, /\/headless\/query/, 'project list must query saved workspace state');
+assert.match(projectListHandler, /action: 'project\.list'/, 'project list must use the canonical saved-state query');
+assert.doesNotMatch(projectListHandler, /projects\.map\(/, 'project list must not enumerate editor memory');

@@ -275,6 +275,16 @@ test('reapplying design tokens replaces the managed block instead of duplicating
   assert.equal((css.match(/CodeLab Design Tokens START/g) || []).length, 1);
 });
 
+test('lists saved projects without relying on editor state or mutating workspace data', () => {
+  const original = state([webProject('proj_web1'), designProject('proj_design1')]);
+  const before = JSON.stringify(original);
+  const listed = queryHeadlessWorkspace(original, { action: 'project.list' });
+  assert.equal(listed.result.count, 2);
+  assert.deepEqual(listed.result.projects.map(project => project.id), ['proj_web1', 'proj_design1']);
+  assert.equal(listed.result.projects[1].type, 'design');
+  assert.equal(JSON.stringify(original), before);
+});
+
 test('queries the real component catalog without mutating workspace state', () => {
   const original = state([webProject()]);
   const before = JSON.stringify(original);

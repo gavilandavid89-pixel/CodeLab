@@ -480,6 +480,23 @@ function queryHeadlessWorkspace(inputState, request) {
       };
       break;
     }
+    case 'project.list': {
+      result = {
+        count: inputState.projects.length,
+        projects: inputState.projects.map(project => ({
+          id: project.id,
+          name: project.name,
+          type: project.type === 'design' ? 'design' : 'web',
+          createdAt: project.createdAt || null,
+          updatedAt: project.updatedAt || null,
+          hasBranch: !!project.branch,
+          branchId: project.branch?.id || null,
+          branchUpdatedAt: project.branch?.updatedAt || null,
+          mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0
+        }))
+      };
+      break;
+    }
     case 'project.inspect': {
       const project = findProject(inputState, args.projectId);
       result = {

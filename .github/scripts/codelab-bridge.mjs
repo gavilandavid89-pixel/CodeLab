@@ -74,7 +74,7 @@ function parseCommand(raw) {
     if (args.settings && JSON.stringify(args.settings).length > 20000) throw new Error('headless_design_system settings exceed 20000 characters.');
   }
   if (command.action === 'headless_query') {
-    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.template.list', 'design.capture.context', 'design.export.json', 'design.export.svg', 'design.export.html', 'headless.operation.status'];
+    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.list', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.template.list', 'design.capture.context', 'design.export.json', 'design.export.svg', 'design.export.html', 'headless.operation.status'];
     if (!supportedQueries.includes(args.query_action)) throw new Error('headless_query requires a supported query_action.');
     if (args.query_args !== undefined && (!args.query_args || typeof args.query_args !== 'object' || Array.isArray(args.query_args))) throw new Error('headless_query query_args must be an object.');
     if (args.expected_revision !== undefined && (!Number.isInteger(args.expected_revision) || args.expected_revision < 0)) throw new Error('headless_query expected_revision must be a non-negative integer.');
@@ -1207,17 +1207,32 @@ try {
     }, command.args.project_id);
   } else if (command.action === 'workspace_inspect') {
     stage = 'workspace_inspect';
-    result = await page.evaluate(() => ({
-      initialized: Array.isArray(projects),
-      projectCount: Array.isArray(projects) ? projects.length : 0,
-      currentProjectId: currentProjectId || null,
-      currentProjectName: getCurrentProject()?.name || null,
-      activeEditor: document.getElementById('studioView')?.classList.contains('hidden') ? 'dashboard' : (getCurrentProject()?.type === 'design' ? 'design' : 'web'),
-      copyBranchActive: !!inCopyBranch,
-      syncStatus: document.getElementById('statusText')?.textContent || null,
-      authVisible: !document.getElementById('authContainer')?.classList.contains('hidden'),
-      version: typeof APP_VERSION === 'string' ? APP_VERSION : null
-    }));
+    result = await page.evaluate(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.list' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved workspace inspection failed.');
+      return {
+        initialized: Array.isArray(projects),
+        projectCount: data.result.count,
+        projects: data.result.projects,
+        workspaceRevision: data.revision,
+        currentProjectId: currentProjectId || null,
+        currentProjectName: getCurrentProject()?.name || null,
+        activeEditor: document.getElementById('studioView')?.classList.contains('hidden') ? 'dashboard' : (getCurrentProject()?.type === 'design' ? 'design' : 'web'),
+        copyBranchActive: !!inCopyBranch,
+        syncStatus: document.getElementById('statusText')?.textContent || null,
+        authVisible: !document.getElementById('authContainer')?.classList.contains('hidden'),
+        version: typeof APP_VERSION === 'string' ? APP_VERSION : null,
+        readOnly: true
+      };
+    });
   } else if (command.action === 'project_inspect') {
     stage = 'project_inspect';
     result = await page.evaluate(async projectId => {
@@ -1331,21 +1346,18 @@ try {
     });
   } else if (command.action === 'project_list') {
     stage = 'project_list';
-    result = await page.evaluate(() => {
-      if (!Array.isArray(projects)) throw new Error('Workspace projects are not initialized.');
-      return {
-        count: projects.length,
-        projects: projects.map(project => ({
-          id: project.id,
-          name: project.name,
-          type: project.type === 'design' ? 'design' : 'web',
-          updatedAt: project.updatedAt || null,
-          hasBranch: !!project.branch,
-          branchId: project.branch?.id || null,
-          branchUpdatedAt: project.branch?.updatedAt || null,
-          mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0
-        }))
-      };
+    result = await page.evaluate(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.list' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved project list query failed.');
+      return { ...data.result, workspaceRevision: data.revision, readOnly: true };
     });
   } else if (command.action === 'project_rename') {
     stage = 'project_rename';
