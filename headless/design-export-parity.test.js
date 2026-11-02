@@ -94,6 +94,23 @@ test('semantic HTML export preserves safe rotation and opacity values', () => {
   assert.equal(context.elements.find(element => element.id === 'translucent-layer').style.opacity, 0.4);
 });
 
+test('HTML and AI capture context clamp invalid transform ranges consistently', () => {
+  const input = project([
+    { id: 'clamped-layer', type: 'rectangle', rotation: 9999, opacity: 2, x: 10, y: 10, width: 100, height: 60 },
+    { id: 'transparent-layer', type: 'text', text: 'Hidden by opacity', rotation: -9999, opacity: -1, x: 10, y: 90, width: 200, height: 40 }
+  ]);
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /transform:rotate\(3600deg\);transform-origin:center center;/);
+  assert.match(html, /opacity:1;/);
+  assert.match(html, /transform:rotate\(-3600deg\);transform-origin:center center;/);
+  assert.match(html, /opacity:0;/);
+  assert.equal(context.elements.find(element => element.id === 'clamped-layer').style.rotation, 3600);
+  assert.equal(context.elements.find(element => element.id === 'clamped-layer').style.opacity, 1);
+  assert.equal(context.elements.find(element => element.id === 'transparent-layer').style.rotation, -3600);
+  assert.equal(context.elements.find(element => element.id === 'transparent-layer').style.opacity, 0);
+});
+
 test('semantic HTML export preserves safe mailto and tel actions but rejects unsafe schemes', () => {
   const html = exportDesignHtml(project([
     { id: 'email', type: 'button', text: 'Email', href: 'mailto:hello@example.com', x: 10, y: 10, width: 120, height: 40 },
