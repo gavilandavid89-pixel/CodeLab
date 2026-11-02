@@ -187,7 +187,7 @@ test('preview diagnostics and interactions run in an isolated sandbox using save
   assert.match(interactions, /only in-page hash links may be clicked/);
 });
 
-test('deleting a prototype target bumps dependent design revision and timestamp', () => {
+test('deleting a prototype target bumps revision and removes orphaned navigation roles', () => {
   const source = {
     id: 'proj_source',
     name: 'Source screen',
@@ -197,8 +197,14 @@ test('deleting a prototype target bumps dependent design revision and timestamp'
       revision: 4,
       canvasWidth: 720,
       canvasHeight: 900,
-      elements: [{ id: 'nav', type: 'button', text: 'Open target' }],
-      flowConnections: [{ sourceElementId: 'nav', targetProjectId: 'proj_target' }]
+      elements: [
+        { id: 'nav', type: 'button', text: 'Open target', flowRole: 'navigate' },
+        { id: 'other', type: 'button', text: 'Open other', flowRole: 'navigate' }
+      ],
+      flowConnections: [
+        { sourceElementId: 'nav', targetProjectId: 'proj_target' },
+        { sourceElementId: 'other', targetProjectId: 'proj_other_target' }
+      ]
     }
   };
   source.designUndoStack = [JSON.stringify(source.design)];
@@ -209,26 +215,42 @@ test('deleting a prototype target bumps dependent design revision and timestamp'
     type: 'design',
     design: { revision: 2, canvasWidth: 720, canvasHeight: 900, elements: [] }
   };
-  const result = applyHeadlessBatch({ revision: 0, projects: [source, target] }, {
+  const otherTarget = {
+    id: 'proj_other_target',
+    name: 'Other target',
+    type: 'design',
+    design: { revision: 1, canvasWidth: 720, canvasHeight: 900, elements: [] }
+  };
+  const result = applyHeadlessBatch({ revision: 0, projects: [source, target, otherTarget] }, {
     operationId: 'delete-prototype-target-01',
     baseRevision: 0,
     operations: [{ type: 'project.delete', projectId: 'proj_target', approved: true }]
   });
 
-  assert.deepEqual(result.state.projects.map(project => project.id), ['proj_source']);
-  assert.deepEqual(result.state.projects[0].design.flowConnections, []);
-  assert.equal(result.state.projects[0].design.revision, 5);
-  assert.notEqual(result.state.projects[0].updatedAt, source.updatedAt);
-  assert.deepEqual(JSON.parse(result.state.projects[0].designUndoStack[0]).flowConnections, []);
-  assert.deepEqual(JSON.parse(result.state.projects[0].designRedoStack[0]).flowConnections, []);
+  const savedSource = result.state.projects.find(project => project.id === 'proj_source');
+  assert.deepEqual(result.state.projects.map(project => project.id), ['proj_source', 'proj_other_target']);
+  assert.deepEqual(savedSource.design.flowConnections, [{ sourceElementId: 'other', targetProjectId: 'proj_other_target' }]);
+  assert.equal(savedSource.design.elements.find(element => element.id === 'nav').flowRole, '');
+  assert.equal(savedSource.design.elements.find(element => element.id === 'other').flowRole, 'navigate');
+  assert.equal(savedSource.design.revision, 5);
+  assert.notEqual(savedSource.updatedAt, source.updatedAt);
+  for (const historyName of ['designUndoStack', 'designRedoStack']) {
+    const snapshot = JSON.parse(savedSource[historyName][0]);
+    assert.deepEqual(snapshot.flowConnections, [{ sourceElementId: 'other', targetProjectId: 'proj_other_target' }]);
+    assert.equal(snapshot.elements.find(element => element.id === 'nav').flowRole, '');
+    assert.equal(snapshot.elements.find(element => element.id === 'other').flowRole, 'navigate');
+  }
 
   const undone = applyHeadlessBatch(result.state, {
     operationId: 'delete-target-undo-01',
     baseRevision: result.state.revision,
     operations: [{ type: 'design.history.undo', projectId: 'proj_source' }]
   });
-  assert.deepEqual(undone.state.projects[0].design.flowConnections, [],
+  const restored = undone.state.projects.find(project => project.id === 'proj_source');
+  assert.deepEqual(restored.design.flowConnections, [{ sourceElementId: 'other', targetProjectId: 'proj_other_target' }],
     'undo must not resurrect a connection to a deleted target');
+  assert.equal(restored.design.elements.find(element => element.id === 'nav').flowRole, '',
+    'undo must not restore an orphaned navigation role');
 });
 
 test('duplicating a design project does not copy its transient undo and redo history', () => {
