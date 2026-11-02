@@ -225,6 +225,6 @@ assert.match(capturePngHandler, /design\.export\.html/, 'PNG capture must render
 assert.match(capturePngHandler, /expectedRevision/, 'PNG and context must be read from the same workspace revision');
 assert.match(capturePngHandler, /design-capture\.png/);
 assert.match(capturePngHandler, /design-capture\.json/);
-assert.match(capturePngHandler, /deviceScaleFactor: scale/);
+assert.match(capturePngHandler, /deviceScaleFactor: captureScale/);
 assert.match(capturePngHandler, /route\.abort\(\)/, 'PNG capture must block external network requests');
 assert.match(capturePngHandler, /await captureContext\.close\(\)/, 'PNG capture must close its isolated browser context');
