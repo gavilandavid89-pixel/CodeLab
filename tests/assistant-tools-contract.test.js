@@ -49,7 +49,7 @@ assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
 assert.match(bridge, /AI generation changes project code and may consume API quota/, 'AI generation must require explicit approval');
 assert.match(bridge, /command\.action = 'headless_ai_generate'/, 'legacy AI generation must reuse the headless provider and saved-code path');
-assert.match(bridge, /type: 'design\.flow\.connect'/, 'flow connections must use the shared saved-workspace runtime');
+assert.match(bridge, /type:\s*'design\.flow\.connect'/, 'flow connections must use the shared saved-workspace runtime');
 assert.match(bridge, /apiKeyExposed: false/, 'AI settings inspection must not expose secrets');
 const auditHandler = bridge.slice(bridge.indexOf("command.action === 'accessibility_audit'"), bridge.indexOf("command.action === 'design_tokens_generate'", bridge.indexOf("command.action === 'accessibility_audit'")));
 assert.match(auditHandler, /\/headless\/query/, 'accessibility audit must use the authenticated saved-workspace query');
@@ -112,7 +112,7 @@ assert.match(bridge, /component_inspect max_chars must be an integer from 1000 t
 assert.match(bridge, /design_elements_distribute requires 3 to 100 unique valid element_ids/);
 assert.match(designEngine, /case 'elements\.distribute'/, 'distribution must use the shared headless design engine operation');
 assert.match(bridge, /design_prototype_target_set target must be a safe string/);
-assert.match(bridge, /type: 'element\\.update'[\\s\\S]{0,300}properties:\\{href:target\\}/, 'prototype target must persist through the shared design engine');
+assert.match(bridge, /type:\s*'element\.update'[\s\S]{0,300}properties:\s*\{\s*href:\s*target\s*\}/, 'prototype target must persist through the shared design engine');
 
 
 assert.match(bridge, /'objectFit', 'textAlign'/,
@@ -289,7 +289,7 @@ for (const action of ['design_flow_connect', 'design_flow_disconnect']) {
   const end = bridge.indexOf("} else if (command.action ===", start + 40);
   const handler = bridge.slice(start, end < 0 ? undefined : end);
   assert.match(handler, /\/headless\/query/, action + ' must read authoritative saved design state');
-  assert.match(handler, /type: 'design\.flow\.(?:connect|disconnect)'/, action + ' must use the shared workspace runtime');
+  assert.match(handler, /type:\s*'design\.flow\.(?:connect|disconnect)'/, action + ' must use the shared workspace runtime');
   assert.match(handler, /serverReadbackVerified/, action + ' must verify persisted flow state');
   assert.doesNotMatch(handler, /projects\.find\(|saveProjectsToStorage\(/, action + ' must not mutate editor state');
 }
@@ -300,10 +300,15 @@ assert.match(prototypeHandler, /serverReadbackVerified/, 'prototype target must 
 assert.doesNotMatch(prototypeHandler, /projects\.find\(|openProject\(|setDesignPrototypeTarget\(/, 'prototype target must not depend on editor state');
 
 const canvasHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_canvas_configure') {"), bridge.indexOf("} else if (command.action === 'preview_interact') {", bridge.indexOf("} else if (command.action === 'design_canvas_configure') {")));
-assert.match(canvasHandler, /type: 'canvas\.set'/, 'canvas settings must use the shared headless design engine');
+assert.match(canvasHandler, /type:\s*'canvas\.set'/, 'canvas settings must use the shared headless design engine');
 assert.match(canvasHandler, /serverReadbackVerified/, 'canvas settings must verify saved canvas state');
 assert.match(canvasHandler, /zoom is view-only/, 'headless canvas config must report that zoom cannot be persisted');
 assert.doesNotMatch(canvasHandler, /projects\.find\(|openProject\(|saveProjectsToStorage\(|setDesignCanvasDimensions\(/, 'canvas configuration must not depend on editor state');
+
+assert.match(bridge, /ai_generate operation_id must be a safe string/, 'legacy AI operation IDs must be validated before headless routing');
+assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
+assert.match(bridge, /legacy_ai_' \+ String\(command\.command_id\)\.slice\(0, 90\)/,
+  'legacy AI retries must derive a stable idempotency key from the bridge command ID');
 
 assert.match(bridge, /ai_generate operation_id must be a safe string/, 'legacy AI operation IDs must be validated before headless routing');
 assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
