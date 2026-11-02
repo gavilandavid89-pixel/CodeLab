@@ -3782,7 +3782,7 @@ function exportDesignHtml() {
     const domId = designLayerDomId(el.id);
     const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>>';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
