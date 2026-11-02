@@ -236,7 +236,16 @@ test('duplicating a design project does not copy its transient undo and redo his
     id: 'proj_original',
     name: 'Original design',
     type: 'design',
-    design: { revision: 3, canvasWidth: 720, canvasHeight: 900, elements: [{ id: 'el_current', type: 'text', text: 'Current' }] },
+    design: {
+      revision: 3,
+      canvasWidth: 720,
+      canvasHeight: 900,
+      elements: [{ id: 'el_current', type: 'text', text: 'Current' }],
+      flowConnections: [
+        { sourceElementId: 'el_current', targetProjectId: 'proj_original' },
+        { sourceElementId: 'el_current', targetProjectId: 'proj_target' }
+      ]
+    },
     designUndoStack: [JSON.stringify({ revision: 2, canvasWidth: 720, canvasHeight: 900, elements: [{ id: 'el_old', type: 'text', text: 'Old' }] })],
     designRedoStack: [JSON.stringify({ revision: 4, canvasWidth: 720, canvasHeight: 900, elements: [{ id: 'el_future', type: 'text', text: 'Future' }] })]
   };
@@ -255,6 +264,8 @@ test('duplicating a design project does not copy its transient undo and redo his
   assert.ok(original.designUndoStack.length);
   assert.ok(original.designRedoStack.length);
   assert.equal(duplicate.design.elements[0].text, 'Current');
+  assert.deepEqual(original.design.flowConnections.map(connection => connection.targetProjectId), ['proj_original', 'proj_target']);
+  assert.deepEqual(duplicate.design.flowConnections.map(connection => connection.targetProjectId), ['proj_copy', 'proj_target']);
   assert.equal(Object.hasOwn(duplicate, 'designUndoStack'), false);
   assert.equal(Object.hasOwn(duplicate, 'designRedoStack'), false);
 });
