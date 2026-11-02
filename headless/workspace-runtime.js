@@ -579,7 +579,8 @@ function queryHeadlessWorkspace(inputState, request) {
           id: item.id, type: item.type, label: item.label || '', text: String(item.text || '').slice(0, 2000),
           x: item.x, y: item.y, width: item.width, height: item.height,
           color: item.color, background: item.background, fontSize: item.fontSize,
-          weight: item.weight, radius: item.radius, href: item.href, alt: item.alt,
+          weight: item.weight, radius: item.radius, opacity: item.opacity, rotation: item.rotation,
+          textAlign: item.textAlign, href: item.href, alt: item.alt,
           objectFit: item.objectFit, visible: item.visible, locked: item.locked, flowRole: item.flowRole,
           hasImageSource: typeof item.src === 'string' && item.src.length > 0,
           imageSourceLength: typeof item.src === 'string' ? item.src.length : 0

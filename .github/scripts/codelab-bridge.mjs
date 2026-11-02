@@ -405,6 +405,148 @@ let commandAction = 'unknown';
 let stage = 'parse_command';
 let currentStep = null;
 const startedAt = Date.now();
+
+async function executeSavedDesignBatch(action, args) {
+  return page.evaluate(async ({ action, args }) => {
+    const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+    const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+    if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+    const query = async (queryAction, queryArgs) => {
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: queryAction, args: queryArgs })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved design query failed.');
+      return data;
+    };
+    const before = await query('design.read', { projectId: args.project_id, limit: 500 });
+    const beforeDesign = before.result;
+    const elements = beforeDesign.elements || [];
+    const selected = ids => {
+      const found = elements.filter(item => ids.includes(item.id));
+      if (found.length !== ids.length) throw new Error('One or more design elements were not found.');
+      return found;
+    };
+    let operations;
+    let settings = null;
+    if (action === 'design_element_add') {
+      operations = [{ type: 'element.add', elementType: args.type }];
+    } else if (action === 'design_element_update') {
+      operations = [{ type: 'element.update', id: args.element_id, properties: args.properties }];
+    } else if (action === 'design_element_delete') {
+      operations = [{ type: 'element.delete', id: args.element_id }];
+    } else if (action === 'design_elements_delete') {
+      selected(args.element_ids);
+      operations = [{ type: 'elements.delete', ids: args.element_ids }];
+    } else if (action === 'design_element_duplicate') {
+      selected([args.element_id]);
+      operations = [{ type: 'element.duplicate', id: args.element_id }];
+    } else if (action === 'design_layer_move') {
+      const index = elements.findIndex(item => item.id === args.element_id);
+      if (index < 0) throw new Error('Design element not found.');
+      const targetIndex = Math.max(0, Math.min(elements.length - 1, index + (args.direction === 'back' ? -1 : 1)));
+      operations = [{ type: 'element.reorder', id: args.element_id, targetIndex }];
+    } else if (action === 'design_layer_reorder') {
+      const index = elements.findIndex(item => item.id === args.element_id);
+      if (index < 0) throw new Error('Design element not found.');
+      if (args.target_index >= elements.length) throw new Error('target_index exceeds the current layer count.');
+      operations = [{ type: 'element.reorder', id: args.element_id, targetIndex: args.target_index }];
+    } else if (action === 'design_elements_align') {
+      selected(args.element_ids);
+      operations = [{ type: 'elements.align', ids: args.element_ids, mode: args.mode }];
+    } else if (action === 'design_elements_distribute') {
+      selected(args.element_ids);
+      if (beforeDesign.layout.mode === 'auto') throw new Error('Switch the design to free layout before manual distribution.');
+      operations = [{ type: 'elements.distribute', ids: args.element_ids, axis: args.axis }];
+    } else if (action === 'design_layout_configure') {
+      settings = Object.fromEntries(['mode', 'direction', 'gap', 'padding'].filter(key => args[key] !== undefined).map(key => [key, args[key]]));
+      operations = [{ type: 'layout.set', ...settings }];
+    } else {
+      throw new Error('Unsupported saved design action: ' + action);
+    }
+    const beforeIds = new Set(elements.map(item => item.id));
+    const sourceBefore = elements.find(item => item.id === args.element_id) || null;
+    const beforePositions = elements.filter(item => (args.element_ids || [args.element_id]).includes(item.id))
+      .map(item => ({ id: item.id, x: item.x, y: item.y }));
+    const operationId = 'design_action_' + crypto.randomUUID().replace(/-/g, '');
+    const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+      body: JSON.stringify({
+        baseRevision: before.revision, operationId,
+        operations: [{
+          type: 'design.batch', projectId: args.project_id,
+          expectedDesignRevision: beforeDesign.revision, operations
+        }]
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless design operation failed.');
+    const after = await query('design.read', { projectId: args.project_id, limit: 500 });
+    const afterDesign = after.result;
+    if (afterDesign.revision <= beforeDesign.revision) throw new Error('Design mutation did not advance the saved design revision.');
+    const afterElements = afterDesign.elements || [];
+    const afterById = new Map(afterElements.map(item => [item.id, item]));
+    const newElements = afterElements.filter(item => !beforeIds.has(item.id));
+    const positions = afterElements.filter(item => (args.element_ids || [args.element_id]).includes(item.id))
+      .map(item => ({ id: item.id, x: item.x, y: item.y }));
+    const changed = JSON.stringify(beforePositions) !== JSON.stringify(positions);
+    const base = {
+      projectId: args.project_id, action, saved: true, serverReadbackVerified: true,
+      workspaceRevision: after.revision, designRevision: afterDesign.revision,
+      elementCount: afterDesign.elementCount, operationTypes: operations.map(item => item.type)
+    };
+    if (action === 'design_element_add') {
+      if (!newElements[0]) throw new Error('Design element add failed authoritative server readback.');
+      return { ...base, elementId: newElements[0].id, type: newElements[0].type };
+    }
+    if (action === 'design_element_update') {
+      const element = afterById.get(args.element_id);
+      const verified = !!element && Object.entries(args.properties).every(([key, value]) => {
+        if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        return element[key] === value;
+      });
+      if (!verified) throw new Error('Design element update failed authoritative server readback.');
+      return { ...base, elementId: args.element_id, changedProperties: Object.keys(args.properties), verified };
+    }
+    if (action === 'design_element_delete') {
+      const deleted = !afterById.has(args.element_id);
+      if (!deleted) throw new Error('Design element deletion failed authoritative server readback.');
+      return { ...base, elementId: args.element_id, deleted, remainingElements: afterDesign.elementCount };
+    }
+    if (action === 'design_elements_delete') {
+      const deleted = args.element_ids.every(id => !afterById.has(id));
+      const danglingConnections = afterDesign.flowConnections.filter(item => args.element_ids.includes(item.sourceElementId)).length;
+      if (!deleted || danglingConnections) throw new Error('Bulk deletion failed authoritative layer/connection readback.');
+      return { ...base, deletedElementIds: args.element_ids, deleted, danglingConnections, remainingElements: afterDesign.elementCount };
+    }
+    if (action === 'design_element_duplicate') return {
+      ...base, sourceElementId: args.element_id, elementId: newElements[0]?.id || null,
+      duplicated: !!newElements[0] && newElements[0].type === sourceBefore?.type && newElements[0].x === (Number(sourceBefore?.x) || 0) + 24 && newElements[0].y === (Number(sourceBefore?.y) || 0) + 24
+    };
+    if (action === 'design_layer_move') return {
+      ...base, elementId: args.element_id, direction: args.direction,
+      moved: (afterElements.findIndex(item => item.id === args.element_id) !== elements.findIndex(item => item.id === args.element_id)),
+      order: afterElements.map(item => item.id)
+    };
+    if (action === 'design_layer_reorder') {
+      const verified = afterElements[args.target_index]?.id === args.element_id;
+      if (!verified) throw new Error('Layer reorder failed authoritative server readback.');
+      return { ...base, elementId: args.element_id, fromIndex: elements.findIndex(item => item.id === args.element_id), targetIndex: args.target_index, changed: changed, order: afterElements.map(item => item.id) };
+    }
+    if (action === 'design_elements_align') return { ...base, mode: args.mode, elementIds: args.element_ids, changed, positions };
+    if (action === 'design_elements_distribute') {
+      if (!changed) throw new Error('Distribution did not change saved element positions.');
+      return { ...base, axis: args.axis, elementIds: args.element_ids, changed, positions };
+    }
+    const layoutVerified = Object.entries(settings || {}).every(([key, value]) => afterDesign.layout[key] === value);
+    if (!layoutVerified) throw new Error('Layout configuration failed authoritative server readback.');
+    return { ...base, settings: afterDesign.layout, changed: Object.keys(settings || {}) };
+  }, { action, args });
+}
+
 try {
   const command = parseCommand(process.env.ISSUE_BODY || '');
   commandId = command.command_id;
@@ -1793,207 +1935,31 @@ try {
     }, { projectId: command.args.project_id, componentId: command.args.component_id });
   } else if (command.action === 'design_element_add') {
     stage = 'design_element_add';
-    result = await page.evaluate(async ({ projectId, type }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type !== 'design' || !project.design) throw new Error('This action requires a design project.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const before = project.design.elements.length;
-      addDesignElement(type);
-      const latest = projects.find(item => item && item.id === projectId);
-      const element = latest?.design?.elements?.find(item => !project.design.elements.slice(0, before).some(old => old.id === item.id));
-      await saveProjectsToStorage();
-      if (!element) throw new Error('Design element was not created.');
-      return { projectId, elementId: element.id, type: element.type, elementCount: latest.design.elements.length };
-    }, { projectId: command.args.project_id, type: command.args.type });
+    result = await executeSavedDesignBatch('design_element_add', command.args);
   } else if (command.action === 'design_element_update') {
     stage = 'design_element_update';
-    result = await page.evaluate(async ({ projectId, elementId, properties }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const element = project.design.elements.find(item => item && item.id === elementId);
-      if (!element) throw new Error('Design element not found.');
-      recordDesignHistory();
-      Object.assign(element, properties);
-      renderDesignWorkspace();
-      const saved = await saveProjectsToStorage();
-      const exact = Object.entries(properties).every(([key, value]) => element[key] === value);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-        const localElement = localProject?.design?.elements?.find(item => item && item.id === elementId);
-        localVerified = !!localElement && Object.entries(properties).every(([key, value]) => localElement[key] === value);
-      } catch (_) {}
-      if (!exact || (saved !== true && !localVerified)) throw new Error('Design element update was not verified by server sync or local snapshot.');
-      return { projectId, elementId, changedProperties: Object.keys(properties), saved: saved === true, verified: exact, localSnapshotVerified: localVerified };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, properties: command.args.properties });
+    result = await executeSavedDesignBatch('design_element_update', command.args);
   } else if (command.action === 'design_element_delete') {
     stage = 'design_element_delete';
-    result = await page.evaluate(async ({ projectId, elementId }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (!project.design.elements.some(item => item && item.id === elementId)) throw new Error('Design element not found.');
-      selectedDesignElementId = elementId;
-      selectedDesignElementIds = [elementId];
-      deleteDesignElement();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const latest = projects.find(item => item && item.id === projectId);
-      const deleted = !latest.design.elements.some(item => item && item.id === elementId);
-      const saved = await saveProjectsToStorage();
-      if (!deleted) throw new Error('Design element deletion could not be verified.');
-      return { projectId, elementId, deleted, saved: saved === true, remainingElements: latest.design.elements.length };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id });
+    result = await executeSavedDesignBatch('design_element_delete', command.args);
   } else if (command.action === 'design_elements_delete') {
     stage = 'design_elements_delete';
-    result = await page.evaluate(async ({ projectId, elementIds }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design || !Array.isArray(project.design.elements)) throw new Error('Design project not found.');
-      const existing = new Set(project.design.elements.map(item => item && item.id));
-      const missing = elementIds.filter(id => !existing.has(id));
-      if (missing.length) throw new Error('One or more design elements were not found: ' + missing.join(', '));
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = elementIds[0]; selectedDesignElementIds = [...elementIds];
-      deleteDesignElement();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const latest = projects.find(item => item && item.id === projectId);
-      const remainingIds = new Set(latest.design.elements.map(item => item.id));
-      const deleted = elementIds.every(id => !remainingIds.has(id));
-      const danglingConnections = Array.isArray(latest.design.flowConnections)
-        ? latest.design.flowConnections.filter(connection => elementIds.includes(connection.sourceElementId)) : [];
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localIds = new Set(local?.design?.elements?.map(item => item.id) || []);
-      const localSnapshotVerified = elementIds.every(id => !localIds.has(id));
-      if (!deleted || danglingConnections.length || !localSnapshotVerified) throw new Error('Bulk deletion could not be fully verified.');
-      return { projectId, deletedElementIds: elementIds, deleted, saved: saved === true, remainingElements: latest.design.elements.length, danglingConnections: danglingConnections.length, localSnapshotVerified };
-    }, { projectId: command.args.project_id, elementIds: command.args.element_ids });
+    result = await executeSavedDesignBatch('design_elements_delete', command.args);
   } else if (command.action === 'design_element_duplicate') {
     stage = 'design_element_duplicate';
-    result = await page.evaluate(async ({ projectId, elementId }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      const source = project.design.elements.find(item => item && item.id === elementId);
-      if (!source) throw new Error('Design element not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
-      const before = new Set(project.design.elements.map(item => item.id));
-      duplicateDesignElement();
-      const latest = projects.find(item => item && item.id === projectId);
-      const created = latest.design.elements.find(item => !before.has(item.id));
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const persisted = !!local?.design?.elements?.some(item => item.id === created?.id && item.type === source.type && item.x === (Number(source.x)||0)+24 && item.y === (Number(source.y)||0)+24);
-      if (!created || !persisted) throw new Error('Duplicate element was not verified in the local snapshot.');
-      return { projectId, sourceElementId: elementId, elementId: created.id, duplicated: true, saved: saved === true, localSnapshotVerified: true };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id });
+    result = await executeSavedDesignBatch('design_element_duplicate', command.args);
   } else if (command.action === 'design_layer_move') {
     stage = 'design_layer_move';
-    result = await page.evaluate(async ({ projectId, elementId, direction }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      const before = project.design.elements.map(item => item.id);
-      if (!before.includes(elementId)) throw new Error('Design element not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
-      moveDesignLayer(direction === 'back' ? -1 : 1);
-      const latest = projects.find(item => item && item.id === projectId);
-      const after = latest.design.elements.map(item => item.id);
-      const moved = after.indexOf(elementId) !== before.indexOf(elementId);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localOrder = local?.design?.elements?.map(item => item.id) || [];
-      const verified = localOrder.length === after.length && localOrder.every((id, index) => id === after[index]);
-      if (!verified) throw new Error('Layer order was not verified in the local snapshot.');
-      return { projectId, elementId, direction, moved, saved: saved === true, localSnapshotVerified: true, order: after };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, direction: command.args.direction });
+    result = await executeSavedDesignBatch('design_layer_move', command.args);
   } else if (command.action === 'design_layer_reorder') {
     stage = 'design_layer_reorder';
-    result = await page.evaluate(async ({ projectId, elementId, targetIndex }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design || !Array.isArray(project.design.elements)) throw new Error('Design project not found.');
-      const elements = project.design.elements;
-      const currentIndex = elements.findIndex(item => item && item.id === elementId);
-      if (currentIndex < 0) throw new Error('Design element not found.');
-      if (targetIndex >= elements.length) throw new Error('target_index exceeds the current layer count.');
-      if (currentIndex !== targetIndex) {
-        openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-        const active = projects.find(item => item && item.id === projectId);
-        const list = active.design.elements;
-        const from = list.findIndex(item => item && item.id === elementId);
-        if (from < 0 || targetIndex >= list.length) throw new Error('Layer order changed before reorder could be applied.');
-        recordDesignHistory();
-        const [element] = list.splice(from, 1);
-        list.splice(targetIndex, 0, element);
-        active.updatedAt = new Date().toISOString();
-        renderDesignWorkspace();
-      }
-      const latest = projects.find(item => item && item.id === projectId);
-      const order = latest.design.elements.map(item => item.id);
-      const verified = order[targetIndex] === elementId;
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localOrder = local?.design?.elements?.map(item => item.id) || [];
-      const localSnapshotVerified = localOrder.length === order.length && localOrder.every((id, index) => id === order[index]);
-      if (!verified || !localSnapshotVerified) throw new Error('Layer reorder could not be verified.');
-      return { projectId, elementId, fromIndex: currentIndex, targetIndex, changed: currentIndex !== targetIndex, saved: saved === true, localSnapshotVerified, order };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetIndex: command.args.target_index });
+    result = await executeSavedDesignBatch('design_layer_reorder', command.args);
   } else if (command.action === 'design_elements_align') {
     stage = 'design_elements_align';
-    result = await page.evaluate(async ({ projectId, elementIds, mode }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      const selected = project.design.elements.filter(item => elementIds.includes(item.id));
-      if (selected.length !== elementIds.length) throw new Error('One or more design elements were not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = selected[0].id; selectedDesignElementIds = selected.map(item => item.id);
-      const before = selected.map(item => ({ id: item.id, x: item.x, y: item.y }));
-      alignDesignElement(mode);
-      const latest = projects.find(item => item && item.id === projectId);
-      const after = latest.design.elements.filter(item => elementIds.includes(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y }));
-      const changed = JSON.stringify(before) !== JSON.stringify(after);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && after.every(item => { const savedItem = local.design?.elements?.find(el => el.id === item.id); return savedItem && savedItem.x === item.x && savedItem.y === item.y; });
-      if (!localVerified) throw new Error('Alignment was not verified in the local snapshot.');
-      return { projectId, mode, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
-    }, { projectId: command.args.project_id, elementIds: command.args.element_ids, mode: command.args.mode });
+    result = await executeSavedDesignBatch('design_elements_align', command.args);
   } else if (command.action === 'design_elements_distribute') {
     stage = 'design_elements_distribute';
-    result = await page.evaluate(async ({ projectId, elementIds, axis }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      const selected = project.design.elements.filter(item => elementIds.includes(item.id));
-      if (selected.length !== elementIds.length) throw new Error('One or more design elements were not found.');
-      if (project.design.layoutMode === 'auto') throw new Error('Switch the design to free layout before manual distribution.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = selected[0].id; selectedDesignElementIds = selected.map(item => item.id);
-      const key = axis === 'vertical' ? 'y' : 'x';
-      const before = selected.map(item => ({ id: item.id, x: item.x, y: item.y }));
-      distributeDesignElements(axis);
-      const latest = projects.find(item => item && item.id === projectId);
-      const after = latest.design.elements.filter(item => elementIds.includes(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y }));
-      const changed = JSON.stringify(before) !== JSON.stringify(after);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && after.every(item => {
-        const stored = local.design?.elements?.find(el => el.id === item.id);
-        return stored && stored.x === item.x && stored.y === item.y;
-      });
-      if (!changed || !localVerified) throw new Error('Distribution did not change and persist the selected element positions.');
-      return { projectId, axis, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
-    }, { projectId: command.args.project_id, elementIds: command.args.element_ids, axis: command.args.axis });
+    result = await executeSavedDesignBatch('design_elements_distribute', command.args);
   } else if (command.action === 'design_prototype_target_set') {
     stage = 'design_prototype_target_set';
     result = await page.evaluate(async ({ projectId, elementId, target }) => {
@@ -2017,24 +1983,7 @@ try {
     }, { projectId: command.args.project_id, elementId: command.args.element_id, target: command.args.target });
   } else if (command.action === 'design_layout_configure') {
     stage = 'design_layout_configure';
-    result = await page.evaluate(async ({ projectId, settings }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      if (settings.mode !== undefined) setDesignLayoutMode(settings.mode);
-      if (settings.direction !== undefined) setDesignLayoutDirection(settings.direction);
-      if (settings.gap !== undefined) setDesignLayoutGap(settings.gap);
-      if (settings.padding !== undefined) setDesignLayoutPadding(settings.padding);
-      const latest = projects.find(item => item && item.id === projectId);
-      const actual = { mode: latest.design.layoutMode || 'free', direction: latest.design.layoutDirection || 'row', gap: latest.design.layoutGap ?? 0, padding: latest.design.layoutPadding ?? 0 };
-      const exact = Object.entries(settings).every(([key, value]) => actual[{mode:'mode',direction:'direction',gap:'gap',padding:'padding'}[key]] === value);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && Object.entries(settings).every(([key, value]) => local.design?.[{mode:'layoutMode',direction:'layoutDirection',gap:'layoutGap',padding:'layoutPadding'}[key]] === value);
-      if (!exact || !localVerified) throw new Error('Layout settings were not verified.');
-      return { projectId, settings: actual, changed: Object.keys(settings), saved: saved === true, localSnapshotVerified: true };
-    }, { projectId: command.args.project_id, settings: Object.fromEntries(['mode','direction','gap','padding'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
+    result = await executeSavedDesignBatch('design_layout_configure', command.args);
   } else if (command.action === 'design_canvas_configure') {
     stage = 'design_canvas_configure';
     result = await page.evaluate(async ({ projectId, settings }) => {
