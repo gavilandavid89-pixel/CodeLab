@@ -149,7 +149,9 @@ function applyOperation(project, operation) {
       const parsed = parseEditorImageDataUrl(operation.dataUrl);
       element.src = operation.dataUrl;
       const filename = typeof operation.filename === 'string' ? operation.filename.trim().slice(0, 255) : '';
-      const fallbackAlt = filename.replace(/\\.[^.]*$/, '').replace(/[\\/\\\\]/g, ' ').trim().slice(0, 300);
+      const baseName = filename.split('/').pop().split('\\').pop();
+      const extensionIndex = baseName.lastIndexOf('.');
+      const fallbackAlt = (extensionIndex > 0 ? baseName.slice(0, extensionIndex) : baseName).trim().slice(0, 300);
       if (!element.alt || element.alt === 'Imagen del diseño') {
         element.alt = fallbackAlt || 'Imagen del diseño';
       }
