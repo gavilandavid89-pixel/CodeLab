@@ -3597,11 +3597,13 @@ function captureDesignSvg(project) {
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
-    const renderedNode = el.id ? document.querySelector('[data-design-id="' + CSS.escape(String(el.id)) + '"]') : null;
+    const renderedNode = el.id ? Array.from(document.querySelectorAll('[data-design-id]')).find(node => node.dataset.designId === el.id) : null;
     const renderedRotationMatch = renderedNode && String(renderedNode.style.transform || '').match(/^rotate\((-?\d+(?:\.\d+)?)deg\)$/);
+    const rotationField = el.id === selectedDesignElementId ? document.getElementById('designProperty-rotation') : null;
+    const inspectorRotation = rotationField && rotationField.value !== '' ? Number(rotationField.value) : NaN;
     const modelRotation = finite(el.rotation, 0);
-    // Keep exports visually faithful if the live canvas has a newer inspector rotation.
-    const rotation = Math.max(-360, Math.min(360, modelRotation || (renderedRotationMatch ? Number(renderedRotationMatch[1]) : 0)));
+    // Keep exports faithful to the active inspector and rendered canvas during live edits.
+    const rotation = Math.max(-360, Math.min(360, modelRotation || (Number.isFinite(inspectorRotation) ? inspectorRotation : renderedRotationMatch ? Number(renderedRotationMatch[1]) : 0)));
     const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
