@@ -975,6 +975,10 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(projectBackup.project.design.elements.find(item => item.type === 'image')?.alt, 'E2E sample image',
       'JSON backup should preserve image metadata');
     const responsiveBackupLayer = projectBackup.project.design.elements.find(item => item.type === 'heading') || projectBackup.project.design.elements[0];
+    responsiveBackupLayer.x = 25;
+    responsiveBackupLayer.xUnit = '%';
+    responsiveBackupLayer.y = 10;
+    responsiveBackupLayer.yUnit = '%';
     responsiveBackupLayer.width = 50;
     responsiveBackupLayer.widthUnit = '%';
     responsiveBackupLayer.heightUnit = 'auto';
@@ -1007,6 +1011,8 @@ async function waitForPersistedProject(page, projectName) {
       return {
         imageAlt: project.design.elements.find(item => item.type === 'image')?.alt,
         internalLinkRestored: !!targetId && project.design.elements.some(item => item.id === targetId),
+        xUnit: responsiveLayer?.xUnit || 'px',
+        yUnit: responsiveLayer?.yUnit || 'px',
         widthUnit: responsiveLayer?.widthUnit || 'px',
         heightUnit: responsiveLayer?.heightUnit || 'px',
         sourceProjectStillExists: projects.some(item => item.name === project.name.replace(/ \(Importado\)$/, ''))
@@ -1014,6 +1020,8 @@ async function waitForPersistedProject(page, projectName) {
     });
     assert.equal(restoredBackupCheck.imageAlt, 'E2E sample image', 'backup import must preserve image metadata');
     assert.equal(restoredBackupCheck.internalLinkRestored, true, 'backup import must remap internal prototype links to the imported layer IDs');
+    assert.equal(restoredBackupCheck.xUnit, '%', 'backup import must preserve percentage X units');
+    assert.equal(restoredBackupCheck.yUnit, '%', 'backup import must preserve percentage Y units');
     assert.equal(restoredBackupCheck.widthUnit, '%', 'backup import must preserve percentage width units');
     assert.equal(restoredBackupCheck.heightUnit, 'auto', 'backup import must preserve Auto height units');
     assert.equal(restoredBackupCheck.sourceProjectStillExists, true, 'restoring a backup must create a separate project, not overwrite the source');
