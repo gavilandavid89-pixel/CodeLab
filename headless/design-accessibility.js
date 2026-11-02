@@ -79,10 +79,10 @@ function auditDesignAccessibility(project) {
       const fontSize = Number(element.fontSize);
       const weight = Number(element.weight) || 400;
       const opacity = Number(element.opacity);
-      if (Number.isFinite(opacity) && opacity < 1) {
+      if (Number.isFinite(opacity) && opacity !== 1) {
         add('warning', 'text-opacity-contrast', element,
-          'La opacidad de la capa puede reducir el contraste real; esta auditoría no compone el texto y el fondo sobre el canvas.',
-          { opacity: Math.max(0, opacity), contrastBasis: 'opacity-not-composited' });
+          'La opacidad de la capa puede alterar el contraste real; esta auditoría no compone el texto y el fondo sobre el canvas.',
+          { opacity: Math.max(0, Math.min(1, opacity)), declaredOpacity: opacity, contrastBasis: 'opacity-not-composited' });
       }
       if (Number.isFinite(fontSize) && fontSize > 0 && fontSize < 12) {
         add('warning', 'small-text', element, 'El texto tiene un tamaño inferior a 12 px; comprueba su legibilidad en el dispositivo objetivo.', { fontSize });
