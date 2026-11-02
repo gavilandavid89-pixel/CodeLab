@@ -4271,7 +4271,14 @@ function bindDesignCanvasEvents() {
     const target = ev.target;
     if (target && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName))) return;
     const mod = ev.ctrlKey || ev.metaKey;
-    if (mod && ev.key.toLowerCase() === 'z') {
+    const inDesignSurface = !target || target === document.body || target.id === 'designCanvas' ||
+      (target.closest && target.closest('#designCanvas, #designLayers'));
+    if (mod && ev.key.toLowerCase() === 'a' && inDesignSurface) {
+      ev.preventDefault();
+      selectedDesignElementIds = p.design.elements.map(item => item.id);
+      selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+      renderDesignWorkspace();
+    } else if (mod && ev.key.toLowerCase() === 'z') {
       ev.preventDefault();
       if (ev.shiftKey) designRedo(); else designUndo();
     } else if (mod && ev.key.toLowerCase() === 'y') {
