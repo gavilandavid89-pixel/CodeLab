@@ -31,6 +31,29 @@ test('semantic HTML export omits hidden layers just like SVG rendering', () => {
   assert.doesNotMatch(html, /layer-hidden-layer/);
 });
 
+test('hidden layers do not consume auto-layout space in semantic HTML export', () => {
+  const html = exportDesignHtml({
+    ...project([
+      { id: 'hidden-first', type: 'rectangle', visible: false, width: 180, height: 80 },
+      { id: 'visible-second', type: 'rectangle', width: 120, height: 40 }
+    ]),
+    design: {
+      ...project([]).design,
+      layoutMode: 'auto',
+      layoutDirection: 'row',
+      layoutGap: 12,
+      elements: [
+        { id: 'hidden-first', type: 'rectangle', visible: false, width: 180, height: 80 },
+        { id: 'visible-second', type: 'rectangle', width: 120, height: 40 }
+      ]
+    }
+  });
+
+  assert.doesNotMatch(html, /layer-hidden-first/);
+  assert.match(html, /layer-visible-second/);
+  assert.match(html, /left:auto;top:auto;flex:0 0 auto/);
+});
+
 test('semantic HTML export preserves safe rotation and opacity values', () => {
   const html = exportDesignHtml(project([
     { id: 'rotated-layer', type: 'rectangle', rotation: 15, opacity: 1, x: 10, y: 10, width: 100, height: 60 },
