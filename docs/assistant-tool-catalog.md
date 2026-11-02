@@ -199,3 +199,29 @@ The legacy `ai_generate` UI action remains available for the browser workflow; t
 ## Headless parity follow-through — legacy bridge actions
 
 The legacy bridge action names for design import, design-system import/export, web-project HTML export, and design-to-web conversion now call authenticated headless APIs. They no longer open editor modals, set file inputs, wait for browser downloads, or invoke the design conversion UI. This preserves caller compatibility while making those capabilities independent of editor visibility.
+
+
+## Section 22 — Headless image-file attachment
+
+The website's design inspector accepts PNG, JPEG, WebP, and GIF files up to 2 MiB. It reads the selected file as a Base64 data URL, stores that data URL in the selected image layer's `src`, and uses the filename as fallback alt text when the layer still has its default description.
+
+The headless design engine now exposes the equivalent `image.attach` operation inside `design.batch`:
+
+```json
+{
+  "type": "design.batch",
+  "projectId": "proj_EXACT_ID",
+  "operations": [
+    {
+      "type": "image.attach",
+      "id": "hero-image",
+      "filename": "hero-banner.webp",
+      "dataUrl": "data:image/webp;base64,BASE64_CONTENT"
+    }
+  ]
+}
+```
+
+It requires an existing image layer, accepts only PNG/JPEG/WebP/GIF Base64 data URLs, validates Base64 encoding and decoded size (maximum 2 MiB), stores the data URL in the existing layer model, and returns MIME type/byte length. A custom alt description is preserved; the filename stem is used only when alt is empty or still the editor's default. The enclosing design batch provides the normal atomicity, revision checks, undo snapshot, and workspace persistence.
+
+This mirrors the website's current embedded-image model; it does not invent a separate asset library or remote upload service because the editor itself does not currently provide one. The operation is covered by engine tests for supported formats, malformed data, size boundaries, wrong layer type, and alt-text preservation.
