@@ -149,9 +149,13 @@ test('legacy bridge import export and conversion actions now delegate to headles
 });
 
 test('isolated preview interaction supports common form and assertion steps', () => {
-  assert.match(bridge, /'click', 'fill', 'select', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'/);
+  assert.match(bridge, /'click', 'fill', 'select', 'upload', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'/);
   assert.match(bridge, /locator\.check\(/);
   assert.match(bridge, /locator\.uncheck\(/);
+  assert.match(bridge, /step\.action === 'upload'/);
+  assert.match(bridge, /allowedMimeTypes/);
+  assert.match(bridge, /uploadBytes\.length > 24000/);
+  assert.match(bridge, /locator\.setInputFiles\(/);
   assert.match(bridge, /only allow non-submitting navigation keys/);
   assert.match(bridge, /expected text was not found/);
   assert.match(bridge, /element is not visible/);
