@@ -125,6 +125,8 @@ test('headless AI generation uses saved workspace APIs, explicit approval, and q
   assert.match(action, /headless\.operation\.status/);
   assert.match(action, /\/api\/ai\/complete/);
   assert.match(action, /headlessAiRequestKey/);
+  assert.match(action, /keyFingerprint/);
+  assert.match(action, /maxTokens: maxTokens === undefined \? null : maxTokens/);
   assert.match(action, /rateLimit/);
   assert.doesNotMatch(action, /openProject\(|processAiInstruction\(|toggleCopyBranch\(/);
   assert.match(bridge, /Headless AI generation consumes provider quota and changes project code/);
