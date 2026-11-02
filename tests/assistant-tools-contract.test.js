@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const app = fs.readFileSync('public/app.js', 'utf8');
 const headlessRuntime = fs.readFileSync('headless/workspace-runtime.js', 'utf8');
+const designEngine = fs.readFileSync('headless/design-engine.js', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
   'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
@@ -109,7 +110,7 @@ assert.match(bridge, /component_inspect[\s\S]{0,1600}truncated: html\.length > l
 assert.match(bridge, /component_inspect max_chars must be an integer from 1000 to 7000/, 'component inspection must validate output limits');
 
 assert.match(bridge, /design_elements_distribute requires 3 to 100 unique valid element_ids/);
-assert.match(bridge, /distributeDesignElements\(axis\)/, 'distribution must call the existing design editor operation');
+assert.match(designEngine, /case 'elements\.distribute'/, 'distribution must use the shared headless design engine operation');
 assert.match(bridge, /design_prototype_target_set target must be a safe string/);
 assert.match(bridge, /setDesignPrototypeTarget\(target\)/, 'prototype target must use the existing editor operation');
 
