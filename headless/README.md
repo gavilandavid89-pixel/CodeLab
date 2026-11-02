@@ -96,7 +96,7 @@ The authenticated `POST /api/workspace/:id/headless/query` endpoint reads the cu
 
 - `component.search` and `component.inspect` against the actual website catalog, with bounded standalone HTML output.
 - `design.tokens.generate` through the website's existing design-tools module.
-- `project.inspect`, `project.code.read`, and `design.read` for saved project state, with explicit field/layer limits and truncation metadata.
+- `project.inspect`, `project.code.read`, and `design.read` for saved project state, with explicit field/layer limits and truncation metadata. `project.code.read` supports offset-based paging (`offset`, `maxChars`, per-field `nextOffset`) so agents can read large HTML/CSS/JS files in bounded chunks instead of losing everything after the first 200,000 characters.
 - `accessibility.audit` against saved web-project HTML using the existing static audit.
 
 The endpoint requires the same workspace token/session ownership checks as normal workspace operations. An optional `expectedRevision` detects stale reads and returns HTTP 409. Query operations are read-only and do not create idempotency receipts or increment the workspace revision. The bridge action `headless_query` exposes these reads to the assistant without opening a project or simulating editor clicks.
