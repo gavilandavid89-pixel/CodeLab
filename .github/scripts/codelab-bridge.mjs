@@ -775,6 +775,9 @@ try {
         query('design.read', { projectId, limit: 500 }, workspaceRevision)
       ]);
       const context = captured.result;
+      if (!Number.isInteger(context?.designRevision) || context.designRevision !== designResponse.result.revision) {
+        throw new Error('Capture context and saved design layers do not share the same design revision.');
+      }
       const html = htmlResponse.result?.html;
       if (typeof html !== 'string' || !html.trim()) throw new Error('Saved design HTML export is empty.');
       const canvas = context?.canvas;

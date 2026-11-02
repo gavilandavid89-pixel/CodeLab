@@ -697,6 +697,7 @@ test('builds AI design capture context headlessly with custom canvas and scaled 
   ];
   const context = buildAiDesignCaptureContext(project, 2);
   assert.equal(context.format, 'codelab-ai-design-capture');
+  assert.equal(context.designRevision, project.design.revision, 'capture context must carry the saved design revision');
   assert.equal(context.canvas.width, 720);
   assert.equal(context.canvas.height, 1600);
   assert.equal(context.canvas.pixelWidth, 1440);
@@ -729,6 +730,7 @@ test('exposes AI design capture context as a read-only headless query', () => {
     args: { projectId: project.id, scale: 1 }
   });
   assert.equal(result.result.format, 'codelab-ai-design-capture');
+  assert.equal(result.result.designRevision, project.design.revision, 'read-only capture query must expose the same saved design revision');
   assert.equal(result.result.canvas.width, 720);
   assert.equal(result.result.canvas.height, 1600);
   assert.equal(workspace.revision, 3, 'read-only capture query must not increment workspace revision');

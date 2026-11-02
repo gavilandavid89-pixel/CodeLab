@@ -436,6 +436,7 @@ function buildAiDesignCaptureContext(project, scale = 2) {
   return {
     format: 'codelab-ai-design-capture',
     version: 1,
+    designRevision: Number.isInteger(design.revision) ? design.revision : 0,
     project: name,
     frame: design.frame || 'desktop',
     image: slug + '-captura-ia.png',

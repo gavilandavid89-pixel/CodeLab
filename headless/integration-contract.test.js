@@ -148,6 +148,12 @@ test('legacy bridge import export and conversion actions now delegate to headles
   }
 });
 
+test('PNG capture pairs the image and context using a matching saved design revision', () => {
+  assert.match(bridge, /context\.designRevision !== designResponse\.result\.revision/);
+  assert.match(bridge, /pairedRevisionVerified: true/);
+  assert.match(bridge, /networkRequestsBlocked: true/);
+});
+
 test('preview diagnostics and interactions run in an isolated sandbox using saved workspace code', () => {
   assert.match(bridge, /async function createHeadlessPreview\(/);
   assert.match(bridge, /action: 'project\.code\.read'/);
