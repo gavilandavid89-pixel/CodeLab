@@ -234,3 +234,14 @@ assert.match(bridge, /'component\.inspect', 'design\.tokens\.generate', 'project
 assert.match(projectListHandler, /\/headless\/query/, 'project list must query saved workspace state');
 assert.match(projectListHandler, /action: 'project\.list'/, 'project list must use the canonical saved-state query');
 assert.doesNotMatch(projectListHandler, /projects\.map\(/, 'project list must not enumerate editor memory');
+
+const templateHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_template_apply') {"), bridge.indexOf("} else if (command.action === 'design_history') {", bridge.indexOf("} else if (command.action === 'design_template_apply') {")));
+assert.match(templateHandler, /\/headless\/query/, 'template application must inspect the saved design');
+assert.match(templateHandler, /type: 'design\.template\.apply'/, 'template application must use the shared headless runtime');
+assert.match(templateHandler, /approved: command\.approval === 'approved'/, 'template replacement approval must be passed to the runtime');
+assert.doesNotMatch(templateHandler, /projects\.find\(|applyDesignTemplate\(|openProject\(/, 'template application must not depend on editor UI state');
+const historyHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_history') {"), bridge.indexOf("} else if (command.action === 'headless_batch') {", bridge.indexOf("} else if (command.action === 'design_history') {")));
+assert.match(historyHandler, /design\.history\.inspect/, 'history must check the saved undo/redo state');
+assert.match(historyHandler, /design\.history\.undo|design\.history\.redo/, 'history must use shared headless undo/redo operations');
+assert.match(historyHandler, /baseRevision: before\.revision/, 'history mutations must use optimistic workspace revisions');
+assert.doesNotMatch(historyHandler, /projects\.find\(|designUndo\(|designRedo\(|openProject\(/, 'history must not use editor UI state');

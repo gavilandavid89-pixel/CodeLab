@@ -1006,38 +1006,88 @@ try {
     }, command.args.project_id);
   } else if (command.action === 'design_template_apply') {
     stage = 'design_template_apply';
-    result = await page.evaluate(async ({ projectId, templateId, replaceExisting }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      if (project.design.elements?.length && !replaceExisting) throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const originalConfirm = window.confirm;
-      try {
-        window.confirm = () => !!replaceExisting;
-        applyDesignTemplate(templateId);
-      } finally {
-        window.confirm = originalConfirm;
+    result = await page.evaluate(async ({ projectId, templateId, replaceExisting, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design template query failed.');
+        return data;
+      };
+      const before = await query('design.read', { projectId, limit: 500 });
+      if (before.result.elementCount > 0 && !replaceExisting) {
+        throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
       }
-      const latest = projects.find(item => item && item.id === projectId);
-      const hasLayers = Array.isArray(latest?.design?.elements) && latest.design.elements.length > 0;
-      const saved = await saveProjectsToStorage();
-      if (!hasLayers) throw new Error('Template application produced no design layers.');
-      return { projectId, templateId, elementCount: latest.design.elements.length, saved: saved === true, verified: hasLayers };
-    }, { projectId: command.args.project_id, templateId: command.args.template_id, replaceExisting: command.args.replace_existing === true });
+      const operationId = 'template_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'design.template.apply', projectId, templateId, replaceExisting, approved }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless template application failed.');
+      const after = await query('design.read', { projectId, limit: 500 });
+      const verified = after.result.elementCount > 0 && after.result.revision > before.result.revision;
+      if (!verified) throw new Error('Saved template could not be verified from the server.');
+      const workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false;
+      return {
+        projectId, templateId, elementCount: after.result.elementCount, saved: true,
+        verified, workspaceRefreshed, workspaceRevision: after.revision, designRevision: after.result.revision
+      };
+    }, {
+      projectId: command.args.project_id, templateId: command.args.template_id,
+      replaceExisting: command.args.replace_existing === true,
+      approved: command.approval === 'approved'
+    });
   } else if (command.action === 'design_history') {
     stage = 'design_history';
     result = await page.evaluate(async ({ projectId, operation }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const before = JSON.stringify(project.design);
-      if (operation === 'undo') designUndo(); else designRedo();
-      const latest = projects.find(item => item && item.id === projectId);
-      const changed = JSON.stringify(latest.design) !== before;
-      const saved = await saveProjectsToStorage();
-      return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved design history query failed.');
+        return data;
+      };
+      const before = await query('design.history.inspect', { projectId });
+      if (operation === 'undo' ? !before.result.canUndo : !before.result.canRedo) {
+        throw new Error('No saved design ' + operation + ' entry is available.');
+      }
+      const operationId = 'history_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: operation === 'undo' ? 'design.history.undo' : 'design.history.redo', projectId }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless design history operation failed.');
+      const after = await query('design.read', { projectId, limit: 500 });
+      const history = await query('design.history.inspect', { projectId });
+      const workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false;
+      return {
+        projectId, operation, changed: true, saved: true, verified: after.result.revision > 0,
+        elementCount: after.result.elementCount, designRevision: after.result.revision,
+        canUndo: history.result.canUndo, canRedo: history.result.canRedo,
+        workspaceRevision: after.revision, workspaceRefreshed
+      };
     }, { projectId: command.args.project_id, operation: command.args.operation });
   } else if (command.action === 'headless_batch') {
     stage = 'headless_batch';
