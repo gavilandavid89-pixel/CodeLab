@@ -73,6 +73,7 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   const update = extract('function updateDesignProperty(key, value) {', '\nfunction bindDesignCanvasEvents');
   const capture = extract('async function captureDesignForAI() {', '\nfunction safeDesignExportColor');
   const exporter = extract('function exportDesignHtml() {', '\nfunction toggleDesignExportMenu');
+  const converter = extract('async function convertDesignToWeb() {', '\nfunction setupNewProjectModalKeys');
   const actions = extract('function moveDesignLayer(direction) {', '\nfunction openDesignFlowGraph');
 
   assert.match(render, /if \(el\.visible === false\) continue/);
@@ -85,6 +86,8 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(capture, /el\.visible !== false/);
   assert.match(exporter, /el\.visible !== false/);
   assert.match(exporter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
+  assert.match(converter, /el\.visible !== false/);
+  assert.match(converter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
   assert.match(actions, /element\.locked/);
   assert.match(actions, /!el\.locked/);
 });
