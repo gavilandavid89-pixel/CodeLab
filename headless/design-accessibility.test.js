@@ -67,3 +67,30 @@ test('design accessibility audit validates project type and computes WCAG contra
     code: 'HEADLESS_INVALID_QUERY'
   });
 });
+
+test('design accessibility audit warns when text opacity makes declared contrast unreliable', () => {
+  const project = designProject([
+    { id: 'el_faded_text', type: 'text', label: 'Faded text', text: 'Readable?', fontSize: 16, color: '#000000', background: '#ffffff', opacity: 0.4 }
+  ]);
+
+  const report = auditDesignAccessibility(project);
+  const finding = report.findings.find(item => item.ruleId === 'text-opacity');
+  assert.ok(finding);
+  assert.equal(finding.elementId, 'el_faded_text');
+  assert.equal(finding.opacity, 0.4);
+  assert.equal(finding.contrastBasis, 'declared-colors-ignore-opacity');
+  assert.equal(report.counts.warning, 1);
+});
+
+test('design accessibility audit flags contrast formats it cannot calculate', () => {
+  const project = designProject([
+    { id: 'el_alpha_text', type: 'text', label: 'Alpha text', text: 'Check contrast', fontSize: 16, color: '#00000080', background: '#ffffff' }
+  ]);
+
+  const report = auditDesignAccessibility(project);
+  const finding = report.findings.find(item => item.ruleId === 'text-contrast-unavailable');
+  assert.ok(finding);
+  assert.equal(finding.elementId, 'el_alpha_text');
+  assert.equal(finding.contrastBasis, 'unsupported-color-format');
+  assert.equal(report.findings.some(item => item.ruleId === 'text-contrast'), false);
+});

@@ -82,13 +82,24 @@ function auditDesignAccessibility(project) {
         add('warning', 'small-text', element, 'El texto tiene un tamaño inferior a 12 px; comprueba su legibilidad en el dispositivo objetivo.', { fontSize });
       }
 
+      const opacity = Number(element.opacity);
+      if (Number.isFinite(opacity) && opacity >= 0 && opacity < 1) {
+        add('warning', 'text-opacity', element,
+          'La opacidad del texto modifica los colores efectivos; el contraste declarado puede sobreestimar la legibilidad.',
+          { opacity, contrastBasis: 'declared-colors-ignore-opacity' });
+      }
+
       const foreground = element.color;
       const background = typeof element.background === 'string' && element.background !== 'transparent'
         ? element.background
         : null;
       if (background) {
         const ratio = contrastRatio(foreground, background);
-        if (ratio !== null) {
+        if (ratio === null) {
+          add('warning', 'text-contrast-unavailable', element,
+            'No se pudo calcular el contraste con el formato de color declarado; verifica esta capa visualmente.',
+            { contrastBasis: 'unsupported-color-format' });
+        } else {
           const large = Number.isFinite(fontSize) &&
             (fontSize >= LARGE_TEXT_PX || (fontSize >= LARGE_BOLD_TEXT_PX && weight >= 700));
           const minimum = large ? 3 : 4.5;
