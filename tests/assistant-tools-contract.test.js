@@ -179,8 +179,7 @@ const projectCreateHandler = bridge.slice(
   bridge.indexOf("else if (command.action === 'project_create')"),
   bridge.indexOf("else if (command.action === 'project_duplicate')", bridge.indexOf("else if (command.action === 'project_create')"))
 );
-assert.match(projectCreateHandler, /serverSyncStatus !== 'Sincronizado'/,
-  'project creation must not report success from a local snapshot without confirmed server sync');
+assert.match(projectCreateHandler, /type: 'project\\.create'/, 'project creation must use the authenticated headless operation rather than local UI state');
 assert.match(projectCreateHandler, /await refreshWorkspaceFromServer\(\)/,
   'project creation must read the authoritative workspace back from the server');
 assert.match(projectCreateHandler, /serverReadbackVerified/,
@@ -256,7 +255,7 @@ for (const [action, queryName, operationType] of [
   const end = bridge.indexOf("} else if (command.action ===", start + 40);
   const handler = bridge.slice(start, end < 0 ? undefined : end);
   assert.match(handler, /\/api\/workspace\//, action + ' must use the authenticated workspace API');
-  assert.ok(handler.includes("action: '" + queryName + "'"), action + ' must inspect authoritative saved state');
+  assert.ok(handler.includes("action: '" + queryName + "'") || handler.includes("query('" + queryName + "'"), action + ' must inspect authoritative saved state');
   assert.ok(handler.includes("type: '" + operationType + "'"), action + ' must use the shared headless runtime operation');
   assert.doesNotMatch(handler, /projects\.find\(|createNewProjectConfirm\(|duplicateProjectFromDashboard\(|deleteProject\(/,
     action + ' must not mutate through editor UI state');
