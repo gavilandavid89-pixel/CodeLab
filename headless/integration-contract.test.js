@@ -153,7 +153,7 @@ test('preview diagnostics and interactions run in an isolated sandbox using save
   assert.match(bridge, /action: 'project\.code\.read'/);
   assert.match(bridge, /sandbox="allow-scripts allow-forms"/);
   assert.match(bridge, /connect-src \\'none\\'/);
-  assert.match(bridge, /page\.context\(\)\.newPage\(\)/);
+  assert.match(bridge, /browser\.newContext\(\{ serviceWorkers: 'block' \}\)/);
   const diagnosticStart = bridge.indexOf("} else if (command.action === 'preview_diagnostics') {");
   const diagnosticEnd = bridge.indexOf("} else if (command.action === 'preview_interact') {", diagnosticStart);
   const interactionStart = diagnosticEnd;
