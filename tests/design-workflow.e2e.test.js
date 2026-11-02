@@ -531,6 +531,10 @@ async function waitForPersistedProject(page, projectName) {
       const node = document.querySelector('#designCanvas [data-design-id]');
       return node && node.textContent === 'Prueba integral CodeLab';
     });
+    // Undo/redo intentionally clears selection; select the layer again before
+    // exercising its Inspector controls.
+    await element.click();
+    await page.locator('#designProperty-width').waitFor({ state: 'visible' });
 
     // 3b. Exercise responsive dimensions through the real Inspector controls.
     await page.locator('#designProperty-width').fill('50');
