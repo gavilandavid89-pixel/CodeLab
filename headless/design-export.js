@@ -192,7 +192,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const h = Math.max(20, Math.min(4000, Number(element.height) || 48));
     const color = safeExportColor(element.color, '#111827');
     const elementBackground = safeExportColor(element.background, 'transparent');
-    const fontSize = Math.max(8, Math.min(240, Number(element.fontSize) || 16));
+    const fontSize = Math.max(8, Math.min(256, Number(element.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(element.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(element.radius) || 0));
     const rotation = Number.isFinite(Number(element.rotation)) ? Math.max(-3600, Math.min(3600, Number(element.rotation))) : 0;
