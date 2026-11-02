@@ -46,6 +46,8 @@ Supported operations:
 - `element.update`: update allowlisted properties on one stable layer ID.
 - `element.delete`: delete exactly one stable layer ID.
 
+Layer positioning supports the editor's responsive `xUnit` and `yUnit` properties (`px` or `%`) in free layout. Percentage positions are resolved against the saved canvas width/height for SVG rendering, while the original numeric values and units remain persisted on the layer. Unsupported units are rejected.
+
 `transact` is immutable from the caller's perspective: it works on a cloned project and returns a new project. A failed batch returns no partial project. Optional `expectedRevision` provides optimistic concurrency protection; stale writes fail with `REVISION_CONFLICT`. Each successful batch increments `design.revision` once.
 
 The current first cut caps designs at 500 layers, batches at 500 operations, canvas width at 4,000 px, and height at 10,000 px. The SVG renderer escapes text/attributes, validates paint colors and URL schemes, preserves text backgrounds, alignment/rotation, and image fit, and skips hidden layers.
