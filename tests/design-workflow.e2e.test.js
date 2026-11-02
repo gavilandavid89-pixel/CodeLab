@@ -723,6 +723,26 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#designLayers [data-design-select="' + selectedLayerIds[1] + '"]').click({ modifiers: ['Shift'] });
     await page.locator('#designLayers [data-design-select="' + selectedLayerIds[2] + '"]').click({ modifiers: ['Shift'] });
 
+    // 4d. Reordering a multi-selection moves the group together and preserves its relative order.
+    const selectedIndicesBeforeReorder = await page.evaluate(ids => {
+      const order = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).map(node => node.dataset.designId);
+      return ids.map(id => order.indexOf(id));
+    }, selectedLayerIds);
+    await page.locator('#designLayerDown').click();
+    const selectedIndicesAfterReorder = await page.evaluate(ids => {
+      const order = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).map(node => node.dataset.designId);
+      return ids.map(id => order.indexOf(id));
+    }, selectedLayerIds);
+    assert.deepEqual(selectedIndicesAfterReorder, selectedIndicesBeforeReorder.map(index => index - 1),
+      'moving a multi-selection backward should shift every selected layer by one index');
+    await page.locator('#designLayerUp').click();
+    const selectedIndicesRestored = await page.evaluate(ids => {
+      const order = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).map(node => node.dataset.designId);
+      return ids.map(id => order.indexOf(id));
+    }, selectedLayerIds);
+    assert.deepEqual(selectedIndicesRestored, selectedIndicesBeforeReorder,
+      'moving the selected group forward should restore the original layer indices');
+
     // 4e. Auto Layout uses direction, spacing and padding to calculate live layer positions.
     await page.locator('#designLayoutMode').selectOption('auto');
     await page.locator('#designLayoutDirection').selectOption('column');
