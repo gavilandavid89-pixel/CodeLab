@@ -4282,18 +4282,29 @@ function bindDesignCanvasEvents() {
       ev.preventDefault(); deleteDesignElement();
     } else if (arrowKeys.includes(ev.key) && selectedDesignElementId &&
       (!target || target === document.body || target.id === 'designCanvas' || (target.closest && target.closest('#designCanvas')))) {
-      const el = selectedDesignElement();
-      if (!el) return;
+      const selectedIds = Array.from(new Set(
+        (selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]).filter(Boolean)
+      ));
+      const selectedElements = selectedIds
+        .map(id => p.design.elements.find(item => item.id === id))
+        .filter(Boolean);
+      if (!selectedElements.length || p.design.layoutMode === 'auto') return;
       ev.preventDefault();
       if (!nudgeHistoryActive) recordDesignHistory();
       nudgeHistoryActive = true;
       const step = ev.shiftKey ? 10 : 1;
-      const currentX = getDesignElementPosition(el, 'x', getDesignCanvasWidth(p.design));
-      const currentY = getDesignElementPosition(el, 'y', getDesignCanvasHeight(p.design) || 900);
-      if (ev.key === 'ArrowLeft') { el.xUnit = 'px'; el.x = Math.max(0, currentX - step); }
-      if (ev.key === 'ArrowRight') { el.xUnit = 'px'; el.x = Math.max(0, currentX + step); }
-      if (ev.key === 'ArrowUp') { el.yUnit = 'px'; el.y = Math.max(0, currentY - step); }
-      if (ev.key === 'ArrowDown') { el.yUnit = 'px'; el.y = Math.max(0, currentY + step); }
+      const deltaX = ev.key === 'ArrowLeft' ? -step : ev.key === 'ArrowRight' ? step : 0;
+      const deltaY = ev.key === 'ArrowUp' ? -step : ev.key === 'ArrowDown' ? step : 0;
+      const canvasWidth = getDesignCanvasWidth(p.design);
+      const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+      for (const el of selectedElements) {
+        const currentX = getDesignElementPosition(el, 'x', canvasWidth);
+        const currentY = getDesignElementPosition(el, 'y', canvasHeight);
+        el.xUnit = 'px';
+        el.yUnit = 'px';
+        el.x = Math.max(0, currentX + deltaX);
+        el.y = Math.max(0, currentY + deltaY);
+      }
       renderDesignWorkspace();
       saveProjectsToStorage();
     } else if (ev.key === 'Escape' && selectedDesignElementId) {
