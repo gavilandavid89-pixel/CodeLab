@@ -415,7 +415,7 @@ function buildAiDesignCaptureContext(project, scale = 2) {
     throw error;
   }
   const elements = (Array.isArray(design.elements) ? design.elements : [])
-    .filter(el => !!el && typeof el === 'object')
+    .filter(el => !!el && typeof el === 'object' && el.visible !== false)
     .map((el, index) => {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
