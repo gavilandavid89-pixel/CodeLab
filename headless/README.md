@@ -136,6 +136,10 @@ Headless batches now support the website's isolated web-project branch model:
 
 Design batches now save the prior design snapshot into the same `designUndoStack` / `designRedoStack` fields used by CodeLab. `design.history.undo` and `design.history.redo` restore those snapshots while keeping design revisions monotonic, preventing an undo from making stale revision numbers valid again. `design.history.inspect` reports available history without changing state.
 
+### Editor-session resume boundary
+
+The bridge action `branch_resume` remains an editor-session operation, not a saved-workspace mutation. Before opening the branch in the editor, it refreshes the authenticated workspace snapshot, reads the authoritative branch metadata and HTML/CSS/JS through `project.inspect` and paged `project.code.read` queries, and verifies that all reads belong to the same workspace revision. It then checks that the refreshed local branch and editor values exactly match the server readback. If refresh or consistency checks fail, resume aborts rather than presenting stale local code as the saved branch. The result reports `serverReadbackVerified`, `workspaceRevision`, and `persistenceScope: "editor-session-only"`; these fields confirm the source of the resumed session without claiming a persistence write.
+
 ## Responsive design templates
 
 The browser-independent `headless/design-templates.js` module implements the same three website templates: `landing`, `dashboard`, and `portfolio`. It uses the saved custom canvas width to choose compact (<=768px) or desktop geometry, and returns normal CodeLab design elements.
