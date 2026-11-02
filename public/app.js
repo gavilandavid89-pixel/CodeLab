@@ -3703,7 +3703,11 @@ async function captureDesignForAI() {
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
   const json = JSON.stringify(context, null, 2);
-  downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
+  const captureModeControl = document.getElementById('designCaptureMode');
+  const captureMode = ['project', 'canvas', 'editor'].includes(captureModeControl && captureModeControl.value) ? captureModeControl.value : 'project';
+  context.captureMode = captureMode;
+  context.aiInstructions = 'Analiza VISUALMENTE la imagen adjunta, no te limites al JSON. Evalúa jerarquía visual, alineación, contraste, legibilidad, espacios, consistencia y responsive. Usa el JSON para medidas exactas. Separa problemas observables de sugerencias. Devuelve un análisis en español con hallazgos priorizados y cambios concretos. Vista: ' + captureMode + '. ' + context.aiInstructions;
+  let png = null;
   let svgUrl = '';
   try {
     if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
@@ -3733,14 +3737,41 @@ async function captureDesignForAI() {
     ctx.scale(scale, scale);
     ctx.drawImage(image, 0, 0, captured.width, captured.height);
     const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
-    downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
-    showToast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
+    if (captureMode === 'canvas') {
+      const canvasSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (captured.width + 80) + '" height="' + (captured.height + 100) + '" viewBox="0 0 ' + (captured.width + 80) + ' ' + (captured.height + 100) + '"><rect width="100%" height="100%" fill="#0f172a"/><rect x="24" y="24" width="' + (captured.width + 32) + '" height="' + (captured.height + 32) + '" rx="8" fill="#1e293b"/><g transform="translate(40 40)">' + captured.svg.replace(/^<svg[^>]*>|<\/svg>$/g, '') + '</g></svg>';
+      const canvasBlob = new Blob([canvasSvg], { type: 'image/svg+xml;charset=utf-8' });
+      const canvasUrl = URL.createObjectURL(canvasBlob);
+      try { const canvasImage = new Image(); await new Promise((resolve, reject) => { canvasImage.onload = resolve; canvasImage.onerror = reject; canvasImage.src = canvasUrl; }); canvas.width = (captured.width + 80) * scale; canvas.height = (captured.height + 100) * scale; const cctx = canvas.getContext('2d'); cctx.scale(scale, scale); cctx.drawImage(canvasImage, 0, 0); } finally { URL.revokeObjectURL(canvasUrl); }
+    }
+    png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo obtener la imagen para la IA.')), 'image/png'));
+    const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(png); });
+    const review = await callRemoteDesignReviewAi(dataUrl, context);
+    const report = { project: context.project, captureMode, model: review.model || aiSettings.model || serverAi.model, analysis: review.analysis, context };
+    downloadDesignAsset(slug + '-revision-ia.json', JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
+    showToast('La IA recibió la captura (' + canvas.width + '×' + canvas.height + ') y devolvió una revisión visual.');
   } catch (error) {
-    downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
-    showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
+    showToast('No se pudo completar la revisión visual: ' + String(error && error.message || error).slice(0, 180), 'warn');
   } finally {
     if (svgUrl) URL.revokeObjectURL(svgUrl);
   }
+}
+
+
+async function callRemoteDesignReviewAi(screenshotDataUrl, context) {
+  if (!aiCanUseRemote()) throw new Error('La revisión visual necesita una API compatible configurada; las plantillas locales no analizan imágenes.');
+  const payload = { screenshotDataUrl, context, prompt: 'Revisa visualmente el diseño adjunto. Devuelve un análisis útil en español, con resumen, problemas observables priorizados y sugerencias concretas. No modifiques el proyecto automáticamente.' };
+  if (serverAi.serverKey) {
+    if (aiSettings.model && aiSettings.model !== 'gpt-4o-mini') payload.model = aiSettings.model;
+  } else {
+    payload.model = aiSettings.model || 'gpt-4o-mini';
+    if (aiSettings.baseUrl) payload.baseUrl = aiSettings.baseUrl;
+    if (aiSettings.apiKey) payload.apiKey = aiSettings.apiKey;
+  }
+  const res = await fetch('/api/ai/design-review', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  let data = {}; try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error((data && data.message) || (data && data.error) || 'HTTP ' + res.status);
+  if (typeof data.analysis !== 'string' || !data.analysis.trim()) throw new Error('El modelo no devolvió un análisis visual legible.');
+  return data;
 }
 
 function safeDesignExportColor(value, fallback) {
