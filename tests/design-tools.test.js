@@ -132,3 +132,18 @@ assert.match(dimensionUnitAppSource, /widthUnit: \['px','%','auto'\]\.includes\(
   'design JSON import must preserve a validated width unit');
 assert.match(dimensionUnitAppSource, /heightUnit: \['px','%','auto'\]\.includes\(raw\.heightUnit\) \? raw\.heightUnit : 'px'/,
   'design JSON import must preserve a validated height unit');
+
+assert.match(dimensionUnitAppSource, /function getDesignElementPosition\(el, axis, containerSize/,
+  'free-layout layer positions must resolve px and percentage units against the canvas');
+assert.match(dimensionUnitAppSource, /designProperty-xUnit/,
+  'the Inspector must expose the horizontal position unit');
+assert.match(dimensionUnitAppSource, /designProperty-yUnit/,
+  'the Inspector must expose the vertical position unit');
+assert.match(dimensionUnitAppSource, /xUnit: \['px','%'\]\.includes\(raw\.xUnit\) \? raw\.xUnit : 'px'/,
+  'design JSON import must preserve a validated X position unit');
+assert.match(dimensionUnitAppSource, /yUnit: \['px','%'\]\.includes\(raw\.yUnit\) \? raw\.yUnit : 'px'/,
+  'design JSON import must preserve a validated Y position unit');
+assert.match(bridgeSource, /'xUnit', 'yUnit'/,
+  'assistant bridge must allow editing responsive position units');
+assert.match(bridgeSource, /key === 'xUnit' \|\| key === 'yUnit'\) && !\['px', '%'/,
+  'assistant bridge must validate responsive position units');
