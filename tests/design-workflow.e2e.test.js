@@ -565,7 +565,10 @@ async function waitForPersistedProject(page, projectName) {
       return node?.style.left === '80px' && node?.style.top === '70px' && node?.style.width === '560px' && node?.style.height === '76px';
     });
 
-    // 3c. Verify a precise mobile canvas viewport can be set from the Inspector.
+    // 3c. Frame dimensions are separate from workspace zoom/navigation.
+    assert.match(await page.locator('body').innerText(), /Marco de diseño/);
+    assert.match(await page.locator('body').innerText(), /no el espacio de trabajo ni el zoom/);
+    const originalZoom = await page.locator('#designZoom').inputValue();
     const originalCanvasSize = await page.evaluate(() => ({
       width: document.getElementById('designCanvasWidth').value,
       height: document.getElementById('designCanvasHeight').value
@@ -580,7 +583,14 @@ async function waitForPersistedProject(page, projectName) {
       const canvas = document.getElementById('designCanvas');
       return width?.value === '720' && height?.value === '1600' && canvas?.style.width === '720px';
     });
-    // Restore the original canvas size so subsequent drag/scale checks keep their assumptions.
+    // Zoom changes only the displayed scale; the frame's real dimensions remain 720×1600.
+    await page.locator('#designZoom').fill('80');
+    await page.locator('#designZoom').dispatchEvent('input');
+    assert.equal(await page.locator('#designCanvasWidth').inputValue(), '720');
+    assert.equal(await page.locator('#designCanvasHeight').inputValue(), '1600');
+    await page.locator('#designZoom').fill(originalZoom);
+    await page.locator('#designZoom').dispatchEvent('input');
+    // Restore the original frame size so subsequent drag/scale checks keep their assumptions.
     await page.locator('#designCanvasWidth').fill(originalCanvasSize.width);
     await page.locator('#designCanvasWidth').press('Tab');
     await page.locator('#designCanvasHeight').fill(originalCanvasSize.height);
