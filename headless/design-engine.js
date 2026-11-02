@@ -141,6 +141,20 @@ function applyOperation(project, operation) {
       assert(['mode', 'direction', 'gap', 'padding'].some(key => operation[key] !== undefined), 'layout.set requires at least one layout property.');
       return { type: operation.type, mode: project.design.layoutMode || 'free', direction: project.design.layoutDirection || 'row', gap: project.design.layoutGap ?? 16, padding: project.design.layoutPadding ?? 24 };
     }
+    case 'image.attach': {
+      const allowed = new Set(['type', 'id', 'dataUrl', 'filename']);
+      assert(Object.keys(operation).every(key => allowed.has(key)), 'image.attach contains an unsupported property.');
+      const element = findElement(project, operation.id);
+      assert(element.type === 'image', 'image.attach requires an image layer.');
+      const parsed = parseEditorImageDataUrl(operation.dataUrl);
+      element.src = operation.dataUrl;
+      const filename = typeof operation.filename === 'string' ? operation.filename.trim().slice(0, 255) : '';
+      const fallbackAlt = filename.replace(/\\.[^.]*$/, '').replace(/[\\/\\\\]/g, ' ').trim().slice(0, 300);
+      if (!element.alt || element.alt === 'Imagen del diseño') {
+        element.alt = fallbackAlt || 'Imagen del diseño';
+      }
+      return { type: operation.type, id: element.id, mimeType: parsed.mimeType, byteLength: parsed.byteLength, alt: element.alt };
+    }
     case 'element.add': {
       assert(TYPES.has(operation.elementType), 'Unsupported layer type.');
       assert(project.design.elements.length < MAX_ELEMENTS, 'The design reached the ' + MAX_ELEMENTS + ' layer limit.');
@@ -272,6 +286,18 @@ function isSafeColor(value) {
 function isSafeHref(value) {
   const href = String(value || '').trim();
   return !href || /^(https?:\/\/|mailto:|tel:|\/|#layer-[a-z0-9_-]+$)/i.test(href);
+}
+
+function parseEditorImageDataUrl(value) {
+  assert(typeof value === 'string' && value.length <= 2800000, 'Image data URL exceeds the editor limit.');
+  const match = /^data:(image\\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
+  assert(match, 'Image upload must be a PNG, JPEG, WebP, or GIF data URL.');
+  const payload = match[2];
+  assert(payload.length % 4 === 0, 'Image upload contains invalid Base64 data.');
+  const bytes = Buffer.from(payload, 'base64');
+  assert(bytes.length > 0 && bytes.toString('base64') === payload, 'Image upload contains invalid Base64 data.');
+  assert(bytes.length <= 2 * 1024 * 1024, 'Image exceeds the editor 2 MB upload limit.');
+  return { mimeType: match[1].toLowerCase(), byteLength: bytes.length };
 }
 
 function isSafeImageSource(value) {
