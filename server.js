@@ -1428,7 +1428,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname.startsWith('/api/')) {
-    if (!checkRateLimit(ip)) {
+    // Admin accounts are exempt from the app-wide API request cap. Keep the
+    // exemption tied to a validated local admin session, never a client header
+    // or request parameter. The dedicated AI/provider limiter remains separate.
+    const apiSessionUser = getSessionUser(req);
+    const isAdminSession = !!(
+      apiSessionUser &&
+      apiSessionUser.provider === 'local' &&
+      apiSessionUser.role === 'admin'
+    );
+    if (!isAdminSession && !checkRateLimit(ip)) {
       return sendJson(res, 429, { error: 'rate_limited', message: 'Demasiadas peticiones.' });
     }
     try {
