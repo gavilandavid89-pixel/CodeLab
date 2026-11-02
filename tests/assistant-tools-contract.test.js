@@ -293,3 +293,8 @@ for (const action of ['design_flow_connect', 'design_flow_disconnect']) {
   assert.match(handler, /serverReadbackVerified/, action + ' must verify persisted flow state');
   assert.doesNotMatch(handler, /projects\.find\(|saveProjectsToStorage\(/, action + ' must not mutate editor state');
 }
+
+const prototypeHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_prototype_target_set') {"), bridge.indexOf("} else if (command.action === 'design_layout_configure') {", bridge.indexOf("} else if (command.action === 'design_prototype_target_set') {")));
+assert.match(prototypeHandler, /\/headless\/query/, 'prototype target must read saved design state');
+assert.match(prototypeHandler, /serverReadbackVerified/, 'prototype target must verify saved href');
+assert.doesNotMatch(prototypeHandler, /projects\.find\(|openProject\(|setDesignPrototypeTarget\(/, 'prototype target must not depend on editor state');

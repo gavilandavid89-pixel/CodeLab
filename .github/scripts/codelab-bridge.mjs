@@ -1992,25 +1992,35 @@ try {
     result = await executeSavedDesignBatch('design_elements_distribute', command.args);
   } else if (command.action === 'design_prototype_target_set') {
     stage = 'design_prototype_target_set';
-    result = await page.evaluate(async ({ projectId, elementId, target }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      const element = project.design.elements.find(item => item && item.id === elementId);
-      if (!element) throw new Error('Design element not found.');
-      if (!['button', 'text', 'heading', 'image'].includes(element.type)) throw new Error('Prototype targets can only be assigned to interactive or content elements supported by the editor.');
-      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
-      const before = element.href || '';
-      setDesignPrototypeTarget(target);
-      const latest = projects.find(item => item && item.id === projectId);
-      const updated = latest.design.elements.find(item => item && item.id === elementId);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const stored = local?.design?.elements?.find(item => item && item.id === elementId);
-      if (!updated || updated.href !== target || !stored || stored.href !== target) throw new Error('Prototype target was not persisted exactly.');
-      return { projectId, elementId, previousTarget: before, target: updated.href, saved: saved === true, localSnapshotVerified: true };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, target: command.args.target });
+    result = await page.evaluate(async ({projectId,elementId,target}) => {
+      const workspaceId=localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken=localStorage.getItem('codelab_xd_workspace_token_v1');
+      if(!workspaceId||!workspaceToken)throw new Error('Authenticated workspace credentials are unavailable.');
+      const query=async(action,args)=>{
+        const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless/query',{
+          method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},
+          body:JSON.stringify({action,args})
+        });
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Saved design query failed.');
+        return data;
+      };
+      const before=await query('design.read',{projectId,limit:500});
+      const element=before.result.elements.find(item=>item.id===elementId);
+      if(!element)throw new Error('Design element not found.');
+      if(!['button','text','heading','image'].includes(element.type))throw new Error('Prototype targets can only be assigned to supported interactive or content elements.');
+      const operationId='prototype_target_'+crypto.randomUUID().replace(/-/g,'');
+      const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},
+        body:JSON.stringify({baseRevision:before.revision,operationId,operations:[{type:'design.batch',projectId,expectedDesignRevision:before.result.revision,operations:[{type:'element.update',id:elementId,properties:{href:target}}]}]})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Headless prototype target update failed.');
+      const after=await query('design.read',{projectId,limit:500});
+      const updated=after.result.elements.find(item=>item.id===elementId);
+      if(!updated||updated.href!==target)throw new Error('Prototype target failed authoritative server readback.');
+      return {projectId,elementId,previousTarget:element.href||'',target:updated.href||'',saved:true,serverReadbackVerified:true,workspaceRevision:after.revision,designRevision:after.result.revision};
+    },{projectId:command.args.project_id,elementId:command.args.element_id,target:command.args.target});
   } else if (command.action === 'design_layout_configure') {
     stage = 'design_layout_configure';
     result = await executeSavedDesignBatch('design_layout_configure', command.args);
