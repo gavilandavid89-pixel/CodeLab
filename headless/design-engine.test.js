@@ -304,3 +304,23 @@ test('validates opacity in the rendered range from zero to one', () => {
     properties: { opacity: 1.1 }
   }]), /opacity must be a finite number between 0 and 1/);
 });
+
+test('validates rotation against the SVG renderer limit', () => {
+  const engine = createDesignEngine();
+  const source = project({ elements: [{ id: 'el_rotation', type: 'rectangle', rotation: 0 }] });
+
+  const valid = engine.transact(source, [{
+    type: 'element.update',
+    id: 'el_rotation',
+    properties: { rotation: 3600 }
+  }]);
+  assert.equal(valid.project.design.elements[0].rotation, 3600);
+
+  for (const rotation of [-3601, 3601]) {
+    assert.throws(() => engine.transact(source, [{
+      type: 'element.update',
+      id: 'el_rotation',
+      properties: { rotation }
+    }]), /rotation must be a finite number between -3600 and 3600/);
+  }
+});
