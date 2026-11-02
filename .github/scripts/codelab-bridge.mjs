@@ -356,7 +356,8 @@ async function createHeadlessPreview(projectId, source = 'main', selfTest = fals
     '<style>' + css + '</style>' + errScript + '</head><body>' + String(code.html || '') +
     '<script>' + js + '<\/script></body></html>';
 
-  const previewPage = await page.context().newPage();
+  const previewContext = await browser.newContext({ serviceWorkers: 'block' });
+  const previewPage = await previewContext.newPage();
   const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], expectedBlockedRequests: [] };
   previewPage.on('console', message => {
     if (message.type() === 'error' && browserDiagnostics.consoleErrors.length < 30) {
@@ -389,9 +390,9 @@ async function createHeadlessPreview(projectId, source = 'main', selfTest = fals
     const previewFrame = previewPage.frameLocator('#headlessPreview');
     await previewFrame.locator('body').waitFor({ state: 'attached', timeout: 12000 });
     await previewPage.waitForTimeout(250);
-    return { page: previewPage, frame: previewFrame, diagnostics: browserDiagnostics, revision: workspaceRevisionRead, srcdoc };
+    return { page: previewPage, context: previewContext, frame: previewFrame, diagnostics: browserDiagnostics, revision: workspaceRevisionRead, srcdoc };
   } catch (error) {
-    await previewPage.close().catch(() => {});
+    await previewContext.close().catch(() => {});
     throw error;
   }
 }
@@ -1902,7 +1903,7 @@ try {
         browserDiagnostics: previewSession.diagnostics
       };
     } finally {
-      await previewSession.page.close().catch(() => {});
+      await previewSession.context.close().catch(() => {});
     }
   } else if (command.action === 'preview_interact') {
     stage = 'interact_with_headless_preview';
