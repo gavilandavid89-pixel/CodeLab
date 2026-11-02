@@ -537,7 +537,8 @@ test('converts a design project to a web project while preserving its design sou
   assert.equal(converted.hasWebSpace, true);
   assert.equal(converted.hasDesignSpace, true);
   assert.ok(converted.design);
-  assert.match(converted.code.html, /<svg/);
+  assert.match(converted.code.html, /<main id="designFrame"/);
+  assert.match(converted.code.html, /<h1 id="layer-el_title"/);
   assert.match(converted.code.html, /Converted/);
   assert.equal(converted.code.css, '');
   assert.equal(converted.code.js, '');
