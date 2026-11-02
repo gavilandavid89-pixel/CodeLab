@@ -5,6 +5,7 @@ const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const app = fs.readFileSync('public/app.js', 'utf8');
 const headlessRuntime = fs.readFileSync('headless/workspace-runtime.js', 'utf8');
 const designEngine = fs.readFileSync('headless/design-engine.js', 'utf8');
+const previewUpload = fs.readFileSync('headless/preview-upload.js', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
   'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
@@ -324,5 +325,6 @@ assert.match(bridge, /'click', 'fill', 'select', 'upload', 'read', 'check'/,
 assert.match(bridge, /Preview upload target must be an input\[type="file"\]/);
 assert.match(bridge, /validatePreviewUpload\(step\)/);
 assert.match(bridge, /from '\.\.\/\.\.\/headless\/preview-upload\.js'/);
-assert.match(bridge, /step\.data_base64\.length > 32000/);
+assert.match(previewUpload, /step\.data_base64\.length > 32000/);
+assert.match(previewUpload, /buffer\.length > 24000/);
 assert.match(bridge, /locator\.setInputFiles\(/);
