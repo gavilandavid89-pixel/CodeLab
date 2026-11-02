@@ -82,6 +82,8 @@ assert.match(bridge, /design_canvas_configure requires at least one canvas prope
 
 assert.match(bridge, /sourceUnchanged/, 'project duplication must check that the source was preserved');
 assert.match(bridge, /exact local project state/, 'project save must verify exact persisted code or design, not only the project name');
+assert.match(bridge, /serverConfirmed: saved === true/, 'project save must expose whether the server confirmed persistence');
+assert.match(bridge, /persistenceScope: saved === true \? 'server-confirmed' : 'local-snapshot-only'/, 'project save must distinguish server persistence from local-only state');
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
