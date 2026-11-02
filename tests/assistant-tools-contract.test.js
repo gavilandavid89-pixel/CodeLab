@@ -280,3 +280,10 @@ assert.match(codeWriteHandler, /project\.code\.read/, 'code write must verify ex
 assert.match(codeWriteHandler, /baseRevision: before\.revision/, 'code write must use optimistic workspace revision control');
 assert.doesNotMatch(codeWriteHandler, /projects\.find\(|getEditorValue\(|setEditorValue\(|saveCurrentCodeToActiveProject\(/,
   'code write must not depend on editor state');
+
+const componentInsertHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'component_insert') {"), bridge.indexOf("} else if (command.action === 'design_element_add') {", bridge.indexOf("} else if (command.action === 'component_insert') {")));
+assert.match(componentInsertHandler, /type: 'component\.insert'/, 'component insertion must use the shared headless runtime');
+assert.match(componentInsertHandler, /project\.code\.read/, 'component insertion must read and verify saved HTML');
+assert.match(componentInsertHandler, /nextOffset/, 'component insertion must page through large HTML files');
+assert.doesNotMatch(componentInsertHandler, /projects\.find\(|CodeLabComponentLibrary|setEditorValue\(|saveCurrentCodeToActiveProject\(/,
+  'component insertion must not depend on editor state or UI component APIs');

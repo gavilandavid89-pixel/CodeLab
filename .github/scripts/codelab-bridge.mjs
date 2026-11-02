@@ -1735,32 +1735,61 @@ try {
   } else if (command.action === 'component_insert') {
     stage = 'component_insert';
     result = await page.evaluate(async ({ projectId, componentId }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('Components can only be inserted into a web project.');
-      const api = window.CodeLabComponentLibrary;
-      const component = api?.getComponent?.(componentId);
-      if (!component) throw new Error('Component ID was not found in the library.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const marker = '<!-- codelab-component:' + componentId + ' -->';
-      const current = String(getEditorValue('html') || '');
-      if (current.includes(marker)) return { projectId, componentId, alreadyInserted: true, saved: true, localSnapshotVerified: true };
-      const next = current + '\n' + marker + '\n' + component.html + '\n';
-      if (next.length > 500000) throw new Error('Insertion would exceed the 500000-character HTML limit.');
-      setEditorValue('html', next);
-      if (typeof updatePreview === 'function') updatePreview();
-      const saved = await saveCurrentCodeToActiveProject(true);
-      const latest = projects.find(item => item && item.id === projectId);
-      const exact = String(latest?.code?.html || '') === next;
-      let localSnapshotVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-        localSnapshotVerified = String(localProject?.code?.html || '') === next;
-      } catch (_) {}
-      if (!exact || (saved !== true && !localSnapshotVerified)) throw new Error('Component insertion was not verified by server sync or exact local snapshot.');
-      return { projectId, componentId, alreadyInserted: false, saved: saved === true, persistedCodeMatches: exact, localSnapshotVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Components can only be inserted into a web project.');
+      const readHtml = async () => {
+        let offset = 0, content = '', originalLength = 0;
+        do {
+          const part = await query('project.code.read', { projectId, source: 'main', languages: ['html'], offset, maxChars: 200000 });
+          const field = part.result.fields.html;
+          content += field.value;
+          originalLength = field.originalLength;
+          if (field.nextOffset === null) break;
+          if (field.nextOffset <= offset || field.nextOffset > 500000) throw new Error('HTML paging did not advance safely.');
+          offset = field.nextOffset;
+        } while (offset <= 500000);
+        if (content.length !== originalLength) throw new Error('HTML readback was incomplete.');
+        return content;
+      };
+      const current = await readHtml();
+      const legacyMarker = '<!-- codelab-component:' + componentId + ' -->';
+      const canonicalMarker = '<!-- codelab-component:' + componentId + ':v1 -->';
+      if (current.includes(legacyMarker) || current.includes(canonicalMarker)) {
+        return { projectId, componentId, alreadyInserted: true, saved: true, serverReadbackVerified: true, workspaceRevision: before.revision };
+      }
+      const operationId = 'component_insert_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'component.insert', projectId, componentId }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless component insertion failed.');
+      const savedHtml = await readHtml();
+      const verified = savedHtml.includes(canonicalMarker);
+      if (!verified) throw new Error('Component insertion failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, componentId, alreadyInserted: false, saved: true, serverReadbackVerified: verified,
+        workspaceRevision: data.revision, workspaceRefreshed, htmlLength: savedHtml.length
+      };
     }, { projectId: command.args.project_id, componentId: command.args.component_id });
   } else if (command.action === 'design_element_add') {
     stage = 'design_element_add';
