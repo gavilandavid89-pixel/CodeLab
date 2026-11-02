@@ -77,6 +77,18 @@ test('hidden layers do not consume auto-layout space in semantic HTML export', (
   assert.match(html, /left:auto;top:auto;flex:0 0 auto/);
 });
 
+test('semantic HTML export preserves same-origin relative image sources but blocks protocol-relative hosts', () => {
+  const html = exportDesignHtml(project([
+    { id: 'root-image', type: 'image', src: '/assets/hero.png', alt: 'Hero', x: 10, y: 10, width: 120, height: 80 },
+    { id: 'dot-image', type: 'image', src: './assets/icon.png', alt: 'Icon', x: 10, y: 100, width: 80, height: 80 },
+    { id: 'external-image', type: 'image', src: '//evil.example/track.png', alt: 'External', x: 10, y: 200, width: 80, height: 80 }
+  ]));
+
+  assert.match(html, /src="\/assets\/hero\.png"/);
+  assert.match(html, /src="\.\/assets\/icon\.png"/);
+  assert.doesNotMatch(html, /src="\/\/evil\.example\/track\.png"/);
+});
+
 test('semantic HTML export preserves safe rotation and opacity values', () => {
   const html = exportDesignHtml(project([
     { id: 'rotated-layer', type: 'rectangle', rotation: 15, opacity: 1, x: 10, y: 10, width: 100, height: 60 },
