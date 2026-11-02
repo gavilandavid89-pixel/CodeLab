@@ -3599,6 +3599,7 @@ function captureDesignSvg(project) {
     const color = safeColor(el.color || '#111827');
     const rotation = Math.max(-360, Math.min(360, finite(el.rotation, 0)));
     const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
+    const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
       : '';
@@ -3639,7 +3640,7 @@ function captureDesignSvg(project) {
   }).join('');
   return {
     width, height,
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + designXmlEscape(safeColor(project.design.background || '#ffffff')) + '"/>' + items + '<!--rotation-debug selected=' + String(selectedDesignElementId || '') + ' field=' + String((document.getElementById('designProperty-rotation') || {}).value || '') + ' model=' + JSON.stringify((project.design.elements || []).slice(-3).map(item => ({id:item.id,rotation:item.rotation}))) + '--></svg>'
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + designXmlEscape(safeColor(project.design.background || '#ffffff')) + '"/>' + items + '</svg>'
   };
 }
 
