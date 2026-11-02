@@ -19,3 +19,11 @@ test('all responsive design templates keep layer bounds within narrow canvas wid
     }
   }
 });
+
+test('template sizing falls back for canvas widths outside engine limits', () => {
+  const oversized = createDesignTemplate('landing', { frame: 'mobile', canvasWidth: 10000 }, {
+    idFactory: (() => { let id = 0; return () => 'oversized-' + (++id); })()
+  });
+  assert.equal(oversized.canvasWidth, 390);
+  assert.ok(oversized.elements.every(element => element.x + element.width <= oversized.canvasWidth));
+});
