@@ -97,6 +97,12 @@ assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}p\.designUndoSta
   'undo must consume the active project history and persist the restored design');
 assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}p\.designRedoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
   'redo must consume the active project history and persist the restored design');
+assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}selectedDesignElementId = null;\s*selectedDesignElementIds = \[\]/,
+  'undo must clear primary and multi-selection to prevent stale layers from remaining selected');
+assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}selectedDesignElementId = null;\s*selectedDesignElementIds = \[\]/,
+  'redo must clear primary and multi-selection to prevent stale layers from remaining selected');
+assert.match(appSource, /function initializeDesignProject\(project\) \{[\s\S]{0,350}selectedDesignElementId = null; selectedDesignElementIds = \[\]/,
+  'opening a design project must clear the previous project multi-selection');
 
 const bridgeSource = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 assert.match(bridgeSource, /'design_layer_reorder'/, 'arbitrary layer reordering must be exposed as a bridge action');
