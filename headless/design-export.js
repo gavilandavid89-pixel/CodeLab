@@ -256,7 +256,7 @@ function exportDesignHtml(project, workspaceProjects = [project]) {
     if (!item || seen.has(item.id)) return;
     seen.add(item.id);
     reachable.push(item);
-    for (const connection of (item.design.flowConnections || [])) {
+    for (const connection of (Array.isArray(item.design.flowConnections) ? item.design.flowConnections : [])) {
       if (connection && typeof connection.targetProjectId === 'string') visit(projectsById.get(connection.targetProjectId));
     }
   }
