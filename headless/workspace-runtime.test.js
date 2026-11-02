@@ -816,9 +816,9 @@ test('integrates one saved project from design creation through export, conversi
   });
   workspace = result.state;
   const readback = queryHeadlessWorkspace(workspace, { action: 'project.code.read', args: { projectId: 'proj_fullflow' } });
-  assert.match(readback.code.html, /Guardado desde headless/);
-  assert.match(readback.code.css, /padding:16px/);
-  assert.match(readback.code.js, /headlessFlowReady/);
+  assert.match(readback.fields.html.value, /Guardado desde headless/);
+  assert.match(readback.fields.css.value, /padding:16px/);
+  assert.match(readback.fields.js.value, /headlessFlowReady/);
   assert.equal(workspace.projects[0].design.elements.length, 3);
   assert.equal(workspace.revision, 6);
 });
