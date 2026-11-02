@@ -128,8 +128,11 @@ function designLayoutPositions(design) {
   if (mode === 'free') {
     let contentBottom = 0;
     for (const el of elements) {
-      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
-      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const rawX = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+      const rawY = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const x = el.xUnit === '%' ? (rawX / 100) * frameWidth : rawX;
+      const canvasHeight = designCanvasHeight(design) || 900;
+      const y = el.yUnit === '%' ? (rawY / 100) * canvasHeight : rawY;
       const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
