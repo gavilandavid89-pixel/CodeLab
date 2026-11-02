@@ -557,11 +557,18 @@ try {
       };
       const settings = aiSettings && typeof aiSettings === 'object' ? aiSettings : {};
       const serverSettings = serverAi && typeof serverAi === 'object' ? serverAi : {};
+      const keyDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+        serverSettings.serverKey ? 'server-configured' : String(settings.apiKey || '')
+      ));
+      const keyFingerprint = Array.from(new Uint8Array(keyDigest)).map(value => value.toString(16).padStart(2, '0')).join('');
       const providerConfig = {
         projectId, source, prompt, baseRevision,
+        mode: settings.mode || 'auto',
         model: settings.model || 'gpt-4o-mini',
         baseUrl: serverSettings.serverKey ? 'server-configured' : (settings.baseUrl || ''),
-        serverKey: !!serverSettings.serverKey
+        keyFingerprint,
+        serverKey: !!serverSettings.serverKey,
+        maxTokens: maxTokens === undefined ? null : maxTokens
       };
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(providerConfig)));
       const requestKey = Array.from(new Uint8Array(digest)).map(value => value.toString(16).padStart(2, '0')).join('');
