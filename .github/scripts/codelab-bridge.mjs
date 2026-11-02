@@ -2055,6 +2055,45 @@ try {
       if(!Object.entries(settings).every(([key,value])=>actual[mapping[key]]===value))throw new Error('Canvas configuration failed authoritative server readback.');
       return {projectId,settings:actual,changed:Object.keys(settings),saved:true,serverReadbackVerified:true,workspaceRevision:after.revision,designRevision:after.result.revision,zoomSupported:false};
     },{projectId:command.args.project_id,settings:Object.fromEntries(['frame','grid','snap_to_grid','grid_size','zoom','background','canvas_width','canvas_height'].filter(key=>command.args[key]!==undefined).map(key=>[key,command.args[key]]))});
+  } else if (command.action === 'preview_diagnostics') {
+    stage = 'inspect_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'diagnostics');
+    try {
+      const preview = await previewSession.frame.locator('html').evaluate(() => {
+        const body = document.body;
+        const interactiveElements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[role="link"]')).slice(0, 60).map(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.getAttribute('aria-label') || element.getAttribute('placeholder') || '').trim().slice(0, 100),
+          id: element.id || null,
+          type: element.getAttribute('type') || null,
+          disabled: Boolean(element.disabled)
+        }));
+        const tagCounts = {};
+        for (const element of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
+          const tag = element.tagName.toLowerCase();
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        }
+        return {
+          available: true, readyState: document.readyState, title: document.title || '',
+          frameUrl: location.href, text: (body?.innerText || '').trim().slice(0, 1200),
+          elementCount: document.querySelectorAll('*').length, tagCounts, interactiveElements
+        };
+      });
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      preview.previewMessages = messages.slice(0, 60);
+      preview.consoleErrors = messages.filter(message => message.logType === 'error').slice(0, 30);
+      preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
+      preview.selfTest = command.args.self_test === true;
+      preview.workspaceRevision = previewSession.revision;
+      result = {
+        page: { url: safeUrl(targetUrl), title: 'CodeLab headless preview host', documentReady: 'complete' },
+        preview,
+        browserDiagnostics: previewSession.diagnostics
+      };
+    } finally {
+      await previewSession.context.close().catch(() => {});
+    }
   } else if (command.action === 'preview_interact') {
     stage = 'interact_with_headless_preview';
     const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
