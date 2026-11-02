@@ -141,6 +141,20 @@ test('semantic HTML export preserves safe rotation and opacity values', () => {
   assert.equal(context.elements.find(element => element.id === 'translucent-layer').style.opacity, 0.4);
 });
 
+test('semantic HTML export and AI capture context use the editor font-size ceiling', () => {
+  const input = project([
+    { id: 'large-copy', type: 'text', text: 'Large', fontSize: 300, x: 10, y: 10, width: 200, height: 80 },
+    { id: 'allowed-copy', type: 'text', text: 'Allowed', fontSize: 250, x: 10, y: 100, width: 200, height: 80 }
+  ]);
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+
+  assert.match(html, /font-size:256px/);
+  assert.equal(context.elements.find(element => element.id === 'large-copy').style.fontSize, 256);
+  assert.match(html, /font-size:250px/);
+  assert.equal(context.elements.find(element => element.id === 'allowed-copy').style.fontSize, 250);
+});
+
 test('HTML and AI capture context clamp invalid transform ranges consistently', () => {
   const input = project([
     { id: 'clamped-layer', type: 'rectangle', rotation: 9999, opacity: 2, x: 10, y: 10, width: 100, height: 60 },
