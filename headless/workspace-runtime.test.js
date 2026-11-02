@@ -763,3 +763,62 @@ test('[HL-Ω] AI capture context resolves Auto Layout wrapping to concrete layer
   assert.equal(context.canvas.pixelHeight, context.canvas.height);
 });
 
+
+
+test('integrates one saved project from design creation through export, conversion, code edits, and readback', () => {
+  let workspace = state();
+  const run = (operations, operationId, baseRevision) => applyHeadlessBatch(workspace, {
+    operationId, baseRevision, operations
+  });
+
+  let result = run([
+    { type: 'project.create', projectId: 'proj_fullflow', name: 'Full-flow mobile app', projectType: 'design' },
+    { type: 'design.batch', projectId: 'proj_fullflow', expectedDesignRevision: 0, operations: [
+      { type: 'canvas.set', frame: 'mobile', width: 720, height: 1600, background: '#f8fafc' },
+      { type: 'element.add', elementType: 'heading', id: 'el_heading', properties: { text: 'Mi aplicación', x: 50, y: 8, xUnit: '%', yUnit: '%', width: 360, height: 64 } },
+      { type: 'element.add', elementType: 'button', id: 'el_action', properties: { text: 'Continuar', x: 100, y: 300, width: 200, height: 56, flowRole: 'navigate' } },
+      { type: 'element.duplicate', id: 'el_action', newId: 'el_action_copy' },
+      { type: 'element.reorder', id: 'el_action_copy', targetIndex: 1 },
+      { type: 'elements.align', ids: ['el_action', 'el_action_copy'], mode: 'left' }
+    ] }
+  ], 'fullflow_design_0001', 3);
+  workspace = result.state;
+  assert.equal(workspace.projects.length, 1);
+  let saved = workspace.projects[0];
+  assert.equal(saved.design.canvasWidth, 720);
+  assert.equal(saved.design.elements.length, 3);
+  assert.equal(saved.design.elements[1].id, 'el_action_copy');
+  assert.equal(saved.design.elements[1].xUnit, 'px');
+
+  let exported = queryHeadlessWorkspace(workspace, { action: 'design.export.html', args: { projectId: 'proj_fullflow' } });
+  assert.match(exported.html, /Mi aplicación/);
+  assert.match(exported.html, /Continuar/);
+  const capture = queryHeadlessWorkspace(workspace, { action: 'design.capture.context', args: { projectId: 'proj_fullflow', scale: 2 } });
+  assert.equal(capture.designRevision, saved.design.revision);
+  assert.equal(capture.canvas.pixelWidth, 1440);
+  assert.equal(capture.canvas.pixelHeight, 3200);
+
+  result = applyHeadlessBatch(workspace, {
+    operationId: 'fullflow_convert_0002',
+    baseRevision: workspace.revision,
+    operations: [{ type: 'design.convert.toWeb', projectId: 'proj_fullflow' }]
+  });
+  workspace = result.state;
+  saved = workspace.projects[0];
+  assert.equal(saved.type, 'web');
+  assert.ok(saved.design, 'conversion must preserve the source design');
+  assert.match(saved.code.html, /Mi aplicación/);
+
+  result = applyHeadlessBatch(workspace, {
+    operationId: 'fullflow_edit_0003',
+    baseRevision: workspace.revision,
+    operations: [{ type: 'web.code.write', projectId: 'proj_fullflow', html: saved.code.html + '<footer>Guardado desde headless</footer>', css: 'footer{padding:16px}', js: 'window.headlessFlowReady = true;' }]
+  });
+  workspace = result.state;
+  const readback = queryHeadlessWorkspace(workspace, { action: 'project.code.read', args: { projectId: 'proj_fullflow' } });
+  assert.match(readback.code.html, /Guardado desde headless/);
+  assert.match(readback.code.css, /padding:16px/);
+  assert.match(readback.code.js, /headlessFlowReady/);
+  assert.equal(workspace.projects[0].design.elements.length, 3);
+  assert.equal(workspace.revision, 6);
+});
