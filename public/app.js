@@ -3440,11 +3440,14 @@ function distributeDesignElements(axis = 'horizontal') {
   const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
+  const dimensionAxis = horizontal ? 'width' : 'height';
+  const containerSize = horizontal ? getDesignCanvasWidth(p.design) : (getDesignCanvasHeight(p.design) || 900);
+  const dimension = el => getDesignElementDimension(el, dimensionAxis, containerSize);
   const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
   const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
   const last = ordered[ordered.length - 1];
-  const end = (Number(horizontal ? last.x : last.y) || 0) + Math.max(20, Number(horizontal ? last.width : last.height) || (horizontal ? 120 : 48));
-  const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
+  const end = (Number(horizontal ? last.x : last.y) || 0) + dimension(last);
+  const totalSize = ordered.reduce((sum, el) => sum + dimension(el), 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
   if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
   // Record history only after validation; a rejected operation must not create
@@ -3453,7 +3456,7 @@ function distributeDesignElements(axis = 'horizontal') {
   let cursor = start;
   for (const el of ordered) {
     if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
-    cursor += Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)) + gap;
+    cursor += dimension(el) + gap;
   }
   renderDesignWorkspace(); saveProjectsToStorage();
   showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
@@ -3467,12 +3470,12 @@ function alignDesignElement(mode = 'center-x') {
   if (selected.length > 1) {
     const left = Math.min(...selected.map(item => Number(item.x) || 0));
     const top = Math.min(...selected.map(item => Number(item.y) || 0));
-    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + Math.max(20, Number(item.width) || 120)));
-    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + Math.max(20, Number(item.height) || 48)));
+    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design))));
+    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900)));
     const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
     recordDesignHistory();
     for (const item of selected) {
-      const width = Math.max(20, Number(item.width) || 120), height = Math.max(20, Number(item.height) || 48);
+      const width = getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design)), height = getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900);
       if (mode === 'left') item.x = left;
       else if (mode === 'center-x') item.x = Math.round(centerX - width / 2);
       else if (mode === 'right') item.x = right - width;
@@ -3485,9 +3488,9 @@ function alignDesignElement(mode = 'center-x') {
     return;
   }
   recordDesignHistory();
-  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
-  const height = 900;
-  const ew = Math.max(20, Number(el.width) || 120), eh = Math.max(20, Number(el.height) || 48);
+  const width = getDesignCanvasWidth(p.design);
+  const height = getDesignCanvasHeight(p.design) || 900;
+  const ew = getDesignElementDimension(el, 'width', width), eh = getDesignElementDimension(el, 'height', height);
   if (mode === 'left') el.x = 0;
   else if (mode === 'center-x') el.x = Math.max(0, Math.round((width - ew) / 2));
   else if (mode === 'right') el.x = Math.max(0, width - ew);
