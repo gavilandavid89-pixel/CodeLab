@@ -16,12 +16,16 @@ permissions:
 jobs:
   headless-core:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install isolated browser for capture verification
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
       - name: Check headless engine and workspace runtime syntax
         run: |
           node --check headless/design-engine.js
@@ -31,3 +35,5 @@ jobs:
         run: node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
       - name: Check headless assistant bridge contracts
         run: node tests/assistant-tools-contract.test.js
+      - name: Verify real PNG and context revision pairing
+        run: node --test headless/design-capture-browser.test.js
