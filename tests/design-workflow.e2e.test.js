@@ -1889,6 +1889,13 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator(`button[onclick="addDesignElement('button')"]`).click();
     const utilityLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
     const utilityNode = page.locator('#designCanvas [data-design-id="' + utilityLayerId + '"]');
+    const rotationField = page.locator('#designProperty-rotation');
+    await rotationField.fill('45');
+    await rotationField.dispatchEvent('input');
+    assert.equal(await utilityNode.evaluate(node => node.style.transform), 'rotate(45deg)',
+      'rotation inspector should update the selected layer immediately');
+    assert.match(await page.evaluate(() => captureDesignSvg(getCurrentProject()).svg), /rotate\(45 /,
+      'SVG export should preserve the layer rotation');
     await page.evaluate(id => {
       const element = getCurrentProject().design.elements.find(item => item.id === id);
       element.text = 'hidden-layer-export-sentinel';
