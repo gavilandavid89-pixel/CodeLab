@@ -127,6 +127,10 @@ assert.match(dimensionUnitAppSource, /for \(const el of selectedElements\)[\s\S]
   'keyboard nudging must move every selected layer by the same bounded delta');
 assert.match(dimensionUnitAppSource, /selectedElements\.length \|\| p\.design\.layoutMode === 'auto'/,
   'keyboard nudging must not silently fight Auto Layout positioning');
+assert.match(dimensionUnitAppSource, /mod && ev\.key\.toLowerCase\(\) === 'a' && inDesignSurface/,
+  'Ctrl/Cmd+A must select all design layers only when focus is on the design surface or layer list');
+assert.match(dimensionUnitAppSource, /selectedDesignElementIds = p\.design\.elements\.map\(item => item\.id\)/,
+  'select-all must populate the complete multi-selection so move, duplicate and delete tools can operate on it');
 assert.match(dimensionUnitAppSource, /const canvasWidth = getDesignCanvasWidth\(p\.design\);[\s\S]{0,300}x: Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)[\s\S]{0,180}xUnit: 'px',[\s\S]{0,100}yUnit: 'px'/,
   'duplicating percentage-positioned layers must offset the copy by 24 pixels, not 24 percentage points');
 assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', heightUnit: el\.heightUnit \|\| 'px'/,
