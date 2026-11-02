@@ -144,7 +144,7 @@ test('semantic HTML export preserves safe rotation and opacity values', () => {
 test('semantic HTML export and AI capture context use the editor font-size ceiling', () => {
   const input = project([
     { id: 'large-copy', type: 'text', text: 'Large', fontSize: 300, x: 10, y: 10, width: 200, height: 80 },
-    { id: 'allowed-copy', type: 'text', text: 'Allowed', fontSize: 250, x: 10, y: 100, width: 200, height: 80 }
+    { id: 'allowed-copy', type: 'text', text: 'Allowed', fontSize: 250, radius: 1200, x: 10, y: 100, width: 200, height: 80 }
   ]);
   const html = exportDesignHtml(input);
   const context = buildAiDesignCaptureContext(input);
@@ -153,6 +153,8 @@ test('semantic HTML export and AI capture context use the editor font-size ceili
   assert.equal(context.elements.find(element => element.id === 'large-copy').style.fontSize, 256);
   assert.match(html, /font-size:250px/);
   assert.equal(context.elements.find(element => element.id === 'allowed-copy').style.fontSize, 250);
+  assert.match(html, /border-radius:1200px/);
+  assert.equal(context.elements.find(element => element.id === 'allowed-copy').style.radius, 1200);
 });
 
 test('HTML and AI capture context clamp invalid transform ranges consistently', () => {
