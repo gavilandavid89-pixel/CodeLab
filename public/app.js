@@ -4036,7 +4036,7 @@ function renderDesignWorkspace() {
       resizeHandle.dataset.designResizeHandle = el.id;
       resizeHandle.setAttribute('role', 'slider');
       resizeHandle.setAttribute('aria-label', 'Redimensionar ' + (el.label || el.type));
-      resizeHandle.setAttribute('aria-valuetext', Math.round(Number(el.width)||120) + ' por ' + Math.round(Number(el.height)||48) + ' píxeles');
+      resizeHandle.setAttribute('aria-valuetext', Math.round(getDesignElementDimension(el, 'width', getDesignCanvasWidth(p.design))) + ' por ' + Math.round(getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || 900)) + ' píxeles');
       resizeHandle.tabIndex = 0;
       resizeHandle.style.cssText = 'position:absolute;right:0;bottom:0;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
       resizeHandle.addEventListener('pointerdown', ev => {
