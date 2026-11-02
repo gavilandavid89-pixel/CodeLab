@@ -135,7 +135,7 @@ The headless runtime now supports the CodeLab design-project backup format and t
 - `design.import.json` validates a CodeLab JSON backup, enforces the 5 MB / 500-layer / 500,000-character code limits, sanitizes image and link sources, remaps layer IDs and internal prototype links, and creates a new project.
 - `design.convert.toWeb` changes the project to web mode, stores a responsive HTML export in its code field, and preserves the original design source.
 
-The HTML conversion currently embeds the SVG renderer output rather than reproducing every DOM-level behavior of the website's richer converter; interactive prototype navigation and semantic per-layer HTML remain a parity item.
+HTML export now reproduces semantic per-layer HTML, responsive free/auto layout, safe image and link handling, and connected multi-screen prototype navigation. The output is generated without a browser and can be converted into web-project code while preserving the source design.
 
 ## Headless AI code generation and provider feedback
 
