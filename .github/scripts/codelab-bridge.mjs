@@ -99,11 +99,12 @@ function parseCommand(raw) {
   if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
     if (!args.properties || typeof args.properties !== 'object' || Array.isArray(args.properties)) throw new Error('design_element_update requires a properties object.');
-    const allowedProperties = ['label', 'text', 'x', 'y', 'width', 'height', 'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit', 'textAlign'];
+    const allowedProperties = ['label', 'text', 'x', 'y', 'width', 'height', 'widthUnit', 'heightUnit', 'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit', 'textAlign'];
     for (const [key, value] of Object.entries(args.properties)) {
       if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
       if (typeof value === 'string' && value.length > 2000) throw new Error('Design element string properties are limited to 2000 characters.');
       if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
+      if ((key === 'widthUnit' || key === 'heightUnit') && !['px', '%', 'auto'].includes(value)) throw new Error(key + ' must be px, %, or auto.');
       if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
       if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Design element numeric properties must be finite.');
       if (!['string', 'number'].includes(typeof value)) throw new Error('Design element properties must be strings or numbers.');

@@ -111,3 +111,19 @@ assert.match(bridgeBulkDeleteSource, /1 to 100 unique valid element_ids/, 'bulk 
 assert.match(bridgeBulkDeleteSource, /selectedDesignElementIds = \[\.\.\.elementIds\]/, 'bulk deletion must select all requested layers before invoking the app deletion function');
 assert.match(bridgeBulkDeleteSource, /danglingConnections\.length/, 'bulk deletion must verify it did not leave dangling outgoing flow connections');
 assert.match(bridgeBulkDeleteSource, /localSnapshotVerified/, 'bulk deletion must verify the deleted IDs are absent from the project snapshot');
+
+const dimensionUnitAppSource = fs.readFileSync('public/app.js', 'utf8');
+assert.match(dimensionUnitAppSource, /function getDesignElementDimension\(el, axis, containerSize/,
+  'design dimensions must resolve px, percentage and auto values relative to their container');
+assert.match(dimensionUnitAppSource, /function getDesignElementDimensionCss\(el, axis\)/,
+  'canvas and generated previews must use the selected dimension unit');
+assert.match(dimensionUnitAppSource, /designProperty-widthUnit/,
+  'the Inspector must expose width units');
+assert.match(dimensionUnitAppSource, /designProperty-heightUnit/,
+  'the Inspector must expose height units');
+assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', heightUnit: el\.heightUnit \|\| 'px'/,
+  'AI design capture must preserve dimension units');
+assert.match(bridgeSource, /'widthUnit', 'heightUnit'/,
+  'assistant bridge must allow editing responsive dimension units');
+assert.match(bridgeSource, /key === 'widthUnit' \|\| key === 'heightUnit'\) && !\['px', '%', 'auto'\]/,
+  'assistant bridge must validate dimension units');
