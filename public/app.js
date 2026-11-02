@@ -3239,6 +3239,37 @@ let designZoom = 1;
 let designCanvasLocked = false;
 const MAX_DESIGN_ELEMENTS = 500;
 
+function nextDesignElementIdentifier(elements, currentId) {
+  const used = new Set((Array.isArray(elements) ? elements : [])
+    .filter(item => item && item.id !== currentId)
+    .map(item => String(item.identifier || '').trim().toLowerCase())
+    .filter(Boolean));
+  for (let n = 1; n < 10000; n++) {
+    const candidate = n === 1 ? 'id' : 'id' + n;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return 'elemento-' + Date.now();
+}
+function normalizeDesignElementIdentifiers(elements) {
+  const used = new Set();
+  for (const element of Array.isArray(elements) ? elements : []) {
+    if (!element || typeof element !== 'object') continue;
+    let identifier = String(element.identifier || '').trim().slice(0, 120);
+    if (!identifier || used.has(identifier.toLowerCase())) {
+      identifier = nextDesignElementIdentifier(elements.filter(item => item !== element).concat(
+        Array.from(used, value => ({ identifier: value, id: '__reserved__' }))
+      ), element.id);
+    }
+    // User-facing identifiers are readable names, not DOM IDs. Keep them simple and unique.
+    if (used.has(identifier.toLowerCase())) {
+      let suffix = 2, base = identifier;
+      while (used.has((base + suffix).toLowerCase())) suffix++;
+      identifier = base + suffix;
+    }
+    element.identifier = identifier;
+    used.add(identifier.toLowerCase());
+  }
+}
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
   if (!p || p.type !== 'design') return null;
@@ -3251,6 +3282,7 @@ function activeDesignProject() {
   p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
   p.design.layoutPadding = Number.isFinite(Number(p.design.layoutPadding)) ? Math.max(0, Math.min(200, Number(p.design.layoutPadding))) : 24;
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
+  normalizeDesignElementIdentifiers(p.design.elements);
   if (!Array.isArray(p.designUndoStack)) p.designUndoStack = [];
   if (!Array.isArray(p.designRedoStack)) p.designRedoStack = [];
   designUndoStack = p.designUndoStack;
@@ -3785,7 +3817,7 @@ function addDesignElement(type) {
     image: { label: 'Imagen', text: '', x: 120, y: 420, width: 240, height: 160, color: '#111827', background: '#e2e8f0', fontSize: 16, weight: 400, radius: 8, src: '', alt: 'Imagen del diseño', objectFit: 'cover' }
   };
   const d = defaults[type] || defaults.text;
-  const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), type, ...d };
+  const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), identifier: nextDesignElementIdentifier(p.design.elements), type, ...d };
   p.design.elements.push(element); selectedDesignElementId = element.id; selectedDesignElementIds = [element.id];
   renderDesignWorkspace(); saveProjectsToStorage();
 }
@@ -4131,7 +4163,7 @@ function renderDesignWorkspace() {
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="min-w-0 flex-1 truncate">' + escapeHtml(el.label || el.type) + '</span><code class="shrink-0 text-[9px] text-cyan-300">' + escapeHtml(el.identifier || 'id') + '</code></button>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
   const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Marco de diseño</div><p class="text-[10px] text-slate-500">Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom.</p>' +
@@ -4167,7 +4199,7 @@ function renderDesignWorkspace() {
   const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
   props.innerHTML = canvasControls + layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
-    field('Nombre de capa','label','text') + buttonControls + imageControls +
+    field('Nombre de capa','label','text') + field('Identificador único','identifier','text','placeholder="id, boton-login, titulo-principal…" maxlength="120"') + '<p class="text-[10px] text-slate-500">Cada elemento tiene un identificador único para encontrarlo y referenciarlo. Se asigna automáticamente y puedes renombrarlo.</p>' + buttonControls + imageControls +
     (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select id="designProperty-xUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'xUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.xUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.xUnit==='%'?'selected':'')+'>%</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select id="designProperty-yUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'yUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.yUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.yUnit==='%'?'selected':'')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
@@ -4178,8 +4210,26 @@ function renderDesignWorkspace() {
     '<div class="grid grid-cols-2 gap-2 mt-2"><button type="button" onclick="duplicateDesignElement()" class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800"><i class="fa-regular fa-copy mr-1"></i>Duplicar</button><button type="button" onclick="deleteDesignElement()" class="px-2 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-[11px] text-rose-200 hover:bg-rose-900"><i class="fa-regular fa-trash-can mr-1"></i>Eliminar</button></div>';
   updateDesignHistoryButtons();
 }
+function pDesignElementsWithoutCurrent(id) {
+  const p = activeDesignProject();
+  return p ? p.design.elements.filter(item => item && item.id !== id) : [];
+}
 function updateDesignProperty(key, value) {
   const el = selectedDesignElement(); if (!el) return;
+  if (key === 'identifier') {
+    const requested = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 120);
+    const base = requested || 'id';
+    const others = pDesignElementsWithoutCurrent(el.id);
+    const used = new Set(others.map(item => String(item.identifier || '').toLowerCase()));
+    let unique = base, suffix = 2;
+    while (used.has(unique.toLowerCase())) unique = base + suffix++;
+    el.identifier = unique;
+    const identifierInput = document.getElementById('designProperty-identifier');
+    if (identifierInput && identifierInput.value !== unique) identifierInput.value = unique;
+    const p = activeDesignProject();
+    if (p) p.updatedAt = new Date().toISOString();
+    renderDesignWorkspace(); scheduleAutosave(); return;
+  }
   if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
   else if (key === 'src') el.src = safeDesignImageSource(value);
   else if (key === 'href') el.href = safeDesignLink(value);
@@ -4381,9 +4431,11 @@ function duplicateDesignElement() {
     existingIds.add(id);
     return id;
   };
-  const copies = selected.map(el => ({
+  const copies = [];
+  selected.forEach(el => copies.push({
     ...el,
     id: makeId(),
+    identifier: nextDesignElementIdentifier(p.design.elements.concat(copies), '__reserved__'),
     x: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'x', canvasWidth) + 24)),
     y: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'y', canvasHeight) + 24)),
     xUnit: 'px',
