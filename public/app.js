@@ -4084,7 +4084,7 @@ function renderDesignWorkspace() {
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + (el.visible === false ? ' · oculta' : '') + (el.locked ? ' · bloqueada' : '') + '</span></button>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
   const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Lienzo</div>' +
@@ -4102,7 +4102,7 @@ function renderDesignWorkspace() {
   }
   const field = (label, key, type='number', extra='') => {
     const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
-    const numericRanges = { x: 'min="0" max="10000" step="1"', y: 'min="0" max="10000" step="1"', width: 'min="20" max="4000" step="1"', height: 'min="20" max="4000" step="1"', fontSize: 'min="8" max="240" step="1"', radius: 'min="0" max="500" step="1"', opacity: 'min="0" max="1" step="0.05"', rotation: 'min="-3600" max="3600" step="1"' };
+    const numericRanges = { x: 'min="0" max="' + (el.xUnit === '%' ? 100 : 10000) + '" step="1"', y: 'min="0" max="' + (el.yUnit === '%' ? 100 : 10000) + '" step="1"', width: 'min="20" max="4000" step="1"', height: 'min="20" max="4000" step="1"', fontSize: 'min="8" max="240" step="1"', radius: 'min="0" max="500" step="1"', opacity: 'min="0" max="1" step="0.05"', rotation: 'min="-3600" max="3600" step="1"' };
     const constraints = type === 'number' ? (numericRanges[key] || '') : '';
     return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + constraints + ' ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
   };
@@ -4123,7 +4123,7 @@ function renderDesignWorkspace() {
   props.innerHTML = canvasControls + layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
     field('Nombre de capa','label','text') + buttonControls + imageControls +
-    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
+    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field(el.xUnit === '%' ? 'X (%)' : 'X (px)','x') + '<label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select aria-label="Unidad X" onchange="updateDesignProperty(\\'xUnit\\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+(el.xUnit === '%' ? '' : 'selected')+'>px</option><option value="%" '+(el.xUnit === '%' ? 'selected' : '')+'>%</option></select></label></div><div class="grid grid-cols-2 gap-2">' + field(el.yUnit === '%' ? 'Y (%)' : 'Y (px)','y') + '<label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select aria-label="Unidad Y" onchange="updateDesignProperty(\\'yUnit\\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+(el.yUnit === '%' ? '' : 'selected')+'>px</option><option value="%" '+(el.yUnit === '%' ? 'selected' : '')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
     (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') +
@@ -4136,6 +4136,17 @@ function renderDesignWorkspace() {
 function updateDesignProperty(key, value) {
   const el = selectedDesignElement(); if (!el) return;
   if (key === 'visible' || key === 'locked') el[key] = value === true;
+  else if (key === 'xUnit' || key === 'yUnit') {
+    const project = activeDesignProject();
+    if (!project) return;
+    const axis = key === 'xUnit' ? 'x' : 'y';
+    const oldUnit = el[key] === '%' ? '%' : 'px';
+    const newUnit = value === '%' ? '%' : 'px';
+    const dimension = key === 'xUnit' ? getDesignCanvasWidth(project.design) : (getDesignCanvasHeight(project.design) || 900);
+    const coordinate = Number(el[axis]) || 0;
+    if (oldUnit !== newUnit) el[axis] = newUnit === '%' ? coordinate / dimension * 100 : coordinate / 100 * dimension;
+    el[key] = newUnit;
+  }
   else if (key === 'opacity') el.opacity = Math.max(0, Math.min(1, Number(value) || 0));
   else if (key === 'rotation') el.rotation = Math.max(-3600, Math.min(3600, Number(value) || 0));
   else if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
@@ -4150,7 +4161,7 @@ function updateDesignProperty(key, value) {
     const [min, max] = ranges[key]; el[key] = Math.max(min, Math.min(max, numeric));
   }
   const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
-  if (key === 'visible' || key === 'locked') { renderDesignWorkspace(); scheduleAutosave(); return; }
+  if (['visible', 'locked', 'xUnit', 'yUnit'].includes(key)) { renderDesignWorkspace(); scheduleAutosave(); return; }
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
   if (node) {
