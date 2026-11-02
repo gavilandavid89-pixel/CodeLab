@@ -3597,14 +3597,7 @@ function captureDesignSvg(project) {
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
-    const renderedNode = el.id ? Array.from(document.querySelectorAll('[data-design-id]')).find(node => node.dataset.designId === el.id) : null;
-    const renderedRotationMatch = renderedNode && String(renderedNode.style.transform || '').match(/^rotate\((-?\d+(?:\.\d+)?)deg\)$/);
-    const rotationField = el.id === selectedDesignElementId ? document.getElementById('designProperty-rotation') : null;
-    const inspectorRotation = rotationField && rotationField.value !== '' ? Number(rotationField.value) : NaN;
-    const modelRotation = finite(el.rotation, 0);
-    // Keep exports faithful to the active inspector and rendered canvas during live edits.
-    const rotation = Math.max(-360, Math.min(360, modelRotation || (Number.isFinite(inspectorRotation) ? inspectorRotation : renderedRotationMatch ? Number(renderedRotationMatch[1]) : 0)));
-    if (el.type === 'button' && (el.id === selectedDesignElementId || rotationField)) console.log('[design-rotation-debug]', JSON.stringify({ id: el.id, selectedId: selectedDesignElementId, model: el.rotation, modelRotation, inspector: rotationField && rotationField.value, inspectorRotation, rendered: renderedNode && renderedNode.style.transform, rotation }));
+    const rotation = Math.max(-360, Math.min(360, finite(el.rotation, 0)));
     const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
@@ -4332,7 +4325,9 @@ function pDesignElementsWithoutCurrent(id) {
   return p ? p.design.elements.filter(item => item && item.id !== id) : [];
 }
 function updateDesignProperty(key, value) {
-  const el = selectedDesignElement(); if (!el) return;
+  const p = activeDesignProject();
+  const el = p && p.design.elements.find(item => item && item.id === selectedDesignElementId);
+  if (!el) return;
   if (key === 'identifier') {
     const requested = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 120);
     const base = requested || 'id';
@@ -4343,7 +4338,6 @@ function updateDesignProperty(key, value) {
     el.identifier = unique;
     const identifierInput = document.getElementById('designProperty-identifier');
     if (identifierInput && identifierInput.value !== unique) identifierInput.value = unique;
-    const p = activeDesignProject();
     if (p) p.updatedAt = new Date().toISOString();
     const layerButton = document.querySelector('[data-design-select="' + CSS.escape(el.id) + '"]');
     const layerIdentifier = layerButton && layerButton.querySelector('code');
@@ -4367,11 +4361,7 @@ function updateDesignProperty(key, value) {
     renderDesignWorkspace(); scheduleAutosave(); return;
   }
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
-  const p = activeDesignProject();
-  if (p && key === 'rotation') {
-    const projectElement = p.design.elements.find(item => item && item.id === el.id);
-    if (projectElement) projectElement.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
-  }
+  if (p && key === 'rotation') el.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
   if (p) p.updatedAt = new Date().toISOString();
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
