@@ -400,6 +400,34 @@ test('creates an isolated branch, performs a three-way merge, and can undo it', 
   assert.equal(undone.state.projects[0].mergeHistory.length, 0);
 });
 
+test('refuses to undo a merge after later main-code edits', () => {
+  const created = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_undo_guard' }
+  ], { operationId: 'test_undo_guard_01' }));
+  const edited = applyHeadlessBatch(created.state, request([
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'branch', html: '<h1>Merged</h1>' }
+  ], { operationId: 'test_undo_guard_02', baseRevision: 4 }));
+  const merged = applyHeadlessBatch(edited.state, request([
+    { type: 'branch.merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_undo_guard_03', baseRevision: 5 }));
+  const laterEdit = applyHeadlessBatch(merged.state, request([
+    { type: 'web.code.write', projectId: 'proj_web1', html: '<h1>Newer user work</h1>' }
+  ], { operationId: 'test_undo_guard_04', baseRevision: 6 }));
+
+  assert.throws(() => applyHeadlessBatch(laterEdit.state, request([
+    { type: 'branch.undo_merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_undo_guard_05', baseRevision: 7 })), error => {
+    assert.equal(error.code, 'HEADLESS_BRANCH_UNDO_CONFLICT');
+    assert.match(error.message, /code changed afterward/i);
+    return true;
+  });
+  assert.equal(laterEdit.state.projects[0].code.html, '<h1>Newer user work</h1>');
+  assert.equal(laterEdit.state.projects[0].mergeHistory.length, 1,
+    'a rejected undo must preserve the merge backup for inspection');
+  assert.equal(laterEdit.state.projects[0].branch, undefined,
+    'a rejected undo must not recreate the old branch');
+});
+
 test('rejects conflicting branch merges without changing main or branch data', () => {
   const created = applyHeadlessBatch(state([webProject()]), request([
     { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_conflict' }
