@@ -985,25 +985,42 @@ try {
     }, { projectId: command.args.project_id, elementId: command.args.element_id, targetProjectId: command.args.target_project_id });
   } else if (command.action === 'project_delete') {
     stage = 'project_delete';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const originalConfirm = window.confirm;
-      try {
-        window.confirm = () => true;
-        await deleteProject(projectId);
-      } finally {
-        window.confirm = originalConfirm;
-      }
-      const deleted = !projects.some(item => item && item.id === projectId);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && !snapshot.some(item => item && item.id === projectId);
-      } catch (_) {}
-      if (!deleted || !localVerified) throw new Error('Project deletion was not verified in memory and local snapshot.');
-      return { projectId, deleted, localSnapshotVerified: localVerified };
-    }, command.args.project_id);
+    result = await page.evaluate(async ({ projectId, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved workspace query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      const operationId = 'delete_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'project.delete', projectId, approved }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project deletion failed.');
+      const after = await query('project.list');
+      const deleted = !after.result.projects.some(project => project.id === projectId);
+      if (!deleted) throw new Error('Deleted project still appears in authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, deleted, serverReadbackVerified: deleted, workspaceRefreshed,
+        workspaceRevision: after.revision, previousType: before.result.type, saved: true
+      };
+    }, { projectId: command.args.project_id, approved: command.approval === 'approved' });
   } else if (command.action === 'design_template_apply') {
     stage = 'design_template_apply';
     result = await page.evaluate(async ({ projectId, templateId, replaceExisting, approved }) => {
@@ -1206,54 +1223,88 @@ try {
   } else if (command.action === 'project_create') {
     stage = 'project_create';
     result = await page.evaluate(async ({ name, type }) => {
-      const beforeIds = new Set(projects.map(item => item.id));
-      openNewProjectModal();
-      const input = document.getElementById('newProjectNameInput');
-      if (!input) throw new Error('New-project name input is unavailable.');
-      input.value = name.trim();
-      const radio = document.querySelector('input[name="newProjectType"][value="' + type + '"]');
-      if (radio) radio.checked = true;
-      await createNewProjectConfirm();
-      const created = projects.find(item => !beforeIds.has(item.id));
-      if (!created) throw new Error('Project creation did not produce a new project ID.');
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === created.id && item.name === name.trim());
-      const serverSyncStatus = document.getElementById('statusText')?.textContent || null;
-      if (!localVerified) throw new Error('Created project was not verified in the local snapshot.');
-      if (serverSyncStatus !== 'Sincronizado') {
-        throw new Error('Project creation was not confirmed by server sync (status: ' + (serverSyncStatus || 'unknown') + ').');
-      }
-      // A successful local snapshot and a stale status badge are not enough:
-      // reload the authoritative workspace before reporting the project as created.
-      if (typeof refreshWorkspaceFromServer !== 'function' || !(await refreshWorkspaceFromServer())) {
-        throw new Error('Project creation could not be verified by reading the workspace back from the server.');
-      }
-      const serverReadbackVerified = projects.some(item => item?.id === created.id && item.name === name.trim() && item.type === (type || 'web'));
-      if (!serverReadbackVerified) {
-        throw new Error('Project creation was acknowledged but the project was missing from the server workspace readback.');
-      }
-      return { projectId: created.id, name: created.name, type: created.type, localSnapshotVerified: localVerified, serverSyncStatus, serverReadbackVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved workspace query failed.');
+        return data;
+      };
+      const before = await query('project.list');
+      const operationId = 'create_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'project.create', name: name.trim(), projectType: type || 'web' }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project creation failed.');
+      const created = data.results?.[0];
+      if (!created?.projectId) throw new Error('Headless project creation returned no project ID.');
+      const saved = await query('project.inspect', { projectId: created.projectId });
+      const serverReadbackVerified = saved.result.name === name.trim() && saved.result.type === (type || 'web');
+      if (!serverReadbackVerified) throw new Error('Created project failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId: created.projectId, name: saved.result.name, type: saved.result.type,
+        serverReadbackVerified, workspaceRefreshed, workspaceRevision: saved.revision, saved: true
+      };
     }, { name: command.args.name, type: command.args.type || 'web' });
   } else if (command.action === 'project_duplicate') {
     stage = 'project_duplicate';
     result = await page.evaluate(async projectId => {
-      const source = projects.find(item => item && item.id === projectId);
-      if (!source) throw new Error('Source project not found in the authenticated workspace.');
-      const beforeIds = new Set(projects.map(item => item.id));
-      const sourceCode = JSON.stringify(source.code || {});
-      const sourceDesign = JSON.stringify(source.design || {});
-      await duplicateProjectFromDashboard(projectId);
-      const duplicate = projects.find(item => !beforeIds.has(item.id));
-      if (!duplicate) throw new Error('Duplicate project was not created.');
-      const sourceUnchanged = JSON.stringify(source.code || {}) === sourceCode && JSON.stringify(source.design || {}) === sourceDesign;
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === duplicate.id && item.name === duplicate.name);
-      } catch (_) {}
-      if (!sourceUnchanged) throw new Error('Source project changed during duplication.');
-      if (!localVerified) throw new Error('Duplicate was not verified in the local snapshot.');
-      return { sourceProjectId: projectId, projectId: duplicate.id, name: duplicate.name, type: duplicate.type, sourceUnchanged, localSnapshotVerified: localVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      const operationId = 'duplicate_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'project.duplicate', projectId }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project duplication failed.');
+      const duplicate = data.results?.[0];
+      if (!duplicate?.projectId) throw new Error('Headless duplication returned no project ID.');
+      const [sourceAfter, duplicateAfter] = await Promise.all([
+        query('project.inspect', { projectId }),
+        query('project.inspect', { projectId: duplicate.projectId })
+      ]);
+      const sourceUnchanged = sourceAfter.result.id === before.result.id &&
+        sourceAfter.result.type === before.result.type &&
+        JSON.stringify(sourceAfter.result.codeLengths) === JSON.stringify(before.result.codeLengths) &&
+        sourceAfter.result.design?.elementCount === before.result.design?.elementCount;
+      const serverReadbackVerified = duplicateAfter.result.id === duplicate.projectId &&
+        duplicateAfter.result.type === before.result.type && duplicateAfter.result.name === duplicate.name;
+      if (!sourceUnchanged || !serverReadbackVerified) throw new Error('Duplication failed authoritative source/duplicate readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        sourceProjectId: projectId, projectId: duplicate.projectId, name: duplicateAfter.result.name,
+        type: duplicateAfter.result.type, sourceUnchanged, serverReadbackVerified,
+        workspaceRefreshed, workspaceRevision: duplicateAfter.revision, saved: true
+      };
     }, command.args.project_id);
   } else if (command.action === 'workspace_inspect') {
     stage = 'workspace_inspect';
@@ -1412,33 +1463,40 @@ try {
   } else if (command.action === 'project_rename') {
     stage = 'project_rename';
     result = await page.evaluate(async ({ projectId, name }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const previousName = project.name;
-      const previousUpdatedAt = project.updatedAt;
-      project.name = name.trim();
-      project.updatedAt = new Date().toISOString();
-      const saved = await saveProjectsToStorage();
-      const persisted = projects.find(item => item && item.id === projectId);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item =>
-          item && item.id === projectId && item.name === name.trim()
-        );
-      } catch (_) {}
-      if (saved !== true && !localVerified) {
-        project.name = previousName;
-        project.updatedAt = previousUpdatedAt;
-        saveLocalProjectsSnapshot();
-        throw new Error('Rename was not durably confirmed; previous name restored.');
-      }
-      if (currentProjectId === projectId) {
-        const title = document.getElementById('currentProjectTitle');
-        if (title) title.textContent = project.name;
-      }
-      if (typeof renderProjectsList === 'function') renderProjectsList();
-      return { projectId, previousName, name: project.name, serverSynced: saved === true, localSnapshotVerified: localVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      const operationId = 'rename_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'project.rename', projectId, name: name.trim() }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project rename failed.');
+      const after = await query('project.inspect', { projectId });
+      const serverReadbackVerified = after.result.name === name.trim();
+      if (!serverReadbackVerified) throw new Error('Renamed project failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, previousName: before.result.name, name: after.result.name,
+        serverReadbackVerified, workspaceRefreshed, workspaceRevision: after.revision, saved: true
+      };
     }, { projectId: command.args.project_id, name: command.args.name });
   } else if (command.action === 'project_save') {
     stage = 'project_save';

@@ -245,3 +245,20 @@ assert.match(historyHandler, /design\.history\.inspect/, 'history must check the
 assert.match(historyHandler, /design\.history\.undo|design\.history\.redo/, 'history must use shared headless undo/redo operations');
 assert.match(historyHandler, /baseRevision: before\.revision/, 'history mutations must use optimistic workspace revisions');
 assert.doesNotMatch(historyHandler, /projects\.find\(|designUndo\(|designRedo\(|openProject\(/, 'history must not use editor UI state');
+
+for (const [action, queryName, operationType] of [
+  ['project_create', 'project.list', 'project.create'],
+  ['project_rename', 'project.inspect', 'project.rename'],
+  ['project_duplicate', 'project.inspect', 'project.duplicate'],
+  ['project_delete', 'project.inspect', 'project.delete']
+]) {
+  const start = bridge.indexOf("} else if (command.action === '" + action + "') {");
+  const end = bridge.indexOf("} else if (command.action ===", start + 40);
+  const handler = bridge.slice(start, end < 0 ? undefined : end);
+  assert.match(handler, /\/api\/workspace\//, action + ' must use the authenticated workspace API');
+  assert.ok(handler.includes("action: '" + queryName + "'"), action + ' must inspect authoritative saved state');
+  assert.ok(handler.includes("type: '" + operationType + "'"), action + ' must use the shared headless runtime operation');
+  assert.doesNotMatch(handler, /projects\.find\(|createNewProjectConfirm\(|duplicateProjectFromDashboard\(|deleteProject\(/,
+    action + ' must not mutate through editor UI state');
+}
+assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must retain explicit approval');
