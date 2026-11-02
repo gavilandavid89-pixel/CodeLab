@@ -252,3 +252,31 @@ test('preserves the editor flow navigation role', () => {
   assert.equal(result.project.design.elements[0].flowRole, 'navigate');
 });
 
+
+
+test('accepts percentage x/y units and renders positions relative to the saved canvas', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    canvasWidth: 720,
+    canvasHeight: 1600,
+    elements: [{
+      id: 'responsive-card', type: 'rectangle', x: 50, y: 25, xUnit: '%', yUnit: '%',
+      width: 100, height: 80, background: '#ffffff', color: '#111827'
+    }]
+  });
+  const result = engine.transact(input, [
+    { type: 'element.update', id: 'responsive-card', properties: { x: 50, y: 25, xUnit: '%', yUnit: '%' } }
+  ]);
+  assert.equal(result.project.design.elements[0].xUnit, '%');
+  assert.equal(result.project.design.elements[0].yUnit, '%');
+  assert.match(result.svg, /<rect x="360" y="400" width="100" height="80"/);
+  assert.equal(input.design.elements[0].x, 50, 'transaction must not mutate the input project');
+});
+
+test('rejects unsupported percentage positioning units', () => {
+  const engine = createDesignEngine();
+  const input = project({ elements: [{ id: 'card', type: 'rectangle', x: 10, y: 20, width: 100, height: 80 }] });
+  assert.throws(() => engine.transact(input, [
+    { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
+  ]), /xUnit must be px or %/);
+});
