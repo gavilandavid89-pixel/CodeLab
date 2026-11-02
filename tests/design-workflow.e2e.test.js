@@ -1896,7 +1896,7 @@ async function waitForPersistedProject(page, projectName) {
       'rotation inspector should update the selected layer immediately');
     assert.match(await page.evaluate(() => captureDesignSvg(getCurrentProject()).svg), /rotate\(45 /,
       'SVG export should preserve the layer rotation');
-    const exportedHtml = await page.evaluate(() => {
+    const utilityHtmlExport = await page.evaluate(() => {
       const originalDownload = window.downloadDesignAsset;
       let captured = '';
       window.downloadDesignAsset = (_name, content) => { captured = String(content); };
@@ -1905,9 +1905,9 @@ async function waitForPersistedProject(page, projectName) {
     });
     const utilityIdentifier = await page.evaluate(id =>
       getCurrentProject().design.elements.find(item => item.id === id)?.identifier, utilityLayerId);
-    assert.ok(exportedHtml.includes('data-design-identifier="' + utilityIdentifier + '"'),
+    assert.ok(utilityHtmlExport.includes('data-design-identifier="' + utilityIdentifier + '"'),
       'HTML export should preserve the editable layer identifier');
-    assert.match(exportedHtml, /transform:rotate\(45deg\)/,
+    assert.match(utilityHtmlExport, /transform:rotate\(45deg\)/,
       'HTML export should preserve the layer rotation');
     await page.evaluate(id => {
       const element = getCurrentProject().design.elements.find(item => item.id === id);
