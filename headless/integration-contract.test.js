@@ -201,6 +201,8 @@ test('deleting a prototype target bumps dependent design revision and timestamp'
       flowConnections: [{ sourceElementId: 'nav', targetProjectId: 'proj_target' }]
     }
   };
+  source.designUndoStack = [JSON.stringify(source.design)];
+  source.designRedoStack = [JSON.stringify(source.design)];
   const target = {
     id: 'proj_target',
     name: 'Target screen',
@@ -217,4 +219,14 @@ test('deleting a prototype target bumps dependent design revision and timestamp'
   assert.deepEqual(result.state.projects[0].design.flowConnections, []);
   assert.equal(result.state.projects[0].design.revision, 5);
   assert.notEqual(result.state.projects[0].updatedAt, source.updatedAt);
+  assert.deepEqual(JSON.parse(result.state.projects[0].designUndoStack[0]).flowConnections, []);
+  assert.deepEqual(JSON.parse(result.state.projects[0].designRedoStack[0]).flowConnections, []);
+
+  const undone = applyHeadlessBatch(result.state, {
+    operationId: 'delete-target-undo-01',
+    baseRevision: result.state.revision,
+    operations: [{ type: 'design.history.undo', projectId: 'proj_source' }]
+  });
+  assert.deepEqual(undone.state.projects[0].design.flowConnections, [],
+    'undo must not resurrect a connection to a deleted target');
 });
