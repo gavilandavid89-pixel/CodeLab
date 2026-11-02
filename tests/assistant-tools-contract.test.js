@@ -219,7 +219,7 @@ assert.match(designExportHandler, /design\.export\.json/, 'JSON export must use 
 assert.doesNotMatch(designExportHandler, /projects\.find\(|CodeLabCapture/, 'design export must not depend on editor memory or UI capture code');
 
 const capturePngHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_capture_png') {"), bridge.indexOf("} else if (command.action === 'design_import_json') {", bridge.indexOf("} else if (command.action === 'design_capture_png') {")));
-assert.match(bridge, /'headless_design_system', 'headless_query', 'design_capture_png', 'status'/, 'PNG capture must be allowlisted');
+assert.match(bridge, /'headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status'/, 'PNG capture must be allowlisted');
 assert.match(capturePngHandler, /design\.capture\.context/, 'PNG capture must request the structured AI capture context');
 assert.match(capturePngHandler, /design\.export\.html/, 'PNG capture must render saved semantic HTML in a separate browser context');
 assert.match(capturePngHandler, /expectedRevision/, 'PNG and context must be read from the same workspace revision');
