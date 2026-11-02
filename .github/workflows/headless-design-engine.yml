@@ -33,7 +33,7 @@ jobs:
           node --check headless/workspace-runtime.js
           node --check server.js
       - name: Run isolated headless engine and workspace runtime tests
-        run: node --test headless/design-engine.test.js headless/design-accessibility.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
+        run: node --test headless/design-engine.test.js headless/design-accessibility.test.js headless/design-export-parity.test.js headless/design-templates-responsive.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
       - name: Check headless assistant bridge contracts
         run: node tests/assistant-tools-contract.test.js
       - name: Verify one complete project journey through Chromium
