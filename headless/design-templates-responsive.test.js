@@ -33,7 +33,7 @@ test('applying a template expands persisted canvas height to fit its layers', ()
   const state = {
     revision: 0,
     projects: [{
-      id: 'template-height-project',
+      id: 'proj_template_height',
       type: 'design',
       design: {
         canvasWidth: 720,
@@ -49,7 +49,7 @@ test('applying a template expands persisted canvas height to fit its layers', ()
     baseRevision: 0,
     operations: [{
       type: 'design.template.apply',
-      projectId: 'template-height-project',
+      projectId: 'proj_template_height',
       templateId: 'portfolio'
     }]
   });
@@ -62,7 +62,7 @@ test('applying a template expands persisted canvas height to fit its layers', ()
   const undone = applyHeadlessBatch(applied.state, {
     operationId: 'template-height-undo-001',
     baseRevision: applied.state.revision,
-    operations: [{ type: 'design.history.undo', projectId: 'template-height-project' }]
+    operations: [{ type: 'design.history.undo', projectId: 'proj_template_height' }]
   });
   const restored = undone.state.projects[0].design;
   assert.equal(restored.canvasHeight, 160);
