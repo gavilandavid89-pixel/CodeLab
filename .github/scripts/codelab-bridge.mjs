@@ -1739,7 +1739,14 @@ try {
         const localCode = inCopyBranch ? localProject?.branch?.code : localProject?.code;
         localVerified = !!expectedCode && !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === expectedCode[key]);
       }
-      return { projectId, saved: saved === true, localSnapshotVerified: localVerified, branchPresent: !!projectAfter?.branch };
+      return {
+        projectId,
+        saved: saved === true,
+        serverConfirmed: saved === true,
+        persistenceScope: saved === true ? 'server-confirmed' : 'local-snapshot-only',
+        localSnapshotVerified: localVerified,
+        branchPresent: !!projectAfter?.branch
+      };
     }, command.args.project_id);
     if (!result.saved && !result.localSnapshotVerified) throw new Error('Save could not be verified on server or exact local project state.');
   } else if (command.action === 'branch_status') {
