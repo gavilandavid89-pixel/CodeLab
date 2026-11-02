@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const bridge = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 const app = fs.readFileSync('public/app.js', 'utf8');
+const headlessRuntime = fs.readFileSync('headless/workspace-runtime.js', 'utf8');
 const requiredActions = [
   'project_list', 'project_rename', 'project_save',
   'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history'
@@ -69,7 +70,7 @@ for (const [action, queryAction] of [
 assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
 assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
-assert.match(bridge, /recordDesignHistory\(\)/, 'design edits must record undo history');
+assert.match(headlessRuntime, /project\.designUndoStack\.push\(JSON\.stringify\(project\.design\)\)/, 'atomic design batches must preserve saved undo history');
 assert.match(bridge, /executeSavedDesignBatch/, 'core design operations must use atomic saved-state batches');
 assert.match(bridge, /serverReadbackVerified/, 'design mutations must verify authoritative server readback');
 assert.match(bridge, /design_canvas_configure[\s\S]{0,2800}localSnapshotVerified/,
