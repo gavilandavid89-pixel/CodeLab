@@ -37,3 +37,5 @@ jobs:
         run: node tests/assistant-tools-contract.test.js
       - name: Verify real PNG and context revision pairing
         run: node --test headless/design-capture-browser.test.js
+      - name: Verify isolated preview form and file interactions
+        run: node --test headless/preview-interaction-browser.test.js
