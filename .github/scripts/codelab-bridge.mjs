@@ -1949,7 +1949,7 @@ try {
       };
     } finally {
       currentStep = null;
-      await previewSession.page.close().catch(() => {});
+      await previewSession.context.close().catch(() => {});
     }
   } else if (command.action === 'read_page') {
     result = {
