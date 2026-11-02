@@ -125,7 +125,7 @@ assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', height
   'AI design capture must preserve dimension units');
 assert.match(bridgeSource, /'widthUnit', 'heightUnit'/,
   'assistant bridge must allow editing responsive dimension units');
-assert.match(bridgeSource, /key === 'widthUnit' \|\| key === 'heightUnit'\) && !\['px', '%','auto'\]/,
+assert.match(bridgeSource, /key === 'widthUnit' \|\| key === 'heightUnit'\) && !\['px', '%', 'auto'\]/,
   'assistant bridge must validate dimension units');
 
 assert.match(dimensionUnitAppSource, /widthUnit: \['px','%','auto'\]\.includes\(raw\.widthUnit\) \? raw\.widthUnit : 'px'/,
