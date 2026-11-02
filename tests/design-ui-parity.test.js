@@ -80,6 +80,8 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(render, /el\.locked \? 'cursor-default' : 'cursor-move'/);
   assert.match(render, /Opacidad \(0–1\)/);
   assert.match(render, /Rotación \(°\)/);
+  assert.match(render, /Unidad X/);
+  assert.match(render, /Unidad Y/);
   assert.match(render, /Bloqueada/);
   assert.match(update, /key === 'visible' \|\| key === 'locked'/);
   assert.match(update, /x: \[0, 10000\], y: \[0, 10000\]/);
