@@ -123,7 +123,9 @@ function designCanvasHeight(design) {
 }
 
 function designLayoutPositions(design) {
-  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
+  const elements = Array.isArray(design && design.elements)
+    ? design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false)
+    : [];
   const frameWidth = designCanvasWidth(design);
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
