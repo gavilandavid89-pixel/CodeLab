@@ -204,7 +204,7 @@ The current editor embeds image data in the project; there is no separate asset 
 
 The read-only query `design.accessibility.audit` inspects saved design layers without opening the editor or changing workspace/design revisions. It reports missing image alt text, unnamed buttons and headings, very small text, and estimated WCAG AA contrast failures when both text and the layer's declared background are explicit hexadecimal colors.
 
-The response includes the canonical query envelope, design revision, finding counts, rule IDs, element IDs, and contrast details when measurable. This is a static first pass, not a replacement for visual inspection, screen-reader testing, or contrast checks against complex backgrounds and overlapping layers. Unknown/transparent backgrounds are deliberately not assigned a guessed contrast ratio.
+The response includes the canonical query envelope, design revision, finding counts, rule IDs, element IDs, and contrast details when measurable. This is a static first pass, not a replacement for visual inspection, screen-reader testing, or contrast checks against complex backgrounds and overlapping layers. Unknown/transparent backgrounds are deliberately not assigned a guessed contrast ratio. Text layers with opacity below 1 also receive a warning because their effective contrast depends on compositing over the canvas.
 
 ## Basic capability readiness checklist
 
