@@ -290,7 +290,7 @@ function isSafeHref(value) {
 
 function parseEditorImageDataUrl(value) {
   assert(typeof value === 'string' && value.length <= 2800000, 'Image data URL exceeds the editor limit.');
-  const match = /^data:(image\\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
+  const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
   assert(match, 'Image upload must be a PNG, JPEG, WebP, or GIF data URL.');
   const payload = match[2];
   assert(payload.length % 4 === 0, 'Image upload contains invalid Base64 data.');
