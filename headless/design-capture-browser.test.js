@@ -20,7 +20,8 @@ test('renders a real PNG paired with the same saved design revision in an isolat
       layoutMode: 'free',
       elements: [
         { id: 'el_capture_heading', type: 'heading', label: 'Capture title', text: 'Headless PNG fixture', x: 16, y: 20, width: 320, height: 64, fontSize: 26, weight: 700, color: '#111827', background: 'transparent' },
-        { id: 'el_capture_button', type: 'button', label: 'Action', text: 'Continue', x: 16, y: 110, width: 180, height: 48, fontSize: 16, weight: 600, color: '#ffffff', background: '#2563eb', radius: 10 }
+        { id: 'el_capture_button', type: 'button', label: 'Action', text: 'Continue', x: 16, y: 110, width: 180, height: 48, fontSize: 16, weight: 600, color: '#ffffff', background: '#2563eb', radius: 10 },
+        { id: 'el_responsive', type: 'rectangle', label: 'Responsive position', text: '', x: 50, y: 25, xUnit: '%', yUnit: '%', width: 40, height: 40, background: '#ef4444' }
       ]
     }
   };
@@ -29,6 +30,7 @@ test('renders a real PNG paired with the same saved design revision in an isolat
   const html = exportDesignHtml(project, [project]);
   assert.equal(contextData.designRevision, project.design.revision);
   assert.match(html, /Headless PNG fixture/);
+  assert.match(html, /left:180px;top:200px;/, 'HTML export must resolve percentage positions against the saved canvas');
 
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   const isolated = await browser.newContext({
@@ -46,6 +48,8 @@ test('renders a real PNG paired with the same saved design revision in an isolat
     await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
     await page.evaluate(() => document.fonts?.ready || Promise.resolve());
     assert.match(await page.locator('body').innerText(), /Headless PNG fixture/);
+    const responsivePosition = await page.locator('#layer-el_responsive').evaluate(el => ({ left: el.style.left, top: el.style.top }));
+    assert.deepEqual(responsivePosition, { left: '180px', top: '200px' });
     const png = await page.screenshot({ type: 'png', fullPage: false, animations: 'disabled', timeout: 20000 });
     assert.equal(png.toString('hex', 0, 8), '89504e470d0a1a0a', 'capture output must be a PNG binary');
     assert.equal(png.readUInt32BE(16), contextData.canvas.pixelWidth, 'PNG width must match the structured capture context');
