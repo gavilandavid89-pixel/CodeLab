@@ -536,19 +536,29 @@ async function waitForPersistedProject(page, projectName) {
     await element.click();
     await page.locator('#designProperty-width').waitFor({ state: 'visible' });
 
-    // 3b. Exercise responsive dimensions through the real Inspector controls.
+    // 3b. Exercise responsive position and dimensions through the real Inspector.
+    await page.locator('#designProperty-x').fill('25');
+    await page.locator('#designProperty-xUnit').selectOption('%');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.left === '25%');
+    await page.locator('#designProperty-y').fill('10');
+    await page.locator('#designProperty-yUnit').selectOption('%');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.top === '10%');
     await page.locator('#designProperty-width').fill('50');
     await page.locator('#designProperty-widthUnit').selectOption('%');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.width === '50%');
     await page.locator('#designProperty-heightUnit').selectOption('auto');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.height === 'auto');
+    await page.locator('#designProperty-xUnit').selectOption('px');
+    await page.locator('#designProperty-x').fill('80');
+    await page.locator('#designProperty-yUnit').selectOption('px');
+    await page.locator('#designProperty-y').fill('70');
     await page.locator('#designProperty-widthUnit').selectOption('px');
     await page.locator('#designProperty-width').fill('560');
     await page.locator('#designProperty-heightUnit').selectOption('px');
     await page.locator('#designProperty-height').fill('76');
     await page.waitForFunction(() => {
       const node = document.querySelector('#designCanvas [data-design-id]');
-      return node?.style.width === '560px' && node?.style.height === '76px';
+      return node?.style.left === '80px' && node?.style.top === '70px' && node?.style.width === '560px' && node?.style.height === '76px';
     });
 
     // 4. Drag the actual canvas element with pointer events.
