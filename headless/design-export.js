@@ -24,8 +24,16 @@ function safeColor(value, fallback) {
 }
 
 function safeImageSource(value) {
-  if (typeof value !== 'string' || value.length > MAX_IMAGE_BYTES) return '';
-  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(value)) return value;
+  if (typeof value !== 'string') return '';
+  if (/^data:/i.test(value)) {
+    if (value.length > MAX_IMAGE_BYTES * 1.5) return '';
+    const match = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
+    if (!match || match[2].length % 4 !== 0) return '';
+    const bytes = Buffer.from(match[2], 'base64');
+    if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64') !== match[2]) return '';
+    return value;
+  }
+  if (value.length > MAX_IMAGE_BYTES) return '';
   try {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
