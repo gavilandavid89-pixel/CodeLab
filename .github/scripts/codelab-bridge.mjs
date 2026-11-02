@@ -13,12 +13,12 @@ if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
 }
 
 function parseCommand(raw) {
-  if (typeof raw !== 'string' || raw.length > 12000) throw new Error('Issue body missing or too large.');
+  if (typeof raw !== 'string' || raw.length > 60000) throw new Error('Issue body missing or too large.');
   const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '');
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,7 +29,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -39,6 +39,54 @@ function parseCommand(raw) {
   }
   if (['branch_merge', 'branch_undo_merge'].includes(command.action) && command.approval !== 'approved') {
     throw new Error(command.action + ' changes the main project state; approval: "approved" is required.');
+  }
+  if (command.action === 'headless_batch') {
+    if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_batch requires a non-negative base_revision.');
+    if (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id)) throw new Error('headless_batch requires a safe operation_id.');
+    if (!Array.isArray(args.operations) || args.operations.length < 1 || args.operations.length > 100) throw new Error('headless_batch requires 1 to 100 operations.');
+    if (JSON.stringify(args.operations).length > 50000) throw new Error('headless_batch operations exceed 50000 characters.');
+    if (args.operations.some(operation => operation && operation.type === 'project.delete') && command.approval !== 'approved') throw new Error('Headless project deletion requires approval: "approved".');
+    if (args.operations.some(operation => operation && ['branch.merge', 'branch.undo_merge'].includes(operation.type)) && command.approval !== 'approved') throw new Error('Headless branch merge/undo requires approval: "approved".');
+    if (args.operations.some(operation => operation && operation.type === 'branch.create' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing an existing headless branch requires approval: "approved".');
+    if (args.operations.some(operation => operation && operation.type === 'design.template.apply' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing existing design layers with a template requires approval: "approved".');
+  }
+  if (command.action === 'headless_ai_generate') {
+    if (command.approval !== 'approved') throw new Error('Headless AI generation consumes provider quota and changes project code; approval: "approved" is required.');
+    if (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id)) throw new Error('headless_ai_generate requires a valid project_id.');
+    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('headless_ai_generate prompt must contain 1 to 4000 characters.');
+    if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_ai_generate requires a non-negative base_revision.');
+    if (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id)) throw new Error('headless_ai_generate requires a safe operation_id.');
+    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('headless_ai_generate source must be main or branch.');
+    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('headless_ai_generate max_tokens must be from 256 to 32768.');
+  }
+  if (command.action === 'headless_design_system') {
+    if (!['read', 'write', 'import', 'export'].includes(args.operation)) throw new Error('headless_design_system operation must be read, write, import, or export.');
+    if (['write', 'import'].includes(args.operation)) {
+      if (command.approval !== 'approved') throw new Error('Changing workspace design-system settings requires approval: "approved".');
+      if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_design_system writes require a non-negative base_revision.');
+    }
+    if (args.operation === 'write' && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) {
+      throw new Error('headless_design_system write requires a settings object.');
+    }
+    if (args.operation === 'import' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) {
+      throw new Error('headless_design_system import requires JSON between 2 and 50000 characters.');
+    }
+    if (args.settings && JSON.stringify(args.settings).length > 20000) throw new Error('headless_design_system settings exceed 20000 characters.');
+  }
+  if (command.action === 'headless_query') {
+    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.template.list', 'design.export.json', 'design.export.svg', 'design.export.html', 'headless.operation.status'];
+    if (!supportedQueries.includes(args.query_action)) throw new Error('headless_query requires a supported query_action.');
+    if (args.query_args !== undefined && (!args.query_args || typeof args.query_args !== 'object' || Array.isArray(args.query_args))) throw new Error('headless_query query_args must be an object.');
+    if (args.expected_revision !== undefined && (!Number.isInteger(args.expected_revision) || args.expected_revision < 0)) throw new Error('headless_query expected_revision must be a non-negative integer.');
+    if (JSON.stringify(args.query_args || {}).length > 20000) throw new Error('headless_query query_args exceed 20000 characters.');
+    const queryArgs = args.query_args || {};
+    if (['project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.export.json', 'design.export.svg', 'design.export.html'].includes(args.query_action) &&
+        (typeof queryArgs.projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.projectId))) {
+      throw new Error(args.query_action + ' requires a valid query_args.projectId.');
+    }
+    if (args.query_action === 'component.inspect' && (typeof queryArgs.componentId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.componentId))) {
+      throw new Error('component.inspect requires a valid query_args.componentId.');
+    }
   }
   if (command.action === 'project_rename' &&
       (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
@@ -70,8 +118,8 @@ function parseCommand(raw) {
     if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
   }
   if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
-  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_import_json requires a JSON string between 2 and 10000 characters.');
-  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_system_import_json requires a JSON string between 2 and 10000 characters.');
+  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
+  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_system_import_json requires a JSON string between 2 and 50000 characters.');
   if (command.action === 'design_tokens_generate') {
     if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
   }
@@ -250,6 +298,106 @@ async function getJson(page, path) {
   }
 }
 
+
+async function createHeadlessPreview(projectId, source = 'main', selfTest = false, fixture = 'diagnostics') {
+  let code;
+  let workspaceRevisionRead = null;
+  if (selfTest) {
+    if (fixture === 'interactions') {
+      code = {
+        html: '<main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
+        css: '',
+        js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");'
+      };
+    } else {
+      code = {
+        html: '<main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main>',
+        css: '',
+        js: 'console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST");throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");'
+      };
+    }
+  } else {
+    const saved = await page.evaluate(async ({ projectId, source }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable for headless preview.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Could not read saved project code for preview (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      const fields = data.result && data.result.fields;
+      if (!fields || ['html', 'css', 'js'].some(key => !fields[key] || fields[key].truncated)) {
+        throw new Error('Project code exceeds the 200000-character headless preview read limit. No preview was opened.');
+      }
+      const code = Object.fromEntries(['html', 'css', 'js'].map(key => [key, fields[key].value]));
+      if (code.html.length + code.css.length + code.js.length > 200000) {
+        throw new Error('Combined project code exceeds the 200000-character headless preview limit.');
+      }
+      return { code, revision: data.revision };
+    }, { projectId, source });
+    code = saved.code;
+    workspaceRevisionRead = saved.revision;
+  }
+
+  const css = String(code.css || '').replace(/<\/style/gi, '<\\/style');
+  const js = String(code.js || '').replace(/<\/script/gi, '<\\/script');
+  const errScript = '<script>' +
+    'window.onerror=function(msg,url,line,col){window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:"Línea "+line+":"+col+" - "+msg},"*")};' +
+    'console.log=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"log",message:a.join(" ")},"*")};' +
+    'console.error=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:a.join(" ")},"*")};' +
+    '<\/script>';
+  const srcdoc = '<!doctype html><html><head><meta charset="UTF-8">' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; img-src data: https: http:; font-src data: https: http:; connect-src \'none\';">' +
+    '<style>' + css + '</style>' + errScript + '</head><body>' + String(code.html || '') +
+    '<script>' + js + '<\/script></body></html>';
+
+  const previewContext = await browser.newContext({ serviceWorkers: 'block' });
+  const previewPage = await previewContext.newPage();
+  const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], expectedBlockedRequests: [] };
+  previewPage.on('console', message => {
+    if (message.type() === 'error' && browserDiagnostics.consoleErrors.length < 30) {
+      browserDiagnostics.consoleErrors.push({ message: message.text().slice(0, 300), location: message.location().url || null });
+    }
+  });
+  previewPage.on('pageerror', error => {
+    if (browserDiagnostics.pageErrors.length < 30) browserDiagnostics.pageErrors.push(String(error.message || error).slice(0, 300));
+  });
+  previewPage.on('requestfailed', request => {
+    if (browserDiagnostics.failedRequests.length < 30) browserDiagnostics.failedRequests.push({
+      url: safeUrl(request.url()), failure: String(request.failure()?.errorText || 'request failed').slice(0, 200)
+    });
+  });
+
+  try {
+    await previewPage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await previewPage.setContent(
+      '<!doctype html><html><head><meta charset="utf-8"><title>CodeLab headless preview</title></head><body>' +
+      '<iframe id="headlessPreview" title="Isolated project preview" sandbox="allow-scripts allow-forms" style="width:100%;height:100vh;border:0"></iframe>' +
+      '<script>window.__codelabPreviewMessages=[];window.addEventListener("message",function(e){var f=document.getElementById("headlessPreview");if(f&&e.source===f.contentWindow&&e.data&&e.data.type==="CONSOLE_LOG")window.__codelabPreviewMessages.push(e.data)});<\/script>' +
+      '</body></html>',
+      { waitUntil: 'domcontentloaded' }
+    );
+    browserDiagnostics.consoleErrors.length = 0;
+    browserDiagnostics.pageErrors.length = 0;
+    browserDiagnostics.failedRequests.length = 0;
+    browserDiagnostics.expectedBlockedRequests.length = 0;
+    await previewPage.locator('#headlessPreview').evaluate((frame, html) => { frame.srcdoc = html; }, srcdoc);
+    const previewFrame = previewPage.frameLocator('#headlessPreview');
+    await previewFrame.locator('body').waitFor({ state: 'attached', timeout: 12000 });
+    await previewPage.waitForTimeout(250);
+    return { page: previewPage, context: previewContext, frame: previewFrame, diagnostics: browserDiagnostics, revision: workspaceRevisionRead, srcdoc };
+  } catch (error) {
+    await previewContext.close().catch(() => {});
+    throw error;
+  }
+}
+
 let browser;
 let page;
 let result;
@@ -367,66 +515,39 @@ try {
     }, command.args.settings || null);
   } else if (command.action === 'design_system_import_json') {
     stage = 'design_system_import_json';
-    result = await (async () => {
-      const before = await page.evaluate(() => ({
-        values: Object.fromEntries(['systemName','colorPrimary','colorSecondary','colorAccent','colorSurface','colorBackground','colorText','contrastForeground','contrastBackground','baseFont','typeRatio','baseSpacing','baseRadius'].map(id => [id, document.getElementById(id)?.value ?? null])),
-        status: document.getElementById('designToolsStatus')?.textContent || ''
-      }));
-      await page.locator('#designSystemJsonFile').setInputFiles({
-        name: 'codelab-design-system-import.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(command.args.json, 'utf8')
+    result = await page.evaluate(async json => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/design-system';
+      const headers = { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken };
+      const current = await fetch(endpoint, { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify({ action: 'read' }) });
+      const state = await current.json().catch(() => ({}));
+      if (!current.ok || state.ok !== true) throw new Error('Could not read the current design-system revision.');
+      const response = await fetch(endpoint, {
+        method: 'POST', credentials: 'same-origin', headers,
+        body: JSON.stringify({ action: 'import', json, baseRevision: state.revision })
       });
-      await page.waitForFunction(previousStatus => {
-        const status = document.getElementById('designToolsStatus')?.textContent || '';
-        return status && status !== previousStatus;
-      }, before.status, { timeout: 15000 }).catch(() => {});
-      return await page.evaluate(beforeValues => {
-        const values = Object.fromEntries(['systemName','colorPrimary','colorSecondary','colorAccent','colorSurface','colorBackground','colorText','contrastForeground','contrastBackground','baseFont','typeRatio','baseSpacing','baseRadius'].map(id => [id, document.getElementById(id)?.value ?? null]));
-        const changed = Object.keys(values).some(key => values[key] !== beforeValues[key]);
-        const status = document.getElementById('designToolsStatus')?.textContent || '';
-        return {
-          imported: changed && !status.startsWith('No se pudo importar:'),
-          rejected: !changed && status.startsWith('No se pudo importar:'),
-          values,
-          status,
-          changedFields: Object.keys(values).filter(key => values[key] !== beforeValues[key])
-        };
-      }, before.values);
-    })();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design-system import failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      return { imported: true, revision: data.revision, settings: data.settings || null };
+    }, command.args.json);
   } else if (command.action === 'design_system_export_json') {
     stage = 'design_system_export_json';
-    result = await (async () => {
-      await page.locator('#openDesignTools').click({ timeout: 10000 });
-      await page.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
-      await page.locator('#designToolsTab-tokens').click({ timeout: 10000 });
-      await page.locator('#designToolsPanel-tokens').waitFor({ state: 'visible', timeout: 10000 });
-      const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
-      await page.locator('#exportDesignSystemJson').click({ timeout: 10000 });
-      const download = await downloadPromise;
-      const downloadPath = await download.path();
-      if (!downloadPath) throw new Error('Design-system JSON download did not produce a readable file.');
-      const content = await fs.readFile(downloadPath, 'utf8');
-      let parsed;
-      try { parsed = JSON.parse(content); } catch (_) { throw new Error('Design-system export did not produce valid JSON.'); }
-      if (!parsed || parsed.format !== 'codelab-design-system' || parsed.version !== 1 ||
-          !parsed.colors || !parsed.typography || !parsed.accessibility) {
-        throw new Error('Downloaded JSON does not match the CodeLab design-system schema.');
-      }
-      return {
-        exported: true,
-        filename: download.suggestedFilename(),
-        length: content.length,
-        truncated: content.length > 10000,
-        json: content.slice(0, 10000),
-        format: parsed.format,
-        version: parsed.version,
-        colorKeys: Object.keys(parsed.colors),
-        typographyKeys: Object.keys(parsed.typography),
-        spacingTokenCount: Array.isArray(parsed.spacing) ? parsed.spacing.length : 0,
-        radiusTokenCount: Array.isArray(parsed.radius) ? parsed.radius.length : 0
-      };
-    })();
+    result = await page.evaluate(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/design-system', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'export' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design-system export failed (HTTP ' + response.status + ').');
+      const json = JSON.stringify(data.json, null, 2);
+      return { exported: true, format: data.json?.format, version: data.json?.version, revision: data.revision, length: json.length, json, css: data.css };
+    });
   } else if (command.action === 'design_export') {
     stage = 'design_export';
     result = await page.evaluate(({ projectId, format }) => {
@@ -448,108 +569,227 @@ try {
     }, { projectId: command.args.project_id, format: command.args.format });
   } else if (command.action === 'design_import_json') {
     stage = 'design_import_json';
-    result = await (async () => {
-      const before = await page.evaluate(() => ({
-        ids: projects.map(project => project.id),
-        count: projects.length,
-        maxProjects: typeof maxProjects === 'number' ? maxProjects : null
-      }));
-      await page.locator('#designProjectJsonFile').setInputFiles({
-        name: 'codelab-design-project-import.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(command.args.json, 'utf8')
+    result = await page.evaluate(async json => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: workspaceRevision,
+          operationId: 'import_' + crypto.randomUUID().replace(/-/g, ''),
+          operations: [{ type: 'design.import.json', json }]
+        })
       });
-      try {
-        await page.waitForFunction(
-          beforeIds => projects.some(project => !beforeIds.includes(project.id)),
-          before.ids,
-          { timeout: 15000 }
-        );
-        await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight, null, { timeout: 20000 });
-      } catch (_) {
-        const state = await page.evaluate(beforeIds => ({
-          projectCount: projects.length,
-          newProjects: projects.filter(project => !beforeIds.includes(project.id)).map(project => ({ id: project.id, name: project.name })),
-          toastText: document.querySelector('[role="status"]')?.textContent || document.querySelector('#toastContainer')?.textContent || null,
-          syncStatus: document.getElementById('statusText')?.textContent || null
-        }), before.ids);
-        if (!state.newProjects.length) {
-          return { imported: false, rejected: true, reason: 'The app rejected the JSON or did not create a project.', ...state };
-        }
-        throw new Error('Import started but did not settle: ' + JSON.stringify(state));
-      }
-      return await page.evaluate(beforeIds => {
-        const added = projects.filter(project => !beforeIds.includes(project.id));
-        if (added.length !== 1) throw new Error('Expected exactly one imported project; found ' + added.length + '.');
-        const project = added[0];
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localSnapshotVerified = Array.isArray(snapshot) && snapshot.some(item =>
-          item?.id === project.id && item.name === project.name && item.design?.elements?.length === project.design?.elements?.length
-        );
-        return {
-          imported: true,
-          projectId: project.id,
-          name: project.name,
-          type: project.type,
-          elementCount: project.design?.elements?.length || 0,
-          frame: project.design?.frame || null,
-          newProjectCount: added.length,
-          localSnapshotVerified,
-          syncStatus: document.getElementById('statusText')?.textContent || null
-        };
-      }, before.ids);
-    })();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design import failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      return { imported: true, projectId: data.results?.[0]?.projectId, name: data.results?.[0]?.name, elementCount: data.results?.[0]?.elementCount || 0, revision: data.revision };
+    }, command.args.json);
+    await refreshWorkspaceFromServer();
   } else if (command.action === 'project_export_html') {
     stage = 'project_export_html';
-    result = await page.evaluate(({ projectId, maxChars }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('HTML export requires a web project.');
-      const code = project.code || {};
-      const content = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>' +
-        String(code.css || '') + '</style></head><body>' + String(code.html || '') + '<script>' +
-        String(code.js || '').replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
+    result = await page.evaluate(async ({ projectId, maxChars }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.code.read', args: { projectId, source: 'main', languages: ['html', 'css', 'js'], maxChars: 200000 } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless project read failed (HTTP ' + response.status + ').');
+      const fields = data.result.fields;
+      if (Object.values(fields).some(field => field.truncated)) throw new Error('Project code is too large to export in one response; read smaller sections first.');
+      const content = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>' +
+        String(fields.css.value || '') + '</style></head><body>' + String(fields.html.value || '') + '<script>' +
+        String(fields.js.value || '').replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
       const limit = maxChars || 7000;
-      return { projectId, name: project.name, mimeType: 'text/html', length: content.length, content: content.slice(0, limit), truncated: content.length > limit };
+      return { projectId, mimeType: 'text/html', length: content.length, content: content.slice(0, limit), truncated: content.length > limit, revision: data.revision };
     }, { projectId: command.args.project_id, maxChars: command.args.max_chars || 7000 });
   } else if (command.action === 'project_convert_design_to_web') {
     stage = 'project_convert_design_to_web';
     result = await page.evaluate(async projectId => {
-      const source = projects.find(item => item && item.id === projectId);
-      if (!source || source.type !== 'design' || !source.design) throw new Error('Source must be an existing design project.');
-      const sourceSnapshot = JSON.stringify(source.design);
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 250));
-      await convertDesignToWeb();
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const converted = projects.find(item => item && item.id === projectId);
-      if (!converted || converted.type === 'design' || !converted.code?.html) {
-        throw new Error('Design conversion did not convert the source project in place.');
-      }
-      const sourceUnchanged = JSON.stringify(converted.design) === sourceSnapshot;
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item =>
-          item?.id === projectId &&
-          item.type !== 'design' &&
-          item.code?.html === converted.code.html &&
-          JSON.stringify(item.design) === sourceSnapshot
-        );
-      } catch (_) {}
-      if (!sourceUnchanged) throw new Error('Source design changed during conversion.');
-      if (!localVerified) throw new Error('Converted web project and preserved design were not verified in the local snapshot.');
-      return {
-        sourceProjectId: projectId,
-        projectId: converted.id,
-        name: converted.name,
-        type: converted.type,
-        convertedInPlace: true,
-        sourceDesignPreserved: sourceUnchanged,
-        codeLengths: { html: converted.code.html?.length || 0, css: converted.code.css?.length || 0, js: converted.code.js?.length || 0 },
-        localSnapshotVerified: localVerified
-      };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: workspaceRevision,
+          operationId: 'convert_' + crypto.randomUUID().replace(/-/g, ''),
+          operations: [{ type: 'design.convert.toWeb', projectId }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design conversion failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      return { convertedInPlace: true, projectId, revision: data.revision, result: data.results?.[0] || null, designPreserved: data.results?.[0]?.designPreserved === true };
     }, command.args.project_id);
+    await refreshWorkspaceFromServer();
+  } else if (command.action === 'headless_ai_generate') {
+    stage = 'headless_ai_generate';
+    result = await page.evaluate(async ({ projectId, source, prompt, baseRevision, operationId, maxTokens }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId);
+      const postHeadless = async (path, body) => {
+        const response = await fetch(endpoint + path, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          const error = new Error(data.error === 'revision_conflict'
+            ? 'Workspace changed while the AI was preparing code. The provider request may have consumed quota, but no code was saved; refresh and rebase before trying again.'
+            : 'Headless AI request conflict (HTTP 409): ' + (data.error || 'conflict'));
+          error.status = 409;
+          error.data = data;
+          throw error;
+        }
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Headless API failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const settings = aiSettings && typeof aiSettings === 'object' ? aiSettings : {};
+      const serverSettings = serverAi && typeof serverAi === 'object' ? serverAi : {};
+      const keyDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+        serverSettings.serverKey ? 'server-configured' : String(settings.apiKey || '')
+      ));
+      const keyFingerprint = Array.from(new Uint8Array(keyDigest)).map(value => value.toString(16).padStart(2, '0')).join('');
+      const providerConfig = {
+        projectId, source, prompt, baseRevision,
+        mode: settings.mode || 'auto',
+        model: settings.model || 'gpt-4o-mini',
+        baseUrl: serverSettings.serverKey ? 'server-configured' : (settings.baseUrl || ''),
+        keyFingerprint,
+        serverKey: !!serverSettings.serverKey,
+        maxTokens: maxTokens === undefined ? null : maxTokens
+      };
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(providerConfig)));
+      const requestKey = Array.from(new Uint8Array(digest)).map(value => value.toString(16).padStart(2, '0')).join('');
+
+      const status = await postHeadless('/headless/query', {
+        action: 'headless.operation.status',
+        args: { operationId, requestKey }
+      });
+      if (status.result.found) {
+        const readback = await postHeadless('/headless/query', {
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 }
+        });
+        return {
+          operationId, replayed: true, revision: status.result.revision,
+          currentRevision: readback.revision, previousResults: status.result.results,
+          readbackAvailable: Object.values(readback.result.fields).every(field => !field.truncated)
+        };
+      }
+
+      const current = await postHeadless('/headless/query', {
+        action: 'project.code.read',
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        expectedRevision: baseRevision
+      });
+      const code = {};
+      for (const key of ['html', 'css', 'js']) {
+        const field = current.result.fields[key];
+        if (!field || field.truncated) throw new Error('Project ' + key.toUpperCase() + ' exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
+        code[key] = field.value;
+      }
+      if (code.html.length + code.css.length + code.js.length > 200000) {
+        throw new Error('Combined project code exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
+      }
+
+      if (!serverSettings.serverKey && !settings.apiKey) throw new Error('No AI provider key is configured for this user, and no server key is available. No provider request was made.');
+      const payload = { prompt, code };
+      if (serverSettings.serverKey) {
+        if (settings.model && settings.model !== 'gpt-4o-mini') payload.model = settings.model;
+      } else {
+        payload.model = settings.model || 'gpt-4o-mini';
+        if (settings.baseUrl) payload.baseUrl = settings.baseUrl;
+        if (settings.apiKey) payload.apiKey = settings.apiKey;
+      }
+      if (maxTokens !== undefined) payload.maxTokens = maxTokens;
+      const aiResponse = await fetch('/api/ai/complete', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const aiData = await aiResponse.json().catch(() => ({}));
+      if (!aiResponse.ok) {
+        if (aiResponse.status === 429) {
+          const wait = aiData.retryAfterSeconds || (aiData.retryAfter ? Number(aiData.retryAfter) : 60);
+          throw new Error('AI rate limit reached (' + (aiData.rateLimitScope || 'provider/server') + '). Wait approximately ' + wait + ' seconds. No project code was changed.');
+        }
+        throw new Error('AI generation failed (' + aiResponse.status + '): ' + (aiData.message || aiData.error || 'provider error') +
+          (aiData.rateLimit ? ' | provider rate-limit data: ' + JSON.stringify(aiData.rateLimit) : ''));
+      }
+
+      const generated = {
+        html: typeof aiData.html === 'string' ? aiData.html : code.html,
+        css: typeof aiData.css === 'string' ? aiData.css : code.css,
+        js: typeof aiData.js === 'string' ? aiData.js : code.js
+      };
+      for (const key of ['html', 'css', 'js']) {
+        if (generated[key].length > 500000) throw new Error('Generated ' + key.toUpperCase() + ' exceeds the 500000-character project limit; no code was saved.');
+      }
+      const changedFields = ['html', 'css', 'js'].filter(key => generated[key] !== code[key]);
+      if (!changedFields.length) {
+        return {
+          operationId, noChanges: true, model: aiData.model, via: aiData.via,
+          usage: aiData.usage || null, rateLimit: aiData.rateLimit || null,
+          message: aiData.message || 'The provider returned no code changes.'
+        };
+      }
+
+      const operations = [];
+      let requestKeyAttached = false;
+      for (const key of changedFields) {
+        const value = generated[key];
+        const chunks = value.length ? Array.from({ length: Math.ceil(value.length / 50000) }, (_, index) => value.slice(index * 50000, (index + 1) * 50000)) : [''];
+        chunks.forEach((chunk, index) => {
+          const operation = { type: 'web.code.write', projectId, source, mode: index === 0 ? 'replace' : 'append' };
+          operation[key] = chunk;
+          if (!requestKeyAttached) {
+            operation.headlessAiRequestKey = requestKey;
+            requestKeyAttached = true;
+          }
+          operations.push(operation);
+        });
+      }
+      if (operations.length > 100) throw new Error('Generated code requires more than 100 safe chunks; split the task before saving.');
+      const saved = await postHeadless('/headless', { baseRevision, operationId, operations });
+      const readback = await postHeadless('/headless/query', {
+        action: 'project.code.read',
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        expectedRevision: saved.revision
+      });
+      const readbackVerified = changedFields.every(key =>
+        readback.result.fields[key] && !readback.result.fields[key].truncated &&
+        readback.result.fields[key].value === generated[key]
+      );
+      if (!readbackVerified) throw new Error('AI code was saved, but server readback did not match the generated output.');
+      return {
+        operationId, replayed: !!saved.replayed, revision: saved.revision,
+        changedFields, message: aiData.message || 'AI changes saved.',
+        model: aiData.model, via: aiData.via,
+        usage: aiData.usage || null, rateLimit: aiData.rateLimit || null,
+        readbackVerified
+      };
+    }, {
+      projectId: command.args.project_id,
+      source: command.args.source || 'main',
+      prompt: command.args.prompt,
+      baseRevision: command.args.base_revision,
+      operationId: command.args.operation_id,
+      maxTokens: command.args.max_tokens
+    });
   } else if (command.action === 'ai_generate') {
     stage = 'ai_generate';
     result = await page.evaluate(async ({ projectId, source, prompt }) => {
@@ -686,6 +926,120 @@ try {
       const saved = await saveProjectsToStorage();
       return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
     }, { projectId: command.args.project_id, operation: command.args.operation });
+  } else if (command.action === 'headless_batch') {
+    stage = 'headless_batch';
+    result = await page.evaluate(async ({ baseRevision, operationId, operations }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision, operationId, operations })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error('Headless revision conflict (HTTP 409). Read the latest workspace and design revisions, rebase the batch, and retry with a new operation_id. Keep the same operation_id only for an exact retry.');
+      }
+      if (!response.ok || data.ok !== true) {
+        throw new Error('Headless workspace request failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      }
+      if (typeof refreshWorkspaceFromServer !== 'function' || !(await refreshWorkspaceFromServer())) {
+        throw new Error('Headless operation was accepted, but the web app could not read the saved workspace back.');
+      }
+      const createdId = data.results.map(item => item.projectId).find(Boolean);
+      const requestedId = [...operations].reverse().map(item => item.projectId || item.sourceProjectId).find(Boolean);
+      const visibleProjectId = createdId || requestedId || null;
+      if (visibleProjectId && projects.some(item => item && item.id === visibleProjectId) && typeof openProject === 'function') {
+        await openProject(visibleProjectId);
+        await new Promise(resolve => setTimeout(resolve, 900));
+      }
+      return {
+        revision: data.revision,
+        replayed: data.replayed === true,
+        operationCount: operations.length,
+        results: data.results.map(item => {
+          const copy = { ...item };
+          if (typeof copy.previewSvg === 'string') {
+            copy.previewSvgLength = copy.previewSvg.length;
+            delete copy.previewSvg;
+          }
+          return copy;
+        }),
+        serverReadbackVerified: true,
+        openedProjectId: visibleProjectId
+      };
+    }, {
+      baseRevision: command.args.base_revision,
+      operationId: command.args.operation_id,
+      operations: command.args.operations
+    });
+  } else if (command.action === 'headless_design_system') {
+    stage = 'headless_design_system';
+    result = await page.evaluate(async ({ operation, baseRevision, settings, json }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/design-system';
+      const call = async body => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          throw new Error('Workspace design-system revision conflict (HTTP 409). Read the latest settings and retry against its current revision.');
+        }
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Headless design-system request failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const data = await call({ action: operation, baseRevision, settings, json });
+      if (operation === 'write' || operation === 'import') {
+        const readback = await call({ action: 'read' });
+        const readbackVerified = JSON.stringify(readback.settings) === JSON.stringify(data.settings) &&
+          readback.revision === data.revision;
+        if (!readbackVerified) throw new Error('Design-system save was acknowledged but server readback did not match.');
+        return { operation, revision: data.revision, updatedAt: data.updatedAt, settings: readback.settings, readbackVerified };
+      }
+      return operation === 'read'
+        ? { operation, revision: data.revision, updatedAt: data.updatedAt, settings: data.settings, readOnly: true }
+        : { operation, revision: data.revision, updatedAt: data.updatedAt, json: data.json, css: data.css, readOnly: true };
+    }, {
+      operation: command.args.operation,
+      baseRevision: command.args.base_revision,
+      settings: command.args.settings,
+      json: command.args.json
+    });
+  } else if (command.action === 'headless_query') {
+    stage = 'headless_query';
+    result = await page.evaluate(async ({ action, args, expectedRevision }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action, args, expectedRevision })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error('Headless query revision conflict (HTTP 409). Refresh the workspace and repeat the read against the current revision.');
+      }
+      if (!response.ok || data.ok !== true) {
+        throw new Error('Headless query failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      }
+      return { revision: data.revision, action: data.action, result: data.result, readOnly: true };
+    }, {
+      action: command.args.query_action,
+      args: command.args.query_args || {},
+      expectedRevision: command.args.expected_revision
+    });
   } else if (command.action === 'project_create') {
     stage = 'project_create';
     result = await page.evaluate(async ({ name, type }) => {
@@ -1514,116 +1868,89 @@ try {
       message: 'El editor real ejecutó HTML/CSS/JS en su vista previa; el botón, el campo y los estilos respondieron como se esperaba.'
     };
   } else if (command.action === 'preview_diagnostics') {
-    stage = 'inspect_preview';
-    const frameElement = page.locator('#previewIframe');
-    const frameExists = await frameElement.count() > 0;
-    const previewFrame = page.frameLocator('#previewIframe');
-    let preview = { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
-    if (frameExists) {
-      const src = await frameElement.getAttribute('src');
-      if (command.args.self_test === true) {
-        // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
-        const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
-        await frameElement.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
-        await previewFrame.locator('#codelab-diagnostic-probe').waitFor({ state: 'attached', timeout: 10000 });
-        await page.waitForTimeout(300);
-      }
-      preview = await previewFrame.locator('html').evaluate(() => {
-          const body = document.body;
-          const elements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
-            id: el.id || null,
-            type: el.getAttribute('type') || null,
-            disabled: Boolean(el.disabled)
-          }));
-          const tagCounts = {};
-          for (const el of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
-            const tag = el.tagName.toLowerCase();
-            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-          }
-          return {
-            available: true,
-            readyState: document.readyState,
-            title: document.title || '',
-            frameUrl: location.href,
-            text: (body?.innerText || '').trim().slice(0, 1200),
-            elementCount: document.querySelectorAll('*').length,
-            tagCounts,
-            interactiveElements: elements
-          };
+    stage = 'inspect_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'diagnostics');
+    try {
+      const preview = await previewSession.frame.locator('html').evaluate(() => {
+        const body = document.body;
+        const interactiveElements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[role="link"]')).slice(0, 60).map(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.getAttribute('aria-label') || element.getAttribute('placeholder') || '').trim().slice(0, 100),
+          id: element.id || null,
+          type: element.getAttribute('type') || null,
+          disabled: Boolean(element.disabled)
+        }));
+        const tagCounts = {};
+        for (const element of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
+          const tag = element.tagName.toLowerCase();
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        }
+        return {
+          available: true, readyState: document.readyState, title: document.title || '',
+          frameUrl: location.href, text: (body?.innerText || '').trim().slice(0, 1200),
+          elementCount: document.querySelectorAll('*').length, tagCounts, interactiveElements
+        };
       });
-      preview.src = src || null;
-      preview.frameUrl = safeUrl(preview.frameUrl);
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      preview.previewMessages = messages.slice(0, 60);
+      preview.consoleErrors = messages.filter(message => message.logType === 'error').slice(0, 30);
       preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
       preview.selfTest = command.args.self_test === true;
+      preview.workspaceRevision = previewSession.revision;
+      result = {
+        page: { url: safeUrl(targetUrl), title: 'CodeLab headless preview host', documentReady: 'complete' },
+        preview,
+        browserDiagnostics: previewSession.diagnostics
+      };
+    } finally {
+      await previewSession.context.close().catch(() => {});
     }
-    result = {
-      page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
-      preview,
-      browserDiagnostics
-    };
   } else if (command.action === 'preview_interact') {
-    stage = 'interact_with_preview';
-    const frameElement = page.locator('#previewIframe');
-    if (await frameElement.count() === 0) {
-      result = { ok: false, reason: 'No se encontró la vista previa en esta pantalla.', steps: [] };
-    } else {
-      const previewFrame = page.frameLocator('#previewIframe');
-      if (command.args.self_test === true) {
-        // Disposable fixture only: this replaces srcdoc in the isolated bridge browser, not a saved project.
-        const probeHtml = '<!doctype html><html><head><title>CodeLab interaction probe</title></head><body><main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main><script>const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");</script></body></html>';
-        await frameElement.evaluate((el, html) => {
-          const probe = document.createElement('iframe');
-          probe.id = 'previewIframe';
-          probe.setAttribute('sandbox', 'allow-scripts allow-forms');
-          probe.style.cssText = 'position:fixed;left:12px;bottom:12px;width:640px;height:360px;z-index:2147483000;background:white;border:2px solid #64748b';
-          probe.srcdoc = html;
-          el.remove();
-          document.body.appendChild(probe);
-        }, probeHtml);
-        await previewFrame.locator('#probe-increment').waitFor({ state: 'attached', timeout: 10000 });
-      }
-      const isVisible = await frameElement.isVisible();
-      if (!isVisible && command.args.self_test !== true) {
-        result = { ok: false, reason: 'La vista previa está presente pero oculta; abre un proyecto web en el editor antes de interactuar.', steps: [] };
-      } else {
-        const steps = [];
-        for (let index = 0; index < command.args.steps.length; index += 1) {
-          currentStep = index + 1;
-          const step = command.args.steps[index];
-          const locator = previewFrame.locator(step.selector).first();
-          if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside #previewIframe.');
-          if (step.action === 'click') {
-            const tag = await locator.evaluate(el => el.tagName.toLowerCase());
-            if (tag === 'a') {
-              const href = await locator.getAttribute('href') || '';
-              if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
-            }
-            await locator.click({ timeout: 10000 });
-          } else if (step.action === 'fill') {
-            await locator.fill(step.value, { timeout: 10000 });
-          } else if (step.action === 'select') {
-            await locator.selectOption(step.value, { timeout: 10000 });
+    stage = 'interact_with_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'interactions');
+    try {
+      const steps = [];
+      for (let index = 0; index < command.args.steps.length; index += 1) {
+        currentStep = index + 1;
+        const step = command.args.steps[index];
+        const locator = previewSession.frame.locator(step.selector).first();
+        if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside the isolated headless preview.');
+        if (step.action === 'click') {
+          const tag = await locator.evaluate(element => element.tagName.toLowerCase());
+          if (tag === 'a') {
+            const href = await locator.getAttribute('href') || '';
+            if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
           }
-          const observed = await locator.evaluate(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || el.textContent || '').trim().slice(0, 300),
-            value: ('value' in el) ? String(el.value).slice(0, 300) : null,
-            disabled: Boolean(el.disabled)
-          })).catch(() => null);
-          steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
+          await locator.click({ timeout: 10000 });
+        } else if (step.action === 'fill') {
+          await locator.fill(step.value, { timeout: 10000 });
+        } else if (step.action === 'select') {
+          await locator.selectOption(step.value, { timeout: 10000 });
         }
-        currentStep = null;
-        result = {
-          ok: true,
-          previewTitle: await previewFrame.locator('html').evaluate(() => document.title || ''),
-          text: await previewFrame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200)),
-          steps,
-          selfTest: command.args.self_test === true,
-          browserDiagnostics
-        };
+        await previewSession.page.waitForTimeout(60);
+        const observed = await locator.evaluate(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.textContent || '').trim().slice(0, 300),
+          value: ('value' in element) ? String(element.value).slice(0, 300) : null,
+          disabled: Boolean(element.disabled)
+        })).catch(() => null);
+        steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
       }
+      currentStep = null;
+      const previewTitle = await previewSession.frame.locator('html').evaluate(() => document.title || '');
+      const text = await previewSession.frame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200));
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      result = {
+        ok: true, projectId, source: command.args.source || 'main',
+        previewTitle, text, steps, selfTest: command.args.self_test === true,
+        previewMessages: messages.slice(0, 60), browserDiagnostics: previewSession.diagnostics,
+        workspaceRevision: previewSession.revision
+      };
+    } finally {
+      currentStep = null;
+      await previewSession.context.close().catch(() => {});
     }
   } else if (command.action === 'read_page') {
     result = {

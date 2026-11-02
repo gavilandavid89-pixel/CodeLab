@@ -1,0 +1,31 @@
+name: Headless Design Engine
+
+on:
+  push:
+    branches:
+      - feat/headless-design-engine-core
+  pull_request:
+    paths:
+      - 'headless/**'
+      - '.github/workflows/headless-design-engine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  headless-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check headless engine and workspace runtime syntax
+        run: |
+          node --check headless/design-engine.js
+          node --check headless/workspace-runtime.js
+          node --check server.js
+      - name: Run isolated headless engine and workspace runtime tests
+        run: node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js

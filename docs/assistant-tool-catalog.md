@@ -100,3 +100,131 @@ Added two design-specific operations backed by the existing editor:
 - `design_prototype_target_set`: assign a bounded, validated target to an eligible layer using the editor's existing prototype-target handler and verify the saved `href` value.
 
 Both require the exact design project ID and the admin session, validate IDs and arguments, and return before/after evidence. They do not call AI providers. Contract tests check registration, validation, and use of the original editor functions. Live tests should use a disposable design project and clean it up after verification.
+
+## Section 15 — Headless workspace runtime
+
+Added **headless_batch**, an authenticated bridge operation that applies a batch directly to the saved workspace without driving editor controls. The server uses the same workspace ownership checks, project validation, revision counter, and atomic persistence as the visible web app.
+
+Supported runtime operations:
+- **project.create**: create a web or design project; the runtime generates a stable project ID when omitted.
+- **project.rename**: rename an existing project while preserving its ID and content.
+- **project.duplicate**: copy an existing project into a new ID without carrying an active copy branch or merge-undo history.
+- **project.delete**: permanently delete a project only with explicit approval and remove incoming visual-flow links.
+- **web.code.write**: replace, append, or prepend bounded HTML/CSS/JS chunks on a web project or existing copy branch.
+- **design.batch**: apply canvas, grid, Auto Layout, layer, alignment, distribution, duplication, reordering, and deletion operations through the shared headless design engine, including an SVG preview result.
+- **design.flow.connect / design.flow.disconnect**: create or remove navigation links between design projects.
+
+Every batch supplies base_revision, operation_id, and 1–100 operations. Workspace revision conflicts return HTTP 409; exact retries with the same operation ID and payload replay the prior result without applying changes twice; reusing an ID with different content is rejected. Large code fields can be written in ordered chunks, up to the same 500,000-character field limit enforced by the workspace validator. Receipt records are bounded and remain server-side. Failed batches are atomic and do not partially modify the workspace.
+
+After the server accepts a batch, the bridge reads the workspace back through the existing authenticated web session and opens the affected project in the regular CodeLab UI for visual evidence. The bridge is therefore the delivery/verification path, not the editing engine itself. No Render deployment or production mutation is implied by CI success; live verification requires the updated server and bridge to be deployed.
+
+## Section 15 — Headless component insertion and design-token application
+
+The direct headless workspace runtime now exposes two operations backed by the same browser-independent modules used by the website:
+
+- `component.insert` resolves a real component from `public/component-library.js`, inserts its HTML into a web project, and writes a stable component marker. The marker prevents duplicate insertion even if a caller retries using a different operation ID.
+- `design.tokens.apply` sanitizes settings and uses `public/design-tools.js` to generate CSS variables and replace only the managed token block, preserving unmanaged CSS.
+
+Both operations run in an atomic authenticated workspace batch, respect the canonical 500,000-character project-field limit, and persist through the existing workspace path. This does not yet expose the separate workspace-level design-system settings file for headless read/import/save; that remains explicitly pending.
+
+## Section 16 — Read-only headless inspection and catalog queries
+
+Added authenticated `POST /api/workspace/:id/headless/query` and the bridge action `headless_query`. These are read-only and do not increment the workspace revision:
+
+- `component.search` and `component.inspect` use the real website catalog and return bounded results/standalone HTML.
+- `design.tokens.generate` reuses the real design-tools sanitizer and token generator.
+- `project.inspect`, `project.code.read`, and `design.read` inspect saved workspace data with explicit size limits and truncation metadata. Image payloads are summarized by presence/length instead of returned as large base64 strings.
+- `accessibility.audit` runs the existing static HTML audit against the saved web project.
+
+The endpoint requires workspace authorization and owner enforcement. Optional `expectedRevision` rejects stale reads with HTTP 409. The bridge reads directly through the endpoint and does not open a project or click editor controls.
+
+## Section 17 — Workspace-level design-system persistence
+
+Added authenticated `POST /api/workspace/:id/headless/design-system` and bridge action `headless_design_system` for the workspace-scoped settings file that lives separately from project code:
+
+- `read` returns saved settings and the design-system revision.
+- `write` saves sanitized settings with optimistic `baseRevision` checks.
+- `import` uses the shared `public/design-tools.js` JSON parser, also used by the website's import button.
+- `export` returns the same canonical CodeLab JSON tokens and CSS variables as the website.
+
+The design-system store now has its own monotonic revision (legacy version-1 records migrate as revision 0); it does not increment the project workspace revision. Stale writes return HTTP 409. Bridge writes/imports require explicit approval and verify the saved settings by reading them back.
+
+## Section 18 — Headless branches and design history
+
+The workspace runtime now supports the saved copy-branch model and persistent design undo/redo:
+
+- `branch.create` creates an isolated working copy with base and branch code.
+- `web.code.write` can target that branch.
+- `branch.merge` uses the same per-file three-way merge rule as the website. Conflicts return HTTP 409 and do not modify either side. Successful merges keep a bounded backup.
+- `branch.undo_merge` restores the prior main code and branch. Both merge and undo require explicit approval.
+- `branch.inspect` and `design.history.inspect` expose read-only status.
+- `design.batch` records snapshots in the existing project `designUndoStack` / `designRedoStack` fields; `design.history.undo` and `design.history.redo` restore them with monotonic design revisions.
+
+This is project-state functionality; it does not simulate the web editor's branch toggle, confirmation dialog, or undo buttons.
+
+## Section 19 — Responsive design templates
+
+Added a browser-independent template module for the website's `landing`, `dashboard`, and `portfolio` templates:
+
+- `design.template.list` inspects available templates.
+- `design.template.apply` generates regular design-layer records using the saved custom canvas width, selecting compact geometry at 768px or below.
+- Template application updates the design revision and records an undo snapshot.
+- Replacing existing layers requires explicit operation approval and bridge-level command approval; the previous design is recoverable through `design.history.undo`.
+
+Templates use the same layer schema and SVG renderer as manually authored design elements.
+
+## Section 20 — Design backup, SVG/HTML export, and web conversion
+
+Added direct headless design-project export/import and conversion:
+
+- `design.export.json` returns the existing `codelab-design-project` v1 backup format.
+- `design.export.svg` and `design.export.html` use the browser-independent design engine renderer.
+- `design.import.json` validates and sanitizes a backup, enforces size/layer/code limits, remaps element IDs and internal layer links, and creates a new design project.
+- `design.convert.toWeb` stores a responsive HTML export in the same project while preserving its original design data.
+
+HTML export now produces semantic per-layer DOM, responsive free/auto layout, safe image/link sources, and interactive multi-screen navigation for connected design projects, matching the website's richer converter without opening the editor.
+
+## Section 21 — Headless AI generation and provider quota telemetry
+
+Added approved bridge action `headless_ai_generate`:
+
+- Reads the saved main or branch code through `headless_query`; it does not open a project, switch branches in the UI, or invoke the chat composer.
+- Calls the same `/api/ai/complete` proxy used by CodeLab and reads the current user's saved provider settings, keeping the API key out of bridge results.
+- Enforces prompt/code/output limits, supports a bounded `max_tokens` budget, chunks generated files into 50k writes, persists through `headless_batch`, and verifies server readback.
+- Uses a SHA-256 request fingerprint in the private headless operation receipt. Exact retries after a lost response are detected before a second provider call; a different request under the same operation ID is rejected.
+- Returns actual provider usage and recognized rate-limit headers when available. CodeLab's own 20-requests/minute per-IP limiter reports a 60-second retry hint. Providers that do not expose daily quota data are reported as unknown; no quota is fabricated and 429s are not retried automatically.
+
+The legacy `ai_generate` UI action remains available for the browser workflow; the new `headless_ai_generate` is the direct saved-workspace path.
+
+## Headless parity follow-through — legacy bridge actions
+
+The legacy bridge action names for design import, design-system import/export, web-project HTML export, and design-to-web conversion now call authenticated headless APIs. They no longer open editor modals, set file inputs, wait for browser downloads, or invoke the design conversion UI. This preserves caller compatibility while making those capabilities independent of editor visibility.
+
+
+## Section 22 — Headless image-file attachment
+
+The website's design inspector accepts PNG, JPEG, WebP, and GIF files up to 2 MiB. It reads the selected file as a Base64 data URL, stores that data URL in the selected image layer's `src`, and uses the filename as fallback alt text when the layer still has its default description.
+
+The headless design engine now exposes the equivalent `image.attach` operation inside `design.batch`:
+
+```json
+{
+  "type": "design.batch",
+  "projectId": "proj_EXACT_ID",
+  "operations": [
+    {
+      "type": "image.attach",
+      "id": "hero-image",
+      "filename": "hero-banner.webp",
+      "dataUrl": "data:image/webp;base64,BASE64_CONTENT"
+    }
+  ]
+}
+```
+
+It requires an existing image layer, accepts only PNG/JPEG/WebP/GIF Base64 data URLs, validates Base64 encoding and decoded size (maximum 2 MiB), stores the data URL in the existing layer model, and returns MIME type/byte length. A custom alt description is preserved; the filename stem is used only when alt is empty or still the editor's default. The enclosing design batch provides the normal atomicity, revision checks, undo snapshot, and workspace persistence.
+
+This mirrors the website's current embedded-image model; it does not invent a separate asset library or remote upload service because the editor itself does not currently provide one. The operation is covered by engine tests for supported formats, malformed data, size boundaries, wrong layer type, and alt-text preservation.
+
+
+**Transport limitation:** the GitHub issue-mailbox `headless_batch` bridge currently caps serialized operations at 50,000 characters, so a full 2 MiB Base64 image cannot be carried through that small command envelope. The image operation is available through the authenticated headless workspace API, whose configured request-body limit accommodates the editor's image size. Passing large binary payloads through the issue mailbox remains a transport-parity gap; do not claim the 50,000-character bridge path can upload a full-size image.

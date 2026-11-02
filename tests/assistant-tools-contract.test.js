@@ -31,7 +31,8 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
-assert.match(bridge, /Source design changed during conversion/, 'design conversion must preserve its source');
+assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/, 'design conversion must verify source preservation from the headless API');
+assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/, 'design conversion must use the shared headless runtime');
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
 assert.match(bridge, /AI generation changes project code and may consume API quota/, 'AI generation must require explicit approval');
 assert.match(bridge, /await processAiInstruction\(\)/, 'AI generation must reuse the app copilot path');
@@ -124,17 +125,17 @@ assert.match(bridge, /ariaLabel:[\s\S]{0,240}dataAction:[\s\S]{0,160}href:/,
 
 
 const conversionHandler = bridge.slice(
-  bridge.indexOf("command.action === 'project_convert_design_to_web'"),
-  bridge.indexOf("command.action === 'ai_generate'", bridge.indexOf("command.action === 'project_convert_design_to_web'"))
+  bridge.indexOf("} else if (command.action === 'project_convert_design_to_web') {"),
+  bridge.indexOf("} else if (command.action === 'headless_ai_generate') {", bridge.indexOf("} else if (command.action === 'project_convert_design_to_web') {"))
 );
-assert.match(conversionHandler, /const converted = projects\.find\(item => item && item\.id === projectId\)/,
-  'design-to-web conversion must verify the app-supported in-place conversion of the same project');
-assert.match(conversionHandler, /convertedInPlace: true[\s\S]{0,220}sourceDesignPreserved: sourceUnchanged/,
-  'conversion must report that the source design remains available alongside generated web code');
-assert.match(conversionHandler, /item\.type !== 'design'[\s\S]{0,180}JSON\.stringify\(item\.design\) === sourceSnapshot/,
-  'conversion must verify the local snapshot stores web code and preserves the design model');
-assert.doesNotMatch(conversionHandler, /beforeIds|projects\.find\(item => !beforeIds\.has/,
-  'conversion must not expect the app to create a separate project when it converts the existing project in place');
+assert.match(conversionHandler, /\/api\/workspace\//,
+  'design-to-web conversion must call the authenticated workspace API');
+assert.match(conversionHandler, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/,
+  'design-to-web conversion must use the shared headless runtime on the same project');
+assert.match(conversionHandler, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/,
+  'conversion must verify that the original design source remains available');
+assert.doesNotMatch(conversionHandler, /openProject\(|convertDesignToWeb\(|projects\.find\(item => item && item\.id === projectId\)/,
+  'conversion must not depend on the editor or its in-memory project model');
 
 const projectCreateHandler = bridge.slice(
   bridge.indexOf("else if (command.action === 'project_create')"),
@@ -150,23 +151,21 @@ assert.match(projectCreateHandler, /serverReadbackVerified/,
 
 const importHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_import_json') {"), bridge.indexOf("} else if (command.action === 'project_export_html') {", bridge.indexOf("} else if (command.action === 'design_import_json') {")));
 assert.match(bridge, /'design_export', 'design_import_json'/, 'design JSON import must be explicitly allowlisted');
-assert.match(bridge, /design_import_json requires a JSON string between 2 and 10000 characters/, 'design JSON import must enforce a bounded payload');
-assert.match(importHandler, /locator\('#designProjectJsonFile'\)\.setInputFiles/, 'design JSON import must use the actual file input and app import handler');
-assert.match(importHandler, /localSnapshotVerified/, 'design JSON import must verify the imported project in the local snapshot');
-
+assert.match(bridge, /design_import_json requires a JSON string between 2 and 50000 characters/, 'design JSON import must enforce a bounded payload');
+assert.match(importHandler, /\/api\/workspace\//, 'design JSON import must use the authenticated headless workspace API');
+assert.match(importHandler, /type: 'design\.import\.json'/, 'design JSON import must use the shared runtime operation');
+assert.match(importHandler, /await refreshWorkspaceFromServer\(\)/, 'design JSON import must refresh the saved workspace after import');
 
 const systemExportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_export_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_export_json') {")));
 assert.match(bridge, /'design_system_import_json', 'design_system_export_json'/, 'design system JSON export must be explicitly allowlisted');
-assert.match(systemExportHandler, /locator\('#openDesignTools'\)\.click/, 'design system JSON export must open the real design tools modal first');
-assert.match(systemExportHandler, /locator\('#designToolsModal'\)\.waitFor\(\{ state: 'visible'/, 'design system JSON export must wait for the modal to become visible');
-assert.match(systemExportHandler, /locator\('#designToolsTab-tokens'\)\.click/, 'design system JSON export must switch to the tokens tab where the export button lives');
-assert.match(systemExportHandler, /locator\('#designToolsPanel-tokens'\)\.waitFor\(\{ state: 'visible'/, 'design system JSON export must wait for the tokens panel to be visible');
-assert.match(systemExportHandler, /locator\('#exportDesignSystemJson'\)\.click/, 'design system JSON export must use the actual export control');
-assert.match(systemExportHandler, /waitForEvent\('download'/, 'design system JSON export must capture the real browser download');
-assert.match(systemExportHandler, /parsed\.format !== 'codelab-design-system'/, 'design system JSON export must validate the exported schema');
+assert.match(systemExportHandler, /\/headless\/design-system/, 'design system JSON export must use the authenticated headless API');
+assert.match(systemExportHandler, /body: JSON\.stringify\(\{ action: 'export' \}\)/, 'design system export must request server-side token serialization');
+assert.match(systemExportHandler, /data\.json\?\.format/, 'design system export must return the canonical exported schema');
 
-const systemImportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_import_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_import_json') {")));
+const systemImportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_import_json') {"), bridge.indexOf("} else if (command.action === 'design_system_export_json') {", bridge.indexOf("} else if (command.action === 'design_system_import_json') {")));
 assert.match(bridge, /'design_import_json', 'design_system_import_json'/, 'design system JSON import must be explicitly allowlisted');
-assert.match(bridge, /design_system_import_json requires a JSON string between 2 and 10000 characters/, 'design system JSON import must enforce a bounded payload');
-assert.match(systemImportHandler, /locator\('#designSystemJsonFile'\)\.setInputFiles/, 'design system JSON import must use the actual file input and app handler');
-assert.match(systemImportHandler, /designToolsStatus/, 'design system JSON import must report the app result instead of assuming success');
+assert.match(bridge, /design_system_import_json requires a JSON string between 2 and 50000 characters/, 'design system JSON import must enforce a bounded payload');
+assert.match(systemImportHandler, /\/headless\/design-system/, 'design system JSON import must use the authenticated headless API');
+assert.match(systemImportHandler, /action: 'import', json, baseRevision: state\.revision/, 'design system import must use optimistic revision control');
+assert.doesNotMatch(importHandler + systemImportHandler + systemExportHandler, /locator\(|setInputFiles\(|waitForEvent\('download'/,
+  'design import/export must not depend on editor UI or browser download events');

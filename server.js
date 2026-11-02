@@ -12,6 +12,7 @@ const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
+const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -374,9 +375,9 @@ function workspaceFile(id) {
 function designSystemFile(id) {
   return path.join(WORKSPACES_DIR, safeId(id) + '.design-system.json');
 }
-function readDesignSystem(id) {
+function readDesignSystemRecord(id) {
   const file = designSystemFile(id);
-  if (!fs.existsSync(file)) return null;
+  if (!fs.existsSync(file)) return { version: 2, revision: 0, updatedAt: null, settings: null };
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -388,29 +389,47 @@ function readDesignSystem(id) {
     'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'
   ];
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
-      parsed.version !== 1 || typeof parsed.updatedAt !== 'string' ||
+      ![1, 2].includes(parsed.version) || typeof parsed.updatedAt !== 'string' ||
       !Number.isFinite(Date.parse(parsed.updatedAt)) ||
+      (parsed.version === 2 && (!Number.isInteger(parsed.revision) || parsed.revision < 1)) ||
       !parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings) ||
       !requiredSettings.every(key => Object.prototype.hasOwnProperty.call(parsed.settings, key))) {
     throw new Error('design_system_state_invalid');
   }
-  return designTools.sanitizeSettings(parsed.settings);
+  return {
+    version: 2,
+    revision: parsed.version === 2 ? parsed.revision : 0,
+    updatedAt: parsed.updatedAt,
+    settings: designTools.sanitizeSettings(parsed.settings)
+  };
 }
-function writeDesignSystem(id, settings) {
+function readDesignSystem(id) {
+  return readDesignSystemRecord(id).settings;
+}
+function writeDesignSystem(id, settings, expectedRevision) {
+  const current = readDesignSystemRecord(id);
+  if (expectedRevision !== undefined && expectedRevision !== current.revision) {
+    const error = new Error('design_system_revision_conflict');
+    error.code = 'DESIGN_SYSTEM_REVISION_CONFLICT';
+    error.revision = current.revision;
+    throw error;
+  }
+  const record = {
+    version: 2,
+    revision: current.revision + 1,
+    updatedAt: new Date().toISOString(),
+    settings: settings
+  };
   const file = designSystemFile(id);
   const tmp = file + '.tmp.' + process.pid + '.' + Date.now();
   try {
-    fs.writeFileSync(tmp, JSON.stringify({
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      settings: settings
-    }), { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tmp, file);
   } catch (error) {
-    // Keep failed settings writes from leaving sensitive workspace temp files behind.
     try { fs.unlinkSync(tmp); } catch (_) {}
     throw error;
   }
+  return record;
 }
 function emptyState(owner) {
   return {
@@ -418,6 +437,7 @@ function emptyState(owner) {
     revision: 0,
     updatedAt: new Date().toISOString(),
     projects: [],
+    headlessOperations: [],
     owner: owner || null
   };
 }
@@ -523,6 +543,9 @@ function readState(id) {
   if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
     throw new Error('workspace_updated_at_invalid');
   }
+  if (parsed.headlessOperations != null && (!Array.isArray(parsed.headlessOperations) || parsed.headlessOperations.length > 200 || parsed.headlessOperations.some(item => !item || typeof item.id !== 'string' || typeof item.hash !== 'string' || !Number.isInteger(item.revision) || !Array.isArray(item.results) || (item.requestKey != null && (typeof item.requestKey !== 'string' || !/^[a-f0-9]{64}$/i.test(item.requestKey)))))) {
+    throw new Error('workspace_headless_operations_invalid');
+  }
   if (parsed.owner != null && (
       typeof parsed.owner !== 'object' ||
       Array.isArray(parsed.owner) ||
@@ -537,6 +560,7 @@ function readState(id) {
     revision: Number.isInteger(parsed.revision) ? parsed.revision : 0,
     updatedAt: parsed.updatedAt || new Date().toISOString(),
     projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+    headlessOperations: Array.isArray(parsed.headlessOperations) ? parsed.headlessOperations : [],
     owner: parsed.owner || null
   };
 }
@@ -549,6 +573,7 @@ function writeState(id, state) {
     revision: state.revision,
     updatedAt: state.updatedAt,
     projects: state.projects,
+    headlessOperations: Array.isArray(state.headlessOperations) ? state.headlessOperations.slice(-200) : [],
     owner: state.owner || null
   };
   try {
@@ -1175,6 +1200,21 @@ async function resolvePublicProviderTarget(urlString) {
   };
 }
 
+function pickAiRateLimitHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return null;
+  const names = [
+    'x-ratelimit-limit-requests', 'x-ratelimit-remaining-requests', 'x-ratelimit-reset-requests',
+    'x-ratelimit-limit-tokens', 'x-ratelimit-remaining-tokens', 'x-ratelimit-reset-tokens',
+    'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after'
+  ];
+  const result = {};
+  for (const name of names) {
+    const value = headers[name];
+    if (value !== undefined && value !== null) result[name] = String(value).slice(0, 120);
+  }
+  return Object.keys(result).length ? result : null;
+}
+
 async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperature, maxTokens, publicUrl }) {
   const base = (baseUrl || AI_BASE_URL).replace(/\/$/, '');
   const groq = isGroqBase(base);
@@ -1222,7 +1262,8 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
       throw Object.assign(new Error('Respuesta no JSON del proveedor (HTTP ' + res.status + ')'), {
         status: res.status,
         body: (res.body || '').slice(0, 400),
-        model: modelId
+        model: modelId,
+        rateLimit: pickAiRateLimitHeaders(res.headers)
       });
     }
     return { res, parsed, modelId };
@@ -1273,7 +1314,7 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
       ('HTTP ' + res.status);
     throw Object.assign(
       new Error(String(msg) + ' [modelo=' + modelId + ']'),
-      { status: res.status, body: (res.body || '').slice(0, 400), model: modelId }
+      { status: res.status, body: (res.body || '').slice(0, 400), model: modelId, rateLimit: pickAiRateLimitHeaders(res.headers) }
     );
   }
 
@@ -1289,7 +1330,7 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
       model: modelId
     });
   }
-  return { content: String(content), raw: parsed, model: modelId };
+  return { content: String(content), raw: parsed, model: modelId, usage: parsed.usage || null, rateLimit: pickAiRateLimitHeaders(res.headers) };
 }
 
 function buildAiSystemPrompt(code) {
@@ -1648,7 +1689,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST' && pathname === '/api/ai/complete') {
         if (!checkAiRateLimit(ip)) {
-          return sendJson(res, 429, { error: 'ai_rate_limited', message: 'Demasiadas peticiones al copiloto. Espera un minuto.' });
+          return sendJson(res, 429, { error: 'ai_rate_limited', message: 'Demasiadas peticiones al copiloto. Espera un minuto.', retryAfterSeconds: 60, rateLimitScope: 'codelab-server-ip-window' });
         }
         const body = await readBody(req);
         const prompt = body && typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -1663,6 +1704,10 @@ const server = http.createServer(async (req, res) => {
         // Size guard
         if (code.html.length + code.css.length + code.js.length > 200000) {
           return sendJson(res, 413, { error: 'code_too_large' });
+        }
+        const requestedMaxTokens = body && body.maxTokens !== undefined ? body.maxTokens : AI_MAX_TOKENS;
+        if (!Number.isInteger(requestedMaxTokens) || requestedMaxTokens < 256 || requestedMaxTokens > AI_MAX_TOKENS) {
+          return sendJson(res, 400, { error: 'invalid_max_tokens', maxAllowed: AI_MAX_TOKENS });
         }
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
         if (clientKey.length > 4096) {
@@ -1706,13 +1751,13 @@ const server = http.createServer(async (req, res) => {
                 '\n\nResponde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
             }
           ];
-          const { content } = await proxyChatCompletions({
+          const { content, usage, rateLimit, model: providerModel } = await proxyChatCompletions({
             apiKey,
             baseUrl,
             model,
             messages,
             temperature: 0.1,
-            maxTokens: AI_MAX_TOKENS,
+            maxTokens: requestedMaxTokens,
             publicUrl: publicBaseUrl(req)
           });
           const result = parseAiJsonContent(content, code);
@@ -1722,8 +1767,11 @@ const server = http.createServer(async (req, res) => {
             css: result.css,
             js: result.js,
             message: result.message,
-            model: model,
-            via: usingServerKey ? 'server' : 'client-key'
+            model: providerModel || model,
+            via: usingServerKey ? 'server' : 'client-key',
+            usage,
+            rateLimit,
+            maxTokens: requestedMaxTokens
           });
         } catch (e) {
           console.error('AI proxy error:', e.message, e.body || '');
@@ -1731,8 +1779,10 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, status >= 500 ? 502 : status, {
             error: 'ai_upstream_failed',
             message: String(e.message || 'AI request failed').slice(0, 400),
-            model: model,
-            baseUrl: baseUrl.replace(/\/+$/, '')
+            model: e.model || model,
+            baseUrl: baseUrl.replace(/\/+$/, ''),
+            rateLimit: e.rateLimit || null,
+            retryAfter: e.rateLimit && e.rateLimit['retry-after'] ? e.rateLimit['retry-after'] : null,
           });
         }
       }
@@ -1825,6 +1875,59 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      const headlessDesignSystemMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/design-system$/);
+      if (req.method === 'POST' && headlessDesignSystemMatch) {
+        const id = safeId(headlessDesignSystemMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) ||
+            !['read', 'write', 'import', 'export'].includes(body.action)) {
+          return sendJson(res, 400, { error: 'invalid_headless_design_system_request' });
+        }
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        try {
+          enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          const current = readDesignSystemRecord(id);
+          if (body.action === 'read') {
+            return sendJson(res, 200, { ok: true, ...current });
+          }
+          if (body.action === 'export') {
+            const settings = current.settings || designTools.defaults;
+            const tokens = designTools.buildDesignTokens(settings);
+            return sendJson(res, 200, {
+              ok: true, revision: current.revision, updatedAt: current.updatedAt,
+              json: tokens, css: designTools.toCssVariables(settings)
+            });
+          }
+          if (!Number.isInteger(body.baseRevision) || body.baseRevision < 0) {
+            return sendJson(res, 400, { error: 'invalid_design_system_base_revision' });
+          }
+          let settings;
+          if (body.action === 'write') {
+            if (!body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) {
+              return sendJson(res, 400, { error: 'invalid_design_system' });
+            }
+            settings = designTools.sanitizeSettings(body.settings);
+          } else {
+            if (typeof body.json !== 'string' || body.json.length < 2 || body.json.length > 10 * 1024 * 1024) {
+              return sendJson(res, 400, { error: 'invalid_design_system_json' });
+            }
+            settings = designTools.parseDesignSystemImport(body.json);
+          }
+          const saved = writeDesignSystem(id, settings, body.baseRevision);
+          return sendJson(res, 200, { ok: true, ...saved });
+        } catch (error) {
+          if (error.code === 'DESIGN_SYSTEM_REVISION_CONFLICT') {
+            return sendJson(res, 409, { error: 'design_system_revision_conflict', revision: error.revision });
+          }
+          if (error instanceof SyntaxError || /sistema visual CodeLab|colores inválidos|fuera de rango/.test(error.message || '')) {
+            return sendJson(res, 400, { error: 'invalid_design_system_json', detail: error.message });
+          }
+          console.error('workspace_headless_design_system_failed', id, error.message);
+          return sendJson(res, 500, { error: 'headless_design_system_failed' });
+        }
+      }
+
       // Workspace-scoped design-system settings, kept separate from project payloads.
       const designSystemMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/design-system$/);
       if (designSystemMatch && (req.method === 'GET' || req.method === 'PUT')) {
@@ -1895,11 +1998,12 @@ const server = http.createServer(async (req, res) => {
           console.error('workspace_corrupt', id, error.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
         }
+        const { headlessOperations: _privateHeadlessReceipts, ...clientState } = state;
         return sendJson(res, 200, {
           ok: true,
           workspaceId: id,
           token: signWorkspace(id),
-          state: state,
+          state: clientState,
           user: sessionUser || null
         });
       }
@@ -1911,10 +2015,113 @@ const server = http.createServer(async (req, res) => {
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
           const state = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
-          return sendJson(res, 200, state);
+          const { headlessOperations: _privateHeadlessReceipts, ...clientState } = state;
+          return sendJson(res, 200, clientState);
         } catch (e) {
           console.error('workspace_corrupt', id, e.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
+        }
+      }
+
+      // Headless batches share workspace authentication, revision checks, and atomic persistence with the regular web editor.
+      const headlessMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless$/);
+      if (req.method === 'POST' && headlessMatch) {
+        const id = safeId(headlessMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body)) {
+          return sendJson(res, 400, { error: 'invalid_headless_request' });
+        }
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        try {
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          // Exact operation receipts are checked before revision matching so a lost-response retry cannot duplicate a saved change.
+          const result = applyHeadlessBatch(current, body);
+          if (!result.replayed) {
+            // Reuse the canonical workspace validator; headless operations must not bypass limits enforced on regular saves.
+            const validationError = validateProjects(result.state.projects);
+            if (validationError) {
+              return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
+            }
+            writeState(id, result.state);
+          }
+          return sendJson(res, 200, {
+            ok: true,
+            replayed: result.replayed,
+            revision: result.revision,
+            results: result.results
+          });
+        } catch (error) {
+          if (error.code === 'REVISION_CONFLICT') {
+            return sendJson(res, 409, { error: 'design_revision_conflict', revision: error.revision });
+          }
+          if (error.code === 'HEADLESS_REVISION_CONFLICT') {
+            return sendJson(res, 409, { error: 'revision_conflict', revision: error.revision });
+          }
+          if (error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT') {
+            return sendJson(res, 409, { error: 'operation_id_conflict' });
+          }
+          if (error.code === 'HEADLESS_INVALID_DESIGN_IMPORT') {
+            return sendJson(res, 400, { error: 'invalid_design_import', detail: error.message });
+          }
+          if (error.code === 'HEADLESS_DESIGN_EXPORT_TOO_LARGE') {
+            return sendJson(res, 413, { error: 'design_export_too_large', detail: error.message });
+          }
+          if (error.code === 'HEADLESS_TEMPLATE_REPLACE_REQUIRED') {
+            return sendJson(res, 409, { error: 'template_replace_requires_approval' });
+          }
+          if (error.code === 'HEADLESS_TEMPLATE_NOT_FOUND') {
+            return sendJson(res, 404, { error: 'template_not_found' });
+          }
+          if (error.code === 'HEADLESS_BRANCH_CONFLICT') {
+            return sendJson(res, 409, { error: 'branch_merge_conflict', conflicts: error.conflicts || [] });
+          }
+          if (['HEADLESS_NO_MERGE_HISTORY', 'HEADLESS_NO_DESIGN_UNDO', 'HEADLESS_NO_DESIGN_REDO'].includes(error.code)) {
+            return sendJson(res, 409, { error: 'headless_history_unavailable', detail: error.message });
+          }
+          if (error.code === 'HEADLESS_INVALID_DESIGN_HISTORY') {
+            return sendJson(res, 400, { error: 'invalid_design_history', detail: error.message });
+          }
+          if (error.code === 'HEADLESS_PROJECT_NOT_FOUND') {
+            return sendJson(res, 404, { error: 'project_not_found' });
+          }
+          if (error.code === 'HEADLESS_INVALID_OPERATION') {
+            return sendJson(res, 400, { error: 'invalid_headless_operation', detail: error.message });
+          }
+          console.error('workspace_headless_failed', id, error.message);
+          return sendJson(res, 500, { error: 'headless_operation_failed' });
+        }
+      }
+
+      const headlessQueryMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/query$/);
+      if (req.method === 'POST' && headlessQueryMatch) {
+        const id = safeId(headlessQueryMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) ||
+            typeof body.action !== 'string' || (body.args != null && (typeof body.args !== 'object' || Array.isArray(body.args)))) {
+          return sendJson(res, 400, { error: 'invalid_headless_query' });
+        }
+        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        try {
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          if (body.expectedRevision !== undefined) {
+            if (!Number.isInteger(body.expectedRevision) || body.expectedRevision < 0) {
+              return sendJson(res, 400, { error: 'invalid_expected_revision' });
+            }
+            if (body.expectedRevision !== current.revision) {
+              return sendJson(res, 409, { error: 'revision_conflict', revision: current.revision });
+            }
+          }
+          const query = queryHeadlessWorkspace(current, body);
+          return sendJson(res, 200, { ok: true, revision: query.revision, action: query.action, result: query.result });
+        } catch (error) {
+          if (error.code === 'HEADLESS_PROJECT_NOT_FOUND') return sendJson(res, 404, { error: 'project_not_found' });
+          if (error.code === 'HEADLESS_COMPONENT_NOT_FOUND') return sendJson(res, 404, { error: 'component_not_found' });
+          if (error.code === 'HEADLESS_DESIGN_EXPORT_TOO_LARGE') return sendJson(res, 413, { error: 'design_export_too_large', detail: error.message });
+          if (error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT') return sendJson(res, 409, { error: 'operation_id_conflict' });
+          if (error.code === 'HEADLESS_INVALID_QUERY') return sendJson(res, 400, { error: 'invalid_headless_query', detail: error.message });
+          console.error('workspace_headless_query_failed', id, error.message);
+          return sendJson(res, 500, { error: 'headless_query_failed' });
         }
       }
 
@@ -1944,6 +2151,7 @@ const server = http.createServer(async (req, res) => {
             revision: current.revision + 1,
             updatedAt: new Date().toISOString(),
             projects: body.projects,
+            headlessOperations: current.headlessOperations || [],
             owner: current.owner
           };
           writeState(id, next);
