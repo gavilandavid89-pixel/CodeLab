@@ -45,6 +45,29 @@ test('local design layout excludes hidden layers and resolves percentage positio
   assert.equal(layout.positions.has('el_hidden'), false, 'hidden layers must not take part in free or auto layout');
 });
 
+test('inspector unit changes preserve the layer position in pixels', () => {
+  const context = makeContext();
+  const element = { id: 'el_units', x: 180, y: 800 };
+  const project = { design: { canvasWidth: 720, canvasHeight: 1600 } };
+  context.selectedDesignElement = () => element;
+  context.activeDesignProject = () => project;
+  context.renderDesignWorkspace = () => {};
+  context.scheduleAutosave = () => {};
+  vm.runInContext(extract('function updateDesignProperty(key, value) {', '\\nfunction bindDesignCanvasEvents'), context);
+
+  context.updateDesignProperty('xUnit', '%');
+  context.updateDesignProperty('yUnit', '%');
+  assert.equal(element.x, 25);
+  assert.equal(element.y, 50);
+  assert.equal(element.xUnit, '%');
+  assert.equal(element.yUnit, '%');
+
+  context.updateDesignProperty('xUnit', 'px');
+  context.updateDesignProperty('yUnit', 'px');
+  assert.equal(element.x, 180);
+  assert.equal(element.y, 800);
+});
+
 test('local SVG capture honors canvas dimensions, visibility, opacity, and rotation', () => {
   const context = makeContext();
   vm.runInContext(extract('function captureDesignSvg(project) {', '\nasync function captureDesignForAI'), context);
