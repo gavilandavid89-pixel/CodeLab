@@ -158,7 +158,47 @@ test('integral project journey: create, design, revise, convert, read back, and 
     await browser.close();
   }
 
-  t.diagnostic('Completed one chained project across create → design → edit → convert → generated HTML render → persisted-state read → edited-code Chromium interaction.');
+  // Stage 8: exercise a real branch lifecycle on this same persisted web project.
+  result = batch(saved, 'integral_branch_create_008', [
+    { type: 'branch.create', projectId, branchId: 'branch_integral_e2e' }
+  ]);
+  saved = result.state;
+  assert.equal(saved.projects[0].branch.id, 'branch_integral_e2e');
+  assert.equal(saved.projects[0].branch.code.html, saved.projects[0].code.html);
+
+  const branchHtml = saved.projects[0].branch.code.html.replace('>Listo</p>', '>En revisión</p>');
+  assert.notEqual(branchHtml, saved.projects[0].code.html);
+  result = batch(saved, 'integral_branch_write_009', [
+    { type: 'web.code.write', projectId, source: 'branch', mode: 'replace', html: branchHtml }
+  ]);
+  saved = result.state;
+  assert.match(saved.projects[0].branch.code.html, /En revisión/);
+  assert.match(saved.projects[0].code.html, />Listo<\/p>/, 'branch edits must not mutate main before approval');
+
+  result = batch(saved, 'integral_branch_merge_010', [
+    { type: 'branch.merge', projectId, approved: true }
+  ]);
+  saved = result.state;
+  assert.match(saved.projects[0].code.html, /En revisión/, 'approved merge must apply the branch code to main');
+  assert.equal(saved.projects[0].branch, undefined);
+  assert.equal(saved.projects[0].mergeHistory.length, 1);
+
+  result = batch(saved, 'integral_branch_undo_011', [
+    { type: 'branch.undo_merge', projectId, approved: true }
+  ]);
+  saved = result.state;
+  assert.match(saved.projects[0].code.html, />Listo<\/p>/, 'undo merge must restore the previous main code');
+  assert.equal(saved.projects[0].branch.id, 'branch_integral_e2e', 'undo merge must restore the saved branch');
+  assert.match(saved.projects[0].branch.code.html, /En revisión/, 'undo merge must preserve the branch work for recovery');
+
+  const finalRead = queryHeadlessWorkspace(saved, {
+    action: 'project.code.read',
+    args: { projectId, languages: ['html'] }
+  });
+  assert.equal(finalRead.result.fields.html.value, saved.projects[0].code.html);
+  assert.match(finalRead.result.fields.html.value, />Listo<\/p>/);
+
+  t.diagnostic('Completed one chained project across create → design → edit → convert → same-revision PNG capture → persisted-state read → Chromium interaction → branch create/write/approved merge/undo/readback.');
 });
 
 async function expectVisible(page, selector) {
