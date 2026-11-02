@@ -677,11 +677,12 @@ async function waitForPersistedProject(page, projectName) {
     assert.deepEqual(selectedPositionsAfter.map(item => item.top), selectedPositionsBefore.map(item => item.top),
       'horizontal nudging must not change selected layers vertical positions');
 
+    const existingDesignIds = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes => nodes.map(node => node.dataset.designId));
     await page.keyboard.press('Control+d');
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 7);
     const copiedPositions = await page.evaluate(ids => Array.from(document.querySelectorAll('#designCanvas [data-design-id]'))
       .filter(node => !ids.includes(node.dataset.designId))
-      .map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) })), selectedLayerIds);
+      .map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) })), existingDesignIds);
     assert.equal(copiedPositions.length, 3, 'multi-duplicate should create one copy per selected layer');
     assert.deepEqual(copiedPositions.map(item => item.left).sort((a, b) => a - b),
       selectedPositionsAfter.map(item => item.left + 24).sort((a, b) => a - b),
