@@ -4101,7 +4101,9 @@ function renderDesignWorkspace() {
   }
   const field = (label, key, type='number', extra='') => {
     const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
-    return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
+    const numericRanges = { x: 'min="0" max="10000" step="1"', y: 'min="0" max="10000" step="1"', width: 'min="20" max="4000" step="1"', height: 'min="20" max="4000" step="1"', fontSize: 'min="8" max="240" step="1"', radius: 'min="0" max="500" step="1"', opacity: 'min="0" max="1" step="0.05"', rotation: 'min="-3600" max="3600" step="1"' };
+    const constraints = type === 'number' ? (numericRanges[key] || '') : '';
+    return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + constraints + ' ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
   };
   const buttonTargetOptions = p.design.elements.filter(item => item.id !== el.id).map(item => {
     const target = '#' + designLayerDomId(item.id);
@@ -4140,8 +4142,14 @@ function updateDesignProperty(key, value) {
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
-  else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
+  else if (['x','y','width','height','fontSize','weight','radius'].includes(key)) {
+    const ranges = { x: [0, 10000], y: [0, 10000], width: [20, 4000], height: [20, 4000], fontSize: [8, 240], weight: [100, 900], radius: [0, 500] };
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    const [min, max] = ranges[key]; el[key] = Math.max(min, Math.min(max, numeric));
+  }
   const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
+  if (key === 'visible' || key === 'locked') { renderDesignWorkspace(); scheduleAutosave(); return; }
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
   if (node) {
