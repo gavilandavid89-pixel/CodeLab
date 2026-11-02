@@ -54,6 +54,33 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
 
+    const expiredAfterStartup = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
+    assert.equal(expiredAfterStartup.length, 1,
+      'Startup cleanup should process one bounded batch of 200 expired sessions');
+    const cleanupDeadline = Date.now() + 6000;
+    let remainingExpiredSessions = expiredAfterStartup;
+    while (remainingExpiredSessions.length && Date.now() < cleanupDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      remainingExpiredSessions = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
+    }
+    assert.equal(remainingExpiredSessions.length, 0,
+      'Rotating cleanup batches must eventually reach expired sessions beyond the first 200 files');
+    const corruptSessionPath = path.join(sessionsDir, 'corrupt-session-regression.json');
+    await fs.writeFile(corruptSessionPath, '{"truncated":');
+    const corruptSessionDeadline = Date.now() + 5000;
+    let corruptSessionExists = true;
+    while (corruptSessionExists && Date.now() < corruptSessionDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      try { await fs.stat(corruptSessionPath); } catch (error) {
+        if (error.code === 'ENOENT') corruptSessionExists = false;
+        else throw error;
+      }
+    }
+    assert.equal(corruptSessionExists, false,
+      'Malformed session JSON must be removed by periodic cleanup instead of accumulating forever');
+    assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
+      'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
+
     // The authenticated local admin bypasses only the global API request cap.
     // A normal user from the same IP must still receive the configured 429.
     const makeSession = async (sid, user) => {
@@ -84,32 +111,6 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     }
     assert.equal(normalUserLastStatus, 429,
       'Non-admin users must remain subject to the global API rate limit');
-    const expiredAfterStartup = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
-    assert.equal(expiredAfterStartup.length, 1,
-      'Startup cleanup should process one bounded batch of 200 expired sessions');
-    const cleanupDeadline = Date.now() + 6000;
-    let remainingExpiredSessions = expiredAfterStartup;
-    while (remainingExpiredSessions.length && Date.now() < cleanupDeadline) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      remainingExpiredSessions = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
-    }
-    assert.equal(remainingExpiredSessions.length, 0,
-      'Rotating cleanup batches must eventually reach expired sessions beyond the first 200 files');
-    const corruptSessionPath = path.join(sessionsDir, 'corrupt-session-regression.json');
-    await fs.writeFile(corruptSessionPath, '{"truncated":');
-    const corruptSessionDeadline = Date.now() + 5000;
-    let corruptSessionExists = true;
-    while (corruptSessionExists && Date.now() < corruptSessionDeadline) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      try { await fs.stat(corruptSessionPath); } catch (error) {
-        if (error.code === 'ENOENT') corruptSessionExists = false;
-        else throw error;
-      }
-    }
-    assert.equal(corruptSessionExists, false,
-      'Malformed session JSON must be removed by periodic cleanup instead of accumulating forever');
-    assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
-      'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
     const healthConfigResponse = await fetch(BASE_URL + '/api/health');
     const healthConfig = await healthConfigResponse.json();
     assert.equal(healthConfig.maxBodyBytes, 10 * 1024 * 1024,
