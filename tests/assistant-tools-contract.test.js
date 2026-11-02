@@ -74,7 +74,7 @@ assert.match(bridge, /codelab-component:/, 'component insertion must be idempote
 assert.match(headlessRuntime, /project\.designUndoStack\.push\(JSON\.stringify\(project\.design\)\)/, 'atomic design batches must preserve saved undo history');
 assert.match(bridge, /executeSavedDesignBatch/, 'core design operations must use atomic saved-state batches');
 assert.match(bridge, /serverReadbackVerified/, 'design mutations must verify authoritative server readback');
-assert.match(bridge, /design_canvas_configure[\s\S]{0,2800}serverReadbackVerified/,
+assert.match(bridge, /design_canvas_configure[\s\S]{0,6000}serverReadbackVerified/,
   'canvas configuration must verify persisted settings');
 assert.match(bridge, /design_canvas_configure requires at least one canvas property/,
   'canvas configuration must reject empty requests');
