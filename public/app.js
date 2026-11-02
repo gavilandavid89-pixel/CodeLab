@@ -3696,7 +3696,7 @@ async function captureDesignForAI() {
       padding: Math.max(0, Math.min(300, Number(project.design.layoutPadding) || 0))
     },
     elements: elements.map((item, index) => {
-      const source = project.design.elements.filter(el => !!el && typeof el === 'object')[index];
+      const source = project.design.elements.find(el => !!el && typeof el === 'object' && el.id === item.id);
       if (source && source.type === 'image') item.image = { alt: String(source.alt || '').slice(0, 500) };
       return item;
     }),
