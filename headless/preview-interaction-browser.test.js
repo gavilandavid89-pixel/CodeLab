@@ -22,9 +22,16 @@ test('isolated preview exercises form state, assertions, and bounded file input'
         <label>Plan <select id="plan"><option value="basic">Basic</option><option value="pro">Pro</option></select></label>
         <input id="file" type="file" accept=".txt">
         <output id="file-result"></output>
+        <output id="origin"></output><output id="parent-access"></output><output id="network"></output>
         <button id="save" type="button" disabled>Ready</button>
       </main>
       <script>
+        document.querySelector('#origin').textContent = location.origin;
+        try { void parent.document.body; document.querySelector('#parent-access').textContent = 'accessible'; }
+        catch (_) { document.querySelector('#parent-access').textContent = 'blocked'; }
+        fetch('https://example.invalid/codelab-probe').then(() => {
+          document.querySelector('#network').textContent = 'unexpectedly-allowed';
+        }).catch(() => { document.querySelector('#network').textContent = 'blocked'; });
         const name = document.querySelector('#name');
         name.addEventListener('input', () => { document.querySelector('#echo').textContent = name.value; });
         document.querySelector('#agree').addEventListener('change', event => {
@@ -37,6 +44,13 @@ test('isolated preview exercises form state, assertions, and bounded file input'
       <\/script></body></html>`;
     await page.locator('#preview').evaluate((frame, html) => { frame.srcdoc = html; }, srcdoc);
     const frame = page.frameLocator('#preview');
+    assert.equal(await frame.locator('#origin').textContent(), 'null', 'sandboxed preview must have an opaque origin');
+    assert.equal(await frame.locator('#parent-access').textContent(), 'blocked', 'preview must not access the editor document');
+    const networkState = await frame.locator('#network').evaluate(async el => {
+      for (let i = 0; i < 100 && !el.textContent; i++) await new Promise(resolve => setTimeout(resolve, 20));
+      return el.textContent;
+    });
+    assert.equal(networkState, 'blocked', 'CSP must block outbound fetches');
     await frame.locator('#name').fill('CodeLab');
     await frame.locator('#echo').getByText('CodeLab').waitFor({ timeout: 3000 });
     await frame.locator('#agree').check();
