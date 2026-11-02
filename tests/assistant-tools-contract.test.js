@@ -52,7 +52,7 @@ for (const [action, queryAction] of [
   const end = bridge.indexOf("command.action === '", start + 20);
   const handler = bridge.slice(start, end > start ? end : bridge.length);
   assert.match(handler, /\/headless\/query/, action + ' must read saved state through the authenticated query API');
-  assert.ok(handler.includes("action: '" + queryAction + "'"), action + ' must use the matching headless query');
+  assert.ok(handler.includes("action: '" + queryAction + "'") || handler.includes("query('" + queryAction + "'"), action + ' must use the matching headless query');
   assert.doesNotMatch(handler, /projects\.find\(/, action + ' must not depend on the editor in-memory project model');
 }
 assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
