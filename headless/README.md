@@ -166,3 +166,15 @@ This keeps existing callers working while removing editor visibility, modal stat
 The bridge's existing `preview_diagnostics` and `preview_interact` actions now load saved project code through the authenticated `project.code.read` API and run it in a separate browser context and sandboxed iframe with no CodeLab app cookies, localStorage, or service workers. They no longer require a project to be open in the editor or depend on the editor's `#previewIframe`.
 
 The sandbox preserves the web editor's preview restrictions: scripts and forms are allowed, same-origin access is not granted, and the Content Security Policy blocks network connections while allowing inline CSS/JS and HTTP(S)/data images and fonts. Diagnostics collect DOM structure, accessible controls, console messages, page errors, and failed requests. Interaction steps can click, fill, select, or read controls; external anchor navigation remains blocked. The self-test fixtures are disposable and never mutate the saved project.
+
+
+## Image-file attachment parity
+
+The editor's image inspector imports PNG, JPEG, WebP, or GIF files up to 2 MiB as Base64 data URLs stored in the image layer's `src`. Headless design batches expose the same operation:
+
+- `image.attach` requires an existing image layer ID, a filename, and a `data:image/...;base64,...` payload.
+- MIME type, Base64 canonical encoding, and decoded 2 MiB size are validated before mutation.
+- The filename stem fills alt text only when the current alt text is empty or still the editor default; custom accessibility text is preserved.
+- The operation returns MIME type and decoded byte length. The surrounding `design.batch` retains atomic transaction, revision, undo, and workspace persistence behavior.
+
+The current editor embeds image data in the project; there is no separate asset library or media-upload endpoint to mirror.
