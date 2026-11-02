@@ -144,6 +144,13 @@ test('attaches an editor-compatible image file to an image layer', () => {
   assert.equal(result.results[0].byteLength, Buffer.from('tiny-image').length);
 });
 
+test('uses only the image filename when deriving fallback alt text', () => {
+  const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Imagen del diseño', src: '' }] }), [
+    { type: 'image.attach', id: 'hero', filename: 'C:\\uploads\\hero-banner.webp', dataUrl: 'data:image/webp;base64,' + Buffer.from('image').toString('base64') }
+  ]);
+  assert.equal(result.project.design.elements[0].alt, 'hero-banner');
+});
+
 test('preserves a custom image alt text when attaching a replacement file', () => {
   const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Descripción accesible', src: '' }] }), [
     { type: 'image.attach', id: 'hero', filename: 'new-image.png', dataUrl: 'data:image/png;base64,' + Buffer.from('image').toString('base64') }
