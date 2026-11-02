@@ -565,6 +565,31 @@ async function waitForPersistedProject(page, projectName) {
       return node?.style.left === '80px' && node?.style.top === '70px' && node?.style.width === '560px' && node?.style.height === '76px';
     });
 
+    // 3c. Verify a precise mobile canvas viewport can be set from the Inspector.
+    const originalCanvasSize = await page.evaluate(() => ({
+      width: document.getElementById('designCanvasWidth').value,
+      height: document.getElementById('designCanvasHeight').value
+    }));
+    await page.locator('#designCanvasWidth').fill('720');
+    await page.locator('#designCanvasWidth').press('Tab');
+    await page.locator('#designCanvasHeight').fill('1600');
+    await page.locator('#designCanvasHeight').press('Tab');
+    await page.waitForFunction(() => {
+      const width = document.getElementById('designCanvasWidth');
+      const height = document.getElementById('designCanvasHeight');
+      const canvas = document.getElementById('designCanvas');
+      return width?.value === '720' && height?.value === '1600' && canvas?.style.width === '720px';
+    });
+    // Restore the original canvas size so subsequent drag/scale checks keep their assumptions.
+    await page.locator('#designCanvasWidth').fill(originalCanvasSize.width);
+    await page.locator('#designCanvasWidth').press('Tab');
+    await page.locator('#designCanvasHeight').fill(originalCanvasSize.height);
+    await page.locator('#designCanvasHeight').press('Tab');
+    await page.waitForFunction(size => {
+      return document.getElementById('designCanvasWidth')?.value === size.width &&
+        document.getElementById('designCanvasHeight')?.value === size.height;
+    }, originalCanvasSize);
+
     // 4. Drag the actual canvas element with pointer events.
     const before = await element.boundingBox();
     assert.ok(before, 'canvas element should have a visible bounding box');
