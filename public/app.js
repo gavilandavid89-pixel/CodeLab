@@ -3702,12 +3702,13 @@ async function captureDesignForAI() {
     }),
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
-  const json = JSON.stringify(context, null, 2);
   const captureModeControl = document.getElementById('designCaptureMode');
   const captureMode = ['project', 'canvas', 'editor'].includes(captureModeControl && captureModeControl.value) ? captureModeControl.value : 'project';
   context.captureMode = captureMode;
   context.aiInstructions = 'Analiza VISUALMENTE la imagen adjunta, no te limites al JSON. Evalúa jerarquía visual, alineación, contraste, legibilidad, espacios, consistencia y responsive. Usa el JSON para medidas exactas. Separa problemas observables de sugerencias. Devuelve un análisis en español con hallazgos priorizados y cambios concretos. Vista: ' + captureMode + '. ' + context.aiInstructions;
   let png = null;
+  let outputWidth = captured.width * scale;
+  let outputHeight = captured.height * scale;
   let svgUrl = '';
   try {
     if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
@@ -3735,6 +3736,9 @@ async function captureDesignForAI() {
       const editorRoot = document.getElementById('designStudioPanel');
       if (!editorRoot) throw new Error('No se encontró el editor de diseño para capturarlo.');
       png = await captureDesignEditorElement(editorRoot, scale);
+      const editorRect = editorRoot.getBoundingClientRect();
+      outputWidth = Math.max(1, Math.ceil(editorRect.width)) * scale;
+      outputHeight = Math.max(1, Math.ceil(editorRect.height)) * scale;
     } else {
       const canvas = document.createElement('canvas');
       canvas.width = captured.width * scale; canvas.height = captured.height * scale;
@@ -3751,13 +3755,15 @@ async function captureDesignForAI() {
         const projectUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
         try { await new Promise((resolve, reject) => { projectImage.onload = resolve; projectImage.onerror = () => reject(new Error('No se pudo renderizar el proyecto.')); projectImage.src = projectUrl; }); ctx.drawImage(projectImage, 0, 0, captured.width * scale, captured.height * scale); } finally { URL.revokeObjectURL(projectUrl); }
       }
+      outputWidth = canvas.width;
+      outputHeight = canvas.height;
       png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo obtener la imagen para la IA.')), 'image/png'));
     }
     const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(png); });
     const review = await callRemoteDesignReviewAi(dataUrl, context);
     const report = { project: context.project, captureMode, model: review.model || aiSettings.model || serverAi.model, analysis: review.analysis, context };
     downloadDesignAsset(slug + '-revision-ia.json', JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
-    showToast('La IA recibió la captura (' + canvas.width + '×' + canvas.height + ') y devolvió una revisión visual.');
+    showToast('La IA recibió la captura (' + outputWidth + '×' + outputHeight + ') y devolvió una revisión visual.');
   } catch (error) {
     showToast('No se pudo completar la revisión visual: ' + String(error && error.message || error).slice(0, 180), 'warn');
   } finally {
