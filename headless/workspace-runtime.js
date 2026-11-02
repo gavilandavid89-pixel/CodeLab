@@ -247,7 +247,7 @@ function applyOperation(state, operation) {
     case 'design.convert.toWeb': {
       const project = findProject(state, operation.projectId);
       assert(project.type === 'design' && project.design, 'design.convert.toWeb requires a design project.');
-      const code = designExport.convertDesignToWeb(project);
+      const code = designExport.convertDesignToWeb(project, state.projects);
       assert(code.html.length <= 500000, 'The converted HTML exceeds the 500000 character project limit.');
       project.code = code;
       project.type = 'web';
@@ -380,7 +380,7 @@ function queryHeadlessWorkspace(inputState, request) {
     case 'design.export.html': {
       const project = findProject(inputState, args.projectId);
       assert(project.type === 'design' && project.design, 'design.export.html requires a design project.', 'HEADLESS_INVALID_QUERY');
-      result = { html: designExport.exportDesignHtml(project) };
+      result = { html: designExport.exportDesignHtml(project, inputState.projects) };
       break;
     }
     case 'headless.operation.status': {
