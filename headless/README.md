@@ -4,6 +4,12 @@
 
 This is the first implementation of a **headless CodeLab runtime**: it operates on the same saved workspace and project model as the website, but applies changes without opening the editor UI or depending on the DOM. The browser-based GitHub bridge is a separate delivery and verification layer: it submits authenticated headless batches to the server, refreshes the actual web workspace, and can open the changed project for visual evidence.
 
+## AI design capture context
+
+The read-only headless query `design.capture.context` returns the same structured `codelab-ai-design-capture` context used by the website's AI design capture flow, including ordered layer bounds, styles, image alt text, custom canvas dimensions, scale, and analysis instructions. The query defaults to scale 2 and accepts only scales 1–4, with a 32-million-pixel safety ceiling. It never mutates the project or workspace revision.
+
+This operation prepares the context JSON, not the PNG binary. PNG rendering remains a separate isolated-browser responsibility; callers can also use `design.export.svg` for deterministic vector output. Full screenshot parity is not considered complete until PNG rendering and image/context pairing are exercised end-to-end.
+
 ## Compatibility
 
 The engine accepts existing CodeLab projects with `type: "design"` and the existing `design.elements` layer array. Existing projects that only have the legacy `frame` preset are normalized to a canvas size:
