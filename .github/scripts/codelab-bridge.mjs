@@ -1583,74 +1583,118 @@ try {
   } else if (command.action === 'branch_create') {
     stage = 'branch_create';
     result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('Copy branches currently support web projects only.');
-      if (project.branch) return { projectId, branchId: project.branch.id, created: false, alreadyExists: true };
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (inCopyBranch) await toggleCopyBranch();
-      const originalCode = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
-      await duplicateProject();
-      const latest = projects.find(item => item && item.id === projectId);
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const branch = latest?.branch;
-      const localVerified = !!(localProject?.branch && branch &&
-        localProject.branch.id === branch.id &&
-        ['html', 'css', 'js'].every(key => localProject.branch.code?.[key] === branch.code?.[key]) &&
-        ['html', 'css', 'js'].every(key => branch.baseCode?.[key] === originalCode[key]));
-      if (!branch || !localVerified) throw new Error('Copy branch creation was not verified against the local durable snapshot.');
-      return { projectId, branchId: branch.id, created: true, alreadyExists: false, localSnapshotVerified: true, branchMatchesMainAtCreation: ['html', 'css', 'js'].every(key => branch.code[key] === originalCode[key]), updatedAt: branch.updatedAt };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Copy branches currently support web projects only.');
+      if (before.result.branch) return {
+        projectId, branchId: before.result.branch.id, created: false, alreadyExists: true,
+        serverReadbackVerified: true, workspaceRevision: before.revision
+      };
+      const operationId = 'branch_create_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'branch.create', projectId }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless branch creation failed.');
+      const after = await query('branch.inspect', { projectId });
+      const branch = after.result.branch;
+      const serverReadbackVerified = after.result.exists === true &&
+        JSON.stringify(branch?.codeLengths) === JSON.stringify(before.result.codeLengths);
+      if (!serverReadbackVerified) throw new Error('Created branch failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, branchId: branch.id, created: true, alreadyExists: false,
+        serverReadbackVerified, workspaceRefreshed, workspaceRevision: after.revision
+      };
     }, command.args.project_id);
   } else if (command.action === 'branch_merge') {
     stage = 'branch_merge';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.branch) throw new Error('Project has no saved copy branch to merge.');
-      const branchId = project.branch.id;
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (!inCopyBranch) await toggleCopyBranch();
-      const previousHistoryLength = Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0;
-      const previousBranchCode = { html: project.branch.code.html, css: project.branch.code.css, js: project.branch.code.js };
-      const oldConfirm = window.confirm;
-      window.confirm = () => true;
-      try { await mergeToMainProject(); } finally { window.confirm = oldConfirm; }
-      const latest = projects.find(item => item && item.id === projectId);
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const merged = !!latest && !latest.branch && (latest.mergeHistory?.length || 0) > previousHistoryLength;
-      const localVerified = !!localProject && !localProject.branch &&
-        ['html', 'css', 'js'].every(key => localProject.code?.[key] === latest.code?.[key]) &&
-        (localProject.mergeHistory?.length || 0) === (latest.mergeHistory?.length || 0);
-      if (!merged) throw new Error('Merge was not completed; the branch remains available or a conflict prevented the merge.');
-      if (!localVerified) throw new Error('Merge result could not be verified in the durable local snapshot.');
-      return { projectId, branchId, merged: true, mainCodeLengths: { html: latest.code.html.length, css: latest.code.css.length, js: latest.code.js.length }, backupCreated: true, localSnapshotVerified: true, serverSynced: !serverSyncError };
-    }, command.args.project_id);
+    result = await page.evaluate(async ({ projectId, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch query failed.');
+        return data;
+      };
+      const before = await query('branch.inspect', { projectId });
+      if (!before.result.exists) throw new Error('Project has no saved copy branch to merge.');
+      const operationId = 'branch_merge_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'branch.merge', projectId, approved }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless branch merge failed.');
+      const after = await query('branch.inspect', { projectId });
+      const backupCreated = after.result.exists === false && after.result.mergeHistoryCount === before.result.mergeHistoryCount + 1;
+      if (!backupCreated) throw new Error('Merge result or backup failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, merged: true, backupCreated, mergeHistoryLength: after.result.mergeHistoryCount,
+        workspaceRevision: after.revision, workspaceRefreshed, saved: true
+      };
+    }, { projectId: command.args.project_id, approved: command.approval === 'approved' });
   } else if (command.action === 'branch_undo_merge') {
     stage = 'branch_undo_merge';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !Array.isArray(project.mergeHistory) || !project.mergeHistory.length) throw new Error('Project has no merge to undo.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const previousHistoryLength = project.mergeHistory.length;
-      const previousBackup = project.mergeHistory[previousHistoryLength - 1];
-      const expectedCode = { html: previousBackup.code.html, css: previousBackup.code.css, js: previousBackup.code.js };
-      const oldConfirm = window.confirm;
-      window.confirm = () => true;
-      try { await undoLastMerge(); } finally { window.confirm = oldConfirm; }
-      const latest = projects.find(item => item && item.id === projectId);
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const restored = !!latest && (latest.mergeHistory?.length || 0) === previousHistoryLength - 1 &&
-        ['html', 'css', 'js'].every(key => latest.code?.[key] === expectedCode[key]);
-      const localVerified = !!localProject && ['html', 'css', 'js'].every(key => localProject.code?.[key] === expectedCode[key]) &&
-        (localProject.mergeHistory?.length || 0) === previousHistoryLength - 1;
-      if (!restored || !localVerified) throw new Error('Undo merge was not verified against the saved code and history.');
-      return { projectId, undone: true, branchRestored: !!latest.branch, mergeHistoryRemaining: latest.mergeHistory.length, localSnapshotVerified: true, serverSynced: !serverSyncError };
-    }, command.args.project_id);
+    result = await page.evaluate(async ({ projectId, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch query failed.');
+        return data;
+      };
+      const before = await query('branch.inspect', { projectId });
+      if (before.result.mergeHistoryCount < 1) throw new Error('Project has no merge to undo.');
+      const operationId = 'branch_undo_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'branch.undo_merge', projectId, approved }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless merge undo failed.');
+      const after = await query('branch.inspect', { projectId });
+      const restored = after.result.mergeHistoryCount === before.result.mergeHistoryCount - 1 && after.result.exists === true;
+      if (!restored) throw new Error('Undo merge failed authoritative branch/history readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, restored, branchPresent: after.result.exists,
+        mergeHistoryRemaining: after.result.mergeHistoryCount,
+        workspaceRevision: after.revision, workspaceRefreshed, saved: true
+      };
+    }, { projectId: command.args.project_id, approved: command.approval === 'approved' });
   } else if (command.action === 'component_search') {
     stage = 'component_search';
     result = await page.evaluate(({ query, category }) => {

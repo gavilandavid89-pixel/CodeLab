@@ -19,12 +19,23 @@ assert.match(bridge, /project_rename[\s\S]{0,300}args\.name\.trim\(\)\.length > 
   'rename must validate project name length');
 assert.match(bridge, /branch_resume[\s\S]{0,1800}editorMatchesSavedBranch|editorMatchesSavedBranch[\s\S]{0,300}true/,
   'branch resume must report editor-to-branch verification');
-assert.match(bridge, /branch_create[\s\S]{0,2200}localSnapshotVerified/,
-  'branch creation must verify its durable snapshot');
-assert.match(bridge, /branch_merge[\s\S]{0,2500}backupCreated/,
-  'branch merge must verify the merged state and backup');
-assert.match(bridge, /branch_undo_merge[\s\S]{0,2500}mergeHistoryRemaining/,
-  'undo merge must verify restored code and history');
+for (const [action, operation] of [
+  ['branch_create', 'branch.create'],
+  ['branch_merge', 'branch.merge'],
+  ['branch_undo_merge', 'branch.undo_merge']
+]) {
+  const start = bridge.indexOf("} else if (command.action === '" + action + "') {");
+  const end = bridge.indexOf("} else if (command.action ===", start + 40);
+  const handler = bridge.slice(start, end < 0 ? undefined : end);
+  assert.match(handler, /\/api\/workspace\//, action + ' must use the authenticated workspace API');
+  assert.ok(handler.includes("type: '" + operation + "'"), action + ' must use the shared headless operation');
+  assert.doesNotMatch(handler, /projects\.find\(|openProject\(|toggleCopyBranch\(|mergeToMainProject\(|undoLastMerge\(/,
+    action + ' must not depend on editor UI state');
+}
+assert.match(bridge, /branch_merge[\s\S]{0,3000}backupCreated/,
+  'branch merge must verify the saved backup after server readback');
+assert.match(bridge, /branch_undo_merge[\s\S]{0,3000}mergeHistoryRemaining/,
+  'undo merge must verify restored branch/history from server readback');
 assert.match(bridge, /\['branch_merge', 'branch_undo_merge'\][\s\S]{0,180}approval !== 'approved'/,
   'main-project merge and undo must require explicit approval');
 for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete']) {
