@@ -517,10 +517,20 @@ function queryHeadlessWorkspace(inputState, request) {
       const maxChars = args.maxChars === undefined ? 20000 : args.maxChars;
       assert(Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 200000,
         'project.code.read maxChars must be from 1 to 200000.', 'HEADLESS_INVALID_QUERY');
-      result = { projectId: project.id, source, fields: {} };
+      const offset = args.offset === undefined ? 0 : args.offset;
+      assert(Number.isInteger(offset) && offset >= 0 && offset <= 500000,
+        'project.code.read offset must be an integer from 0 to 500000.', 'HEADLESS_INVALID_QUERY');
+      result = { projectId: project.id, source, offset, maxChars, fields: {} };
       for (const key of languages) {
         const value = typeof target[key] === 'string' ? target[key] : '';
-        result.fields[key] = { value: value.slice(0, maxChars), originalLength: value.length, truncated: value.length > maxChars };
+        const end = Math.min(value.length, offset + maxChars);
+        result.fields[key] = {
+          value: value.slice(offset, end),
+          originalLength: value.length,
+          offset,
+          nextOffset: end < value.length ? end : null,
+          truncated: end < value.length
+        };
       }
       break;
     }
