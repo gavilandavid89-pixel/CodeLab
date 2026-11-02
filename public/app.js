@@ -3239,6 +3239,28 @@ let designZoom = 1;
 let designCanvasLocked = false;
 const MAX_DESIGN_ELEMENTS = 500;
 
+function toggleDesignLayerVisibility(id) {
+  const project = activeDesignProject();
+  const element = project && project.design.elements.find(item => item.id === id);
+  if (!element) return;
+  recordDesignHistory();
+  element.hidden = !element.hidden;
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(element.hidden ? 'Capa oculta.' : 'Capa visible.');
+}
+function toggleDesignLayerLock(id) {
+  const project = activeDesignProject();
+  const element = project && project.design.elements.find(item => item.id === id);
+  if (!element) return;
+  recordDesignHistory();
+  element.locked = !element.locked;
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(element.locked ? 'Capa bloqueada: no se puede mover ni redimensionar.' : 'Capa desbloqueada.');
+}
 function nextDesignElementIdentifier(elements, currentId) {
   const used = new Set((Array.isArray(elements) ? elements : [])
     .filter(item => item && item.id !== currentId)
@@ -4067,9 +4089,10 @@ function renderDesignWorkspace() {
   for (const el of sorted) {
     const node = document.createElement('div');
     node.dataset.designId = el.id;
-    node.className = 'absolute select-none cursor-move';
+    node.className = 'absolute select-none ' + (el.locked ? 'cursor-not-allowed' : 'cursor-move');
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
+    node.style.visibility = el.hidden ? 'hidden' : 'visible';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y + 'px' : getDesignElementPositionCss(el, 'y');
@@ -4098,7 +4121,7 @@ function renderDesignWorkspace() {
       resizeHandle.tabIndex = 0;
       resizeHandle.style.cssText = 'position:absolute;right:0;bottom:0;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
       resizeHandle.addEventListener('pointerdown', ev => {
-        if (ev.button !== 0) return;
+        if (ev.button !== 0 || el.locked) return;
         ev.preventDefault(); ev.stopPropagation();
         selectedDesignElementId = el.id;
         recordDesignHistory();
@@ -4146,7 +4169,7 @@ function renderDesignWorkspace() {
       else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
     });
     node.addEventListener('pointerdown', ev => {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || el.locked) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
       if (activeDesignProject()?.design.layoutMode === 'auto') return;
       if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
@@ -4163,7 +4186,10 @@ function renderDesignWorkspace() {
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="min-w-0 flex-1 truncate">' + escapeHtml(el.label || el.type) + '</span><code class="shrink-0 text-[9px] text-cyan-300">' + escapeHtml(el.identifier || 'id') + '</code></button>'
+    '<div class="flex items-center gap-1 rounded-lg border ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'border-violet-500/40 bg-violet-500/10' : 'border-transparent') + (el.hidden ? ' opacity-60' : '') + '">' +
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="min-w-0 flex-1 text-left px-2 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'text-violet-200' : 'text-slate-300 hover:bg-slate-800') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="min-w-0 flex-1 truncate">' + escapeHtml(el.label || el.type) + '</span><code class="shrink-0 text-[9px] text-cyan-300">' + escapeHtml(el.identifier || 'id') + '</code></button>' +
+    '<button type="button" data-design-visibility="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerVisibility(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 text-slate-400" aria-label="' + (el.hidden ? 'Mostrar capa ' : 'Ocultar capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.hidden ? 'Mostrar capa' : 'Ocultar capa') + '"><i class="fa-solid ' + (el.hidden ? 'fa-eye-slash' : 'fa-eye') + '"></i></button>' +
+    '<button type="button" data-design-lock="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerLock(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 ' + (el.locked ? 'text-amber-300' : 'text-slate-500') + '" aria-label="' + (el.locked ? 'Desbloquear capa ' : 'Bloquear capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.locked ? 'Desbloquear capa' : 'Bloquear capa') + '"><i class="fa-solid ' + (el.locked ? 'fa-lock' : 'fa-lock-open') + '"></i></button></div>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
   const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Marco de diseño</div><p class="text-[10px] text-slate-500">Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom.</p>' +
@@ -4356,7 +4382,7 @@ function bindDesignCanvasEvents() {
       ));
       const selectedElements = selectedIds
         .map(id => p.design.elements.find(item => item.id === id))
-        .filter(Boolean);
+        .filter(item => item && !item.locked);
       if (!selectedElements.length || p.design.layoutMode === 'auto') return;
       ev.preventDefault();
       if (!nudgeHistoryActive) recordDesignHistory();
