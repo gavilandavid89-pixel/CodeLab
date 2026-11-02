@@ -131,6 +131,21 @@ assert.match(bridge, /ariaLabel:[\s\S]{0,240}dataAction:[\s\S]{0,160}href:/,
   'control inventory must return accessible labels and action/link metadata for reliable follow-up actions');
 
 
+const codeReadHandler = bridge.slice(
+  bridge.indexOf("} else if (command.action === 'project_code_read') {"),
+  bridge.indexOf("} else if (command.action === 'design_read') {", bridge.indexOf("} else if (command.action === 'project_code_read') {"))
+);
+assert.match(codeReadHandler, /\/headless\/query/,
+  'project_code_read must use the authenticated headless API rather than editor memory');
+assert.match(codeReadHandler, /action: 'project\.code\.read'/,
+  'project_code_read must use the shared headless code query');
+assert.match(codeReadHandler, /offset, maxChars/,
+  'project_code_read must expose offset-based paging to agents');
+assert.match(codeReadHandler, /nextOffset: field\.nextOffset/,
+  'project_code_read must return paging metadata for subsequent reads');
+assert.doesNotMatch(codeReadHandler, /projects\.find\(/,
+  'project_code_read must not depend on the editor in-memory project model');
+
 const conversionHandler = bridge.slice(
   bridge.indexOf("} else if (command.action === 'project_convert_design_to_web') {"),
   bridge.indexOf("} else if (command.action === 'headless_ai_generate') {", bridge.indexOf("} else if (command.action === 'project_convert_design_to_web') {"))
