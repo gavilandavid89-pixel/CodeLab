@@ -182,7 +182,7 @@ Added direct headless design-project export/import and conversion:
 - `design.import.json` validates and sanitizes a backup, enforces size/layer/code limits, remaps element IDs and internal layer links, and creates a new design project.
 - `design.convert.toWeb` stores a responsive HTML export in the same project while preserving its original design data.
 
-The current HTML conversion embeds the renderer's SVG for visual fidelity. It does not yet reproduce the website's richer semantic DOM export or interactive prototype navigation; those remain explicit parity work.
+HTML export now produces semantic per-layer DOM, responsive free/auto layout, safe image/link sources, and interactive multi-screen navigation for connected design projects, matching the website's richer converter without opening the editor.
 
 ## Section 21 — Headless AI generation and provider quota telemetry
 
