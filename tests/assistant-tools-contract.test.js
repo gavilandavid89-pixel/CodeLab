@@ -179,7 +179,7 @@ const projectCreateHandler = bridge.slice(
   bridge.indexOf("else if (command.action === 'project_create')"),
   bridge.indexOf("else if (command.action === 'project_duplicate')", bridge.indexOf("else if (command.action === 'project_create')"))
 );
-assert.match(projectCreateHandler, /type: 'project\\.create'/, 'project creation must use the authenticated headless operation rather than local UI state');
+assert.ok(projectCreateHandler.includes("type: 'project.create'"), 'project creation must use the authenticated headless operation rather than local UI state');
 assert.match(projectCreateHandler, /await refreshWorkspaceFromServer\(\)/,
   'project creation must read the authoritative workspace back from the server');
 assert.match(projectCreateHandler, /serverReadbackVerified/,
