@@ -548,6 +548,10 @@ async function waitForPersistedProject(page, projectName) {
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.width === '50%');
     await page.locator('#designProperty-heightUnit').selectOption('auto');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.height === 'auto');
+    // Keyboard nudge converts a percentage position to px without jumping the layer.
+    await element.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.left === '361px');
     await page.locator('#designProperty-xUnit').selectOption('px');
     await page.locator('#designProperty-x').fill('80');
     await page.locator('#designProperty-yUnit').selectOption('px');
