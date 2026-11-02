@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./workspace-runtime');
+const { buildAiDesignCaptureContext } = require('./design-export');
 
 function state(projects = []) {
   return { version: 5, revision: 3, updatedAt: '2026-11-01T00:00:00.000Z', projects, owner: { provider: 'local', id: 'test' } };
@@ -651,4 +652,37 @@ test('semantic HTML export sanitizes image and external link sources', () => {
   assert.doesNotMatch(html, /javascript:/i);
   assert.match(html, /Añade una imagen/);
   assert.match(html, /<button[^>]*>Unsafe link<\/button>/);
+});
+
+
+test('builds AI design capture context headlessly with custom canvas and scaled pixel bounds', () => {
+  const project = designProject();
+  project.name = 'Mobile Landing';
+  project.design.frame = 'mobile';
+  project.design.canvasWidth = 720;
+  project.design.canvasHeight = 1600;
+  project.design.layoutMode = 'free';
+  project.design.elements = [
+    { id: 'el_title', type: 'heading', label: 'Título', text: 'Hola mundo', x: 12, y: 24, width: 300, height: 80, fontSize: 32, weight: 700, color: '#111827', background: 'transparent' },
+    { id: 'el_image', type: 'image', label: 'Imagen', alt: 'Portada', src: 'data:image/png;base64,aGVsbG8=', x: 20, y: 130, width: 240, height: 160 }
+  ];
+  const context = buildAiDesignCaptureContext(project, 2);
+  assert.equal(context.format, 'codelab-ai-design-capture');
+  assert.equal(context.canvas.width, 720);
+  assert.equal(context.canvas.height, 1600);
+  assert.equal(context.canvas.pixelWidth, 1440);
+  assert.equal(context.canvas.pixelHeight, 3200);
+  assert.equal(context.elementCount, 2);
+  assert.deepEqual(context.elements[0].bounds, { x: 12, y: 24, width: 300, height: 80 });
+  assert.deepEqual(context.elements[1].image, { alt: 'Portada' });
+  assert.match(context.aiInstructions, /720 × 1600 px/);
+  assert.equal(project.design.canvasWidth, 720, 'capture context must not mutate the source project');
+});
+
+test('rejects unsupported AI design capture scales and excessive pixel counts', () => {
+  const project = designProject();
+  assert.throws(() => buildAiDesignCaptureContext(project, 5), { code: 'HEADLESS_INVALID_CAPTURE_SCALE' });
+  project.design.canvasWidth = 4000;
+  project.design.canvasHeight = 4000;
+  assert.throws(() => buildAiDesignCaptureContext(project, 3), { code: 'HEADLESS_CAPTURE_TOO_LARGE' });
 });
