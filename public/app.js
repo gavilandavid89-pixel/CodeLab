@@ -4076,7 +4076,8 @@ function renderDesignWorkspace() {
       node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
-      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+      const dragPosition = getDesignLayoutPositions(activeDesignProject().design).positions.get(el.id) || { x: Number(el.x)||0, y: Number(el.y)||0 };
+      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: dragPosition.x, y: dragPosition.y, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
       node.setPointerCapture && node.setPointerCapture(ev.pointerId);
       ev.preventDefault();
     });
@@ -4193,8 +4194,14 @@ function bindDesignCanvasEvents() {
       el.height = Math.max(20, Math.min(4000, Math.round(designDragState.height + dy)));
       if (node) { node.style.width = el.width + 'px'; node.style.height = el.height + 'px'; }
     } else {
-      el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
-      if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
+      const activeDesign = activeDesignProject()?.design;
+      const nextX = Math.max(0, Math.round(designDragState.x + dx));
+      const nextY = Math.max(0, Math.round(designDragState.y + dy));
+      const canvasWidth = getDesignCanvasWidth(activeDesign);
+      const canvasHeight = getDesignCanvasHeight(activeDesign) || 900;
+      el.x = el.xUnit === '%' ? nextX / canvasWidth * 100 : nextX;
+      el.y = el.yUnit === '%' ? nextY / canvasHeight * 100 : nextY;
+      if (node) { node.style.left = nextX + 'px'; node.style.top = nextY + 'px'; }
     }
   });
   const finishDesignDrag = () => {
@@ -4207,8 +4214,14 @@ function bindDesignCanvasEvents() {
         el.width = Math.max(20, Math.round((Number(el.width) || 120) / step) * step);
         el.height = Math.max(20, Math.round((Number(el.height) || 48) / step) * step);
       } else {
-        el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
-        el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
+        const canvasWidth = getDesignCanvasWidth(p.design);
+        const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+        const xPixels = el.xUnit === '%' ? (Number(el.x) || 0) * canvasWidth / 100 : (Number(el.x) || 0);
+        const yPixels = el.yUnit === '%' ? (Number(el.y) || 0) * canvasHeight / 100 : (Number(el.y) || 0);
+        const snappedX = Math.max(0, Math.round(xPixels / step) * step);
+        const snappedY = Math.max(0, Math.round(yPixels / step) * step);
+        el.x = el.xUnit === '%' ? snappedX / canvasWidth * 100 : snappedX;
+        el.y = el.yUnit === '%' ? snappedY / canvasHeight * 100 : snappedY;
       }
     }
     const selectedId = selectedDesignElementId;
@@ -4248,10 +4261,14 @@ function bindDesignCanvasEvents() {
       if (!nudgeHistoryActive) recordDesignHistory();
       nudgeHistoryActive = true;
       const step = ev.shiftKey ? 10 : 1;
-      if (ev.key === 'ArrowLeft') el.x = Math.max(0, (Number(el.x) || 0) - step);
-      if (ev.key === 'ArrowRight') el.x = Math.max(0, (Number(el.x) || 0) + step);
-      if (ev.key === 'ArrowUp') el.y = Math.max(0, (Number(el.y) || 0) - step);
-      if (ev.key === 'ArrowDown') el.y = Math.max(0, (Number(el.y) || 0) + step);
+      const canvasWidth = getDesignCanvasWidth(p.design);
+      const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+      const xPixels = el.xUnit === '%' ? (Number(el.x) || 0) * canvasWidth / 100 : (Number(el.x) || 0);
+      const yPixels = el.yUnit === '%' ? (Number(el.y) || 0) * canvasHeight / 100 : (Number(el.y) || 0);
+      const nextX = Math.max(0, xPixels + (ev.key === 'ArrowLeft' ? -step : ev.key === 'ArrowRight' ? step : 0));
+      const nextY = Math.max(0, yPixels + (ev.key === 'ArrowUp' ? -step : ev.key === 'ArrowDown' ? step : 0));
+      el.x = el.xUnit === '%' ? nextX / canvasWidth * 100 : nextX;
+      el.y = el.yUnit === '%' ? nextY / canvasHeight * 100 : nextY;
       renderDesignWorkspace();
       saveProjectsToStorage();
     } else if (ev.key === 'Escape' && selectedDesignElementId) {
