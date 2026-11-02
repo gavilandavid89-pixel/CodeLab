@@ -3520,37 +3520,40 @@ function designXmlEscape(value) {
 }
 
 function captureDesignSvg(project) {
-  const width = ({ desktop: 1440, tablet: 768, mobile: 390 })[project.design.frame] || 1440;
+  const width = getDesignCanvasWidth(project.design);
   const layout = getDesignLayoutPositions(project.design);
   const height = layout.height;
   const safeColor = value => {
     const color = String(value || 'transparent').trim();
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   };
-  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map(el => {
+  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false) : []).map(el => {
     const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0))), y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
     const w = Math.max(20, Math.min(4000, finite(el.width, 120) || 120)), h = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
     const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
+    const opacity = Math.max(0, Math.min(1, finite(el.opacity, 1)));
+    const rotation = Math.max(-3600, Math.min(3600, finite(el.rotation, 0)));
+    const wrap = markup => '<g opacity="' + opacity + '" transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')">' + markup + '</g>';
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"/>'
       : '';
     if (el.type === 'rectangle') {
-      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      return wrap(rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>');
     }
     if (el.type === 'ellipse') {
       const ellipseFill = background !== 'transparent' ? ' fill="' + designXmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
-      return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+      return wrap('<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>');
     }
     if (el.type === 'image') {
       const source = safeDesignImageSource(el.src);
       const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
-      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
-      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+      if (source) return wrap(rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>');
+      return wrap(rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>');
     }
     const raw = String(el.text || '').split(/\r?\n/);
     const maxChars = Math.max(1, Math.floor((w - 12) / (fontSize * 0.56)));
@@ -3572,7 +3575,7 @@ function captureDesignSvg(project) {
     const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
     const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
     const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
-    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+    return wrap(rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>');
   }).join('');
   return {
     width, height,
@@ -3589,7 +3592,7 @@ async function captureDesignForAI() {
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const designLayout = getDesignLayoutPositions(project.design);
-  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
+  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false) : []).map((el, index) => {
     const position = designLayout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
@@ -3631,7 +3634,7 @@ async function captureDesignForAI() {
       padding: Math.max(0, Math.min(300, Number(project.design.layoutPadding) || 0))
     },
     elements: elements.map((item, index) => {
-      const source = project.design.elements.filter(el => !!el && typeof el === 'object')[index];
+      const source = project.design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false)[index];
       if (source && source.type === 'image') item.image = { alt: String(source.alt || '').slice(0, 500) };
       return item;
     }),
@@ -3692,7 +3695,7 @@ function exportDesignHtml() {
   const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
   const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
   const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
-  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements.filter(el => el && el.visible !== false) : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
@@ -3708,7 +3711,9 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const opacity = Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1));
+    const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
@@ -3886,8 +3891,11 @@ function getDesignLayoutPositions(design) {
   if (mode === 'free') {
     let contentBottom = 0;
     for (const el of elements) {
-      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
-      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const rawX = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+      const rawY = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const canvasHeight = getDesignCanvasHeight(design) || 900;
+      const x = el.xUnit === '%' ? rawX * frameWidth / 100 : rawX;
+      const y = el.yUnit === '%' ? rawY * canvasHeight / 100 : rawY;
       const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
