@@ -102,6 +102,8 @@ function safeExportLink(value) {
   const source = String(value || '').trim();
   if (!source || source.length > 2048) return '';
   if (/^#layer-[a-z0-9_-]{1,120}$/i.test(source)) return source;
+  if (/^mailto:[^\\s<>@]+@[^\\s<>@]+\\.[^\\s<>@]+$/i.test(source)) return source;
+  if (/^tel:\\+?[0-9(). -]{3,32}$/i.test(source)) return source;
   try {
     const url = new URL(source);
     if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) return url.href;
@@ -176,7 +178,9 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
   const background = safeExportColor(design.background, '#ffffff');
 
-  const elements = (Array.isArray(design.elements) ? design.elements : []).map(element => {
+  const elements = (Array.isArray(design.elements) ? design.elements : []).filter(element =>
+    element && typeof element === 'object' && element.visible !== false
+  ).map(element => {
     const position = layout.positions.get(element.id) || { x: Number(element.x) || 0, y: Number(element.y) || 0 };
     const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
     const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
@@ -187,6 +191,8 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const fontSize = Math.max(8, Math.min(240, Number(element.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(element.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(element.radius) || 0));
+    const rotation = Number.isFinite(Number(element.rotation)) ? Math.max(-3600, Math.min(3600, Number(element.rotation))) : 0;
+    const opacity = Number.isFinite(Number(element.opacity)) ? Math.max(0, Math.min(1, Number(element.opacity))) : 1;
     const align = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : 'left';
     const imageSource = element.type === 'image' ? safeExportImageSource(element.src) : '';
     const link = element.type === 'button' ? safeExportLink(element.href) : '';
@@ -201,7 +207,8 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
       ';background:' + elementBackground + ';font-size:' + fontSize + 'px;font-weight:' + weight +
       ';text-align:' + align + ';border-radius:' + (element.type === 'ellipse' ? '50%' : radius + 'px') +
       ';display:flex;align-items:center;box-sizing:border-box;padding:' + (element.type === 'image' ? '0' : '4px') +
-      ';overflow:hidden;' + (element.type === 'button' ? 'justify-content:center;text-decoration:none;' : '') +
+      ';overflow:hidden;opacity:' + opacity + ';' + (rotation ? 'transform:rotate(' + rotation + 'deg);transform-origin:center center;' : '') +
+      (element.type === 'button' ? 'justify-content:center;text-decoration:none;' : '') +
       (element.type === 'image' ? 'object-fit:' + (['contain', 'cover', 'fill'].includes(element.objectFit) ? element.objectFit : 'cover') + ';' : '');
     const styleAttr = ' style="' + escapeHtml(style + (flowNavigation ? 'cursor:pointer' : '')) + '"';
     const flowAttrs = flowNavigation ? ' role="link" tabindex="0" data-flow-to="' + escapeHtml(target) + '"' : '';
