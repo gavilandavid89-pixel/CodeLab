@@ -8,11 +8,14 @@ const { applyHeadlessBatch } = require('./workspace-runtime');
 test('all responsive design templates keep layer bounds within narrow canvas widths', () => {
   for (const width of [100, 200, 280, 390, 768]) {
     for (const templateId of TEMPLATE_IDS) {
-      const template = createDesignTemplate(templateId, { canvasWidth: width }, {
+      const template = createDesignTemplate(templateId, { canvasWidth: width, canvasHeight: 160 }, {
         idFactory: (() => { let id = 0; return () => 'test-' + (++id); })()
       });
       assert.ok(template.elements.length > 0, templateId + ' should produce layers');
+      assert.ok(template.canvasHeight >= 160, templateId + ' should preserve a valid existing height');
       for (const element of template.elements) {
+        assert.ok(element.y + element.height <= template.canvasHeight,
+          templateId + ' exceeds computed canvas height at width ' + width);
         assert.ok(element.x >= 0, templateId + ' has a negative x at width ' + width);
         assert.ok(element.width > 0, templateId + ' has a non-positive width at ' + width);
         assert.ok(element.x + element.width <= width, templateId + ' overflows width ' + width + ': ' + JSON.stringify(element));
