@@ -138,7 +138,7 @@ Design batches now save the prior design snapshot into the same `designUndoStack
 
 ## Responsive design templates
 
-The browser-independent `headless/design-templates.js` module implements the same three website templates: `landing`, `dashboard`, and `portfolio`. It uses the saved custom canvas width to choose compact (<=768px) or desktop geometry, and returns normal CodeLab design elements.
+The browser-independent `headless/design-templates.js` module implements the same three website templates: `landing`, `dashboard`, and `portfolio`. It uses the saved custom canvas width to choose compact (<=768px) or desktop geometry, scales horizontal padding to narrow canvases, and returns normal CodeLab design elements without forcing a 250px minimum content width. Regression coverage checks all three templates at widths of 100, 200, 280, 390, and 768px.
 
 - `design.template.list` returns available templates without mutation.
 - `design.template.apply` replaces the design layers, updates the canvas background, increments the design revision, and records an undo snapshot.
@@ -153,7 +153,7 @@ The headless runtime now supports the CodeLab design-project backup format and t
 - `design.import.json` validates a CodeLab JSON backup, enforces the 5 MB / 500-layer / 500,000-character code limits, sanitizes image and link sources, remaps layer IDs and internal prototype links, and creates a new project.
 - `design.convert.toWeb` changes the project to web mode, stores a responsive HTML export in its code field, and preserves the original design source.
 
-HTML export now reproduces semantic per-layer HTML, responsive free/auto layout, safe image and link handling, and connected multi-screen prototype navigation. The output is generated without a browser and can be converted into web-project code while preserving the source design.
+HTML export now reproduces semantic per-layer HTML, responsive free/auto layout, safe image and link handling (including validated `mailto:` and `tel:` actions), and connected multi-screen prototype navigation. Hidden layers are omitted, and layer rotation/opacity are preserved with bounded CSS values. Regression tests cover these parity guarantees and rejection of unsafe link schemes. The output is generated without a browser and can be converted into web-project code while preserving the source design.
 
 ## Headless AI code generation and provider feedback
 
