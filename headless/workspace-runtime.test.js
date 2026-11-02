@@ -125,6 +125,23 @@ test('generates project IDs when the caller leaves them out', () => {
   assert.match(result.state.projects[0].id, /^proj_[a-f0-9-]{36}$/);
 });
 
+test('persists editor-compatible image attachments through an atomic headless design batch', () => {
+  const source = designProject();
+  source.design.elements = [{ id: 'el_image', type: 'image', src: '', alt: 'Imagen del diseño' }];
+  const dataUrl = 'data:image/png;base64,' + Buffer.from('image-bytes').toString('base64');
+  const result = applyHeadlessBatch(state([source]), request([
+    { type: 'design.batch', projectId: source.id, expectedDesignRevision: 0, operations: [
+      { type: 'image.attach', id: 'el_image', filename: 'hero.png', dataUrl }
+    ] }
+  ]));
+  const saved = result.state.projects[0];
+  assert.equal(saved.design.elements[0].src, dataUrl);
+  assert.equal(saved.design.elements[0].alt, 'hero');
+  assert.equal(saved.design.revision, 1);
+  assert.equal(saved.designUndoStack.length, 1);
+  assert.equal(result.results[0].results[0].byteLength, Buffer.from('image-bytes').length);
+});
+
 test('stores compact replay receipts instead of large SVG previews', () => {
   const result = applyHeadlessBatch(state([designProject()]), request([
     { type: 'design.batch', projectId: 'proj_design1', operations: [
