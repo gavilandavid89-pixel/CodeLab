@@ -187,7 +187,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const align = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : 'left';
     const imageSource = element.type === 'image' ? safeExportImageSource(element.src) : '';
     const link = element.type === 'button' ? safeExportLink(element.href) : '';
-    const flow = (design.flowConnections || []).find(item => item && item.sourceElementId === element.id);
+    const flow = (Array.isArray(design.flowConnections) ? design.flowConnections : []).find(item => item && item.sourceElementId === element.id);
     const target = flow && projectsById.has(flow.targetProjectId) ? flow.targetProjectId : '';
     const flowNavigation = target && element.flowRole !== 'menu';
     const id = designLayerDomId(element.id);
@@ -200,13 +200,12 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
       ';display:flex;align-items:center;box-sizing:border-box;padding:' + (element.type === 'image' ? '0' : '4px') +
       ';overflow:hidden;' + (element.type === 'button' ? 'justify-content:center;text-decoration:none;' : '') +
       (element.type === 'image' ? 'object-fit:' + (['contain', 'cover', 'fill'].includes(element.objectFit) ? element.objectFit : 'cover') + ';' : '');
-    const styleAttr = ' style="' + escapeHtml(style) + '"';
+    const styleAttr = ' style="' + escapeHtml(style + (flowNavigation ? 'cursor:pointer' : '')) + '"';
     const flowAttrs = flowNavigation ? ' role="link" tabindex="0" data-flow-to="' + escapeHtml(target) + '"' : '';
     if (element.type === 'image') {
       if (imageSource) {
         return '<img id="' + escapeHtml(id) + '" src="' + escapeHtml(imageSource) + '" alt="' +
-          escapeHtml(String(element.alt || element.label || 'Imagen').slice(0, 300)) + '"' + flowAttrs + styleAttr +
-          (flowNavigation ? ' style="' + escapeHtml(style + 'cursor:pointer') + '"' : '') + '>';
+          escapeHtml(String(element.alt || element.label || 'Imagen').slice(0, 300)) + '"' + flowAttrs + styleAttr + '>';
       }
       return '<div id="' + escapeHtml(id) + '"' + flowAttrs + styleAttr + '>' +
         escapeHtml(element.text || 'Añade una imagen') + '</div>';
