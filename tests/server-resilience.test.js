@@ -96,7 +96,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     await makeSession(adminSid, { id: 'admin-id', provider: 'local', name: 'ADMIN', role: 'admin' });
     await makeSession(userSid, { id: 'user-id', provider: 'local', name: 'ordinary-user', role: 'user' });
     const hitHealth = (sid, ip) => fetch(BASE_URL + '/api/health', {
-      headers: { Cookie: 'codelab_sid=' + sid, 'X-Forwarded-For': ip }
+      headers: { Cookie: 'codelab_sid=' + sid, 'X-Forwarded-For': ip + ', 203.0.113.1' }
     });
     for (let i = 0; i < 125; i++) {
       const response = await hitHealth(adminSid, '198.51.100.10');
