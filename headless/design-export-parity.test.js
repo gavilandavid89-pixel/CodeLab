@@ -89,6 +89,41 @@ test('semantic HTML export preserves same-origin relative image sources but bloc
   assert.doesNotMatch(html, /src="\/\/evil\.example\/track\.png"/);
 });
 
+test('hidden prototype navigation does not export an unreachable target screen', () => {
+  const target = {
+    id: 'target-screen',
+    type: 'design',
+    name: 'Target Screen',
+    design: {
+      canvasWidth: 720,
+      canvasHeight: 1600,
+      elements: [{ id: 'target-title', type: 'heading', text: 'Target screen content', width: 300, height: 60 }]
+    }
+  };
+  const hiddenRoot = {
+    ...project([{ id: 'hidden-nav', type: 'button', text: 'Next', visible: false, width: 120, height: 40 }]),
+    design: {
+      ...project([]).design,
+      elements: [{ id: 'hidden-nav', type: 'button', text: 'Next', visible: false, width: 120, height: 40 }],
+      flowConnections: [{ sourceElementId: 'hidden-nav', targetProjectId: 'target-screen' }]
+    }
+  };
+  const hiddenHtml = exportDesignHtml(hiddenRoot, [hiddenRoot, target]);
+  assert.doesNotMatch(hiddenHtml, /data-page-id="target-screen"/);
+  assert.doesNotMatch(hiddenHtml, /Target screen content/);
+
+  const visibleRoot = {
+    ...hiddenRoot,
+    design: {
+      ...hiddenRoot.design,
+      elements: [{ ...hiddenRoot.design.elements[0], visible: true }]
+    }
+  };
+  const visibleHtml = exportDesignHtml(visibleRoot, [visibleRoot, target]);
+  assert.match(visibleHtml, /data-page-id="target-screen"/);
+  assert.match(visibleHtml, /Target screen content/);
+});
+
 test('semantic HTML export preserves safe rotation and opacity values', () => {
   const html = exportDesignHtml(project([
     { id: 'rotated-layer', type: 'rectangle', rotation: 15, opacity: 1, x: 10, y: 10, width: 100, height: 60 },
