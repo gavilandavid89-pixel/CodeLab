@@ -81,6 +81,12 @@ function applyOperation(state, operation) {
       duplicate.name = typeof operation.name === 'string' && operation.name.trim() ? operation.name.trim().slice(0, 200) : source.name + ' copy';
       duplicate.createdAt = new Date().toISOString();
       duplicate.updatedAt = duplicate.createdAt;
+      if (duplicate.type === 'design' && duplicate.design && Array.isArray(duplicate.design.flowConnections)) {
+        duplicate.design.flowConnections = duplicate.design.flowConnections.map(connection =>
+          connection && connection.targetProjectId === source.id
+            ? { ...connection, targetProjectId: newProjectId }
+            : connection);
+      }
       delete duplicate.branch;
       delete duplicate.mergeHistory;
       delete duplicate.designUndoStack;
