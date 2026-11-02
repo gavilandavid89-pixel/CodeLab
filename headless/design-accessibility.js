@@ -78,6 +78,12 @@ function auditDesignAccessibility(project) {
     if (TEXT_TYPES.has(element.type)) {
       const fontSize = Number(element.fontSize);
       const weight = Number(element.weight) || 400;
+      const opacity = Number(element.opacity);
+      if (Number.isFinite(opacity) && opacity < 1) {
+        add('warning', 'text-opacity-contrast', element,
+          'La opacidad de la capa puede reducir el contraste real; esta auditoría no compone el texto y el fondo sobre el canvas.',
+          { opacity: Math.max(0, opacity), contrastBasis: 'opacity-not-composited' });
+      }
       if (Number.isFinite(fontSize) && fontSize > 0 && fontSize < 12) {
         add('warning', 'small-text', element, 'El texto tiene un tamaño inferior a 12 px; comprueba su legibilidad en el dispositivo objetivo.', { fontSize });
       }
@@ -117,7 +123,7 @@ function auditDesignAccessibility(project) {
     notes: [
       'Auditoría estática: no sustituye una revisión visual ni una prueba con tecnologías de asistencia.',
       'El contraste solo se calcula cuando el color de texto y el fondo declarado de la capa son hexadecimales de 3 o 6 dígitos.',
-      'Los fondos transparentes, imágenes, superposiciones y estados interactivos requieren comprobación visual adicional.'
+      'Los fondos transparentes, opacidad parcial, imágenes, superposiciones y estados interactivos requieren comprobación visual adicional.'
     ]
   };
 }
