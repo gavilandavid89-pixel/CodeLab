@@ -3495,7 +3495,7 @@ function setDesignBackground(color) {
 function distributeDesignElements(axis = 'horizontal') {
   const p = activeDesignProject();
   if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
-  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) && !el.locked) : [];
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
   const dimensionAxis = horizontal ? 'width' : 'height';
@@ -3524,7 +3524,7 @@ function alignDesignElement(mode = 'center-x') {
   const p = activeDesignProject(), el = selectedDesignElement();
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
-  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
+  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id) && !item.locked);
   if (selected.length > 1) {
     const left = Math.min(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design))));
     const top = Math.min(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900)));
@@ -3588,7 +3588,7 @@ function captureDesignSvg(project) {
     const color = String(value || 'transparent').trim();
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   };
-  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map(el => {
+  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : []).map(el => {
     const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0))), y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
@@ -3650,7 +3650,7 @@ async function captureDesignForAI() {
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const designLayout = getDesignLayoutPositions(project.design);
-  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
+  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : []).map((el, index) => {
     const position = designLayout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
@@ -3753,7 +3753,7 @@ function exportDesignHtml() {
   const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
   const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
   const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
-  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements.filter(el => el && !el.hidden) : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
@@ -4130,7 +4130,7 @@ function renderDesignWorkspace() {
         try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
       });
       resizeHandle.addEventListener('keydown', ev => {
-        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
+        if (el.locked || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
         ev.preventDefault(); ev.stopPropagation();
         recordDesignHistory();
         const step = ev.shiftKey ? 10 : 1;
@@ -4441,7 +4441,7 @@ function duplicateDesignElement() {
   const p = activeDesignProject();
   if (!p || !Array.isArray(p.design.elements) || !selectedDesignElementId) return;
   const selectedIdSet = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
-  const selected = p.design.elements.filter(item => selectedIdSet.has(item.id));
+  const selected = p.design.elements.filter(item => selectedIdSet.has(item.id) && !item.locked);
   if (!selected.length) return;
   if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
     showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
