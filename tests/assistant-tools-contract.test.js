@@ -76,7 +76,7 @@ assert.match(app, /id="designCanvasHeight"/, 'Inspector must expose canvas heigh
 assert.match(app, /function resetDesignCanvasDimensions\(\)/, 'Inspector must support resetting canvas dimensions');
 assert.match(bridge, /const supportedQueries = \[[^\]]*'design\.capture\.context'/,
   'headless AI design capture context must be exposed as a supported query');
-assert.match(bridge, /'design\.history\.inspect', 'design\.capture\.context', 'design\.export\.json'/,
+assert.match(bridge, /'design\.history\.inspect', 'design\.template\.list', 'design\.capture\.context', 'design\.export\.json'/,
   'design capture context must be registered in the query allowlist in the expected order');
 assert.match(bridge, /design\.capture\.context[\s\S]{0,500}queryArgs\.projectId !== 'string'/,
   'design capture context must require an explicit project ID');
