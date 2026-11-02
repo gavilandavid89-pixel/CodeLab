@@ -73,6 +73,12 @@ test('semantic HTML export preserves safe mailto and tel actions but rejects uns
 
   assert.match(html, /href="mailto:hello@example\.com"/);
   assert.match(html, /href="tel:\+1-555-123-4567"/);
+  const emailAnchor = html.match(/<a id="layer-email"[^>]*>/)?.[0] || '';
+  const phoneAnchor = html.match(/<a id="layer-phone"[^>]*>/)?.[0] || '';
+  assert.ok(emailAnchor);
+  assert.ok(phoneAnchor);
+  assert.doesNotMatch(emailAnchor, /target=/);
+  assert.doesNotMatch(phoneAnchor, /target=/);
   assert.doesNotMatch(html, /href="javascript:/);
   assert.match(html, /Unsafe/);
 });
