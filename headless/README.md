@@ -146,7 +146,7 @@ The bridge action `headless_ai_generate` performs AI generation without opening 
 3. Splits generated HTML/CSS/JS into bounded 50,000-character writes and saves them through the authenticated headless batch API.
 4. Reads the saved code back and verifies the result.
 
-The action requires explicit approval because it changes code and consumes provider quota. It supports a caller-supplied operation ID and a SHA-256 request fingerprint stored in the private workspace receipt. A retry after a lost response checks that receipt first, so it does not call the provider again; reusing the ID for a different prompt/configuration is rejected.
+The action requires explicit approval because it changes code and consumes provider quota. It supports a caller-supplied operation ID and a SHA-256 request fingerprint stored in the private workspace receipt. A retry after a lost response checks that receipt first, so it does not call the provider again; reusing the ID for a different prompt, provider/key fingerprint, source, revision, or token budget is rejected. The provider key itself is never stored in the fingerprint.
 
 The AI proxy now returns provider-reported token usage and recognized rate-limit headers when the provider supplies them. CodeLab's own default rate limit is 20 requests per minute per client IP and returns a 60-second retry hint. Provider daily quotas are not universally queryable; when the provider sends no quota headers, Headless reports them as unavailable rather than inventing a remaining quota. No automatic retry is made after a 429.
 
