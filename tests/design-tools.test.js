@@ -33,6 +33,15 @@ assert.equal(exportedRoundTrip.version, 1);
 assert.equal(exportedRoundTrip.typography.baseFontPx, 20);
 assert.equal(exportedRoundTrip.spacing[0].px, 8);
 assert.equal(exportedRoundTrip.radius.find(item => item.name === 'radius-lg').px, 16);
+const parsedRoundTrip = tools.parseDesignSystemImport(JSON.stringify(exportedRoundTrip));
+assert.equal(parsedRoundTrip.name, 'Round trip');
+assert.equal(parsedRoundTrip.primary, '#123456');
+assert.equal(parsedRoundTrip.baseFont, 20);
+assert.equal(parsedRoundTrip.baseSpacing, 8);
+assert.equal(parsedRoundTrip.baseRadius, 16);
+assert.throws(() => tools.parseDesignSystemImport({ ...exportedRoundTrip, colors: { ...exportedRoundTrip.colors, primary: 'not-a-color' } }), /colores inválidos/);
+assert.throws(() => tools.parseDesignSystemImport({ ...exportedRoundTrip, typography: { ...exportedRoundTrip.typography, baseFontPx: 99 } }), /fuera de rango/);
+
 
 const css = tools.toCssVariables({ primary: '#123456', baseFont: 18, baseSpacing: 6 });
 assert.match(css, /--color-primary: #123456;/);
@@ -89,6 +98,8 @@ console.log('Design tools unit tests passed: WCAG contrast, palette generation, 
 
 
 const appSource = fs.readFileSync('public/app.js', 'utf8');
+const designToolsSource = fs.readFileSync('public/design-tools.js', 'utf8');
+assert.match(designToolsSource, /parseDesignSystemImport\(await file\.text\(\)\)/, 'the UI import path must use the same pure JSON validator as headless imports');
 assert.match(appSource, /if \(!Array\.isArray\(p\.designUndoStack\)\) p\.designUndoStack = \[\]/,
   'each design project must initialize its own undo history');
 assert.match(appSource, /if \(!Array\.isArray\(p\.designRedoStack\)\) p\.designRedoStack = \[\]/,

@@ -54,6 +54,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codelab-ui-evidence-${{ github.run_id }}
-          path: .codelab-artifacts/bridge-ui.png
+          path: |
+            .codelab-artifacts/bridge-ui.png
+            .codelab-artifacts/design-capture.png
+            .codelab-artifacts/design-capture.json
           if-no-files-found: ignore
           retention-days: 1

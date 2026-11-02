@@ -128,6 +128,49 @@
     };
   }
 
+  function parseDesignSystemImport(input) {
+    const imported = typeof input === 'string' ? JSON.parse(input) : input;
+    if (!imported || typeof imported !== 'object' || Array.isArray(imported) ||
+        imported.format !== 'codelab-design-system' || imported.version !== 1 ||
+        !imported.colors || !imported.typography || !imported.accessibility) {
+      throw new Error('El archivo no es un sistema visual CodeLab compatible.');
+    }
+    const scale = Array.isArray(imported.typography.scale) ? imported.typography.scale : [];
+    const baseStep = scale.find(item => item && item.name === 'base');
+    const validHex = value => typeof value === 'string' && /^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
+    const requiredColorKeys = ['primary', 'secondary', 'accent', 'surface', 'background', 'text'];
+    if (!requiredColorKeys.every(key => validHex(imported.colors[key])) ||
+        !validHex(imported.accessibility.foreground) || !validHex(imported.accessibility.background)) {
+      throw new Error('El archivo contiene colores inválidos; no se importó ningún cambio.');
+    }
+    const baseFont = Number(imported.typography.baseFontPx || (baseStep && baseStep.px));
+    const typeRatio = Number(imported.typography.ratio);
+    const baseSpacing = Number(Array.isArray(imported.spacing) && imported.spacing[0] ? imported.spacing[0].px : NaN);
+    const radiusToken = Array.isArray(imported.radius) && imported.radius.find(item => item && item.name === 'radius-lg');
+    const baseRadius = Number(radiusToken ? radiusToken.px : NaN);
+    if (!Number.isFinite(baseFont) || baseFont < 10 || baseFont > 32 ||
+        !Number.isFinite(typeRatio) || typeRatio < 1.1 || typeRatio > 1.5 ||
+        !Number.isFinite(baseSpacing) || baseSpacing < 2 || baseSpacing > 16 ||
+        !Number.isFinite(baseRadius) || baseRadius < 0 || baseRadius > 32) {
+      throw new Error('El archivo contiene valores tipográficos, de espaciado o radio fuera de rango.');
+    }
+    return sanitizeSettings({
+      name: imported.name,
+      primary: imported.colors.primary,
+      secondary: imported.colors.secondary,
+      accent: imported.colors.accent,
+      surface: imported.colors.surface,
+      background: imported.colors.background,
+      text: imported.colors.text,
+      contrastForeground: imported.accessibility.foreground,
+      contrastBackground: imported.accessibility.background,
+      baseFont: baseFont,
+      typeRatio: typeRatio,
+      baseSpacing: baseSpacing,
+      baseRadius: baseRadius
+    });
+  }
+
   function toCssVariables(input) {
     const tokens = buildDesignTokens(input);
     const lines = [':root {'];
@@ -720,46 +763,7 @@
         if (!file) return;
         try {
           if (file.size > 10 * 1024 * 1024) throw new Error('El archivo supera el límite de 10 MiB.');
-          const imported = JSON.parse(await file.text());
-          if (!imported || imported.format !== 'codelab-design-system' || imported.version !== 1 ||
-              !imported.colors || !imported.typography || !imported.accessibility) {
-            throw new Error('El archivo no es un sistema visual CodeLab compatible.');
-          }
-          const scale = Array.isArray(imported.typography.scale) ? imported.typography.scale : [];
-          const baseStep = scale.find(item => item && item.name === 'base');
-          const validHex = value => typeof value === 'string' &&
-            /^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
-          const requiredColorKeys = ['primary', 'secondary', 'accent', 'surface', 'background', 'text'];
-          if (!requiredColorKeys.every(key => validHex(imported.colors[key])) ||
-              !validHex(imported.accessibility.foreground) || !validHex(imported.accessibility.background)) {
-            throw new Error('El archivo contiene colores inválidos; no se importó ningún cambio.');
-          }
-          const baseFont = Number(imported.typography.baseFontPx || (baseStep && baseStep.px));
-          const typeRatio = Number(imported.typography.ratio);
-          const baseSpacing = Number(Array.isArray(imported.spacing) && imported.spacing[0] ? imported.spacing[0].px : NaN);
-          const radiusToken = Array.isArray(imported.radius) && imported.radius.find(item => item && item.name === 'radius-lg');
-          const baseRadius = Number(radiusToken ? radiusToken.px : NaN);
-          if (!Number.isFinite(baseFont) || baseFont < 10 || baseFont > 32 ||
-              !Number.isFinite(typeRatio) || typeRatio < 1.1 || typeRatio > 1.5 ||
-              !Number.isFinite(baseSpacing) || baseSpacing < 2 || baseSpacing > 16 ||
-              !Number.isFinite(baseRadius) || baseRadius < 0 || baseRadius > 32) {
-            throw new Error('El archivo contiene valores tipográficos, de espaciado o radio fuera de rango.');
-          }
-          settings = sanitizeSettings({
-            name: imported.name,
-            primary: imported.colors.primary,
-            secondary: imported.colors.secondary,
-            accent: imported.colors.accent,
-            surface: imported.colors.surface,
-            background: imported.colors.background,
-            text: imported.colors.text,
-            contrastForeground: imported.accessibility.foreground,
-            contrastBackground: imported.accessibility.background,
-            baseFont: baseFont,
-            typeRatio: typeRatio,
-            baseSpacing: baseSpacing,
-            baseRadius: baseRadius
-          });
+          settings = parseDesignSystemImport(await file.text());
           fillForm();
           renderAll();
           const saved = saveSettings(settings);
@@ -797,6 +801,7 @@
     contrastRatio: contrastRatio,
     generatePalette: generatePalette,
     buildDesignTokens: buildDesignTokens,
+    parseDesignSystemImport: parseDesignSystemImport,
     toCssVariables: toCssVariables,
     injectTokenBlock: injectTokenBlock,
     auditHtml: auditHtml,

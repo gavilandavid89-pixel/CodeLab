@@ -13,12 +13,12 @@ if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
 }
 
 function parseCommand(raw) {
-  if (typeof raw !== 'string' || raw.length > 12000) throw new Error('Issue body missing or too large.');
+  if (typeof raw !== 'string' || raw.length > 60000) throw new Error('Issue body missing or too large.');
   const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '');
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,16 +29,64 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'design_capture_png', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
   if (['branch_merge', 'branch_undo_merge'].includes(command.action) && command.approval !== 'approved') {
     throw new Error(command.action + ' changes the main project state; approval: "approved" is required.');
+  }
+  if (command.action === 'headless_batch') {
+    if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_batch requires a non-negative base_revision.');
+    if (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id)) throw new Error('headless_batch requires a safe operation_id.');
+    if (!Array.isArray(args.operations) || args.operations.length < 1 || args.operations.length > 100) throw new Error('headless_batch requires 1 to 100 operations.');
+    if (JSON.stringify(args.operations).length > 50000) throw new Error('headless_batch operations exceed 50000 characters.');
+    if (args.operations.some(operation => operation && operation.type === 'project.delete') && command.approval !== 'approved') throw new Error('Headless project deletion requires approval: "approved".');
+    if (args.operations.some(operation => operation && ['branch.merge', 'branch.undo_merge'].includes(operation.type)) && command.approval !== 'approved') throw new Error('Headless branch merge/undo requires approval: "approved".');
+    if (args.operations.some(operation => operation && operation.type === 'branch.create' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing an existing headless branch requires approval: "approved".');
+    if (args.operations.some(operation => operation && operation.type === 'design.template.apply' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing existing design layers with a template requires approval: "approved".');
+  }
+  if (command.action === 'headless_ai_generate') {
+    if (command.approval !== 'approved') throw new Error('Headless AI generation consumes provider quota and changes project code; approval: "approved" is required.');
+    if (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id)) throw new Error('headless_ai_generate requires a valid project_id.');
+    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('headless_ai_generate prompt must contain 1 to 4000 characters.');
+    if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_ai_generate requires a non-negative base_revision.');
+    if (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id)) throw new Error('headless_ai_generate requires a safe operation_id.');
+    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('headless_ai_generate source must be main or branch.');
+    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('headless_ai_generate max_tokens must be from 256 to 32768.');
+  }
+  if (command.action === 'headless_design_system') {
+    if (!['read', 'write', 'import', 'export'].includes(args.operation)) throw new Error('headless_design_system operation must be read, write, import, or export.');
+    if (['write', 'import'].includes(args.operation)) {
+      if (command.approval !== 'approved') throw new Error('Changing workspace design-system settings requires approval: "approved".');
+      if (!Number.isInteger(args.base_revision) || args.base_revision < 0) throw new Error('headless_design_system writes require a non-negative base_revision.');
+    }
+    if (args.operation === 'write' && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) {
+      throw new Error('headless_design_system write requires a settings object.');
+    }
+    if (args.operation === 'import' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) {
+      throw new Error('headless_design_system import requires JSON between 2 and 50000 characters.');
+    }
+    if (args.settings && JSON.stringify(args.settings).length > 20000) throw new Error('headless_design_system settings exceed 20000 characters.');
+  }
+  if (command.action === 'headless_query') {
+    const supportedQueries = ['component.search', 'component.inspect', 'design.tokens.generate', 'project.list', 'project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.template.list', 'design.capture.context', 'design.export.json', 'design.export.svg', 'design.export.html', 'headless.operation.status'];
+    if (!supportedQueries.includes(args.query_action)) throw new Error('headless_query requires a supported query_action.');
+    if (args.query_args !== undefined && (!args.query_args || typeof args.query_args !== 'object' || Array.isArray(args.query_args))) throw new Error('headless_query query_args must be an object.');
+    if (args.expected_revision !== undefined && (!Number.isInteger(args.expected_revision) || args.expected_revision < 0)) throw new Error('headless_query expected_revision must be a non-negative integer.');
+    if (JSON.stringify(args.query_args || {}).length > 20000) throw new Error('headless_query query_args exceed 20000 characters.');
+    const queryArgs = args.query_args || {};
+    if (['project.inspect', 'project.code.read', 'design.read', 'accessibility.audit', 'branch.inspect', 'design.history.inspect', 'design.capture.context', 'design.export.json', 'design.export.svg', 'design.export.html'].includes(args.query_action) &&
+        (typeof queryArgs.projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.projectId))) {
+      throw new Error(args.query_action + ' requires a valid query_args.projectId.');
+    }
+    if (args.query_action === 'component.inspect' && (typeof queryArgs.componentId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(queryArgs.componentId))) {
+      throw new Error('component.inspect requires a valid query_args.componentId.');
+    }
   }
   if (command.action === 'project_rename' &&
       (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200)) {
@@ -70,8 +118,8 @@ function parseCommand(raw) {
     if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
   }
   if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
-  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_import_json requires a JSON string between 2 and 10000 characters.');
-  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 10000)) throw new Error('design_system_import_json requires a JSON string between 2 and 10000 characters.');
+  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
+  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_system_import_json requires a JSON string between 2 and 50000 characters.');
   if (command.action === 'design_tokens_generate') {
     if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
   }
@@ -251,6 +299,106 @@ async function getJson(page, path) {
   }
 }
 
+
+async function createHeadlessPreview(projectId, source = 'main', selfTest = false, fixture = 'diagnostics') {
+  let code;
+  let workspaceRevisionRead = null;
+  if (selfTest) {
+    if (fixture === 'interactions') {
+      code = {
+        html: '<main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
+        css: '',
+        js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");'
+      };
+    } else {
+      code = {
+        html: '<main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main>',
+        css: '',
+        js: 'console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST");throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");'
+      };
+    }
+  } else {
+    const saved = await page.evaluate(async ({ projectId, source }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable for headless preview.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Could not read saved project code for preview (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      const fields = data.result && data.result.fields;
+      if (!fields || ['html', 'css', 'js'].some(key => !fields[key] || fields[key].truncated)) {
+        throw new Error('Project code exceeds the 200000-character headless preview read limit. No preview was opened.');
+      }
+      const code = Object.fromEntries(['html', 'css', 'js'].map(key => [key, fields[key].value]));
+      if (code.html.length + code.css.length + code.js.length > 200000) {
+        throw new Error('Combined project code exceeds the 200000-character headless preview limit.');
+      }
+      return { code, revision: data.revision };
+    }, { projectId, source });
+    code = saved.code;
+    workspaceRevisionRead = saved.revision;
+  }
+
+  const css = String(code.css || '').replace(/<\/style/gi, '<\\/style');
+  const js = String(code.js || '').replace(/<\/script/gi, '<\\/script');
+  const errScript = '<script>' +
+    'window.onerror=function(msg,url,line,col){window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:"Línea "+line+":"+col+" - "+msg},"*")};' +
+    'console.log=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"log",message:a.join(" ")},"*")};' +
+    'console.error=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:a.join(" ")},"*")};' +
+    '<\/script>';
+  const srcdoc = '<!doctype html><html><head><meta charset="UTF-8">' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; img-src data: https: http:; font-src data: https: http:; connect-src \'none\';">' +
+    '<style>' + css + '</style>' + errScript + '</head><body>' + String(code.html || '') +
+    '<script>' + js + '<\/script></body></html>';
+
+  const previewContext = await browser.newContext({ serviceWorkers: 'block' });
+  const previewPage = await previewContext.newPage();
+  const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], expectedBlockedRequests: [] };
+  previewPage.on('console', message => {
+    if (message.type() === 'error' && browserDiagnostics.consoleErrors.length < 30) {
+      browserDiagnostics.consoleErrors.push({ message: message.text().slice(0, 300), location: message.location().url || null });
+    }
+  });
+  previewPage.on('pageerror', error => {
+    if (browserDiagnostics.pageErrors.length < 30) browserDiagnostics.pageErrors.push(String(error.message || error).slice(0, 300));
+  });
+  previewPage.on('requestfailed', request => {
+    if (browserDiagnostics.failedRequests.length < 30) browserDiagnostics.failedRequests.push({
+      url: safeUrl(request.url()), failure: String(request.failure()?.errorText || 'request failed').slice(0, 200)
+    });
+  });
+
+  try {
+    await previewPage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await previewPage.setContent(
+      '<!doctype html><html><head><meta charset="utf-8"><title>CodeLab headless preview</title></head><body>' +
+      '<iframe id="headlessPreview" title="Isolated project preview" sandbox="allow-scripts allow-forms" style="width:100%;height:100vh;border:0"></iframe>' +
+      '<script>window.__codelabPreviewMessages=[];window.addEventListener("message",function(e){var f=document.getElementById("headlessPreview");if(f&&e.source===f.contentWindow&&e.data&&e.data.type==="CONSOLE_LOG")window.__codelabPreviewMessages.push(e.data)});<\/script>' +
+      '</body></html>',
+      { waitUntil: 'domcontentloaded' }
+    );
+    browserDiagnostics.consoleErrors.length = 0;
+    browserDiagnostics.pageErrors.length = 0;
+    browserDiagnostics.failedRequests.length = 0;
+    browserDiagnostics.expectedBlockedRequests.length = 0;
+    await previewPage.locator('#headlessPreview').evaluate((frame, html) => { frame.srcdoc = html; }, srcdoc);
+    const previewFrame = previewPage.frameLocator('#headlessPreview');
+    await previewFrame.locator('body').waitFor({ state: 'attached', timeout: 12000 });
+    await previewPage.waitForTimeout(250);
+    return { page: previewPage, context: previewContext, frame: previewFrame, diagnostics: browserDiagnostics, revision: workspaceRevisionRead, srcdoc };
+  } catch (error) {
+    await previewContext.close().catch(() => {});
+    throw error;
+  }
+}
+
 let browser;
 let page;
 let result;
@@ -259,6 +407,148 @@ let commandAction = 'unknown';
 let stage = 'parse_command';
 let currentStep = null;
 const startedAt = Date.now();
+
+async function executeSavedDesignBatch(action, args) {
+  return page.evaluate(async ({ action, args }) => {
+    const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+    const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+    if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+    const query = async (queryAction, queryArgs) => {
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: queryAction, args: queryArgs })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved design query failed.');
+      return data;
+    };
+    const before = await query('design.read', { projectId: args.project_id, limit: 500 });
+    const beforeDesign = before.result;
+    const elements = beforeDesign.elements || [];
+    const selected = ids => {
+      const found = elements.filter(item => ids.includes(item.id));
+      if (found.length !== ids.length) throw new Error('One or more design elements were not found.');
+      return found;
+    };
+    let operations;
+    let settings = null;
+    if (action === 'design_element_add') {
+      operations = [{ type: 'element.add', elementType: args.type }];
+    } else if (action === 'design_element_update') {
+      operations = [{ type: 'element.update', id: args.element_id, properties: args.properties }];
+    } else if (action === 'design_element_delete') {
+      operations = [{ type: 'element.delete', id: args.element_id }];
+    } else if (action === 'design_elements_delete') {
+      selected(args.element_ids);
+      operations = [{ type: 'elements.delete', ids: args.element_ids }];
+    } else if (action === 'design_element_duplicate') {
+      selected([args.element_id]);
+      operations = [{ type: 'element.duplicate', id: args.element_id }];
+    } else if (action === 'design_layer_move') {
+      const index = elements.findIndex(item => item.id === args.element_id);
+      if (index < 0) throw new Error('Design element not found.');
+      const targetIndex = Math.max(0, Math.min(elements.length - 1, index + (args.direction === 'back' ? -1 : 1)));
+      operations = [{ type: 'element.reorder', id: args.element_id, targetIndex }];
+    } else if (action === 'design_layer_reorder') {
+      const index = elements.findIndex(item => item.id === args.element_id);
+      if (index < 0) throw new Error('Design element not found.');
+      if (args.target_index >= elements.length) throw new Error('target_index exceeds the current layer count.');
+      operations = [{ type: 'element.reorder', id: args.element_id, targetIndex: args.target_index }];
+    } else if (action === 'design_elements_align') {
+      selected(args.element_ids);
+      operations = [{ type: 'elements.align', ids: args.element_ids, mode: args.mode }];
+    } else if (action === 'design_elements_distribute') {
+      selected(args.element_ids);
+      if (beforeDesign.layout.mode === 'auto') throw new Error('Switch the design to free layout before manual distribution.');
+      operations = [{ type: 'elements.distribute', ids: args.element_ids, axis: args.axis }];
+    } else if (action === 'design_layout_configure') {
+      settings = Object.fromEntries(['mode', 'direction', 'gap', 'padding'].filter(key => args[key] !== undefined).map(key => [key, args[key]]));
+      operations = [{ type: 'layout.set', ...settings }];
+    } else {
+      throw new Error('Unsupported saved design action: ' + action);
+    }
+    const beforeIds = new Set(elements.map(item => item.id));
+    const sourceBefore = elements.find(item => item.id === args.element_id) || null;
+    const beforePositions = elements.filter(item => (args.element_ids || [args.element_id]).includes(item.id))
+      .map(item => ({ id: item.id, x: item.x, y: item.y }));
+    const operationId = 'design_action_' + crypto.randomUUID().replace(/-/g, '');
+    const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+      body: JSON.stringify({
+        baseRevision: before.revision, operationId,
+        operations: [{
+          type: 'design.batch', projectId: args.project_id,
+          expectedDesignRevision: beforeDesign.revision, operations
+        }]
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless design operation failed.');
+    const after = await query('design.read', { projectId: args.project_id, limit: 500 });
+    const afterDesign = after.result;
+    if (afterDesign.revision <= beforeDesign.revision) throw new Error('Design mutation did not advance the saved design revision.');
+    const afterElements = afterDesign.elements || [];
+    const afterById = new Map(afterElements.map(item => [item.id, item]));
+    const newElements = afterElements.filter(item => !beforeIds.has(item.id));
+    const positions = afterElements.filter(item => (args.element_ids || [args.element_id]).includes(item.id))
+      .map(item => ({ id: item.id, x: item.x, y: item.y }));
+    const changed = JSON.stringify(beforePositions) !== JSON.stringify(positions);
+    const base = {
+      projectId: args.project_id, action, saved: true, serverReadbackVerified: true,
+      workspaceRevision: after.revision, designRevision: afterDesign.revision,
+      elementCount: afterDesign.elementCount, operationTypes: operations.map(item => item.type)
+    };
+    if (action === 'design_element_add') {
+      if (!newElements[0]) throw new Error('Design element add failed authoritative server readback.');
+      return { ...base, elementId: newElements[0].id, type: newElements[0].type };
+    }
+    if (action === 'design_element_update') {
+      const element = afterById.get(args.element_id);
+      const verified = !!element && Object.entries(args.properties).every(([key, value]) => {
+        if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        return element[key] === value;
+      });
+      if (!verified) throw new Error('Design element update failed authoritative server readback.');
+      return { ...base, elementId: args.element_id, changedProperties: Object.keys(args.properties), verified };
+    }
+    if (action === 'design_element_delete') {
+      const deleted = !afterById.has(args.element_id);
+      if (!deleted) throw new Error('Design element deletion failed authoritative server readback.');
+      return { ...base, elementId: args.element_id, deleted, remainingElements: afterDesign.elementCount };
+    }
+    if (action === 'design_elements_delete') {
+      const deleted = args.element_ids.every(id => !afterById.has(id));
+      const danglingConnections = afterDesign.flowConnections.filter(item => args.element_ids.includes(item.sourceElementId)).length;
+      if (!deleted || danglingConnections) throw new Error('Bulk deletion failed authoritative layer/connection readback.');
+      return { ...base, deletedElementIds: args.element_ids, deleted, danglingConnections, remainingElements: afterDesign.elementCount };
+    }
+    if (action === 'design_element_duplicate') return {
+      ...base, sourceElementId: args.element_id, elementId: newElements[0]?.id || null,
+      duplicated: !!newElements[0] && newElements[0].type === sourceBefore?.type && newElements[0].x === (Number(sourceBefore?.x) || 0) + 24 && newElements[0].y === (Number(sourceBefore?.y) || 0) + 24
+    };
+    if (action === 'design_layer_move') return {
+      ...base, elementId: args.element_id, direction: args.direction,
+      moved: (afterElements.findIndex(item => item.id === args.element_id) !== elements.findIndex(item => item.id === args.element_id)),
+      order: afterElements.map(item => item.id)
+    };
+    if (action === 'design_layer_reorder') {
+      const verified = afterElements[args.target_index]?.id === args.element_id;
+      if (!verified) throw new Error('Layer reorder failed authoritative server readback.');
+      return { ...base, elementId: args.element_id, fromIndex: elements.findIndex(item => item.id === args.element_id), targetIndex: args.target_index, changed: changed, order: afterElements.map(item => item.id) };
+    }
+    if (action === 'design_elements_align') return { ...base, mode: args.mode, elementIds: args.element_ids, changed, positions };
+    if (action === 'design_elements_distribute') {
+      if (!changed) throw new Error('Distribution did not change saved element positions.');
+      return { ...base, axis: args.axis, elementIds: args.element_ids, changed, positions };
+    }
+    const layoutVerified = Object.entries(settings || {}).every(([key, value]) => afterDesign.layout[key] === value);
+    if (!layoutVerified) throw new Error('Layout configuration failed authoritative server readback.');
+    return { ...base, settings: afterDesign.layout, changed: Object.keys(settings || {}) };
+  }, { action, args });
+}
+
 try {
   const command = parseCommand(process.env.ISSUE_BODY || '');
   commandId = command.command_id;
@@ -346,13 +636,18 @@ try {
     }));
   } else if (command.action === 'accessibility_audit') {
     stage = 'accessibility_audit';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const api = window.CodeLabDesignTools;
-      if (!api || typeof api.auditHtml !== 'function') throw new Error('Accessibility audit API is not ready.');
-      const report = api.auditHtml(project.code?.html || '');
-      return { projectId, projectName: project.name, report };
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'accessibility.audit', args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved accessibility audit failed.');
+      return { projectId, report: data.result, workspaceRevision: data.revision, readOnly: true };
     }, command.args.project_id);
   } else if (command.action === 'design_tokens_generate') {
     stage = 'design_tokens_generate';
@@ -368,189 +663,373 @@ try {
     }, command.args.settings || null);
   } else if (command.action === 'design_system_import_json') {
     stage = 'design_system_import_json';
-    result = await (async () => {
-      const before = await page.evaluate(() => ({
-        values: Object.fromEntries(['systemName','colorPrimary','colorSecondary','colorAccent','colorSurface','colorBackground','colorText','contrastForeground','contrastBackground','baseFont','typeRatio','baseSpacing','baseRadius'].map(id => [id, document.getElementById(id)?.value ?? null])),
-        status: document.getElementById('designToolsStatus')?.textContent || ''
-      }));
-      await page.locator('#designSystemJsonFile').setInputFiles({
-        name: 'codelab-design-system-import.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(command.args.json, 'utf8')
+    result = await page.evaluate(async json => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/design-system';
+      const headers = { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken };
+      const current = await fetch(endpoint, { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify({ action: 'read' }) });
+      const state = await current.json().catch(() => ({}));
+      if (!current.ok || state.ok !== true) throw new Error('Could not read the current design-system revision.');
+      const response = await fetch(endpoint, {
+        method: 'POST', credentials: 'same-origin', headers,
+        body: JSON.stringify({ action: 'import', json, baseRevision: state.revision })
       });
-      await page.waitForFunction(previousStatus => {
-        const status = document.getElementById('designToolsStatus')?.textContent || '';
-        return status && status !== previousStatus;
-      }, before.status, { timeout: 15000 }).catch(() => {});
-      return await page.evaluate(beforeValues => {
-        const values = Object.fromEntries(['systemName','colorPrimary','colorSecondary','colorAccent','colorSurface','colorBackground','colorText','contrastForeground','contrastBackground','baseFont','typeRatio','baseSpacing','baseRadius'].map(id => [id, document.getElementById(id)?.value ?? null]));
-        const changed = Object.keys(values).some(key => values[key] !== beforeValues[key]);
-        const status = document.getElementById('designToolsStatus')?.textContent || '';
-        return {
-          imported: changed && !status.startsWith('No se pudo importar:'),
-          rejected: !changed && status.startsWith('No se pudo importar:'),
-          values,
-          status,
-          changedFields: Object.keys(values).filter(key => values[key] !== beforeValues[key])
-        };
-      }, before.values);
-    })();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design-system import failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      return { imported: true, revision: data.revision, settings: data.settings || null };
+    }, command.args.json);
   } else if (command.action === 'design_system_export_json') {
     stage = 'design_system_export_json';
-    result = await (async () => {
-      await page.locator('#openDesignTools').click({ timeout: 10000 });
-      await page.locator('#designToolsModal').waitFor({ state: 'visible', timeout: 10000 });
-      await page.locator('#designToolsTab-tokens').click({ timeout: 10000 });
-      await page.locator('#designToolsPanel-tokens').waitFor({ state: 'visible', timeout: 10000 });
-      const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
-      await page.locator('#exportDesignSystemJson').click({ timeout: 10000 });
-      const download = await downloadPromise;
-      const downloadPath = await download.path();
-      if (!downloadPath) throw new Error('Design-system JSON download did not produce a readable file.');
-      const content = await fs.readFile(downloadPath, 'utf8');
-      let parsed;
-      try { parsed = JSON.parse(content); } catch (_) { throw new Error('Design-system export did not produce valid JSON.'); }
-      if (!parsed || parsed.format !== 'codelab-design-system' || parsed.version !== 1 ||
-          !parsed.colors || !parsed.typography || !parsed.accessibility) {
-        throw new Error('Downloaded JSON does not match the CodeLab design-system schema.');
-      }
-      return {
-        exported: true,
-        filename: download.suggestedFilename(),
-        length: content.length,
-        truncated: content.length > 10000,
-        json: content.slice(0, 10000),
-        format: parsed.format,
-        version: parsed.version,
-        colorKeys: Object.keys(parsed.colors),
-        typographyKeys: Object.keys(parsed.typography),
-        spacingTokenCount: Array.isArray(parsed.spacing) ? parsed.spacing.length : 0,
-        radiusTokenCount: Array.isArray(parsed.radius) ? parsed.radius.length : 0
-      };
-    })();
-  } else if (command.action === 'design_export') {
+    result = await page.evaluate(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/design-system', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'export' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design-system export failed (HTTP ' + response.status + ').');
+      const json = JSON.stringify(data.json, null, 2);
+      return { exported: true, format: data.json?.format, version: data.json?.version, revision: data.revision, length: json.length, json, css: data.css };
+    });
+   } else if (command.action === 'design_export') {
     stage = 'design_export';
-    result = await page.evaluate(({ projectId, format }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      let content, mimeType;
-      if (format === 'svg') {
-        const api = window.CodeLabCapture;
-        if (!api || typeof api.captureDesignSvg !== 'function') throw new Error('SVG export API is not ready.');
-        const capture = api.captureDesignSvg(project);
-        content = capture.svg;
-        mimeType = 'image/svg+xml';
-      } else {
-        content = JSON.stringify({ format: 'codelab-design-project', version: 1, exportedAt: new Date().toISOString(), project }, null, 2);
-        mimeType = 'application/json';
-      }
+    result = await page.evaluate(async ({ projectId, format }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const action = format === 'svg' ? 'design.export.svg' : 'design.export.json';
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action, args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design export failed.');
+      const content = format === 'svg' ? data.result.svg : JSON.stringify(data.result, null, 2);
       const max = 7000;
-      return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
+      return {
+        projectId, format, mimeType: format === 'svg' ? 'image/svg+xml' : 'application/json',
+        length: content.length, content: content.slice(0, max), truncated: content.length > max,
+        workspaceRevision: data.revision, readOnly: true
+      };
     }, { projectId: command.args.project_id, format: command.args.format });
+  } else if (command.action === 'design_capture_png') {
+    stage = 'design_capture_png';
+    const captureScale = command.args.scale === undefined ? 2 : command.args.scale;
+    if (!Number.isInteger(captureScale) || captureScale < 1 || captureScale > 4) {
+      throw new Error('design_capture_png scale must be an integer from 1 to 4.');
+    }
+    const captureData = await page.evaluate(async ({ projectId, scale }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args, expectedRevision) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args, ...(expectedRevision === undefined ? {} : { expectedRevision }) })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Design capture query failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const captured = await query('design.capture.context', { projectId, scale });
+      const workspaceRevision = captured.revision;
+      const [htmlResponse, designResponse] = await Promise.all([
+        query('design.export.html', { projectId }, workspaceRevision),
+        query('design.read', { projectId, limit: 500 }, workspaceRevision)
+      ]);
+      const context = captured.result;
+      const html = htmlResponse.result?.html;
+      if (typeof html !== 'string' || !html.trim()) throw new Error('Saved design HTML export is empty.');
+      const canvas = context?.canvas;
+      if (!canvas || !Number.isInteger(canvas.width) || !Number.isInteger(canvas.height) ||
+          !Number.isInteger(canvas.pixelWidth) || !Number.isInteger(canvas.pixelHeight) ||
+          canvas.pixelWidth * canvas.pixelHeight > 32000000) {
+        throw new Error('Capture context returned invalid or oversized image dimensions.');
+      }
+      return { html, context, workspaceRevision, designRevision: designResponse.result.revision };
+    }, { projectId: command.args.project_id, scale: captureScale });
+    const canvas = captureData.context.canvas;
+    const captureContext = await browser.newContext({
+      viewport: { width: canvas.width, height: canvas.height },
+      deviceScaleFactor: captureScale,
+      serviceWorkers: 'block'
+    });
+    try {
+      const capturePage = await captureContext.newPage();
+      await capturePage.route('**/*', route => {
+        const url = route.request().url();
+        if (/^(data|blob|about):/i.test(url)) return route.continue();
+        return route.abort();
+      });
+      await capturePage.setContent(captureData.html, { waitUntil: 'load', timeout: 15000 });
+      await capturePage.evaluate(() => document.fonts?.ready || Promise.resolve());
+      const screenshotPath = '.codelab-artifacts/design-capture.png';
+      const contextPath = '.codelab-artifacts/design-capture.json';
+      await fs.mkdir('.codelab-artifacts', { recursive: true });
+      await capturePage.screenshot({ path: screenshotPath, fullPage: false, animations: 'disabled', timeout: 20000 });
+      const manifest = {
+        format: 'codelab-ai-design-capture-pair',
+        version: 1,
+        projectId: command.args.project_id,
+        workspaceRevision: captureData.workspaceRevision,
+        designRevision: captureData.designRevision,
+        capturedAt: new Date().toISOString(),
+        image: 'design-capture.png',
+        imageMimeType: 'image/png',
+        imagePixelWidth: canvas.pixelWidth,
+        imagePixelHeight: canvas.pixelHeight,
+        scale: captureScale,
+        context: captureData.context
+      };
+      await fs.writeFile(contextPath, JSON.stringify(manifest, null, 2), 'utf8');
+      result = {
+        projectId: command.args.project_id,
+        workspaceRevision: captureData.workspaceRevision,
+        designRevision: captureData.designRevision,
+        imagePath: screenshotPath,
+        contextPath,
+        imageMimeType: 'image/png',
+        imagePixelWidth: canvas.pixelWidth,
+        imagePixelHeight: canvas.pixelHeight,
+        scale: captureScale,
+        pairedRevisionVerified: true,
+        networkRequestsBlocked: true
+      };
+    } finally {
+      await captureContext.close();
+    }
   } else if (command.action === 'design_import_json') {
     stage = 'design_import_json';
-    result = await (async () => {
-      const before = await page.evaluate(() => ({
-        ids: projects.map(project => project.id),
-        count: projects.length,
-        maxProjects: typeof maxProjects === 'number' ? maxProjects : null
-      }));
-      await page.locator('#designProjectJsonFile').setInputFiles({
-        name: 'codelab-design-project-import.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(command.args.json, 'utf8')
+    result = await page.evaluate(async json => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: workspaceRevision,
+          operationId: 'import_' + crypto.randomUUID().replace(/-/g, ''),
+          operations: [{ type: 'design.import.json', json }]
+        })
       });
-      try {
-        await page.waitForFunction(
-          beforeIds => projects.some(project => !beforeIds.includes(project.id)),
-          before.ids,
-          { timeout: 15000 }
-        );
-        await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight, null, { timeout: 20000 });
-      } catch (_) {
-        const state = await page.evaluate(beforeIds => ({
-          projectCount: projects.length,
-          newProjects: projects.filter(project => !beforeIds.includes(project.id)).map(project => ({ id: project.id, name: project.name })),
-          toastText: document.querySelector('[role="status"]')?.textContent || document.querySelector('#toastContainer')?.textContent || null,
-          syncStatus: document.getElementById('statusText')?.textContent || null
-        }), before.ids);
-        if (!state.newProjects.length) {
-          return { imported: false, rejected: true, reason: 'The app rejected the JSON or did not create a project.', ...state };
-        }
-        throw new Error('Import started but did not settle: ' + JSON.stringify(state));
-      }
-      return await page.evaluate(beforeIds => {
-        const added = projects.filter(project => !beforeIds.includes(project.id));
-        if (added.length !== 1) throw new Error('Expected exactly one imported project; found ' + added.length + '.');
-        const project = added[0];
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localSnapshotVerified = Array.isArray(snapshot) && snapshot.some(item =>
-          item?.id === project.id && item.name === project.name && item.design?.elements?.length === project.design?.elements?.length
-        );
-        return {
-          imported: true,
-          projectId: project.id,
-          name: project.name,
-          type: project.type,
-          elementCount: project.design?.elements?.length || 0,
-          frame: project.design?.frame || null,
-          newProjectCount: added.length,
-          localSnapshotVerified,
-          syncStatus: document.getElementById('statusText')?.textContent || null
-        };
-      }, before.ids);
-    })();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design import failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      return { imported: true, projectId: data.results?.[0]?.projectId, name: data.results?.[0]?.name, elementCount: data.results?.[0]?.elementCount || 0, revision: data.revision };
+    }, command.args.json);
+    await refreshWorkspaceFromServer();
   } else if (command.action === 'project_export_html') {
     stage = 'project_export_html';
-    result = await page.evaluate(({ projectId, maxChars }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('HTML export requires a web project.');
-      const code = project.code || {};
-      const content = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>' +
-        String(code.css || '') + '</style></head><body>' + String(code.html || '') + '<script>' +
-        String(code.js || '').replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
+    result = await page.evaluate(async ({ projectId, maxChars }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.code.read', args: { projectId, source: 'main', languages: ['html', 'css', 'js'], maxChars: 200000 } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless project read failed (HTTP ' + response.status + ').');
+      const fields = data.result.fields;
+      if (Object.values(fields).some(field => field.truncated)) throw new Error('Project code is too large to export in one response; read smaller sections first.');
+      const content = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>' +
+        String(fields.css.value || '') + '</style></head><body>' + String(fields.html.value || '') + '<script>' +
+        String(fields.js.value || '').replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
       const limit = maxChars || 7000;
-      return { projectId, name: project.name, mimeType: 'text/html', length: content.length, content: content.slice(0, limit), truncated: content.length > limit };
+      return { projectId, mimeType: 'text/html', length: content.length, content: content.slice(0, limit), truncated: content.length > limit, revision: data.revision };
     }, { projectId: command.args.project_id, maxChars: command.args.max_chars || 7000 });
   } else if (command.action === 'project_convert_design_to_web') {
     stage = 'project_convert_design_to_web';
     result = await page.evaluate(async projectId => {
-      const source = projects.find(item => item && item.id === projectId);
-      if (!source || source.type !== 'design' || !source.design) throw new Error('Source must be an existing design project.');
-      const sourceSnapshot = JSON.stringify(source.design);
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 250));
-      await convertDesignToWeb();
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const converted = projects.find(item => item && item.id === projectId);
-      if (!converted || converted.type === 'design' || !converted.code?.html) {
-        throw new Error('Design conversion did not convert the source project in place.');
-      }
-      const sourceUnchanged = JSON.stringify(converted.design) === sourceSnapshot;
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item =>
-          item?.id === projectId &&
-          item.type !== 'design' &&
-          item.code?.html === converted.code.html &&
-          JSON.stringify(item.design) === sourceSnapshot
-        );
-      } catch (_) {}
-      if (!sourceUnchanged) throw new Error('Source design changed during conversion.');
-      if (!localVerified) throw new Error('Converted web project and preserved design were not verified in the local snapshot.');
-      return {
-        sourceProjectId: projectId,
-        projectId: converted.id,
-        name: converted.name,
-        type: converted.type,
-        convertedInPlace: true,
-        sourceDesignPreserved: sourceUnchanged,
-        codeLengths: { html: converted.code.html?.length || 0, css: converted.code.css?.length || 0, js: converted.code.js?.length || 0 },
-        localSnapshotVerified: localVerified
-      };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: workspaceRevision,
+          operationId: 'convert_' + crypto.randomUUID().replace(/-/g, ''),
+          operations: [{ type: 'design.convert.toWeb', projectId }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless design conversion failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      return { convertedInPlace: true, projectId, revision: data.revision, result: data.results?.[0] || null, designPreserved: data.results?.[0]?.designPreserved === true };
     }, command.args.project_id);
+    await refreshWorkspaceFromServer();
+  } else if (command.action === 'headless_ai_generate') {
+    stage = 'headless_ai_generate';
+    result = await page.evaluate(async ({ projectId, source, prompt, baseRevision, operationId, maxTokens }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId);
+      const postHeadless = async (path, body) => {
+        const response = await fetch(endpoint + path, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          const error = new Error(data.error === 'revision_conflict'
+            ? 'Workspace changed while the AI was preparing code. The provider request may have consumed quota, but no code was saved; refresh and rebase before trying again.'
+            : 'Headless AI request conflict (HTTP 409): ' + (data.error || 'conflict'));
+          error.status = 409;
+          error.data = data;
+          throw error;
+        }
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Headless API failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const settings = aiSettings && typeof aiSettings === 'object' ? aiSettings : {};
+      const serverSettings = serverAi && typeof serverAi === 'object' ? serverAi : {};
+      const keyDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+        serverSettings.serverKey ? 'server-configured' : String(settings.apiKey || '')
+      ));
+      const keyFingerprint = Array.from(new Uint8Array(keyDigest)).map(value => value.toString(16).padStart(2, '0')).join('');
+      const providerConfig = {
+        projectId, source, prompt, baseRevision,
+        mode: settings.mode || 'auto',
+        model: settings.model || 'gpt-4o-mini',
+        baseUrl: serverSettings.serverKey ? 'server-configured' : (settings.baseUrl || ''),
+        keyFingerprint,
+        serverKey: !!serverSettings.serverKey,
+        maxTokens: maxTokens === undefined ? null : maxTokens
+      };
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(providerConfig)));
+      const requestKey = Array.from(new Uint8Array(digest)).map(value => value.toString(16).padStart(2, '0')).join('');
+
+      const status = await postHeadless('/headless/query', {
+        action: 'headless.operation.status',
+        args: { operationId, requestKey }
+      });
+      if (status.result.found) {
+        const readback = await postHeadless('/headless/query', {
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 }
+        });
+        return {
+          operationId, replayed: true, revision: status.result.revision,
+          currentRevision: readback.revision, previousResults: status.result.results,
+          readbackAvailable: Object.values(readback.result.fields).every(field => !field.truncated)
+        };
+      }
+
+      const current = await postHeadless('/headless/query', {
+        action: 'project.code.read',
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        expectedRevision: baseRevision
+      });
+      const code = {};
+      for (const key of ['html', 'css', 'js']) {
+        const field = current.result.fields[key];
+        if (!field || field.truncated) throw new Error('Project ' + key.toUpperCase() + ' exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
+        code[key] = field.value;
+      }
+      if (code.html.length + code.css.length + code.js.length > 200000) {
+        throw new Error('Combined project code exceeds the 200000-character AI input limit. Split the task before generation; no provider call was made.');
+      }
+
+      if (!serverSettings.serverKey && !settings.apiKey) throw new Error('No AI provider key is configured for this user, and no server key is available. No provider request was made.');
+      const payload = { prompt, code };
+      if (serverSettings.serverKey) {
+        if (settings.model && settings.model !== 'gpt-4o-mini') payload.model = settings.model;
+      } else {
+        payload.model = settings.model || 'gpt-4o-mini';
+        if (settings.baseUrl) payload.baseUrl = settings.baseUrl;
+        if (settings.apiKey) payload.apiKey = settings.apiKey;
+      }
+      if (maxTokens !== undefined) payload.maxTokens = maxTokens;
+      const aiResponse = await fetch('/api/ai/complete', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const aiData = await aiResponse.json().catch(() => ({}));
+      if (!aiResponse.ok) {
+        if (aiResponse.status === 429) {
+          const wait = aiData.retryAfterSeconds || (aiData.retryAfter ? Number(aiData.retryAfter) : 60);
+          throw new Error('AI rate limit reached (' + (aiData.rateLimitScope || 'provider/server') + '). Wait approximately ' + wait + ' seconds. No project code was changed.');
+        }
+        throw new Error('AI generation failed (' + aiResponse.status + '): ' + (aiData.message || aiData.error || 'provider error') +
+          (aiData.rateLimit ? ' | provider rate-limit data: ' + JSON.stringify(aiData.rateLimit) : ''));
+      }
+
+      const generated = {
+        html: typeof aiData.html === 'string' ? aiData.html : code.html,
+        css: typeof aiData.css === 'string' ? aiData.css : code.css,
+        js: typeof aiData.js === 'string' ? aiData.js : code.js
+      };
+      for (const key of ['html', 'css', 'js']) {
+        if (generated[key].length > 500000) throw new Error('Generated ' + key.toUpperCase() + ' exceeds the 500000-character project limit; no code was saved.');
+      }
+      const changedFields = ['html', 'css', 'js'].filter(key => generated[key] !== code[key]);
+      if (!changedFields.length) {
+        return {
+          operationId, noChanges: true, model: aiData.model, via: aiData.via,
+          usage: aiData.usage || null, rateLimit: aiData.rateLimit || null,
+          message: aiData.message || 'The provider returned no code changes.'
+        };
+      }
+
+      const operations = [];
+      let requestKeyAttached = false;
+      for (const key of changedFields) {
+        const value = generated[key];
+        const chunks = value.length ? Array.from({ length: Math.ceil(value.length / 50000) }, (_, index) => value.slice(index * 50000, (index + 1) * 50000)) : [''];
+        chunks.forEach((chunk, index) => {
+          const operation = { type: 'web.code.write', projectId, source, mode: index === 0 ? 'replace' : 'append' };
+          operation[key] = chunk;
+          if (!requestKeyAttached) {
+            operation.headlessAiRequestKey = requestKey;
+            requestKeyAttached = true;
+          }
+          operations.push(operation);
+        });
+      }
+      if (operations.length > 100) throw new Error('Generated code requires more than 100 safe chunks; split the task before saving.');
+      const saved = await postHeadless('/headless', { baseRevision, operationId, operations });
+      const readback = await postHeadless('/headless/query', {
+        action: 'project.code.read',
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        expectedRevision: saved.revision
+      });
+      const readbackVerified = changedFields.every(key =>
+        readback.result.fields[key] && !readback.result.fields[key].truncated &&
+        readback.result.fields[key].value === generated[key]
+      );
+      if (!readbackVerified) throw new Error('AI code was saved, but server readback did not match the generated output.');
+      return {
+        operationId, replayed: !!saved.replayed, revision: saved.revision,
+        changedFields, message: aiData.message || 'AI changes saved.',
+        model: aiData.model, via: aiData.via,
+        usage: aiData.usage || null, rateLimit: aiData.rateLimit || null,
+        readbackVerified
+      };
+    }, {
+      projectId: command.args.project_id,
+      source: command.args.source || 'main',
+      prompt: command.args.prompt,
+      baseRevision: command.args.base_revision,
+      operationId: command.args.operation_id,
+      maxTokens: command.args.max_tokens
+    });
   } else if (command.action === 'ai_generate') {
     stage = 'ai_generate';
     result = await page.evaluate(async ({ projectId, source, prompt }) => {
@@ -583,22 +1062,39 @@ try {
     }, { projectId: command.args.project_id, source: command.args.source || 'main', prompt: command.args.prompt });
   } else if (command.action === 'design_flow_read') {
     stage = 'design_flow_read';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      const elements = Array.isArray(project.design.elements) ? project.design.elements : [];
-      const connections = Array.isArray(project.design.flowConnections) ? project.design.flowConnections : [];
-      const targets = new Map(projects.filter(item => item?.type === 'design').map(item => [item.id, item]));
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design flow query failed.');
+        return data;
+      };
+      const saved = await query('design.read', { projectId, limit: 500 });
+      const design = saved.result;
+      const elements = Array.isArray(design.elements) ? design.elements : [];
+      const connections = Array.isArray(design.flowConnections) ? design.flowConnections : [];
+      const targets = await Promise.all([...new Set(connections.map(item => item.targetProjectId).filter(Boolean))]
+        .map(async targetProjectId => {
+          try { const response = await query('project.inspect', { projectId: targetProjectId }); return [targetProjectId, response.result]; }
+          catch { return [targetProjectId, null]; }
+        }));
+      const targetMap = new Map(targets);
       return {
-        projectId, projectName: project.name,
-        connections: connections.map(connection => ({
+        projectId, connections: connections.map(connection => ({
           sourceElementId: connection.sourceElementId,
           sourceLabel: elements.find(element => element.id === connection.sourceElementId)?.label || null,
           targetProjectId: connection.targetProjectId,
-          targetProjectName: targets.get(connection.targetProjectId)?.name || null,
-          broken: !elements.some(element => element.id === connection.sourceElementId) || !targets.has(connection.targetProjectId)
+          targetProjectName: targetMap.get(connection.targetProjectId)?.name || null,
+          broken: !elements.some(element => element.id === connection.sourceElementId) || !targetMap.get(connection.targetProjectId)
         })),
-        count: connections.length
+        count: connections.length, workspaceRevision: saved.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'design_flow_connect') {
@@ -633,213 +1129,470 @@ try {
     }, { projectId: command.args.project_id, elementId: command.args.element_id, targetProjectId: command.args.target_project_id });
   } else if (command.action === 'project_delete') {
     stage = 'project_delete';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const originalConfirm = window.confirm;
-      try {
-        window.confirm = () => true;
-        await deleteProject(projectId);
-      } finally {
-        window.confirm = originalConfirm;
-      }
-      const deleted = !projects.some(item => item && item.id === projectId);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && !snapshot.some(item => item && item.id === projectId);
-      } catch (_) {}
-      if (!deleted || !localVerified) throw new Error('Project deletion was not verified in memory and local snapshot.');
-      return { projectId, deleted, localSnapshotVerified: localVerified };
-    }, command.args.project_id);
+    result = await page.evaluate(async ({ projectId, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved workspace query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      const operationId = 'delete_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'project.delete', projectId, approved }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project deletion failed.');
+      const after = await query('project.list');
+      const deleted = !after.result.projects.some(project => project.id === projectId);
+      if (!deleted) throw new Error('Deleted project still appears in authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, deleted, serverReadbackVerified: deleted, workspaceRefreshed,
+        workspaceRevision: after.revision, previousType: before.result.type, saved: true
+      };
+    }, { projectId: command.args.project_id, approved: command.approval === 'approved' });
   } else if (command.action === 'design_template_apply') {
     stage = 'design_template_apply';
-    result = await page.evaluate(async ({ projectId, templateId, replaceExisting }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      if (project.design.elements?.length && !replaceExisting) throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const originalConfirm = window.confirm;
-      try {
-        window.confirm = () => !!replaceExisting;
-        applyDesignTemplate(templateId);
-      } finally {
-        window.confirm = originalConfirm;
+    result = await page.evaluate(async ({ projectId, templateId, replaceExisting, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design template query failed.');
+        return data;
+      };
+      const before = await query('design.read', { projectId, limit: 500 });
+      if (before.result.elementCount > 0 && !replaceExisting) {
+        throw new Error('Design already has layers; set replace_existing=true and approval=approved to replace them.');
       }
-      const latest = projects.find(item => item && item.id === projectId);
-      const hasLayers = Array.isArray(latest?.design?.elements) && latest.design.elements.length > 0;
-      const saved = await saveProjectsToStorage();
-      if (!hasLayers) throw new Error('Template application produced no design layers.');
-      return { projectId, templateId, elementCount: latest.design.elements.length, saved: saved === true, verified: hasLayers };
-    }, { projectId: command.args.project_id, templateId: command.args.template_id, replaceExisting: command.args.replace_existing === true });
+      const operationId = 'template_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'design.template.apply', projectId, templateId, replaceExisting, approved }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless template application failed.');
+      const after = await query('design.read', { projectId, limit: 500 });
+      const verified = after.result.elementCount > 0 && after.result.revision > before.result.revision;
+      if (!verified) throw new Error('Saved template could not be verified from the server.');
+      const workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false;
+      return {
+        projectId, templateId, elementCount: after.result.elementCount, saved: true,
+        verified, workspaceRefreshed, workspaceRevision: after.revision, designRevision: after.result.revision
+      };
+    }, {
+      projectId: command.args.project_id, templateId: command.args.template_id,
+      replaceExisting: command.args.replace_existing === true,
+      approved: command.approval === 'approved'
+    });
   } else if (command.action === 'design_history') {
     stage = 'design_history';
     result = await page.evaluate(async ({ projectId, operation }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const before = JSON.stringify(project.design);
-      if (operation === 'undo') designUndo(); else designRedo();
-      const latest = projects.find(item => item && item.id === projectId);
-      const changed = JSON.stringify(latest.design) !== before;
-      const saved = await saveProjectsToStorage();
-      return { projectId, operation, changed, saved: saved === true, elementCount: latest.design.elements?.length || 0 };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved design history query failed.');
+        return data;
+      };
+      const before = await query('design.history.inspect', { projectId });
+      if (operation === 'undo' ? !before.result.canUndo : !before.result.canRedo) {
+        throw new Error('No saved design ' + operation + ' entry is available.');
+      }
+      const operationId = 'history_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: operation === 'undo' ? 'design.history.undo' : 'design.history.redo', projectId }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless design history operation failed.');
+      const after = await query('design.read', { projectId, limit: 500 });
+      const history = await query('design.history.inspect', { projectId });
+      const workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false;
+      return {
+        projectId, operation, changed: true, saved: true, verified: after.result.revision > 0,
+        elementCount: after.result.elementCount, designRevision: after.result.revision,
+        canUndo: history.result.canUndo, canRedo: history.result.canRedo,
+        workspaceRevision: after.revision, workspaceRefreshed
+      };
     }, { projectId: command.args.project_id, operation: command.args.operation });
+  } else if (command.action === 'headless_batch') {
+    stage = 'headless_batch';
+    result = await page.evaluate(async ({ baseRevision, operationId, operations }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision, operationId, operations })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error('Headless revision conflict (HTTP 409). Read the latest workspace and design revisions, rebase the batch, and retry with a new operation_id. Keep the same operation_id only for an exact retry.');
+      }
+      if (!response.ok || data.ok !== true) {
+        throw new Error('Headless workspace request failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      }
+      if (typeof refreshWorkspaceFromServer !== 'function' || !(await refreshWorkspaceFromServer())) {
+        throw new Error('Headless operation was accepted, but the web app could not read the saved workspace back.');
+      }
+      const createdId = data.results.map(item => item.projectId).find(Boolean);
+      const requestedId = [...operations].reverse().map(item => item.projectId || item.sourceProjectId).find(Boolean);
+      const visibleProjectId = createdId || requestedId || null;
+      if (visibleProjectId && projects.some(item => item && item.id === visibleProjectId) && typeof openProject === 'function') {
+        await openProject(visibleProjectId);
+        await new Promise(resolve => setTimeout(resolve, 900));
+      }
+      return {
+        revision: data.revision,
+        replayed: data.replayed === true,
+        operationCount: operations.length,
+        results: data.results.map(item => {
+          const copy = { ...item };
+          if (typeof copy.previewSvg === 'string') {
+            copy.previewSvgLength = copy.previewSvg.length;
+            delete copy.previewSvg;
+          }
+          return copy;
+        }),
+        serverReadbackVerified: true,
+        openedProjectId: visibleProjectId
+      };
+    }, {
+      baseRevision: command.args.base_revision,
+      operationId: command.args.operation_id,
+      operations: command.args.operations
+    });
+  } else if (command.action === 'headless_design_system') {
+    stage = 'headless_design_system';
+    result = await page.evaluate(async ({ operation, baseRevision, settings, json }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/design-system';
+      const call = async body => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          throw new Error('Workspace design-system revision conflict (HTTP 409). Read the latest settings and retry against its current revision.');
+        }
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Headless design-system request failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const data = await call({ action: operation, baseRevision, settings, json });
+      if (operation === 'write' || operation === 'import') {
+        const readback = await call({ action: 'read' });
+        const readbackVerified = JSON.stringify(readback.settings) === JSON.stringify(data.settings) &&
+          readback.revision === data.revision;
+        if (!readbackVerified) throw new Error('Design-system save was acknowledged but server readback did not match.');
+        return { operation, revision: data.revision, updatedAt: data.updatedAt, settings: readback.settings, readbackVerified };
+      }
+      return operation === 'read'
+        ? { operation, revision: data.revision, updatedAt: data.updatedAt, settings: data.settings, readOnly: true }
+        : { operation, revision: data.revision, updatedAt: data.updatedAt, json: data.json, css: data.css, readOnly: true };
+    }, {
+      operation: command.args.operation,
+      baseRevision: command.args.base_revision,
+      settings: command.args.settings,
+      json: command.args.json
+    });
+  } else if (command.action === 'headless_query') {
+    stage = 'headless_query';
+    result = await page.evaluate(async ({ action, args, expectedRevision }) => {
+      if (typeof workspaceId !== 'string' || !workspaceId || typeof workspaceToken !== 'string' || !workspaceToken) {
+        throw new Error('Authenticated workspace credentials are not available in the app session.');
+      }
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action, args, expectedRevision })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error('Headless query revision conflict (HTTP 409). Refresh the workspace and repeat the read against the current revision.');
+      }
+      if (!response.ok || data.ok !== true) {
+        throw new Error('Headless query failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      }
+      return { revision: data.revision, action: data.action, result: data.result, readOnly: true };
+    }, {
+      action: command.args.query_action,
+      args: command.args.query_args || {},
+      expectedRevision: command.args.expected_revision
+    });
   } else if (command.action === 'project_create') {
     stage = 'project_create';
     result = await page.evaluate(async ({ name, type }) => {
-      const beforeIds = new Set(projects.map(item => item.id));
-      openNewProjectModal();
-      const input = document.getElementById('newProjectNameInput');
-      if (!input) throw new Error('New-project name input is unavailable.');
-      input.value = name.trim();
-      const radio = document.querySelector('input[name="newProjectType"][value="' + type + '"]');
-      if (radio) radio.checked = true;
-      await createNewProjectConfirm();
-      const created = projects.find(item => !beforeIds.has(item.id));
-      if (!created) throw new Error('Project creation did not produce a new project ID.');
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === created.id && item.name === name.trim());
-      const serverSyncStatus = document.getElementById('statusText')?.textContent || null;
-      if (!localVerified) throw new Error('Created project was not verified in the local snapshot.');
-      if (serverSyncStatus !== 'Sincronizado') {
-        throw new Error('Project creation was not confirmed by server sync (status: ' + (serverSyncStatus || 'unknown') + ').');
-      }
-      // A successful local snapshot and a stale status badge are not enough:
-      // reload the authoritative workspace before reporting the project as created.
-      if (typeof refreshWorkspaceFromServer !== 'function' || !(await refreshWorkspaceFromServer())) {
-        throw new Error('Project creation could not be verified by reading the workspace back from the server.');
-      }
-      const serverReadbackVerified = projects.some(item => item?.id === created.id && item.name === name.trim() && item.type === (type || 'web'));
-      if (!serverReadbackVerified) {
-        throw new Error('Project creation was acknowledged but the project was missing from the server workspace readback.');
-      }
-      return { projectId: created.id, name: created.name, type: created.type, localSnapshotVerified: localVerified, serverSyncStatus, serverReadbackVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved workspace query failed.');
+        return data;
+      };
+      const before = await query('project.list');
+      const operationId = 'create_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'project.create', name: name.trim(), projectType: type || 'web' }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project creation failed.');
+      const created = data.results?.[0];
+      if (!created?.projectId) throw new Error('Headless project creation returned no project ID.');
+      const saved = await query('project.inspect', { projectId: created.projectId });
+      const serverReadbackVerified = saved.result.name === name.trim() && saved.result.type === (type || 'web');
+      if (!serverReadbackVerified) throw new Error('Created project failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId: created.projectId, name: saved.result.name, type: saved.result.type,
+        serverReadbackVerified, workspaceRefreshed, workspaceRevision: saved.revision, saved: true
+      };
     }, { name: command.args.name, type: command.args.type || 'web' });
   } else if (command.action === 'project_duplicate') {
     stage = 'project_duplicate';
     result = await page.evaluate(async projectId => {
-      const source = projects.find(item => item && item.id === projectId);
-      if (!source) throw new Error('Source project not found in the authenticated workspace.');
-      const beforeIds = new Set(projects.map(item => item.id));
-      const sourceCode = JSON.stringify(source.code || {});
-      const sourceDesign = JSON.stringify(source.design || {});
-      await duplicateProjectFromDashboard(projectId);
-      const duplicate = projects.find(item => !beforeIds.has(item.id));
-      if (!duplicate) throw new Error('Duplicate project was not created.');
-      const sourceUnchanged = JSON.stringify(source.code || {}) === sourceCode && JSON.stringify(source.design || {}) === sourceDesign;
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item => item?.id === duplicate.id && item.name === duplicate.name);
-      } catch (_) {}
-      if (!sourceUnchanged) throw new Error('Source project changed during duplication.');
-      if (!localVerified) throw new Error('Duplicate was not verified in the local snapshot.');
-      return { sourceProjectId: projectId, projectId: duplicate.id, name: duplicate.name, type: duplicate.type, sourceUnchanged, localSnapshotVerified: localVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      const operationId = 'duplicate_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'project.duplicate', projectId }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project duplication failed.');
+      const duplicate = data.results?.[0];
+      if (!duplicate?.projectId) throw new Error('Headless duplication returned no project ID.');
+      const [sourceAfter, duplicateAfter] = await Promise.all([
+        query('project.inspect', { projectId }),
+        query('project.inspect', { projectId: duplicate.projectId })
+      ]);
+      const sourceUnchanged = sourceAfter.result.id === before.result.id &&
+        sourceAfter.result.type === before.result.type &&
+        JSON.stringify(sourceAfter.result.codeLengths) === JSON.stringify(before.result.codeLengths) &&
+        sourceAfter.result.design?.elementCount === before.result.design?.elementCount;
+      const serverReadbackVerified = duplicateAfter.result.id === duplicate.projectId &&
+        duplicateAfter.result.type === before.result.type && duplicateAfter.result.name === duplicate.name;
+      if (!sourceUnchanged || !serverReadbackVerified) throw new Error('Duplication failed authoritative source/duplicate readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        sourceProjectId: projectId, projectId: duplicate.projectId, name: duplicateAfter.result.name,
+        type: duplicateAfter.result.type, sourceUnchanged, serverReadbackVerified,
+        workspaceRefreshed, workspaceRevision: duplicateAfter.revision, saved: true
+      };
     }, command.args.project_id);
   } else if (command.action === 'workspace_inspect') {
     stage = 'workspace_inspect';
-    result = await page.evaluate(() => ({
-      initialized: Array.isArray(projects),
-      projectCount: Array.isArray(projects) ? projects.length : 0,
-      currentProjectId: currentProjectId || null,
-      currentProjectName: getCurrentProject()?.name || null,
-      activeEditor: document.getElementById('studioView')?.classList.contains('hidden') ? 'dashboard' : (getCurrentProject()?.type === 'design' ? 'design' : 'web'),
-      copyBranchActive: !!inCopyBranch,
-      syncStatus: document.getElementById('statusText')?.textContent || null,
-      authVisible: !document.getElementById('authContainer')?.classList.contains('hidden'),
-      version: typeof APP_VERSION === 'string' ? APP_VERSION : null
-    }));
+    result = await page.evaluate(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.list' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved workspace inspection failed.');
+      return {
+        initialized: Array.isArray(projects),
+        projectCount: data.result.count,
+        projects: data.result.projects,
+        workspaceRevision: data.revision,
+        currentProjectId: currentProjectId || null,
+        currentProjectName: getCurrentProject()?.name || null,
+        activeEditor: document.getElementById('studioView')?.classList.contains('hidden') ? 'dashboard' : (getCurrentProject()?.type === 'design' ? 'design' : 'web'),
+        copyBranchActive: !!inCopyBranch,
+        syncStatus: document.getElementById('statusText')?.textContent || null,
+        authVisible: !document.getElementById('authContainer')?.classList.contains('hidden'),
+        version: typeof APP_VERSION === 'string' ? APP_VERSION : null,
+        readOnly: true
+      };
+    });
   } else if (command.action === 'project_inspect') {
     stage = 'project_inspect';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.inspect', args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved project inspection failed.');
+      const saved = data.result;
       return {
-        id: project.id, name: project.name, type: project.type === 'design' ? 'design' : 'web',
-        updatedAt: project.updatedAt || null, hasWebSpace: !!project.hasWebSpace, hasDesignSpace: !!project.hasDesignSpace,
-        codeLengths: { html: project.code?.html?.length || 0, css: project.code?.css?.length || 0, js: project.code?.js?.length || 0 },
-        design: project.design ? {
-          elementCount: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
-          frame: project.design.frame || null, background: project.design.background || null,
-          grid: project.design.grid ?? null, gridSize: project.design.gridSize ?? null,
-          snapToGrid: project.design.snapToGrid ?? null
-        } : null,
-        branch: project.branch ? {
-          id: project.branch.id || null, updatedAt: project.branch.updatedAt || null,
-          codeLengths: { html: project.branch.code?.html?.length || 0, css: project.branch.code?.css?.length || 0, js: project.branch.code?.js?.length || 0 }
-        } : null,
-        mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
-        isActive: currentProjectId === projectId
+        ...saved, hasWebSpace: saved.type === 'web',
+        hasDesignSpace: saved.type === 'design' || !!saved.design,
+        mergeUndoAvailable: saved.mergeHistoryCount > 0,
+        revision: data.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'project_code_read') {
     stage = 'project_code_read';
-    result = await page.evaluate(({ projectId, source }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const code = source === 'branch' ? project.branch?.code : project.code;
-      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
-      if (project.type === 'design' && source !== 'branch') return { projectId, source, designProject: true, message: 'This is a design project; use design_read for its layer structure.' };
-      const max = 20000;
-      const clip = value => ({ content: String(value || '').slice(0, max), length: String(value || '').length, truncated: String(value || '').length > max });
-      return { projectId, source, html: clip(code?.html), css: clip(code?.css), js: clip(code?.js) };
-    }, { projectId: command.args.project_id, source: command.args.source === 'branch' ? 'branch' : 'main' });
+    const source = command.args.source === 'branch' ? 'branch' : 'main';
+    const offset = command.args.offset === undefined ? 0 : command.args.offset;
+    const maxChars = command.args.max_chars === undefined ? 20000 : command.args.max_chars;
+    if (!Number.isInteger(offset) || offset < 0 || offset > 500000) throw new Error('project_code_read offset must be an integer from 0 to 500000.');
+    if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 200000) throw new Error('project_code_read max_chars must be an integer from 1 to 200000.');
+    result = await page.evaluate(async ({ projectId, source, offset, maxChars }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], offset, maxChars }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless project code read failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      const fields = data.result?.fields;
+      if (!fields) throw new Error('Headless project code read returned no fields.');
+      const clip = field => ({
+        content: field.value,
+        length: field.originalLength,
+        offset: field.offset,
+        nextOffset: field.nextOffset,
+        truncated: field.truncated
+      });
+      return { projectId, source, revision: data.revision, offset, maxChars, html: clip(fields.html), css: clip(fields.css), js: clip(fields.js), readOnly: true };
+    }, { projectId: command.args.project_id, source, offset, maxChars });
   } else if (command.action === 'design_read') {
     stage = 'design_read';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (!project.design) throw new Error('Project has no saved design state.');
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'design.read', args: { projectId, limit: 200 } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design inspection failed.');
+      const saved = data.result;
       return {
-        projectId, projectName: project.name, frame: project.design.frame || 'desktop',
-        background: project.design.background || '#ffffff', grid: project.design.grid ?? true,
-        gridSize: project.design.gridSize ?? 8, snapToGrid: project.design.snapToGrid ?? false,
-        elements: (Array.isArray(project.design.elements) ? project.design.elements : []).slice(0, 200).map(element => ({
-          id: element.id || null, type: element.type || null, name: element.name || null,
-          x: element.x ?? null, y: element.y ?? null, width: element.width ?? null, height: element.height ?? null,
-          text: typeof element.text === 'string' ? element.text.slice(0, 500) : null,
-          src: typeof element.src === 'string' ? element.src.slice(0, 500) : null,
-          zIndex: element.zIndex ?? null
-        })),
-        totalElements: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
-        truncated: (project.design.elements?.length || 0) > 200
+        projectId, canvas: saved.canvas, layout: saved.layout, revision: saved.revision,
+        elements: saved.elements, totalElements: saved.elementCount, truncated: saved.truncated,
+        flowConnections: saved.flowConnections, workspaceRevision: data.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'project_code_write') {
     stage = 'project_code_write';
     result = await page.evaluate(async ({ projectId, source, patch }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('Code editing is not supported for design-only projects.');
-      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (source === 'branch' && !inCopyBranch) await toggleCopyBranch();
-      if (source === 'main' && inCopyBranch) await toggleCopyBranch();
-      const before = {
-        html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js')
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
       };
-      const next = { ...before, ...patch };
-      for (const key of ['html', 'css', 'js']) setEditorValue(key, next[key]);
-      const saved = source === 'branch' ? await saveInCopyBranch() : await saveCurrentCodeToActiveProject(true);
-      const latest = projects.find(item => item && item.id === projectId);
-      const persisted = source === 'branch' ? latest?.branch?.code : latest?.code;
-      const exact = !!persisted && ['html', 'css', 'js'].every(key => persisted[key] === next[key]);
-      let localSnapshotVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-        const localCode = source === 'branch' ? localProject?.branch?.code : localProject?.code;
-        localSnapshotVerified = !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === next[key]);
-      } catch (_) {}
-      if (!exact || (saved !== true && !localSnapshotVerified)) throw new Error('Code write was not verified by server sync or exact local snapshot.');
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Code editing is not supported for design-only projects.');
+      if (source === 'branch' && !before.result.branch) throw new Error('Project has no saved copy branch.');
+      const operationId = 'code_write_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'web.code.write', projectId, source, mode: 'replace', ...patch }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless code write failed.');
+      const maxChars = Math.max(1, ...Object.values(patch).map(value => value.length));
+      const readback = await query('project.code.read', { projectId, source, languages: ['html', 'css', 'js'], maxChars });
+      const exact = Object.entries(patch).every(([key, value]) =>
+        readback.result.fields[key]?.value === value && readback.result.fields[key]?.truncated === false);
+      if (!exact) throw new Error('Code write failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
       return {
-        projectId, source, changedFields: Object.keys(patch), saved: saved === true,
-        persistedCodeMatchesRequested: exact, localSnapshotVerified,
-        codeLengths: { html: next.html.length, css: next.css.length, js: next.js.length }
+        projectId, source, changedFields: Object.keys(patch), saved: true,
+        persistedCodeMatchesRequested: exact, serverReadbackVerified: true, workspaceRefreshed,
+        workspaceRevision: readback.revision,
+        codeLengths: Object.fromEntries(Object.entries(readback.result.fields).map(([key, field]) => [key, field.originalLength]))
       };
     }, {
       projectId: command.args.project_id,
@@ -848,52 +1601,56 @@ try {
     });
   } else if (command.action === 'project_list') {
     stage = 'project_list';
-    result = await page.evaluate(() => {
-      if (!Array.isArray(projects)) throw new Error('Workspace projects are not initialized.');
-      return {
-        count: projects.length,
-        projects: projects.map(project => ({
-          id: project.id,
-          name: project.name,
-          type: project.type === 'design' ? 'design' : 'web',
-          updatedAt: project.updatedAt || null,
-          hasBranch: !!project.branch,
-          branchId: project.branch?.id || null,
-          branchUpdatedAt: project.branch?.updatedAt || null,
-          mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0
-        }))
-      };
+    result = await page.evaluate(async () => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.list' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved project list query failed.');
+      return { ...data.result, workspaceRevision: data.revision, readOnly: true };
     });
   } else if (command.action === 'project_rename') {
     stage = 'project_rename';
     result = await page.evaluate(async ({ projectId, name }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const previousName = project.name;
-      const previousUpdatedAt = project.updatedAt;
-      project.name = name.trim();
-      project.updatedAt = new Date().toISOString();
-      const saved = await saveProjectsToStorage();
-      const persisted = projects.find(item => item && item.id === projectId);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        localVerified = Array.isArray(snapshot) && snapshot.some(item =>
-          item && item.id === projectId && item.name === name.trim()
-        );
-      } catch (_) {}
-      if (saved !== true && !localVerified) {
-        project.name = previousName;
-        project.updatedAt = previousUpdatedAt;
-        saveLocalProjectsSnapshot();
-        throw new Error('Rename was not durably confirmed; previous name restored.');
-      }
-      if (currentProjectId === projectId) {
-        const title = document.getElementById('currentProjectTitle');
-        if (title) title.textContent = project.name;
-      }
-      if (typeof renderProjectsList === 'function') renderProjectsList();
-      return { projectId, previousName, name: project.name, serverSynced: saved === true, localSnapshotVerified: localVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      const operationId = 'rename_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'project.rename', projectId, name: name.trim() }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless project rename failed.');
+      const after = await query('project.inspect', { projectId });
+      const serverReadbackVerified = after.result.name === name.trim();
+      if (!serverReadbackVerified) throw new Error('Renamed project failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, previousName: before.result.name, name: after.result.name,
+        serverReadbackVerified, workspaceRefreshed, workspaceRevision: after.revision, saved: true
+      };
     }, { projectId: command.args.project_id, name: command.args.name });
   } else if (command.action === 'project_save') {
     stage = 'project_save';
@@ -921,19 +1678,23 @@ try {
     if (!result.saved && !result.localSnapshotVerified) throw new Error('Save could not be verified on server or exact local project state.');
   } else if (command.action === 'branch_status') {
     stage = 'branch_status';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const branch = project.branch;
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'branch.inspect', args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved branch inspection failed.');
+      const branch = data.result.branch;
       return {
-        projectId,
-        projectName: project.name,
-        hasBranch: !!branch,
-        branchId: branch?.id || null,
-        baseMainUpdatedAt: branch?.baseMainUpdatedAt || null,
-        branchUpdatedAt: branch?.updatedAt || null,
-        codeLengths: branch?.code ? { html: branch.code.html?.length || 0, css: branch.code.css?.length || 0, js: branch.code.js?.length || 0 } : null,
-        currentViewIsBranch: currentProjectId === projectId && inCopyBranch
+        projectId, hasBranch: data.result.exists, branchId: branch?.id || null,
+        baseMainUpdatedAt: branch?.baseMainUpdatedAt || null, branchUpdatedAt: branch?.updatedAt || null,
+        codeLengths: branch?.codeLengths || null, mergeHistoryCount: data.result.mergeHistoryCount,
+        revision: data.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'branch_resume') {
@@ -976,74 +1737,118 @@ try {
   } else if (command.action === 'branch_create') {
     stage = 'branch_create';
     result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('Copy branches currently support web projects only.');
-      if (project.branch) return { projectId, branchId: project.branch.id, created: false, alreadyExists: true };
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (inCopyBranch) await toggleCopyBranch();
-      const originalCode = { html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js') };
-      await duplicateProject();
-      const latest = projects.find(item => item && item.id === projectId);
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const branch = latest?.branch;
-      const localVerified = !!(localProject?.branch && branch &&
-        localProject.branch.id === branch.id &&
-        ['html', 'css', 'js'].every(key => localProject.branch.code?.[key] === branch.code?.[key]) &&
-        ['html', 'css', 'js'].every(key => branch.baseCode?.[key] === originalCode[key]));
-      if (!branch || !localVerified) throw new Error('Copy branch creation was not verified against the local durable snapshot.');
-      return { projectId, branchId: branch.id, created: true, alreadyExists: false, localSnapshotVerified: true, branchMatchesMainAtCreation: ['html', 'css', 'js'].every(key => branch.code[key] === originalCode[key]), updatedAt: branch.updatedAt };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Copy branches currently support web projects only.');
+      if (before.result.branch) return {
+        projectId, branchId: before.result.branch.id, created: false, alreadyExists: true,
+        serverReadbackVerified: true, workspaceRevision: before.revision
+      };
+      const operationId = 'branch_create_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'branch.create', projectId }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless branch creation failed.');
+      const after = await query('branch.inspect', { projectId });
+      const branch = after.result.branch;
+      const serverReadbackVerified = after.result.exists === true &&
+        JSON.stringify(branch?.codeLengths) === JSON.stringify(before.result.codeLengths);
+      if (!serverReadbackVerified) throw new Error('Created branch failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, branchId: branch.id, created: true, alreadyExists: false,
+        serverReadbackVerified, workspaceRefreshed, workspaceRevision: after.revision
+      };
     }, command.args.project_id);
   } else if (command.action === 'branch_merge') {
     stage = 'branch_merge';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.branch) throw new Error('Project has no saved copy branch to merge.');
-      const branchId = project.branch.id;
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (!inCopyBranch) await toggleCopyBranch();
-      const previousHistoryLength = Array.isArray(project.mergeHistory) ? project.mergeHistory.length : 0;
-      const previousBranchCode = { html: project.branch.code.html, css: project.branch.code.css, js: project.branch.code.js };
-      const oldConfirm = window.confirm;
-      window.confirm = () => true;
-      try { await mergeToMainProject(); } finally { window.confirm = oldConfirm; }
-      const latest = projects.find(item => item && item.id === projectId);
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const merged = !!latest && !latest.branch && (latest.mergeHistory?.length || 0) > previousHistoryLength;
-      const localVerified = !!localProject && !localProject.branch &&
-        ['html', 'css', 'js'].every(key => localProject.code?.[key] === latest.code?.[key]) &&
-        (localProject.mergeHistory?.length || 0) === (latest.mergeHistory?.length || 0);
-      if (!merged) throw new Error('Merge was not completed; the branch remains available or a conflict prevented the merge.');
-      if (!localVerified) throw new Error('Merge result could not be verified in the durable local snapshot.');
-      return { projectId, branchId, merged: true, mainCodeLengths: { html: latest.code.html.length, css: latest.code.css.length, js: latest.code.js.length }, backupCreated: true, localSnapshotVerified: true, serverSynced: !serverSyncError };
-    }, command.args.project_id);
+    result = await page.evaluate(async ({ projectId, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch query failed.');
+        return data;
+      };
+      const before = await query('branch.inspect', { projectId });
+      if (!before.result.exists) throw new Error('Project has no saved copy branch to merge.');
+      const operationId = 'branch_merge_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'branch.merge', projectId, approved }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless branch merge failed.');
+      const after = await query('branch.inspect', { projectId });
+      const backupCreated = after.result.exists === false && after.result.mergeHistoryCount === before.result.mergeHistoryCount + 1;
+      if (!backupCreated) throw new Error('Merge result or backup failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, merged: true, backupCreated, mergeHistoryLength: after.result.mergeHistoryCount,
+        workspaceRevision: after.revision, workspaceRefreshed, saved: true
+      };
+    }, { projectId: command.args.project_id, approved: command.approval === 'approved' });
   } else if (command.action === 'branch_undo_merge') {
     stage = 'branch_undo_merge';
-    result = await page.evaluate(async projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !Array.isArray(project.mergeHistory) || !project.mergeHistory.length) throw new Error('Project has no merge to undo.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const previousHistoryLength = project.mergeHistory.length;
-      const previousBackup = project.mergeHistory[previousHistoryLength - 1];
-      const expectedCode = { html: previousBackup.code.html, css: previousBackup.code.css, js: previousBackup.code.js };
-      const oldConfirm = window.confirm;
-      window.confirm = () => true;
-      try { await undoLastMerge(); } finally { window.confirm = oldConfirm; }
-      const latest = projects.find(item => item && item.id === projectId);
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const restored = !!latest && (latest.mergeHistory?.length || 0) === previousHistoryLength - 1 &&
-        ['html', 'css', 'js'].every(key => latest.code?.[key] === expectedCode[key]);
-      const localVerified = !!localProject && ['html', 'css', 'js'].every(key => localProject.code?.[key] === expectedCode[key]) &&
-        (localProject.mergeHistory?.length || 0) === previousHistoryLength - 1;
-      if (!restored || !localVerified) throw new Error('Undo merge was not verified against the saved code and history.');
-      return { projectId, undone: true, branchRestored: !!latest.branch, mergeHistoryRemaining: latest.mergeHistory.length, localSnapshotVerified: true, serverSynced: !serverSyncError };
-    }, command.args.project_id);
+    result = await page.evaluate(async ({ projectId, approved }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved branch query failed.');
+        return data;
+      };
+      const before = await query('branch.inspect', { projectId });
+      if (before.result.mergeHistoryCount < 1) throw new Error('Project has no merge to undo.');
+      const operationId = 'branch_undo_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ baseRevision: before.revision, operationId, operations: [{ type: 'branch.undo_merge', projectId, approved }] })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless merge undo failed.');
+      const after = await query('branch.inspect', { projectId });
+      const restored = after.result.mergeHistoryCount === before.result.mergeHistoryCount - 1 && after.result.exists === true;
+      if (!restored) throw new Error('Undo merge failed authoritative branch/history readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, restored, branchPresent: after.result.exists,
+        mergeHistoryRemaining: after.result.mergeHistoryCount,
+        workspaceRevision: after.revision, workspaceRefreshed, saved: true
+      };
+    }, { projectId: command.args.project_id, approved: command.approval === 'approved' });
   } else if (command.action === 'component_search') {
     stage = 'component_search';
     result = await page.evaluate(({ query, category }) => {
@@ -1074,236 +1879,89 @@ try {
   } else if (command.action === 'component_insert') {
     stage = 'component_insert';
     result = await page.evaluate(async ({ projectId, componentId }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('Components can only be inserted into a web project.');
-      const api = window.CodeLabComponentLibrary;
-      const component = api?.getComponent?.(componentId);
-      if (!component) throw new Error('Component ID was not found in the library.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const marker = '<!-- codelab-component:' + componentId + ' -->';
-      const current = String(getEditorValue('html') || '');
-      if (current.includes(marker)) return { projectId, componentId, alreadyInserted: true, saved: true, localSnapshotVerified: true };
-      const next = current + '\n' + marker + '\n' + component.html + '\n';
-      if (next.length > 500000) throw new Error('Insertion would exceed the 500000-character HTML limit.');
-      setEditorValue('html', next);
-      if (typeof updatePreview === 'function') updatePreview();
-      const saved = await saveCurrentCodeToActiveProject(true);
-      const latest = projects.find(item => item && item.id === projectId);
-      const exact = String(latest?.code?.html || '') === next;
-      let localSnapshotVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-        localSnapshotVerified = String(localProject?.code?.html || '') === next;
-      } catch (_) {}
-      if (!exact || (saved !== true && !localSnapshotVerified)) throw new Error('Component insertion was not verified by server sync or exact local snapshot.');
-      return { projectId, componentId, alreadyInserted: false, saved: saved === true, persistedCodeMatches: exact, localSnapshotVerified };
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
+      };
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Components can only be inserted into a web project.');
+      const readHtml = async () => {
+        let offset = 0, content = '', originalLength = 0;
+        do {
+          const part = await query('project.code.read', { projectId, source: 'main', languages: ['html'], offset, maxChars: 200000 });
+          const field = part.result.fields.html;
+          content += field.value;
+          originalLength = field.originalLength;
+          if (field.nextOffset === null) break;
+          if (field.nextOffset <= offset || field.nextOffset > 500000) throw new Error('HTML paging did not advance safely.');
+          offset = field.nextOffset;
+        } while (offset <= 500000);
+        if (content.length !== originalLength) throw new Error('HTML readback was incomplete.');
+        return content;
+      };
+      const current = await readHtml();
+      const legacyMarker = '<!-- codelab-component:' + componentId + ' -->';
+      const canonicalMarker = '<!-- codelab-component:' + componentId + ':v1 -->';
+      if (current.includes(legacyMarker) || current.includes(canonicalMarker)) {
+        return { projectId, componentId, alreadyInserted: true, saved: true, serverReadbackVerified: true, workspaceRevision: before.revision };
+      }
+      const operationId = 'component_insert_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'component.insert', projectId, componentId }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless component insertion failed.');
+      const savedHtml = await readHtml();
+      const verified = savedHtml.includes(canonicalMarker);
+      if (!verified) throw new Error('Component insertion failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
+      return {
+        projectId, componentId, alreadyInserted: false, saved: true, serverReadbackVerified: verified,
+        workspaceRevision: data.revision, workspaceRefreshed, htmlLength: savedHtml.length
+      };
     }, { projectId: command.args.project_id, componentId: command.args.component_id });
   } else if (command.action === 'design_element_add') {
     stage = 'design_element_add';
-    result = await page.evaluate(async ({ projectId, type }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type !== 'design' || !project.design) throw new Error('This action requires a design project.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const before = project.design.elements.length;
-      addDesignElement(type);
-      const latest = projects.find(item => item && item.id === projectId);
-      const element = latest?.design?.elements?.find(item => !project.design.elements.slice(0, before).some(old => old.id === item.id));
-      await saveProjectsToStorage();
-      if (!element) throw new Error('Design element was not created.');
-      return { projectId, elementId: element.id, type: element.type, elementCount: latest.design.elements.length };
-    }, { projectId: command.args.project_id, type: command.args.type });
+    result = await executeSavedDesignBatch('design_element_add', command.args);
   } else if (command.action === 'design_element_update') {
     stage = 'design_element_update';
-    result = await page.evaluate(async ({ projectId, elementId, properties }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const element = project.design.elements.find(item => item && item.id === elementId);
-      if (!element) throw new Error('Design element not found.');
-      recordDesignHistory();
-      Object.assign(element, properties);
-      renderDesignWorkspace();
-      const saved = await saveProjectsToStorage();
-      const exact = Object.entries(properties).every(([key, value]) => element[key] === value);
-      let localVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-        const localElement = localProject?.design?.elements?.find(item => item && item.id === elementId);
-        localVerified = !!localElement && Object.entries(properties).every(([key, value]) => localElement[key] === value);
-      } catch (_) {}
-      if (!exact || (saved !== true && !localVerified)) throw new Error('Design element update was not verified by server sync or local snapshot.');
-      return { projectId, elementId, changedProperties: Object.keys(properties), saved: saved === true, verified: exact, localSnapshotVerified: localVerified };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, properties: command.args.properties });
+    result = await executeSavedDesignBatch('design_element_update', command.args);
   } else if (command.action === 'design_element_delete') {
     stage = 'design_element_delete';
-    result = await page.evaluate(async ({ projectId, elementId }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (!project.design.elements.some(item => item && item.id === elementId)) throw new Error('Design element not found.');
-      selectedDesignElementId = elementId;
-      selectedDesignElementIds = [elementId];
-      deleteDesignElement();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const latest = projects.find(item => item && item.id === projectId);
-      const deleted = !latest.design.elements.some(item => item && item.id === elementId);
-      const saved = await saveProjectsToStorage();
-      if (!deleted) throw new Error('Design element deletion could not be verified.');
-      return { projectId, elementId, deleted, saved: saved === true, remainingElements: latest.design.elements.length };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id });
+    result = await executeSavedDesignBatch('design_element_delete', command.args);
   } else if (command.action === 'design_elements_delete') {
     stage = 'design_elements_delete';
-    result = await page.evaluate(async ({ projectId, elementIds }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design || !Array.isArray(project.design.elements)) throw new Error('Design project not found.');
-      const existing = new Set(project.design.elements.map(item => item && item.id));
-      const missing = elementIds.filter(id => !existing.has(id));
-      if (missing.length) throw new Error('One or more design elements were not found: ' + missing.join(', '));
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = elementIds[0]; selectedDesignElementIds = [...elementIds];
-      deleteDesignElement();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const latest = projects.find(item => item && item.id === projectId);
-      const remainingIds = new Set(latest.design.elements.map(item => item.id));
-      const deleted = elementIds.every(id => !remainingIds.has(id));
-      const danglingConnections = Array.isArray(latest.design.flowConnections)
-        ? latest.design.flowConnections.filter(connection => elementIds.includes(connection.sourceElementId)) : [];
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localIds = new Set(local?.design?.elements?.map(item => item.id) || []);
-      const localSnapshotVerified = elementIds.every(id => !localIds.has(id));
-      if (!deleted || danglingConnections.length || !localSnapshotVerified) throw new Error('Bulk deletion could not be fully verified.');
-      return { projectId, deletedElementIds: elementIds, deleted, saved: saved === true, remainingElements: latest.design.elements.length, danglingConnections: danglingConnections.length, localSnapshotVerified };
-    }, { projectId: command.args.project_id, elementIds: command.args.element_ids });
+    result = await executeSavedDesignBatch('design_elements_delete', command.args);
   } else if (command.action === 'design_element_duplicate') {
     stage = 'design_element_duplicate';
-    result = await page.evaluate(async ({ projectId, elementId }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      const source = project.design.elements.find(item => item && item.id === elementId);
-      if (!source) throw new Error('Design element not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
-      const before = new Set(project.design.elements.map(item => item.id));
-      duplicateDesignElement();
-      const latest = projects.find(item => item && item.id === projectId);
-      const created = latest.design.elements.find(item => !before.has(item.id));
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const persisted = !!local?.design?.elements?.some(item => item.id === created?.id && item.type === source.type && item.x === (Number(source.x)||0)+24 && item.y === (Number(source.y)||0)+24);
-      if (!created || !persisted) throw new Error('Duplicate element was not verified in the local snapshot.');
-      return { projectId, sourceElementId: elementId, elementId: created.id, duplicated: true, saved: saved === true, localSnapshotVerified: true };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id });
+    result = await executeSavedDesignBatch('design_element_duplicate', command.args);
   } else if (command.action === 'design_layer_move') {
     stage = 'design_layer_move';
-    result = await page.evaluate(async ({ projectId, elementId, direction }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      const before = project.design.elements.map(item => item.id);
-      if (!before.includes(elementId)) throw new Error('Design element not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = elementId; selectedDesignElementIds = [elementId];
-      moveDesignLayer(direction === 'back' ? -1 : 1);
-      const latest = projects.find(item => item && item.id === projectId);
-      const after = latest.design.elements.map(item => item.id);
-      const moved = after.indexOf(elementId) !== before.indexOf(elementId);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localOrder = local?.design?.elements?.map(item => item.id) || [];
-      const verified = localOrder.length === after.length && localOrder.every((id, index) => id === after[index]);
-      if (!verified) throw new Error('Layer order was not verified in the local snapshot.');
-      return { projectId, elementId, direction, moved, saved: saved === true, localSnapshotVerified: true, order: after };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, direction: command.args.direction });
+    result = await executeSavedDesignBatch('design_layer_move', command.args);
   } else if (command.action === 'design_layer_reorder') {
     stage = 'design_layer_reorder';
-    result = await page.evaluate(async ({ projectId, elementId, targetIndex }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design || !Array.isArray(project.design.elements)) throw new Error('Design project not found.');
-      const elements = project.design.elements;
-      const currentIndex = elements.findIndex(item => item && item.id === elementId);
-      if (currentIndex < 0) throw new Error('Design element not found.');
-      if (targetIndex >= elements.length) throw new Error('target_index exceeds the current layer count.');
-      if (currentIndex !== targetIndex) {
-        openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-        const active = projects.find(item => item && item.id === projectId);
-        const list = active.design.elements;
-        const from = list.findIndex(item => item && item.id === elementId);
-        if (from < 0 || targetIndex >= list.length) throw new Error('Layer order changed before reorder could be applied.');
-        recordDesignHistory();
-        const [element] = list.splice(from, 1);
-        list.splice(targetIndex, 0, element);
-        active.updatedAt = new Date().toISOString();
-        renderDesignWorkspace();
-      }
-      const latest = projects.find(item => item && item.id === projectId);
-      const order = latest.design.elements.map(item => item.id);
-      const verified = order[targetIndex] === elementId;
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localOrder = local?.design?.elements?.map(item => item.id) || [];
-      const localSnapshotVerified = localOrder.length === order.length && localOrder.every((id, index) => id === order[index]);
-      if (!verified || !localSnapshotVerified) throw new Error('Layer reorder could not be verified.');
-      return { projectId, elementId, fromIndex: currentIndex, targetIndex, changed: currentIndex !== targetIndex, saved: saved === true, localSnapshotVerified, order };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetIndex: command.args.target_index });
+    result = await executeSavedDesignBatch('design_layer_reorder', command.args);
   } else if (command.action === 'design_elements_align') {
     stage = 'design_elements_align';
-    result = await page.evaluate(async ({ projectId, elementIds, mode }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      const selected = project.design.elements.filter(item => elementIds.includes(item.id));
-      if (selected.length !== elementIds.length) throw new Error('One or more design elements were not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = selected[0].id; selectedDesignElementIds = selected.map(item => item.id);
-      const before = selected.map(item => ({ id: item.id, x: item.x, y: item.y }));
-      alignDesignElement(mode);
-      const latest = projects.find(item => item && item.id === projectId);
-      const after = latest.design.elements.filter(item => elementIds.includes(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y }));
-      const changed = JSON.stringify(before) !== JSON.stringify(after);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && after.every(item => { const savedItem = local.design?.elements?.find(el => el.id === item.id); return savedItem && savedItem.x === item.x && savedItem.y === item.y; });
-      if (!localVerified) throw new Error('Alignment was not verified in the local snapshot.');
-      return { projectId, mode, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
-    }, { projectId: command.args.project_id, elementIds: command.args.element_ids, mode: command.args.mode });
+    result = await executeSavedDesignBatch('design_elements_align', command.args);
   } else if (command.action === 'design_elements_distribute') {
     stage = 'design_elements_distribute';
-    result = await page.evaluate(async ({ projectId, elementIds, axis }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      const selected = project.design.elements.filter(item => elementIds.includes(item.id));
-      if (selected.length !== elementIds.length) throw new Error('One or more design elements were not found.');
-      if (project.design.layoutMode === 'auto') throw new Error('Switch the design to free layout before manual distribution.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      selectedDesignElementId = selected[0].id; selectedDesignElementIds = selected.map(item => item.id);
-      const key = axis === 'vertical' ? 'y' : 'x';
-      const before = selected.map(item => ({ id: item.id, x: item.x, y: item.y }));
-      distributeDesignElements(axis);
-      const latest = projects.find(item => item && item.id === projectId);
-      const after = latest.design.elements.filter(item => elementIds.includes(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y }));
-      const changed = JSON.stringify(before) !== JSON.stringify(after);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && after.every(item => {
-        const stored = local.design?.elements?.find(el => el.id === item.id);
-        return stored && stored.x === item.x && stored.y === item.y;
-      });
-      if (!changed || !localVerified) throw new Error('Distribution did not change and persist the selected element positions.');
-      return { projectId, axis, elementIds, changed, saved: saved === true, localSnapshotVerified: true, positions: after };
-    }, { projectId: command.args.project_id, elementIds: command.args.element_ids, axis: command.args.axis });
+    result = await executeSavedDesignBatch('design_elements_distribute', command.args);
   } else if (command.action === 'design_prototype_target_set') {
     stage = 'design_prototype_target_set';
     result = await page.evaluate(async ({ projectId, elementId, target }) => {
@@ -1327,24 +1985,7 @@ try {
     }, { projectId: command.args.project_id, elementId: command.args.element_id, target: command.args.target });
   } else if (command.action === 'design_layout_configure') {
     stage = 'design_layout_configure';
-    result = await page.evaluate(async ({ projectId, settings }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project?.design) throw new Error('Design project not found.');
-      openProject(projectId); await new Promise(resolve => setTimeout(resolve, 250));
-      if (settings.mode !== undefined) setDesignLayoutMode(settings.mode);
-      if (settings.direction !== undefined) setDesignLayoutDirection(settings.direction);
-      if (settings.gap !== undefined) setDesignLayoutGap(settings.gap);
-      if (settings.padding !== undefined) setDesignLayoutPadding(settings.padding);
-      const latest = projects.find(item => item && item.id === projectId);
-      const actual = { mode: latest.design.layoutMode || 'free', direction: latest.design.layoutDirection || 'row', gap: latest.design.layoutGap ?? 0, padding: latest.design.layoutPadding ?? 0 };
-      const exact = Object.entries(settings).every(([key, value]) => actual[{mode:'mode',direction:'direction',gap:'gap',padding:'padding'}[key]] === value);
-      const saved = await saveProjectsToStorage();
-      const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-      const local = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-      const localVerified = !!local && Object.entries(settings).every(([key, value]) => local.design?.[{mode:'layoutMode',direction:'layoutDirection',gap:'layoutGap',padding:'layoutPadding'}[key]] === value);
-      if (!exact || !localVerified) throw new Error('Layout settings were not verified.');
-      return { projectId, settings: actual, changed: Object.keys(settings), saved: saved === true, localSnapshotVerified: true };
-    }, { projectId: command.args.project_id, settings: Object.fromEntries(['mode','direction','gap','padding'].filter(key => command.args[key] !== undefined).map(key => [key, command.args[key]])) });
+    result = await executeSavedDesignBatch('design_layout_configure', command.args);
   } else if (command.action === 'design_canvas_configure') {
     stage = 'design_canvas_configure';
     result = await page.evaluate(async ({ projectId, settings }) => {
@@ -1515,116 +2156,89 @@ try {
       message: 'El editor real ejecutó HTML/CSS/JS en su vista previa; el botón, el campo y los estilos respondieron como se esperaba.'
     };
   } else if (command.action === 'preview_diagnostics') {
-    stage = 'inspect_preview';
-    const frameElement = page.locator('#previewIframe');
-    const frameExists = await frameElement.count() > 0;
-    const previewFrame = page.frameLocator('#previewIframe');
-    let preview = { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
-    if (frameExists) {
-      const src = await frameElement.getAttribute('src');
-      if (command.args.self_test === true) {
-        // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
-        const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
-        await frameElement.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
-        await previewFrame.locator('#codelab-diagnostic-probe').waitFor({ state: 'attached', timeout: 10000 });
-        await page.waitForTimeout(300);
-      }
-      preview = await previewFrame.locator('html').evaluate(() => {
-          const body = document.body;
-          const elements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
-            id: el.id || null,
-            type: el.getAttribute('type') || null,
-            disabled: Boolean(el.disabled)
-          }));
-          const tagCounts = {};
-          for (const el of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
-            const tag = el.tagName.toLowerCase();
-            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-          }
-          return {
-            available: true,
-            readyState: document.readyState,
-            title: document.title || '',
-            frameUrl: location.href,
-            text: (body?.innerText || '').trim().slice(0, 1200),
-            elementCount: document.querySelectorAll('*').length,
-            tagCounts,
-            interactiveElements: elements
-          };
+    stage = 'inspect_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'diagnostics');
+    try {
+      const preview = await previewSession.frame.locator('html').evaluate(() => {
+        const body = document.body;
+        const interactiveElements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[role="link"]')).slice(0, 60).map(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.getAttribute('aria-label') || element.getAttribute('placeholder') || '').trim().slice(0, 100),
+          id: element.id || null,
+          type: element.getAttribute('type') || null,
+          disabled: Boolean(element.disabled)
+        }));
+        const tagCounts = {};
+        for (const element of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
+          const tag = element.tagName.toLowerCase();
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        }
+        return {
+          available: true, readyState: document.readyState, title: document.title || '',
+          frameUrl: location.href, text: (body?.innerText || '').trim().slice(0, 1200),
+          elementCount: document.querySelectorAll('*').length, tagCounts, interactiveElements
+        };
       });
-      preview.src = src || null;
-      preview.frameUrl = safeUrl(preview.frameUrl);
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      preview.previewMessages = messages.slice(0, 60);
+      preview.consoleErrors = messages.filter(message => message.logType === 'error').slice(0, 30);
       preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
       preview.selfTest = command.args.self_test === true;
+      preview.workspaceRevision = previewSession.revision;
+      result = {
+        page: { url: safeUrl(targetUrl), title: 'CodeLab headless preview host', documentReady: 'complete' },
+        preview,
+        browserDiagnostics: previewSession.diagnostics
+      };
+    } finally {
+      await previewSession.context.close().catch(() => {});
     }
-    result = {
-      page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
-      preview,
-      browserDiagnostics
-    };
   } else if (command.action === 'preview_interact') {
-    stage = 'interact_with_preview';
-    const frameElement = page.locator('#previewIframe');
-    if (await frameElement.count() === 0) {
-      result = { ok: false, reason: 'No se encontró la vista previa en esta pantalla.', steps: [] };
-    } else {
-      const previewFrame = page.frameLocator('#previewIframe');
-      if (command.args.self_test === true) {
-        // Disposable fixture only: this replaces srcdoc in the isolated bridge browser, not a saved project.
-        const probeHtml = '<!doctype html><html><head><title>CodeLab interaction probe</title></head><body><main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main><script>const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");</script></body></html>';
-        await frameElement.evaluate((el, html) => {
-          const probe = document.createElement('iframe');
-          probe.id = 'previewIframe';
-          probe.setAttribute('sandbox', 'allow-scripts allow-forms');
-          probe.style.cssText = 'position:fixed;left:12px;bottom:12px;width:640px;height:360px;z-index:2147483000;background:white;border:2px solid #64748b';
-          probe.srcdoc = html;
-          el.remove();
-          document.body.appendChild(probe);
-        }, probeHtml);
-        await previewFrame.locator('#probe-increment').waitFor({ state: 'attached', timeout: 10000 });
-      }
-      const isVisible = await frameElement.isVisible();
-      if (!isVisible && command.args.self_test !== true) {
-        result = { ok: false, reason: 'La vista previa está presente pero oculta; abre un proyecto web en el editor antes de interactuar.', steps: [] };
-      } else {
-        const steps = [];
-        for (let index = 0; index < command.args.steps.length; index += 1) {
-          currentStep = index + 1;
-          const step = command.args.steps[index];
-          const locator = previewFrame.locator(step.selector).first();
-          if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside #previewIframe.');
-          if (step.action === 'click') {
-            const tag = await locator.evaluate(el => el.tagName.toLowerCase());
-            if (tag === 'a') {
-              const href = await locator.getAttribute('href') || '';
-              if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
-            }
-            await locator.click({ timeout: 10000 });
-          } else if (step.action === 'fill') {
-            await locator.fill(step.value, { timeout: 10000 });
-          } else if (step.action === 'select') {
-            await locator.selectOption(step.value, { timeout: 10000 });
+    stage = 'interact_with_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'interactions');
+    try {
+      const steps = [];
+      for (let index = 0; index < command.args.steps.length; index += 1) {
+        currentStep = index + 1;
+        const step = command.args.steps[index];
+        const locator = previewSession.frame.locator(step.selector).first();
+        if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside the isolated headless preview.');
+        if (step.action === 'click') {
+          const tag = await locator.evaluate(element => element.tagName.toLowerCase());
+          if (tag === 'a') {
+            const href = await locator.getAttribute('href') || '';
+            if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
           }
-          const observed = await locator.evaluate(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || el.textContent || '').trim().slice(0, 300),
-            value: ('value' in el) ? String(el.value).slice(0, 300) : null,
-            disabled: Boolean(el.disabled)
-          })).catch(() => null);
-          steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
+          await locator.click({ timeout: 10000 });
+        } else if (step.action === 'fill') {
+          await locator.fill(step.value, { timeout: 10000 });
+        } else if (step.action === 'select') {
+          await locator.selectOption(step.value, { timeout: 10000 });
         }
-        currentStep = null;
-        result = {
-          ok: true,
-          previewTitle: await previewFrame.locator('html').evaluate(() => document.title || ''),
-          text: await previewFrame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200)),
-          steps,
-          selfTest: command.args.self_test === true,
-          browserDiagnostics
-        };
+        await previewSession.page.waitForTimeout(60);
+        const observed = await locator.evaluate(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.textContent || '').trim().slice(0, 300),
+          value: ('value' in element) ? String(element.value).slice(0, 300) : null,
+          disabled: Boolean(element.disabled)
+        })).catch(() => null);
+        steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
       }
+      currentStep = null;
+      const previewTitle = await previewSession.frame.locator('html').evaluate(() => document.title || '');
+      const text = await previewSession.frame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200));
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      result = {
+        ok: true, projectId, source: command.args.source || 'main',
+        previewTitle, text, steps, selfTest: command.args.self_test === true,
+        previewMessages: messages.slice(0, 60), browserDiagnostics: previewSession.diagnostics,
+        workspaceRevision: previewSession.revision
+      };
+    } finally {
+      currentStep = null;
+      await previewSession.context.close().catch(() => {});
     }
   } else if (command.action === 'read_page') {
     result = {
