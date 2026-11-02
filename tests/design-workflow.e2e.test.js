@@ -1884,6 +1884,37 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(matrix.cases, 18, 'all 6 layer types must complete add/duplicate/delete/undo/redo in all 3 responsive frames');
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), matrixBaselineCount,
       'the matrix must clean up temporary layers without changing the original design content');
+
+    // Per-layer visibility and lock controls must be independent from selection.
+    await page.locator(`button[onclick="addDesignElement('button')"]`).click();
+    const utilityLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
+    const utilityNode = page.locator('#designCanvas [data-design-id="' + utilityLayerId + '"]');
+    const hideLayerButton = page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]');
+    await hideLayerButton.click();
+    assert.equal(await utilityNode.evaluate(node => getComputedStyle(node).visibility), 'hidden',
+      'hide control should hide only the selected layer on the sheet');
+    assert.equal(await page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]').count(), 1,
+      'hidden layer should remain accessible from the layer list');
+    await page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]').click();
+    assert.equal(await utilityNode.evaluate(node => getComputedStyle(node).visibility), 'visible',
+      'show control should restore the layer');
+
+    await page.evaluate(id => {
+      const element = getCurrentProject().design.elements.find(item => item.id === id);
+      element.xUnit = 'px'; element.yUnit = 'px'; element.x = 100; element.y = 100;
+    }, utilityLayerId);
+    await page.locator('#designLayers [data-design-lock="' + utilityLayerId + '"]').click();
+    await utilityNode.click();
+    await page.keyboard.press('ArrowRight');
+    assert.deepEqual(await page.evaluate(id => {
+      const element = getCurrentProject().design.elements.find(item => item.id === id);
+      return { x: element.x, y: element.y, locked: element.locked };
+    }, utilityLayerId), { x: 100, y: 100, locked: true },
+    'locked layer should not move when nudged by keyboard');
+    await page.locator('#designLayers [data-design-lock="' + utilityLayerId + '"]').click();
+    await page.locator('#designLayers [data-design-select="' + utilityLayerId + '"]').click();
+    await page.locator('button[onclick="deleteDesignElement()"]').click();
+    await page.waitForFunction(id => !document.querySelector('#designCanvas [data-design-id="' + id + '"]'), utilityLayerId);
     await page.evaluate(async () => {
       if (typeof saveCurrentCodeToActiveProject === 'function') await saveCurrentCodeToActiveProject(true);
     });
