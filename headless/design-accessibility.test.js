@@ -41,6 +41,18 @@ test('design accessibility audit reports missing accessible names, alt text, sma
   assert.equal(report.findings.find(item => item.ruleId === 'text-contrast').contrastBasis, 'declared-layer-background');
 });
 
+test('design accessibility audit warns when partial layer opacity makes contrast uncertain', () => {
+  const report = auditDesignAccessibility(designProject([
+    { id: 'semi-transparent-copy', type: 'text', text: 'Read me', fontSize: 16, color: '#000000', background: '#ffffff', opacity: 0.5 }
+  ]));
+
+  const finding = report.findings.find(item => item.ruleId === 'text-opacity-contrast');
+  assert.ok(finding);
+  assert.equal(finding.severity, 'warning');
+  assert.equal(finding.opacity, 0.5);
+  assert.equal(finding.contrastBasis, 'opacity-not-composited');
+});
+
 test('design accessibility audit is read-only and exposed through the canonical query envelope', () => {
   const project = designProject([
     { id: 'el_button', type: 'button', label: 'Continue', text: 'Continue', fontSize: 16, color: '#000000', background: '#ffffff' }
