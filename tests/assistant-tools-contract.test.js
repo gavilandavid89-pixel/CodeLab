@@ -31,7 +31,8 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
-assert.match(bridge, /Source design changed during conversion/, 'design conversion must preserve its source');
+assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/, 'design conversion must verify source preservation from the headless API');
+assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/, 'design conversion must use the shared headless runtime');
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
 assert.match(bridge, /AI generation changes project code and may consume API quota/, 'AI generation must require explicit approval');
 assert.match(bridge, /await processAiInstruction\(\)/, 'AI generation must reuse the app copilot path');
