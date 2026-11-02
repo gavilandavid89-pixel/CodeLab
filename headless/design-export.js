@@ -234,7 +234,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
         styleAttr + '>' + escapeHtml(element.text || 'Menú') + '</button>';
     }
     if (element.type === 'button' && link) {
-      const targetAttrs = link.startsWith('#layer-') ? '' : ' target="_blank" rel="noopener noreferrer"';
+      const targetAttrs = /^https?:\/\//i.test(link) ? ' target="_blank" rel="noopener noreferrer"' : '';
       return '<a id="' + escapeHtml(id) + '" href="' + escapeHtml(link) + '"' + targetAttrs + styleAttr +
         '>' + escapeHtml(element.text || 'Abrir enlace') + '</a>';
     }
