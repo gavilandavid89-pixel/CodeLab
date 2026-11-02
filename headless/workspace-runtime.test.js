@@ -791,12 +791,12 @@ test('integrates one saved project from design creation through export, conversi
   assert.equal(saved.design.elements[1].xUnit, 'px');
 
   let exported = queryHeadlessWorkspace(workspace, { action: 'design.export.html', args: { projectId: 'proj_fullflow' } });
-  assert.match(exported.html, /Mi aplicación/);
-  assert.match(exported.html, /Continuar/);
+  assert.match(exported.result.html, /Mi aplicación/);
+  assert.match(exported.result.html, /Continuar/);
   const capture = queryHeadlessWorkspace(workspace, { action: 'design.capture.context', args: { projectId: 'proj_fullflow', scale: 2 } });
-  assert.equal(capture.designRevision, saved.design.revision);
-  assert.equal(capture.canvas.pixelWidth, 1440);
-  assert.equal(capture.canvas.pixelHeight, 3200);
+  assert.equal(capture.result.designRevision, saved.design.revision);
+  assert.equal(capture.result.canvas.pixelWidth, 1440);
+  assert.equal(capture.result.canvas.pixelHeight, 3200);
 
   result = applyHeadlessBatch(workspace, {
     operationId: 'fullflow_convert_0002',
@@ -816,9 +816,9 @@ test('integrates one saved project from design creation through export, conversi
   });
   workspace = result.state;
   const readback = queryHeadlessWorkspace(workspace, { action: 'project.code.read', args: { projectId: 'proj_fullflow' } });
-  assert.match(readback.fields.html.value, /Guardado desde headless/);
-  assert.match(readback.fields.css.value, /padding:16px/);
-  assert.match(readback.fields.js.value, /headlessFlowReady/);
+  assert.match(readback.result.fields.html.value, /Guardado desde headless/);
+  assert.match(readback.result.fields.css.value, /padding:16px/);
+  assert.match(readback.result.fields.js.value, /headlessFlowReady/);
   assert.equal(workspace.projects[0].design.elements.length, 3);
   assert.equal(workspace.revision, 6);
 });
