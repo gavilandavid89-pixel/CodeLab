@@ -215,7 +215,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
       const tag = element.type === 'button' ? 'button' : element.type === 'heading' ? 'h1' :
         element.type === 'text' ? 'p' : 'div';
       return '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' id="' + escapeHtml(id) +
-        '"' + flowAttrs + styleAttr + ' style="' + escapeHtml(style + 'cursor:pointer') + '">' + text + '</' + tag + '>';
+        '"' + flowAttrs + styleAttr>' + text + '</' + tag + '>';
     }
     if (element.type === 'button' && element.flowRole === 'menu') {
       return '<button type="button" id="' + escapeHtml(id) + '" data-flow-menu="true" aria-expanded="false"' +
