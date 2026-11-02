@@ -212,7 +212,7 @@ const flowReadHandler = bridge.slice(bridge.indexOf("command.action === 'design_
 assert.match(flowReadHandler, /\/headless\/query/, 'design flow read must use saved workspace queries');
 assert.ok(flowReadHandler.includes("query('design.read'"), 'design flow read must use the saved design query');
 assert.doesNotMatch(flowReadHandler, /projects\.find\(/, 'design flow read must not inspect editor memory');
-const designExportHandler = bridge.slice(bridge.indexOf("command.action === 'design_export'"), bridge.indexOf("command.action === 'design_import_json'", bridge.indexOf("command.action === 'design_export'")));
+const designExportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_export') {"), bridge.indexOf("} else if (command.action === 'design_import_json') {", bridge.indexOf("} else if (command.action === 'design_export') {")));
 assert.match(designExportHandler, /\/headless\/query/, 'design export must use the authenticated saved-workspace query');
 assert.match(designExportHandler, /design\.export\.svg/, 'SVG export must use the shared deterministic renderer');
 assert.match(designExportHandler, /design\.export\.json/, 'JSON export must use the shared canonical serializer');
