@@ -38,7 +38,23 @@ assert.match(bridge, /AI generation changes project code and may consume API quo
 assert.match(bridge, /await processAiInstruction\(\)/, 'AI generation must reuse the app copilot path');
 assert.match(bridge, /source\.design\.flowConnections\.push/, 'flow connections must update the actual design model');
 assert.match(bridge, /apiKeyExposed: false/, 'AI settings inspection must not expose secrets');
-assert.match(bridge, /auditHtml\(project\.code\?\.html/, 'accessibility audit must use actual project HTML');
+const auditHandler = bridge.slice(bridge.indexOf("command.action === 'accessibility_audit'"), bridge.indexOf("command.action === 'design_tokens_generate'", bridge.indexOf("command.action === 'accessibility_audit'")));
+assert.match(auditHandler, /\/headless\/query/, 'accessibility audit must use the authenticated saved-workspace query');
+assert.match(auditHandler, /action: 'accessibility\.audit'/, 'accessibility audit must invoke the shared server-side audit');
+assert.doesNotMatch(auditHandler, /projects\.find\(/, 'accessibility audit must not inspect stale editor memory');
+
+for (const [action, queryAction] of [
+  ['branch_status', 'branch.inspect'],
+  ['project_inspect', 'project.inspect'],
+  ['design_read', 'design.read']
+]) {
+  const start = bridge.indexOf("command.action === '" + action + "'");
+  const end = bridge.indexOf("command.action === '", start + 20);
+  const handler = bridge.slice(start, end > start ? end : bridge.length);
+  assert.match(handler, /\/headless\/query/, action + ' must read saved state through the authenticated query API');
+  assert.ok(handler.includes("action: '" + queryAction + "'"), action + ' must use the matching headless query');
+  assert.doesNotMatch(handler, /projects\.find\(/, action + ' must not depend on the editor in-memory project model');
+}
 assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
 assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');

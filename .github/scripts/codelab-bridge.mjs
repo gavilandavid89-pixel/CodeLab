@@ -492,13 +492,18 @@ try {
     }));
   } else if (command.action === 'accessibility_audit') {
     stage = 'accessibility_audit';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const api = window.CodeLabDesignTools;
-      if (!api || typeof api.auditHtml !== 'function') throw new Error('Accessibility audit API is not ready.');
-      const report = api.auditHtml(project.code?.html || '');
-      return { projectId, projectName: project.name, report };
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'accessibility.audit', args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved accessibility audit failed.');
+      return { projectId, report: data.result, workspaceRevision: data.revision, readOnly: true };
     }, command.args.project_id);
   } else if (command.action === 'design_tokens_generate') {
     stage = 'design_tokens_generate';
@@ -1106,25 +1111,23 @@ try {
     }));
   } else if (command.action === 'project_inspect') {
     stage = 'project_inspect';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'project.inspect', args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved project inspection failed.');
+      const saved = data.result;
       return {
-        id: project.id, name: project.name, type: project.type === 'design' ? 'design' : 'web',
-        updatedAt: project.updatedAt || null, hasWebSpace: !!project.hasWebSpace, hasDesignSpace: !!project.hasDesignSpace,
-        codeLengths: { html: project.code?.html?.length || 0, css: project.code?.css?.length || 0, js: project.code?.js?.length || 0 },
-        design: project.design ? {
-          elementCount: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
-          frame: project.design.frame || null, background: project.design.background || null,
-          grid: project.design.grid ?? null, gridSize: project.design.gridSize ?? null,
-          snapToGrid: project.design.snapToGrid ?? null
-        } : null,
-        branch: project.branch ? {
-          id: project.branch.id || null, updatedAt: project.branch.updatedAt || null,
-          codeLengths: { html: project.branch.code?.html?.length || 0, css: project.branch.code?.css?.length || 0, js: project.branch.code?.js?.length || 0 }
-        } : null,
-        mergeUndoAvailable: Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
-        isActive: currentProjectId === projectId
+        ...saved, hasWebSpace: saved.type === 'web',
+        hasDesignSpace: saved.type === 'design' || !!saved.design,
+        mergeUndoAvailable: saved.mergeHistoryCount > 0,
+        revision: data.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'project_code_read') {
@@ -1161,23 +1164,22 @@ try {
     }, { projectId: command.args.project_id, source, offset, maxChars });
   } else if (command.action === 'design_read') {
     stage = 'design_read';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (!project.design) throw new Error('Project has no saved design state.');
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'design.read', args: { projectId, limit: 200 } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design inspection failed.');
+      const saved = data.result;
       return {
-        projectId, projectName: project.name, frame: project.design.frame || 'desktop',
-        background: project.design.background || '#ffffff', grid: project.design.grid ?? true,
-        gridSize: project.design.gridSize ?? 8, snapToGrid: project.design.snapToGrid ?? false,
-        elements: (Array.isArray(project.design.elements) ? project.design.elements : []).slice(0, 200).map(element => ({
-          id: element.id || null, type: element.type || null, name: element.name || null,
-          x: element.x ?? null, y: element.y ?? null, width: element.width ?? null, height: element.height ?? null,
-          text: typeof element.text === 'string' ? element.text.slice(0, 500) : null,
-          src: typeof element.src === 'string' ? element.src.slice(0, 500) : null,
-          zIndex: element.zIndex ?? null
-        })),
-        totalElements: Array.isArray(project.design.elements) ? project.design.elements.length : 0,
-        truncated: (project.design.elements?.length || 0) > 200
+        projectId, canvas: saved.canvas, layout: saved.layout, revision: saved.revision,
+        elements: saved.elements, totalElements: saved.elementCount, truncated: saved.truncated,
+        flowConnections: saved.flowConnections, workspaceRevision: data.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'project_code_write') {
@@ -1293,19 +1295,23 @@ try {
     if (!result.saved && !result.localSnapshotVerified) throw new Error('Save could not be verified on server or exact local project state.');
   } else if (command.action === 'branch_status') {
     stage = 'branch_status';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const branch = project.branch;
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action: 'branch.inspect', args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved branch inspection failed.');
+      const branch = data.result.branch;
       return {
-        projectId,
-        projectName: project.name,
-        hasBranch: !!branch,
-        branchId: branch?.id || null,
-        baseMainUpdatedAt: branch?.baseMainUpdatedAt || null,
-        branchUpdatedAt: branch?.updatedAt || null,
-        codeLengths: branch?.code ? { html: branch.code.html?.length || 0, css: branch.code.css?.length || 0, js: branch.code.js?.length || 0 } : null,
-        currentViewIsBranch: currentProjectId === projectId && inCopyBranch
+        projectId, hasBranch: data.result.exists, branchId: branch?.id || null,
+        baseMainUpdatedAt: branch?.baseMainUpdatedAt || null, branchUpdatedAt: branch?.updatedAt || null,
+        codeLengths: branch?.codeLengths || null, mergeHistoryCount: data.result.mergeHistoryCount,
+        revision: data.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'branch_resume') {
