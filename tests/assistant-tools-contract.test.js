@@ -210,7 +210,7 @@ assert.doesNotMatch(importHandler + systemImportHandler + systemExportHandler, /
 
 const flowReadHandler = bridge.slice(bridge.indexOf("command.action === 'design_flow_read'"), bridge.indexOf("command.action === 'design_flow_connect'", bridge.indexOf("command.action === 'design_flow_read'")));
 assert.match(flowReadHandler, /\/headless\/query/, 'design flow read must use saved workspace queries');
-assert.match(flowReadHandler, /action: 'design\.read'/, 'design flow read must use the saved design query');
+assert.match(flowReadHandler, /query\('design\\.read'/, 'design flow read must use the saved design query');
 assert.doesNotMatch(flowReadHandler, /projects\.find\(/, 'design flow read must not inspect editor memory');
 const designExportHandler = bridge.slice(bridge.indexOf("command.action === 'design_export'"), bridge.indexOf("command.action === 'design_import_json'", bridge.indexOf("command.action === 'design_export'")));
 assert.match(designExportHandler, /\/headless\/query/, 'design export must use the authenticated saved-workspace query');
