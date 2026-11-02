@@ -297,6 +297,101 @@ async function getJson(page, path) {
   }
 }
 
+
+async function createHeadlessPreview(projectId, source = 'main', selfTest = false, fixture = 'diagnostics') {
+  let code;
+  let workspaceRevisionRead = null;
+  if (selfTest) {
+    if (fixture === 'interactions') {
+      code = {
+        html: '<main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main>',
+        css: '',
+        js: 'const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");'
+      };
+    } else {
+      code = {
+        html: '<main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main>',
+        css: '',
+        js: 'console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST");throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");'
+      };
+    }
+  } else {
+    const saved = await page.evaluate(async ({ projectId, source }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable for headless preview.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Could not read saved project code for preview (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      const fields = data.result && data.result.fields;
+      if (!fields || ['html', 'css', 'js'].some(key => !fields[key] || fields[key].truncated)) {
+        throw new Error('Project code exceeds the 200000-character headless preview read limit. No preview was opened.');
+      }
+      const code = Object.fromEntries(['html', 'css', 'js'].map(key => [key, fields[key].value]));
+      if (code.html.length + code.css.length + code.js.length > 200000) {
+        throw new Error('Combined project code exceeds the 200000-character headless preview limit.');
+      }
+      return { code, revision: data.revision };
+    }, { projectId, source });
+    code = saved.code;
+    workspaceRevisionRead = saved.revision;
+  }
+
+  const css = String(code.css || '').replace(/<\/style/gi, '<\\/style');
+  const js = String(code.js || '').replace(/<\/script/gi, '<\\/script');
+  const errScript = '<script>' +
+    'window.onerror=function(msg,url,line,col){window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:"Línea "+line+":"+col+" - "+msg},"*")};' +
+    'console.log=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"log",message:a.join(" ")},"*")};' +
+    'console.error=function(){var a=[].slice.call(arguments);window.parent.postMessage({type:"CONSOLE_LOG",logType:"error",message:a.join(" ")},"*")};' +
+    '<\/script>';
+  const srcdoc = '<!doctype html><html><head><meta charset="UTF-8">' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; img-src data: https: http:; font-src data: https: http:; connect-src \'none\';">' +
+    '<style>' + css + '</style>' + errScript + '</head><body>' + String(code.html || '') +
+    '<script>' + js + '<\/script></body></html>';
+
+  const previewPage = await page.context().newPage();
+  const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], expectedBlockedRequests: [] };
+  previewPage.on('console', message => {
+    if (message.type() === 'error' && browserDiagnostics.consoleErrors.length < 30) {
+      browserDiagnostics.consoleErrors.push({ message: message.text().slice(0, 300), location: message.location().url || null });
+    }
+  });
+  previewPage.on('pageerror', error => {
+    if (browserDiagnostics.pageErrors.length < 30) browserDiagnostics.pageErrors.push(String(error.message || error).slice(0, 300));
+  });
+  previewPage.on('requestfailed', request => {
+    if (browserDiagnostics.failedRequests.length < 30) browserDiagnostics.failedRequests.push({
+      url: safeUrl(request.url()), failure: String(request.failure()?.errorText || 'request failed').slice(0, 200)
+    });
+  });
+
+  try {
+    await previewPage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await previewPage.setContent(
+      '<!doctype html><html><head><meta charset="utf-8"><title>CodeLab headless preview</title></head><body>' +
+      '<iframe id="headlessPreview" title="Isolated project preview" sandbox="allow-scripts allow-forms" style="width:100%;height:100vh;border:0"></iframe>' +
+      '<script>window.__codelabPreviewMessages=[];window.addEventListener("message",function(e){var f=document.getElementById("headlessPreview");if(f&&e.source===f.contentWindow&&e.data&&e.data.type==="CONSOLE_LOG")window.__codelabPreviewMessages.push(e.data)});<\/script>' +
+      '</body></html>',
+      { waitUntil: 'domcontentloaded' }
+    );
+    await previewPage.locator('#headlessPreview').evaluate((frame, html) => { frame.srcdoc = html; }, srcdoc);
+    const previewFrame = previewPage.frameLocator('#headlessPreview');
+    await previewFrame.locator('body').waitFor({ state: 'attached', timeout: 12000 });
+    await previewPage.waitForTimeout(250);
+    return { page: previewPage, frame: previewFrame, diagnostics: browserDiagnostics, revision: workspaceRevisionRead, srcdoc };
+  } catch (error) {
+    await previewPage.close().catch(() => {});
+    throw error;
+  }
+}
+
 let browser;
 let page;
 let result;
