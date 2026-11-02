@@ -81,16 +81,197 @@ function exportDesignSvg(project) {
   return renderSvg(project);
 }
 
-function exportDesignHtml(project) {
-  const svg = renderSvg(project);
-  const width = Number(project.design.canvasWidth) || 1440;
+function safeExportColor(value, fallback) {
+  const color = String(value || fallback || '#ffffff').trim();
+  return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color)
+    ? color : (fallback || '#ffffff');
+}
+
+function safeExportImageSource(value) {
+  const source = String(value || '').trim();
+  if (!source || source.length > MAX_IMAGE_BYTES * 1.5) return '';
+  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+  try {
+    const url = new URL(source);
+    if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) return url.href;
+  } catch (_) {}
+  return '';
+}
+
+function safeExportLink(value) {
+  const source = String(value || '').trim();
+  if (!source || source.length > 2048) return '';
+  if (/^#layer-[a-z0-9_-]{1,120}$/i.test(source)) return source;
+  try {
+    const url = new URL(source);
+    if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) return url.href;
+  } catch (_) {}
+  return '';
+}
+
+function designCanvasWidth(design) {
+  const fallback = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const width = Number(design && design.canvasWidth);
+  return Number.isInteger(width) && width >= 100 && width <= 4000 ? width : fallback;
+}
+
+function designCanvasHeight(design) {
+  const height = Number(design && design.canvasHeight);
+  return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
+}
+
+function designLayoutPositions(design) {
+  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
+  const frameWidth = designCanvasWidth(design);
+  const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
+  const positions = new Map();
+  if (mode === 'free') {
+    let contentBottom = 0;
+    for (const el of elements) {
+      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
+      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      positions.set(el.id, { x, y });
+      contentBottom = Math.max(contentBottom, y + height);
+    }
+    return { positions, height: Math.min(6000, Math.max(designCanvasHeight(design) || 900, contentBottom + 24)), mode, frameWidth };
+  }
+  const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+  const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+  const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+  let x = padding, y = padding, rowHeight = 0;
+  for (const el of elements) {
+    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
+    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    if (direction === 'row') {
+      if (x > padding && x + width > frameWidth - padding) {
+        x = padding; y += rowHeight + gap; rowHeight = 0;
+      }
+      positions.set(el.id, { x, y });
+      x += width + gap; rowHeight = Math.max(rowHeight, height);
+    } else {
+      positions.set(el.id, { x: padding, y });
+      y += height + gap;
+    }
+  }
+  const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+  return { positions, height: Math.min(6000, Math.max(designCanvasHeight(design) || 900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
+}
+
+function designLayerDomId(id) {
+  return 'layer-' + String(id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+}
+
+function renderSemanticDesignPage(project, projectsById, isRoot) {
+  const design = project.design;
+  const layout = designLayoutPositions(design);
+  const autoLayout = design.layoutMode === 'auto';
+  const width = layout.frameWidth;
+  const height = Math.max(layout.height, designCanvasHeight(design) || 900);
+  const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+  const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+  const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+  const background = safeExportColor(design.background, '#ffffff');
+
+  const elements = (Array.isArray(design.elements) ? design.elements : []).map(element => {
+    const position = layout.positions.get(element.id) || { x: Number(element.x) || 0, y: Number(element.y) || 0 };
+    const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
+    const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
+    const w = Math.max(20, Math.min(4000, Number(element.width) || 120));
+    const h = Math.max(20, Math.min(4000, Number(element.height) || 48));
+    const color = safeExportColor(element.color, '#111827');
+    const elementBackground = safeExportColor(element.background, 'transparent');
+    const fontSize = Math.max(8, Math.min(240, Number(element.fontSize) || 16));
+    const weight = Math.max(100, Math.min(900, Number(element.weight) || 400));
+    const radius = Math.max(0, Math.min(500, Number(element.radius) || 0));
+    const align = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : 'left';
+    const imageSource = element.type === 'image' ? safeExportImageSource(element.src) : '';
+    const link = element.type === 'button' ? safeExportLink(element.href) : '';
+    const flow = (design.flowConnections || []).find(item => item && item.sourceElementId === element.id);
+    const target = flow && projectsById.has(flow.targetProjectId) ? flow.targetProjectId : '';
+    const flowNavigation = target && element.flowRole !== 'menu';
+    const id = designLayerDomId(element.id);
+    const positioning = autoLayout
+      ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;'
+      : 'position:absolute;left:' + x + 'px;top:' + y + 'px;';
+    const style = positioning + 'width:' + w + 'px;height:' + h + 'px;color:' + color +
+      ';background:' + elementBackground + ';font-size:' + fontSize + 'px;font-weight:' + weight +
+      ';text-align:' + align + ';border-radius:' + (element.type === 'ellipse' ? '50%' : radius + 'px') +
+      ';display:flex;align-items:center;box-sizing:border-box;padding:' + (element.type === 'image' ? '0' : '4px') +
+      ';overflow:hidden;' + (element.type === 'button' ? 'justify-content:center;text-decoration:none;' : '') +
+      (element.type === 'image' ? 'object-fit:' + (['contain', 'cover', 'fill'].includes(element.objectFit) ? element.objectFit : 'cover') + ';' : '');
+    const styleAttr = ' style="' + escapeHtml(style) + '"';
+    const flowAttrs = flowNavigation ? ' role="link" tabindex="0" data-flow-to="' + escapeHtml(target) + '"' : '';
+    if (element.type === 'image') {
+      if (imageSource) {
+        return '<img id="' + escapeHtml(id) + '" src="' + escapeHtml(imageSource) + '" alt="' +
+          escapeHtml(String(element.alt || element.label || 'Imagen').slice(0, 300)) + '"' + flowAttrs + styleAttr +
+          (flowNavigation ? ' style="' + escapeHtml(style + 'cursor:pointer') + '"' : '') + '>';
+      }
+      return '<div id="' + escapeHtml(id) + '"' + flowAttrs + styleAttr + '>' +
+        escapeHtml(element.text || 'Añade una imagen') + '</div>';
+    }
+    const text = element.type === 'rectangle' || element.type === 'ellipse' ? '' : escapeHtml(element.text || '');
+    if (flowNavigation) {
+      const tag = element.type === 'button' ? 'button' : element.type === 'heading' ? 'h1' :
+        element.type === 'text' ? 'p' : 'div';
+      return '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' id="' + escapeHtml(id) +
+        '"' + flowAttrs + styleAttr + ' style="' + escapeHtml(style + 'cursor:pointer') + '">' + text + '</' + tag + '>';
+    }
+    if (element.type === 'button' && element.flowRole === 'menu') {
+      return '<button type="button" id="' + escapeHtml(id) + '" data-flow-menu="true" aria-expanded="false"' +
+        styleAttr + '>' + escapeHtml(element.text || 'Menú') + '</button>';
+    }
+    if (element.type === 'button' && link) {
+      const targetAttrs = link.startsWith('#layer-') ? '' : ' target="_blank" rel="noopener noreferrer"';
+      return '<a id="' + escapeHtml(id) + '" href="' + escapeHtml(link) + '"' + targetAttrs + styleAttr +
+        '>' + escapeHtml(element.text || 'Abrir enlace') + '</a>';
+    }
+    const tag = element.type === 'heading' ? 'h1' : element.type === 'button' ? 'button' :
+      element.type === 'rectangle' || element.type === 'ellipse' ? 'div' : 'p';
+    return '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' id="' + escapeHtml(id) +
+      '"' + styleAttr + '>' + text + '</' + tag + '>';
+  }).join('\n');
+
+  const frameStyle = autoLayout
+    ? 'position:relative;width:100%;max-width:' + width + 'px;min-height:' + height +
+      'px;height:auto;display:flex;flex-direction:' + direction + ';flex-wrap:' +
+      (direction === 'row' ? 'wrap' : 'nowrap') + ';gap:' + gap + 'px;padding:' + padding +
+      'px;align-items:flex-start;background:' + background + ';margin:0 auto;'
+    : 'position:relative;width:' + width + 'px;height:' + height + 'px;background:' + background +
+      ';transform-origin:top left;margin:0 auto;';
+  const frameClass = 'design-frame' + (autoLayout ? ' auto-layout' : '');
+  return '<section class="flow-screen" data-page-id="' + escapeHtml(project.id) + '"' +
+    (isRoot ? '' : ' hidden') + '><div class="flow-viewport"><main id="' +
+    (isRoot ? 'designFrame' : designLayerDomId(project.id) + '-frame') + '" class="' + frameClass +
+    '" style="' + escapeHtml(frameStyle) + '">' + elements + '</main></div></section>';
+}
+
+function exportDesignHtml(project, workspaceProjects = [project]) {
+  if (!project || !project.design) throw new Error('HTML export requires a design project.');
+  const available = Array.isArray(workspaceProjects) ? workspaceProjects : [project];
+  const projectsById = new Map(available.filter(item => item && item.type === 'design' && item.design).map(item => [item.id, item]));
+  const reachable = [];
+  const seen = new Set();
+  function visit(item) {
+    if (!item || seen.has(item.id)) return;
+    seen.add(item.id);
+    reachable.push(item);
+    for (const connection of (item.design.flowConnections || [])) {
+      if (connection && typeof connection.targetProjectId === 'string') visit(projectsById.get(connection.targetProjectId));
+    }
+  }
+  visit(project);
+  const flowMode = reachable.length > 1;
+  const pages = reachable.map((item, index) => renderSemanticDesignPage(item, projectsById, index === 0)).join('');
+  const width = designCanvasWidth(project.design);
   const title = escapeHtml(project.name || 'CodeLab design');
-  return '<!doctype html>\n' +
-    '<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>' + title + '</title><style>html,body{margin:0;min-height:100%;background:#f8fafc;font-family:Arial,sans-serif}' +
-    '.design-viewport{width:100%;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:0}' +
-    '.design-viewport svg{display:block;width:min(100%,' + width + 'px);height:auto;max-width:100%}</style></head>' +
-    '<body><main class="design-viewport">' + svg + '</main></body></html>';
+  const script = flowMode
+    ? '(function(){var screens=[].slice.call(document.querySelectorAll(".flow-screen"));function fit(){var active=screens.find(function(s){return !s.hidden});if(!active)return;var f=active.querySelector(".design-frame"),v=active.querySelector(".flow-viewport");if(!f||!v)return;if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return;}var w=parseFloat(f.style.width)||1440,h=parseFloat(f.style.height)||900,s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px"}function show(id){var found=screens.find(function(s){return s.getAttribute("data-page-id")===id});if(!found)return;screens.forEach(function(s){s.hidden=s!==found});fit();window.scrollTo(0,0)}document.addEventListener("click",function(e){var nav=e.target.closest("[data-flow-to]");if(nav){e.preventDefault();show(nav.getAttribute("data-flow-to"));return}var menu=e.target.closest("[data-flow-menu]");if(menu)menu.setAttribute("aria-expanded",menu.getAttribute("aria-expanded")!=="true"?"true":"false")});document.addEventListener("keydown",function(e){var nav=e.target.closest&&e.target.closest("[data-flow-to]");if(nav&&(e.key==="Enter"||e.key===" ")){e.preventDefault();show(nav.getAttribute("data-flow-to"))}});window.addEventListener("resize",fit,{passive:true});window.addEventListener("hashchange",function(){var id=decodeURIComponent(location.hash.slice(1));if(id)show(id)});fit()})();'
+    : '(function(){var f=document.getElementById("designFrame");var v=f&&f.parentNode;if(!f||!v)return;var w=' + width + ';var h=parseFloat(f.style.height)||900;function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return}var scale=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+scale+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*scale)/2)+"px";v.style.height=(h*scale)+"px"}window.addEventListener("resize",fit,{passive:true});fit()})();';
+  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + title + '</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.flow-screen{width:100%;min-height:100vh}.flow-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}.design-frame.auto-layout{width:100%;max-width:100%}@media(max-width:768px){.design-frame.auto-layout{flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}.design-frame.auto-layout>*{max-width:100%}}</style></head><body>' +
+    pages + '<script>' + script.replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
 }
 
 function importDesignJson(input, options = {}) {
@@ -205,8 +386,8 @@ function importDesignJson(input, options = {}) {
   return normalizeDesignProject(project);
 }
 
-function convertDesignToWeb(project) {
-  return { html: exportDesignHtml(project), css: '', js: '' };
+function convertDesignToWeb(project, workspaceProjects = [project]) {
+  return { html: exportDesignHtml(project, workspaceProjects), css: '', js: '' };
 }
 
 module.exports = {
