@@ -4115,14 +4115,19 @@ function renderDesignWorkspace() {
     (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
-    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
+    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') +
+    '<div class="grid grid-cols-2 gap-2">' + field('Opacidad (0–1)','opacity','number','min="0" max="1" step="0.05"') + field('Rotación (°)','rotation','number','min="-3600" max="3600" step="1"') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2"><label class="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" '+(el.visible === false ? '' : 'checked')+' onchange="updateDesignProperty(\\'visible\\',this.checked)"> Visible</label><label class="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" '+(el.locked ? 'checked' : '')+' onchange="updateDesignProperty(\\'locked\\',this.checked)"> Bloqueada</label></div>' + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
     '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>' +
     '<div class="grid grid-cols-2 gap-2 mt-2"><button type="button" onclick="duplicateDesignElement()" class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800"><i class="fa-regular fa-copy mr-1"></i>Duplicar</button><button type="button" onclick="deleteDesignElement()" class="px-2 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-[11px] text-rose-200 hover:bg-rose-900"><i class="fa-regular fa-trash-can mr-1"></i>Eliminar</button></div>';
   updateDesignHistoryButtons();
 }
 function updateDesignProperty(key, value) {
   const el = selectedDesignElement(); if (!el) return;
-  if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
+  if (key === 'visible' || key === 'locked') el[key] = value === true;
+  else if (key === 'opacity') el.opacity = Math.max(0, Math.min(1, Number(value) || 0));
+  else if (key === 'rotation') el.rotation = Math.max(-3600, Math.min(3600, Number(value) || 0));
+  else if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
   else if (key === 'src') el.src = safeDesignImageSource(value);
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
@@ -4138,6 +4143,8 @@ function updateDesignProperty(key, value) {
     node.style.left = layoutPosition.x+'px'; node.style.top = layoutPosition.y+'px';
     node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.opacity = String(Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1)));
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
