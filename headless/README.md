@@ -139,6 +139,7 @@ Design batches now save the prior design snapshot into the same `designUndoStack
 ### Editor-session resume boundary
 
 The bridge action `branch_resume` remains an editor-session operation, not a saved-workspace mutation. Before opening the branch in the editor, it refreshes the authenticated workspace snapshot, reads the authoritative branch metadata and HTML/CSS/JS through `project.inspect` and paged `project.code.read` queries, and verifies that all reads belong to the same workspace revision. It then checks that the refreshed local branch and editor values exactly match the server readback. If refresh or consistency checks fail, resume aborts rather than presenting stale local code as the saved branch. The result reports `serverReadbackVerified`, `workspaceRevision`, and `persistenceScope: "editor-session-only"`; these fields confirm the source of the resumed session without claiming a persistence write.
+The complementary bridge action `branch_save` can still leave an exact local snapshot when server sync is unavailable, but it now reports `serverSynced: true` only after reading the branch HTML/CSS/JS back from the authenticated saved workspace and confirming the workspace revision stayed stable. `persistenceScope` distinguishes `server-confirmed` from `local-snapshot-only`; a successful local save return value alone is not evidence of server sync.
 
 ## Responsive design templates
 
