@@ -230,3 +230,31 @@ test('deleting a prototype target bumps dependent design revision and timestamp'
   assert.deepEqual(undone.state.projects[0].design.flowConnections, [],
     'undo must not resurrect a connection to a deleted target');
 });
+
+test('duplicating a design project does not copy its transient undo and redo history', () => {
+  const source = {
+    id: 'proj_original',
+    name: 'Original design',
+    type: 'design',
+    design: { revision: 3, canvasWidth: 720, canvasHeight: 900, elements: [{ id: 'el_current', type: 'text', text: 'Current' }] },
+    designUndoStack: [JSON.stringify({ revision: 2, canvasWidth: 720, canvasHeight: 900, elements: [{ id: 'el_old', type: 'text', text: 'Old' }] })],
+    designRedoStack: [JSON.stringify({ revision: 4, canvasWidth: 720, canvasHeight: 900, elements: [{ id: 'el_future', type: 'text', text: 'Future' }] })]
+  };
+  const result = applyHeadlessBatch({ revision: 0, projects: [source] }, {
+    operationId: 'duplicate-design-fresh-history',
+    baseRevision: 0,
+    operations: [{
+      type: 'project.duplicate',
+      projectId: 'proj_original',
+      newProjectId: 'proj_copy'
+    }]
+  });
+  const original = result.state.projects.find(project => project.id === 'proj_original');
+  const duplicate = result.state.projects.find(project => project.id === 'proj_copy');
+
+  assert.ok(original.designUndoStack.length);
+  assert.ok(original.designRedoStack.length);
+  assert.equal(duplicate.design.elements[0].text, 'Current');
+  assert.equal(Object.hasOwn(duplicate, 'designUndoStack'), false);
+  assert.equal(Object.hasOwn(duplicate, 'designRedoStack'), false);
+});
