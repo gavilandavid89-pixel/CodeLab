@@ -686,3 +686,22 @@ test('rejects unsupported AI design capture scales and excessive pixel counts', 
   project.design.canvasHeight = 4000;
   assert.throws(() => buildAiDesignCaptureContext(project, 3), { code: 'HEADLESS_CAPTURE_TOO_LARGE' });
 });
+
+
+test('exposes AI design capture context as a read-only headless query', () => {
+  const project = designProject();
+  project.design.canvasWidth = 720;
+  project.design.canvasHeight = 1600;
+  project.design.elements = [{ id: 'el_heading', type: 'heading', text: 'Hola', x: 10, y: 20, width: 200, height: 60 }];
+  const before = JSON.stringify(project);
+  const workspace = state([project]);
+  const result = queryHeadlessWorkspace(workspace, {
+    action: 'design.capture.context',
+    args: { projectId: project.id, scale: 1 }
+  });
+  assert.equal(result.result.format, 'codelab-ai-design-capture');
+  assert.equal(result.result.canvas.width, 720);
+  assert.equal(result.result.canvas.height, 1600);
+  assert.equal(workspace.revision, 3, 'read-only capture query must not increment workspace revision');
+  assert.equal(JSON.stringify(project), before, 'capture query must not mutate the saved project');
+});
