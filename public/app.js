@@ -3443,7 +3443,7 @@ function distributeDesignElements(axis = 'horizontal') {
   const dimensionAxis = horizontal ? 'width' : 'height';
   const containerSize = horizontal ? getDesignCanvasWidth(p.design) : (getDesignCanvasHeight(p.design) || 900);
   const dimension = el => getDesignElementDimension(el, dimensionAxis, containerSize);
-  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
+  const ordered = selected.slice().sort((a, b) => getDesignElementPosition(a, horizontal ? 'x' : 'y', containerSize) - getDesignElementPosition(b, horizontal ? 'x' : 'y', containerSize));
   const start = getDesignElementPosition(ordered[0], horizontal ? 'x' : 'y', containerSize);
   const last = ordered[ordered.length - 1];
   const end = getDesignElementPosition(last, horizontal ? 'x' : 'y', containerSize) + dimension(last);
@@ -3608,7 +3608,7 @@ async function captureDesignForAI() {
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
     text: el.text || '',
-    bounds: { x, y, width, height, widthUnit: el.widthUnit || 'px', heightUnit: el.heightUnit || 'px' },
+    bounds: { x, y, width, height, xUnit: el.xUnit || 'px', yUnit: el.yUnit || 'px', widthUnit: el.widthUnit || 'px', heightUnit: el.heightUnit || 'px' },
     style: {
       color: el.color || '#111827',
       background: el.background || 'transparent',
@@ -3705,6 +3705,8 @@ function exportDesignHtml() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Number.isFinite(Number(position.x)) ? Number(position.x) : 0;
     const y = Number.isFinite(Number(position.y)) ? Number(position.y) : 0;
+    const leftCss = getDesignElementPositionCss(el, 'x');
+    const topCss = getDesignElementPositionCss(el, 'y');
     const width = getDesignElementDimension(el, 'width', layout.frameWidth);
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
@@ -3713,7 +3715,7 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
@@ -4286,10 +4288,12 @@ function bindDesignCanvasEvents() {
       if (!nudgeHistoryActive) recordDesignHistory();
       nudgeHistoryActive = true;
       const step = ev.shiftKey ? 10 : 1;
-      if (ev.key === 'ArrowLeft') el.x = Math.max(0, (Number(el.x) || 0) - step);
-      if (ev.key === 'ArrowRight') el.x = Math.max(0, (Number(el.x) || 0) + step);
-      if (ev.key === 'ArrowUp') el.y = Math.max(0, (Number(el.y) || 0) - step);
-      if (ev.key === 'ArrowDown') el.y = Math.max(0, (Number(el.y) || 0) + step);
+      const currentX = getDesignElementPosition(el, 'x', getDesignCanvasWidth(p.design));
+      const currentY = getDesignElementPosition(el, 'y', getDesignCanvasHeight(p.design) || 900);
+      if (ev.key === 'ArrowLeft') { el.xUnit = 'px'; el.x = Math.max(0, currentX - step); }
+      if (ev.key === 'ArrowRight') { el.xUnit = 'px'; el.x = Math.max(0, currentX + step); }
+      if (ev.key === 'ArrowUp') { el.yUnit = 'px'; el.y = Math.max(0, currentY - step); }
+      if (ev.key === 'ArrowDown') { el.yUnit = 'px'; el.y = Math.max(0, currentY + step); }
       renderDesignWorkspace();
       saveProjectsToStorage();
     } else if (ev.key === 'Escape' && selectedDesignElementId) {
@@ -4449,6 +4453,8 @@ async function convertDesignToWeb() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
     const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
+    const leftCss = getDesignElementPositionCss(el, 'x');
+    const topCss = getDesignElementPositionCss(el, 'y');
     const width = getDesignElementDimension(el, 'width', getDesignCanvasWidth(p.design));
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
@@ -4457,7 +4463,7 @@ async function convertDesignToWeb() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
