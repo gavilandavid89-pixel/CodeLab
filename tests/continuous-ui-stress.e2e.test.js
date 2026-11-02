@@ -5,6 +5,7 @@ const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const stamp = Date.now();
 const errors = [];
 const warnings = [];
+const rateLimitResponses = [];
 
 async function waitForReady(page) {
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -27,6 +28,12 @@ async function createProject(page, type, name) {
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(e.stack || e.message));
     page.on('console', m => { if (m.type() === 'error') warnings.push(m.text()); });
+    page.on('response', response => {
+      if (response.status() === 429) {
+        const url = new URL(response.url());
+        rateLimitResponses.push({ method: response.request().method(), path: url.pathname, status: response.status() });
+      }
+    });
     // Agent Space bridge: inspect and operate the real same-origin UI before the broader stress journey.
     await page.goto(BASE_URL + '/agent-space/', { waitUntil: 'domcontentloaded', timeout: 20000 });
     assert.match(await page.title(), /Agent Space/, 'the isolated cockpit route should load');
@@ -209,6 +216,12 @@ async function createProject(page, type, name) {
     assert.deepEqual(errors, [], 'continuous UI stress journey must not throw uncaught page errors');
     console.log('Continuous UI stress E2E passed: modal open/close cycles, design-system settings/import/export/audit/token preconditions, component search/filter/copy/download/insert, design element create/duplicate/delete, canvas controls/templates/import/export, web editor tabs/preview/save, and cross-mode navigation.');
     if (warnings.length) console.log('Browser console errors observed (review separately): ' + JSON.stringify(warnings.slice(0, 20)));
+    if (rateLimitResponses.length) console.log('HTTP 429 response inventory (method/path/count): ' + JSON.stringify(rateLimitResponses.reduce((counts, item) => {
+      const key = item.method + ' ' + item.path;
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {})));
+    else console.log('HTTP 429 response inventory: none observed.');
     await context.close();
   } finally {
     await browser.close();
