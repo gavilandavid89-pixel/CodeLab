@@ -154,6 +154,7 @@ function applyOperation(state, operation) {
       const now = new Date().toISOString();
       const backup = {
         code: clone(project.code || { html: '', css: '', js: '' }),
+        mergedCode: clone(merged),
         updatedAt: project.updatedAt || now,
         branch: clone(project.branch),
         createdAt: now
@@ -172,6 +173,15 @@ function applyOperation(state, operation) {
       assert(Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
         'branch.undo_merge requires a saved merge backup.', 'HEADLESS_NO_MERGE_HISTORY');
       const backup = project.mergeHistory[project.mergeHistory.length - 1];
+      const currentCode = project.code || { html: '', css: '', js: '' };
+      const mergedCode = backup.mergedCode;
+      const matchesMergedCode = mergedCode && ['html', 'css', 'js'].every(key =>
+        (typeof currentCode[key] === 'string' ? currentCode[key] : '') ===
+        (typeof mergedCode[key] === 'string' ? mergedCode[key] : ''));
+      const legacyBackupUnchanged = !mergedCode && backup.createdAt && project.updatedAt === backup.createdAt;
+      assert(matchesMergedCode || legacyBackupUnchanged,
+        'Cannot undo the merge because main code changed afterward; inspect the new changes before retrying.',
+        'HEADLESS_BRANCH_UNDO_CONFLICT');
       project.mergeHistory = project.mergeHistory.slice(0, -1);
       project.code = clone(backup.code || { html: '', css: '', js: '' });
       project.updatedAt = backup.updatedAt || new Date().toISOString();
