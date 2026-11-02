@@ -3639,7 +3639,7 @@ function captureDesignSvg(project) {
   }).join('');
   return {
     width, height,
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + designXmlEscape(safeColor(project.design.background || '#ffffff')) + '"/>' + items + '</svg>'
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="' + designXmlEscape(safeColor(project.design.background || '#ffffff')) + '"/>' + items + '<!--rotation-debug selected=' + String(selectedDesignElementId || '') + ' field=' + String((document.getElementById('designProperty-rotation') || {}).value || '') + ' model=' + JSON.stringify((project.design.elements || []).slice(-3).map(item => ({id:item.id,rotation:item.rotation}))) + '--></svg>'
   };
 }
 
