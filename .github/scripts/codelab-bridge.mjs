@@ -1129,16 +1129,36 @@ try {
     }, command.args.project_id);
   } else if (command.action === 'project_code_read') {
     stage = 'project_code_read';
-    result = await page.evaluate(({ projectId, source }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      const code = source === 'branch' ? project.branch?.code : project.code;
-      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
-      if (project.type === 'design' && source !== 'branch') return { projectId, source, designProject: true, message: 'This is a design project; use design_read for its layer structure.' };
-      const max = 20000;
-      const clip = value => ({ content: String(value || '').slice(0, max), length: String(value || '').length, truncated: String(value || '').length > max });
-      return { projectId, source, html: clip(code?.html), css: clip(code?.css), js: clip(code?.js) };
-    }, { projectId: command.args.project_id, source: command.args.source === 'branch' ? 'branch' : 'main' });
+    const source = command.args.source === 'branch' ? 'branch' : 'main';
+    const offset = command.args.offset === undefined ? 0 : command.args.offset;
+    const maxChars = command.args.max_chars === undefined ? 20000 : command.args.max_chars;
+    if (!Number.isInteger(offset) || offset < 0 || offset > 500000) throw new Error('project_code_read offset must be an integer from 0 to 500000.');
+    if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 200000) throw new Error('project_code_read max_chars must be an integer from 1 to 200000.');
+    result = await page.evaluate(async ({ projectId, source, offset, maxChars }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          action: 'project.code.read',
+          args: { projectId, source, languages: ['html', 'css', 'js'], offset, maxChars }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('Headless project code read failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+      const fields = data.result?.fields;
+      if (!fields) throw new Error('Headless project code read returned no fields.');
+      const clip = field => ({
+        content: field.value,
+        length: field.originalLength,
+        offset: field.offset,
+        nextOffset: field.nextOffset,
+        truncated: field.truncated
+      });
+      return { projectId, source, revision: data.revision, offset, maxChars, html: clip(fields.html), css: clip(fields.css), js: clip(fields.js), readOnly: true };
+    }, { projectId: command.args.project_id, source, offset, maxChars });
   } else if (command.action === 'design_read') {
     stage = 'design_read';
     result = await page.evaluate(projectId => {
