@@ -53,8 +53,10 @@ Before combining PR #332 with independent bridge/documentation work, verify each
 - Integrate only after both workstreams are ready, then run the full validation suite on the combined candidate.
 - Do not describe the PR as fully validated based only on the headless-specific workflow.
 
-## 5. Current verdict
+## 5. Current verdict (checked 2026-11-02)
 
-**Headless-specific tests:** passed on the latest observed commit.  
-**Full PR validation:** pending; the most recent observed full validation failed on an earlier commit, and no later full validation pass was found in this audit.  
-**Merge recommendation:** wait for a full green validation on the latest PR head, then perform the integration gates above.
+**Headless-specific tests:** passed on commit `45b1526c643b43f042974314df2224843a885f73`; runs #424 and #425 both completed successfully. Run #425 is the latest observed headless workflow: https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/41390469774.
+
+**Full PR validation:** still pending. The latest observed `Validate CodeLab` run is #2072 on older commit `8ee578e489b80b473380a3936e757845fcd086a0` and failed at `Test design system tokens and contrast`, with assertion text `layer reorder must place the selected layer at the requested index`: https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/41388638077. Inspection of `tests/design-tools.test.js` on the current headless branch shows the old `splice(targetIndex, 0, element)` source-text assertion is no longer present; the current test instead checks that the action is exposed and validates element identifiers. This is evidence that the specific stale assertion changed, not proof that the full validation now passes.
+
+**Merge recommendation:** do not merge based on headless-specific green runs alone. Wait for a full `Validate CodeLab` pass on the latest PR head, then perform the integration gates above. No workflow was manually re-run as part of this read-only audit.
