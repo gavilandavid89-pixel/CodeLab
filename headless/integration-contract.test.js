@@ -148,6 +148,16 @@ test('legacy bridge import export and conversion actions now delegate to headles
   }
 });
 
+test('isolated preview interaction supports common form and assertion steps', () => {
+  assert.match(bridge, /'click', 'fill', 'select', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'/);
+  assert.match(bridge, /locator\.check\(/);
+  assert.match(bridge, /locator\.uncheck\(/);
+  assert.match(bridge, /only allow non-submitting navigation keys/);
+  assert.match(bridge, /expected text was not found/);
+  assert.match(bridge, /element is not visible/);
+  assert.match(bridge, /element is not enabled/);
+});
+
 test('PNG capture pairs the image and context using a matching saved design revision', () => {
   assert.match(bridge, /context\.designRevision !== designResponse\.result\.revision/);
   assert.match(bridge, /pairedRevisionVerified: true/);

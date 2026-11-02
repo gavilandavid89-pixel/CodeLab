@@ -239,14 +239,17 @@ function parseCommand(raw) {
       throw new Error('preview_interact requires between 1 and 20 steps.');
     }
     for (const step of args.steps) {
-      if (!step || typeof step !== 'object' || Array.isArray(step) || !['click', 'fill', 'select', 'read'].includes(step.action)) {
+      if (!step || typeof step !== 'object' || Array.isArray(step) || !['click', 'fill', 'select', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'].includes(step.action)) {
         throw new Error('Invalid preview interaction step.');
       }
       if (typeof step.selector !== 'string' || !step.selector.trim() || step.selector.length > 2000) {
         throw new Error('Each preview interaction step requires a valid selector.');
       }
-      if (['fill', 'select'].includes(step.action) && (typeof step.value !== 'string' || step.value.length > 2000)) {
-        throw new Error('Preview fill/select steps require a string value of at most 2000 characters.');
+      if (['fill', 'select', 'assert_text'].includes(step.action) && (typeof step.value !== 'string' || step.value.length > 2000)) {
+        throw new Error('Preview fill/select/assert_text steps require a string value of at most 2000 characters.');
+      }
+      if (step.action === 'press' && !['Escape', 'Tab', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(step.value)) {
+        throw new Error('Preview press steps only allow non-submitting navigation keys.');
       }
       if (step.action === 'click' && command.approval !== 'approved') {
         throw new Error('Preview click steps require approval: "approved".');
@@ -2149,14 +2152,34 @@ try {
           await locator.fill(step.value, { timeout: 10000 });
         } else if (step.action === 'select') {
           await locator.selectOption(step.value, { timeout: 10000 });
+        } else if (step.action === 'check') {
+          await locator.check({ timeout: 10000 });
+        } else if (step.action === 'uncheck') {
+          await locator.uncheck({ timeout: 10000 });
+        } else if (step.action === 'press') {
+          await locator.press(step.value, { timeout: 10000 });
+        } else if (step.action === 'hover') {
+          await locator.hover({ timeout: 10000 });
+        } else if (step.action === 'focus') {
+          await locator.focus({ timeout: 10000 });
         }
         await previewSession.page.waitForTimeout(60);
         const observed = await locator.evaluate(element => ({
           tag: element.tagName.toLowerCase(),
           text: (element.innerText || element.textContent || '').trim().slice(0, 300),
           value: ('value' in element) ? String(element.value).slice(0, 300) : null,
-          disabled: Boolean(element.disabled)
+          disabled: Boolean(element.disabled),
+          checked: ('checked' in element) ? Boolean(element.checked) : null
         })).catch(() => null);
+        if (step.action === 'assert_text' && (!observed || !observed.text.includes(step.value))) {
+          throw new Error('Preview step ' + (index + 1) + ': expected text was not found.');
+        }
+        if (step.action === 'assert_visible' && !(await locator.isVisible().catch(() => false))) {
+          throw new Error('Preview step ' + (index + 1) + ': element is not visible.');
+        }
+        if (step.action === 'assert_enabled' && !(await locator.isEnabled().catch(() => false))) {
+          throw new Error('Preview step ' + (index + 1) + ': element is not enabled.');
+        }
         steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
       }
       currentStep = null;
