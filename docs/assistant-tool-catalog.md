@@ -228,3 +228,21 @@ This mirrors the website's current embedded-image model; it does not invent a se
 
 
 **Transport limitation:** the GitHub issue-mailbox `headless_batch` bridge currently caps serialized operations at 50,000 characters, so a full 2 MiB Base64 image cannot be carried through that small command envelope. The image operation is available through the authenticated headless workspace API, whose configured request-body limit accommodates the editor's image size. Passing large binary payloads through the issue mailbox remains a transport-parity gap; do not claim the 50,000-character bridge path can upload a full-size image.
+
+## Section 23 — Headless AI design-capture context
+
+The read-only bridge query `headless_query` now exposes `design.capture.context` for an exact saved design project ID. It returns the same structured `codelab-ai-design-capture` context as the editor flow: ordered layer bounds, text, styles, image alt text, layout settings, custom canvas dimensions, requested scale, and AI analysis instructions. Scale is bounded to 1–4 with a 32-million-pixel ceiling. The query is read-only and does not increment workspace revision.
+
+Example bridge arguments:
+
+```json
+{
+  "query_action": "design.capture.context",
+  "query_args": {
+    "projectId": "proj_EXACT_ID",
+    "scale": 2
+  }
+}
+```
+
+This query returns context JSON, not a PNG binary. Deterministic SVG export and isolated browser rendering remain separate steps; full PNG/context parity is not claimed until that end-to-end path is exercised.
