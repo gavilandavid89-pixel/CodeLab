@@ -664,10 +664,10 @@ async function waitForPersistedProject(page, projectName) {
     }), selectedLayerIds);
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('ArrowRight');
-    await page.waitForFunction(ids => ids.every(id => {
+    await page.waitForFunction(({ ids, before }) => ids.every((id, index) => {
       const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
-      return node && parseFloat(node.style.left) === Number(node.dataset.beforeLeft || NaN);
-    }) === false, selectedLayerIds).catch(() => {});
+      return node && parseFloat(node.style.left) === before[index].left + 1;
+    }), { ids: selectedLayerIds, before: selectedPositionsBefore }, { timeout: 5000 });
     const selectedPositionsAfter = await page.evaluate(ids => ids.map(id => {
       const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
       return { id, left: parseFloat(node.style.left), top: parseFloat(node.style.top) };
