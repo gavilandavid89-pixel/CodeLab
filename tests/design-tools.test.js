@@ -129,6 +129,12 @@ assert.match(dimensionUnitAppSource, /selectedElements\.length \|\| p\.design\.l
   'keyboard nudging must not silently fight Auto Layout positioning');
 assert.match(dimensionUnitAppSource, /mod && ev\.key\.toLowerCase\(\) === 'a' && inDesignSurface/,
   'Ctrl/Cmd+A must select all design layers only when focus is on the design surface or layer list');
+assert.match(dimensionUnitAppSource, /const selected = p\.design\.elements\.filter\(item => selectedIdSet\.has\(item\.id\)\)/,
+  'duplicate must copy every selected design layer instead of only the primary layer');
+assert.match(dimensionUnitAppSource, /p\.design\.elements\.length \+ selected\.length > MAX_DESIGN_ELEMENTS/,
+  'multi-layer duplicate must reject the operation before it exceeds the layer limit');
+assert.match(dimensionUnitAppSource, /const duplicateIds = new Map\(selected\.map\(\(el, index\) => \[el\.id, copies\[index\]\.id\]\)\)[\s\S]{0,300}copy\.href = '#' \+ designLayerDomId\(duplicateIds\.get\(internalTarget\.id\)\)/,
+  'duplicated internal prototype links must target the duplicated layer when both endpoints are copied');
 assert.match(dimensionUnitAppSource, /selectedDesignElementIds = p\.design\.elements\.map\(item => item\.id\)/,
   'select-all must populate the complete multi-selection so move, duplicate and delete tools can operate on it');
 assert.match(dimensionUnitAppSource, /const canvasWidth = getDesignCanvasWidth\(p\.design\);[\s\S]{0,300}x: Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)[\s\S]{0,180}xUnit: 'px',[\s\S]{0,100}yUnit: 'px'/,
