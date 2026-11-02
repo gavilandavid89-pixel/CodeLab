@@ -147,3 +147,21 @@ test('legacy bridge import export and conversion actions now delegate to headles
       action + ' must not depend on editor UI interactions');
   }
 });
+
+test('preview diagnostics and interactions run in an isolated sandbox using saved workspace code', () => {
+  assert.match(bridge, /async function createHeadlessPreview\(/);
+  assert.match(bridge, /action: 'project\.code\.read'/);
+  assert.match(bridge, /sandbox="allow-scripts allow-forms"/);
+  assert.match(bridge, /connect-src \\'none\\'/);
+  assert.match(bridge, /page\.context\(\)\.newPage\(\)/);
+  const diagnosticStart = bridge.indexOf("} else if (command.action === 'preview_diagnostics') {");
+  const diagnosticEnd = bridge.indexOf("} else if (command.action === 'preview_interact') {", diagnosticStart);
+  const interactionStart = diagnosticEnd;
+  const interactionEnd = bridge.indexOf("} else if (command.action ===", interactionStart + 40);
+  const diagnostics = bridge.slice(diagnosticStart, diagnosticEnd);
+  const interactions = bridge.slice(interactionStart, interactionEnd);
+  assert.match(diagnostics, /createHeadlessPreview\(/);
+  assert.match(interactions, /createHeadlessPreview\(/);
+  assert.doesNotMatch(diagnostics + interactions, /#previewIframe|previewFrame/);
+  assert.match(interactions, /only in-page hash links may be clicked/);
+});
