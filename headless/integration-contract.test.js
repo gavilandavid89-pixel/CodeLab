@@ -136,7 +136,7 @@ test('headless AI generation uses saved workspace APIs, explicit approval, and q
 
 test('legacy bridge import export and conversion actions now delegate to headless APIs', () => {
   for (const action of ['design_import_json', 'design_system_import_json', 'design_system_export_json', 'project_export_html', 'project_convert_design_to_web']) {
-    const start = bridge.indexOf("command.action === '" + action + "'");
+    const start = bridge.indexOf("} else if (command.action === '" + action + "') {");
     assert.notEqual(start, -1, action + ' action must remain available');
     const end = bridge.indexOf("} else if (command.action ===", start + 30);
     const block = bridge.slice(start, end < 0 ? undefined : end);
