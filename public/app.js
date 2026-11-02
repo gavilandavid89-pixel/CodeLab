@@ -3599,7 +3599,6 @@ function captureDesignSvg(project) {
     const color = safeColor(el.color || '#111827');
     const rotation = Math.max(-360, Math.min(360, finite(el.rotation, 0)));
     const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
-    const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
       : '';
