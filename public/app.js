@@ -3879,7 +3879,7 @@ function getDesignCanvasHeight(design) {
   return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
 }
 function getDesignLayoutPositions(design) {
-  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
+  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false) : [];
   const frameWidth = getDesignCanvasWidth(design);
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
@@ -3976,15 +3976,19 @@ function renderDesignWorkspace() {
   if (empty && p.design.elements.length === 0) canvas.appendChild(empty);
   const sorted = p.design.elements;
   for (const el of sorted) {
+    if (el.visible === false) continue;
     const node = document.createElement('div');
     node.dataset.designId = el.id;
-    node.className = 'absolute select-none cursor-move';
+    node.className = 'absolute select-none ' + (el.locked ? 'cursor-default' : 'cursor-move');
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     node.style.left = layoutPosition.x + 'px'; node.style.top = layoutPosition.y + 'px';
     node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.opacity = String(Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1)));
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
     node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
@@ -3998,7 +4002,7 @@ function renderDesignWorkspace() {
     if (el.type === 'heading') node.style.lineHeight = '1.1';
     if (el.type === 'image') renderDesignImageContent(node, el);
     else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
-    if (el.id === selectedDesignElementId && selectedDesignElementIds.length <= 1) {
+    if (el.id === selectedDesignElementId && selectedDesignElementIds.length <= 1 && !el.locked) {
       const resizeHandle = document.createElement('span');
       resizeHandle.dataset.designResizeHandle = el.id;
       resizeHandle.setAttribute('role', 'slider');
@@ -4055,6 +4059,7 @@ function renderDesignWorkspace() {
     node.addEventListener('pointerdown', ev => {
       if (ev.button !== 0) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
+      if (el.locked) { ev.preventDefault(); return; }
       if (activeDesignProject()?.design.layoutMode === 'auto') return;
       if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
       // A plain drag acts on one layer; Shift/Ctrl/Meta-click is reserved for multi-selection.
@@ -4215,7 +4220,7 @@ function bindDesignCanvasEvents() {
     } else if (arrowKeys.includes(ev.key) && selectedDesignElementId &&
       (!target || target === document.body || target.id === 'designCanvas' || (target.closest && target.closest('#designCanvas')))) {
       const el = selectedDesignElement();
-      if (!el) return;
+      if (!el || el.locked || p.design.layoutMode === 'auto') return;
       ev.preventDefault();
       if (!nudgeHistoryActive) recordDesignHistory();
       nudgeHistoryActive = true;
@@ -4236,7 +4241,7 @@ function bindDesignCanvasEvents() {
 }
 function moveDesignLayer(direction) {
   const project = activeDesignProject(), element = selectedDesignElement();
-  if (!project || !element || !Array.isArray(project.design.elements)) return;
+  if (!project || !element || element.locked || !Array.isArray(project.design.elements)) return;
   const currentIndex = project.design.elements.findIndex(item => item.id === element.id);
   const nextIndex = Math.max(0, Math.min(project.design.elements.length - 1, currentIndex + (direction < 0 ? -1 : 1)));
   if (currentIndex < 0 || nextIndex === currentIndex) return;
@@ -4250,6 +4255,7 @@ function moveDesignLayer(direction) {
 }
 function duplicateDesignElement() {
   const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
+  if (el.locked) { showToast('Desbloquea la capa antes de duplicarla.', 'warn'); return; }
   if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
     showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
@@ -4260,8 +4266,10 @@ function duplicateDesignElement() {
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
+  const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
+  const deletedElementIds = new Set(p.design.elements.filter(el => selectedIds.has(el.id) && !el.locked).map(el => el.id));
+  if (!deletedElementIds.size) { showToast('Desbloquea la capa antes de eliminarla.', 'warn'); return; }
   recordDesignHistory();
-  const deletedElementIds = new Set(p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId).map(el => el.id));
   p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
   // Never leave graph edges pointing at a layer that no longer exists.
   if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
