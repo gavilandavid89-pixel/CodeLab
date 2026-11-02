@@ -4336,7 +4336,17 @@ function duplicateDesignElement() {
     return;
   }
   recordDesignHistory();
-  const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
+  const canvasWidth = getDesignCanvasWidth(p.design);
+  const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+  const copy = {
+    ...el,
+    id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()),
+    x: Math.min(6000, getDesignElementPosition(el, 'x', canvasWidth) + 24),
+    y: Math.min(6000, getDesignElementPosition(el, 'y', canvasHeight) + 24),
+    xUnit: 'px',
+    yUnit: 'px',
+    label: (el.label || 'Capa') + ' copia'
+  };
   p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
 }
 function deleteDesignElement() {
