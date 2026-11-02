@@ -191,14 +191,33 @@ test('integral project journey: create, design, revise, convert, read back, and 
   assert.equal(saved.projects[0].branch.id, 'branch_integral_e2e', 'undo merge must restore the saved branch');
   assert.match(saved.projects[0].branch.code.html, /En revisión/, 'undo merge must preserve the branch work for recovery');
 
+  // Stage 12: create a genuine main-vs-branch conflict and prove failed merge is atomic.
+  const conflictingMainHtml = saved.projects[0].code.html.replace('>Listo</p>', '>Principal</p>');
+  result = batch(saved, 'integral_main_edit_012', [
+    { type: 'web.code.write', projectId, source: 'main', mode: 'replace', html: conflictingMainHtml }
+  ]);
+  saved = result.state;
+  assert.match(saved.projects[0].code.html, />Principal<\/p>/);
+  assert.match(saved.projects[0].branch.code.html, />En revisión<\/p>/);
+  const beforeConflictingMerge = JSON.stringify(saved);
+  assert.throws(() => batch(saved, 'integral_branch_conflict_013', [
+    { type: 'branch.merge', projectId, approved: true }
+  ]), { code: 'HEADLESS_BRANCH_CONFLICT' });
+  assert.equal(JSON.stringify(saved), beforeConflictingMerge,
+    'a conflicting merge must not mutate the persisted workspace state');
+  assert.match(saved.projects[0].code.html, />Principal<\/p>/,
+    'failed merge must preserve main edits');
+  assert.match(saved.projects[0].branch.code.html, />En revisión<\/p>/,
+    'failed merge must preserve branch edits');
+
   const finalRead = queryHeadlessWorkspace(saved, {
     action: 'project.code.read',
     args: { projectId, languages: ['html'] }
   });
   assert.equal(finalRead.result.fields.html.value, saved.projects[0].code.html);
-  assert.match(finalRead.result.fields.html.value, />Listo<\/p>/);
+  assert.match(finalRead.result.fields.html.value, />Principal<\/p>/);
 
-  t.diagnostic('Completed one chained project across create → design → edit → convert → same-revision PNG capture → persisted-state read → Chromium interaction → branch create/write/approved merge/undo/readback.');
+  t.diagnostic('Completed one chained project across create → design → edit → convert → same-revision PNG capture → persisted-state read → Chromium interaction → branch create/write/approved merge/undo → conflicting merge atomic rollback → readback.');
 });
 
 async function expectVisible(page, selector) {
