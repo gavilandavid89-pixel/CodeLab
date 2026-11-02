@@ -1862,116 +1862,89 @@ try {
       message: 'El editor real ejecutó HTML/CSS/JS en su vista previa; el botón, el campo y los estilos respondieron como se esperaba.'
     };
   } else if (command.action === 'preview_diagnostics') {
-    stage = 'inspect_preview';
-    const frameElement = page.locator('#previewIframe');
-    const frameExists = await frameElement.count() > 0;
-    const previewFrame = page.frameLocator('#previewIframe');
-    let preview = { available: false, reason: 'No se encontró #previewIframe en esta pantalla.' };
-    if (frameExists) {
-      const src = await frameElement.getAttribute('src');
-      if (command.args.self_test === true) {
-        // Safe diagnostic probe: only changes this disposable browser session's iframe, never the saved project.
-        const probeHtml = '<!doctype html><html><head><title>CodeLab diagnostic probe</title></head><body><main id="codelab-diagnostic-probe"><h1>Preview probe</h1><button id="probe-action">Probe action</button></main><script>console.error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST"); throw new Error("CODELAB_PREVIEW_DIAGNOSTIC_SELF_TEST_PAGEERROR");</script></body></html>';
-        await frameElement.evaluate((el, html) => { el.srcdoc = html; }, probeHtml);
-        await previewFrame.locator('#codelab-diagnostic-probe').waitFor({ state: 'attached', timeout: 10000 });
-        await page.waitForTimeout(300);
-      }
-      preview = await previewFrame.locator('html').evaluate(() => {
-          const body = document.body;
-          const elements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"]')).slice(0, 60).map(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 100),
-            id: el.id || null,
-            type: el.getAttribute('type') || null,
-            disabled: Boolean(el.disabled)
-          }));
-          const tagCounts = {};
-          for (const el of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
-            const tag = el.tagName.toLowerCase();
-            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-          }
-          return {
-            available: true,
-            readyState: document.readyState,
-            title: document.title || '',
-            frameUrl: location.href,
-            text: (body?.innerText || '').trim().slice(0, 1200),
-            elementCount: document.querySelectorAll('*').length,
-            tagCounts,
-            interactiveElements: elements
-          };
+    stage = 'inspect_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'diagnostics');
+    try {
+      const preview = await previewSession.frame.locator('html').evaluate(() => {
+        const body = document.body;
+        const interactiveElements = Array.from(document.querySelectorAll('a,button,input,textarea,select,[role="button"],[role="link"]')).slice(0, 60).map(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.getAttribute('aria-label') || element.getAttribute('placeholder') || '').trim().slice(0, 100),
+          id: element.id || null,
+          type: element.getAttribute('type') || null,
+          disabled: Boolean(element.disabled)
+        }));
+        const tagCounts = {};
+        for (const element of Array.from(document.querySelectorAll('*')).slice(0, 5000)) {
+          const tag = element.tagName.toLowerCase();
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        }
+        return {
+          available: true, readyState: document.readyState, title: document.title || '',
+          frameUrl: location.href, text: (body?.innerText || '').trim().slice(0, 1200),
+          elementCount: document.querySelectorAll('*').length, tagCounts, interactiveElements
+        };
       });
-      preview.src = src || null;
-      preview.frameUrl = safeUrl(preview.frameUrl);
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      preview.previewMessages = messages.slice(0, 60);
+      preview.consoleErrors = messages.filter(message => message.logType === 'error').slice(0, 30);
       preview.empty = !preview.title && !preview.text && preview.interactiveElements.length === 0;
       preview.selfTest = command.args.self_test === true;
+      preview.workspaceRevision = previewSession.revision;
+      result = {
+        page: { url: safeUrl(targetUrl), title: 'CodeLab headless preview host', documentReady: 'complete' },
+        preview,
+        browserDiagnostics: previewSession.diagnostics
+      };
+    } finally {
+      await previewSession.page.close().catch(() => {});
     }
-    result = {
-      page: { url: safeUrl(page.url()), title: await page.title(), documentReady: await page.evaluate(() => document.readyState) },
-      preview,
-      browserDiagnostics
-    };
   } else if (command.action === 'preview_interact') {
-    stage = 'interact_with_preview';
-    const frameElement = page.locator('#previewIframe');
-    if (await frameElement.count() === 0) {
-      result = { ok: false, reason: 'No se encontró la vista previa en esta pantalla.', steps: [] };
-    } else {
-      const previewFrame = page.frameLocator('#previewIframe');
-      if (command.args.self_test === true) {
-        // Disposable fixture only: this replaces srcdoc in the isolated bridge browser, not a saved project.
-        const probeHtml = '<!doctype html><html><head><title>CodeLab interaction probe</title></head><body><main><button id="probe-increment">Increment</button><output id="probe-count">0</output><label>Nombre <input id="probe-input" value=""></label><output id="probe-echo"></output></main><script>const b=document.getElementById("probe-increment");const c=document.getElementById("probe-count");const i=document.getElementById("probe-input");const e=document.getElementById("probe-echo");b.addEventListener("click",()=>{c.textContent=String(Number(c.textContent)+1)});i.addEventListener("input",()=>{e.textContent=i.value});console.log("CODELAB_PREVIEW_INTERACTION_READY");</script></body></html>';
-        await frameElement.evaluate((el, html) => {
-          const probe = document.createElement('iframe');
-          probe.id = 'previewIframe';
-          probe.setAttribute('sandbox', 'allow-scripts allow-forms');
-          probe.style.cssText = 'position:fixed;left:12px;bottom:12px;width:640px;height:360px;z-index:2147483000;background:white;border:2px solid #64748b';
-          probe.srcdoc = html;
-          el.remove();
-          document.body.appendChild(probe);
-        }, probeHtml);
-        await previewFrame.locator('#probe-increment').waitFor({ state: 'attached', timeout: 10000 });
-      }
-      const isVisible = await frameElement.isVisible();
-      if (!isVisible && command.args.self_test !== true) {
-        result = { ok: false, reason: 'La vista previa está presente pero oculta; abre un proyecto web en el editor antes de interactuar.', steps: [] };
-      } else {
-        const steps = [];
-        for (let index = 0; index < command.args.steps.length; index += 1) {
-          currentStep = index + 1;
-          const step = command.args.steps[index];
-          const locator = previewFrame.locator(step.selector).first();
-          if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside #previewIframe.');
-          if (step.action === 'click') {
-            const tag = await locator.evaluate(el => el.tagName.toLowerCase());
-            if (tag === 'a') {
-              const href = await locator.getAttribute('href') || '';
-              if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
-            }
-            await locator.click({ timeout: 10000 });
-          } else if (step.action === 'fill') {
-            await locator.fill(step.value, { timeout: 10000 });
-          } else if (step.action === 'select') {
-            await locator.selectOption(step.value, { timeout: 10000 });
+    stage = 'interact_with_headless_preview';
+    const projectId = command.args.project_id || (command.args.self_test === true ? null : await page.evaluate(() => currentProjectId));
+    const previewSession = await createHeadlessPreview(projectId, command.args.source || 'main', command.args.self_test === true, 'interactions');
+    try {
+      const steps = [];
+      for (let index = 0; index < command.args.steps.length; index += 1) {
+        currentStep = index + 1;
+        const step = command.args.steps[index];
+        const locator = previewSession.frame.locator(step.selector).first();
+        if (await locator.count() === 0) throw new Error('Preview step ' + (index + 1) + ': selector did not match an element inside the isolated headless preview.');
+        if (step.action === 'click') {
+          const tag = await locator.evaluate(element => element.tagName.toLowerCase());
+          if (tag === 'a') {
+            const href = await locator.getAttribute('href') || '';
+            if (href && !href.startsWith('#')) throw new Error('Preview anchor navigation is blocked; only in-page hash links may be clicked.');
           }
-          const observed = await locator.evaluate(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || el.textContent || '').trim().slice(0, 300),
-            value: ('value' in el) ? String(el.value).slice(0, 300) : null,
-            disabled: Boolean(el.disabled)
-          })).catch(() => null);
-          steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
+          await locator.click({ timeout: 10000 });
+        } else if (step.action === 'fill') {
+          await locator.fill(step.value, { timeout: 10000 });
+        } else if (step.action === 'select') {
+          await locator.selectOption(step.value, { timeout: 10000 });
         }
-        currentStep = null;
-        result = {
-          ok: true,
-          previewTitle: await previewFrame.locator('html').evaluate(() => document.title || ''),
-          text: await previewFrame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200)),
-          steps,
-          selfTest: command.args.self_test === true,
-          browserDiagnostics
-        };
+        await previewSession.page.waitForTimeout(60);
+        const observed = await locator.evaluate(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: (element.innerText || element.textContent || '').trim().slice(0, 300),
+          value: ('value' in element) ? String(element.value).slice(0, 300) : null,
+          disabled: Boolean(element.disabled)
+        })).catch(() => null);
+        steps.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, observed });
       }
+      currentStep = null;
+      const previewTitle = await previewSession.frame.locator('html').evaluate(() => document.title || '');
+      const text = await previewSession.frame.locator('body').innerText({ timeout: 5000 }).then(value => value.slice(0, 1200));
+      const messages = await previewSession.page.evaluate(() => window.__codelabPreviewMessages || []);
+      result = {
+        ok: true, projectId, source: command.args.source || 'main',
+        previewTitle, text, steps, selfTest: command.args.self_test === true,
+        previewMessages: messages.slice(0, 60), browserDiagnostics: previewSession.diagnostics,
+        workspaceRevision: previewSession.revision
+      };
+    } finally {
+      currentStep = null;
+      await previewSession.page.close().catch(() => {});
     }
   } else if (command.action === 'read_page') {
     result = {
