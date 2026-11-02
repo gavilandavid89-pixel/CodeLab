@@ -49,7 +49,7 @@
   }
 
   function getCaptureLayoutPositions(design) {
-    const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : [];
+    const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object' && !el.hidden; }) : [];
     if (elements.length > MAX_CAPTURE_DESIGN_ELEMENTS) {
       throw new Error('El diseño supera el límite de ' + MAX_CAPTURE_DESIGN_ELEMENTS + ' capas para capturar.');
     }
@@ -101,7 +101,7 @@
     const layout = getCaptureLayoutPositions(design);
     const customHeight = Number(design.canvasHeight);
     const height = Math.max(layout.height, Number.isInteger(customHeight) && customHeight >= 100 && customHeight <= 10000 ? customHeight : 0);
-    const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el) {
+    const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object' && !el.hidden; }) : []).map(function (el) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
       const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
@@ -477,7 +477,7 @@
     const pixelCount = getCapturePixelCount(captured.width, captured.height, scale);
     const slug = safeSlug(project.name);
     const layout = getCaptureLayoutPositions(project.design);
-    const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el, index) {
+    const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object' && !el.hidden; }) : []).map(function (el, index) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
       const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
