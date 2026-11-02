@@ -283,3 +283,13 @@ assert.match(componentInsertHandler, /project\.code\.read/, 'component insertion
 assert.match(componentInsertHandler, /nextOffset/, 'component insertion must page through large HTML files');
 assert.doesNotMatch(componentInsertHandler, /projects\.find\(|CodeLabComponentLibrary|setEditorValue\(|saveCurrentCodeToActiveProject\(/,
   'component insertion must not depend on editor state or UI component APIs');
+
+for (const action of ['design_flow_connect', 'design_flow_disconnect']) {
+  const start = bridge.indexOf("} else if (command.action === '" + action + "') {");
+  const end = bridge.indexOf("} else if (command.action ===", start + 40);
+  const handler = bridge.slice(start, end < 0 ? undefined : end);
+  assert.match(handler, /\/headless\/query/, action + ' must read authoritative saved design state');
+  assert.match(handler, /type: 'design\.flow\.(?:connect|disconnect)'/, action + ' must use the shared workspace runtime');
+  assert.match(handler, /serverReadbackVerified/, action + ' must verify persisted flow state');
+  assert.doesNotMatch(handler, /projects\.find\(|saveProjectsToStorage\(/, action + ' must not mutate editor state');
+}

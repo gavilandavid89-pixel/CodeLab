@@ -1097,34 +1097,64 @@ try {
     }, command.args.project_id);
   } else if (command.action === 'design_flow_connect') {
     stage = 'design_flow_connect';
-    result = await page.evaluate(async ({ projectId, elementId, targetProjectId }) => {
-      const source = projects.find(item => item && item.id === projectId);
-      const target = projects.find(item => item && item.id === targetProjectId);
-      if (!source?.design || source.type !== 'design' || !target?.design || target.type !== 'design') throw new Error('Source and target must be design projects.');
-      if (!source.design.elements?.some(element => element.id === elementId)) throw new Error('Source design element not found.');
-      if (!Array.isArray(source.design.flowConnections)) source.design.flowConnections = [];
-      if (source.design.flowConnections.some(connection => connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId)) {
-        return { projectId, elementId, targetProjectId, alreadyConnected: true, verified: true };
-      }
-      source.design.flowConnections.push({ sourceElementId: elementId, targetProjectId });
-      const saved = await saveProjectsToStorage();
-      const verified = source.design.flowConnections.some(connection => connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId);
-      if (!verified) throw new Error('Design flow connection could not be verified.');
-      return { projectId, elementId, targetProjectId, alreadyConnected: false, saved: saved === true, verified };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetProjectId: command.args.target_project_id });
+    result = await page.evaluate(async ({projectId,elementId,targetProjectId}) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action,args) => {
+        const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless/query',{
+          method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},
+          body:JSON.stringify({action,args})
+        });
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Saved design query failed.');
+        return data;
+      };
+      const before=await query('design.read',{projectId,limit:500});
+      if(!before.result.elements.some(item=>item.id===elementId))throw new Error('Source design element not found.');
+      if((before.result.flowConnections||[]).some(item=>item.sourceElementId===elementId&&item.targetProjectId===targetProjectId))
+        return {projectId,elementId,targetProjectId,alreadyConnected:true,serverReadbackVerified:true,workspaceRevision:before.revision};
+      const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},
+        body:JSON.stringify({baseRevision:before.revision,operationId:'flow_connect_'+crypto.randomUUID().replace(/-/g,''),operations:[{type:'design.flow.connect',sourceProjectId:projectId,sourceElementId:elementId,targetProjectId}]})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Headless flow connection failed.');
+      const after=await query('design.read',{projectId,limit:500});
+      const verified=(after.result.flowConnections||[]).some(item=>item.sourceElementId===elementId&&item.targetProjectId===targetProjectId);
+      if(!verified)throw new Error('Flow connection failed authoritative server readback.');
+      return {projectId,elementId,targetProjectId,alreadyConnected:false,saved:true,serverReadbackVerified:true,workspaceRevision:after.revision,designRevision:after.result.revision};
+    },{projectId:command.args.project_id,elementId:command.args.element_id,targetProjectId:command.args.target_project_id});
   } else if (command.action === 'design_flow_disconnect') {
     stage = 'design_flow_disconnect';
-    result = await page.evaluate(async ({ projectId, elementId, targetProjectId }) => {
-      const source = projects.find(item => item && item.id === projectId);
-      if (!source?.design || source.type !== 'design') throw new Error('Source design project not found.');
-      const before = Array.isArray(source.design.flowConnections) ? source.design.flowConnections.length : 0;
-      source.design.flowConnections = (source.design.flowConnections || []).filter(connection => !(connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId));
-      const removed = source.design.flowConnections.length < before;
-      const saved = await saveProjectsToStorage();
-      const verified = !source.design.flowConnections.some(connection => connection.sourceElementId === elementId && connection.targetProjectId === targetProjectId);
-      if (!verified) throw new Error('Design flow disconnection could not be verified.');
-      return { projectId, elementId, targetProjectId, removed, saved: saved === true, verified };
-    }, { projectId: command.args.project_id, elementId: command.args.element_id, targetProjectId: command.args.target_project_id });
+    result = await page.evaluate(async ({projectId,elementId,targetProjectId}) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action,args) => {
+        const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless/query',{
+          method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},
+          body:JSON.stringify({action,args})
+        });
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Saved design query failed.');
+        return data;
+      };
+      const before=await query('design.read',{projectId,limit:500});
+      const existing=before.result.flowConnections||[];
+      const matched=existing.filter(item=>item.sourceElementId===elementId&&(!targetProjectId||item.targetProjectId===targetProjectId));
+      if(!matched.length)return {projectId,elementId,targetProjectId:targetProjectId||null,removed:false,alreadyDisconnected:true,serverReadbackVerified:true,workspaceRevision:before.revision};
+      const response=await fetch('/api/workspace/'+encodeURIComponent(workspaceId)+'/headless',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','x-workspace-token':workspaceToken},
+        body:JSON.stringify({baseRevision:before.revision,operationId:'flow_disconnect_'+crypto.randomUUID().replace(/-/g,''),operations:[{type:'design.flow.disconnect',sourceProjectId:projectId,sourceElementId:elementId,...(targetProjectId?{targetProjectId}:{})}]})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data.ok!==true)throw new Error(data.detail||data.error||'Headless flow disconnection failed.');
+      const after=await query('design.read',{projectId,limit:500});
+      const stillConnected=(after.result.flowConnections||[]).some(item=>item.sourceElementId===elementId&&(!targetProjectId||item.targetProjectId===targetProjectId));
+      if(stillConnected)throw new Error('Flow disconnection failed authoritative server readback.');
+      return {projectId,elementId,targetProjectId:targetProjectId||null,removed:true,saved:true,serverReadbackVerified:true,workspaceRevision:after.revision,designRevision:after.result.revision};
+    },{projectId:command.args.project_id,elementId:command.args.element_id,targetProjectId:command.args.target_project_id});
   } else if (command.action === 'project_delete') {
     stage = 'project_delete';
     result = await page.evaluate(async ({ projectId, approved }) => {
