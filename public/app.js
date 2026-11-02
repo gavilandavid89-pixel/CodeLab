@@ -3299,7 +3299,9 @@ function designRedo() {
   designRedoStack = p.designRedoStack;
   designUndoStack.push(JSON.stringify(p.design));
   p.design = JSON.parse(designRedoStack.pop());
-  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+  selectedDesignElementId = null;
+  selectedDesignElementIds = [];
+  renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
 }
 function initializeDesignProject(project) {
   if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
