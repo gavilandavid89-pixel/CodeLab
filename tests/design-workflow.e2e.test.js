@@ -1852,6 +1852,20 @@ async function waitForPersistedProject(page, projectName) {
         assert.ok(addedLayerId, type + ' layer should expose its stable ID in ' + frame + ' frame');
         assert.equal(await page.locator('#designInspectorProperties').isVisible(), true,
           type + ' properties must be visible after adding it in ' + frame + ' frame');
+        const identifierField = page.locator('#designProperty-identifier');
+        await identifierField.waitFor({ state: 'visible' });
+        const generatedIdentifier = await identifierField.inputValue();
+        assert.match(generatedIdentifier, /^[a-zA-Z0-9_-]{1,120}$/,
+          type + ' should receive a readable identifier by default');
+        const identifiers = await page.evaluate(() => getCurrentProject().design.elements.map(el => el.identifier));
+        assert.equal(new Set(identifiers.map(value => String(value).toLowerCase())).size, identifiers.length,
+          'every design layer must have a unique case-insensitive identifier');
+        await identifierField.fill('cta-principal');
+        await identifierField.dispatchEvent('input');
+        assert.equal(await page.evaluate(() => getCurrentProject().design.elements.find(el => el.id === selectedDesignElementId)?.identifier),
+          'cta-principal', 'identifier should be renameable from the Inspector');
+        assert.equal(await page.locator('#designLayers [data-design-select="' + addedLayerId + '"] code').textContent(),
+          'cta-principal', 'layer list should display the renamed identifier');
 
         await page.locator('button[onclick="duplicateDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 2);
