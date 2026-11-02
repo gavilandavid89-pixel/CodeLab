@@ -561,3 +561,26 @@ test('records and verifies an AI request fingerprint for idempotent headless ret
   } });
   assert.equal(missing.result.found, false);
 });
+
+test('headless AI operation status verifies idempotent request keys without exposing provider secrets', () => {
+  const requestKey = 'a'.repeat(64);
+  const saved = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'web.code.write', projectId: 'proj_web1', html: '<main>AI output</main>', mode: 'replace', headlessAiRequestKey: requestKey }
+  ]));
+  const status = queryHeadlessWorkspace(saved.state, {
+    action: 'headless.operation.status',
+    args: { operationId: 'test_op_0001', requestKey }
+  });
+  assert.equal(status.result.found, true);
+  assert.equal(status.result.revision, saved.revision);
+  assert.equal(status.result.requestKey, requestKey);
+  assert.throws(() => queryHeadlessWorkspace(saved.state, {
+    action: 'headless.operation.status',
+    args: { operationId: 'test_op_0001', requestKey: 'b'.repeat(64) }
+  }), error => error.code === 'HEADLESS_IDEMPOTENCY_CONFLICT');
+  const missing = queryHeadlessWorkspace(saved.state, {
+    action: 'headless.operation.status',
+    args: { operationId: 'test_op_missing' }
+  });
+  assert.equal(missing.result.found, false);
+});
