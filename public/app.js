@@ -3597,21 +3597,23 @@ function captureDesignSvg(project) {
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
+    const rotation = Math.max(-360, Math.min(360, finite(el.rotation, 0)));
+    const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
-      ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"/>'
+      ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
       : '';
     if (el.type === 'rectangle') {
-      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"' + transform + '/>';
     }
     if (el.type === 'ellipse') {
       const ellipseFill = background !== 'transparent' ? ' fill="' + designXmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
-      return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+      return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + transform + '/>';
     }
     if (el.type === 'image') {
       const source = safeDesignImageSource(el.src);
       const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
-      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
-      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"' + transform + '/>';
+      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"' + transform + '/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle"' + transform + '>Imagen sin archivo</text>';
     }
     const raw = String(el.text || '').split(/\r?\n/);
     const maxChars = Math.max(1, Math.floor((w - 12) / (fontSize * 0.56)));
@@ -3633,7 +3635,7 @@ function captureDesignSvg(project) {
     const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
     const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
     const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
-    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '"' + transform + '>' + tspans + '</text>';
   }).join('');
   return {
     width, height,
@@ -3773,7 +3775,8 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const rotation = Math.max(-360, Math.min(360, Number(el.rotation) || 0));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
@@ -4093,12 +4096,15 @@ function renderDesignWorkspace() {
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
     node.style.visibility = el.hidden ? 'hidden' : 'visible';
+    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y + 'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.minWidth = '20px'; node.style.minHeight = '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
     node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
@@ -4229,6 +4235,7 @@ function renderDesignWorkspace() {
     (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select id="designProperty-xUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'xUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.xUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.xUnit==='%'?'selected':'')+'>%</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select id="designProperty-yUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'yUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.yUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.yUnit==='%'?'selected':'')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2">' + field('Rotación (°)','rotation','number','min="-360" max="360" step="1"') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad de ancho</span><select id="designProperty-widthUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'widthUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.widthUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.widthUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.widthUnit==='auto'?'selected':'')+'>Auto</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad de alto</span><select id="designProperty-heightUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'heightUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.heightUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.heightUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.heightUnit==='auto'?'selected':'')+'>Auto</option></select></label></div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
     (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
@@ -4264,6 +4271,7 @@ function updateDesignProperty(key, value) {
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
+  else if (key === 'rotation') el.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
   else if (key === 'xUnit' || key === 'yUnit') {
     if (!['px', '%'].includes(value)) return;
     el[key] = value;
