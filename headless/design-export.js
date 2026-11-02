@@ -385,6 +385,80 @@ function importDesignJson(input, options = {}) {
   return normalizeDesignProject(project);
 }
 
+function buildAiDesignCaptureContext(project, scale = 2) {
+  const normalized = normalizeDesignProject(project);
+  const design = normalized.design;
+  const factor = Number(scale);
+  if (![1, 2, 3, 4].includes(factor)) {
+    const error = new Error('Capture scale must be 1, 2, 3, or 4.');
+    error.code = 'HEADLESS_INVALID_CAPTURE_SCALE';
+    throw error;
+  }
+  const layout = designLayoutPositions(design);
+  const pixelWidth = layout.frameWidth * factor;
+  const pixelHeight = layout.height * factor;
+  if (pixelWidth * pixelHeight > 32000000) {
+    const error = new Error('The requested design capture exceeds the 32-million-pixel safety limit.');
+    error.code = 'HEADLESS_CAPTURE_TOO_LARGE';
+    throw error;
+  }
+  const elements = (Array.isArray(design.elements) ? design.elements : [])
+    .filter(el => !!el && typeof el === 'object')
+    .map((el, index) => {
+      const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
+      const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+      const item = {
+        order: index + 1,
+        id: el.id || null,
+        type: el.type || 'text',
+        label: String(el.label || el.type || 'Elemento').slice(0, 300),
+        text: String(el.text || '').slice(0, 10000),
+        bounds: {
+          x: Math.max(-6000, Math.min(6000, finite(position.x, 0))),
+          y: Math.max(-6000, Math.min(6000, finite(position.y, 0))),
+          width: Math.max(20, Math.min(4000, finite(el.width, 120) || 120)),
+          height: Math.max(20, Math.min(4000, finite(el.height, 48) || 48))
+        },
+        style: {
+          color: String(el.color || '#111827').slice(0, 100),
+          background: String(el.background || 'transparent').slice(0, 100),
+          fontSize: Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16)),
+          fontWeight: Math.max(100, Math.min(900, finite(el.weight, 400))),
+          radius: Math.max(0, Math.min(4000, finite(el.radius, 0))),
+          textAlign: ['left', 'center', 'right'].includes(el.textAlign) ? el.textAlign : 'left'
+        }
+      };
+      if (el.type === 'image') item.image = { alt: String(el.alt || '').slice(0, 500) };
+      return item;
+    });
+  const name = String(normalized.name || 'Diseño sin título').slice(0, 200);
+  const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
+  return {
+    format: 'codelab-ai-design-capture',
+    version: 1,
+    project: name,
+    frame: design.frame || 'desktop',
+    image: slug + '-captura-ia.png',
+    canvas: {
+      width: layout.frameWidth,
+      height: layout.height,
+      pixelWidth,
+      pixelHeight,
+      scale: factor,
+      background: design.background || '#ffffff'
+    },
+    elementCount: elements.length,
+    layout: {
+      mode: design.layoutMode === 'auto' ? 'auto' : 'free',
+      direction: ['row', 'column'].includes(design.layoutDirection) ? design.layoutDirection : 'column',
+      gap: Math.max(0, Math.min(200, Number(design.layoutGap) || 0)),
+      padding: Math.max(0, Math.min(300, Number(design.layoutPadding) || 0))
+    },
+    elements,
+    aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + name + '. Marco: ' + (design.frame || 'desktop') + ' (' + layout.frameWidth + ' × ' + layout.height + ' px).'
+  };
+}
+
 function convertDesignToWeb(project, workspaceProjects = [project]) {
   return { html: exportDesignHtml(project, workspaceProjects), css: '', js: '' };
 }
