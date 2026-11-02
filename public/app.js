@@ -4004,6 +4004,11 @@ function renderDesignWorkspace() {
   selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
   if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
   const layout = getDesignLayoutPositions(p.design);
+  // The design frame is a visible paper sheet inside the dark workspace.
+  // Keep its CSS dimensions identical to the configured frame dimensions.
+  canvas.style.boxSizing = 'border-box';
+  canvas.style.border = '1px solid #cbd5e1';
+  canvas.style.boxShadow = '0 12px 36px rgba(0,0,0,0.28)';
   canvas.style.width = getDesignCanvasWidth(p.design) + 'px';
   canvas.style.height = Math.max(layout.height, getDesignCanvasHeight(p.design)) + 'px';
   canvas.style.zoom = String(designZoom);
