@@ -4360,7 +4360,12 @@ function updateDesignProperty(key, value) {
     renderDesignWorkspace(); scheduleAutosave(); return;
   }
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
-  const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
+  const p = activeDesignProject();
+  if (p && key === 'rotation') {
+    const projectElement = p.design.elements.find(item => item && item.id === el.id);
+    if (projectElement) projectElement.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
+  }
+  if (p) p.updatedAt = new Date().toISOString();
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
   if (node) {
