@@ -364,7 +364,7 @@ function applyOperation(state, operation) {
       for (const other of state.projects) {
         let changed = false;
         if (other.type === 'design' && other.design && Array.isArray(other.design.flowConnections)) {
-          const remainingConnections = other.design.flowConnections.filter(item => item.targetProjectId !== project.id);
+          const remainingConnections = other.design.flowConnections.filter(item => item && item.targetProjectId !== project.id);
           if (remainingConnections.length !== other.design.flowConnections.length) {
             other.design.flowConnections = remainingConnections;
             other.design.revision = (Number.isInteger(other.design.revision) ? other.design.revision : 0) + 1;
