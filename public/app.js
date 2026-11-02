@@ -3730,20 +3730,29 @@ async function captureDesignForAI() {
       image.onerror = () => finish(new Error('No se pudo renderizar el SVG.'));
       image.src = svgUrl;
     });
-    const canvas = document.createElement('canvas');
-    canvas.width = captured.width * scale; canvas.height = captured.height * scale;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
-    ctx.scale(scale, scale);
-    ctx.drawImage(image, 0, 0, captured.width, captured.height);
-    const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
-    if (captureMode === 'canvas') {
-      const canvasSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (captured.width + 80) + '" height="' + (captured.height + 100) + '" viewBox="0 0 ' + (captured.width + 80) + ' ' + (captured.height + 100) + '"><rect width="100%" height="100%" fill="#0f172a"/><rect x="24" y="24" width="' + (captured.width + 32) + '" height="' + (captured.height + 32) + '" rx="8" fill="#1e293b"/><g transform="translate(40 40)">' + captured.svg.replace(/^<svg[^>]*>|<\/svg>$/g, '') + '</g></svg>';
-      const canvasBlob = new Blob([canvasSvg], { type: 'image/svg+xml;charset=utf-8' });
-      const canvasUrl = URL.createObjectURL(canvasBlob);
-      try { const canvasImage = new Image(); await new Promise((resolve, reject) => { canvasImage.onload = resolve; canvasImage.onerror = reject; canvasImage.src = canvasUrl; }); canvas.width = (captured.width + 80) * scale; canvas.height = (captured.height + 100) * scale; const cctx = canvas.getContext('2d'); cctx.scale(scale, scale); cctx.drawImage(canvasImage, 0, 0); } finally { URL.revokeObjectURL(canvasUrl); }
+    let png;
+    if (captureMode === 'editor') {
+      const editorRoot = document.getElementById('designStudioPanel');
+      if (!editorRoot) throw new Error('No se encontró el editor de diseño para capturarlo.');
+      png = await captureDesignEditorElement(editorRoot, scale);
+    } else {
+      const canvas = document.createElement('canvas');
+      canvas.width = captured.width * scale; canvas.height = captured.height * scale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
+      ctx.scale(scale, scale);
+      if (captureMode === 'canvas') {
+        const canvasSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (captured.width + 80) + '" height="' + (captured.height + 100) + '" viewBox="0 0 ' + (captured.width + 80) + ' ' + (captured.height + 100) + '"><rect width="100%" height="100%" fill="#0f172a"/><rect x="24" y="24" width="' + (captured.width + 32) + '" height="' + (captured.height + 32) + '" rx="8" fill="#1e293b"/><g transform="translate(40 40)">' + captured.svg.replace(/^<svg[^>]*>|<\\/svg>$/g, '') + '</g></svg>';
+        const canvasBlob = new Blob([canvasSvg], { type: 'image/svg+xml;charset=utf-8' });
+        const canvasUrl = URL.createObjectURL(canvasBlob);
+        try { const canvasImage = new Image(); await new Promise((resolve, reject) => { canvasImage.onload = resolve; canvasImage.onerror = () => reject(new Error('No se pudo renderizar la vista del lienzo.')); canvasImage.src = canvasUrl; }); canvas.width = (captured.width + 80) * scale; canvas.height = (captured.height + 100) * scale; const cctx = canvas.getContext('2d'); cctx.scale(scale, scale); cctx.drawImage(canvasImage, 0, 0); } finally { URL.revokeObjectURL(canvasUrl); }
+      } else {
+        const projectImage = new Image();
+        const projectUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
+        try { await new Promise((resolve, reject) => { projectImage.onload = resolve; projectImage.onerror = () => reject(new Error('No se pudo renderizar el proyecto.')); projectImage.src = projectUrl; }); ctx.drawImage(projectImage, 0, 0, captured.width * scale, captured.height * scale); } finally { URL.revokeObjectURL(projectUrl); }
+      }
+      png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo obtener la imagen para la IA.')), 'image/png'));
     }
-    png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo obtener la imagen para la IA.')), 'image/png'));
     const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(png); });
     const review = await callRemoteDesignReviewAi(dataUrl, context);
     const report = { project: context.project, captureMode, model: review.model || aiSettings.model || serverAi.model, analysis: review.analysis, context };
@@ -3756,6 +3765,34 @@ async function captureDesignForAI() {
   }
 }
 
+
+async function captureDesignEditorElement(root, scale) {
+  const rect = root.getBoundingClientRect();
+  const width = Math.max(1, Math.ceil(rect.width)), height = Math.max(1, Math.ceil(rect.height));
+  if (width * height * scale * scale > 32000000) throw new Error('La captura del editor es demasiado grande; baja la resolución.');
+  const clone = root.cloneNode(true), originals = [root, ...root.querySelectorAll('*')], copies = [clone, ...clone.querySelectorAll('*')];
+  for (let i = 0; i < Math.min(originals.length, copies.length); i++) {
+    const original = originals[i], copy = copies[i], computed = getComputedStyle(original);
+    let css = '';
+    for (let j = 0; j < computed.length; j++) { const property = computed[j]; css += property + ':' + computed.getPropertyValue(property) + ';'; }
+    copy.setAttribute('style', (copy.getAttribute('style') || '') + ';' + css);
+    if (original instanceof HTMLInputElement || original instanceof HTMLTextAreaElement) copy.setAttribute('value', original.value);
+    if (original instanceof HTMLSelectElement) copy.querySelectorAll('option').forEach((option, index) => { if (original.options[index] && original.options[index].selected) option.setAttribute('selected', 'selected'); });
+    if (original instanceof HTMLCanvasElement) { try { const img = document.createElement('img'); img.src = original.toDataURL('image/png'); img.style.cssText = copy.getAttribute('style') || ''; copy.replaceWith(img); } catch (_) {} }
+  }
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); clone.style.width = width + 'px'; clone.style.height = height + 'px'; clone.style.overflow = 'hidden';
+  const markup = new XMLSerializer().serializeToString(clone);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (width * scale) + '" height="' + (height * scale) + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject width="100%" height="100%">' + markup + '</foreignObject></svg>';
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('El navegador no pudo renderizar la vista completa del editor.')); image.src = url; });
+    const canvas = document.createElement('canvas'); canvas.width = width * scale; canvas.height = height * scale;
+    const context = canvas.getContext('2d'); if (!context) throw new Error('No se pudo crear la imagen de captura del editor.');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo generar la captura PNG del editor.')), 'image/png'));
+  } finally { URL.revokeObjectURL(url); }
+}
 
 async function callRemoteDesignReviewAi(screenshotDataUrl, context) {
   if (!aiCanUseRemote()) throw new Error('La revisión visual necesita una API compatible configurada; las plantillas locales no analizan imágenes.');
