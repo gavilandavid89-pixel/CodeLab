@@ -178,3 +178,6 @@ The editor's image inspector imports PNG, JPEG, WebP, or GIF files up to 2 MiB a
 - The operation returns MIME type and decoded byte length. The surrounding `design.batch` retains atomic transaction, revision, undo, and workspace persistence behavior.
 
 The current editor embeds image data in the project; there is no separate asset library or media-upload endpoint to mirror.
+
+
+**Transport note:** the GitHub issue-mailbox bridge limits serialized `headless_batch` operations to 50,000 characters, which is too small for a full 2 MiB Base64 image. Use the authenticated headless workspace API for full-size image attachment. Large binary transport through the issue mailbox is still pending.
