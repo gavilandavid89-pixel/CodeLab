@@ -217,3 +217,14 @@ assert.match(designExportHandler, /\/headless\/query/, 'design export must use t
 assert.match(designExportHandler, /design\.export\.svg/, 'SVG export must use the shared deterministic renderer');
 assert.match(designExportHandler, /design\.export\.json/, 'JSON export must use the shared canonical serializer');
 assert.doesNotMatch(designExportHandler, /projects\.find\(|CodeLabCapture/, 'design export must not depend on editor memory or UI capture code');
+
+const capturePngHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_capture_png') {"), bridge.indexOf("} else if (command.action === 'design_import_json') {", bridge.indexOf("} else if (command.action === 'design_capture_png') {")));
+assert.match(bridge, /'headless_design_system', 'headless_query', 'design_capture_png', 'status'/, 'PNG capture must be allowlisted');
+assert.match(capturePngHandler, /design\.capture\.context/, 'PNG capture must request the structured AI capture context');
+assert.match(capturePngHandler, /design\.export\.html/, 'PNG capture must render saved semantic HTML in a separate browser context');
+assert.match(capturePngHandler, /expectedRevision/, 'PNG and context must be read from the same workspace revision');
+assert.match(capturePngHandler, /design-capture\.png/);
+assert.match(capturePngHandler, /design-capture\.json/);
+assert.match(capturePngHandler, /deviceScaleFactor: scale/);
+assert.match(capturePngHandler, /route\.abort\(\)/, 'PNG capture must block external network requests');
+assert.match(capturePngHandler, /await captureContext\.close\(\)/, 'PNG capture must close its isolated browser context');

@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
+  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'design_capture_png', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -574,6 +574,95 @@ try {
         workspaceRevision: data.revision, readOnly: true
       };
     }, { projectId: command.args.project_id, format: command.args.format });
+  } else if (command.action === 'design_capture_png') {
+    stage = 'design_capture_png';
+    const captureScale = command.args.scale === undefined ? 2 : command.args.scale;
+    if (!Number.isInteger(captureScale) || captureScale < 1 || captureScale > 4) {
+      throw new Error('design_capture_png scale must be an integer from 1 to 4.');
+    }
+    const captureData = await page.evaluate(async ({ projectId, scale }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args, expectedRevision) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args, ...(expectedRevision === undefined ? {} : { expectedRevision }) })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) {
+          throw new Error('Design capture query failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
+        }
+        return data;
+      };
+      const captured = await query('design.capture.context', { projectId, scale });
+      const workspaceRevision = captured.revision;
+      const [htmlResponse, designResponse] = await Promise.all([
+        query('design.export.html', { projectId }, workspaceRevision),
+        query('design.read', { projectId, limit: 500 }, workspaceRevision)
+      ]);
+      const context = captured.result;
+      const html = htmlResponse.result?.html;
+      if (typeof html !== 'string' || !html.trim()) throw new Error('Saved design HTML export is empty.');
+      const canvas = context?.canvas;
+      if (!canvas || !Number.isInteger(canvas.width) || !Number.isInteger(canvas.height) ||
+          !Number.isInteger(canvas.pixelWidth) || !Number.isInteger(canvas.pixelHeight) ||
+          canvas.pixelWidth * canvas.pixelHeight > 32000000) {
+        throw new Error('Capture context returned invalid or oversized image dimensions.');
+      }
+      return { html, context, workspaceRevision, designRevision: designResponse.result.revision };
+    }, { projectId: command.args.project_id, scale: captureScale });
+    const canvas = captureData.context.canvas;
+    const captureContext = await browser.newContext({
+      viewport: { width: canvas.width, height: canvas.height },
+      deviceScaleFactor: captureScale,
+      serviceWorkers: 'block'
+    });
+    try {
+      const capturePage = await captureContext.newPage();
+      await capturePage.route('**/*', route => {
+        const url = route.request().url();
+        if (/^(data|blob|about):/i.test(url)) return route.continue();
+        return route.abort();
+      });
+      await capturePage.setContent(captureData.html, { waitUntil: 'load', timeout: 15000 });
+      await capturePage.evaluate(() => document.fonts?.ready || Promise.resolve());
+      const screenshotPath = '.codelab-artifacts/design-capture.png';
+      const contextPath = '.codelab-artifacts/design-capture.json';
+      await fs.mkdir('.codelab-artifacts', { recursive: true });
+      await capturePage.screenshot({ path: screenshotPath, fullPage: false, animations: 'disabled', timeout: 20000 });
+      const manifest = {
+        format: 'codelab-ai-design-capture-pair',
+        version: 1,
+        projectId: command.args.project_id,
+        workspaceRevision: captureData.workspaceRevision,
+        designRevision: captureData.designRevision,
+        capturedAt: new Date().toISOString(),
+        image: 'design-capture.png',
+        imageMimeType: 'image/png',
+        imagePixelWidth: canvas.pixelWidth,
+        imagePixelHeight: canvas.pixelHeight,
+        scale: captureScale,
+        context: captureData.context
+      };
+      await fs.writeFile(contextPath, JSON.stringify(manifest, null, 2), 'utf8');
+      result = {
+        projectId: command.args.project_id,
+        workspaceRevision: captureData.workspaceRevision,
+        designRevision: captureData.designRevision,
+        imagePath: screenshotPath,
+        contextPath,
+        imageMimeType: 'image/png',
+        imagePixelWidth: canvas.pixelWidth,
+        imagePixelHeight: canvas.pixelHeight,
+        scale: captureScale,
+        pairedRevisionVerified: true,
+        networkRequestsBlocked: true
+      };
+    } finally {
+      await captureContext.close();
+    }
   } else if (command.action === 'design_import_json') {
     stage = 'design_import_json';
     result = await page.evaluate(async json => {
