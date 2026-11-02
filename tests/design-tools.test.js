@@ -97,6 +97,12 @@ assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}p\.designUndoSta
   'undo must consume the active project history and persist the restored design');
 assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}p\.designRedoStack\.length[\s\S]{0,400}saveProjectsToStorage\(\)/,
   'redo must consume the active project history and persist the restored design');
+assert.match(appSource, /function designUndo\(\) \{[\s\S]{0,500}selectedDesignElementId = null;\s*selectedDesignElementIds = \[\]/,
+  'undo must clear primary and multi-selection to prevent stale layers from remaining selected');
+assert.match(appSource, /function designRedo\(\) \{[\s\S]{0,500}selectedDesignElementId = null;\s*selectedDesignElementIds = \[\]/,
+  'redo must clear primary and multi-selection to prevent stale layers from remaining selected');
+assert.match(appSource, /function initializeDesignProject\(project\) \{[\s\S]{0,350}selectedDesignElementId = null; selectedDesignElementIds = \[\]/,
+  'opening a design project must clear the previous project multi-selection');
 
 const bridgeSource = fs.readFileSync('.github/scripts/codelab-bridge.mjs', 'utf8');
 assert.match(bridgeSource, /'design_layer_reorder'/, 'arbitrary layer reordering must be exposed as a bridge action');
@@ -121,6 +127,38 @@ assert.match(dimensionUnitAppSource, /designProperty-widthUnit/,
   'the Inspector must expose width units');
 assert.match(dimensionUnitAppSource, /designProperty-heightUnit/,
   'the Inspector must expose height units');
+assert.match(dimensionUnitAppSource, /const selectedIds = Array\.from\(new Set\(/,
+  'keyboard nudging must resolve all selected layers instead of moving only the primary layer');
+assert.match(dimensionUnitAppSource, /for \(const el of selectedElements\)[\s\S]{0,260}el\.x = Math\.max\(0, currentX \+ deltaX\)[\s\S]{0,120}el\.y = Math\.max\(0, currentY \+ deltaY\)/,
+  'keyboard nudging must move every selected layer by the same bounded delta');
+assert.match(dimensionUnitAppSource, /selectedElements\.length \|\| p\.design\.layoutMode === 'auto'/,
+  'keyboard nudging must not silently fight Auto Layout positioning');
+assert.match(dimensionUnitAppSource, /mod && ev\.key\.toLowerCase\(\) === 'a' && inDesignSurface/,
+  'Ctrl/Cmd+A must select all design layers only when focus is on the design surface or layer list');
+assert.match(dimensionUnitAppSource, /const selected = p\.design\.elements\.filter\(item => selectedIdSet\.has\(item\.id\)\)/,
+  'duplicate must copy every selected design layer instead of only the primary layer');
+assert.match(dimensionUnitAppSource, /p\.design\.elements\.length \+ selected\.length > MAX_DESIGN_ELEMENTS/,
+  'multi-layer duplicate must reject the operation before it exceeds the layer limit');
+assert.match(dimensionUnitAppSource, /const duplicateIds = new Map\(selected\.map\(\(el, index\) => \[el\.id, copies\[index\]\.id\]\)\)[\s\S]{0,300}copy\.href = '#' \+ designLayerDomId\(duplicateIds\.get\(internalTarget\.id\)\)/,
+  'duplicated internal prototype links must target the duplicated layer when both endpoints are copied');
+assert.match(dimensionUnitAppSource, /selectedDesignElementIds = p\.design\.elements\.map\(item => item\.id\)/,
+  'select-all must populate the complete multi-selection so move, duplicate and delete tools can operate on it');
+assert.match(dimensionUnitAppSource, /const selectedIds = new Set\(selectedDesignElementIds\.length \? selectedDesignElementIds : \[element\.id\]\)/,
+  'layer ordering must operate on the full multi-selection');
+assert.match(dimensionUnitAppSource, /const orderedIndices = step > 0 \? selectedIndices\.slice\(\)\.reverse\(\) : selectedIndices/,
+  'multi-layer ordering must process in direction-aware order to preserve the selected layers relative to one another');
+assert.match(dimensionUnitAppSource, /\[nextOrder\[index\], nextOrder\[target\]\] = \[nextOrder\[target\], nextOrder\[index\]\]/,
+  'multi-layer ordering must swap selected layers across adjacent unselected layers without flattening their order');
+assert.match(dimensionUnitAppSource, /if \(!changed\) return;[\s\S]{0,100}recordDesignHistory\(\)/,
+  'a blocked layer-order operation must not create a false history entry');
+assert.match(dimensionUnitAppSource, /ev\.key === 'Escape' && \(selectedDesignElementId \|\| selectedDesignElementIds\.length\)[\s\S]{0,150}selectedDesignElementIds = \[\]/,
+  'Escape must clear both the primary selection and the multi-selection so hidden selected layers are not accidentally edited');
+assert.match(dimensionUnitAppSource, /x: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)\)/,
+  'duplicating percentage-positioned layers must offset the copy by 24 pixels, not 24 percentage points');
+assert.match(dimensionUnitAppSource, /y: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'y', canvasHeight\) \+ 24\)\)/,
+  'duplicate vertical offsets must also use resolved pixel coordinates');
+assert.match(dimensionUnitAppSource, /xUnit: 'px',[\s\S]{0,30}yUnit: 'px'/,
+  'duplicate position units must be normalized to pixels');
 assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', heightUnit: el\.heightUnit \|\| 'px'/,
   'AI design capture must preserve dimension units');
 assert.match(bridgeSource, /'widthUnit', 'heightUnit'/,

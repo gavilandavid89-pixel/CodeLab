@@ -49,7 +49,7 @@
   }
 
   function getCaptureLayoutPositions(design) {
-    const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : [];
+    const elements = Array.isArray(design && design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object' && !el.hidden; }) : [];
     if (elements.length > MAX_CAPTURE_DESIGN_ELEMENTS) {
       throw new Error('El diseño supera el límite de ' + MAX_CAPTURE_DESIGN_ELEMENTS + ' capas para capturar.');
     }
@@ -101,7 +101,7 @@
     const layout = getCaptureLayoutPositions(design);
     const customHeight = Number(design.canvasHeight);
     const height = Math.max(layout.height, Number.isInteger(customHeight) && customHeight >= 100 && customHeight <= 10000 ? customHeight : 0);
-    const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el) {
+    const items = (Array.isArray(design.elements) ? design.elements.filter(function (el) { return !!el && typeof el === 'object' && !el.hidden; }) : []).map(function (el) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
       const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));
@@ -112,19 +112,21 @@
       const radius = Math.max(0, Math.min(4000, finiteNumber(el.radius, 0)));
       const background = safeColor(el.background);
       const color = safeColor(el.color || '#111827');
+      const rotation = Math.max(-360, Math.min(360, finiteNumber(el.rotation, 0)));
+      const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
       const rect = background !== 'transparent'
-        ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + xmlEscape(background) + '"/>'
+        ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + xmlEscape(background) + '"' + transform + '/>'
         : '';
-      if (el.type === 'rectangle') return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      if (el.type === 'rectangle') return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"' + transform + '/>';
       if (el.type === 'ellipse') {
         const ellipseFill = background !== 'transparent' ? ' fill="' + xmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
-        return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+        return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + transform + '/>';
       }
       if (el.type === 'image') {
         const source = safeImageSource(el.src);
         const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
-        if (source) return rect + '<image href="' + xmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
-        return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+        if (source) return rect + '<image href="' + xmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"' + transform + '/>';
+        return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"' + transform + '/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle"' + transform + '>Imagen sin archivo</text>';
       }
       const lines = String(el.text || '').split(/\r?\n/);
       const align = el.type === 'button' ? 'center' : (['left', 'center', 'right'].includes(el.textAlign) ? el.textAlign : 'left');
@@ -135,7 +137,7 @@
       const tspans = lines.map(function (line, i) {
         return '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + xmlEscape(line) + '</tspan>';
       }).join('');
-      return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + xmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, finiteNumber(el.weight, 400) || 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+      return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + xmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, finiteNumber(el.weight, 400) || 400)) + '" text-anchor="' + anchor + '"' + transform + '>' + tspans + '</text>';
     }).join('');
     return {
       width: width,
@@ -475,7 +477,7 @@
     const pixelCount = getCapturePixelCount(captured.width, captured.height, scale);
     const slug = safeSlug(project.name);
     const layout = getCaptureLayoutPositions(project.design);
-    const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object'; }) : []).map(function (el, index) {
+    const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(function (el) { return !!el && typeof el === 'object' && !el.hidden; }) : []).map(function (el, index) {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finiteNumber = function (value, fallback) { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
       const x = Math.max(-6000, Math.min(6000, finiteNumber(position.x, 0)));

@@ -53,6 +53,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     assert.equal(healthy, true, 'Server should start and answer health checks');
+
     const expiredAfterStartup = (await fs.readdir(sessionsDir)).filter(file => file.endsWith('.json'));
     assert.equal(expiredAfterStartup.length, 1,
       'Startup cleanup should process one bounded batch of 200 expired sessions');
@@ -79,6 +80,37 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
       'Malformed session JSON must be removed by periodic cleanup instead of accumulating forever');
     assert.equal(await fs.readFile(unrelatedSessionTempPath, 'utf8'), 'keep this unrelated file',
       'Session cleanup must ignore unrelated temporary files rather than deleting or stopping at them');
+
+    // The authenticated local admin bypasses only the global API request cap.
+    // A normal user from the same IP must still receive the configured 429.
+    const makeSession = async (sid, user) => {
+      await fs.writeFile(path.join(sessionsDir, sid + '.json'), JSON.stringify({
+        id: sid,
+        user,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000
+      }));
+    };
+    const adminSid = 'a'.repeat(48);
+    const userSid = 'b'.repeat(48);
+    await makeSession(adminSid, { id: 'admin-id', provider: 'local', name: 'ADMIN', role: 'admin' });
+    await makeSession(userSid, { id: 'user-id', provider: 'local', name: 'ordinary-user', role: 'user' });
+    const hitHealth = (sid, ip) => fetch(BASE_URL + '/api/health', {
+      headers: { Cookie: 'codelab_sid=' + sid, 'X-Forwarded-For': ip + ', 203.0.113.1' }
+    });
+    for (let i = 0; i < 125; i++) {
+      const response = await hitHealth(adminSid, '198.51.100.10');
+      assert.equal(response.status, 200, 'Authenticated admin should bypass the global API rate limit');
+      await response.arrayBuffer();
+    }
+    let normalUserLastStatus = 0;
+    for (let i = 0; i < 121; i++) {
+      const response = await hitHealth(userSid, '198.51.100.11');
+      normalUserLastStatus = response.status;
+      await response.arrayBuffer();
+    }
+    assert.equal(normalUserLastStatus, 429,
+      'Non-admin users must remain subject to the global API rate limit');
     const healthConfigResponse = await fetch(BASE_URL + '/api/health');
     const healthConfig = await healthConfigResponse.json();
     assert.equal(healthConfig.maxBodyBytes, 10 * 1024 * 1024,

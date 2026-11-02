@@ -565,6 +565,44 @@ async function waitForPersistedProject(page, projectName) {
       return node?.style.left === '80px' && node?.style.top === '70px' && node?.style.width === '560px' && node?.style.height === '76px';
     });
 
+    // 3c. Frame dimensions are separate from workspace zoom/navigation.
+    assert.match(await page.locator('body').innerText(), /Marco de diseño/);
+    assert.match(await page.locator('body').innerText(), /no el espacio de trabajo ni el zoom/);
+    const originalZoom = await page.locator('#designZoom').inputValue();
+    const originalCanvasSize = await page.evaluate(() => ({
+      width: document.getElementById('designCanvasWidth').value,
+      height: document.getElementById('designCanvasHeight').value
+    }));
+    await page.locator('#designCanvasWidth').fill('720');
+    await page.locator('#designCanvasWidth').press('Tab');
+    await page.locator('#designCanvasHeight').fill('1600');
+    await page.locator('#designCanvasHeight').press('Tab');
+    await page.waitForFunction(() => {
+      const width = document.getElementById('designCanvasWidth');
+      const height = document.getElementById('designCanvasHeight');
+      const canvas = document.getElementById('designCanvas');
+      return width?.value === '720' && height?.value === '1600' &&
+        canvas?.style.width === '720px' && canvas?.style.boxSizing === 'border-box' &&
+        canvas?.style.border === '1px solid rgb(203, 213, 225)' &&
+        canvas?.style.backgroundColor === 'rgb(255, 255, 255)';
+    });
+    // Zoom changes only the displayed scale; the frame's real dimensions remain 720×1600.
+    await page.locator('#designZoom').fill('80');
+    await page.locator('#designZoom').dispatchEvent('input');
+    assert.equal(await page.locator('#designCanvasWidth').inputValue(), '720');
+    assert.equal(await page.locator('#designCanvasHeight').inputValue(), '1600');
+    await page.locator('#designZoom').fill(originalZoom);
+    await page.locator('#designZoom').dispatchEvent('input');
+    // Restore the original frame size so subsequent drag/scale checks keep their assumptions.
+    await page.locator('#designCanvasWidth').fill(originalCanvasSize.width);
+    await page.locator('#designCanvasWidth').press('Tab');
+    await page.locator('#designCanvasHeight').fill(originalCanvasSize.height);
+    await page.locator('#designCanvasHeight').press('Tab');
+    await page.waitForFunction(size => {
+      return document.getElementById('designCanvasWidth')?.value === size.width &&
+        document.getElementById('designCanvasHeight')?.value === size.height;
+    }, originalCanvasSize);
+
     // 4. Drag the actual canvas element with pointer events.
     const before = await element.boundingBox();
     assert.ok(before, 'canvas element should have a visible bounding box');
@@ -654,6 +692,69 @@ async function waitForPersistedProject(page, projectName) {
         .map(item => item.top));
     assert.deepEqual(alignedTops.slice(0, 3), [420, 420, 420],
       'multi-select alignment should align all selected layer tops to the shared selection edge');
+
+    // 4c. Multi-selection keyboard movement and duplication must affect the whole selection.
+    const selectedLayerIds = await Promise.all([0, 1, 2].map(index =>
+      layerRows.nth(index).getAttribute('data-design-select')));
+    const selectedPositionsBefore = await page.evaluate(ids => ids.map(id => {
+      const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
+      return { id, left: parseFloat(node.style.left), top: parseFloat(node.style.top) };
+    }), selectedLayerIds);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(({ ids, before }) => ids.every((id, index) => {
+      const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
+      return node && parseFloat(node.style.left) === before[index].left + 1;
+    }), { ids: selectedLayerIds, before: selectedPositionsBefore }, { timeout: 5000 });
+    const selectedPositionsAfter = await page.evaluate(ids => ids.map(id => {
+      const node = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).find(item => item.dataset.designId === id);
+      return { id, left: parseFloat(node.style.left), top: parseFloat(node.style.top) };
+    }), selectedLayerIds);
+    assert.deepEqual(selectedPositionsAfter.map(item => item.left), selectedPositionsBefore.map(item => item.left + 1),
+      'ArrowRight should nudge every selected layer by one pixel');
+    assert.deepEqual(selectedPositionsAfter.map(item => item.top), selectedPositionsBefore.map(item => item.top),
+      'horizontal nudging must not change selected layers vertical positions');
+
+    const existingDesignIds = await page.locator('#designCanvas [data-design-id]').evaluateAll(nodes => nodes.map(node => node.dataset.designId));
+    await page.keyboard.press('Control+d');
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 7);
+    const copiedPositions = await page.evaluate(ids => Array.from(document.querySelectorAll('#designCanvas [data-design-id]'))
+      .filter(node => !ids.includes(node.dataset.designId))
+      .map(node => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top) })), existingDesignIds);
+    assert.equal(copiedPositions.length, 3, 'multi-duplicate should create one copy per selected layer');
+    assert.deepEqual(copiedPositions.map(item => item.left).sort((a, b) => a - b),
+      selectedPositionsAfter.map(item => item.left + 24).sort((a, b) => a - b),
+      'each duplicate should be offset by 24 px horizontally');
+    assert.deepEqual(copiedPositions.map(item => item.top).sort((a, b) => a - b),
+      selectedPositionsAfter.map(item => item.top + 24).sort((a, b) => a - b),
+      'each duplicate should be offset by 24 px vertically');
+    await page.locator('button[onclick="deleteDesignElement()"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length === 4,
+      null, { timeout: 5000 });
+    // Restore the original three-layer selection for the Auto Layout and bulk-delete checks below.
+    await page.locator('#designLayers [data-design-select="' + selectedLayerIds[0] + '"]').click();
+    await page.locator('#designLayers [data-design-select="' + selectedLayerIds[1] + '"]').click({ modifiers: ['Shift'] });
+    await page.locator('#designLayers [data-design-select="' + selectedLayerIds[2] + '"]').click({ modifiers: ['Shift'] });
+
+    // 4d. Reordering a multi-selection moves the group together and preserves its relative order.
+    const selectedIndicesBeforeReorder = await page.evaluate(ids => {
+      const order = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).map(node => node.dataset.designId);
+      return ids.map(id => order.indexOf(id));
+    }, selectedLayerIds);
+    await page.locator('#designLayerDown').click();
+    const selectedIndicesAfterReorder = await page.evaluate(ids => {
+      const order = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).map(node => node.dataset.designId);
+      return ids.map(id => order.indexOf(id));
+    }, selectedLayerIds);
+    assert.deepEqual(selectedIndicesAfterReorder, selectedIndicesBeforeReorder.map(index => index - 1),
+      'moving a multi-selection backward should shift every selected layer by one index');
+    await page.locator('#designLayerUp').click();
+    const selectedIndicesRestored = await page.evaluate(ids => {
+      const order = Array.from(document.querySelectorAll('#designCanvas [data-design-id]')).map(node => node.dataset.designId);
+      return ids.map(id => order.indexOf(id));
+    }, selectedLayerIds);
+    assert.deepEqual(selectedIndicesRestored, selectedIndicesBeforeReorder,
+      'moving the selected group forward should restore the original layer indices');
 
     // 4e. Auto Layout uses direction, spacing and padding to calculate live layer positions.
     await page.locator('#designLayoutMode').selectOption('auto');
@@ -1751,9 +1852,26 @@ async function waitForPersistedProject(page, projectName) {
         assert.ok(addedLayerId, type + ' layer should expose its stable ID in ' + frame + ' frame');
         assert.equal(await page.locator('#designInspectorProperties').isVisible(), true,
           type + ' properties must be visible after adding it in ' + frame + ' frame');
+        const identifierField = page.locator('#designProperty-identifier');
+        await identifierField.waitFor({ state: 'visible' });
+        const generatedIdentifier = await identifierField.inputValue();
+        assert.match(generatedIdentifier, /^[a-zA-Z0-9_-]{1,120}$/,
+          type + ' should receive a readable identifier by default');
+        const identifiers = await page.evaluate(() => getCurrentProject().design.elements.map(el => el.identifier));
+        assert.equal(new Set(identifiers.map(value => String(value).toLowerCase())).size, identifiers.length,
+          'every design layer must have a unique case-insensitive identifier');
+        await identifierField.fill('cta-principal');
+        await identifierField.dispatchEvent('input');
+        assert.equal(await page.evaluate(() => getCurrentProject().design.elements.find(el => el.id === selectedDesignElementId)?.identifier),
+          'cta-principal', 'identifier should be renameable from the Inspector');
+        assert.equal(await page.locator('#designLayers [data-design-select="' + addedLayerId + '"] code').textContent(),
+          'cta-principal', 'layer list should display the renamed identifier');
 
         await page.locator('button[onclick="duplicateDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 2);
+        const duplicatedIdentifiers = await page.evaluate(() => getCurrentProject().design.elements.map(el => el.identifier));
+        assert.equal(new Set(duplicatedIdentifiers.map(value => String(value).toLowerCase())).size, duplicatedIdentifiers.length,
+          'duplicating a layer must generate a fresh unique identifier');
         await page.locator('button[onclick="deleteDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
         await page.locator('#designUndoBtn').click();
@@ -1769,6 +1887,63 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(matrix.cases, 18, 'all 6 layer types must complete add/duplicate/delete/undo/redo in all 3 responsive frames');
     assert.equal(await page.locator('#designCanvas [data-design-id]').count(), matrixBaselineCount,
       'the matrix must clean up temporary layers without changing the original design content');
+
+    // Per-layer visibility and lock controls must be independent from selection.
+    await page.locator(`button[onclick="addDesignElement('button')"]`).click();
+    const utilityLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
+    const utilityNode = page.locator('#designCanvas [data-design-id="' + utilityLayerId + '"]');
+    const rotationField = page.locator('#designProperty-rotation');
+    await rotationField.fill('45');
+    await rotationField.dispatchEvent('input');
+    assert.equal(await utilityNode.evaluate(node => node.style.transform), 'rotate(45deg)',
+      'rotation inspector should update the selected layer immediately');
+    assert.match(await page.evaluate(() => captureDesignSvg(getCurrentProject()).svg), /rotate\(45 /,
+      'SVG export should preserve the layer rotation');
+    const utilityHtmlExport = await page.evaluate(() => {
+      const originalDownload = window.downloadDesignAsset;
+      let captured = '';
+      window.downloadDesignAsset = (_name, content) => { captured = String(content); };
+      try { exportDesignHtml(); } finally { window.downloadDesignAsset = originalDownload; }
+      return captured;
+    });
+    const utilityIdentifier = await page.evaluate(id =>
+      getCurrentProject().design.elements.find(item => item.id === id)?.identifier, utilityLayerId);
+    assert.ok(utilityHtmlExport.includes('data-design-identifier="' + utilityIdentifier + '"'),
+      'HTML export should preserve the editable layer identifier');
+    assert.match(utilityHtmlExport, /transform:rotate\(45deg\)/,
+      'HTML export should preserve the layer rotation');
+    await page.evaluate(id => {
+      const element = getCurrentProject().design.elements.find(item => item.id === id);
+      element.text = 'hidden-layer-export-sentinel';
+    }, utilityLayerId);
+    const hideLayerButton = page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]');
+    await hideLayerButton.click();
+    assert.equal(await utilityNode.evaluate(node => getComputedStyle(node).visibility), 'hidden',
+      'hide control should hide only the selected layer on the sheet');
+    assert.equal(await page.evaluate(() => captureDesignSvg(getCurrentProject()).svg.includes('hidden-layer-export-sentinel')), false,
+      'hidden layers should not appear in SVG/AI capture exports');
+    assert.equal(await page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]').count(), 1,
+      'hidden layer should remain accessible from the layer list');
+    await page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]').click();
+    assert.equal(await utilityNode.evaluate(node => getComputedStyle(node).visibility), 'visible',
+      'show control should restore the layer');
+
+    await page.evaluate(id => {
+      const element = getCurrentProject().design.elements.find(item => item.id === id);
+      element.xUnit = 'px'; element.yUnit = 'px'; element.x = 100; element.y = 100;
+    }, utilityLayerId);
+    await page.locator('#designLayers [data-design-lock="' + utilityLayerId + '"]').click();
+    await utilityNode.click();
+    await page.keyboard.press('ArrowRight');
+    assert.deepEqual(await page.evaluate(id => {
+      const element = getCurrentProject().design.elements.find(item => item.id === id);
+      return { x: element.x, y: element.y, locked: element.locked };
+    }, utilityLayerId), { x: 100, y: 100, locked: true },
+    'locked layer should not move when nudged by keyboard');
+    await page.locator('#designLayers [data-design-lock="' + utilityLayerId + '"]').click();
+    await page.locator('#designLayers [data-design-select="' + utilityLayerId + '"]').click();
+    await page.locator('button[onclick="deleteDesignElement()"]').click();
+    await page.waitForFunction(id => !document.querySelector('#designCanvas [data-design-id="' + id + '"]'), utilityLayerId);
     await page.evaluate(async () => {
       if (typeof saveCurrentCodeToActiveProject === 'function') await saveCurrentCodeToActiveProject(true);
     });

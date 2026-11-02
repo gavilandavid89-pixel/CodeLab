@@ -3239,6 +3239,59 @@ let designZoom = 1;
 let designCanvasLocked = false;
 const MAX_DESIGN_ELEMENTS = 500;
 
+function toggleDesignLayerVisibility(id) {
+  const project = activeDesignProject();
+  const element = project && project.design.elements.find(item => item.id === id);
+  if (!element) return;
+  recordDesignHistory();
+  element.hidden = !element.hidden;
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(element.hidden ? 'Capa oculta.' : 'Capa visible.');
+}
+function toggleDesignLayerLock(id) {
+  const project = activeDesignProject();
+  const element = project && project.design.elements.find(item => item.id === id);
+  if (!element) return;
+  recordDesignHistory();
+  element.locked = !element.locked;
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(element.locked ? 'Capa bloqueada: no se puede mover ni redimensionar.' : 'Capa desbloqueada.');
+}
+function nextDesignElementIdentifier(elements, currentId) {
+  const used = new Set((Array.isArray(elements) ? elements : [])
+    .filter(item => item && item.id !== currentId)
+    .map(item => String(item.identifier || '').trim().toLowerCase())
+    .filter(Boolean));
+  for (let n = 1; n < 10000; n++) {
+    const candidate = n === 1 ? 'id' : 'id' + n;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return 'elemento-' + Date.now();
+}
+function normalizeDesignElementIdentifiers(elements) {
+  const used = new Set();
+  for (const element of Array.isArray(elements) ? elements : []) {
+    if (!element || typeof element !== 'object') continue;
+    let identifier = String(element.identifier || '').trim().slice(0, 120);
+    if (!identifier || used.has(identifier.toLowerCase())) {
+      identifier = nextDesignElementIdentifier(elements.filter(item => item !== element).concat(
+        Array.from(used, value => ({ identifier: value, id: '__reserved__' }))
+      ), element.id);
+    }
+    // User-facing identifiers are readable names, not DOM IDs. Keep them simple and unique.
+    if (used.has(identifier.toLowerCase())) {
+      let suffix = 2, base = identifier;
+      while (used.has((base + suffix).toLowerCase())) suffix++;
+      identifier = base + suffix;
+    }
+    element.identifier = identifier;
+    used.add(identifier.toLowerCase());
+  }
+}
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
   if (!p || p.type !== 'design') return null;
@@ -3251,6 +3304,7 @@ function activeDesignProject() {
   p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
   p.design.layoutPadding = Number.isFinite(Number(p.design.layoutPadding)) ? Math.max(0, Math.min(200, Number(p.design.layoutPadding))) : 24;
   if (!Array.isArray(p.design.elements)) p.design.elements = [];
+  normalizeDesignElementIdentifiers(p.design.elements);
   if (!Array.isArray(p.designUndoStack)) p.designUndoStack = [];
   if (!Array.isArray(p.designRedoStack)) p.designRedoStack = [];
   designUndoStack = p.designUndoStack;
@@ -3289,7 +3343,9 @@ function designUndo() {
   designRedoStack = p.designRedoStack;
   designRedoStack.push(JSON.stringify(p.design));
   p.design = JSON.parse(designUndoStack.pop());
-  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+  selectedDesignElementId = null;
+  selectedDesignElementIds = [];
+  renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
 }
 function designRedo() {
   const p = activeDesignProject(); if (!p || !p.designRedoStack.length) return;
@@ -3297,13 +3353,15 @@ function designRedo() {
   designRedoStack = p.designRedoStack;
   designUndoStack.push(JSON.stringify(p.design));
   p.design = JSON.parse(designRedoStack.pop());
-  selectedDesignElementId = null; renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
+  selectedDesignElementId = null;
+  selectedDesignElementIds = [];
+  renderDesignWorkspace(); saveProjectsToStorage(); updateDesignHistoryButtons();
 }
 function initializeDesignProject(project) {
   if (!project.design || typeof project.design !== 'object') project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
   if (project.design.grid == null) project.design.grid = true;
   if (!Array.isArray(project.design.elements)) project.design.elements = [];
-  selectedDesignElementId = null; designUndoStack = []; designRedoStack = [];
+  selectedDesignElementId = null; selectedDesignElementIds = []; designUndoStack = []; designRedoStack = [];
   designZoom = 1;
   const zoomInput = document.getElementById('designZoom');
   if (zoomInput) zoomInput.value = '100';
@@ -3437,7 +3495,7 @@ function setDesignBackground(color) {
 function distributeDesignElements(axis = 'horizontal') {
   const p = activeDesignProject();
   if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
-  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) && !el.locked) : [];
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
   const dimensionAxis = horizontal ? 'width' : 'height';
@@ -3466,7 +3524,7 @@ function alignDesignElement(mode = 'center-x') {
   const p = activeDesignProject(), el = selectedDesignElement();
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
-  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
+  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id) && !item.locked);
   if (selected.length > 1) {
     const left = Math.min(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design))));
     const top = Math.min(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900)));
@@ -3530,7 +3588,7 @@ function captureDesignSvg(project) {
     const color = String(value || 'transparent').trim();
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
   };
-  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map(el => {
+  const items = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : []).map(el => {
     const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0))), y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
@@ -3539,21 +3597,23 @@ function captureDesignSvg(project) {
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
+    const rotation = Math.max(-360, Math.min(360, finite(el.rotation, 0)));
+    const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
-      ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"/>'
+      ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
       : '';
     if (el.type === 'rectangle') {
-      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"/>';
+      return rect || '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="none" stroke="#cbd5e1"' + transform + '/>';
     }
     if (el.type === 'ellipse') {
       const ellipseFill = background !== 'transparent' ? ' fill="' + designXmlEscape(background) + '"' : ' fill="none" stroke="#cbd5e1"';
-      return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + '/>';
+      return '<ellipse cx="' + (x + w / 2) + '" cy="' + (y + h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '"' + ellipseFill + transform + '/>';
     }
     if (el.type === 'image') {
       const source = safeDesignImageSource(el.src);
       const fit = el.objectFit === 'contain' ? 'xMidYMid meet' : el.objectFit === 'fill' ? 'none' : 'xMidYMid slice';
-      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"/>';
-      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle">Imagen sin archivo</text>';
+      if (source) return rect + '<image href="' + designXmlEscape(source) + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" preserveAspectRatio="' + fit + '"' + transform + '/>';
+      return rect + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="#e2e8f0"' + transform + '/><text x="' + (x + w / 2) + '" y="' + (y + h / 2) + '" fill="#475569" font-size="12" text-anchor="middle"' + transform + '>Imagen sin archivo</text>';
     }
     const raw = String(el.text || '').split(/\r?\n/);
     const maxChars = Math.max(1, Math.floor((w - 12) / (fontSize * 0.56)));
@@ -3575,7 +3635,7 @@ function captureDesignSvg(project) {
     const textX = align === 'left' ? x + 6 : align === 'right' ? x + w - 6 : x + w / 2;
     const startY = y + Math.max(fontSize, (h - totalHeight) / 2 + fontSize * 0.82);
     const tspans = lines.map((line, i) => '<tspan x="' + textX + '" y="' + (startY + i * lineHeight) + '">' + designXmlEscape(line) + '</tspan>').join('');
-    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '">' + tspans + '</text>';
+    return rect + '<text x="' + textX + '" y="' + startY + '" fill="' + designXmlEscape(color) + '" font-family="Arial, Helvetica, sans-serif" font-size="' + fontSize + '" font-weight="' + Math.max(100, Math.min(900, Number.isFinite(Number(el.weight)) ? Number(el.weight) : 400)) + '" text-anchor="' + anchor + '"' + transform + '>' + tspans + '</text>';
   }).join('');
   return {
     width, height,
@@ -3592,7 +3652,7 @@ async function captureDesignForAI() {
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const designLayout = getDesignLayoutPositions(project.design);
-  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
+  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : []).map((el, index) => {
     const position = designLayout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
@@ -3605,6 +3665,7 @@ async function captureDesignForAI() {
     return {
       order: index + 1,
     id: el.id || null,
+    identifier: el.identifier || null,
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
     text: el.text || '',
@@ -3615,6 +3676,7 @@ async function captureDesignForAI() {
       fontSize,
       fontWeight,
       radius,
+      rotation: Math.max(-360, Math.min(360, finite(el.rotation, 0))),
       textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
       }
     };
@@ -3634,14 +3696,19 @@ async function captureDesignForAI() {
       padding: Math.max(0, Math.min(300, Number(project.design.layoutPadding) || 0))
     },
     elements: elements.map((item, index) => {
-      const source = project.design.elements.filter(el => !!el && typeof el === 'object')[index];
+      const source = project.design.elements.find(el => !!el && typeof el === 'object' && el.id === item.id);
       if (source && source.type === 'image') item.image = { alt: String(source.alt || '').slice(0, 500) };
       return item;
     }),
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
-  const json = JSON.stringify(context, null, 2);
-  downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
+  const captureModeControl = document.getElementById('designCaptureMode');
+  const captureMode = ['project', 'canvas', 'editor'].includes(captureModeControl && captureModeControl.value) ? captureModeControl.value : 'project';
+  context.captureMode = captureMode;
+  context.aiInstructions = 'Analiza VISUALMENTE la imagen adjunta, no te limites al JSON. Evalúa jerarquía visual, alineación, contraste, legibilidad, espacios, consistencia y responsive. Usa el JSON para medidas exactas. Separa problemas observables de sugerencias. Devuelve un análisis en español con hallazgos priorizados y cambios concretos. Vista: ' + captureMode + '. ' + context.aiInstructions;
+  let png = null;
+  let outputWidth = captured.width * scale;
+  let outputHeight = captured.height * scale;
   let svgUrl = '';
   try {
     if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
@@ -3664,21 +3731,90 @@ async function captureDesignForAI() {
       image.onerror = () => finish(new Error('No se pudo renderizar el SVG.'));
       image.src = svgUrl;
     });
-    const canvas = document.createElement('canvas');
-    canvas.width = captured.width * scale; canvas.height = captured.height * scale;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
-    ctx.scale(scale, scale);
-    ctx.drawImage(image, 0, 0, captured.width, captured.height);
-    const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
-    downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
-    showToast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
+    let png;
+    if (captureMode === 'editor') {
+      const editorRoot = document.getElementById('designStudioPanel');
+      if (!editorRoot) throw new Error('No se encontró el editor de diseño para capturarlo.');
+      png = await captureDesignEditorElement(editorRoot, scale);
+      const editorRect = editorRoot.getBoundingClientRect();
+      outputWidth = Math.max(1, Math.ceil(editorRect.width)) * scale;
+      outputHeight = Math.max(1, Math.ceil(editorRect.height)) * scale;
+    } else {
+      const canvas = document.createElement('canvas');
+      canvas.width = captured.width * scale; canvas.height = captured.height * scale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
+      ctx.scale(scale, scale);
+      if (captureMode === 'canvas') {
+        const canvasSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (captured.width + 80) + '" height="' + (captured.height + 100) + '" viewBox="0 0 ' + (captured.width + 80) + ' ' + (captured.height + 100) + '"><rect width="100%" height="100%" fill="#0f172a"/><rect x="24" y="24" width="' + (captured.width + 32) + '" height="' + (captured.height + 32) + '" rx="8" fill="#1e293b"/><g transform="translate(40 40)">' + captured.svg.replace(/^<svg[^>]*>|<\\/svg>$/g, '') + '</g></svg>';
+        const canvasBlob = new Blob([canvasSvg], { type: 'image/svg+xml;charset=utf-8' });
+        const canvasUrl = URL.createObjectURL(canvasBlob);
+        try { const canvasImage = new Image(); await new Promise((resolve, reject) => { canvasImage.onload = resolve; canvasImage.onerror = () => reject(new Error('No se pudo renderizar la vista del lienzo.')); canvasImage.src = canvasUrl; }); canvas.width = (captured.width + 80) * scale; canvas.height = (captured.height + 100) * scale; const cctx = canvas.getContext('2d'); cctx.scale(scale, scale); cctx.drawImage(canvasImage, 0, 0); } finally { URL.revokeObjectURL(canvasUrl); }
+      } else {
+        const projectImage = new Image();
+        const projectUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
+        try { await new Promise((resolve, reject) => { projectImage.onload = resolve; projectImage.onerror = () => reject(new Error('No se pudo renderizar el proyecto.')); projectImage.src = projectUrl; }); ctx.drawImage(projectImage, 0, 0, captured.width * scale, captured.height * scale); } finally { URL.revokeObjectURL(projectUrl); }
+      }
+      outputWidth = canvas.width;
+      outputHeight = canvas.height;
+      png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo obtener la imagen para la IA.')), 'image/png'));
+    }
+    const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(png); });
+    const review = await callRemoteDesignReviewAi(dataUrl, context);
+    const report = { project: context.project, captureMode, model: review.model || aiSettings.model || serverAi.model, analysis: review.analysis, context };
+    downloadDesignAsset(slug + '-revision-ia.json', JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
+    showToast('La IA recibió la captura (' + outputWidth + '×' + outputHeight + ') y devolvió una revisión visual.');
   } catch (error) {
-    downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
-    showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
+    showToast('No se pudo completar la revisión visual: ' + String(error && error.message || error).slice(0, 180), 'warn');
   } finally {
     if (svgUrl) URL.revokeObjectURL(svgUrl);
   }
+}
+
+
+async function captureDesignEditorElement(root, scale) {
+  const rect = root.getBoundingClientRect();
+  const width = Math.max(1, Math.ceil(rect.width)), height = Math.max(1, Math.ceil(rect.height));
+  if (width * height * scale * scale > 32000000) throw new Error('La captura del editor es demasiado grande; baja la resolución.');
+  const clone = root.cloneNode(true), originals = [root, ...root.querySelectorAll('*')], copies = [clone, ...clone.querySelectorAll('*')];
+  for (let i = 0; i < Math.min(originals.length, copies.length); i++) {
+    const original = originals[i], copy = copies[i], computed = getComputedStyle(original);
+    let css = '';
+    for (let j = 0; j < computed.length; j++) { const property = computed[j]; css += property + ':' + computed.getPropertyValue(property) + ';'; }
+    copy.setAttribute('style', (copy.getAttribute('style') || '') + ';' + css);
+    if (original instanceof HTMLInputElement || original instanceof HTMLTextAreaElement) copy.setAttribute('value', original.value);
+    if (original instanceof HTMLSelectElement) copy.querySelectorAll('option').forEach((option, index) => { if (original.options[index] && original.options[index].selected) option.setAttribute('selected', 'selected'); });
+    if (original instanceof HTMLCanvasElement) { try { const img = document.createElement('img'); img.src = original.toDataURL('image/png'); img.style.cssText = copy.getAttribute('style') || ''; copy.replaceWith(img); } catch (_) {} }
+  }
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); clone.style.width = width + 'px'; clone.style.height = height + 'px'; clone.style.overflow = 'hidden';
+  const markup = new XMLSerializer().serializeToString(clone);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (width * scale) + '" height="' + (height * scale) + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject width="100%" height="100%">' + markup + '</foreignObject></svg>';
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('El navegador no pudo renderizar la vista completa del editor.')); image.src = url; });
+    const canvas = document.createElement('canvas'); canvas.width = width * scale; canvas.height = height * scale;
+    const context = canvas.getContext('2d'); if (!context) throw new Error('No se pudo crear la imagen de captura del editor.');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo generar la captura PNG del editor.')), 'image/png'));
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function callRemoteDesignReviewAi(screenshotDataUrl, context) {
+  if (!aiCanUseRemote()) throw new Error('La revisión visual necesita una API compatible configurada; las plantillas locales no analizan imágenes.');
+  const payload = { screenshotDataUrl, context, prompt: 'Revisa visualmente el diseño adjunto. Devuelve un análisis útil en español, con resumen, problemas observables priorizados y sugerencias concretas. No modifiques el proyecto automáticamente.' };
+  if (serverAi.serverKey) {
+    if (aiSettings.model && aiSettings.model !== 'gpt-4o-mini') payload.model = aiSettings.model;
+  } else {
+    payload.model = aiSettings.model || 'gpt-4o-mini';
+    if (aiSettings.baseUrl) payload.baseUrl = aiSettings.baseUrl;
+    if (aiSettings.apiKey) payload.apiKey = aiSettings.apiKey;
+  }
+  const res = await fetch('/api/ai/design-review', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  let data = {}; try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error((data && data.message) || (data && data.error) || 'HTTP ' + res.status);
+  if (typeof data.analysis !== 'string' || !data.analysis.trim()) throw new Error('El modelo no devolvió un análisis visual legible.');
+  return data;
 }
 
 function safeDesignExportColor(value, fallback) {
@@ -3695,7 +3831,7 @@ function exportDesignHtml() {
   const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
   const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
   const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
-  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements.filter(el => el && !el.hidden) : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
@@ -3715,10 +3851,12 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const rotation = Math.max(-360, Math.min(360, Number(el.rotation) || 0));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
-    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+    const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
@@ -3781,7 +3919,7 @@ function addDesignElement(type) {
     image: { label: 'Imagen', text: '', x: 120, y: 420, width: 240, height: 160, color: '#111827', background: '#e2e8f0', fontSize: 16, weight: 400, radius: 8, src: '', alt: 'Imagen del diseño', objectFit: 'cover' }
   };
   const d = defaults[type] || defaults.text;
-  const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), type, ...d };
+  const element = { id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random()), identifier: nextDesignElementIdentifier(p.design.elements), type, ...d };
   p.design.elements.push(element); selectedDesignElementId = element.id; selectedDesignElementIds = [element.id];
   renderDesignWorkspace(); saveProjectsToStorage();
 }
@@ -4000,6 +4138,11 @@ function renderDesignWorkspace() {
   selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
   if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
   const layout = getDesignLayoutPositions(p.design);
+  // The design frame is a visible paper sheet inside the dark workspace.
+  // Keep its CSS dimensions identical to the configured frame dimensions.
+  canvas.style.boxSizing = 'border-box';
+  canvas.style.border = '1px solid #cbd5e1';
+  canvas.style.boxShadow = '0 12px 36px rgba(0,0,0,0.28)';
   canvas.style.width = getDesignCanvasWidth(p.design) + 'px';
   canvas.style.height = Math.max(layout.height, getDesignCanvasHeight(p.design)) + 'px';
   canvas.style.zoom = String(designZoom);
@@ -4026,15 +4169,19 @@ function renderDesignWorkspace() {
   for (const el of sorted) {
     const node = document.createElement('div');
     node.dataset.designId = el.id;
-    node.className = 'absolute select-none cursor-move';
+    node.className = 'absolute select-none ' + (el.locked ? 'cursor-not-allowed' : 'cursor-move');
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
+    node.style.visibility = el.hidden ? 'hidden' : 'visible';
+    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y + 'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.minWidth = '20px'; node.style.minHeight = '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
     node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
@@ -4057,7 +4204,7 @@ function renderDesignWorkspace() {
       resizeHandle.tabIndex = 0;
       resizeHandle.style.cssText = 'position:absolute;right:0;bottom:0;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
       resizeHandle.addEventListener('pointerdown', ev => {
-        if (ev.button !== 0) return;
+        if (ev.button !== 0 || el.locked) return;
         ev.preventDefault(); ev.stopPropagation();
         selectedDesignElementId = el.id;
         recordDesignHistory();
@@ -4066,7 +4213,7 @@ function renderDesignWorkspace() {
         try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
       });
       resizeHandle.addEventListener('keydown', ev => {
-        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
+        if (el.locked || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
         ev.preventDefault(); ev.stopPropagation();
         recordDesignHistory();
         const step = ev.shiftKey ? 10 : 1;
@@ -4105,7 +4252,7 @@ function renderDesignWorkspace() {
       else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
     });
     node.addEventListener('pointerdown', ev => {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || el.locked) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
       if (activeDesignProject()?.design.layoutMode === 'auto') return;
       if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
@@ -4122,12 +4269,15 @@ function renderDesignWorkspace() {
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+    '<div class="flex items-center gap-1 rounded-lg border ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'border-violet-500/40 bg-violet-500/10' : 'border-transparent') + (el.hidden ? ' opacity-60' : '') + '">' +
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="min-w-0 flex-1 text-left px-2 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'text-violet-200' : 'text-slate-300 hover:bg-slate-800') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="min-w-0 flex-1 truncate">' + escapeHtml(el.label || el.type) + '</span><code class="shrink-0 text-[9px] text-cyan-300">' + escapeHtml(el.identifier || 'id') + '</code></button>' +
+    '<button type="button" data-design-visibility="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerVisibility(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 text-slate-400" aria-label="' + (el.hidden ? 'Mostrar capa ' : 'Ocultar capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.hidden ? 'Mostrar capa' : 'Ocultar capa') + '"><i class="fa-solid ' + (el.hidden ? 'fa-eye-slash' : 'fa-eye') + '"></i></button>' +
+    '<button type="button" data-design-lock="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerLock(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 ' + (el.locked ? 'text-amber-300' : 'text-slate-500') + '" aria-label="' + (el.locked ? 'Desbloquear capa ' : 'Bloquear capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.locked ? 'Desbloquear capa' : 'Bloquear capa') + '"><i class="fa-solid ' + (el.locked ? 'fa-lock' : 'fa-lock-open') + '"></i></button></div>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
-  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Lienzo</div>' +
+  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Marco de diseño</div><p class="text-[10px] text-slate-500">Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom.</p>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Ancho (px)</span><input id="designCanvasWidth" type="number" min="100" max="4000" step="1" value="'+getDesignCanvasWidth(p.design)+'" onchange="setDesignCanvasDimensions(this.value,document.getElementById(\'designCanvasHeight\').value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Alto (px)</span><input id="designCanvasHeight" type="number" min="100" max="10000" step="1" value="'+(getDesignCanvasHeight(p.design)||'')+'" placeholder="Auto" onchange="setDesignCanvasDimensions(document.getElementById(\'designCanvasWidth\').value,this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label></div>' +
-    '<button type="button" onclick="resetDesignCanvasDimensions()" class="w-full px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800">Restablecer tamaño automático</button></section>';
+    '<button type="button" onclick="resetDesignCanvasDimensions()" class="w-full px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800">Usar altura automática</button></section>';
   const layoutControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Distribución del diseño</div>' +
     '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Modo de colocación</span><select id="designLayoutMode" aria-label="Modo de colocación" onchange="setDesignLayoutMode(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="free" '+((p.design.layoutMode||'free')==='free'?'selected':'')+'>Libre (posiciones manuales)</option><option value="auto" '+(p.design.layoutMode==='auto'?'selected':'')+'>Auto Layout (flujo)</option></select></label>' +
     (p.design.layoutMode === 'auto' ? '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Dirección</span><select id="designLayoutDirection" aria-label="Dirección Auto Layout" onchange="setDesignLayoutDirection(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="row" '+((p.design.layoutDirection||'row')==='row'?'selected':'')+'>Fila con ajuste de línea</option><option value="column" '+(p.design.layoutDirection==='column'?'selected':'')+'>Columna</option></select></label>' +
@@ -4158,10 +4308,11 @@ function renderDesignWorkspace() {
   const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
   props.innerHTML = canvasControls + layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
-    field('Nombre de capa','label','text') + buttonControls + imageControls +
+    field('Nombre de capa','label','text') + field('Identificador único','identifier','text','placeholder="id, boton-login, titulo-principal…" maxlength="120"') + '<p class="text-[10px] text-slate-500">Cada elemento tiene un identificador único para encontrarlo y referenciarlo. Se asigna automáticamente y puedes renombrarlo.</p>' + buttonControls + imageControls +
     (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select id="designProperty-xUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'xUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.xUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.xUnit==='%'?'selected':'')+'>%</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select id="designProperty-yUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'yUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.yUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.yUnit==='%'?'selected':'')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2">' + field('Rotación (°)','rotation','number','min="-360" max="360" step="1"') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad de ancho</span><select id="designProperty-widthUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'widthUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.widthUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.widthUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.widthUnit==='auto'?'selected':'')+'>Auto</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad de alto</span><select id="designProperty-heightUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'heightUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.heightUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.heightUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.heightUnit==='auto'?'selected':'')+'>Auto</option></select></label></div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
     (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
@@ -4169,13 +4320,36 @@ function renderDesignWorkspace() {
     '<div class="grid grid-cols-2 gap-2 mt-2"><button type="button" onclick="duplicateDesignElement()" class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800"><i class="fa-regular fa-copy mr-1"></i>Duplicar</button><button type="button" onclick="deleteDesignElement()" class="px-2 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-[11px] text-rose-200 hover:bg-rose-900"><i class="fa-regular fa-trash-can mr-1"></i>Eliminar</button></div>';
   updateDesignHistoryButtons();
 }
+function pDesignElementsWithoutCurrent(id) {
+  const p = activeDesignProject();
+  return p ? p.design.elements.filter(item => item && item.id !== id) : [];
+}
 function updateDesignProperty(key, value) {
-  const el = selectedDesignElement(); if (!el) return;
+  const p = activeDesignProject();
+  const el = p && p.design.elements.find(item => item && item.id === selectedDesignElementId);
+  if (!el) return;
+  if (key === 'identifier') {
+    const requested = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 120);
+    const base = requested || 'id';
+    const others = pDesignElementsWithoutCurrent(el.id);
+    const used = new Set(others.map(item => String(item.identifier || '').toLowerCase()));
+    let unique = base, suffix = 2;
+    while (used.has(unique.toLowerCase())) unique = base + suffix++;
+    el.identifier = unique;
+    const identifierInput = document.getElementById('designProperty-identifier');
+    if (identifierInput && identifierInput.value !== unique) identifierInput.value = unique;
+    if (p) p.updatedAt = new Date().toISOString();
+    const layerButton = document.querySelector('[data-design-select="' + CSS.escape(el.id) + '"]');
+    const layerIdentifier = layerButton && layerButton.querySelector('code');
+    if (layerIdentifier) layerIdentifier.textContent = unique;
+    scheduleAutosave(); return;
+  }
   if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
   else if (key === 'src') el.src = safeDesignImageSource(value);
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
+  else if (key === 'rotation') el.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
   else if (key === 'xUnit' || key === 'yUnit') {
     if (!['px', '%'].includes(value)) return;
     el[key] = value;
@@ -4187,7 +4361,8 @@ function updateDesignProperty(key, value) {
     renderDesignWorkspace(); scheduleAutosave(); return;
   }
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
-  const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
+  if (p && key === 'rotation') el.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
+  if (p) p.updatedAt = new Date().toISOString();
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
   if (node) {
@@ -4198,6 +4373,8 @@ function updateDesignProperty(key, value) {
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y+'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
@@ -4271,7 +4448,14 @@ function bindDesignCanvasEvents() {
     const target = ev.target;
     if (target && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName))) return;
     const mod = ev.ctrlKey || ev.metaKey;
-    if (mod && ev.key.toLowerCase() === 'z') {
+    const inDesignSurface = !target || target === document.body || target.id === 'designCanvas' ||
+      (target.closest && target.closest('#designCanvas, #designLayers'));
+    if (mod && ev.key.toLowerCase() === 'a' && inDesignSurface) {
+      ev.preventDefault();
+      selectedDesignElementIds = p.design.elements.map(item => item.id);
+      selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+      renderDesignWorkspace();
+    } else if (mod && ev.key.toLowerCase() === 'z') {
       ev.preventDefault();
       if (ev.shiftKey) designRedo(); else designUndo();
     } else if (mod && ev.key.toLowerCase() === 'y') {
@@ -4282,22 +4466,35 @@ function bindDesignCanvasEvents() {
       ev.preventDefault(); deleteDesignElement();
     } else if (arrowKeys.includes(ev.key) && selectedDesignElementId &&
       (!target || target === document.body || target.id === 'designCanvas' || (target.closest && target.closest('#designCanvas')))) {
-      const el = selectedDesignElement();
-      if (!el) return;
+      const selectedIds = Array.from(new Set(
+        (selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]).filter(Boolean)
+      ));
+      const selectedElements = selectedIds
+        .map(id => p.design.elements.find(item => item.id === id))
+        .filter(item => item && !item.locked);
+      if (!selectedElements.length || p.design.layoutMode === 'auto') return;
       ev.preventDefault();
       if (!nudgeHistoryActive) recordDesignHistory();
       nudgeHistoryActive = true;
       const step = ev.shiftKey ? 10 : 1;
-      const currentX = getDesignElementPosition(el, 'x', getDesignCanvasWidth(p.design));
-      const currentY = getDesignElementPosition(el, 'y', getDesignCanvasHeight(p.design) || 900);
-      if (ev.key === 'ArrowLeft') { el.xUnit = 'px'; el.x = Math.max(0, currentX - step); }
-      if (ev.key === 'ArrowRight') { el.xUnit = 'px'; el.x = Math.max(0, currentX + step); }
-      if (ev.key === 'ArrowUp') { el.yUnit = 'px'; el.y = Math.max(0, currentY - step); }
-      if (ev.key === 'ArrowDown') { el.yUnit = 'px'; el.y = Math.max(0, currentY + step); }
+      const deltaX = ev.key === 'ArrowLeft' ? -step : ev.key === 'ArrowRight' ? step : 0;
+      const deltaY = ev.key === 'ArrowUp' ? -step : ev.key === 'ArrowDown' ? step : 0;
+      const canvasWidth = getDesignCanvasWidth(p.design);
+      const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+      for (const el of selectedElements) {
+        const currentX = getDesignElementPosition(el, 'x', canvasWidth);
+        const currentY = getDesignElementPosition(el, 'y', canvasHeight);
+        el.xUnit = 'px';
+        el.yUnit = 'px';
+        el.x = Math.max(0, currentX + deltaX);
+        el.y = Math.max(0, currentY + deltaY);
+      }
       renderDesignWorkspace();
       saveProjectsToStorage();
-    } else if (ev.key === 'Escape' && selectedDesignElementId) {
-      selectedDesignElementId = null; renderDesignWorkspace();
+    } else if (ev.key === 'Escape' && (selectedDesignElementId || selectedDesignElementIds.length)) {
+      selectedDesignElementId = null;
+      selectedDesignElementIds = [];
+      renderDesignWorkspace();
     }
   });
   document.addEventListener('keyup', ev => {
@@ -4307,26 +4504,79 @@ function bindDesignCanvasEvents() {
 function moveDesignLayer(direction) {
   const project = activeDesignProject(), element = selectedDesignElement();
   if (!project || !element || !Array.isArray(project.design.elements)) return;
-  const currentIndex = project.design.elements.findIndex(item => item.id === element.id);
-  const nextIndex = Math.max(0, Math.min(project.design.elements.length - 1, currentIndex + (direction < 0 ? -1 : 1)));
-  if (currentIndex < 0 || nextIndex === currentIndex) return;
+  const elements = project.design.elements;
+  const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [element.id]);
+  elements.forEach(item => {
+    if (item.locked) selectedIds.delete(item.id);
+  });
+  const selectedIndices = elements.map((item, index) => selectedIds.has(item.id) ? index : -1).filter(index => index >= 0);
+  if (!selectedIndices.length) return;
+  const step = direction < 0 ? -1 : 1;
+  const orderedIndices = step > 0 ? selectedIndices.slice().reverse() : selectedIndices;
+  const nextOrder = elements.slice();
+  let changed = false;
+  for (const index of orderedIndices) {
+    const target = index + step;
+    if (target < 0 || target >= nextOrder.length || selectedIds.has(nextOrder[target].id)) continue;
+    [nextOrder[index], nextOrder[target]] = [nextOrder[target], nextOrder[index]];
+    changed = true;
+  }
+  if (!changed) return;
   recordDesignHistory();
-  project.design.elements.splice(currentIndex, 1);
-  project.design.elements.splice(nextIndex, 0, element);
+  project.design.elements = nextOrder;
   project.updatedAt = new Date().toISOString();
   renderDesignWorkspace();
   saveProjectsToStorage();
-  showToast(nextIndex > currentIndex ? 'Capa traída al frente.' : 'Capa enviada atrás.');
+  showToast(step > 0 ? (selectedIndices.length > 1 ? 'Capas traídas al frente.' : 'Capa traída al frente.') : (selectedIndices.length > 1 ? 'Capas enviadas atrás.' : 'Capa enviada atrás.'));
 }
 function duplicateDesignElement() {
-  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
-  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
-    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
+  const p = activeDesignProject();
+  if (!p || !Array.isArray(p.design.elements) || !selectedDesignElementId) return;
+  const selectedIdSet = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
+  const selected = p.design.elements.filter(item => selectedIdSet.has(item.id));
+  for (let i = selected.length - 1; i >= 0; i--) {
+    if (selected[i].locked) selected.splice(i, 1);
+  }
+  if (!selected.length) return;
+  if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
   }
   recordDesignHistory();
-  const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
-  p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
+  const canvasWidth = getDesignCanvasWidth(p.design);
+  const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+  const existingIds = new Set(p.design.elements.map(item => item.id));
+  let fallbackId = Date.now();
+  const makeId = () => {
+    let id;
+    do {
+      id = 'el_' + (crypto.randomUUID ? crypto.randomUUID() : String(fallbackId++));
+    } while (existingIds.has(id));
+    existingIds.add(id);
+    return id;
+  };
+  const copies = [];
+  selected.forEach(el => copies.push({
+    ...el,
+    id: makeId(),
+    identifier: nextDesignElementIdentifier(p.design.elements.concat(copies), '__reserved__'),
+    x: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'x', canvasWidth) + 24)),
+    y: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'y', canvasHeight) + 24)),
+    xUnit: 'px',
+    yUnit: 'px',
+    label: (el.label || 'Capa') + ' copia'
+  }));
+  const duplicateIds = new Map(selected.map((el, index) => [el.id, copies[index].id]));
+  copies.forEach((copy, index) => {
+    const original = selected[index];
+    const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
+    if (internalTarget) copy.href = '#' + designLayerDomId(duplicateIds.get(internalTarget.id));
+  });
+  p.design.elements.push(...copies);
+  selectedDesignElementIds = copies.map(copy => copy.id);
+  selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+  renderDesignWorkspace();
+  saveProjectsToStorage();
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
