@@ -1662,7 +1662,7 @@ const server = http.createServer(async (req, res) => {
         const image = body && typeof body.screenshotDataUrl === 'string' ? body.screenshotDataUrl : '';
         const context = body && body.context && typeof body.context === 'object' ? body.context : null;
         if (!prompt || prompt.length > 4000 || !context) return sendJson(res, 400, { error: 'invalid_design_review' });
-        const match = image.match(/^data:image\\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+        const match = image.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
         if (!match || match[2].length > 8 * 1024 * 1024) return sendJson(res, 413, { error: 'invalid_or_large_screenshot', message: 'La captura debe ser PNG/JPEG/WebP y pesar menos de unos 6 MB.' });
         const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
         if (clientKey.length > 4096) return sendJson(res, 400, { error: 'invalid_api_key' });
@@ -1671,7 +1671,7 @@ const server = http.createServer(async (req, res) => {
         if (!apiKey) return sendJson(res, 503, { error: 'ai_not_configured', message: 'Configura una API compatible con visión en Ajustes del copiloto o en el servidor.' });
         let baseUrl = AI_BASE_URL, model = AI_MODEL;
         if (!usingServerKey) {
-          if (typeof body.baseUrl === 'string' && body.baseUrl.trim()) baseUrl = body.baseUrl.trim().replace(/\\/$/, '');
+          if (typeof body.baseUrl === 'string' && body.baseUrl.trim()) baseUrl = body.baseUrl.trim().replace(/\/$/, '');
           if (typeof body.model === 'string' && body.model.trim()) model = body.model.trim();
         } else if (typeof body.model === 'string' && body.model.trim() && body.model.includes('/')) model = body.model.trim();
         if (baseUrl.length > 2048) return sendJson(res, 400, { error: 'invalid_provider_url' });
