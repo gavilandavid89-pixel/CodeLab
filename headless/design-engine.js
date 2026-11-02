@@ -208,16 +208,30 @@ function applyOperation(project, operation) {
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.align IDs must be unique.');
       assert(['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(operation.mode), 'Unsupported alignment mode.');
       const elements = operation.ids.map(id => findElement(project, id));
-      const rects = elements.map(el => ({ el, x: Number(el.x) || 0, y: Number(el.y) || 0, width: Number(el.width) || 120, height: Number(el.height) || 48 }));
+      const canvasWidth = Number(project.design.canvasWidth) || legacyCanvas(project.design.frame).width;
+      const canvasHeight = Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height;
+      const rects = elements.map(el => ({
+        el,
+        x: (Number(el.x) || 0) * (el.xUnit === '%' ? canvasWidth / 100 : 1),
+        y: (Number(el.y) || 0) * (el.yUnit === '%' ? canvasHeight / 100 : 1),
+        width: Number(el.width) || 120,
+        height: Number(el.height) || 48
+      }));
       const left = Math.min(...rects.map(r => r.x)), top = Math.min(...rects.map(r => r.y));
       const right = Math.max(...rects.map(r => r.x + r.width)), bottom = Math.max(...rects.map(r => r.y + r.height));
       for (const r of rects) {
-        if (operation.mode === 'left') r.el.x = left;
-        if (operation.mode === 'center-x') r.el.x = left + (right - left - r.width) / 2;
-        if (operation.mode === 'right') r.el.x = right - r.width;
-        if (operation.mode === 'top') r.el.y = top;
-        if (operation.mode === 'center-y') r.el.y = top + (bottom - top - r.height) / 2;
-        if (operation.mode === 'bottom') r.el.y = bottom - r.height;
+        if (['left', 'center-x', 'right'].includes(operation.mode)) {
+          if (operation.mode === 'left') r.el.x = left;
+          if (operation.mode === 'center-x') r.el.x = left + (right - left - r.width) / 2;
+          if (operation.mode === 'right') r.el.x = right - r.width;
+          r.el.xUnit = 'px';
+        }
+        if (['top', 'center-y', 'bottom'].includes(operation.mode)) {
+          if (operation.mode === 'top') r.el.y = top;
+          if (operation.mode === 'center-y') r.el.y = top + (bottom - top - r.height) / 2;
+          if (operation.mode === 'bottom') r.el.y = bottom - r.height;
+          r.el.yUnit = 'px';
+        }
       }
       return { type: operation.type, mode: operation.mode, ids: operation.ids.slice() };
     }
