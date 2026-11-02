@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { exportDesignHtml } = require('./design-export');
+const { exportDesignHtml, buildAiDesignCaptureContext } = require('./design-export');
 
 function project(elements) {
   return {
@@ -29,6 +29,29 @@ test('semantic HTML export omits hidden layers just like SVG rendering', () => {
   assert.doesNotMatch(html, /Secret hidden copy/);
   assert.match(html, /layer-visible-layer/);
   assert.doesNotMatch(html, /layer-hidden-layer/);
+});
+
+test('AI capture context only describes visible layers and their layout', () => {
+  const context = buildAiDesignCaptureContext({
+    ...project([
+      { id: 'hidden', type: 'text', text: 'not visible', visible: false, width: 200, height: 40 },
+      { id: 'visible', type: 'text', text: 'visible', width: 120, height: 40 }
+    ]),
+    design: {
+      ...project([]).design,
+      layoutMode: 'auto',
+      layoutDirection: 'row',
+      layoutGap: 12,
+      elements: [
+        { id: 'hidden', type: 'text', text: 'not visible', visible: false, width: 200, height: 40 },
+        { id: 'visible', type: 'text', text: 'visible', width: 120, height: 40 }
+      ]
+    }
+  });
+
+  assert.equal(context.elementCount, 1);
+  assert.deepEqual(context.elements.map(element => element.id), ['visible']);
+  assert.equal(context.elements[0].bounds.x, 0);
 });
 
 test('hidden layers do not consume auto-layout space in semantic HTML export', () => {
