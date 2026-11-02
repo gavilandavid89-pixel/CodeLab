@@ -431,7 +431,6 @@ try {
       if (!response.ok || data.ok !== true) throw new Error('Headless design-system import failed (HTTP ' + response.status + '): ' + (data.detail || data.error || 'unknown error'));
       return { imported: true, revision: data.revision, settings: data.settings || null };
     }, command.args.json);
-  }
   } else if (command.action === 'design_system_export_json') {
     stage = 'design_system_export_json';
     result = await page.evaluate(async () => {
@@ -448,7 +447,6 @@ try {
       const json = JSON.stringify(data.json, null, 2);
       return { exported: true, format: data.json?.format, version: data.json?.version, revision: data.revision, length: json.length, json, css: data.css };
     });
-  }
   } else if (command.action === 'design_export') {
     stage = 'design_export';
     result = await page.evaluate(({ projectId, format }) => {
@@ -488,7 +486,6 @@ try {
       return { imported: true, projectId: data.results?.[0]?.projectId, name: data.results?.[0]?.name, elementCount: data.results?.[0]?.elementCount || 0, revision: data.revision };
     }, command.args.json);
     await refreshWorkspaceFromServer();
-  }
   } else if (command.action === 'project_export_html') {
     stage = 'project_export_html';
     result = await page.evaluate(async ({ projectId, maxChars }) => {
@@ -510,7 +507,6 @@ try {
       const limit = maxChars || 7000;
       return { projectId, mimeType: 'text/html', length: content.length, content: content.slice(0, limit), truncated: content.length > limit, revision: data.revision };
     }, { projectId: command.args.project_id, maxChars: command.args.max_chars || 7000 });
-  }
   } else if (command.action === 'project_convert_design_to_web') {
     stage = 'project_convert_design_to_web';
     result = await page.evaluate(async projectId => {
@@ -531,7 +527,6 @@ try {
       return { convertedInPlace: true, projectId, revision: data.revision, result: data.results?.[0] || null, designPreserved: data.results?.[0]?.designPreserved === true };
     }, command.args.project_id);
     await refreshWorkspaceFromServer();
-  }
   } else if (command.action === 'headless_ai_generate') {
     stage = 'headless_ai_generate';
     result = await page.evaluate(async ({ projectId, source, prompt, baseRevision, operationId, maxTokens }) => {
