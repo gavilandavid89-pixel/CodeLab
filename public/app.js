@@ -3597,7 +3597,11 @@ function captureDesignSvg(project) {
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     const background = safeColor(el.background);
     const color = safeColor(el.color || '#111827');
-    const rotation = Math.max(-360, Math.min(360, finite(el.rotation, 0)));
+    const renderedNode = el.id ? document.querySelector('[data-design-id="' + CSS.escape(String(el.id)) + '"]') : null;
+    const renderedRotationMatch = renderedNode && String(renderedNode.style.transform || '').match(/^rotate\((-?\d+(?:\.\d+)?)deg\)$/);
+    const modelRotation = finite(el.rotation, 0);
+    // Keep exports visually faithful if the live canvas has a newer inspector rotation.
+    const rotation = Math.max(-360, Math.min(360, modelRotation || (renderedRotationMatch ? Number(renderedRotationMatch[1]) : 0)));
     const transform = rotation ? ' transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')"' : '';
     const rect = background !== 'transparent'
       ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + radius + '" fill="' + designXmlEscape(background) + '"' + transform + '/>'
