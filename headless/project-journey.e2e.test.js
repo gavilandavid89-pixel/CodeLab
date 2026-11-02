@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./workspace-runtime');
+const { buildAiDesignCaptureContext } = require('./design-export');
 
 function workspace(projects = []) {
   return { version: 5, revision: 0, updatedAt: new Date(0).toISOString(), projects, owner: { provider: 'local', id: 'integral-e2e' } };
@@ -66,6 +67,13 @@ test('integral project journey: create, design, revise, convert, read back, and 
   assert.equal(saved.projects[0].design.elements.find(e => e.id === 'el_title').text, 'Pril Videos');
   assert.equal(saved.projects[0].design.elements.some(e => e.id === 'el_action_copy'), false);
 
+  // Keep an immutable snapshot of the exact design revision that will be converted and captured.
+  const captureProject = JSON.parse(JSON.stringify(saved.projects[0]));
+  const captureContext = buildAiDesignCaptureContext(captureProject, 1);
+  assert.equal(captureContext.designRevision, captureProject.design.revision);
+  assert.equal(captureContext.canvas.width, 720);
+  assert.equal(captureContext.canvas.pixelWidth, 720);
+
   // Stage 4: convert the same saved design and retain the generated HTML as evidence.
   result = batch(saved, 'integral_convert_004', [
     { type: 'design.convert.toWeb', projectId }
@@ -113,6 +121,24 @@ test('integral project journey: create, design, revise, convert, read back, and 
     const page = await browser.newPage({ viewport: { width: 360, height: 800 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+
+    // Capture the converted HTML for this exact project/revision before code replacement.
+    const capturePage = await browser.newPage({
+      viewport: { width: captureContext.canvas.width, height: captureContext.canvas.height },
+      deviceScaleFactor: 1
+    });
+    await capturePage.setContent(convertedHtml, { waitUntil: 'load' });
+    await expectVisible(capturePage, '#designFrame');
+    assert.match(await capturePage.locator('body').innerText(), /Pril Videos/);
+    assert.match(await capturePage.locator('body').innerText(), /Explorar videos/);
+    const png = await capturePage.screenshot({ type: 'png', fullPage: false, animations: 'disabled' });
+    assert.equal(png.toString('hex', 0, 8), '89504e470d0a1a0a', 'same-project capture must be a PNG binary');
+    assert.equal(png.readUInt32BE(16), captureContext.canvas.pixelWidth, 'PNG width must match same-project capture context');
+    assert.equal(png.readUInt32BE(20), captureContext.canvas.pixelHeight, 'PNG height must match same-project capture context');
+    assert.ok(png.length > 1000, 'same-project PNG must contain rendered content');
+    assert.equal(captureContext.designRevision, captureProject.design.revision,
+      'capture manifest must identify the design revision captured before conversion');
+    await capturePage.close();
 
     await page.setContent(convertedHtml, { waitUntil: 'load' });
     await expectVisible(page, '#designFrame');
