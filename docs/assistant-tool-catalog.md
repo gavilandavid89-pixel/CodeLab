@@ -195,3 +195,7 @@ Added approved bridge action `headless_ai_generate`:
 - Returns actual provider usage and recognized rate-limit headers when available. CodeLab's own 20-requests/minute per-IP limiter reports a 60-second retry hint. Providers that do not expose daily quota data are reported as unknown; no quota is fabricated and 429s are not retried automatically.
 
 The legacy `ai_generate` UI action remains available for the browser workflow; the new `headless_ai_generate` is the direct saved-workspace path.
+
+## Headless parity follow-through — legacy bridge actions
+
+The legacy bridge action names for design import, design-system import/export, web-project HTML export, and design-to-web conversion now call authenticated headless APIs. They no longer open editor modals, set file inputs, wait for browser downloads, or invoke the design conversion UI. This preserves caller compatibility while making those capabilities independent of editor visibility.
