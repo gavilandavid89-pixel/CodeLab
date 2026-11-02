@@ -82,6 +82,13 @@ function auditDesignAccessibility(project) {
         add('warning', 'small-text', element, 'El texto tiene un tamaño inferior a 12 px; comprueba su legibilidad en el dispositivo objetivo.', { fontSize });
       }
 
+      const opacity = Number(element.opacity);
+      if (Number.isFinite(opacity) && opacity >= 0 && opacity < 1) {
+        add('warning', 'text-opacity', element,
+          'La opacidad del texto modifica los colores efectivos; el contraste declarado puede sobreestimar la legibilidad.',
+          { opacity, contrastBasis: 'declared-colors-ignore-opacity' });
+      }
+
       const foreground = element.color;
       const background = typeof element.background === 'string' && element.background !== 'transparent'
         ? element.background
