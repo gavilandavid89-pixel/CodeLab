@@ -125,17 +125,17 @@ assert.match(bridge, /ariaLabel:[\s\S]{0,240}dataAction:[\s\S]{0,160}href:/,
 
 
 const conversionHandler = bridge.slice(
-  bridge.indexOf("command.action === 'project_convert_design_to_web'"),
-  bridge.indexOf("command.action === 'ai_generate'", bridge.indexOf("command.action === 'project_convert_design_to_web'"))
+  bridge.indexOf("} else if (command.action === 'project_convert_design_to_web') {"),
+  bridge.indexOf("} else if (command.action === 'headless_ai_generate') {", bridge.indexOf("} else if (command.action === 'project_convert_design_to_web') {"))
 );
-assert.match(conversionHandler, /const converted = projects\.find\(item => item && item\.id === projectId\)/,
-  'design-to-web conversion must verify the app-supported in-place conversion of the same project');
-assert.match(conversionHandler, /convertedInPlace: true[\s\S]{0,220}sourceDesignPreserved: sourceUnchanged/,
-  'conversion must report that the source design remains available alongside generated web code');
-assert.match(conversionHandler, /item\.type !== 'design'[\s\S]{0,180}JSON\.stringify\(item\.design\) === sourceSnapshot/,
-  'conversion must verify the local snapshot stores web code and preserves the design model');
-assert.doesNotMatch(conversionHandler, /beforeIds|projects\.find\(item => !beforeIds\.has/,
-  'conversion must not expect the app to create a separate project when it converts the existing project in place');
+assert.match(conversionHandler, /\/api\/workspace\//,
+  'design-to-web conversion must call the authenticated workspace API');
+assert.match(conversionHandler, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/,
+  'design-to-web conversion must use the shared headless runtime on the same project');
+assert.match(conversionHandler, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/,
+  'conversion must verify that the original design source remains available');
+assert.doesNotMatch(conversionHandler, /openProject\(|convertDesignToWeb\(|projects\.find\(item => item && item\.id === projectId\)/,
+  'conversion must not depend on the editor or its in-memory project model');
 
 const projectCreateHandler = bridge.slice(
   bridge.indexOf("else if (command.action === 'project_create')"),
