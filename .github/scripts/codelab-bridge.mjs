@@ -381,6 +381,10 @@ async function createHeadlessPreview(projectId, source = 'main', selfTest = fals
       '</body></html>',
       { waitUntil: 'domcontentloaded' }
     );
+    browserDiagnostics.consoleErrors.length = 0;
+    browserDiagnostics.pageErrors.length = 0;
+    browserDiagnostics.failedRequests.length = 0;
+    browserDiagnostics.expectedBlockedRequests.length = 0;
     await previewPage.locator('#headlessPreview').evaluate((frame, html) => { frame.srcdoc = html; }, srcdoc);
     const previewFrame = previewPage.frameLocator('#headlessPreview');
     await previewFrame.locator('body').waitFor({ state: 'attached', timeout: 12000 });
