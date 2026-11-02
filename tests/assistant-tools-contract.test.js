@@ -48,8 +48,8 @@ assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved
 assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/, 'design conversion must use the shared headless runtime');
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
 assert.match(bridge, /AI generation changes project code and may consume API quota/, 'AI generation must require explicit approval');
-assert.match(bridge, /await processAiInstruction\(\)/, 'AI generation must reuse the app copilot path');
-assert.match(bridge, /source\.design\.flowConnections\.push/, 'flow connections must update the actual design model');
+assert.match(bridge, /command\.action = 'headless_ai_generate'/, 'legacy AI generation must reuse the headless provider and saved-code path');
+assert.match(bridge, /type: 'design\.flow\.connect'/, 'flow connections must use the shared saved-workspace runtime');
 assert.match(bridge, /apiKeyExposed: false/, 'AI settings inspection must not expose secrets');
 const auditHandler = bridge.slice(bridge.indexOf("command.action === 'accessibility_audit'"), bridge.indexOf("command.action === 'design_tokens_generate'", bridge.indexOf("command.action === 'accessibility_audit'")));
 assert.match(auditHandler, /\/headless\/query/, 'accessibility audit must use the authenticated saved-workspace query');

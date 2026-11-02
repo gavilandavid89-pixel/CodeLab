@@ -404,6 +404,34 @@ let commandId = 'unknown';
 let commandAction = 'unknown';
 let stage = 'parse_command';
 let currentStep = null;
+if (command.action === 'ai_generate') {
+  const source = command.args.source || 'main';
+  const projectId = command.args.project_id;
+  const baseRevision = await page.evaluate(async ({ projectId, source }) => {
+    const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+    const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+    if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+    const query = async (action, args) => {
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action, args })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+      return data;
+    };
+    const project = await query('project.inspect', { projectId });
+    if (project.result.type === 'design') throw new Error('AI code generation requires a web project.');
+    if (source === 'branch' && !project.result.branch) throw new Error('Project has no saved copy branch.');
+    const code = await query('project.code.read', { projectId, source, languages: ['html'], maxChars: 1 });
+    return code.revision;
+  }, { projectId, source });
+  command.action = 'headless_ai_generate';
+  command.args.base_revision = baseRevision;
+  command.args.operation_id = command.args.operation_id || 'legacy_ai_' + crypto.randomUUID().replace(/-/g, '');
+  command.args.source = source;
+}
 const startedAt = Date.now();
 
 async function executeSavedDesignBatch(action, args) {
