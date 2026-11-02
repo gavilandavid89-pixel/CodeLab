@@ -200,6 +200,12 @@ The current editor embeds image data in the project; there is no separate asset 
 
 **Transport note:** the GitHub issue-mailbox bridge limits serialized `headless_batch` operations to 50,000 characters, which is too small for a full 2 MiB Base64 image. Use the authenticated headless workspace API for full-size image attachment. Large binary transport through the issue mailbox is still pending.
 
+## Design accessibility audit
+
+The read-only query `design.accessibility.audit` inspects saved design layers without opening the editor or changing workspace/design revisions. It reports missing image alt text, unnamed buttons and headings, very small text, and estimated WCAG AA contrast failures when both text and the layer's declared background are explicit hexadecimal colors.
+
+The response includes the canonical query envelope, design revision, finding counts, rule IDs, element IDs, and contrast details when measurable. This is a static first pass, not a replacement for visual inspection, screen-reader testing, or contrast checks against complex backgrounds and overlapping layers. Unknown/transparent backgrounds are deliberately not assigned a guessed contrast ratio.
+
 ## Basic capability readiness checklist
 
 The basic headless scope is treated as a single end-to-end capability set, not a collection of unrelated features. Before advanced automation is considered complete, verify each item against the authenticated saved workspace and the actual browser preview:
