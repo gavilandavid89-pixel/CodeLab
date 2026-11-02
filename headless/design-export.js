@@ -91,6 +91,7 @@ function safeExportImageSource(value) {
   const source = String(value || '').trim();
   if (!source || source.length > MAX_IMAGE_BYTES * 1.5) return '';
   if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+  if (/^(?:\/(?!\/)|\.\.?\/)[^\\\s<>]*$/.test(source)) return source;
   try {
     const url = new URL(source);
     if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) return url.href;
