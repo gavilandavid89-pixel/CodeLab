@@ -58,4 +58,13 @@ test('applying a template expands persisted canvas height to fit its layers', ()
   assert.equal(saved.canvas.height, saved.canvasHeight);
   assert.equal(applied.results[0].canvasHeight, saved.canvasHeight);
   assert.ok(saved.elements.every(element => element.y + element.height <= saved.canvasHeight));
+
+  const undone = applyHeadlessBatch(applied.state, {
+    operationId: 'template-height-undo-001',
+    baseRevision: applied.state.revision,
+    operations: [{ type: 'design.history.undo', projectId: 'template-height-project' }]
+  });
+  const restored = undone.state.projects[0].design;
+  assert.equal(restored.canvasHeight, 160);
+  assert.equal(restored.canvas.height, 160);
 });
