@@ -4371,6 +4371,8 @@ function updateDesignProperty(key, value) {
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y+'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
