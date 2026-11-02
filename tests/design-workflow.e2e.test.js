@@ -1889,10 +1889,16 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator(`button[onclick="addDesignElement('button')"]`).click();
     const utilityLayerId = await page.locator('#designCanvas [data-design-id]').last().getAttribute('data-design-id');
     const utilityNode = page.locator('#designCanvas [data-design-id="' + utilityLayerId + '"]');
+    await page.evaluate(id => {
+      const element = getCurrentProject().design.elements.find(item => item.id === id);
+      element.text = 'hidden-layer-export-sentinel';
+    }, utilityLayerId);
     const hideLayerButton = page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]');
     await hideLayerButton.click();
     assert.equal(await utilityNode.evaluate(node => getComputedStyle(node).visibility), 'hidden',
       'hide control should hide only the selected layer on the sheet');
+    assert.equal(await page.evaluate(() => captureDesignSvg(getCurrentProject()).svg.includes('hidden-layer-export-sentinel')), false,
+      'hidden layers should not appear in SVG/AI capture exports');
     assert.equal(await page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]').count(), 1,
       'hidden layer should remain accessible from the layer list');
     await page.locator('#designLayers [data-design-visibility="' + utilityLayerId + '"]').click();
