@@ -38,8 +38,18 @@ function removeDeletedTargetFromDesignSnapshot(snapshot, targetProjectId) {
     return snapshot;
   }
   if (!design || typeof design !== 'object' || Array.isArray(design)) return snapshot;
-  if (Array.isArray(design.flowConnections)) {
-    design.flowConnections = design.flowConnections.filter(item => item && item.targetProjectId !== targetProjectId);
+  const connections = Array.isArray(design.flowConnections) ? design.flowConnections : [];
+  const removedSourceIds = new Set(connections
+    .filter(item => item && item.targetProjectId === targetProjectId)
+    .map(item => item.sourceElementId));
+  design.flowConnections = connections.filter(item => item && item.targetProjectId !== targetProjectId);
+  if (Array.isArray(design.elements)) {
+    for (const sourceElementId of removedSourceIds) {
+      const stillConnected = design.flowConnections.some(item => item && item.sourceElementId === sourceElementId);
+      if (stillConnected) continue;
+      const source = design.elements.find(item => item && item.id === sourceElementId);
+      if (source && source.flowRole === 'navigate') source.flowRole = '';
+    }
   }
   return typeof snapshot === 'string' ? JSON.stringify(design) : design;
 }
@@ -392,9 +402,21 @@ function applyOperation(state, operation) {
       for (const other of state.projects) {
         let changed = false;
         if (other.type === 'design' && other.design && Array.isArray(other.design.flowConnections)) {
-          const remainingConnections = other.design.flowConnections.filter(item => item && item.targetProjectId !== project.id);
-          if (remainingConnections.length !== other.design.flowConnections.length) {
+          const previousConnections = other.design.flowConnections;
+          const removedSourceIds = new Set(previousConnections
+            .filter(item => item && item.targetProjectId === project.id)
+            .map(item => item.sourceElementId));
+          const remainingConnections = previousConnections.filter(item => item && item.targetProjectId !== project.id);
+          if (remainingConnections.length !== previousConnections.length) {
             other.design.flowConnections = remainingConnections;
+            if (Array.isArray(other.design.elements)) {
+              for (const sourceElementId of removedSourceIds) {
+                const stillConnected = remainingConnections.some(item => item && item.sourceElementId === sourceElementId);
+                if (stillConnected) continue;
+                const source = other.design.elements.find(item => item && item.id === sourceElementId);
+                if (source && source.flowRole === 'navigate') source.flowRole = '';
+              }
+            }
             other.design.revision = (Number.isInteger(other.design.revision) ? other.design.revision : 0) + 1;
             for (const historyName of ['designUndoStack', 'designRedoStack']) {
               if (Array.isArray(other[historyName])) {
