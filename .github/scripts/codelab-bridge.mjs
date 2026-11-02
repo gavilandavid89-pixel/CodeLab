@@ -101,6 +101,8 @@ function parseCommand(raw) {
     if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
     if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
     if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
+    if (args.operation_id !== undefined && (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id))) throw new Error('ai_generate operation_id must be a safe string of 8 to 100 characters.');
+    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('ai_generate max_tokens must be from 256 to 32768.');
   }
   if (command.action === 'project_delete' && command.approval !== 'approved') throw new Error('Permanent project deletion requires approval: "approved".');
   if (command.action === 'design_template_apply') {
@@ -429,7 +431,7 @@ if (command.action === 'ai_generate') {
   }, { projectId, source });
   command.action = 'headless_ai_generate';
   command.args.base_revision = baseRevision;
-  command.args.operation_id = command.args.operation_id || 'legacy_ai_' + crypto.randomUUID().replace(/-/g, '');
+  command.args.operation_id = command.args.operation_id || 'legacy_ai_' + String(command.command_id).slice(0, 90);
   command.args.source = source;
 }
 const startedAt = Date.now();
