@@ -1,0 +1,90 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+
+function extract(startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert.notEqual(start, -1, 'missing source marker: ' + startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(end, -1, 'missing end marker: ' + endMarker);
+  return source.slice(start, end);
+}
+
+function makeContext() {
+  const context = {
+    getDesignCanvasWidth: design => Number(design && design.canvasWidth) || 390,
+    getDesignCanvasHeight: design => Number(design && design.canvasHeight) || 0,
+    designXmlEscape: value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+    safeDesignImageSource: value => typeof value === 'string' && /^https?:\/\//i.test(value) ? value : ''
+  };
+  vm.createContext(context);
+  vm.runInContext(extract('function getDesignLayoutPositions(design) {', '\nfunction setDesignLayoutMode'), context);
+  return context;
+}
+
+test('local design layout excludes hidden layers and resolves percentage positions', () => {
+  const context = makeContext();
+  const design = {
+    frame: 'mobile',
+    canvasWidth: 720,
+    canvasHeight: 1600,
+    layoutMode: 'free',
+    elements: [
+      { id: 'el_visible', x: 25, y: 50, xUnit: '%', yUnit: '%', width: 100, height: 40 },
+      { id: 'el_hidden', x: 0, y: 0, visible: false, width: 100, height: 40 }
+    ]
+  };
+  const layout = context.getDesignLayoutPositions(design);
+  assert.deepEqual({ x: layout.positions.get('el_visible').x, y: layout.positions.get('el_visible').y }, { x: 180, y: 800 });
+  assert.equal(layout.positions.has('el_hidden'), false, 'hidden layers must not take part in free or auto layout');
+});
+
+test('local SVG capture honors canvas dimensions, visibility, opacity, and rotation', () => {
+  const context = makeContext();
+  vm.runInContext(extract('function captureDesignSvg(project) {', '\nasync function captureDesignForAI'), context);
+  const project = {
+    design: {
+      frame: 'mobile',
+      canvasWidth: 720,
+      canvasHeight: 1600,
+      background: '#ffffff',
+      layoutMode: 'free',
+      elements: [
+        { id: 'el_visible', type: 'rectangle', x: 0, y: 0, width: 80, height: 100, background: '#ff0000', opacity: 0.5, rotation: 30 },
+        { id: 'el_hidden', type: 'rectangle', x: 0, y: 0, width: 80, height: 100, background: '#00ff00', visible: false }
+      ]
+    }
+  };
+  const captured = context.captureDesignSvg(project);
+  assert.equal(captured.width, 720, 'capture width must use the custom canvas width');
+  assert.match(captured.svg, /opacity="0\.5"/);
+  assert.match(captured.svg, /rotate\(30 40 50\)/);
+  assert.doesNotMatch(captured.svg, /#00ff00/, 'hidden layers must not leak into the AI image');
+});
+
+test('visible-layer behavior is shared by editor, AI context, and HTML export; locked actions are guarded', () => {
+  const render = extract('function renderDesignWorkspace() {', '\nfunction updateDesignProperty');
+  const update = extract('function updateDesignProperty(key, value) {', '\nfunction bindDesignCanvasEvents');
+  const capture = extract('async function captureDesignForAI() {', '\nfunction safeDesignExportColor');
+  const exporter = extract('function exportDesignHtml() {', '\nfunction toggleDesignExportMenu');
+  const actions = extract('function moveDesignLayer(direction) {', '\nfunction openDesignFlowGraph');
+
+  assert.match(render, /if \(el\.visible === false\) continue/);
+  assert.match(render, /el\.locked \? 'cursor-default' : 'cursor-move'/);
+  assert.match(render, /Opacidad \(0–1\)/);
+  assert.match(render, /Rotación \(°\)/);
+  assert.match(render, /Bloqueada/);
+  assert.match(update, /key === 'visible' \|\| key === 'locked'/);
+  assert.match(update, /x: \[0, 10000\], y: \[0, 10000\]/);
+  assert.match(capture, /el\.visible !== false/);
+  assert.match(exporter, /el\.visible !== false/);
+  assert.match(exporter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
+  assert.match(actions, /element\.locked/);
+  assert.match(actions, /!el\.locked/);
+});
