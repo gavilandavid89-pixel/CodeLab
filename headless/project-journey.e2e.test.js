@@ -87,12 +87,12 @@ test('integral project journey: create, design, revise, convert, read back, and 
     action: 'project.code.read',
     args: { projectId, languages: ['html', 'css', 'js'] }
   });
-  assert.equal(reread.projectId, projectId);
-  assert.equal(reread.fields.html.value, saved.projects[0].code.html);
-  assert.equal(reread.fields.css.value, saved.projects[0].code.css);
-  assert.equal(reread.fields.js.value, saved.projects[0].code.js);
+  assert.equal(reread.result.projectId, projectId);
+  assert.equal(reread.result.fields.html.value, saved.projects[0].code.html);
+  assert.equal(reread.result.fields.css.value, saved.projects[0].code.css);
+  assert.equal(reread.result.fields.js.value, saved.projects[0].code.js);
   const projectAfterRead = saved.projects.find(p => p.id === projectId);
-  assert.equal(projectAfterRead.code.html, reread.fields.html.value);
+  assert.equal(projectAfterRead.code.html, reread.result.fields.html.value);
   assert.equal(projectAfterRead.design.elements.find(e => e.id === 'el_title').text, 'Pril Videos');
 
   // Stage 6: open the code from that same saved project in Chromium and verify
