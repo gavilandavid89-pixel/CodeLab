@@ -16,7 +16,7 @@ function createDesignTemplate(templateId, design = {}, options = {}) {
     throw error;
   }
   const frameWidths = { mobile: 390, tablet: 768, desktop: 1440 };
-  const frameWidth = Number.isFinite(design.canvasWidth) && design.canvasWidth > 0
+  const frameWidth = Number.isInteger(design.canvasWidth) && design.canvasWidth >= 100 && design.canvasWidth <= 4000
     ? design.canvasWidth
     : (frameWidths[design.frame] || 1440);
   const compact = frameWidth <= 768;
