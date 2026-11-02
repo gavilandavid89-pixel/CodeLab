@@ -72,14 +72,24 @@ Workspace-level compare-and-swap revisions and idempotent operation IDs are now 
 
 ## Verification
 
-Run:
+Run the core contracts and runtime tests:
 
 ```sh
 node --check headless/design-engine.js
+node --check headless/workspace-runtime.js
+node --check server.js
 node --test headless/design-engine.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
+node --test headless/preview-upload.test.js
 ```
 
-The tests cover legacy/editor canvas compatibility, custom dimensions, Auto Layout, grid settings, layer alignment/distribution/duplication/reordering/deletion, text alignment and rotation, flow connections, optimistic design/workspace revision conflicts, project creation/duplication/rename/approved deletion, chunked web-code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping.
+With Playwright and Chromium installed, also run the browser-level checks:
+
+```sh
+node --test headless/design-capture-browser.test.js headless/preview-interaction-browser.test.js
+node tests/assistant-tools-contract.test.js
+```
+
+The tests cover legacy/editor canvas compatibility, custom dimensions, Auto Layout, grid settings, layer alignment/distribution/duplication/reordering/deletion, text alignment and rotation, flow connections, optimistic design/workspace revision conflicts, project creation/duplication/rename/approved deletion, chunked web-code writes, atomic rollback, idempotent retries, generated IDs, bounded receipts, safe SVG colors/URLs, and escaping. The upload validator has direct positive and negative tests for allowed MIME signatures, malformed Base64, unsafe filenames, mismatched types, and size limits. The isolated Chromium preview test exercises text entry, checkbox state, select controls, file input, opaque-origin separation from the parent document, and CSP-blocked outbound fetches; a separate browser test verifies actual PNG capture and revision/dimension pairing.
 
 ## Shared CodeLab capabilities added to the headless runtime
 
