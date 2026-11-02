@@ -20,7 +20,7 @@ function clamp(value, fallback, min, max) {
 
 function safeColor(value, fallback) {
   const text = String(value || '').trim();
-  return /^#[0-9a-f]{3,8}$/i.test(text) || text === 'transparent' ? text : fallback;
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || text === 'transparent' ? text : fallback;
 }
 
 function safeImageSource(value) {
