@@ -482,7 +482,8 @@ test('exports design projects as CodeLab JSON, responsive HTML, and SVG without 
   assert.match(svg.result.svg, /width="720"/);
   const html = queryHeadlessWorkspace(original, { action: 'design.export.html', args: { projectId: project.id } });
   assert.match(html.result.html, /<meta name="viewport"/);
-  assert.match(html.result.html, /<svg/);
+  assert.match(html.result.html, /<main id="designFrame"/);
+  assert.match(html.result.html, /<h1 id="layer-el_title"/);
   assert.equal(JSON.stringify(original), before);
 });
 
@@ -583,4 +584,53 @@ test('headless AI operation status verifies idempotent request keys without expo
     args: { operationId: 'test_op_missing' }
   });
   assert.equal(missing.result.found, false);
+});
+
+test('exports connected design projects as semantic HTML with working prototype navigation', () => {
+  const first = designProject('proj_flow_first');
+  first.name = 'First screen';
+  first.design.frame = 'mobile';
+  first.design.canvasWidth = 390;
+  first.design.canvasHeight = 844;
+  first.design.elements = [
+    { id: 'el_title', type: 'heading', label: 'Title', text: 'Welcome', x: 20, y: 20, width: 300, height: 60 },
+    { id: 'el_next', type: 'button', label: 'Next', text: 'Continue', x: 20, y: 100, width: 300, height: 48 }
+  ];
+  first.design.flowConnections = [{ sourceElementId: 'el_next', targetProjectId: 'proj_flow_second' }];
+  const second = designProject('proj_flow_second');
+  second.name = 'Second screen';
+  second.design.frame = 'mobile';
+  second.design.canvasWidth = 390;
+  second.design.canvasHeight = 844;
+  second.design.elements = [
+    { id: 'el_done', type: 'heading', label: 'Done', text: 'You made it', x: 20, y: 20, width: 300, height: 60 }
+  ];
+  const workspace = state([first, second]);
+  const html = queryHeadlessWorkspace(workspace, {
+    action: 'design.export.html',
+    args: { projectId: first.id }
+  }).result.html;
+  assert.match(html, /data-page-id="proj_flow_first"/);
+  assert.match(html, /data-page-id="proj_flow_second"/);
+  assert.match(html, /data-flow-to="proj_flow_second"/);
+  assert.match(html, /id="layer-el_title"/);
+  assert.match(html, /<h1[^>]*>Welcome<\/h1>/);
+  assert.match(html, /function show\(id\)/);
+  assert.match(html, /addEventListener\("keydown"/);
+  assert.match(html, /@media\(max-width:768px\)/);
+});
+
+test('semantic HTML export sanitizes image and external link sources', () => {
+  const project = designProject();
+  project.design.elements = [
+    { id: 'el_bad', type: 'image', label: 'Bad image', src: 'javascript:alert(1)', x: 0, y: 0, width: 100, height: 100 },
+    { id: 'el_link', type: 'button', label: 'Bad link', text: 'Unsafe link', href: 'javascript:alert(1)', x: 0, y: 120, width: 120, height: 40 }
+  ];
+  const html = queryHeadlessWorkspace(state([project]), {
+    action: 'design.export.html',
+    args: { projectId: project.id }
+  }).result.html;
+  assert.doesNotMatch(html, /javascript:/i);
+  assert.match(html, /Añade una imagen/);
+  assert.match(html, /<button[^>]*>Unsafe link<\/button>/);
 });
