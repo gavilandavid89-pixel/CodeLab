@@ -145,6 +145,8 @@ assert.match(dimensionUnitAppSource, /\[nextOrder\[index\], nextOrder\[target\]\
   'multi-layer ordering must swap selected layers across adjacent unselected layers without flattening their order');
 assert.match(dimensionUnitAppSource, /if \(!changed\) return;[\s\S]{0,100}recordDesignHistory\(\)/,
   'a blocked layer-order operation must not create a false history entry');
+assert.match(dimensionUnitAppSource, /ev\.key === 'Escape' && \(selectedDesignElementId \|\| selectedDesignElementIds\.length\)[\s\S]{0,150}selectedDesignElementIds = \[\]/,
+  'Escape must clear both the primary selection and the multi-selection so hidden selected layers are not accidentally edited');
 assert.match(dimensionUnitAppSource, /x: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)\)/,
   'duplicating percentage-positioned layers must offset the copy by 24 pixels, not 24 percentage points');
 assert.match(dimensionUnitAppSource, /y: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'y', canvasHeight\) \+ 24\)\)/,
