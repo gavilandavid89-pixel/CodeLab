@@ -310,10 +310,29 @@ test('inspects saved project and reads bounded main or branch code without mutat
   } });
   assert.equal(read.result.fields.html.value.length, 100);
   assert.equal(read.result.fields.html.truncated, true);
+  assert.equal(read.result.fields.html.offset, 0);
+  assert.equal(read.result.fields.html.nextOffset, 100);
+  const secondPage = queryHeadlessWorkspace(original, { action: 'project.code.read', args: {
+    projectId: project.id, source: 'main', languages: ['html'], maxChars: 100, offset: 100
+  } });
+  assert.equal(secondPage.result.fields.html.value, 'h'.repeat(100));
+  assert.equal(secondPage.result.fields.html.offset, 100);
+  assert.equal(secondPage.result.fields.html.nextOffset, 200);
+  assert.equal(secondPage.result.fields.html.truncated, true);
+  const finalPage = queryHeadlessWorkspace(original, { action: 'project.code.read', args: {
+    projectId: project.id, source: 'main', languages: ['html'], maxChars: 100, offset: 24900
+  } });
+  assert.equal(finalPage.result.fields.html.value, 'h'.repeat(100));
+  assert.equal(finalPage.result.fields.html.nextOffset, null);
+  assert.equal(finalPage.result.fields.html.truncated, false);
   const branchRead = queryHeadlessWorkspace(original, { action: 'project.code.read', args: {
     projectId: project.id, source: 'branch', languages: ['html']
   } });
   assert.equal(branchRead.result.fields.html.value, 'branch source');
+  assert.equal(branchRead.result.fields.html.nextOffset, null);
+  assert.throws(() => queryHeadlessWorkspace(original, { action: 'project.code.read', args: {
+    projectId: project.id, languages: ['html'], offset: -1
+  } }), /offset must be an integer/);
   assert.equal(original.projects[0].code.html.length, 25000);
 });
 
