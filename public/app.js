@@ -4314,8 +4314,10 @@ function bindDesignCanvasEvents() {
       }
       renderDesignWorkspace();
       saveProjectsToStorage();
-    } else if (ev.key === 'Escape' && selectedDesignElementId) {
-      selectedDesignElementId = null; renderDesignWorkspace();
+    } else if (ev.key === 'Escape' && (selectedDesignElementId || selectedDesignElementIds.length)) {
+      selectedDesignElementId = null;
+      selectedDesignElementIds = [];
+      renderDesignWorkspace();
     }
   });
   document.addEventListener('keyup', ev => {
