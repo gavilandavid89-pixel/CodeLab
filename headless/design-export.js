@@ -102,7 +102,8 @@ function safeExportLink(value) {
   const source = String(value || '').trim();
   if (!source || source.length > 2048) return '';
   if (/^#layer-[a-z0-9_-]{1,120}$/i.test(source)) return source;
-  if (/^mailto:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/i.test(source)) return source;
+  if (source.startsWith('/') && !source.startsWith('//') && !source.includes('\\') && !/[\s<>]/.test(source)) return source;
+  if (/^mailto:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+(?:\?[^\s<>]*)?$/i.test(source)) return source;
   if (/^tel:\+?[0-9(). -]{3,32}$/i.test(source)) return source;
   try {
     const url = new URL(source);
