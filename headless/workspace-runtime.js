@@ -6,6 +6,7 @@ const componentLibrary = require('../public/component-library');
 const designTools = require('../public/design-tools');
 const { createDesignTemplate, TEMPLATE_INFO } = require('./design-templates');
 const designExport = require('./design-export');
+const { auditDesignAccessibility } = require('./design-accessibility');
 
 const MAX_OPERATIONS = 100;
 const MAX_RECEIPTS = 200;
@@ -589,6 +590,12 @@ function queryHeadlessWorkspace(inputState, request) {
         truncated: elements.length > limit,
         flowConnections: Array.isArray(project.design.flowConnections) ? clone(project.design.flowConnections) : []
       };
+      break;
+    }
+    case 'design.accessibility.audit': {
+      const project = findProject(inputState, args.projectId);
+      assert(project.type === 'design' && project.design, 'design.accessibility.audit requires a design project.', 'HEADLESS_INVALID_QUERY');
+      result = auditDesignAccessibility(project);
       break;
     }
     case 'accessibility.audit': {
