@@ -3443,10 +3443,10 @@ function distributeDesignElements(axis = 'horizontal') {
   const dimensionAxis = horizontal ? 'width' : 'height';
   const containerSize = horizontal ? getDesignCanvasWidth(p.design) : (getDesignCanvasHeight(p.design) || 900);
   const dimension = el => getDesignElementDimension(el, dimensionAxis, containerSize);
-  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
-  const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
+  const ordered = selected.slice().sort((a, b) => getDesignElementPosition(a, horizontal ? 'x' : 'y', containerSize) - getDesignElementPosition(b, horizontal ? 'x' : 'y', containerSize));
+  const start = getDesignElementPosition(ordered[0], horizontal ? 'x' : 'y', containerSize);
   const last = ordered[ordered.length - 1];
-  const end = (Number(horizontal ? last.x : last.y) || 0) + dimension(last);
+  const end = getDesignElementPosition(last, horizontal ? 'x' : 'y', containerSize) + dimension(last);
   const totalSize = ordered.reduce((sum, el) => sum + dimension(el), 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
   if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
@@ -3455,7 +3455,7 @@ function distributeDesignElements(axis = 'horizontal') {
   recordDesignHistory();
   let cursor = start;
   for (const el of ordered) {
-    if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
+    if (horizontal) { el.xUnit = 'px'; el.x = Math.round(cursor); } else { el.yUnit = 'px'; el.y = Math.round(cursor); }
     cursor += dimension(el) + gap;
   }
   renderDesignWorkspace(); saveProjectsToStorage();
@@ -3468,20 +3468,20 @@ function alignDesignElement(mode = 'center-x') {
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
   if (selected.length > 1) {
-    const left = Math.min(...selected.map(item => Number(item.x) || 0));
-    const top = Math.min(...selected.map(item => Number(item.y) || 0));
-    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design))));
-    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900)));
+    const left = Math.min(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design))));
+    const top = Math.min(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900)));
+    const right = Math.max(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design)) + getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design))));
+    const bottom = Math.max(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900) + getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900)));
     const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
     recordDesignHistory();
     for (const item of selected) {
       const width = getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design)), height = getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900);
-      if (mode === 'left') item.x = left;
-      else if (mode === 'center-x') item.x = Math.round(centerX - width / 2);
-      else if (mode === 'right') item.x = right - width;
-      else if (mode === 'top') item.y = top;
-      else if (mode === 'center-y') item.y = Math.round(centerY - height / 2);
-      else if (mode === 'bottom') item.y = bottom - height;
+      if (mode === 'left') { item.xUnit = 'px'; item.x = left; }
+      else if (mode === 'center-x') { item.xUnit = 'px'; item.x = Math.round(centerX - width / 2); }
+      else if (mode === 'right') { item.xUnit = 'px'; item.x = right - width; }
+      else if (mode === 'top') { item.yUnit = 'px'; item.y = top; }
+      else if (mode === 'center-y') { item.yUnit = 'px'; item.y = Math.round(centerY - height / 2); }
+      else if (mode === 'bottom') { item.yUnit = 'px'; item.y = bottom - height; }
     }
     renderDesignWorkspace(); saveProjectsToStorage();
     showToast('Capas alineadas respecto a la selección.');
@@ -3491,12 +3491,12 @@ function alignDesignElement(mode = 'center-x') {
   const width = getDesignCanvasWidth(p.design);
   const height = getDesignCanvasHeight(p.design) || 900;
   const ew = getDesignElementDimension(el, 'width', width), eh = getDesignElementDimension(el, 'height', height);
-  if (mode === 'left') el.x = 0;
-  else if (mode === 'center-x') el.x = Math.max(0, Math.round((width - ew) / 2));
-  else if (mode === 'right') el.x = Math.max(0, width - ew);
-  else if (mode === 'top') el.y = 0;
-  else if (mode === 'center-y') el.y = Math.max(0, Math.round((height - eh) / 2));
-  else if (mode === 'bottom') el.y = Math.max(0, height - eh);
+  if (mode === 'left') { el.xUnit = 'px'; el.x = 0; }
+  else if (mode === 'center-x') { el.xUnit = 'px'; el.x = Math.max(0, Math.round((width - ew) / 2)); }
+  else if (mode === 'right') { el.xUnit = 'px'; el.x = Math.max(0, width - ew); }
+  else if (mode === 'top') { el.yUnit = 'px'; el.y = 0; }
+  else if (mode === 'center-y') { el.yUnit = 'px'; el.y = Math.max(0, Math.round((height - eh) / 2)); }
+  else if (mode === 'bottom') { el.yUnit = 'px'; el.y = Math.max(0, height - eh); }
   renderDesignWorkspace(); saveProjectsToStorage();
 }
 function downloadDesignAsset(filename, content, type) {
@@ -3608,7 +3608,7 @@ async function captureDesignForAI() {
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
     text: el.text || '',
-    bounds: { x, y, width, height, widthUnit: el.widthUnit || 'px', heightUnit: el.heightUnit || 'px' },
+    bounds: { x, y, width, height, xUnit: el.xUnit || 'px', yUnit: el.yUnit || 'px', widthUnit: el.widthUnit || 'px', heightUnit: el.heightUnit || 'px' },
     style: {
       color: el.color || '#111827',
       background: el.background || 'transparent',
@@ -3705,6 +3705,8 @@ function exportDesignHtml() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Number.isFinite(Number(position.x)) ? Number(position.x) : 0;
     const y = Number.isFinite(Number(position.y)) ? Number(position.y) : 0;
+    const leftCss = getDesignElementPositionCss(el, 'x');
+    const topCss = getDesignElementPositionCss(el, 'y');
     const width = getDesignElementDimension(el, 'width', layout.frameWidth);
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
@@ -3713,7 +3715,7 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
@@ -3910,6 +3912,20 @@ function getDesignElementDimensionCss(el, axis) {
   return unit === '%' ? Math.min(100, value) + '%' : Math.max(20, Math.min(4000, value)) + 'px';
 }
 
+function getDesignElementPosition(el, axis, containerSize = 900) {
+  const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) ? raw : 0;
+  if (unit === '%') return Math.max(-6000, Math.min(6000, containerSize * Math.max(-100, Math.min(200, value)) / 100));
+  return Math.max(-6000, Math.min(6000, value));
+}
+function getDesignElementPositionCss(el, axis) {
+  const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) ? raw : 0;
+  return unit === '%' ? Math.max(-100, Math.min(200, value)) + '%' : Math.max(-6000, Math.min(6000, value)) + 'px';
+}
+
 function getDesignLayoutPositions(design) {
   const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
   const frameWidth = getDesignCanvasWidth(design);
@@ -3918,8 +3934,8 @@ function getDesignLayoutPositions(design) {
   if (mode === 'free') {
     let contentBottom = 0;
     for (const el of elements) {
-      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
-      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
+      const x = getDesignElementPosition(el, 'x', frameWidth);
+      const y = getDesignElementPosition(el, 'y', getDesignCanvasHeight(design) || 900);
       const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(design) || 900);
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
@@ -4014,7 +4030,8 @@ function renderDesignWorkspace() {
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
-    node.style.left = layoutPosition.x + 'px'; node.style.top = layoutPosition.y + 'px';
+    node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
+    node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y + 'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.minWidth = '20px'; node.style.minHeight = '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
@@ -4098,7 +4115,7 @@ function renderDesignWorkspace() {
       node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
-      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: getDesignElementPosition(el, 'x', getDesignCanvasWidth(activeDesignProject()?.design)), y: getDesignElementPosition(el, 'y', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
       node.setPointerCapture && node.setPointerCapture(ev.pointerId);
       ev.preventDefault();
     });
@@ -4142,7 +4159,8 @@ function renderDesignWorkspace() {
   props.innerHTML = canvasControls + layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
     field('Nombre de capa','label','text') + buttonControls + imageControls +
-    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
+    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select id="designProperty-xUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'xUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.xUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.xUnit==='%'?'selected':'')+'>%</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select id="designProperty-yUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'yUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.yUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.yUnit==='%'?'selected':'')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad de ancho</span><select id="designProperty-widthUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'widthUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.widthUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.widthUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.widthUnit==='auto'?'selected':'')+'>Auto</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad de alto</span><select id="designProperty-heightUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'heightUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.heightUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.heightUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.heightUnit==='auto'?'selected':'')+'>Auto</option></select></label></div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
@@ -4158,6 +4176,11 @@ function updateDesignProperty(key, value) {
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
+  else if (key === 'xUnit' || key === 'yUnit') {
+    if (!['px', '%'].includes(value)) return;
+    el[key] = value;
+    renderDesignWorkspace(); scheduleAutosave(); return;
+  }
   else if (key === 'widthUnit' || key === 'heightUnit') {
     if (!['px', '%', 'auto'].includes(value)) return;
     el[key] = value;
@@ -4171,7 +4194,8 @@ function updateDesignProperty(key, value) {
     if (el.type === 'image') renderDesignImageContent(node, el);
     else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
     const layoutPosition = getDesignLayoutPositions(p.design).positions.get(el.id) || { x: Number(el.x)||0, y: Number(el.y)||0 };
-    node.style.left = layoutPosition.x+'px'; node.style.top = layoutPosition.y+'px';
+    node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x+'px' : getDesignElementPositionCss(el, 'x');
+    node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y+'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
@@ -4207,6 +4231,7 @@ function bindDesignCanvasEvents() {
       el.height = Math.max(20, Math.min(4000, Math.round(designDragState.height + dy)));
       if (node) { node.style.width = el.width + 'px'; node.style.height = el.height + 'px'; }
     } else {
+      el.xUnit = 'px'; el.yUnit = 'px';
       el.x = Math.max(0, Math.round(designDragState.x + dx)); el.y = Math.max(0, Math.round(designDragState.y + dy));
       if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
     }
@@ -4221,6 +4246,7 @@ function bindDesignCanvasEvents() {
         el.width = Math.max(20, Math.round((Number(el.width) || 120) / step) * step);
         el.height = Math.max(20, Math.round((Number(el.height) || 48) / step) * step);
       } else {
+        el.xUnit = 'px'; el.yUnit = 'px';
         el.x = Math.max(0, Math.round((Number(el.x) || 0) / step) * step);
         el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
       }
@@ -4262,10 +4288,12 @@ function bindDesignCanvasEvents() {
       if (!nudgeHistoryActive) recordDesignHistory();
       nudgeHistoryActive = true;
       const step = ev.shiftKey ? 10 : 1;
-      if (ev.key === 'ArrowLeft') el.x = Math.max(0, (Number(el.x) || 0) - step);
-      if (ev.key === 'ArrowRight') el.x = Math.max(0, (Number(el.x) || 0) + step);
-      if (ev.key === 'ArrowUp') el.y = Math.max(0, (Number(el.y) || 0) - step);
-      if (ev.key === 'ArrowDown') el.y = Math.max(0, (Number(el.y) || 0) + step);
+      const currentX = getDesignElementPosition(el, 'x', getDesignCanvasWidth(p.design));
+      const currentY = getDesignElementPosition(el, 'y', getDesignCanvasHeight(p.design) || 900);
+      if (ev.key === 'ArrowLeft') { el.xUnit = 'px'; el.x = Math.max(0, currentX - step); }
+      if (ev.key === 'ArrowRight') { el.xUnit = 'px'; el.x = Math.max(0, currentX + step); }
+      if (ev.key === 'ArrowUp') { el.yUnit = 'px'; el.y = Math.max(0, currentY - step); }
+      if (ev.key === 'ArrowDown') { el.yUnit = 'px'; el.y = Math.max(0, currentY + step); }
       renderDesignWorkspace();
       saveProjectsToStorage();
     } else if (ev.key === 'Escape' && selectedDesignElementId) {
@@ -4425,6 +4453,8 @@ async function convertDesignToWeb() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
     const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
+    const leftCss = getDesignElementPositionCss(el, 'x');
+    const topCss = getDesignElementPositionCss(el, 'y');
     const width = getDesignElementDimension(el, 'width', getDesignCanvasWidth(p.design));
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
@@ -4433,7 +4463,7 @@ async function convertDesignToWeb() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
     return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
@@ -4989,6 +5019,8 @@ async function importDesignProjectJson(file) {
       text: String(raw.text || '').slice(0, 10000),
       x: finite(raw.x, 0, -6000, 6000),
       y: finite(raw.y, 0, -6000, 6000),
+      xUnit: ['px','%'].includes(raw.xUnit) ? raw.xUnit : 'px',
+      yUnit: ['px','%'].includes(raw.yUnit) ? raw.yUnit : 'px',
       width: finite(raw.width, 120, 20, 4000),
       height: finite(raw.height, 48, 20, 4000),
       widthUnit: ['px','%','auto'].includes(raw.widthUnit) ? raw.widthUnit : 'px',

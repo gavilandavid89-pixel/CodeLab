@@ -536,19 +536,33 @@ async function waitForPersistedProject(page, projectName) {
     await element.click();
     await page.locator('#designProperty-width').waitFor({ state: 'visible' });
 
-    // 3b. Exercise responsive dimensions through the real Inspector controls.
+    // 3b. Exercise responsive position and dimensions through the real Inspector.
+    await page.locator('#designProperty-x').fill('25');
+    await page.locator('#designProperty-xUnit').selectOption('%');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.left === '25%');
+    await page.locator('#designProperty-y').fill('10');
+    await page.locator('#designProperty-yUnit').selectOption('%');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.top === '10%');
     await page.locator('#designProperty-width').fill('50');
     await page.locator('#designProperty-widthUnit').selectOption('%');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.width === '50%');
     await page.locator('#designProperty-heightUnit').selectOption('auto');
     await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.height === 'auto');
+    // Keyboard nudge converts a percentage position to px without jumping the layer.
+    await element.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelector('#designCanvas [data-design-id]')?.style.left === '361px');
+    await page.locator('#designProperty-xUnit').selectOption('px');
+    await page.locator('#designProperty-x').fill('80');
+    await page.locator('#designProperty-yUnit').selectOption('px');
+    await page.locator('#designProperty-y').fill('70');
     await page.locator('#designProperty-widthUnit').selectOption('px');
     await page.locator('#designProperty-width').fill('560');
     await page.locator('#designProperty-heightUnit').selectOption('px');
     await page.locator('#designProperty-height').fill('76');
     await page.waitForFunction(() => {
       const node = document.querySelector('#designCanvas [data-design-id]');
-      return node?.style.width === '560px' && node?.style.height === '76px';
+      return node?.style.left === '80px' && node?.style.top === '70px' && node?.style.width === '560px' && node?.style.height === '76px';
     });
 
     // 4. Drag the actual canvas element with pointer events.
@@ -965,6 +979,10 @@ async function waitForPersistedProject(page, projectName) {
     assert.equal(projectBackup.project.design.elements.find(item => item.type === 'image')?.alt, 'E2E sample image',
       'JSON backup should preserve image metadata');
     const responsiveBackupLayer = projectBackup.project.design.elements.find(item => item.type === 'heading') || projectBackup.project.design.elements[0];
+    responsiveBackupLayer.x = 25;
+    responsiveBackupLayer.xUnit = '%';
+    responsiveBackupLayer.y = 10;
+    responsiveBackupLayer.yUnit = '%';
     responsiveBackupLayer.width = 50;
     responsiveBackupLayer.widthUnit = '%';
     responsiveBackupLayer.heightUnit = 'auto';
@@ -997,6 +1015,8 @@ async function waitForPersistedProject(page, projectName) {
       return {
         imageAlt: project.design.elements.find(item => item.type === 'image')?.alt,
         internalLinkRestored: !!targetId && project.design.elements.some(item => item.id === targetId),
+        xUnit: responsiveLayer?.xUnit || 'px',
+        yUnit: responsiveLayer?.yUnit || 'px',
         widthUnit: responsiveLayer?.widthUnit || 'px',
         heightUnit: responsiveLayer?.heightUnit || 'px',
         sourceProjectStillExists: projects.some(item => item.name === project.name.replace(/ \(Importado\)$/, ''))
@@ -1004,6 +1024,8 @@ async function waitForPersistedProject(page, projectName) {
     });
     assert.equal(restoredBackupCheck.imageAlt, 'E2E sample image', 'backup import must preserve image metadata');
     assert.equal(restoredBackupCheck.internalLinkRestored, true, 'backup import must remap internal prototype links to the imported layer IDs');
+    assert.equal(restoredBackupCheck.xUnit, '%', 'backup import must preserve percentage X units');
+    assert.equal(restoredBackupCheck.yUnit, '%', 'backup import must preserve percentage Y units');
     assert.equal(restoredBackupCheck.widthUnit, '%', 'backup import must preserve percentage width units');
     assert.equal(restoredBackupCheck.heightUnit, 'auto', 'backup import must preserve Auto height units');
     assert.equal(restoredBackupCheck.sourceProjectStillExists, true, 'restoring a backup must create a separate project, not overwrite the source');
