@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { TEMPLATE_IDS, createDesignTemplate } = require('./design-templates');
+const { applyHeadlessBatch } = require('./workspace-runtime');
 
 test('all responsive design templates keep layer bounds within narrow canvas widths', () => {
   for (const width of [100, 200, 280, 390, 768]) {
@@ -26,4 +27,35 @@ test('template sizing falls back for canvas widths outside engine limits', () =>
   });
   assert.equal(oversized.canvasWidth, 390);
   assert.ok(oversized.elements.every(element => element.x + element.width <= oversized.canvasWidth));
+});
+
+test('applying a template expands persisted canvas height to fit its layers', () => {
+  const state = {
+    revision: 0,
+    projects: [{
+      id: 'template-height-project',
+      type: 'design',
+      design: {
+        canvasWidth: 720,
+        canvasHeight: 160,
+        canvas: { width: 720, height: 160, unit: 'px' },
+        revision: 0,
+        elements: []
+      }
+    }]
+  };
+  const applied = applyHeadlessBatch(state, {
+    operationId: 'template-height-001',
+    baseRevision: 0,
+    operations: [{
+      type: 'design.template.apply',
+      projectId: 'template-height-project',
+      templateId: 'portfolio'
+    }]
+  });
+  const saved = applied.state.projects[0].design;
+  assert.ok(saved.canvasHeight >= 739);
+  assert.equal(saved.canvas.height, saved.canvasHeight);
+  assert.equal(applied.results[0].canvasHeight, saved.canvasHeight);
+  assert.ok(saved.elements.every(element => element.y + element.height <= saved.canvasHeight));
 });
