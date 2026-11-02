@@ -149,3 +149,14 @@ The bridge action `headless_ai_generate` performs AI generation without opening 
 The action requires explicit approval because it changes code and consumes provider quota. It supports a caller-supplied operation ID and a SHA-256 request fingerprint stored in the private workspace receipt. A retry after a lost response checks that receipt first, so it does not call the provider again; reusing the ID for a different prompt/configuration is rejected.
 
 The AI proxy now returns provider-reported token usage and recognized rate-limit headers when the provider supplies them. CodeLab's own default rate limit is 20 requests per minute per client IP and returns a 60-second retry hint. Provider daily quotas are not universally queryable; when the provider sends no quota headers, Headless reports them as unavailable rather than inventing a remaining quota. No automatic retry is made after a 429.
+
+## Removing legacy UI dependencies from bridge actions
+
+The existing bridge action names remain compatible, but their implementation now delegates to authenticated headless workspace APIs instead of clicking editor controls or file inputs:
+
+- `design_import_json` calls the headless design import batch and refreshes the workspace from the server.
+- `design_system_import_json` and `design_system_export_json` use the dedicated revisioned headless design-system endpoint.
+- `project_export_html` reads the saved web-project code through `project.code.read` before composing the standalone HTML.
+- `project_convert_design_to_web` calls the same atomic `design.convert.toWeb` operation used by native headless batches.
+
+This keeps existing callers working while removing editor visibility, modal state, and browser download events as prerequisites for these operations.
