@@ -121,6 +121,12 @@ assert.match(dimensionUnitAppSource, /designProperty-widthUnit/,
   'the Inspector must expose width units');
 assert.match(dimensionUnitAppSource, /designProperty-heightUnit/,
   'the Inspector must expose height units');
+assert.match(dimensionUnitAppSource, /const selectedIds = Array\.from\(new Set\(/,
+  'keyboard nudging must resolve all selected layers instead of moving only the primary layer');
+assert.match(dimensionUnitAppSource, /for \(const el of selectedElements\)[\s\S]{0,260}el\.x = Math\.max\(0, currentX \+ deltaX\)[\s\S]{0,120}el\.y = Math\.max\(0, currentY \+ deltaY\)/,
+  'keyboard nudging must move every selected layer by the same bounded delta');
+assert.match(dimensionUnitAppSource, /selectedElements\.length \|\| p\.design\.layoutMode === 'auto'/,
+  'keyboard nudging must not silently fight Auto Layout positioning');
 assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', heightUnit: el\.heightUnit \|\| 'px'/,
   'AI design capture must preserve dimension units');
 assert.match(bridgeSource, /'widthUnit', 'heightUnit'/,
