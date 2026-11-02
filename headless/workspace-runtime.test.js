@@ -705,3 +705,30 @@ test('exposes AI design capture context as a read-only headless query', () => {
   assert.equal(workspace.revision, 3, 'read-only capture query must not increment workspace revision');
   assert.equal(JSON.stringify(project), before, 'capture query must not mutate the saved project');
 });
+
+test('[HL-Ω] AI capture context resolves Auto Layout wrapping to concrete layer bounds', () => {
+  const project = designProject();
+  project.design.frame = 'mobile';
+  project.design.canvasWidth = 320;
+  project.design.canvasHeight = 100;
+  project.design.layoutMode = 'auto';
+  project.design.layoutDirection = 'row';
+  project.design.layoutGap = 10;
+  project.design.layoutPadding = 10;
+  project.design.elements = [
+    { id: 'hl_omega_first', type: 'rectangle', label: 'First', x: 999, y: 999, width: 200, height: 40 },
+    { id: 'hl_omega_second', type: 'rectangle', label: 'Second', x: 999, y: 999, width: 200, height: 40 }
+  ];
+
+  const context = buildAiDesignCaptureContext(project, 1);
+
+  assert.equal(context.layout.mode, 'auto');
+  assert.equal(context.canvas.width, 320);
+  assert.deepEqual(context.elements.map(element => element.bounds), [
+    { x: 10, y: 10, width: 200, height: 40 },
+    { x: 10, y: 60, width: 200, height: 40 }
+  ]);
+  assert.equal(context.canvas.pixelWidth, 320);
+  assert.equal(context.canvas.pixelHeight, context.canvas.height);
+});
+
