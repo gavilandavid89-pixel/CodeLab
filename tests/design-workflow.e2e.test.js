@@ -1869,6 +1869,9 @@ async function waitForPersistedProject(page, projectName) {
 
         await page.locator('button[onclick="duplicateDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 2);
+        const duplicatedIdentifiers = await page.evaluate(() => getCurrentProject().design.elements.map(el => el.identifier));
+        assert.equal(new Set(duplicatedIdentifiers.map(value => String(value).toLowerCase())).size, duplicatedIdentifiers.length,
+          'duplicating a layer must generate a fresh unique identifier');
         await page.locator('button[onclick="deleteDesignElement()"]').click();
         await page.waitForFunction(expected => document.querySelectorAll('#designCanvas [data-design-id]').length === expected, countBefore + 1);
         await page.locator('#designUndoBtn').click();
