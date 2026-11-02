@@ -322,6 +322,7 @@ assert.match(bridge, /Preview press steps only allow non-submitting navigation k
 assert.match(bridge, /'click', 'fill', 'select', 'upload', 'read', 'check'/,
   'isolated preview must support bounded file uploads');
 assert.match(bridge, /Preview upload target must be an input\[type="file"\]/);
-assert.match(bridge, /Preview upload content does not match its declared MIME type/);
+assert.match(bridge, /validatePreviewUpload\(step\)/);
+assert.match(bridge, /from '\.\.\/\.\.\/headless\/preview-upload\.js'/);
 assert.match(bridge, /step\.data_base64\.length > 32000/);
 assert.match(bridge, /locator\.setInputFiles\(/);

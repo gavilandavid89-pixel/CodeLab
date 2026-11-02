@@ -39,3 +39,5 @@ jobs:
         run: node --test headless/design-capture-browser.test.js
       - name: Verify isolated preview form and file interactions
         run: node --test headless/preview-interaction-browser.test.js
+      - name: Verify preview upload input validation
+        run: node --test headless/preview-upload.test.js

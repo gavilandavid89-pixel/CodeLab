@@ -153,8 +153,8 @@ test('isolated preview interaction supports common form and assertion steps', ()
   assert.match(bridge, /locator\.check\(/);
   assert.match(bridge, /locator\.uncheck\(/);
   assert.match(bridge, /step\.action === 'upload'/);
-  assert.match(bridge, /allowedMimeTypes/);
-  assert.match(bridge, /uploadBytes\.length > 24000/);
+  assert.match(bridge, /validatePreviewUpload\(step\)/);
+  assert.match(bridge, /upload\.buffer/);
   assert.match(bridge, /locator\.setInputFiles\(/);
   assert.match(bridge, /only allow non-submitting navigation keys/);
   assert.match(bridge, /expected text was not found/);
