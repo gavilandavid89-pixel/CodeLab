@@ -152,22 +152,20 @@ assert.match(projectCreateHandler, /serverReadbackVerified/,
 const importHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_import_json') {"), bridge.indexOf("} else if (command.action === 'project_export_html') {", bridge.indexOf("} else if (command.action === 'design_import_json') {")));
 assert.match(bridge, /'design_export', 'design_import_json'/, 'design JSON import must be explicitly allowlisted');
 assert.match(bridge, /design_import_json requires a JSON string between 2 and 50000 characters/, 'design JSON import must enforce a bounded payload');
-assert.match(importHandler, /locator\('#designProjectJsonFile'\)\.setInputFiles/, 'design JSON import must use the actual file input and app import handler');
-assert.match(importHandler, /localSnapshotVerified/, 'design JSON import must verify the imported project in the local snapshot');
-
+assert.match(importHandler, /\/api\/workspace\//, 'design JSON import must use the authenticated headless workspace API');
+assert.match(importHandler, /type: 'design\.import\.json'/, 'design JSON import must use the shared runtime operation');
+assert.match(importHandler, /await refreshWorkspaceFromServer\(\)/, 'design JSON import must refresh the saved workspace after import');
 
 const systemExportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_export_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_export_json') {")));
 assert.match(bridge, /'design_system_import_json', 'design_system_export_json'/, 'design system JSON export must be explicitly allowlisted');
-assert.match(systemExportHandler, /locator\('#openDesignTools'\)\.click/, 'design system JSON export must open the real design tools modal first');
-assert.match(systemExportHandler, /locator\('#designToolsModal'\)\.waitFor\(\{ state: 'visible'/, 'design system JSON export must wait for the modal to become visible');
-assert.match(systemExportHandler, /locator\('#designToolsTab-tokens'\)\.click/, 'design system JSON export must switch to the tokens tab where the export button lives');
-assert.match(systemExportHandler, /locator\('#designToolsPanel-tokens'\)\.waitFor\(\{ state: 'visible'/, 'design system JSON export must wait for the tokens panel to be visible');
-assert.match(systemExportHandler, /locator\('#exportDesignSystemJson'\)\.click/, 'design system JSON export must use the actual export control');
-assert.match(systemExportHandler, /waitForEvent\('download'/, 'design system JSON export must capture the real browser download');
-assert.match(systemExportHandler, /parsed\.format !== 'codelab-design-system'/, 'design system JSON export must validate the exported schema');
+assert.match(systemExportHandler, /\/headless\/design-system/, 'design system JSON export must use the authenticated headless API');
+assert.match(systemExportHandler, /body: JSON\.stringify\(\{ action: 'export' \}\)/, 'design system export must request server-side token serialization');
+assert.match(systemExportHandler, /data\.json\?\.format/, 'design system export must return the canonical exported schema');
 
-const systemImportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_import_json') {"), bridge.indexOf("} else if (command.action === 'design_export') {", bridge.indexOf("} else if (command.action === 'design_system_import_json') {")));
+const systemImportHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_system_import_json') {"), bridge.indexOf("} else if (command.action === 'design_system_export_json') {", bridge.indexOf("} else if (command.action === 'design_system_import_json') {")));
 assert.match(bridge, /'design_import_json', 'design_system_import_json'/, 'design system JSON import must be explicitly allowlisted');
 assert.match(bridge, /design_system_import_json requires a JSON string between 2 and 50000 characters/, 'design system JSON import must enforce a bounded payload');
-assert.match(systemImportHandler, /locator\('#designSystemJsonFile'\)\.setInputFiles/, 'design system JSON import must use the actual file input and app handler');
-assert.match(systemImportHandler, /designToolsStatus/, 'design system JSON import must report the app result instead of assuming success');
+assert.match(systemImportHandler, /\/headless\/design-system/, 'design system JSON import must use the authenticated headless API');
+assert.match(systemImportHandler, /action: 'import', json, baseRevision: state\.revision/, 'design system import must use optimistic revision control');
+assert.doesNotMatch(importHandler + systemImportHandler + systemExportHandler, /locator\(|setInputFiles\(|waitForEvent\('download'/,
+  'design import/export must not depend on editor UI or browser download events');
