@@ -1410,35 +1410,45 @@ try {
   } else if (command.action === 'project_code_write') {
     stage = 'project_code_write';
     result = await page.evaluate(async ({ projectId, source, patch }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project) throw new Error('Project not found in the authenticated workspace.');
-      if (project.type === 'design') throw new Error('Code editing is not supported for design-only projects.');
-      if (source === 'branch' && !project.branch) throw new Error('Project has no saved copy branch.');
-      openProject(projectId);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (source === 'branch' && !inCopyBranch) await toggleCopyBranch();
-      if (source === 'main' && inCopyBranch) await toggleCopyBranch();
-      const before = {
-        html: getEditorValue('html'), css: getEditorValue('css'), js: getEditorValue('js')
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Saved project query failed.');
+        return data;
       };
-      const next = { ...before, ...patch };
-      for (const key of ['html', 'css', 'js']) setEditorValue(key, next[key]);
-      const saved = source === 'branch' ? await saveInCopyBranch() : await saveCurrentCodeToActiveProject(true);
-      const latest = projects.find(item => item && item.id === projectId);
-      const persisted = source === 'branch' ? latest?.branch?.code : latest?.code;
-      const exact = !!persisted && ['html', 'css', 'js'].every(key => persisted[key] === next[key]);
-      let localSnapshotVerified = false;
-      try {
-        const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || 'null');
-        const localProject = Array.isArray(snapshot) ? snapshot.find(item => item && item.id === projectId) : null;
-        const localCode = source === 'branch' ? localProject?.branch?.code : localProject?.code;
-        localSnapshotVerified = !!localCode && ['html', 'css', 'js'].every(key => localCode[key] === next[key]);
-      } catch (_) {}
-      if (!exact || (saved !== true && !localSnapshotVerified)) throw new Error('Code write was not verified by server sync or exact local snapshot.');
+      const before = await query('project.inspect', { projectId });
+      if (before.result.type === 'design') throw new Error('Code editing is not supported for design-only projects.');
+      if (source === 'branch' && !before.result.branch) throw new Error('Project has no saved copy branch.');
+      const operationId = 'code_write_' + crypto.randomUUID().replace(/-/g, '');
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({
+          baseRevision: before.revision, operationId,
+          operations: [{ type: 'web.code.write', projectId, source, mode: 'replace', ...patch }]
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.detail || data.error || 'Headless code write failed.');
+      const maxChars = Math.max(1, ...Object.values(patch).map(value => value.length));
+      const readback = await query('project.code.read', { projectId, source, languages: ['html', 'css', 'js'], maxChars });
+      const exact = Object.entries(patch).every(([key, value]) =>
+        readback.result.fields[key]?.value === value && readback.result.fields[key]?.truncated === false);
+      if (!exact) throw new Error('Code write failed authoritative server readback.');
+      let workspaceRefreshed = false;
+      try { workspaceRefreshed = typeof refreshWorkspaceFromServer === 'function' ? await refreshWorkspaceFromServer() : false; } catch (_) {}
       return {
-        projectId, source, changedFields: Object.keys(patch), saved: saved === true,
-        persistedCodeMatchesRequested: exact, localSnapshotVerified,
-        codeLengths: { html: next.html.length, css: next.css.length, js: next.js.length }
+        projectId, source, changedFields: Object.keys(patch), saved: true,
+        persistedCodeMatchesRequested: exact, serverReadbackVerified: true, workspaceRefreshed,
+        workspaceRevision: readback.revision,
+        codeLengths: Object.fromEntries(Object.entries(readback.result.fields).map(([key, field]) => [key, field.originalLength]))
       };
     }, {
       projectId: command.args.project_id,
