@@ -66,9 +66,20 @@ test('integral project journey: create, design, revise, convert, read back, and 
   assert.equal(saved.projects[0].design.elements.find(e => e.id === 'el_title').text, 'Pril Videos');
   assert.equal(saved.projects[0].design.elements.some(e => e.id === 'el_action_copy'), false);
 
-  // Stage 4: convert this same design project into web code and add real behavior.
+  // Stage 4: convert the same saved design and retain the generated HTML as evidence.
   result = batch(saved, 'integral_convert_004', [
-    { type: 'design.convert.toWeb', projectId },
+    { type: 'design.convert.toWeb', projectId }
+  ]);
+  saved = result.state;
+  assert.equal(saved.projects[0].type, 'web');
+  assert.equal(saved.projects[0].design.canvasWidth, 720, 'conversion must preserve the original design data');
+  assert.match(saved.projects[0].code.html, /id="designFrame"/);
+  assert.match(saved.projects[0].code.html, /Pril Videos/);
+  assert.match(saved.projects[0].code.html, /Explorar videos/);
+  const convertedHtml = saved.projects[0].code.html;
+
+  // Stage 5: edit that same converted project only after checking its generated output.
+  result = batch(saved, 'integral_edit_005', [
     { type: 'web.code.write', projectId, mode: 'replace',
       html: '<main class="app"><h1 id="brand">Pril Videos</h1><button id="explore" type="button">Explorar videos</button><p id="status" aria-live="polite">Listo</p></main>',
       css: ':root{font-family:system-ui,sans-serif;color:#18233a;background:#f7f8fc}body{margin:0;min-height:100vh;display:grid;place-items:center}.app{padding:32px}h1{font-size:clamp(2rem,8vw,3rem)}button{padding:16px 24px;border:0;border-radius:12px;background:#4f46e5;color:white;font-size:1rem;cursor:pointer}button:focus-visible{outline:3px solid #18233a;outline-offset:3px}',
@@ -77,11 +88,11 @@ test('integral project journey: create, design, revise, convert, read back, and 
   ]);
   saved = result.state;
   assert.equal(saved.projects[0].type, 'web');
-  assert.equal(saved.projects[0].design.canvasWidth, 720, 'conversion must preserve the original design data');
+  assert.equal(saved.projects[0].design.canvasWidth, 720, 'code editing must preserve the original design data');
   assert.match(saved.projects[0].code.html, /Pril Videos/);
   assert.match(saved.projects[0].code.js, /addEventListener/);
 
-  // Stage 5: re-read the saved project through the runtime query interface rather
+  // Stage 6: re-read the saved project through the runtime query interface rather
   // than relying on stale references captured before the writes.
   const reread = queryHeadlessWorkspace(saved, {
     action: 'project.code.read',
@@ -95,26 +106,33 @@ test('integral project journey: create, design, revise, convert, read back, and 
   assert.equal(projectAfterRead.code.html, reread.result.fields.html.value);
   assert.equal(projectAfterRead.design.elements.find(e => e.id === 'el_title').text, 'Pril Videos');
 
-  // Stage 6: open the code from that same saved project in Chromium and verify
-  // both visual output and actual interaction. Browser is always closed.
+  // Stage 7: render the actual converted design HTML first, then render and interact
+  // with the edited code from the same saved project. Browser is always closed.
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 360, height: 800 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.setContent(saved.projects[0].code.html.replace('</main>', '</main>') +
+
+    await page.setContent(convertedHtml, { waitUntil: 'load' });
+    await expectVisible(page, '#designFrame');
+    assert.match(await page.locator('body').innerText(), /Pril Videos/);
+    assert.match(await page.locator('body').innerText(), /Explorar videos/,
+      'the converted design must render its saved heading and action before code replacement');
+
+    await page.setContent(saved.projects[0].code.html +
       '<style>' + saved.projects[0].code.css + '</style><script>' +
       saved.projects[0].code.js + '</script>', { waitUntil: 'load' });
     await expectVisible(page, '#brand');
     assert.equal(await page.locator('#brand').innerText(), 'Pril Videos');
     await page.locator('#explore').click();
     assert.equal(await page.locator('#status').innerText(), 'Videos listos para explorar');
-    assert.deepEqual(errors, [], 'the final project must run without browser JavaScript errors');
+    assert.deepEqual(errors, [], 'generated and edited project HTML must run without browser JavaScript errors');
   } finally {
     await browser.close();
   }
 
-  t.diagnostic('Completed one chained project across create → design → edit → convert → persisted-state read → Chromium interaction.');
+  t.diagnostic('Completed one chained project across create → design → edit → convert → generated HTML render → persisted-state read → edited-code Chromium interaction.');
 });
 
 async function expectVisible(page, selector) {
