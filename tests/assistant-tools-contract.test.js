@@ -273,7 +273,7 @@ for (const [action, queryName, operationType] of [
 }
 assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must retain explicit approval');
 
-const codeWriteHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'project_code_write') {"), bridge.indexOf("} else if (command.action === 'component_search') {", bridge.indexOf("} else if (command.action === 'project_code_write') {")));
+const codeWriteHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'project_code_write') {"), bridge.indexOf("} else if (command.action === 'project_list') {", bridge.indexOf("} else if (command.action === 'project_code_write') {")));
 assert.match(codeWriteHandler, /\/headless\/query/, 'code write must inspect saved project state before mutation');
 assert.match(codeWriteHandler, /type: 'web\.code\.write'/, 'code write must use the shared headless runtime');
 assert.match(codeWriteHandler, /project\.code\.read/, 'code write must verify exact content from server readback');
