@@ -84,7 +84,13 @@ function createDesignTemplate(templateId, design = {}, options = {}) {
       elements.push(make('heading', card.title, card.title, x + 14, y + 45, cardWidth - 28, 55, { fontSize: compact ? 20 : 22, weight: 700 }));
     });
   }
-  return { templateId, background, elements, compact, canvasWidth: frameWidth };
+  const currentHeight = Number.isInteger(design.canvasHeight) && design.canvasHeight >= 100 && design.canvasHeight <= 10000
+    ? design.canvasHeight
+    : 900;
+  const contentBottom = elements.reduce((bottom, element) =>
+    Math.max(bottom, (Number(element.y) || 0) + (Number(element.height) || 0)), 0);
+  const canvasHeight = Math.min(10000, Math.max(currentHeight, contentBottom + 24));
+  return { templateId, background, elements, compact, canvasWidth: frameWidth, canvasHeight };
 }
 
 module.exports = { TEMPLATE_IDS, TEMPLATE_INFO, createDesignTemplate };
