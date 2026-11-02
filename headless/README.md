@@ -163,6 +163,6 @@ This keeps existing callers working while removing editor visibility, modal stat
 
 ## Headless web preview and interaction checks
 
-The bridge's existing `preview_diagnostics` and `preview_interact` actions now load saved project code through the authenticated `project.code.read` API and run it in a separate sandboxed iframe. They no longer require a project to be open in the editor or depend on the editor's `#previewIframe`.
+The bridge's existing `preview_diagnostics` and `preview_interact` actions now load saved project code through the authenticated `project.code.read` API and run it in a separate browser context and sandboxed iframe with no CodeLab app cookies, localStorage, or service workers. They no longer require a project to be open in the editor or depend on the editor's `#previewIframe`.
 
 The sandbox preserves the web editor's preview restrictions: scripts and forms are allowed, same-origin access is not granted, and the Content Security Policy blocks network connections while allowing inline CSS/JS and HTTP(S)/data images and fonts. Diagnostics collect DOM structure, accessible controls, console messages, page errors, and failed requests. Interaction steps can click, fill, select, or read controls; external anchor navigation remains blocked. The self-test fixtures are disposable and never mutate the saved project.
