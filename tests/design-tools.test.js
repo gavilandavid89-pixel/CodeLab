@@ -137,6 +137,14 @@ assert.match(dimensionUnitAppSource, /const duplicateIds = new Map\(selected\.ma
   'duplicated internal prototype links must target the duplicated layer when both endpoints are copied');
 assert.match(dimensionUnitAppSource, /selectedDesignElementIds = p\.design\.elements\.map\(item => item\.id\)/,
   'select-all must populate the complete multi-selection so move, duplicate and delete tools can operate on it');
+assert.match(dimensionUnitAppSource, /const selectedIds = new Set\(selectedDesignElementIds\.length \? selectedDesignElementIds : \[element\.id\]\)/,
+  'layer ordering must operate on the full multi-selection');
+assert.match(dimensionUnitAppSource, /const orderedIndices = step > 0 \? selectedIndices\.slice\(\)\.reverse\(\) : selectedIndices/,
+  'multi-layer ordering must process in direction-aware order to preserve the selected layers relative to one another');
+assert.match(dimensionUnitAppSource, /\[nextOrder\[index\], nextOrder\[target\]\] = \[nextOrder\[target\], nextOrder\[index\]\]/,
+  'multi-layer ordering must swap selected layers across adjacent unselected layers without flattening their order');
+assert.match(dimensionUnitAppSource, /if \(!changed\) return;[\s\S]{0,100}recordDesignHistory\(\)/,
+  'a blocked layer-order operation must not create a false history entry');
 assert.match(dimensionUnitAppSource, /x: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)\)/,
   'duplicating percentage-positioned layers must offset the copy by 24 pixels, not 24 percentage points');
 assert.match(dimensionUnitAppSource, /y: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'y', canvasHeight\) \+ 24\)\)/,
