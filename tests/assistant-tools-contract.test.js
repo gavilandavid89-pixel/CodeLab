@@ -35,6 +35,19 @@ assert.match(branchResumeHandler, /serverReadbackVerified: true/,
   'branch resume must report successful authoritative server readback');
 assert.match(branchResumeHandler, /persistenceScope: 'editor-session-only'/,
   'branch resume must remain explicitly session-scoped, not claim a persistence write');
+const branchSaveStart = bridge.indexOf("} else if (command.action === 'branch_save') {");
+const branchSaveEnd = bridge.indexOf("} else if (command.action ===", branchSaveStart + 40);
+const branchSaveHandler = bridge.slice(branchSaveStart, branchSaveEnd);
+assert.match(branchSaveHandler, /query\('project\.inspect'/,
+  'branch save must inspect the authoritative saved branch after attempting a session save');
+assert.match(branchSaveHandler, /query\('project\.code\.read'/,
+  'branch save must compare exact server HTML/CSS/JS, not infer sync from a local boolean');
+assert.match(branchSaveHandler, /serverSynced: serverReadbackVerified/,
+  'branch save must only claim server sync after authoritative code readback');
+assert.match(branchSaveHandler, /persistenceScope: serverReadbackVerified \? 'server-confirmed' : 'local-snapshot-only'/,
+  'branch save must report the actual persistence scope');
+assert.doesNotMatch(branchSaveHandler, /serverSynced:\s*saved\s*===\s*true/,
+  'branch save must not treat local snapshot success as proof of server sync');
 for (const [action, operation] of [
   ['branch_create', 'branch.create'],
   ['branch_merge', 'branch.merge'],
