@@ -95,7 +95,11 @@ function auditDesignAccessibility(project) {
         : null;
       if (background) {
         const ratio = contrastRatio(foreground, background);
-        if (ratio !== null) {
+        if (ratio === null) {
+          add('warning', 'text-contrast-unavailable', element,
+            'No se pudo calcular el contraste con el formato de color declarado; verifica esta capa visualmente.',
+            { contrastBasis: 'unsupported-color-format' });
+        } else {
           const large = Number.isFinite(fontSize) &&
             (fontSize >= LARGE_TEXT_PX || (fontSize >= LARGE_BOLD_TEXT_PX && weight >= 700));
           const minimum = large ? 3 : 4.5;
