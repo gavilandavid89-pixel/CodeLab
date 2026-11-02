@@ -99,7 +99,7 @@ The authenticated `POST /api/workspace/:id/headless/query` endpoint reads the cu
 - `project.inspect`, `project.code.read`, and `design.read` for saved project state, with explicit field/layer limits and truncation metadata. `project.code.read` supports offset-based paging (`offset`, `maxChars`, per-field `nextOffset`) so agents can read large HTML/CSS/JS files in bounded chunks instead of losing everything after the first 200,000 characters.
 - `accessibility.audit` against saved web-project HTML using the existing static audit.
 
-The endpoint requires the same workspace token/session ownership checks as normal workspace operations. An optional `expectedRevision` detects stale reads and returns HTTP 409. Query operations are read-only and do not create idempotency receipts or increment the workspace revision. The bridge action `headless_query` exposes these reads to the assistant without opening a project or simulating editor clicks.
+The endpoint requires the same workspace token/session ownership checks as normal workspace operations. An optional `expectedRevision` detects stale reads and returns HTTP 409. Query operations are read-only and do not create idempotency receipts or increment the workspace revision. The bridge action `headless_query` exposes these reads to the assistant without opening a project or simulating editor clicks. The legacy `project_code_read` bridge action also delegates to this authenticated API (rather than the editor's in-memory `projects` array), accepts `offset` and `max_chars`, and returns each field's original length, truncation state, `nextOffset`, and the workspace revision.
 
 ## Workspace-level design-system settings
 
@@ -187,3 +187,17 @@ The current editor embeds image data in the project; there is no separate asset 
 
 
 **Transport note:** the GitHub issue-mailbox bridge limits serialized `headless_batch` operations to 50,000 characters, which is too small for a full 2 MiB Base64 image. Use the authenticated headless workspace API for full-size image attachment. Large binary transport through the issue mailbox is still pending.
+
+## Basic capability readiness checklist
+
+The basic headless scope is treated as a single end-to-end capability set, not a collection of unrelated features. Before advanced automation is considered complete, verify each item against the authenticated saved workspace and the actual browser preview:
+
+1. **Workspace and project lifecycle:** list/inspect projects, create, rename, duplicate, and approved delete; verify every mutation by reading saved state back.
+2. **Web code lifecycle:** read HTML/CSS/JS with paging, write bounded chunks to main or branch, preserve the selected source, detect stale revisions, and verify final saved content.
+3. **Design lifecycle:** inspect canvas/layers, add/update/delete/reorder/duplicate/align/distribute layers, configure layout/canvas, manage prototype links, use templates, and undo/redo with monotonic revisions.
+4. **Design-system and reusable assets:** search/inspect/insert components, generate/apply tokens, read/write/import/export design-system settings, and import/export/convert design projects.
+5. **Preview and quality checks:** run isolated preview diagnostics, exercise common controls, audit accessibility, and report console/runtime/request failures without mutating the saved project.
+6. **Safety and recovery:** enforce authentication/ownership, explicit approval for destructive or main-branch changes, input and size limits, atomic rollback, idempotent retries, revision conflict handling, and honest provider quota/error reporting.
+7. **Capture and evidence:** obtain structured design capture context, render an actual PNG in an isolated browser, and verify that the image and context refer to the same saved project revision. This last end-to-end pairing is still an open verification item; SVG export is not a substitute for PNG evidence.
+
+A capability is only marked complete when its contract tests and relevant end-to-end checks pass. A bridge action that still reads or writes through the editor's in-memory project model is considered a basic parity gap even if a parallel headless API operation exists. The remaining bridge parity audit must explicitly review `project_inspect`, `design_read`, `branch_status`, `workspace_inspect`, `accessibility_audit`, `design_export`, `design_flow_read/connect/disconnect`, and the legacy `ai_generate`/design-history/template actions. Migrate them only where the authenticated API has equivalent behavior; otherwise document and test the gap rather than silently changing behavior.
