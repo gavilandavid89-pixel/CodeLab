@@ -147,3 +147,10 @@ assert.match(bridgeSource, /'xUnit', 'yUnit'/,
   'assistant bridge must allow editing responsive position units');
 assert.match(bridgeSource, /key === 'xUnit' \|\| key === 'yUnit'\) && !\['px', '%'/,
   'assistant bridge must validate responsive position units');
+
+assert.match(dimensionUnitAppSource, /function getDesignElementPositionCss\(el, axis\)/,
+  'live and generated design views must use the selected X/Y position units');
+assert.match(dimensionUnitAppSource, /left:'\+leftCss\+';top:'\+topCss\+'/,
+  'generated HTML and preview must preserve percentage X/Y positions');
+assert.match(dimensionUnitAppSource, /el\.xUnit = 'px'; el\.yUnit = 'px';/,
+  'dragging a percentage-positioned layer must convert it to pixel coordinates without jumping');
