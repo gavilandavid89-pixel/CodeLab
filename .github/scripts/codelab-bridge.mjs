@@ -552,24 +552,27 @@ try {
       const json = JSON.stringify(data.json, null, 2);
       return { exported: true, format: data.json?.format, version: data.json?.version, revision: data.revision, length: json.length, json, css: data.css };
     });
-  } else if (command.action === 'design_export') {
+   } else if (command.action === 'design_export') {
     stage = 'design_export';
-    result = await page.evaluate(({ projectId, format }) => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      let content, mimeType;
-      if (format === 'svg') {
-        const api = window.CodeLabCapture;
-        if (!api || typeof api.captureDesignSvg !== 'function') throw new Error('SVG export API is not ready.');
-        const capture = api.captureDesignSvg(project);
-        content = capture.svg;
-        mimeType = 'image/svg+xml';
-      } else {
-        content = JSON.stringify({ format: 'codelab-design-project', version: 1, exportedAt: new Date().toISOString(), project }, null, 2);
-        mimeType = 'application/json';
-      }
+    result = await page.evaluate(async ({ projectId, format }) => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const action = format === 'svg' ? 'design.export.svg' : 'design.export.json';
+      const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+        body: JSON.stringify({ action, args: { projectId } })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design export failed.');
+      const content = format === 'svg' ? data.result.svg : JSON.stringify(data.result, null, 2);
       const max = 7000;
-      return { projectId, format, mimeType, length: content.length, content: content.slice(0, max), truncated: content.length > max };
+      return {
+        projectId, format, mimeType: format === 'svg' ? 'image/svg+xml' : 'application/json',
+        length: content.length, content: content.slice(0, max), truncated: content.length > max,
+        workspaceRevision: data.revision, readOnly: true
+      };
     }, { projectId: command.args.project_id, format: command.args.format });
   } else if (command.action === 'design_import_json') {
     stage = 'design_import_json';
@@ -826,22 +829,39 @@ try {
     }, { projectId: command.args.project_id, source: command.args.source || 'main', prompt: command.args.prompt });
   } else if (command.action === 'design_flow_read') {
     stage = 'design_flow_read';
-    result = await page.evaluate(projectId => {
-      const project = projects.find(item => item && item.id === projectId);
-      if (!project || !project.design) throw new Error('Design project not found.');
-      const elements = Array.isArray(project.design.elements) ? project.design.elements : [];
-      const connections = Array.isArray(project.design.flowConnections) ? project.design.flowConnections : [];
-      const targets = new Map(projects.filter(item => item?.type === 'design').map(item => [item.id, item]));
+    result = await page.evaluate(async projectId => {
+      const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
+      const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
+      if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
+      const query = async (action, args) => {
+        const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
+          body: JSON.stringify({ action, args })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design flow query failed.');
+        return data;
+      };
+      const saved = await query('design.read', { projectId, limit: 500 });
+      const design = saved.result;
+      const elements = Array.isArray(design.elements) ? design.elements : [];
+      const connections = Array.isArray(design.flowConnections) ? design.flowConnections : [];
+      const targets = await Promise.all([...new Set(connections.map(item => item.targetProjectId).filter(Boolean))]
+        .map(async targetProjectId => {
+          try { const response = await query('project.inspect', { projectId: targetProjectId }); return [targetProjectId, response.result]; }
+          catch { return [targetProjectId, null]; }
+        }));
+      const targetMap = new Map(targets);
       return {
-        projectId, projectName: project.name,
-        connections: connections.map(connection => ({
+        projectId, connections: connections.map(connection => ({
           sourceElementId: connection.sourceElementId,
           sourceLabel: elements.find(element => element.id === connection.sourceElementId)?.label || null,
           targetProjectId: connection.targetProjectId,
-          targetProjectName: targets.get(connection.targetProjectId)?.name || null,
-          broken: !elements.some(element => element.id === connection.sourceElementId) || !targets.has(connection.targetProjectId)
+          targetProjectName: targetMap.get(connection.targetProjectId)?.name || null,
+          broken: !elements.some(element => element.id === connection.sourceElementId) || !targetMap.get(connection.targetProjectId)
         })),
-        count: connections.length
+        count: connections.length, workspaceRevision: saved.revision, readOnly: true
       };
     }, command.args.project_id);
   } else if (command.action === 'design_flow_connect') {

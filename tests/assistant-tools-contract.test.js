@@ -207,3 +207,13 @@ assert.match(systemImportHandler, /\/headless\/design-system/, 'design system JS
 assert.match(systemImportHandler, /action: 'import', json, baseRevision: state\.revision/, 'design system import must use optimistic revision control');
 assert.doesNotMatch(importHandler + systemImportHandler + systemExportHandler, /locator\(|setInputFiles\(|waitForEvent\('download'/,
   'design import/export must not depend on editor UI or browser download events');
+
+const flowReadHandler = bridge.slice(bridge.indexOf("command.action === 'design_flow_read'"), bridge.indexOf("command.action === 'design_flow_connect'", bridge.indexOf("command.action === 'design_flow_read'")));
+assert.match(flowReadHandler, /\/headless\/query/, 'design flow read must use saved workspace queries');
+assert.match(flowReadHandler, /action: 'design\.read'/, 'design flow read must use the saved design query');
+assert.doesNotMatch(flowReadHandler, /projects\.find\(/, 'design flow read must not inspect editor memory');
+const designExportHandler = bridge.slice(bridge.indexOf("command.action === 'design_export'"), bridge.indexOf("command.action === 'design_import_json'", bridge.indexOf("command.action === 'design_export'")));
+assert.match(designExportHandler, /\/headless\/query/, 'design export must use the authenticated saved-workspace query');
+assert.match(designExportHandler, /design\.export\.svg/, 'SVG export must use the shared deterministic renderer');
+assert.match(designExportHandler, /design\.export\.json/, 'JSON export must use the shared canonical serializer');
+assert.doesNotMatch(designExportHandler, /projects\.find\(|CodeLabCapture/, 'design export must not depend on editor memory or UI capture code');
