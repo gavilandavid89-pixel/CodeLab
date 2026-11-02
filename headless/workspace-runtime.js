@@ -346,11 +346,22 @@ function applyOperation(state, operation) {
       const project = findProject(state, operation.projectId);
       const index = state.projects.findIndex(item => item.id === project.id);
       state.projects.splice(index, 1);
+      const changedAt = new Date().toISOString();
       for (const other of state.projects) {
+        let changed = false;
         if (other.type === 'design' && other.design && Array.isArray(other.design.flowConnections)) {
-          other.design.flowConnections = other.design.flowConnections.filter(item => item.targetProjectId !== project.id);
+          const remainingConnections = other.design.flowConnections.filter(item => item.targetProjectId !== project.id);
+          if (remainingConnections.length !== other.design.flowConnections.length) {
+            other.design.flowConnections = remainingConnections;
+            other.design.revision = (Number.isInteger(other.design.revision) ? other.design.revision : 0) + 1;
+            changed = true;
+          }
         }
-        if (other.sourceDesignProjectId === project.id) delete other.sourceDesignProjectId;
+        if (other.sourceDesignProjectId === project.id) {
+          delete other.sourceDesignProjectId;
+          changed = true;
+        }
+        if (changed) other.updatedAt = changedAt;
       }
       return { type: operation.type, projectId: project.id, deleted: true };
     }
