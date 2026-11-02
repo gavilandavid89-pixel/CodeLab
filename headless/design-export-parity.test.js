@@ -113,12 +113,14 @@ test('HTML and AI capture context clamp invalid transform ranges consistently', 
 
 test('semantic HTML export preserves safe mailto and tel actions but rejects unsafe schemes', () => {
   const html = exportDesignHtml(project([
-    { id: 'email', type: 'button', text: 'Email', href: 'mailto:hello@example.com', x: 10, y: 10, width: 120, height: 40 },
+    { id: 'email', type: 'button', text: 'Email', href: 'mailto:hello@example.com?subject=Hello', x: 10, y: 10, width: 120, height: 40 },
     { id: 'phone', type: 'button', text: 'Call', href: 'tel:+1-555-123-4567', x: 10, y: 60, width: 120, height: 40 },
-    { id: 'unsafe', type: 'button', text: 'Unsafe', href: 'javascript:alert(1)', x: 10, y: 110, width: 120, height: 40 }
+    { id: 'relative', type: 'button', text: 'Contact', href: '/contact', x: 10, y: 110, width: 120, height: 40 },
+    { id: 'protocol-relative', type: 'button', text: 'External', href: '//evil.example/path', x: 10, y: 160, width: 120, height: 40 },
+    { id: 'unsafe', type: 'button', text: 'Unsafe', href: 'javascript:alert(1)', x: 10, y: 210, width: 120, height: 40 }
   ]));
 
-  assert.match(html, /href="mailto:hello@example\.com"/);
+  assert.match(html, /href="mailto:hello@example\.com\?subject=Hello"/);
   assert.match(html, /href="tel:\+1-555-123-4567"/);
   const emailAnchor = html.match(/<a id="layer-email"[^>]*>/)?.[0] || '';
   const phoneAnchor = html.match(/<a id="layer-phone"[^>]*>/)?.[0] || '';
@@ -126,6 +128,8 @@ test('semantic HTML export preserves safe mailto and tel actions but rejects uns
   assert.ok(phoneAnchor);
   assert.doesNotMatch(emailAnchor, /target=/);
   assert.doesNotMatch(phoneAnchor, /target=/);
+  assert.match(html, /href="\/contact"/);
+  assert.doesNotMatch(html, /href="\/\/evil\.example/);
   assert.doesNotMatch(html, /href="javascript:/);
   assert.match(html, /Unsafe/);
 });
