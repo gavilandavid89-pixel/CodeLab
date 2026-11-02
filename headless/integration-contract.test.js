@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, '..');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 const bridge = fs.readFileSync(path.join(root, '.github/scripts/codelab-bridge.mjs'), 'utf8');
 const runtime = fs.readFileSync(path.join(root, 'headless/workspace-runtime.js'), 'utf8');
+const { applyHeadlessBatch } = require('./workspace-runtime');
 
 test('server exposes the authenticated headless workspace route', () => {
   assert.match(server, /require\(['"]\.\/headless\/workspace-runtime['"]\)/);
@@ -184,4 +185,36 @@ test('preview diagnostics and interactions run in an isolated sandbox using save
   assert.match(interactions, /createHeadlessPreview\(/);
   assert.doesNotMatch(diagnostics + interactions, /#previewIframe|previewFrame/);
   assert.match(interactions, /only in-page hash links may be clicked/);
+});
+
+test('deleting a prototype target bumps dependent design revision and timestamp', () => {
+  const source = {
+    id: 'proj_source',
+    name: 'Source screen',
+    type: 'design',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    design: {
+      revision: 4,
+      canvasWidth: 720,
+      canvasHeight: 900,
+      elements: [{ id: 'nav', type: 'button', text: 'Open target' }],
+      flowConnections: [{ sourceElementId: 'nav', targetProjectId: 'proj_target' }]
+    }
+  };
+  const target = {
+    id: 'proj_target',
+    name: 'Target screen',
+    type: 'design',
+    design: { revision: 2, canvasWidth: 720, canvasHeight: 900, elements: [] }
+  };
+  const result = applyHeadlessBatch({ revision: 0, projects: [source, target] }, {
+    operationId: 'delete-prototype-target-01',
+    baseRevision: 0,
+    operations: [{ type: 'project.delete', projectId: 'proj_target', approved: true }]
+  });
+
+  assert.deepEqual(result.state.projects.map(project => project.id), ['proj_source']);
+  assert.deepEqual(result.state.projects[0].design.flowConnections, []);
+  assert.equal(result.state.projects[0].design.revision, 5);
+  assert.notEqual(result.state.projects[0].updatedAt, source.updatedAt);
 });
