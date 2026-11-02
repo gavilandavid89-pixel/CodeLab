@@ -4337,24 +4337,48 @@ function moveDesignLayer(direction) {
   showToast(nextIndex > currentIndex ? 'Capa traída al frente.' : 'Capa enviada atrás.');
 }
 function duplicateDesignElement() {
-  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
-  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
-    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
+  const p = activeDesignProject();
+  if (!p || !Array.isArray(p.design.elements) || !selectedDesignElementId) return;
+  const selectedIdSet = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
+  const selected = p.design.elements.filter(item => selectedIdSet.has(item.id));
+  if (!selected.length) return;
+  if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
   }
   recordDesignHistory();
   const canvasWidth = getDesignCanvasWidth(p.design);
   const canvasHeight = getDesignCanvasHeight(p.design) || 900;
-  const copy = {
+  const existingIds = new Set(p.design.elements.map(item => item.id));
+  let fallbackId = Date.now();
+  const makeId = () => {
+    let id;
+    do {
+      id = 'el_' + (crypto.randomUUID ? crypto.randomUUID() : String(fallbackId++));
+    } while (existingIds.has(id));
+    existingIds.add(id);
+    return id;
+  };
+  const copies = selected.map(el => ({
     ...el,
-    id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()),
-    x: Math.min(6000, getDesignElementPosition(el, 'x', canvasWidth) + 24),
-    y: Math.min(6000, getDesignElementPosition(el, 'y', canvasHeight) + 24),
+    id: makeId(),
+    x: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'x', canvasWidth) + 24)),
+    y: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'y', canvasHeight) + 24)),
     xUnit: 'px',
     yUnit: 'px',
     label: (el.label || 'Capa') + ' copia'
-  };
-  p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
+  }));
+  const duplicateIds = new Map(selected.map((el, index) => [el.id, copies[index].id]));
+  copies.forEach((copy, index) => {
+    const original = selected[index];
+    const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
+    if (internalTarget) copy.href = '#' + designLayerDomId(duplicateIds.get(internalTarget.id));
+  });
+  p.design.elements.push(...copies);
+  selectedDesignElementIds = copies.map(copy => copy.id);
+  selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+  renderDesignWorkspace();
+  saveProjectsToStorage();
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
