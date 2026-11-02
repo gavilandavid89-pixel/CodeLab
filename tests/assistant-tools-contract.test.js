@@ -315,7 +315,7 @@ assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy
 assert.match(bridge, /legacy_ai_' \+ String\(command\.command_id\)\.slice\(0, 90\)/,
   'legacy AI retries must derive a stable idempotency key from the bridge command ID');
 
-assert.match(bridge, /'click', 'fill', 'select', 'upload', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'/,
+assert.match(bridge, /'click', 'fill', 'select', 'read', 'check', 'uncheck', 'press', 'hover', 'focus', 'assert_text', 'assert_visible', 'assert_enabled'/,
   'isolated preview must expose common form interactions and assertions');
 assert.match(bridge, /Preview press steps only allow non-submitting navigation keys/,
   'preview keyboard actions must block submit-capable keys');
