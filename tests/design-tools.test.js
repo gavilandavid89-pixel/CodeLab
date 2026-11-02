@@ -137,8 +137,12 @@ assert.match(dimensionUnitAppSource, /const duplicateIds = new Map\(selected\.ma
   'duplicated internal prototype links must target the duplicated layer when both endpoints are copied');
 assert.match(dimensionUnitAppSource, /selectedDesignElementIds = p\.design\.elements\.map\(item => item\.id\)/,
   'select-all must populate the complete multi-selection so move, duplicate and delete tools can operate on it');
-assert.match(dimensionUnitAppSource, /const canvasWidth = getDesignCanvasWidth\(p\.design\);[\s\S]{0,300}x: Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)[\s\S]{0,180}xUnit: 'px',[\s\S]{0,100}yUnit: 'px'/,
+assert.match(dimensionUnitAppSource, /x: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'x', canvasWidth\) \+ 24\)\)/,
   'duplicating percentage-positioned layers must offset the copy by 24 pixels, not 24 percentage points');
+assert.match(dimensionUnitAppSource, /y: Math\.max\(0, Math\.min\(6000, getDesignElementPosition\(el, 'y', canvasHeight\) \+ 24\)\)/,
+  'duplicate vertical offsets must also use resolved pixel coordinates');
+assert.match(dimensionUnitAppSource, /xUnit: 'px',[\s\S]{0,30}yUnit: 'px'/,
+  'duplicate position units must be normalized to pixels');
 assert.match(dimensionUnitAppSource, /widthUnit: el\.widthUnit \|\| 'px', heightUnit: el\.heightUnit \|\| 'px'/,
   'AI design capture must preserve dimension units');
 assert.match(bridgeSource, /'widthUnit', 'heightUnit'/,
