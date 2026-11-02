@@ -112,7 +112,7 @@ assert.match(bridge, /component_inspect max_chars must be an integer from 1000 t
 assert.match(bridge, /design_elements_distribute requires 3 to 100 unique valid element_ids/);
 assert.match(designEngine, /case 'elements\.distribute'/, 'distribution must use the shared headless design engine operation');
 assert.match(bridge, /design_prototype_target_set target must be a safe string/);
-assert.match(bridge, /setDesignPrototypeTarget\(target\)/, 'prototype target must use the existing editor operation');
+assert.match(bridge, /type: 'element\\.update'[\\s\\S]{0,300}properties:\\{href:target\\}/, 'prototype target must persist through the shared design engine');
 
 
 assert.match(bridge, /'objectFit', 'textAlign'/,
