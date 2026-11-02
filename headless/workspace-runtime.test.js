@@ -139,7 +139,7 @@ test('persists editor-compatible image attachments through an atomic headless de
   assert.equal(saved.design.elements[0].alt, 'hero');
   assert.equal(saved.design.revision, 1);
   assert.equal(saved.designUndoStack.length, 1);
-  assert.equal(result.results[0].results[0].byteLength, Buffer.from('image-bytes').length);
+  assert.deepEqual(result.results[0].operationTypes, ['image.attach']);
 });
 
 test('stores compact replay receipts instead of large SVG previews', () => {
