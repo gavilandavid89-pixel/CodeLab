@@ -437,6 +437,8 @@ function buildAiDesignCaptureContext(project, scale = 2) {
           fontSize: Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16)),
           fontWeight: Math.max(100, Math.min(900, finite(el.weight, 400))),
           radius: Math.max(0, Math.min(4000, finite(el.radius, 0))),
+          rotation: Math.max(-3600, Math.min(3600, finite(el.rotation, 0))),
+          opacity: Math.max(0, Math.min(1, finite(el.opacity, 1))),
           textAlign: ['left', 'center', 'right'].includes(el.textAlign) ? el.textAlign : 'left'
         }
       };
