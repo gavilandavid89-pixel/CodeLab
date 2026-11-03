@@ -37,12 +37,12 @@ function safeImageSource(value) {
 function safeLink(value) {
   if (typeof value !== 'string') return '';
   const text = value.trim();
-  if (!text || text.length > 2048 || /[\\u0000-\\u001f\\u007f<>\\\\]/.test(text)) return '';
+  if (!text || text.length > 2048 || /[\x00-\x1f\x7f<>\\]/.test(text)) return '';
   if (/^#layer-[a-z0-9_-]{1,120}$/i.test(text)) return text;
   // Keep same-origin relative links, but never protocol-relative URLs.
-  if (/^(?:\\/(?!\\/)|\\.{1,2}\\/)[^\\s<>]*$/.test(text)) return text;
-  if (/^mailto:[^\\s<>@]+@[^\\s<>@]+\\.[^\\s<>@]+(?:\\?[^\\s<>]*)?$/i.test(text)) return text;
-  if (/^tel:\\+?[0-9(). -]{3,32}$/i.test(text)) return text;
+  if (/^(?:\/(?!\/)|\.{1,2}\/)[^\s<>]*$/.test(text)) return text;
+  if (/^mailto:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+(?:\?[^\s<>]*)?$/i.test(text)) return text;
+  if (/^tel:\+?[0-9(). -]{3,32}$/i.test(text)) return text;
   try {
     const url = new URL(text);
     if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) return url.href;
