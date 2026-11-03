@@ -304,6 +304,8 @@ assert.match(savedDesignBatch, /Object\.entries\(properties\)\.every/, 'design e
 assert.match(savedDesignBatch, /element\.hasImageSource === \(value\.length > 0\) && element\.imageSourceLength === value\.length/,
   'image source readback must verify payload metadata without returning the source bytes');
 assert.match(savedDesignBatch, /const positionPx = \(element, axis, design\)/, 'duplicate verification must resolve coordinates in effective pixels');
+assert.match(savedDesignBatch, /const value = Number\.isFinite\(raw\) \? raw : 0/,
+  'duplicate verification must preserve legacy layers whose stored coordinates are absent');
 assert.match(savedDesignBatch, /unit === '%' \? value \* canvasSize \/ 100 : value/,
   'duplicate verification must convert percentage coordinates using the saved canvas');
 assert.match(savedDesignBatch, /connectionsDuplicated = sourceConnections\.every/, 'duplicate readback must verify remapped outgoing flow connections');
