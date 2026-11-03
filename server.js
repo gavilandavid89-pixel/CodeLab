@@ -2144,6 +2144,7 @@ const server = http.createServer(async (req, res) => {
         }
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         // Resolve one-time, project-bound binary upload tokens inside the authenticated server boundary.
+        const resolvedUploadTokens = [];
         const resolveUploadedImages = (operations) => {
           if (!Array.isArray(operations)) return;
           for (const operation of operations) {
@@ -2151,8 +2152,9 @@ const server = http.createServer(async (req, res) => {
             if (operation.type === 'design.batch' && Array.isArray(operation.operations)) {
               for (const nested of operation.operations) {
                 if (nested && nested.type === 'image.attach' && typeof nested.uploadToken === 'string') {
-                  const uploaded = headlessTransfers.consumeImage({ uploadToken: nested.uploadToken, workspaceId: id, projectId: operation.projectId });
+                  const uploaded = headlessTransfers.resolveImage({ uploadToken: nested.uploadToken, workspaceId: id, projectId: operation.projectId });
                   nested.dataUrl = uploaded.dataUrl;
+                  resolvedUploadTokens.push({ uploadToken: nested.uploadToken, projectId: operation.projectId });
                   delete nested.uploadToken;
                 }
               }
@@ -2173,6 +2175,9 @@ const server = http.createServer(async (req, res) => {
               return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
             }
             writeState(id, result.state);
+            for (const upload of resolvedUploadTokens) {
+              try { headlessTransfers.consumeImage({ uploadToken: upload.uploadToken, workspaceId: id, projectId: upload.projectId }); } catch (_) {}
+            }
           }
           return sendJson(res, 200, {
             ok: true,
