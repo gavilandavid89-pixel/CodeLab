@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { chromium } = require('playwright');
 
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 
@@ -34,7 +35,31 @@ async function main() {
     assert.equal(response.status, 200, path + ' should be served');
     assert.ok((await response.text()).length > 0, path + ' should not be empty');
   }
-  console.log('PixelForge studio route, assets, and return navigation verified.');
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
+    await page.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#document-size').innerText(), '128 × 128', 'initial artwork dimensions should render');
+
+    await page.locator('#new-document').click();
+    await page.locator('#new-dialog').waitFor({ state: 'visible' });
+    await page.locator('#new-name').fill('Integration smoke artwork');
+    await page.locator('#new-width').fill('64');
+    await page.locator('#new-height').fill('32');
+    await page.locator('#create-new').click();
+    await page.locator('#new-dialog').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#document-size').innerText(), '64 × 32', 'creating a document should update the editor');
+
+    await page.locator('a[aria-label="Back to CodeLab dashboard"]').click();
+    await page.waitForURL(base + '/');
+    assert.match(await page.locator('#studioChooser').innerText(), /PixelForge AI/, 'return navigation should land on the studio chooser');
+    await context.close();
+  } finally {
+    await browser.close();
+  }
+  console.log('PixelForge studio route, assets, navigation, and browser smoke verified.');
 }
 
 main().catch(error => {
