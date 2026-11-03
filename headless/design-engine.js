@@ -333,7 +333,14 @@ function parseEditorImageDataUrl(value) {
 function isSafeImageSource(value) {
   const src = String(value || '').trim();
   if (!src) return true;
-  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(src)) return true;
+  if (/^data:image\//i.test(src)) {
+    try {
+      parseEditorImageDataUrl(src);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   return /^(https?:\/\/|\/|\.\.?\/)/i.test(src) && !/[\x00-\x20]/.test(src);
 }
 
