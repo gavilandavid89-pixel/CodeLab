@@ -123,7 +123,7 @@
       }
 
       const tagName = tagMatch[1].toLowerCase();
-      if (tagName === 'script' || tagName === 'style') {
+      if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
         const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
         closingTag.lastIndex = tagEnd + 1;
         const closingMatch = closingTag.exec(source);
