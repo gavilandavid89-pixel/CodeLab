@@ -138,7 +138,7 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(render, /Unidad Y/);
   assert.match(render, /Bloqueada/);
   assert.match(update, /key === 'visible' \|\| key === 'locked'/);
-  assert.match(update, /x: \[0, 10000\], y: \[0, 10000\]/);
+  assert.match(update, /x: \[0, el\.xUnit === '%' \? 100 : 10000\], y: \[0, el\.yUnit === '%' \? 100 : 10000\]/);
   assert.match(capture, /el\.visible !== false/);
   assert.match(exporter, /el\.visible !== false/);
   assert.match(exporter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
