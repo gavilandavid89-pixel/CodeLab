@@ -95,7 +95,7 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   const render = extract('function renderDesignWorkspace() {', '\nfunction updateDesignProperty');
   const update = extract('function updateDesignProperty(key, value) {', '\nfunction bindDesignCanvasEvents');
   const capture = extract('async function captureDesignForAI() {', '\nfunction safeDesignExportColor');
-  const exporter = extract('function exportDesignHtml() {', '\nfunction toggleDesignExportMenu');
+  const exporter = extract('function exportDesignHtml() {', '\nfunction setDesignFrame');
   const converter = extract('async function convertDesignToWeb() {', '\nfunction setupNewProjectModalKeys');
   const actions = extract('function moveDesignLayer(direction) {', '\nfunction openDesignFlowGraph');
 
