@@ -157,6 +157,21 @@ test('attaches an editor-compatible image file to an image layer', () => {
 });
 
 
+test('clamps effective auto image dimensions without mutating stored values', () => {
+  const engine = createDesignEngine();
+  const dataUrl = 'data:image/png;base64,' + imageBytes('image/png', 'auto-size').toString('base64');
+  const input = project({ elements: [{
+    id: 'auto-image', type: 'image', src: dataUrl,
+    width: 10, height: 5000, widthUnit: 'auto', heightUnit: 'auto'
+  }] });
+  const result = engine.transact(input, [
+    { type: 'element.update', id: 'auto-image', properties: { alt: 'bounded image' } }
+  ]);
+  assert.equal(result.project.design.elements[0].width, 10);
+  assert.equal(result.project.design.elements[0].height, 5000);
+  assert.match(result.svg, /<image href="data:image\/png;base64,[^"]+" x="0" y="0" width="20" height="4000"/);
+});
+
 test('validates image magic bytes for PNG, JPEG, GIF, and WebP and shares policy with source updates', () => {
   const engine = createDesignEngine();
   const fixtures = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
