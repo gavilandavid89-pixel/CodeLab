@@ -94,6 +94,8 @@ async function main() {
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
   assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
+  const health = await (await fetch(base + '/api/health')).json();
+  assert.ok(['postgresql', 'server-file'].includes(health.persistence), 'CodeLab should report its active persistence backend');
   const listBefore = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal(listBefore.status, 200, 'authenticated CodeLab users should list their PixelForge projects');
   assert.deepEqual((await listBefore.json()).projects, [], 'new account should start with an empty PixelForge project list');
@@ -105,7 +107,11 @@ async function main() {
     body: JSON.stringify({ project: fixture })
   });
   assert.equal(saved.status, 201, 'first save should create a project in the account');
-  assert.ok(fs.existsSync(pixelForgeStoreFile), 'PixelForge project data should be stored under the same CodeLab workspace identity');
+  if (health.persistence === 'postgresql') {
+    assert.equal(fs.existsSync(pixelForgeStoreFile), false, 'PostgreSQL-backed PixelForge projects must not be duplicated in workspace sidecar files');
+  } else {
+    assert.ok(fs.existsSync(pixelForgeStoreFile), 'file fallback should stay bound to the same CodeLab workspace identity when PostgreSQL is unavailable');
+  }
   const malformed = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
