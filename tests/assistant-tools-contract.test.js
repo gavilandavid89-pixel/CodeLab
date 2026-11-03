@@ -294,8 +294,8 @@ assert.match(codeWriteHandler, /baseRevision: before\.revision/, 'code write mus
 assert.doesNotMatch(codeWriteHandler, /projects\.find\(|getEditorValue\(|setEditorValue\(|saveCurrentCodeToActiveProject\(/,
   'code write must not depend on editor state');
 
-const designAddHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'design_element_add') {"), bridge.indexOf("} else if (command.action === 'design_element_update') {", bridge.indexOf("} else if (command.action === 'design_element_add') {")));
-assert.match(designAddHandler, /properties: args\.properties/, 'design element add must forward initial properties atomically');
+assert.match(bridge, /type: 'element\.add', elementType: args\.type, \s*\.\.\.\(args\.properties \? \{ properties: args\.properties \} : \{\} \)/,
+  'design element add must forward initial properties atomically');
 assert.match(bridge, /validateDesignElementProperties\(args\.properties, 'design_element_add'\)/, 'initial properties must use the same whitelist and type validation as updates');
 assert.match(bridge, /'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit'/, 'bridge must allow responsive dimension properties');
 assert.match(bridge, /'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'/, 'bridge must allow supported metadata properties');
