@@ -107,11 +107,15 @@ test('multi-screen flow export honors hidden sources, responsive dimensions, opa
   const exporter = flowSource.slice(start);
   assert.match(exporter, /source\.hidden !== true && source\.visible !== false/);
   assert.match(exporter, /d\.elements\.filter\(el=>el && !el\.hidden && el\.visible !== false\)/);
-  assert.match(exporter, /getDesignElementDimension\(el,'width'/);
-  assert.match(exporter, /getDesignElementDimensionCss\(el,'width'\)/);
+  assert.match(exporter, /flowElementDimension\(el,'width'/);
+  assert.match(exporter, /flowElementDimensionCss\(el,'width'\)/);
   assert.match(exporter, /opacity:'\+opacity\+'/);
   assert.match(exporter, /transform:rotate\('\+rotation\+'deg\)/);
   assert.match(exporter, /data-design-identifier/);
-  assert.match(exporter, /frameHeight=Math\.max\(Number\(d\.canvasHeight\)\|\|900, Number\(layout\.height\)\|\|0\)/);
+  assert.match(exporter, /frameHeight=Math\.max\(flowCanvasHeight\(d\), Number\(layout\.height\)\|\|0\)/);
   assert.match(exporter, /height:'\+frameHeight\+'px/);
+  const helpers = flowSource.slice(0, start);
+  assert.match(helpers, /function flowLayoutPositions/);
+  assert.match(helpers, /element.hidden !== true && element.visible !== false/);
+  assert.match(helpers, /unit === '%'\) return Math.max\(20, Math.min\(4000, containerSize \* Math.min\(100, value\) \/ 100\)\)/);
 });
