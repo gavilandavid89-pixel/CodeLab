@@ -156,6 +156,8 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(render, /el\.locked \? 'cursor-default' : 'cursor-move'/);
   assert.match(render, /&& !el\.locked/);
   assert.match(render, /if \(el\.locked\) \{ ev\.preventDefault\(\); return; \}/);
+  assert.match(render, /layerIndex <= 0 \|\| el\.locked/);
+  assert.match(render, /layerIndex >= p\.design\.elements\.length - 1 \|\| el\.locked/);
   assert.match(render, /Opacidad \(0–1\)/);
   assert.match(render, /Rotación \(°\)/);
   assert.match(render, /Unidad X/);
