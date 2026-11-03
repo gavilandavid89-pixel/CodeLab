@@ -1,5 +1,5 @@
 import { RasterDocument, screenToDocument, validateDimensions, rasterLinePoints, createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById } from './persistence.js';
+import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
 import { getCodeLabSession } from '../../studio-core.js';
 import { preflightImageFile } from './image-import.js';
 import { createSpriteSheetLayout } from './asset-export.js';
@@ -1417,7 +1417,27 @@ async function renderProjects() {
         status('Opened saved project', 'success');
       } catch (error) { status(`Could not open project: ${error.message}`, 'error'); }
     });
-    row.append(open); list.append(row);
+    const remove = document.createElement('button');
+    remove.className = 'saved-project-delete';
+    remove.type = 'button';
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', 'Delete ' + (project.name || 'saved artwork'));
+    remove.disabled = project.id === doc.id;
+    remove.title = remove.disabled ? 'Save or open another project before deleting this one' : 'Delete this saved project from your CodeLab account';
+    remove.addEventListener('click', async () => {
+      if (remove.disabled) return;
+      if (!window.confirm('Delete "' + (project.name || 'Untitled artwork') + '" from your CodeLab account? This cannot be undone.')) return;
+      remove.disabled = true;
+      try {
+        await deleteProject(project.id);
+        await renderProjects();
+        status('Project deleted from your CodeLab account', 'success');
+      } catch (error) {
+        remove.disabled = false;
+        status('Could not delete project: ' + error.message, 'error');
+      }
+    });
+    row.append(open, remove); list.append(row);
   }
 }
 
