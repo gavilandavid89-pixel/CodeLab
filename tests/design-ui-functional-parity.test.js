@@ -69,3 +69,20 @@ test('rotation, font-size, radius, and opacity ranges match the editor export', 
   assert.match(exporter, /Math\.min\(256, Number\(el\.fontSize\)/);
   assert.match(exporter, /Math\.min\(4000, Number\(el\.radius\)/);
 });
+
+
+test('UI JSON import preserves the same layer contract and remaps flow connection sources', () => {
+  const start = source.indexOf('async function importDesignProjectJson');
+  assert.notEqual(start, -1, 'missing UI design JSON importer');
+  const importer = source.slice(start);
+  assert.match(importer, /identifier: typeof raw\.identifier/);
+  assert.match(importer, /hidden: raw\.hidden === true \|\| raw\.visible === false/);
+  assert.match(importer, /locked: raw\.locked === true/);
+  assert.match(importer, /opacity: finite\(raw\.opacity, 1, 0, 1\)/);
+  assert.match(importer, /rotation: finite\(raw\.rotation, 0, -3600, 3600\)/);
+  assert.match(importer, /flowRole/);
+  assert.match(importer, /raw\.widthUnit === '%' \? 1 : 20/);
+  assert.match(importer, /normalizeDesignElementIdentifiers\(elements\)/);
+  assert.match(importer, /flowConnections: sourceDesign\.flowConnections\.filter/);
+  assert.match(importer, /sourceElementId: oldToNewId\.get\(connection\.sourceElementId\)/);
+});
