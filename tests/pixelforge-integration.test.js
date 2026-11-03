@@ -418,6 +418,111 @@ async function main() {
     assert.ok(rgbaAt(toolProject, 0, 7, 1)[3] > 0 && rgbaAt(toolProject, 11, 7, 1)[3] > 0,
       'gradient tool should apply and persist a raster gradient across its drag endpoints');
 
+
+    // Exercise real raster tools through pointer input, then verify the saved
+    // pixels through the authenticated project API (not just status labels).
+    async function clickDocumentPixel(x, y) {
+      const point = await accountPage.evaluate(({ x, y }) => {
+        const canvas = document.querySelector('#canvas');
+        const rect = canvas.getBoundingClientRect();
+        const dimensions = document.querySelector('#document-size').textContent
+          .split('×').map(value => Number(value.trim()));
+        const zoom = Number.parseFloat(document.querySelector('#zoom-label').textContent) / 100;
+        const [width, height] = dimensions;
+        return {
+          x: rect.left + (canvas.clientWidth - width * zoom) / 2 + (x + 0.5) * zoom,
+          y: rect.top + (canvas.clientHeight - height * zoom) / 2 + (y + 0.5) * zoom
+        };
+      }, { x, y });
+      await accountPage.mouse.click(point.x, point.y);
+    }
+    async function waitForPixelSave() {
+      await accountPage.waitForFunction(
+        () => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
+        null, { timeout: 15000 }
+      );
+    }
+    async function readBrowserArtwork() {
+      const response = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(recoveredMetadata.id), { headers: authHeaders });
+      assert.equal(response.status, 200, 'the browser-edited PixelForge project should remain readable');
+      return (await response.json()).project;
+    }
+    function pixelAt(project, x, y) {
+      return [...Buffer.from(project.layers.find(layer => layer.id === project.activeLayerId).pixels, 'base64')
+        .subarray((y * project.width + x) * 4, (y * project.width + x + 1) * 4)];
+    }
+    await accountPage.locator('#color').evaluate(input => {
+      input.value = '#ff0000'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await accountPage.locator('#brush-size').evaluate(input => {
+      input.value = '1'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await accountPage.locator('#brush-tool').click();
+    await clickDocumentPixel(2, 2);
+    await waitForPixelSave();
+    let toolProject = await readBrowserArtwork();
+    assert.deepEqual(pixelAt(toolProject, 2, 2), [255, 0, 0, 255],
+      'pencil input should change the intended raster pixel and persist it');
+    await accountPage.locator('#undo').click();
+    await waitForPixelSave();
+    toolProject = await readBrowserArtwork();
+    assert.deepEqual(pixelAt(toolProject, 2, 2), [0, 0, 0, 0],
+      'undo should restore the previous transparent pixel and persist it');
+    await accountPage.locator('#redo').click();
+    await waitForPixelSave();
+    toolProject = await readBrowserArtwork();
+    assert.deepEqual(pixelAt(toolProject, 2, 2), [255, 0, 0, 255],
+      'redo should restore the pencil pixel and persist it');
+    await accountPage.locator('#eraser-tool').click();
+    await clickDocumentPixel(2, 2);
+    await waitForPixelSave();
+    toolProject = await readBrowserArtwork();
+    assert.deepEqual(pixelAt(toolProject, 2, 2), [0, 0, 0, 0],
+      'eraser input should clear the targeted pixel and persist it');
+    await accountPage.locator('#color').evaluate(input => {
+      input.value = '#00ff00'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await accountPage.locator('#fill-tool').click();
+    await clickDocumentPixel(0, 0);
+    await waitForPixelSave();
+    toolProject = await readBrowserArtwork();
+    assert.deepEqual(pixelAt(toolProject, 0, 0), [0, 255, 0, 255],
+      'bucket fill should color the connected transparent region and persist it');
+    await accountPage.locator('#eyedropper-tool').click();
+    await clickDocumentPixel(0, 0);
+    assert.equal(await accountPage.locator('#color').inputValue(), '#00ff00',
+      'eyedropper should sample the visible pixel into the foreground color');
+    await accountPage.locator('#rectangle-tool').click();
+    const shapeStart = await accountPage.evaluate(() => {
+      const canvas = document.querySelector('#canvas'), rect = canvas.getBoundingClientRect();
+      const [width, height] = document.querySelector('#document-size').textContent.split('×').map(v => Number(v.trim()));
+      const zoom = Number.parseFloat(document.querySelector('#zoom-label').textContent) / 100;
+      return { x: rect.left + (canvas.clientWidth - width * zoom) / 2 + 7.5 * zoom,
+        y: rect.top + (canvas.clientHeight - height * zoom) / 2 + 1.5 * zoom };
+    });
+    const shapeEnd = await accountPage.evaluate(() => {
+      const canvas = document.querySelector('#canvas'), rect = canvas.getBoundingClientRect();
+      const [width, height] = document.querySelector('#document-size').textContent.split('×').map(v => Number(v.trim()));
+      const zoom = Number.parseFloat(document.querySelector('#zoom-label').textContent) / 100;
+      return { x: rect.left + (canvas.clientWidth - width * zoom) / 2 + 10.5 * zoom,
+        y: rect.top + (canvas.clientHeight - height * zoom) / 2 + 5.5 * zoom };
+    });
+    await accountPage.mouse.move(shapeStart.x, shapeStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(shapeEnd.x, shapeEnd.y);
+    await accountPage.mouse.up();
+    await waitForPixelSave();
+    assert.match(await accountPage.locator('#status').innerText(), /Rectangle drawn/,
+      'rectangle tool should commit a shape gesture');
+    await accountPage.locator('#add-layer').click();
+    await waitForPixelSave();
+    toolProject = await readBrowserArtwork();
+    assert.equal(toolProject.layers.length, 2, 'adding a layer should persist the new raster layer');
+    await accountPage.locator('#duplicate-layer').click();
+    await waitForPixelSave();
+    toolProject = await readBrowserArtwork();
+    assert.equal(toolProject.layers.length, 3, 'duplicating the active layer should persist a separate layer');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
