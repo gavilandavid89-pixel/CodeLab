@@ -266,16 +266,18 @@ function applyOperation(project, operation) {
       const right = Math.max(...rects.map(r => r.x + r.width)), bottom = Math.max(...rects.map(r => r.y + r.height));
       for (const r of rects) {
         if (['left', 'center-x', 'right'].includes(operation.mode)) {
-          if (operation.mode === 'left') r.el.x = left;
-          if (operation.mode === 'center-x') r.el.x = left + (right - left - r.width) / 2;
-          if (operation.mode === 'right') r.el.x = right - r.width;
-          r.el.xUnit = 'px';
+          let nextX = r.x;
+          if (operation.mode === 'left') nextX = left;
+          if (operation.mode === 'center-x') nextX = left + (right - left - r.width) / 2;
+          if (operation.mode === 'right') nextX = right - r.width;
+          r.el.x = toStoredPosition(nextX, r.el.xUnit, canvasWidth);
         }
         if (['top', 'center-y', 'bottom'].includes(operation.mode)) {
-          if (operation.mode === 'top') r.el.y = top;
-          if (operation.mode === 'center-y') r.el.y = top + (bottom - top - r.height) / 2;
-          if (operation.mode === 'bottom') r.el.y = bottom - r.height;
-          r.el.yUnit = 'px';
+          let nextY = r.y;
+          if (operation.mode === 'top') nextY = top;
+          if (operation.mode === 'center-y') nextY = top + (bottom - top - r.height) / 2;
+          if (operation.mode === 'bottom') nextY = bottom - r.height;
+          r.el.y = toStoredPosition(nextY, r.el.yUnit, canvasHeight);
         }
       }
       return { type: operation.type, mode: operation.mode, ids: operation.ids.slice() };
