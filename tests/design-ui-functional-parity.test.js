@@ -222,7 +222,7 @@ test('rejected deletion of locked layers does not create an undo-history entry',
     renderDesignWorkspace: () => {},
     saveProjectsToStorage: () => {}
   };
-  vm.runInNewContext(remove + '\\ndeleteDesignElement();', sandbox);
+  vm.runInNewContext(remove + '\ndeleteDesignElement();', sandbox);
   assert.equal(historyCalls, 0, 'a rejected operation must not pollute undo history');
   assert.equal(project.design.elements.length, 1, 'the locked layer must remain');
 });
