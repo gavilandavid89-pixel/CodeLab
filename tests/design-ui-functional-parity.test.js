@@ -208,3 +208,21 @@ test('locked layer inspector rejects property edits without mutating the layer',
   assert.equal(layer.text, 'Original');
   assert.match(messages[0], /Desbloquea la capa/);
 });
+
+test('rejected deletion of locked layers does not create an undo-history entry', () => {
+  const remove = extract('function deleteDesignElement()', 'function openDesignFlowGraph()');
+  const project = { design: { elements: [{ id: 'locked', locked: true }], flowConnections: [] } };
+  let historyCalls = 0;
+  const sandbox = {
+    activeDesignProject: () => project,
+    selectedDesignElementId: 'locked',
+    selectedDesignElementIds: ['locked'],
+    recordDesignHistory: () => { historyCalls++; },
+    showToast: () => {},
+    renderDesignWorkspace: () => {},
+    saveProjectsToStorage: () => {}
+  };
+  vm.runInNewContext(remove + '\\ndeleteDesignElement();', sandbox);
+  assert.equal(historyCalls, 0, 'a rejected operation must not pollute undo history');
+  assert.equal(project.design.elements.length, 1, 'the locked layer must remain');
+});
