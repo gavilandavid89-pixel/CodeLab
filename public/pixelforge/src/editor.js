@@ -1556,7 +1556,7 @@ $('#import-file').addEventListener('change', async event => {
       } finally { bitmap.close?.(); }
     }
     await flushAutosave(); await saveProject(importedDoc.toJSON()); doc = importedDoc; clearSelectionState();
-    fitCanvas(); updateTitle(); renderLayers(); status('Import complete and saved locally', 'success');
+    fitCanvas(); updateTitle(); renderLayers(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 });
