@@ -328,7 +328,15 @@ async function main() {
     await deleteRow.waitFor({ state: 'detached' });
     assert.equal((await fetch(base + '/api/pixelforge/projects/browser-delete-artwork', { headers: authHeaders })).status, 404, 'UI deletion must remove the account-owned project from server storage');
 
+    // Changing the shared session cookie in another tab must not redirect this
+    // still-open editor's autosave into the newly signed-in account.
     await accountContext.addCookies([{ name: 'codelab_sid', value: secondSessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
+    const switchedCanvas = await accountPage.locator('#canvas').boundingBox();
+    assert.ok(switchedCanvas && switchedCanvas.width > 0 && switchedCanvas.height > 0, 'the existing editor should remain mounted during a shared-session switch');
+    await accountPage.locator('#canvas').click({ position: { x: switchedCanvas.width / 2, y: switchedCanvas.height / 2 } });
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('La sesión de CodeLab cambió'), null, { timeout: 10000 });
+    const switchedAccountProjects = await (await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders })).json();
+    assert.deepEqual(switchedAccountProjects.projects, [], 'a still-open editor must not save the previous account document into the newly signed-in account');
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 0,
