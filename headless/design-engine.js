@@ -270,6 +270,7 @@ function applyOperation(project, operation) {
           if (operation.mode === 'left') nextX = left;
           if (operation.mode === 'center-x') nextX = left + (right - left - r.width) / 2;
           if (operation.mode === 'right') nextX = right - r.width;
+          r.el.xUnit = r.el.xUnit || 'px';
           r.el.x = toStoredPosition(nextX, r.el.xUnit, canvasWidth);
         }
         if (['top', 'center-y', 'bottom'].includes(operation.mode)) {
@@ -277,6 +278,7 @@ function applyOperation(project, operation) {
           if (operation.mode === 'top') nextY = top;
           if (operation.mode === 'center-y') nextY = top + (bottom - top - r.height) / 2;
           if (operation.mode === 'bottom') nextY = bottom - r.height;
+          r.el.yUnit = r.el.yUnit || 'px';
           r.el.y = toStoredPosition(nextY, r.el.yUnit, canvasHeight);
         }
       }
