@@ -24,9 +24,22 @@ function makeContext() {
     safeDesignImageSource: value => typeof value === 'string' && /^https?:\/\//i.test(value) ? value : ''
   };
   vm.createContext(context);
+  vm.runInContext(extract('function designCoordinateToPixels(design, element, axis) {', '\nfunction getDesignLayoutPositions'), context);
   vm.runInContext(extract('function getDesignLayoutPositions(design) {', '\nfunction setDesignLayoutMode'), context);
   return context;
 }
+
+test('shared coordinate helpers preserve percentage units when positioning layers', () => {
+  const context = makeContext();
+  const design = { canvasWidth: 720, canvasHeight: 1600 };
+  const element = { x: 25, y: 50, xUnit: '%', yUnit: '%' };
+  assert.equal(context.designCoordinateToPixels(design, element, 'x'), 180);
+  assert.equal(context.designCoordinateToPixels(design, element, 'y'), 800);
+  context.setDesignCoordinateFromPixels(design, element, 'x', 360);
+  context.setDesignCoordinateFromPixels(design, element, 'y', 400);
+  assert.equal(element.x, 50);
+  assert.equal(element.y, 25);
+});
 
 test('local design layout excludes hidden layers and resolves percentage positions', () => {
   const context = makeContext();
@@ -135,6 +148,8 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   const capture = extract('async function captureDesignForAI() {', '\nfunction safeDesignExportColor');
   const exporter = extract('function exportDesignHtml() {', '\nfunction setDesignFrame');
   const converter = extract('async function convertDesignToWeb() {', '\nfunction setupNewProjectModalKeys');
+  const distribute = extract('function distributeDesignElements(axis =', '\nfunction alignDesignElement');
+  const align = extract('function alignDesignElement(mode =', '\nfunction downloadDesignAsset');
   const actions = extract('function moveDesignLayer(direction) {', '\nfunction openDesignFlowGraph');
 
   assert.match(render, /if \(el\.visible === false\) continue/);
@@ -158,6 +173,10 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(exporter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
   assert.match(converter, /el\.visible !== false/);
   assert.match(converter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
+  assert.match(distribute, /selected\.some\(el => el\.locked\)/);
+  assert.match(distribute, /designCoordinateToPixels/);
+  assert.match(align, /selected\.some\(item => item\.locked\)/);
+  assert.match(align, /setDesignCoordinateFromPixels/);
   assert.match(actions, /element\.locked/);
   assert.match(actions, /!el\.locked/);
 });
