@@ -443,6 +443,80 @@ function decodePixelForgeProjectId(value) {
   }
 }
 
+async function ensurePixelForgeTable() {
+  if (!accountPool) return;
+  await accountPool.query(`
+    CREATE TABLE IF NOT EXISTS codelab_pixelforge_projects (
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      updated_at BIGINT NOT NULL,
+      last_opened_at BIGINT NOT NULL,
+      project JSONB NOT NULL,
+      byte_size BIGINT NOT NULL,
+      PRIMARY KEY (workspace_id, project_id)
+    )
+  `);
+  await accountPool.query(`
+    CREATE INDEX IF NOT EXISTS codelab_pixelforge_recent_idx
+    ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
+  `);
+}
+
+async function readPixelForgeProjectsFromDatabase(workspaceId) {
+  const result = await accountPool.query(
+    'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt", project, byte_size AS "byteSize" FROM codelab_pixelforge_projects WHERE workspace_id = $1 ORDER BY last_opened_at DESC',
+    [workspaceId]
+  );
+  return result.rows.map(row => ({
+    id: row.id, name: row.name, width: row.width, height: row.height,
+    updatedAt: Number(row.updatedAt), lastOpenedAt: Number(row.lastOpenedAt),
+    project: row.project, byteSize: Number(row.byteSize)
+  }));
+}
+
+async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes) {
+  const client = await accountPool.connect();
+  try {
+    await client.query('BEGIN');
+    // A database advisory lock makes per-account quotas safe across server instances,
+    // not only within this Node.js process.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
+    const usage = await client.query(
+      'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size), 0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id <> $2',
+      [workspaceId, project.id]
+    );
+    const existing = await client.query(
+      'SELECT 1 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+      [workspaceId, project.id]
+    );
+    const count = Number(usage.rows[0].count);
+    const bytes = Number(usage.rows[0].bytes);
+    if (!existing.rowCount && count >= MAX_PROJECTS) {
+      await client.query('ROLLBACK');
+      return { error: 'pixelforge_project_limit', status: 409, maxProjects: MAX_PROJECTS };
+    }
+    if (bytes + projectBytes > PIXELFORGE_MAX_ACCOUNT_BYTES) {
+      await client.query('ROLLBACK');
+      return { error: 'pixelforge_account_storage_limit', status: 413, maxBytes: PIXELFORGE_MAX_ACCOUNT_BYTES };
+    }
+    const now = Date.now();
+    await client.query(
+      'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size',
+      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(project), projectBytes]
+    );
+    await client.query('COMMIT');
+    return { status: existing.rowCount ? 200 : 201, now };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 const pixelForgeAccountQueues = new Map();
 async function withPixelForgeAccountLock(workspaceId, operation) {
   const previous = pixelForgeAccountQueues.get(workspaceId) || Promise.resolve();
