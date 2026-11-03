@@ -266,7 +266,8 @@ test('JSON export/import round-trip preserves responsive units, layer metadata, 
           identifier: 'primary-next', opacity: 0.65, rotation: 12,
           visible: true, hidden: false, locked: true, flowRole: 'navigate'
         },
-        { id: 'content', type: 'heading', text: 'Content', width: 300, height: 60, identifier: 'content' }
+        { id: 'content', type: 'heading', text: 'Content', width: 300, height: 60, identifier: 'content' },
+        { id: 'tiny-responsive', type: 'rectangle', width: 10, widthUnit: '%', height: 5, heightUnit: '%', identifier: 'tiny-responsive' }
       ],
       flowConnections: [{ sourceElementId: 'nav-layer', targetProjectId: 'target-screen' }]
     }
@@ -292,12 +293,20 @@ test('JSON export/import round-trip preserves responsive units, layer metadata, 
   assert.deepEqual(imported.design.flowConnections, [
     { sourceElementId: 'imported-layer-1', targetProjectId: 'target-screen' }
   ]);
+  assert.equal(imported.design.elements[2].width, 10);
+  assert.equal(imported.design.elements[2].height, 5);
+  assert.equal(imported.design.elements[2].widthUnit, '%');
+  assert.equal(imported.design.elements[2].heightUnit, '%');
 
   const secondExport = exportDesignJson(imported);
   const parsed = JSON.parse(secondExport.json);
   assert.equal(parsed.project.design.elements[0].widthUnit, '%');
   assert.equal(parsed.project.design.elements[0].heightUnit, 'auto');
   assert.equal(parsed.project.design.elements[0].identifier, 'primary-next');
+  assert.equal(parsed.project.design.elements[2].width, 10);
+  assert.equal(parsed.project.design.elements[2].height, 5);
+  assert.equal(parsed.project.design.elements[2].widthUnit, '%');
+  assert.equal(parsed.project.design.elements[2].heightUnit, '%');
   assert.deepEqual(parsed.project.design.flowConnections, [
     { sourceElementId: 'imported-layer-1', targetProjectId: 'target-screen' }
   ]);
