@@ -87,10 +87,12 @@ function testInsertionBeforeRealBodyClose() {
     'an unclosed template must use the append fallback');
 }
 
-console.log('Component library tests passed: searchable catalog, category filters, responsive exports, accessible markup, and HTML insertion edge cases.');
+
 
 {
   const source = '<html><body><noscript><p>embedded </body> text</p></noscript><p>Real body</p></body></html>';
   assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
     'noscript fallback markup must not be treated as the active body close');
 }
+
+console.log('Component library tests passed: searchable catalog, category filters, responsive exports, accessible markup, and HTML insertion edge cases.');
