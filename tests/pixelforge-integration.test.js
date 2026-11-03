@@ -566,6 +566,26 @@ async function main() {
       'switching back should restore the original account palette');
     assert.equal(await accountPage.locator('#ai-provider-key').inputValue(), 'test-user-key-not-a-real-secret',
       'switching back should restore only the original account provider settings');
+
+    // Import must persist to the authenticated CodeLab account, not merely
+    // report a local save. Verify both the UI result and the stored RGBA data.
+    const importFixture = makePixelProject('import-fixture', 'Imported browser artwork', 3, 3);
+    const importPixels = Buffer.alloc(3 * 3 * 4);
+    importPixels.set([17, 34, 51, 255], (1 * 3 + 2) * 4);
+    importFixture.layers[0].pixels = importPixels.toString('base64');
+    const importFixturePath = path.join(dataDir, 'pixelforge-import-fixture.pforge');
+    fs.writeFileSync(importFixturePath, JSON.stringify(importFixture));
+    await accountPage.locator('#import-file').setInputFiles(importFixturePath);
+    await accountPage.waitForFunction(() =>
+      document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'),
+      null, { timeout: 15000 });
+    const importedMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+      .projects.find(project => project.name === 'Imported browser artwork');
+    assert.ok(importedMetadata, 'imported artwork should be persisted in the signed-in CodeLab account');
+    const importedProject = (await (await fetch(base + '/api/pixelforge/projects/' + importedMetadata.id, { headers: authHeaders })).json()).project;
+    assert.deepEqual([...Buffer.from(importedProject.layers[0].pixels, 'base64').subarray((1 * 3 + 2) * 4, (1 * 3 + 2) * 4 + 4)],
+      [17, 34, 51, 255], 'imported raster pixels should survive account-backed persistence');
+    fs.rmSync(importFixturePath, { force: true });
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
