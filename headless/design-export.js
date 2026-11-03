@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { normalizeDesignProject, renderSvg } = require('./design-engine');
+const { isValidEditorImageDataUrl } = require('./image-validation');
 
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -29,7 +30,7 @@ function safeColor(value, fallback) {
 
 function safeImageSource(value) {
   if (typeof value !== 'string' || value.length > MAX_IMAGE_BYTES) return '';
-  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(value)) return value;
+  if (/^data:/i.test(value)) return isValidEditorImageDataUrl(value) ? value : '';
   try {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
@@ -100,7 +101,7 @@ function safeExportColor(value, fallback) {
 function safeExportImageSource(value) {
   const source = String(value || '').trim();
   if (!source || source.length > MAX_IMAGE_BYTES * 1.5) return '';
-  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+  if (/^data:/i.test(source)) return isValidEditorImageDataUrl(source) ? source : '';
   if (/^(?:\/(?!\/)|\.\.?\/)[^\\\s<>]*$/.test(source)) return source;
   try {
     const url = new URL(source);
