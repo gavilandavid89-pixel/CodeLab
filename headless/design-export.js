@@ -78,7 +78,13 @@ function exportDesignJson(project) {
 }
 
 function exportDesignSvg(project) {
-  return renderSvg(project);
+  const copy = JSON.parse(JSON.stringify(project));
+  if (copy && copy.design && Array.isArray(copy.design.elements)) {
+    copy.design.elements = copy.design.elements.map(element =>
+      element && element.hidden === true ? { ...element, visible: false } : element
+    );
+  }
+  return renderSvg(copy);
 }
 
 function safeExportColor(value, fallback) {
