@@ -346,7 +346,8 @@ function validateProperties(properties, currentElement = {}) {
     assert(typeof value === 'number' && Number.isFinite(value), key + ' must be a finite JSON number.');
     let min = -MAX_CANVAS_SIZE, max = MAX_CANVAS_SIZE;
     if (key === 'x' || key === 'y') {
-      if (candidate[key + 'Unit'] === '%') { min = -200; max = 200; }
+      min = 0;
+      max = candidate[key + 'Unit'] === '%' ? 200 : MAX_CANVAS_SIZE;
     } else if (key === 'width' || key === 'height') {
       const unit = candidate[key + 'Unit'] || 'px';
       if (unit === '%') { min = 1; max = 100; }
