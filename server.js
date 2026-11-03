@@ -2042,7 +2042,9 @@ const server = http.createServer(async (req, res) => {
         // Production must never silently downgrade the studio's durable database
         // contract to local sidecar files. File persistence is retained only for
         // isolated development/E2E environments without DATABASE_URL.
-        if (!accountPool && process.env.NODE_ENV === 'production') {
+        const hostedProduction = process.env.NODE_ENV === 'production' ||
+          process.env.RENDER === 'true' || !!process.env.RENDER_SERVICE_ID;
+        if (!accountPool && hostedProduction) {
           return sendJson(res, 503, { error: 'pixelforge_database_unavailable', message: 'El almacenamiento de PixelForge no está disponible. Contacta al administrador de CodeLab.' });
         }
         const workspaceId = userWorkspaceId(user);
