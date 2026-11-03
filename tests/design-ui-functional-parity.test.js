@@ -112,4 +112,6 @@ test('multi-screen flow export honors hidden sources, responsive dimensions, opa
   assert.match(exporter, /opacity:'\+opacity\+'/);
   assert.match(exporter, /transform:rotate\('\+rotation\+'deg\)/);
   assert.match(exporter, /data-design-identifier/);
+  assert.match(exporter, /frameHeight=Math\.max\(Number\(d\.canvasHeight\)\|\|900, Number\(layout\.height\)\|\|0\)/);
+  assert.match(exporter, /height:'\+frameHeight\+'px/);
 });
