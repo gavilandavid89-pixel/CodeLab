@@ -26,15 +26,19 @@ let cursorMode = false, cursorGesturePointerId = null, cursorGestureLast = null,
 let virtualCursorPointerId = null, virtualCursorScreen = null, virtualCursorPoint = null, virtualCursorVisible = false, virtualCursorCanDraw = false;
 let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = Promise.resolve(), flushInProgress = false, flushPromise = null, renderQueued = false, previewReady = false;
 
+// Palette preferences are local to this browser but namespaced by the authenticated
+// CodeLab identity, so switching accounts on a shared device cannot expose another
+// account's saved colors.
+let paletteStorageKey = 'pixelforge.palette.v1:pending';
 function loadUserPalette() {
   try {
-    const parsed = JSON.parse(localStorage.getItem('pixelforge.palette.v1') || '[]');
+    const parsed = JSON.parse(localStorage.getItem(paletteStorageKey) || '[]');
     return Array.isArray(parsed) ? [...new Set(parsed.filter(value => typeof value === 'string' && /^#[0-9A-F]{6}$/i.test(value)).map(value => value.toUpperCase()))].slice(0, 64) : [];
   } catch { return []; }
 }
-let userPalette = loadUserPalette();
+let userPalette = [];
 function saveUserPalette() {
-  try { localStorage.setItem('pixelforge.palette.v1', JSON.stringify(userPalette)); }
+  try { localStorage.setItem(paletteStorageKey, JSON.stringify(userPalette)); }
   catch { status('Palette could not be saved in this browser storage', 'warning'); }
 }
 function renderUserPalette() {
@@ -1733,6 +1737,9 @@ async function boot() {
       document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101116;color:#f3f4f6;font:16px system-ui,sans-serif"><section style="max-width:440px;text-align:center;background:#191b24;border:1px solid #343744;border-radius:18px;padding:28px"><div style="font-size:34px;margin-bottom:12px">◈</div><h1 style="margin:0 0 10px;font-size:24px">Inicia sesión en CodeLab</h1><p style="color:#b5b8c5;line-height:1.6">PixelForge usa la misma cuenta de CodeLab. Inicia sesión y vuelve a abrir el estudio para guardar tus dibujos en tu cuenta y acceder a ellos desde otros dispositivos.</p><a href="/" style="display:inline-block;margin-top:14px;padding:12px 18px;border-radius:10px;background:#d8a65d;color:#171922;text-decoration:none;font-weight:700">Ir a CodeLab e iniciar sesión</a></section></main>`;
       return;
     }
+    paletteStorageKey = 'pixelforge.palette.v1:' + encodeURIComponent(auth.user.provider) + ':' + encodeURIComponent(auth.user.id);
+    userPalette = loadUserPalette();
+    renderUserPalette();
     resizeCanvas();
     const saved = await loadMostRecentProject();
     if (saved) { doc = RasterDocument.fromJSON(saved); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
