@@ -198,7 +198,7 @@ function applyOperation(project, operation) {
       assert(typeof id === 'string' && id.length <= 100, 'Invalid layer id.');
       assert(!project.design.elements.some(item => item.id === id), 'Layer id already exists: ' + id);
       const element = { id, type: operation.elementType, ...clone(DEFAULTS[operation.elementType]), ...(operation.properties || {}) };
-      validateProperties(operation.properties || {});
+      validateProperties(operation.properties || {}, element);
       project.design.elements.push(element);
       return { type: operation.type, element: clone(element) };
     }
@@ -207,7 +207,7 @@ function applyOperation(project, operation) {
       const element = findElement(project, operation.id);
       const unlockOnly = element.locked === true && Object.keys(operation.properties).length === 1 && operation.properties.locked === false;
       if (!unlockOnly) assertUnlocked(element, 'update');
-      validateProperties(operation.properties);
+      validateProperties(operation.properties, element);
       if (operation.properties.visible === true) element.hidden = false;
       Object.assign(element, clone(operation.properties));
       return { type: operation.type, id: element.id, element: clone(element) };
@@ -332,18 +332,42 @@ function applyOperation(project, operation) {
   }
 }
 
-function validateProperties(properties) {
+function validateProperties(properties, currentElement = {}) {
+  const candidate = { ...currentElement, ...properties };
+  const numericKeys = ['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'opacity', 'rotation'];
+  const validateNumeric = key => {
+    const value = candidate[key];
+    if (key === 'opacity' && value === null) return;
+    assert(typeof value === 'number' && Number.isFinite(value), key + ' must be a finite JSON number.');
+    let min = -MAX_CANVAS_SIZE, max = MAX_CANVAS_SIZE;
+    if (key === 'x' || key === 'y') {
+      if (candidate[key + 'Unit'] === '%') { min = -200; max = 200; }
+    } else if (key === 'width' || key === 'height') {
+      const unit = candidate[key + 'Unit'] || 'px';
+      if (unit === '%') { min = 1; max = 100; }
+      else if (unit === 'auto') { min = 0; max = 4000; }
+      else { min = 20; max = 4000; }
+    } else if (key === 'fontSize') { min = 8; max = 256; }
+    else if (key === 'weight') { min = 100; max = 900; }
+    else if (key === 'radius') { min = 0; max = 4000; }
+    else if (key === 'opacity') { min = 0; max = 1; }
+    else if (key === 'rotation') { min = -3600; max = 3600; }
+    assert(value >= min && value <= max, key + ' must be between ' + min + ' and ' + max + ' for its unit.');
+  };
   for (const [key, value] of Object.entries(properties)) {
     assert(ELEMENT_FIELDS.has(key), 'Layer property is not editable: ' + key);
-    if (key === 'opacity' && value === null) continue;
-    if (['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'opacity', 'rotation'].includes(key)) {
-      const min = key === 'width' || key === 'height' || key === 'fontSize' ? 0 : -MAX_CANVAS_SIZE;
-      const max = key === 'opacity' ? 1 : MAX_CANVAS_SIZE;
-      finiteNumber(value, key, min, max);
+    if (numericKeys.includes(key)) {
+      if (key === 'opacity' && value === null) continue;
+      candidate[key] = value;
+      validateNumeric(key);
     } else if (['xUnit', 'yUnit'].includes(key)) {
       assert(['px', '%'].includes(value), key + ' must be px or %.');
+      const coordinate = key[0];
+      if (candidate[coordinate] !== undefined) validateNumeric(coordinate);
     } else if (['widthUnit', 'heightUnit'].includes(key)) {
       assert(['px', '%', 'auto'].includes(value), key + ' must be px, %, or auto.');
+      const dimension = key.startsWith('width') ? 'width' : 'height';
+      if (candidate[dimension] !== undefined) validateNumeric(dimension);
     } else if (['label', 'text', 'color', 'background', 'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'].includes(key)) {
       assert(typeof value === 'string' && value.length <= (key === 'src' ? 2800000 : 10000), key + ' must be a bounded string.');
       if (key === 'color' || key === 'background') assert(isSafeColor(value), key + ' must be a safe CSS color.');
