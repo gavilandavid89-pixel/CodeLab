@@ -13,41 +13,6 @@ if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
   throw new Error('Target origin is not allowlisted.');
 }
 
-function validateDesignElementProperties(properties, action) {
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) throw new Error(action + ' requires a properties object.');
-  const allowedProperties = [
-    'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit',
-    'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
-    'textAlign', 'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'
-  ];
-  const numericProperties = new Set(['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'rotation']);
-  const stringProperties = new Set([
-    'label', 'text', 'xUnit', 'yUnit', 'widthUnit', 'heightUnit', 'color', 'background',
-    'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'
-  ]);
-  for (const [key, value] of Object.entries(properties)) {
-    if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
-    if (key === 'opacity' && value === null) continue;
-    if (numericProperties.has(key) || key === 'opacity') {
-      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Design element ' + key + ' must be a finite number' + (key === 'opacity' ? ' or null.' : '.'));
-    } else if (key === 'visible' || key === 'locked') {
-      if (typeof value !== 'boolean') throw new Error('Design element ' + key + ' must be a boolean.');
-    } else if (stringProperties.has(key)) {
-      if (typeof value !== 'string') throw new Error('Design element ' + key + ' must be a string.');
-      const maxLength = key === 'src' ? 2800000 : key === 'text' ? 10000 : 2000;
-      if (value.length > maxLength) throw new Error('Design element string properties are limited to ' + maxLength + ' characters.');
-    } else {
-      throw new Error('Unsupported value type for design element property: ' + key);
-    }
-    if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
-    if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
-    if (['xUnit', 'yUnit'].includes(key) && !['px', '%'].includes(value)) throw new Error(key + ' must be px or %.');
-    if (['widthUnit', 'heightUnit'].includes(key) && !['px', '%', 'auto'].includes(value)) throw new Error(key + ' must be px, %, or auto.');
-    if (key === 'flowRole' && !['', 'menu', 'navigate'].includes(value)) throw new Error('flowRole is not supported.');
-  }
-  if (!Object.keys(properties).length) throw new Error(action + ' requires at least one property.');
-}
-
 function parseCommand(raw) {
   if (typeof raw !== 'string' || raw.length > 60000) throw new Error('Issue body missing or too large.');
   const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '');
@@ -287,6 +252,41 @@ function parseCommand(raw) {
     }
   }
   return { ...command, args };
+}
+
+function validateDesignElementProperties(properties, action) {
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) throw new Error(action + ' requires a properties object.');
+  const allowedProperties = [
+    'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit',
+    'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
+    'textAlign', 'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'
+  ];
+  const numericProperties = new Set(['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'rotation']);
+  const stringProperties = new Set([
+    'label', 'text', 'xUnit', 'yUnit', 'widthUnit', 'heightUnit', 'color', 'background',
+    'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'
+  ]);
+  for (const [key, value] of Object.entries(properties)) {
+    if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
+    if (key === 'opacity' && value === null) continue;
+    if (numericProperties.has(key) || key === 'opacity') {
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Design element ' + key + ' must be a finite number' + (key === 'opacity' ? ' or null.' : '.'));
+    } else if (key === 'visible' || key === 'locked') {
+      if (typeof value !== 'boolean') throw new Error('Design element ' + key + ' must be a boolean.');
+    } else if (stringProperties.has(key)) {
+      if (typeof value !== 'string') throw new Error('Design element ' + key + ' must be a string.');
+      const maxLength = key === 'src' ? 2800000 : key === 'text' ? 10000 : 2000;
+      if (value.length > maxLength) throw new Error('Design element string properties are limited to ' + maxLength + ' characters.');
+    } else {
+      throw new Error('Unsupported value type for design element property: ' + key);
+    }
+    if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
+    if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
+    if (['xUnit', 'yUnit'].includes(key) && !['px', '%'].includes(value)) throw new Error(key + ' must be px or %.');
+    if (['widthUnit', 'heightUnit'].includes(key) && !['px', '%', 'auto'].includes(value)) throw new Error(key + ' must be px, %, or auto.');
+    if (key === 'flowRole' && !['', 'menu', 'navigate'].includes(value)) throw new Error('flowRole is not supported.');
+  }
+  if (!Object.keys(properties).length) throw new Error(action + ' requires at least one property.');
 }
 
 async function comment(body) {
