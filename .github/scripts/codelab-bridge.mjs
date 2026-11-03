@@ -13,6 +13,41 @@ if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
   throw new Error('Target origin is not allowlisted.');
 }
 
+function validateDesignElementProperties(properties, action) {
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) throw new Error(action + ' requires a properties object.');
+  const allowedProperties = [
+    'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit',
+    'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
+    'textAlign', 'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'
+  ];
+  const numericProperties = new Set(['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'rotation']);
+  const stringProperties = new Set([
+    'label', 'text', 'xUnit', 'yUnit', 'widthUnit', 'heightUnit', 'color', 'background',
+    'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'
+  ]);
+  for (const [key, value] of Object.entries(properties)) {
+    if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
+    if (key === 'opacity' && value === null) continue;
+    if (numericProperties.has(key) || key === 'opacity') {
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Design element ' + key + ' must be a finite number' + (key === 'opacity' ? ' or null.' : '.'));
+    } else if (key === 'visible' || key === 'locked') {
+      if (typeof value !== 'boolean') throw new Error('Design element ' + key + ' must be a boolean.');
+    } else if (stringProperties.has(key)) {
+      if (typeof value !== 'string') throw new Error('Design element ' + key + ' must be a string.');
+      const maxLength = key === 'src' ? 2800000 : key === 'text' ? 10000 : 2000;
+      if (value.length > maxLength) throw new Error('Design element string properties are limited to ' + maxLength + ' characters.');
+    } else {
+      throw new Error('Unsupported value type for design element property: ' + key);
+    }
+    if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
+    if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
+    if (['xUnit', 'yUnit'].includes(key) && !['px', '%'].includes(value)) throw new Error(key + ' must be px or %.');
+    if (['widthUnit', 'heightUnit'].includes(key) && !['px', '%', 'auto'].includes(value)) throw new Error(key + ' must be px, %, or auto.');
+    if (key === 'flowRole' && !['', 'menu', 'navigate'].includes(value)) throw new Error('flowRole is not supported.');
+  }
+  if (!Object.keys(properties).length) throw new Error(action + ' requires at least one property.');
+}
+
 function parseCommand(raw) {
   if (typeof raw !== 'string' || raw.length > 60000) throw new Error('Issue body missing or too large.');
   const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '');
@@ -121,35 +156,14 @@ function parseCommand(raw) {
     if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
   }
   if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
-  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
-  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_system_import_json requires a JSON string between 2 and 50000 characters.');
-  if (command.action === 'design_tokens_generate') {
-    if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
-  }
-  if (command.action === 'project_create') {
-    if (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200) throw new Error('project_create requires a name between 1 and 200 characters.');
-    if (!['web', 'design'].includes(args.type || 'web')) throw new Error('project_create type must be web or design.');
-  }
-  if (command.action === 'component_search') {
-    if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) throw new Error('component_search query must be a string up to 200 characters.');
-    if (args.category !== undefined && (typeof args.category !== 'string' || args.category.length > 100)) throw new Error('component_search category must be a string up to 100 characters.');
-  }
-  if (command.action === 'component_inspect' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) throw new Error('component_inspect requires a valid component_id.');
-  if (command.action === 'component_inspect' && args.max_chars !== undefined && (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
-  if (command.action === 'component_insert' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) {
-    throw new Error('component_insert requires a valid component_id.');
-  }
-  if (command.action === 'design_element_add' && !['heading', 'text', 'button', 'rectangle', 'ellipse', 'image'].includes(args.type)) {
-    throw new Error('design_element_add requires a supported element type.');
-  }
-  if (command.action === 'design_elements_delete') {
-    if (!Array.isArray(args.element_ids) || args.element_ids.length < 1 || args.element_ids.length > 100 || args.element_ids.some(id => typeof id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(id)) || new Set(args.element_ids).size !== args.element_ids.length) {
-      throw new Error('design_elements_delete requires 1 to 100 unique valid element_ids.');
-    }
-  }
-  if (command.action === 'design_element_update') {
+  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2  if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
-    if (!args.properties || typeof args.properties !== 'object' || Array.isArray(args.properties)) throw new Error('design_element_update requires a properties object.');
+    validateDesignElementProperties(args.properties, 'design_element_update');
+  }
+  if (command.action === 'design_element_add' && args.properties !== undefined) {
+    validateDesignElementProperties(args.properties, 'design_element_add');
+  }
+!== 'object' || Array.isArray(args.properties)) throw new Error('design_element_update requires a properties object.');
     const allowedProperties = [
       'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit',
       'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
@@ -488,7 +502,7 @@ async function executeSavedDesignBatch(action, args) {
     let operations;
     let settings = null;
     if (action === 'design_element_add') {
-      operations = [{ type: 'element.add', elementType: args.type }];
+      operations = [{ type: 'element.add', elementType: args.type, ...(args.properties ? { properties: args.properties } : {}) }];
     } else if (action === 'design_element_update') {
       operations = [{ type: 'element.update', id: args.element_id, properties: args.properties }];
     } else if (action === 'design_element_delete') {
