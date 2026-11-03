@@ -2,7 +2,7 @@ name: Validate CodeLab
 
 on:
   push:
-    branches: ["main", "fix/**", "feature/**"]
+    branches: ["main", "fix/**", "feature/**", "feat/**"]
   pull_request:
     branches: ["main", "feat/codelab-pixelforge-studio-entry-clean"]
 
