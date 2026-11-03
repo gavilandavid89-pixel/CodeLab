@@ -7,6 +7,9 @@ on:
   pull_request:
     paths:
       - 'headless/**'
+      - 'public/app.js'
+      - 'public/design-flow.js'
+      - 'tests/design-ui-functional-parity.test.js'
       - '.github/workflows/headless-design-engine.yml'
   workflow_dispatch:
 
@@ -36,6 +39,8 @@ jobs:
         run: node --test headless/design-engine.test.js headless/design-accessibility.test.js headless/design-export-parity.test.js headless/design-templates-responsive.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
       - name: Check headless assistant bridge contracts
         run: node tests/assistant-tools-contract.test.js
+      - name: Verify integrated UI and multi-screen flow parity
+        run: node --test tests/design-ui-functional-parity.test.js
       - name: Verify one complete project journey through Chromium
         run: node --test headless/project-journey.e2e.test.js
       - name: Verify real PNG and context revision pairing
