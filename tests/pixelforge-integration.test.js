@@ -61,6 +61,11 @@ async function main() {
     assert.equal(response.status, 200, path + ' should be served');
     assert.ok((await response.text()).length > 0, path + ' should not be empty');
   }
+  const pixelForgeHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'index.html'), 'utf8');
+  assert.match(pixelForgeHtml, /Projects autosave to your CodeLab account/,
+    'the studio should describe account-backed persistence, not local-only autosave');
+  assert.doesNotMatch(pixelForgeHtml, /Projects autosave locally/,
+    'the UI must not imply that local-only storage is the production source of truth');
   const anonymousResponse = await fetch(base + '/api/pixelforge/projects', { headers: { 'x-forwarded-for': '198.51.100.77' } });
   assert.equal(anonymousResponse.status, 401, 'PixelForge project API must require a CodeLab account');
   const anonymousBody = await anonymousResponse.json();
