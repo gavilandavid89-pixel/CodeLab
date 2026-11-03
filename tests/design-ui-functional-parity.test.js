@@ -65,6 +65,11 @@ test('numeric property ranges allow coordinate zero and reject non-finite edits'
   assert.match(update, /radius: \[0, 4000\]/);
 });
 
+test('auto-sized images use the same effective 20px minimum as export and headless rendering', () => {
+  const dimension = extract('function getDesignElementDimension(', 'function getDesignElementDimensionCss(');
+  assert.match(dimension, /if \(el\.type === 'image'\) return Math\.max\(20, Math\.min\(4000, value\)\);/);
+});
+
 test('rotation, font-size, radius, and opacity ranges match the editor export', () => {
   const renderer = extract('function renderDesignWorkspace', 'function pDesignElementsWithoutCurrent');
   const exporter = extract('function exportDesignHtml', 'function setDesignFrame');
