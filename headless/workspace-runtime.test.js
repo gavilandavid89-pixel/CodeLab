@@ -179,6 +179,36 @@ test('connects design flow between separate design projects', () => {
   assert.equal(result.state.projects[0].design.elements[0].flowRole, 'navigate');
 });
 
+test('locked layers reject headless flow connect and disconnect without mutation', () => {
+  const connectSource = designProject('proj_locked_connect');
+  connectSource.design.elements = [{ id: 'el_locked', type: 'button', locked: true, flowRole: '' }];
+  const connectTarget = designProject('proj_connect_target');
+  const connectState = state([connectSource, connectTarget]);
+  const beforeConnect = JSON.stringify(connectState);
+  assert.throws(() => applyHeadlessBatch(connectState, request([
+    { type: 'design.flow.connect', sourceProjectId: connectSource.id, sourceElementId: 'el_locked', targetProjectId: connectTarget.id }
+  ], { operationId: 'test_locked_connect_01' })), error => {
+    assert.equal(error.code, 'HEADLESS_LOCKED_ELEMENT');
+    assert.match(error.message, /locked layer/i);
+    return true;
+  });
+  assert.equal(JSON.stringify(connectState), beforeConnect, 'failed connect must not mutate the workspace');
+
+  const disconnectSource = designProject('proj_locked_disconnect');
+  disconnectSource.design.elements = [{ id: 'el_locked', type: 'button', locked: true, flowRole: 'navigate' }];
+  disconnectSource.design.flowConnections = [{ sourceElementId: 'el_locked', targetProjectId: 'proj_other_target' }];
+  const disconnectState = state([disconnectSource]);
+  const beforeDisconnect = JSON.stringify(disconnectState);
+  assert.throws(() => applyHeadlessBatch(disconnectState, request([
+    { type: 'design.flow.disconnect', sourceProjectId: disconnectSource.id, sourceElementId: 'el_locked' }
+  ], { operationId: 'test_locked_disconnect_01' })), error => {
+    assert.equal(error.code, 'HEADLESS_LOCKED_ELEMENT');
+    assert.match(error.message, /locked layer/i);
+    return true;
+  });
+  assert.equal(JSON.stringify(disconnectState), beforeDisconnect, 'failed disconnect must preserve connections and flow role');
+});
+
 test('requires explicit approval to delete a project and cleans incoming flow links', () => {
   const source = designProject('proj_source');
   source.design.flowConnections = [{ sourceElementId: 'el_link', targetProjectId: 'proj_target' }];
