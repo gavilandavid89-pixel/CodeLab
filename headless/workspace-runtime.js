@@ -88,7 +88,9 @@ function applyOperation(state, operation) {
       assert(!state.projects.some(item => item.id === newProjectId), 'Duplicate project ID already exists.');
       const duplicate = clone(source);
       duplicate.id = newProjectId;
-      duplicate.name = typeof operation.name === 'string' && operation.name.trim() ? operation.name.trim().slice(0, 200) : source.name + ' copy';
+      duplicate.name = typeof operation.name === 'string' && operation.name.trim()
+        ? operation.name.trim().slice(0, 200)
+        : (String(source.name || 'Project') + ' copy').slice(0, 200);
       duplicate.createdAt = new Date().toISOString();
       duplicate.updatedAt = duplicate.createdAt;
       if (duplicate.type === 'design' && duplicate.design && Array.isArray(duplicate.design.flowConnections)) {
