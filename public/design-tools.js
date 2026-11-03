@@ -330,7 +330,6 @@
     const credentials = workspaceCredentials();
     const localKey = workspaceSettingsStorageKey(credentials);
     if (!saveLocalSettings(s, localKey)) return false;
-    hasUnsavedEdits = false;
     const sequence = ++workspaceSettingsSyncSequence;
     if (credentials && typeof fetch === 'function') {
       const url = workspaceDesignSystemUrl(credentials);
@@ -675,6 +674,7 @@
     if (get('saveDesignSystem')) get('saveDesignSystem').addEventListener('click', () => {
       settings = readForm();
       const ok = saveSettings(settings);
+      if (ok) hasUnsavedEdits = false;
       announce(ok ? 'Sistema guardado localmente; sincronizando con el workspace si está disponible.' : 'No se pudo guardar; exporta el JSON para conservarlo.');
     });
     if (get('resetDesignSystem')) get('resetDesignSystem').addEventListener('click', () => {
