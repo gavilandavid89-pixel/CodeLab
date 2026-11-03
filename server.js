@@ -2170,7 +2170,7 @@ const server = http.createServer(async (req, res) => {
             if (operation.type === 'design.batch' && Array.isArray(operation.operations)) {
               for (const nested of operation.operations) {
                 if (nested && nested.type === 'image.attach' && typeof nested.uploadToken === 'string') {
-                  const uploaded = headlessTransfers.resolveImage({ uploadToken: nested.uploadToken, workspaceId: id, projectId: operation.projectId });
+                  const uploaded = headlessTransfers.resolveImage({ uploadToken: nested.uploadToken, workspaceId: id, projectId: operation.projectId, operationId: body.operationId });
                   nested.dataUrl = uploaded.dataUrl;
                   resolvedUploadTokens.push({ uploadToken: nested.uploadToken, projectId: operation.projectId });
                   delete nested.uploadToken;
@@ -2194,7 +2194,7 @@ const server = http.createServer(async (req, res) => {
             }
             writeState(id, result.state);
             for (const upload of resolvedUploadTokens) {
-              try { headlessTransfers.consumeImage({ uploadToken: upload.uploadToken, workspaceId: id, projectId: upload.projectId }); } catch (_) {}
+              try { headlessTransfers.consumeImage({ uploadToken: upload.uploadToken, workspaceId: id, projectId: upload.projectId, operationId: body.operationId }); } catch (_) {}
             }
           }
           return sendJson(res, 200, {
