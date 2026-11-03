@@ -45,6 +45,13 @@ function testInsertionBeforeRealBodyClose() {
 }
 
 {
+  const source = '<html><body>1 < 3 and 4 > 2; keep this text</body></html>';
+  const inserted = library.insertComponentHtml(source, fragment);
+  assert.equal(inserted.indexOf(fragment), source.lastIndexOf('</body>'));
+  assert.ok(inserted.includes('1 < 3 and 4 > 2; keep this text'));
+}
+
+{
   const source = '<html><body>Existing</BODY ></html>';
   const inserted = library.insertComponentHtml(source, fragment);
   assert.ok(inserted.endsWith('Existing' + fragment + '\n</BODY ></html>'));
