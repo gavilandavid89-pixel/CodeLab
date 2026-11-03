@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { exportDesignHtml, buildAiDesignCaptureContext } = require('./design-export');
+const { exportDesignHtml, buildAiDesignCaptureContext, exportDesignJson, importDesignJson } = require('./design-export');
 
 function project(elements) {
   return {
@@ -195,4 +195,30 @@ test('semantic HTML export preserves safe mailto and tel actions but rejects uns
   assert.doesNotMatch(html, /href="\/\/evil\.example/);
   assert.doesNotMatch(html, /href="javascript:/);
   assert.match(html, /Unsafe/);
+});
+
+test('design backup import rejects credentialed external links and preserves safe relative links', () => {
+  const original = project([
+    { id: 'root-path', type: 'button', text: 'Root', href: '/contact', x: 10, y: 10, width: 120, height: 40 },
+    { id: 'dot-path', type: 'button', text: 'Relative', href: './contact', x: 10, y: 60, width: 120, height: 40 },
+    { id: 'credentialed', type: 'button', text: 'Credentialed', href: 'https://user:pass@example.com/private', x: 10, y: 110, width: 120, height: 40 },
+    { id: 'protocol-relative', type: 'button', text: 'Protocol relative', href: '//evil.example/path', x: 10, y: 160, width: 120, height: 40 },
+    { id: 'unsafe-scheme', type: 'button', text: 'Unsafe', href: 'javascript:alert(1)', x: 10, y: 210, width: 120, height: 40 },
+    { id: 'valid-external', type: 'button', text: 'External', href: 'https://example.com/contact', x: 10, y: 260, width: 120, height: 40 },
+    { id: 'email', type: 'button', text: 'Email', href: 'mailto:hello@example.com', x: 10, y: 310, width: 120, height: 40 },
+    { id: 'phone', type: 'button', text: 'Phone', href: 'tel:+15551234567', x: 10, y: 360, width: 120, height: 40 }
+  ]);
+  const backup = exportDesignJson(original);
+  let nextId = 0;
+  const imported = importDesignJson(backup.json, { idFactory: () => 'imported-' + (++nextId) });
+  const links = Object.fromEntries(imported.project.design.elements.map(element => [element.text, element.href]));
+
+  assert.equal(links.Root, '/contact');
+  assert.equal(links.Relative, './contact');
+  assert.equal(links.Credentialed, '');
+  assert.equal(links['Protocol relative'], '');
+  assert.equal(links.Unsafe, '');
+  assert.equal(links.External, 'https://example.com/contact');
+  assert.equal(links.Email, 'mailto:hello@example.com');
+  assert.equal(links.Phone, 'tel:+15551234567');
 });
