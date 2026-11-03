@@ -884,6 +884,7 @@ function serveStatic(req, res, urlPath) {
     return res.end('Not Found');
   }
   if (rel === '/' || rel === '') rel = '/index.html';
+  else if (rel.endsWith('/')) rel += 'index.html';
   const filePath = path.resolve(PUBLIC_DIR, '.' + path.sep + rel.replace(/^[/]+/, ''));
   const relToPublic = path.relative(PUBLIC_DIR, filePath);
   if (relToPublic === '..' || relToPublic.startsWith('..' + path.sep) || path.isAbsolute(relToPublic)) {
