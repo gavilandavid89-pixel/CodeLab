@@ -5288,8 +5288,15 @@ async function importDesignProjectJson(file) {
       y: finite(raw.y, 0, -6000, 6000),
       xUnit: ['px','%'].includes(raw.xUnit) ? raw.xUnit : 'px',
       yUnit: ['px','%'].includes(raw.yUnit) ? raw.yUnit : 'px',
-      width: finite(raw.width, 120, 20, 4000),
-      height: finite(raw.height, 48, 20, 4000),
+      identifier: typeof raw.identifier === 'string' ? raw.identifier.trim().slice(0, 120) : '',
+      hidden: raw.hidden === true || raw.visible === false,
+      ...(typeof raw.visible === 'boolean' ? { visible: raw.visible } : {}),
+      locked: raw.locked === true,
+      opacity: finite(raw.opacity, 1, 0, 1),
+      rotation: finite(raw.rotation, 0, -3600, 3600),
+      ...(['navigate', 'menu'].includes(raw.flowRole) ? { flowRole: raw.flowRole } : {}),
+      width: finite(raw.width, 120, raw.widthUnit === '%' ? 1 : 20, raw.widthUnit === '%' ? 100 : 4000),
+      height: finite(raw.height, 48, raw.heightUnit === '%' ? 1 : 20, raw.heightUnit === '%' ? 100 : 4000),
       widthUnit: ['px','%','auto'].includes(raw.widthUnit) ? raw.widthUnit : 'px',
       heightUnit: ['px','%','auto'].includes(raw.heightUnit) ? raw.heightUnit : 'px',
       color: color(raw.color, '#111827'),
@@ -5313,6 +5320,7 @@ async function importDesignProjectJson(file) {
       if (targetId) elements[index].href = '#layer-' + targetId.replace(/[^a-z0-9_-]/gi, '').slice(0, 120);
     }
   });
+  normalizeDesignElementIdentifiers(elements);
   // Recheck after asynchronous file reading so import cannot race a project
   // creation or cross the workspace cap between validation and mutation.
   if (creatingProjectInFlight) {
@@ -5345,7 +5353,13 @@ async function importDesignProjectJson(file) {
       layoutGap: finite(sourceDesign.layoutGap, 16, 0, 200),
       layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200),
       ...(Number.isInteger(Number(sourceDesign.canvasWidth)) && Number(sourceDesign.canvasWidth) >= 100 && Number(sourceDesign.canvasWidth) <= 4000 ? { canvasWidth: Number(sourceDesign.canvasWidth) } : {}),
-      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {})
+      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {}),
+      ...(Array.isArray(sourceDesign.flowConnections) ? {
+        flowConnections: sourceDesign.flowConnections.filter(connection => connection && typeof connection === 'object' &&
+          typeof connection.sourceElementId === 'string' && oldToNewId.has(connection.sourceElementId) &&
+          typeof connection.targetProjectId === 'string' && connection.targetProjectId.length <= 200)
+          .map(connection => ({ ...connection, sourceElementId: oldToNewId.get(connection.sourceElementId) }))
+      } : {})
     }
   };
   projects.unshift(newProject);
