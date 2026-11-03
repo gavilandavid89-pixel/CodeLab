@@ -325,6 +325,27 @@ async function main() {
     const recoveredProject = (await (await fetch(base + '/api/pixelforge/projects/' + recoveredMetadata.id, { headers: authHeaders })).json()).project;
     assert.ok(Buffer.from(recoveredProject.layers[0].pixels, 'base64').some(value => value !== 0),
       'actual edited raster pixels, not only project metadata, should survive autosave and reload');
+
+    // Import creates a new server record with a new serverRevision. The editor
+    // must adopt that token before the next autosave or it will conflict with itself.
+    const importedFixture = makePixelProject('imported-source-artwork', 'Imported source artwork');
+    await accountPage.locator('#import-file').setInputFiles({
+      name: 'imported-source.pforge',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(importedFixture))
+    });
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'), null, { timeout: 15000 });
+    const importedCanvasBox = await accountPage.locator('#canvas').boundingBox();
+    assert.ok(importedCanvasBox && importedCanvasBox.width > 0 && importedCanvasBox.height > 0);
+    await accountPage.locator('#canvas').click({ position: { x: importedCanvasBox.width / 2, y: importedCanvasBox.height / 2 } });
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Unsaved changes'), null, { timeout: 5000 });
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'), null, { timeout: 15000 });
+    assert.doesNotMatch(await accountPage.locator('#status').innerText(), /revision conflict|changed in another session/i,
+      'the first edit after importing must use the server-issued revision from the import save');
+    const importedMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+      .projects.find(project => project.name === 'Imported source artwork (imported)');
+    assert.ok(importedMetadata, 'the imported artwork should remain in the account project list after a follow-up autosave');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
