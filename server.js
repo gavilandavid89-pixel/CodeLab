@@ -2018,7 +2018,9 @@ const server = http.createServer(async (req, res) => {
         const file = workspaceFile(workspaceId) + '.pixelforge.json';
         let records = [];
         try {
-          if (fs.existsSync(file)) {
+          if (accountPool) {
+            records = await readPixelForgeProjectsFromDatabase(workspaceId);
+          } else if (fs.existsSync(file)) {
             const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
             if (!Array.isArray(parsed)) throw new Error('invalid_pixel_forge_store');
             records = parsed;
@@ -2079,6 +2081,18 @@ const server = http.createServer(async (req, res) => {
           if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
             return sendJson(res, 413, { error: 'pixelforge_project_too_large', maxBytes: PIXELFORGE_MAX_PROJECT_BYTES });
           }
+          const serialized = JSON.stringify(project);
+          const projectBytes = Buffer.byteLength(serialized, 'utf8');
+          if (accountPool) {
+            try {
+              const result = await savePixelForgeProjectToDatabase(workspaceId, project, projectBytes);
+              if (result.error) return sendJson(res, result.status, { error: result.error, ...(result.maxProjects ? { maxProjects: result.maxProjects } : {}), ...(result.maxBytes ? { maxBytes: result.maxBytes } : {}) });
+              return sendJson(res, result.status, { ok: true, project: { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: result.now } });
+            } catch (error) {
+              console.error('PixelForge PostgreSQL write failed:', error.message);
+              return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+            }
+          }
           const now = Date.now();
           const existing = records.find(item => item.id === project.id);
           const record = { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: now, lastOpenedAt: now, project };
@@ -2105,6 +2119,20 @@ const server = http.createServer(async (req, res) => {
         if (pixelForgeItem && req.method === 'DELETE') {
           const id = decodePixelForgeProjectId(pixelForgeItem[1]);
           if (!id) return sendJson(res, 400, { error: 'invalid_project_id' });
+          if (accountPool) {
+            try {
+              const deleted = await accountPool.query(
+                'DELETE FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+                [workspaceId, id]
+              );
+              return deleted.rowCount
+                ? sendJson(res, 200, { ok: true })
+                : sendJson(res, 404, { error: 'project_not_found' });
+            } catch (error) {
+              console.error('PixelForge PostgreSQL delete failed:', error.message);
+              return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+            }
+          }
           const next = records.filter(item => item.id !== id);
           if (next.length === records.length) return sendJson(res, 404, { error: 'project_not_found' });
           const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
@@ -2243,8 +2271,9 @@ try {
   console.error('WARNING: DATA_DIR not writable:', DATA_DIR, e.message);
 }
 
-seedAdminAccountIfConfigured().then(() => {
-server.listen(PORT, () => {
+seedAdminAccountIfConfigured().then(async () => {
+  await ensurePixelForgeTable();
+  server.listen(PORT, () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
