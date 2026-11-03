@@ -517,7 +517,8 @@ function scheduleAutosave() {
     autosaveTimer = null;
     const savingDoc = doc, version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
     const operation = autosaveInFlight.catch(() => {}).then(async () => {
-      await saveProject(snapshot);
+      const saved = await saveProject(snapshot);
+      if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
       savingDoc.dirty = savingDoc.saveVersion !== version;
       if (doc === savingDoc) {
         status(savingDoc.dirty ? 'Unsaved changes' : 'Saved to your CodeLab account', savingDoc.dirty ? 'warning' : 'success');
@@ -546,7 +547,8 @@ async function flushAutosave({ force = false } = {}) {
       if (!savingDoc.dirty && !pending && !force) return;
       while (doc === savingDoc) {
         const version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
-        await saveProject(snapshot);
+        const saved = await saveProject(snapshot);
+        if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
         if (savingDoc.saveVersion === version) { savingDoc.dirty = false; break; }
         savingDoc.dirty = true;
       }
