@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "sync:pixelforge": "node scripts/sync-pixelforge.mjs"
   },
   "engines": {
     "node": ">=18"
