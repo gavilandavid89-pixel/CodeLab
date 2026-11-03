@@ -397,16 +397,29 @@ test('inspects saved project and reads bounded main or branch code without mutat
   assert.equal(original.projects[0].code.html.length, 25000);
 });
 
-test('reads design geometry without returning embedded image payloads', () => {
+test('design.read preserves responsive metadata and reports text truncation without image payloads', () => {
   const project = designProject();
   project.design.elements = [{
-    id: 'el_image', type: 'image', x: 10, y: 20, width: 100, height: 80,
+    id: 'el_image', type: 'image', x: 10, y: 20, xUnit: '%', yUnit: '%',
+    width: 100, height: 80, widthUnit: 'auto', heightUnit: '%',
+    identifier: 'hero-image', hidden: true, visible: false, text: 'T'.repeat(2501),
     src: 'data:image/png;base64,' + 'x'.repeat(5000), alt: 'Preview'
   }];
   const result = queryHeadlessWorkspace(state([project]), { action: 'design.read', args: { projectId: project.id } });
-  assert.equal(result.result.elements[0].hasImageSource, true);
-  assert.equal(result.result.elements[0].imageSourceLength, 5022);
-  assert.equal(Object.prototype.hasOwnProperty.call(result.result.elements[0], 'src'), false);
+  const element = result.result.elements[0];
+  assert.equal(element.hasImageSource, true);
+  assert.equal(element.imageSourceLength, 5022);
+  assert.equal(Object.prototype.hasOwnProperty.call(element, 'src'), false);
+  assert.equal(element.xUnit, '%');
+  assert.equal(element.yUnit, '%');
+  assert.equal(element.widthUnit, 'auto');
+  assert.equal(element.heightUnit, '%');
+  assert.equal(element.identifier, 'hero-image');
+  assert.equal(element.hidden, true);
+  assert.equal(element.visible, false);
+  assert.equal(element.text.length, 2000);
+  assert.equal(element.textLength, 2501);
+  assert.equal(element.textTruncated, true);
 });
 
 test('runs the existing static accessibility audit against saved web HTML', () => {
