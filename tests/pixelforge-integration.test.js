@@ -62,6 +62,11 @@ async function main() {
   const anonymousBody = await anonymousResponse.json();
   assert.equal(anonymousBody.error, 'not_authenticated', 'anonymous access should have a clear auth error');
 
+  const malformedProjectIdResponse = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', {
+    headers: { 'x-forwarded-for': '198.51.100.78' }
+  });
+  assert.equal(malformedProjectIdResponse.status, 401, 'authentication must be checked before parsing project IDs');
+
   // Build a test-only session in the isolated E2E data directory, using the
   // same on-disk session contract as CodeLab's real login flow.
   const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
