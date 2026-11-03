@@ -135,7 +135,7 @@
         cursor = templateEnd;
         continue;
       }
-      if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
+      if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes', 'noscript'].includes(tagName)) {
         const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
         closingTag.lastIndex = tagEnd + 1;
         const closingMatch = closingTag.exec(source);
@@ -179,7 +179,7 @@
         cursor = templateEnd;
         continue;
       }
-      if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
+      if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes', 'noscript'].includes(tagName)) {
         const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
         closingTag.lastIndex = tagEnd + 1;
         const closingMatch = closingTag.exec(source);
