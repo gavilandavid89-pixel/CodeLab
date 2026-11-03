@@ -420,6 +420,8 @@ test('design.read preserves responsive metadata and reports text truncation with
   assert.equal(element.text.length, 2000);
   assert.equal(element.textLength, 2501);
   assert.equal(element.textTruncated, true);
+  assert.equal(element.textSha256, require('node:crypto').createHash('sha256').update('T'.repeat(2501), 'utf8').digest('hex'));
+  assert.equal(element.textSha256.length, 64);
 });
 
 test('design.read returns all layers through the 500-layer limit when requested', () => {
