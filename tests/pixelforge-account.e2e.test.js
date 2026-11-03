@@ -104,6 +104,31 @@ function pixelProject(id, name, marker) {
   const afterRace = await request('/api/pixelforge/projects/' + id, { cookie: alice.cookie });
   assert.equal(afterRace.json.revision, 3, 'A concurrent race must advance the document revision only once');
 
+  const deleted = await request('/api/pixelforge/projects/' + id, { method: 'DELETE', cookie: alice.cookie });
+  assert.equal(deleted.status, 200, 'The account owner should be able to delete their cloud project');
+  assert.equal((await request('/api/pixelforge/projects/' + id, { cookie: alice.cookie })).status, 404,
+    'A deleted cloud project should no longer be readable');
+
+  const status = await request('/api/ai/status');
+  const maxProjects = status.json.maxProjects;
+  for (let index = 0; index < maxProjects; index++) {
+    const projectId = 'limit_project_' + index;
+    const savedProject = await request('/api/pixelforge/projects/' + projectId, {
+      method: 'PUT', cookie: alice.cookie,
+      body: { workspaceId: aliceSession.json.workspaceId, project: pixelProject(projectId, 'Limit project ' + index, 'limit_' + index) }
+    });
+    assert.equal(savedProject.status, 200, 'Projects within the account limit should save');
+  }
+  const overflowId = 'limit_project_overflow';
+  const overflow = await request('/api/pixelforge/projects/' + overflowId, {
+    method: 'PUT', cookie: alice.cookie,
+    body: { workspaceId: aliceSession.json.workspaceId, project: pixelProject(overflowId, 'Overflow project', 'overflow') }
+  });
+  assert.equal(overflow.status, 409, 'The project cap must reject overflow instead of silently evicting old work');
+  assert.equal(overflow.json.error, 'pixelforge_project_limit');
+  const retained = await request('/api/pixelforge/projects', { cookie: alice.cookie });
+  assert.equal(retained.json.projects.length, maxProjects, 'All saved projects must remain after reaching the cap');
+
   const invalid = await request('/api/pixelforge/projects/' + crypto.randomUUID(), {
     method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, project: { id: 'mismatch_id', name: 'Invalid', width: 0, height: 0 } }
   });
@@ -120,6 +145,10 @@ function pixelProject(id, name, marker) {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await context.addInitScript(() => {
+      localStorage.setItem('pixelforge.palette.v1:github:pixel-browser-user', JSON.stringify(['#A1B2C3']));
+      localStorage.setItem('pixelforge.palette.v1', JSON.stringify(['#DEAD00']));
+    });
     await context.addCookies([{ name: 'codelab_sid', value: browserUser.cookie.split('=')[1], url: BASE_URL }]);
     const page = await context.newPage();
     const pageErrors = [];
@@ -127,6 +156,8 @@ function pixelProject(id, name, marker) {
     const response = await page.goto(BASE_URL + '/pixelforge/', { waitUntil: 'domcontentloaded' });
     assert.equal(response.status(), 200, 'PixelForge must load under the same CodeLab origin');
     await page.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#user-palette .palette-item').count(), 1,
+      'The signed-in CodeLab account should load only its own saved palette');
     await page.locator('#save').click();
     await page.waitForFunction(async () => {
       const response = await fetch('/api/pixelforge/projects', { cache: 'no-store' });
@@ -138,8 +169,27 @@ function pixelProject(id, name, marker) {
     const statusText = await page.locator('#status').textContent().catch(() => '');
     assert.match(statusText, /CodeLab cloud|device/i, 'Save status should disclose the active persistence path');
 
+    const browserSession = await request('/api/pixelforge/session', { cookie: browserUser.cookie });
+    const disposableId = crypto.randomUUID();
+    const disposableSave = await request('/api/pixelforge/projects/' + disposableId, {
+      method: 'PUT', cookie: browserUser.cookie,
+      body: { workspaceId: browserSession.json.workspaceId, project: pixelProject(disposableId, 'Disposable browser project', 'disposable') }
+    });
+    assert.equal(disposableSave.status, 200);
+    await page.on('dialog', dialog => dialog.accept());
+    await page.locator('#projects-button').click();
+    const disposableRow = page.locator('.saved-project').filter({ hasText: 'Disposable browser project' });
+    await disposableRow.locator('.saved-project-delete').click();
+    await disposableRow.waitFor({ state: 'detached' });
+    assert.equal((await request('/api/pixelforge/projects/' + disposableId, { cookie: browserUser.cookie })).status, 404,
+      'The PixelForge project-list delete control should remove the cloud record');
+
     const otherBrowserUser = seedSession('pixel-browser-other', 'Pixel Browser Other');
     await context.addCookies([{ name: 'codelab_sid', value: otherBrowserUser.cookie.split('=')[1], url: BASE_URL }]);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#user-palette .palette-item').count(), 0,
+      'Switching CodeLab accounts must not expose the previous account palette');
     const projectsAfterAccountSwitch = await page.evaluate(async () => {
       const persistence = await import('/pixelforge/src/persistence.js');
       return await persistence.listSavedProjects();
