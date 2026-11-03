@@ -99,6 +99,7 @@ function parseCommand(raw) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
   }
   if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
+  if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_system_import_json requires a JSON string between 2 and 50000 characters.');
   if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
     validateDesignElementProperties(args.properties, 'design_element_update');
