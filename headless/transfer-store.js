@@ -54,12 +54,43 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     fs.writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 });
     fs.renameSync(tmp, target);
   }
+  // Store chunk payloads separately from transfer metadata. Updating one chunk must not
+  // rewrite every previously uploaded chunk (which made large uploads quadratic in disk I/O).
+  function chunkFile(kind, id, index) {
+    if (!validId(id) || !Number.isInteger(index) || index < 0 || index >= MAX_IMAGE_BASE64_CHUNKS) throw new Error('invalid_transfer_chunk');
+    return path.join(root, kind + '-' + id + '-chunk-' + index + '.json');
+  }
+  function writeChunk(kind, id, index, value) {
+    ensure();
+    const target = chunkFile(kind, id, index);
+    const tmp = target + '.tmp-' + crypto.randomBytes(6).toString('hex');
+    fs.writeFileSync(tmp, JSON.stringify({ value }), { mode: 0o600 });
+    fs.renameSync(tmp, target);
+  }
+  function readChunk(kind, id, index) {
+    const target = chunkFile(kind, id, index);
+    if (!fs.existsSync(target)) return undefined;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
+      return typeof parsed.value === 'string' ? parsed.value : undefined;
+    } catch (_) { return undefined; }
+  }
+  function deleteChunks(kind, id, totalChunks) {
+    for (let i = 0; i < totalChunks; i++) {
+      try { fs.unlinkSync(chunkFile(kind, id, i)); } catch (_) {}
+    }
+  }
+  function countChunks(kind, id, totalChunks) {
+    let count = 0;
+    for (let i = 0; i < totalChunks; i++) if (readChunk(kind, id, i) !== undefined) count++;
+    return count;
+  }
   function beginCode({ workspaceId, projectId, field, source = 'main', baseRevision, totalChunks, sha256: expectedHash }) {
     if (!workspaceId || !projectId || !['html', 'css', 'js'].includes(field) || !['main', 'branch'].includes(source) ||
         !Number.isInteger(baseRevision) || baseRevision < 0 || !Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_CHUNKS ||
         !/^[a-f0-9]{64}$/i.test(expectedHash || '')) throw new Error('invalid_code_transfer');
     const id = crypto.randomUUID().replace(/-/g, '');
-    write('code', id, { id, workspaceId, projectId, field, source, baseRevision, totalChunks, expectedHash: expectedHash.toLowerCase(), chunks: {}, expiresAt: now() + TTL_MS });
+    write('code', id, { id, workspaceId, projectId, field, source, baseRevision, totalChunks, expectedHash: expectedHash.toLowerCase(), expiresAt: now() + TTL_MS });
     return { transferId: id, expiresInMs: TTL_MS, maxChunkChars: MAX_CHUNK_CHARS };
   }
   function putCodeChunk({ transferId, workspaceId, index, chunk, sha256: chunkHash }) {
@@ -67,26 +98,29 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
     if (!Number.isInteger(index) || index < 0 || index >= record.totalChunks || typeof chunk !== 'string' ||
         chunk.length > MAX_CHUNK_CHARS || sha256(chunk) !== chunkHash) throw new Error('invalid_code_chunk');
-    const previous = record.chunks[index];
-    if (previous && previous !== chunk) throw new Error('code_chunk_conflict');
-    record.chunks[index] = chunk;
-    write('code', transferId, record);
-    return { transferId, receivedChunks: Object.keys(record.chunks).length, totalChunks: record.totalChunks };
+    const previous = readChunk('code', transferId, index);
+    if (previous !== undefined && previous !== chunk) throw new Error('code_chunk_conflict');
+    writeChunk('code', transferId, index, chunk);
+    return { transferId, receivedChunks: countChunks('code', transferId, record.totalChunks), totalChunks: record.totalChunks };
   }
   function assembleCode({ transferId, workspaceId }) {
     const record = read('code', transferId);
     if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
-    const keys = Object.keys(record.chunks);
-    if (keys.length !== record.totalChunks) throw new Error('code_chunks_incomplete');
+    if (countChunks('code', transferId, record.totalChunks) !== record.totalChunks) throw new Error('code_chunks_incomplete');
     const value = Array.from({ length: record.totalChunks }, (_, i) => {
-      if (typeof record.chunks[i] !== 'string') throw new Error('code_chunks_incomplete');
-      return record.chunks[i];
+      const chunk = readChunk('code', transferId, i);
+      if (typeof chunk !== 'string') throw new Error('code_chunks_incomplete');
+      return chunk;
     }).join('');
     if (value.length > MAX_CODE_CHARS || sha256(value) !== record.expectedHash) throw new Error('code_transfer_hash_mismatch');
     return { ...record, value };
   }
   function consumeCode(transferId) {
-    try { fs.unlinkSync(file('code', transferId)); } catch (_) {}
+    try {
+      const record = read('code', transferId);
+      if (record) deleteChunks('code', transferId, record.totalChunks);
+      fs.unlinkSync(file('code', transferId));
+    } catch (_) {}
   }
   function beginImage({ workspaceId, projectId, totalChunks, sha256: expectedHash, declaredMime }) {
     if (!workspaceId || !projectId || !Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_IMAGE_BASE64_CHUNKS ||
@@ -94,7 +128,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
       throw new Error('invalid_image_transfer');
     }
     const id = crypto.randomUUID().replace(/-/g, '');
-    write('image-chunks', id, { id, workspaceId, projectId, totalChunks, expectedHash: expectedHash.toLowerCase(), declaredMime, chunks: {}, expiresAt: now() + TTL_MS });
+    write('image-chunks', id, { id, workspaceId, projectId, totalChunks, expectedHash: expectedHash.toLowerCase(), declaredMime, expiresAt: now() + TTL_MS });
     return { transferId: id, expiresInMs: TTL_MS, maxChunkChars: MAX_CHUNK_CHARS, maxChunks: MAX_IMAGE_BASE64_CHUNKS };
   }
   function putImageChunk({ transferId, workspaceId, index, chunk, sha256: chunkHash }) {
@@ -104,19 +138,19 @@ function createTransferStore(rootDir, now = () => Date.now()) {
         chunk.length > MAX_CHUNK_CHARS || !/^[A-Za-z0-9+/]*={0,2}$/.test(chunk) || sha256(chunk) !== chunkHash) {
       throw new Error('invalid_image_chunk');
     }
-    const previous = record.chunks[index];
+    const previous = readChunk('image-chunks', transferId, index);
     if (previous !== undefined && previous !== chunk) throw new Error('image_chunk_conflict');
-    record.chunks[index] = chunk;
-    write('image-chunks', transferId, record);
-    return { transferId, receivedChunks: Object.keys(record.chunks).length, totalChunks: record.totalChunks };
+    writeChunk('image-chunks', transferId, index, chunk);
+    return { transferId, receivedChunks: countChunks('image-chunks', transferId, record.totalChunks), totalChunks: record.totalChunks };
   }
   function commitImage({ transferId, workspaceId }) {
     const record = read('image-chunks', transferId);
     if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
-    if (Object.keys(record.chunks).length !== record.totalChunks) throw new Error('image_chunks_incomplete');
+    if (countChunks('image-chunks', transferId, record.totalChunks) !== record.totalChunks) throw new Error('image_chunks_incomplete');
     const base64 = Array.from({ length: record.totalChunks }, (_, i) => {
-      if (typeof record.chunks[i] !== 'string') throw new Error('image_chunks_incomplete');
-      return record.chunks[i];
+      const chunk = readChunk('image-chunks', transferId, i);
+      if (typeof chunk !== 'string') throw new Error('image_chunks_incomplete');
+      return chunk;
     }).join('');
     if (!base64 || base64.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 || base64.length % 4 !== 0 ||
         !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
@@ -127,6 +161,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
       throw new Error('image_transfer_hash_mismatch');
     }
     const upload = putImage({ workspaceId, projectId: record.projectId, bytes, declaredMime: record.declaredMime });
+    deleteChunks('image-chunks', transferId, record.totalChunks);
     try { fs.unlinkSync(file('image-chunks', transferId)); } catch (_) {}
     return { ...upload, projectId: record.projectId };
   }
