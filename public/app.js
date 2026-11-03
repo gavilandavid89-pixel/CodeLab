@@ -4033,7 +4033,7 @@ function getDesignElementDimension(el, axis, containerSize = 900) {
   if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
   if (unit === 'auto' && el) {
     if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
-    if (el.type === 'image') return value;
+    if (el.type === 'image') return Math.max(20, Math.min(4000, value));
     const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const content = String(el.text || el.label || '');
     if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
