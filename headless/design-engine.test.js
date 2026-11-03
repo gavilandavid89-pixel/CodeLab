@@ -508,6 +508,27 @@ test('duplicate and distribute preserve percentage position semantics', () => {
 });
 
 
+test('validates responsive values independently of property key order', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    elements: [{ id: 'responsive-order', type: 'rectangle', x: 10, y: 10, width: 100, height: 50 }]
+  });
+  const widthFirst = engine.transact(input, [{
+    type: 'element.update', id: 'responsive-order',
+    properties: { width: 10, widthUnit: '%', x: 150, xUnit: '%' }
+  }]);
+  const unitFirst = engine.transact(input, [{
+    type: 'element.update', id: 'responsive-order',
+    properties: { widthUnit: '%', width: 10, xUnit: '%', x: 150 }
+  }]);
+  const pick = result => {
+    const element = result.project.design.elements[0];
+    return { x: element.x, xUnit: element.xUnit, width: element.width, widthUnit: element.widthUnit };
+  };
+  assert.deepEqual(pick(widthFirst), pick(unitFirst));
+  assert.deepEqual(pick(widthFirst), { x: 150, xUnit: '%', width: 10, widthUnit: '%' });
+});
+
 test('align preserves percentage position units after computing pixel geometry', () => {
   const engine = createDesignEngine();
   const input = project({
