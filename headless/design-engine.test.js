@@ -142,6 +142,28 @@ test('rejects unsafe colors, href schemes, and image sources', () => {
   ]), /safe image URL/);
 });
 
+test('rejects deceptive or incomplete absolute image URLs and protocol-relative hosts', () => {
+  const engine = createDesignEngine();
+  const projectInput = project({ elements: [{ id: 'url-image', type: 'image', src: '' }] });
+  for (const src of [
+    'https://trusted.example@evil.example/image.png',
+    'http://',
+    '//evil.example/image.png',
+    'https://example.com\\\\image.png',
+    'https://example.com/image.png\\\\payload'
+  ]) {
+    assert.throws(() => engine.transact(projectInput, [
+      { type: 'element.update', id: 'url-image', properties: { src } }
+    ]), /safe image URL/);
+  }
+  for (const src of ['/assets/hero.png', './assets/hero.png', '../assets/hero.png', 'https://example.com/image.png']) {
+    const result = engine.transact(projectInput, [
+      { type: 'element.update', id: 'url-image', properties: { src } }
+    ]);
+    assert.equal(result.project.design.elements[0].src, src);
+  }
+});
+
 test('bounds external image URLs independently from Base64 image data URLs', () => {
   const engine = createDesignEngine();
   const oversizedUrl = 'https://example.com/' + 'x'.repeat(9000);
