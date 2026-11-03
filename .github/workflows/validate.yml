@@ -84,12 +84,12 @@ jobs:
             sleep 1
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/pixelforge-integration.test.js
           node tests/design-workflow.e2e.test.js
           node tests/design-tools-usage.e2e.test.js
           node tests/interface-responsive.e2e.test.js
           node tests/web-editor-ui.e2e.test.js
           node tests/continuous-ui-stress.e2e.test.js
-          node tests/pixelforge-integration.test.js
       - name: Test offline save and reconnect recovery
         shell: bash
         run: |
