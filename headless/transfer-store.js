@@ -26,7 +26,10 @@ function imageMime(buffer) {
 }
 function createTransferStore(rootDir, now = () => Date.now()) {
   const root = path.resolve(rootDir, 'headless-transfers');
-  const ensure = () => fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const ensure = () => {
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(root, 0o700); } catch (_) {}
+  };
   const file = (kind, id) => {
     if (!validId(id)) throw new Error('invalid_transfer_id');
     return path.join(root, kind + '-' + id + '.json');
