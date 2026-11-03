@@ -14,10 +14,10 @@ const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
 const { createTransferStore, sha256, MAX_CHUNK_CHARS, MAX_IMAGE_BYTES } = require('./headless/transfer-store');
-const headlessTransfers = createTransferStore(DATA_DIR);
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
+const headlessTransfers = createTransferStore(DATA_DIR);
 const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const PUBLIC_DIR = path.join(__dirname, 'public');
