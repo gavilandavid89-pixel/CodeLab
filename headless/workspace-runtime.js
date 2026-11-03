@@ -332,6 +332,11 @@ function applyOperation(state, operation) {
       project.designRedoStack = [];
       project.design.background = template.background;
       project.design.elements = template.elements;
+      if (Array.isArray(project.design.flowConnections)) {
+        const templateElementIds = new Set(template.elements.map(element => element.id));
+        project.design.flowConnections = project.design.flowConnections.filter(connection =>
+          connection && templateElementIds.has(connection.sourceElementId));
+      }
       project.design.canvasWidth = template.canvasWidth;
       project.design.canvasHeight = template.canvasHeight;
       if (project.design.canvas && typeof project.design.canvas === 'object' && !Array.isArray(project.design.canvas)) {
