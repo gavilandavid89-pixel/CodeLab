@@ -342,7 +342,7 @@ async function main() {
     assert.doesNotMatch(await accountPage.locator('#status').innerText(), /revision conflict|changed in another session/i,
       'the first edit after importing must use the server-issued revision from the import save');
     const importedMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
-      .projects.find(project => project.name === 'Imported source artwork');
+      .projects.find(project => project.name === 'Imported source artwork (imported)');
     assert.ok(importedMetadata, 'the imported artwork should remain in the account project list after a follow-up autosave');
 
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
