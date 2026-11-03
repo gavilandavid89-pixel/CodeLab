@@ -53,7 +53,7 @@ function pixelProject(id, name, marker) {
 
   const id = crypto.randomUUID();
   const saved = await request('/api/pixelforge/projects/' + id, {
-    method: 'PUT', cookie: alice.cookie, body: { project: pixelProject(id, 'Alice sprite', 'alice') }
+    method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, project: pixelProject(id, 'Alice sprite', 'alice') }
   });
   assert.equal(saved.status, 200);
   assert.equal(saved.json.revision, 1);
@@ -75,13 +75,13 @@ function pixelProject(id, name, marker) {
   assert.equal(unauthorizedList.json.projects.length, 0);
 
   const update = await request('/api/pixelforge/projects/' + id, {
-    method: 'PUT', cookie: alice.cookie, body: { baseRevision: 1, project: pixelProject(id, 'Alice sprite v2', 'alice_v2') }
+    method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, baseRevision: 1, project: pixelProject(id, 'Alice sprite v2', 'alice_v2') }
   });
   assert.equal(update.status, 200);
   assert.equal(update.json.revision, 2);
 
   const stale = await request('/api/pixelforge/projects/' + id, {
-    method: 'PUT', cookie: alice.cookie, body: { baseRevision: 1, project: pixelProject(id, 'Stale overwrite', 'stale') }
+    method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, baseRevision: 1, project: pixelProject(id, 'Stale overwrite', 'stale') }
   });
   assert.equal(stale.status, 409, 'Stale writes must not overwrite newer cloud state');
   const final = await request('/api/pixelforge/projects/' + id, { cookie: alice.cookie });
@@ -89,7 +89,7 @@ function pixelProject(id, name, marker) {
   assert.equal(final.json.revision, 2);
 
   const races = await Promise.all(['race_one', 'race_two'].map(marker => request('/api/pixelforge/projects/' + id, {
-    method: 'PUT', cookie: alice.cookie, body: { baseRevision: 2, project: pixelProject(id, 'Race ' + marker, marker) }
+    method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, baseRevision: 2, project: pixelProject(id, 'Race ' + marker, marker) }
   })));
   assert.equal(races.filter(item => item.status === 200).length, 1, 'Exactly one same-revision cloud save should win');
   assert.equal(races.filter(item => item.status === 409).length, 1, 'The competing cloud save should receive a revision conflict');
@@ -97,11 +97,11 @@ function pixelProject(id, name, marker) {
   assert.equal(afterRace.json.revision, 3, 'A concurrent race must advance the document revision only once');
 
   const invalid = await request('/api/pixelforge/projects/' + crypto.randomUUID(), {
-    method: 'PUT', cookie: alice.cookie, body: { project: { id: 'mismatch_id', name: 'Invalid', width: 0, height: 0 } }
+    method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, project: { id: 'mismatch_id', name: 'Invalid', width: 0, height: 0 } }
   });
   assert.equal(invalid.status, 400, 'Invalid document metadata must be rejected');
   const tooManyPixels = await request('/api/pixelforge/projects/' + crypto.randomUUID(), {
-    method: 'PUT', cookie: alice.cookie, body: { project: { id: 'pixel_area_invalid', name: 'Oversized canvas', width: 8192, height: 8192 } }
+    method: 'PUT', cookie: alice.cookie, body: { workspaceId: aliceSession.json.workspaceId, project: { id: 'pixel_area_invalid', name: 'Oversized canvas', width: 8192, height: 8192 } }
   });
   assert.equal(tooManyPixels.status, 400, 'Canvas area must be bounded to prevent oversized pixel allocations');
 
