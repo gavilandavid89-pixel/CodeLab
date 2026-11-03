@@ -530,8 +530,14 @@ async function executeSavedDesignBatch(action, args) {
       elementCount: afterDesign.elementCount, operationTypes: operations.map(item => item.type)
     };
     if (action === 'design_element_add') {
-      if (!newElements[0]) throw new Error('Design element add failed authoritative server readback.');
-      return { ...base, elementId: newElements[0].id, type: newElements[0].type };
+      const element = newElements[0];
+      const properties = args.properties || {};
+      const verified = !!element && element.type === args.type && Object.entries(properties).every(([key, value]) => {
+        if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        return element[key] === value;
+      });
+      if (!verified) throw new Error('Design element add failed authoritative server readback for its initial properties.');
+      return { ...base, elementId: element.id, type: element.type, verified, verifiedProperties: Object.keys(properties) };
     }
     if (action === 'design_element_update') {
       const element = afterById.get(args.element_id);
@@ -553,10 +559,33 @@ async function executeSavedDesignBatch(action, args) {
       if (!deleted || danglingConnections) throw new Error('Bulk deletion failed authoritative layer/connection readback.');
       return { ...base, deletedElementIds: args.element_ids, deleted, danglingConnections, remainingElements: afterDesign.elementCount };
     }
-    if (action === 'design_element_duplicate') return {
-      ...base, sourceElementId: args.element_id, elementId: newElements[0]?.id || null,
-      duplicated: !!newElements[0] && newElements[0].type === sourceBefore?.type && newElements[0].x === (Number(sourceBefore?.x) || 0) + 24 && newElements[0].y === (Number(sourceBefore?.y) || 0) + 24
-    };
+    if (action === 'design_element_duplicate') {
+      const duplicate = newElements[0];
+      const positionPx = (element, axis, design) => {
+        if (!element) return NaN;
+        const value = Number(element[axis]);
+        if (!Number.isFinite(value)) return NaN;
+        const unit = element[axis + 'Unit'];
+        const canvasSize = axis === 'x' ? design.canvas.width : design.canvas.height;
+        return unit === '%' ? value * canvasSize / 100 : value;
+      };
+      const expectedX = positionPx(sourceBefore, 'x', beforeDesign) + 24;
+      const expectedY = positionPx(sourceBefore, 'y', beforeDesign) + 24;
+      const actualX = positionPx(duplicate, 'x', afterDesign);
+      const actualY = positionPx(duplicate, 'y', afterDesign);
+      const sourceConnections = beforeDesign.flowConnections.filter(item => item && item.sourceElementId === args.element_id);
+      const duplicateConnections = afterDesign.flowConnections.filter(item => item && item.sourceElementId === duplicate?.id);
+      const connectionsDuplicated = sourceConnections.every(sourceConnection => duplicateConnections.some(duplicateConnection =>
+        JSON.stringify({ ...duplicateConnection, sourceElementId: args.element_id }) === JSON.stringify(sourceConnection)
+      ));
+      const duplicated = !!duplicate && duplicate.type === sourceBefore?.type &&
+        Math.abs(actualX - expectedX) < 0.01 && Math.abs(actualY - expectedY) < 0.01 && connectionsDuplicated;
+      if (!duplicated) throw new Error('Design element duplicate failed authoritative geometry/connection readback.');
+      return {
+        ...base, sourceElementId: args.element_id, elementId: duplicate.id,
+        duplicated, connectionsDuplicated, position: { x: actualX, y: actualY }
+      };
+    }
     if (action === 'design_layer_move') return {
       ...base, elementId: args.element_id, direction: args.direction,
       moved: (afterElements.findIndex(item => item.id === args.element_id) !== elements.findIndex(item => item.id === args.element_id)),
