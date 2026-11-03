@@ -352,3 +352,21 @@ test('rejects unsupported percentage positioning units', () => {
     { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
   ]), /xUnit must be px or %/);
 });
+
+
+test('locked layers cannot be moved through align or distribute operations', () => {
+  const engine = createDesignEngine();
+  const source = project({ elements: [
+    { id: 'locked-a', type: 'rectangle', x: 10, y: 10, width: 100, height: 50, locked: true },
+    { id: 'free-b', type: 'rectangle', x: 200, y: 30, width: 100, height: 50 },
+    { id: 'free-c', type: 'rectangle', x: 400, y: 60, width: 100, height: 50 }
+  ] });
+  const before = JSON.stringify(source.design.elements);
+  assert.throws(() => engine.transact(source, [
+    { type: 'elements.align', ids: ['locked-a', 'free-b'], mode: 'top' }
+  ]), /locked/i);
+  assert.throws(() => engine.transact(source, [
+    { type: 'elements.distribute', ids: ['locked-a', 'free-b', 'free-c'], axis: 'horizontal' }
+  ]), /locked/i);
+  assert.equal(JSON.stringify(source.design.elements), before, 'rejected geometry operations must not mutate the input');
+});
