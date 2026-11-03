@@ -422,6 +422,19 @@ test('design.read preserves responsive metadata and reports text truncation with
   assert.equal(element.textTruncated, true);
 });
 
+test('design.read returns all layers through the 500-layer limit when requested', () => {
+  const project = designProject();
+  project.design.elements = Array.from({ length: 250 }, (_, index) => ({
+    id: 'el_' + index, type: 'rectangle', x: index, y: 0, width: 20, height: 20
+  }));
+  const result = queryHeadlessWorkspace(state([project]), {
+    action: 'design.read', args: { projectId: project.id, limit: 500 }
+  });
+  assert.equal(result.result.elements.length, 250);
+  assert.equal(result.result.totalElements, 250);
+  assert.equal(result.result.truncated, false);
+});
+
 test('runs the existing static accessibility audit against saved web HTML', () => {
   const project = webProject();
   project.code.html = '<html><head></head><body><img src="x.png"></body></html>';
