@@ -1,4 +1,4 @@
-import { codeLabRequest } from '../../studio-core.js';
+const { codeLabRequest } = window.CodeLabStudioCore;
 
 const API = '/api/pixelforge/projects';
 
