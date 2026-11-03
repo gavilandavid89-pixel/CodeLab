@@ -227,7 +227,12 @@ function applyOperation(project, operation) {
         label: (source.label || 'Capa') + ' copia'
       };
       project.design.elements.push(copy);
-      return { type: operation.type, sourceId: source.id, element: clone(copy) };
+      const connections = Array.isArray(project.design.flowConnections) ? project.design.flowConnections : [];
+      const duplicatedConnections = connections
+        .filter(connection => connection && connection.sourceElementId === source.id)
+        .map(connection => ({ ...clone(connection), sourceElementId: id }));
+      if (duplicatedConnections.length) project.design.flowConnections = connections.concat(duplicatedConnections);
+      return { type: operation.type, sourceId: source.id, element: clone(copy), duplicatedConnections: clone(duplicatedConnections) };
     }
     case 'element.reorder': {
       const index = project.design.elements.findIndex(item => item.id === operation.id);
