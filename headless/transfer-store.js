@@ -5,7 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const MAX_CODE_CHARS = 500000;
-const MAX_CHUNK_CHARS = 45000;
+const MAX_CHUNK_CHARS = 8000;
 const MAX_CHUNKS = 20;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const TTL_MS = 10 * 60 * 1000;
@@ -93,14 +93,18 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     write('image', id, payload);
     return { uploadToken: id, mime, bytes: bytes.length, sha256: payload.sha256, expiresInMs: TTL_MS };
   }
-  function consumeImage({ uploadToken, workspaceId, projectId }) {
+  function resolveImage({ uploadToken, workspaceId, projectId }) {
     const record = read('image', uploadToken);
     if (!record || record.workspaceId !== workspaceId || record.projectId !== projectId) throw new Error('image_upload_not_found');
     const bytes = Buffer.from(record.bytes, 'base64');
     if (sha256(bytes) !== record.sha256 || imageMime(bytes) !== record.mime) throw new Error('image_upload_corrupt');
-    try { fs.unlinkSync(file('image', uploadToken)); } catch (_) {}
     return { mime: record.mime, dataUrl: 'data:' + record.mime + ';base64,' + bytes.toString('base64'), sha256: record.sha256 };
   }
-  return { beginCode, putCodeChunk, assembleCode, consumeCode, putImage, consumeImage };
+  function consumeImage({ uploadToken, workspaceId, projectId }) {
+    const result = resolveImage({ uploadToken, workspaceId, projectId });
+    try { fs.unlinkSync(file('image', uploadToken)); } catch (_) {}
+    return result;
+  }
+  return { beginCode, putCodeChunk, assembleCode, consumeCode, putImage, resolveImage, consumeImage };
 }
 module.exports = { createTransferStore, sha256, imageMime, MAX_CODE_CHARS, MAX_CHUNK_CHARS, MAX_CHUNKS, MAX_IMAGE_BYTES, TTL_MS };
