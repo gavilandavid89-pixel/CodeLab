@@ -377,6 +377,7 @@
     modal.dataset.designToolsInitialized = 'true';
     let settings = loadSavedSettings();
     let activeTab = 'palette';
+    let hasUnsavedEdits = false;
 
     const get = id => document.getElementById(id);
     const fieldIds = ['systemName', 'colorPrimary', 'colorSecondary', 'colorAccent', 'colorSurface', 'colorBackground', 'colorText', 'contrastForeground', 'contrastBackground', 'baseFont', 'typeRatio', 'baseSpacing', 'baseRadius'];
@@ -403,6 +404,8 @@
       host.innerHTML = shades.map(item => '<button type="button" class="min-w-0 text-left group" data-palette-color="' + item.color + '" title="Usar ' + item.color + '" aria-label="Usar tono ' + item.color + '"><span class="block h-8 sm:h-10 rounded-lg border border-white/10" style="background:' + item.color + '"></span><span class="block mt-1 text-[9px] sm:text-[10px] text-slate-400">' + item.step + '</span><span class="block text-[8px] sm:text-[10px] font-mono text-slate-500">' + item.color + '</span></button>').join('');
       host.querySelectorAll('[data-palette-color]').forEach(button => button.addEventListener('click', async () => {
         const color = button.getAttribute('data-palette-color');
+        hasUnsavedEdits = true;
+        ++workspaceSettingsSyncSequence;
         const primary = get('colorPrimary');
         if (primary) primary.value = color;
         settings = sanitizeSettings(Object.assign({}, readForm(), { primary: color }));
@@ -497,6 +500,9 @@
         if (!isCurrentWorkspace(credentials)) return;
         // A user save made while GET was in flight wins over the older snapshot.
         if (sequenceAtStart !== workspaceSettingsSyncSequence) {
+          // An in-flight workspace read must never replace edits the user is making.
+          // Explicit saves are handled separately and may still win the race.
+          if (hasUnsavedEdits) return;
           const latest = loadSavedSettings(localKey);
           const payload = JSON.stringify({ settings: latest });
           workspaceSettingsSyncQueue = workspaceSettingsSyncQueue.catch(() => {}).then(async () => {
@@ -512,6 +518,7 @@
           return;
         }
         if (data && data.settings) {
+          hasUnsavedEdits = false;
           settings = sanitizeSettings(data.settings);
           saveLocalSettings(settings, localKey);
           fillForm();
@@ -521,6 +528,7 @@
         }
         // Initialize from this workspace's local copy, never from another
         // OAuth account's legacy browser-wide settings.
+        hasUnsavedEdits = false;
         settings = loadSavedSettings(localKey);
         fillForm();
         renderAll();
@@ -606,11 +614,15 @@
       const el = get(id);
       if (!el) return;
       el.addEventListener('input', () => {
+        hasUnsavedEdits = true;
+        ++workspaceSettingsSyncSequence;
         settings = readForm();
         renderAll();
         announce('Cambios sin guardar.');
       });
       el.addEventListener('change', () => {
+        hasUnsavedEdits = true;
+        ++workspaceSettingsSyncSequence;
         settings = readForm();
         renderAll();
       });
@@ -662,9 +674,12 @@
     if (get('saveDesignSystem')) get('saveDesignSystem').addEventListener('click', () => {
       settings = readForm();
       const ok = saveSettings(settings);
+      if (ok) hasUnsavedEdits = false;
       announce(ok ? 'Sistema guardado localmente; sincronizando con el workspace si está disponible.' : 'No se pudo guardar; exporta el JSON para conservarlo.');
     });
     if (get('resetDesignSystem')) get('resetDesignSystem').addEventListener('click', () => {
+      hasUnsavedEdits = true;
+      ++workspaceSettingsSyncSequence;
       settings = sanitizeSettings(DEFAULTS);
       fillForm();
       renderAll();

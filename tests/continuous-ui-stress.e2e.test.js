@@ -75,8 +75,19 @@ async function createProject(page, type, name) {
     await page.locator('#openDesignTools').click();
     await page.locator('#designToolsModal').waitFor({ state: 'visible' });
     const original = await page.locator('#colorPrimary').inputValue();
-    await page.locator('#colorPrimary').fill('#123abc');
-    await page.locator('#colorPrimary').dispatchEvent('input');
+    // Playwright fill() is not a reliable way to change a native input[type=color].
+    // Set the selected color value and dispatch the same input event the browser emits
+    // when a user chooses a color in the native picker.
+    await page.locator('#colorPrimary').evaluate(el => {
+      el.value = '#123abc';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    assert.equal(await page.locator('#colorPrimary').inputValue(), '#123abc', 'the native color control should hold the selected value');
+    assert.equal(await page.locator('#designToolsStatus').innerText(), 'Cambios sin guardar.', 'the color input handler should process the edit');
+    assert.equal(await page.locator('#designPreviewPrimary').evaluate(el => el.style.background), 'rgb(18, 58, 188)', 'the preview inline color should update immediately');
+    // The visual polish intentionally animates background-color; wait for the transition before checking computed style.
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('designPreviewPrimary')).backgroundColor === 'rgb(18, 58, 188)', null, { timeout: 5000 });
     assert.equal(await page.locator('#designPreviewPrimary').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(18, 58, 188)');
     await page.locator('#saveDesignSystem').click();
     assert.ok((await page.locator('#designToolsStatus').innerText()).length > 0);
