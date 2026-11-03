@@ -125,7 +125,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
   }
   function putCodeChunk({ transferId, workspaceId, index, chunk, sha256: chunkHash }) {
     const record = read('code', transferId);
-    if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
+    if (!record || record.workspaceId !== workspaceId || record.committed) throw new Error('transfer_not_found');
     if (!Number.isInteger(index) || index < 0 || index >= record.totalChunks || typeof chunk !== 'string' ||
         chunk.length > MAX_CHUNK_CHARS || sha256(chunk) !== chunkHash) throw new Error('invalid_code_chunk');
     const previous = readChunk('code', transferId, index);
@@ -136,6 +136,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
   function assembleCode({ transferId, workspaceId }) {
     const record = read('code', transferId);
     if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
+    if (record.committed && typeof record.committedValue === 'string') return { ...record, value: record.committedValue };
     if (countChunks('code', transferId, record.totalChunks) !== record.totalChunks) throw new Error('code_chunks_incomplete');
     const value = Array.from({ length: record.totalChunks }, (_, i) => {
       const chunk = readChunk('code', transferId, i);
@@ -145,12 +146,17 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     if (value.length > MAX_CODE_CHARS || sha256(value) !== record.expectedHash) throw new Error('code_transfer_hash_mismatch');
     return { ...record, value };
   }
-  function consumeCode(transferId) {
-    try {
-      const record = read('code', transferId);
-      if (record) deleteChunks('code', transferId, record.totalChunks);
-      fs.unlinkSync(file('code', transferId));
-    } catch (_) {}
+  function consumeCode(transferId, receipt) {
+    const record = read('code', transferId);
+    if (!record) return;
+    if (record.committed) return;
+    const assembled = assembleCode({ transferId, workspaceId: record.workspaceId });
+    deleteChunks('code', transferId, record.totalChunks);
+    record.committed = true;
+    record.committedValue = assembled.value;
+    record.receipt = receipt && typeof receipt === 'object' ? receipt : null;
+    record.expiresAt = now() + TTL_MS;
+    write('code', transferId, record);
   }
   function beginImage({ workspaceId, projectId, totalChunks, sha256: expectedHash, declaredMime }) {
     cleanupExpiredTransfers();
