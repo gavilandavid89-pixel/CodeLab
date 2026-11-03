@@ -91,6 +91,19 @@ function assertUnlocked(element, operation) {
   assert(element.locked !== true, 'Cannot ' + operation + ' locked layer: ' + element.id);
 }
 
+function clearInternalLinkReferences(project, deletedIds) {
+  const cleared = [];
+  for (const element of project.design.elements) {
+    if (deletedIds.has(element.id) || typeof element.href !== 'string' || !element.href.startsWith('#layer-')) continue;
+    const targetId = element.href.slice('#layer-'.length);
+    if (!deletedIds.has(targetId)) continue;
+    assertUnlocked(element, 'clear an internal link from');
+    element.href = '';
+    cleared.push(element.id);
+  }
+  return cleared;
+}
+
 function resolveElementSize(element, dimension, canvasDimension) {
   const raw = Number(element[dimension]);
   const unitKey = dimension + 'Unit';
@@ -249,10 +262,11 @@ function applyOperation(project, operation) {
       for (const id of operation.ids) assertUnlocked(findElement(project, id), 'delete');
       const deleted = new Set(operation.ids);
       project.design.elements = project.design.elements.filter(item => !deleted.has(item.id));
+      const clearedLinks = clearInternalLinkReferences(project, deleted);
       if (Array.isArray(project.design.flowConnections)) {
         project.design.flowConnections = project.design.flowConnections.filter(connection => !deleted.has(connection.sourceElementId));
       }
-      return { type: operation.type, deletedIds: Array.from(deleted) };
+      return { type: operation.type, deletedIds: Array.from(deleted), clearedLinks };
     }
     case 'elements.align': {
       assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 50, 'elements.align requires 1 to 50 layer IDs.');
@@ -327,10 +341,11 @@ function applyOperation(project, operation) {
       assert(index >= 0, 'Layer not found: ' + operation.id);
       assertUnlocked(project.design.elements[index], 'delete');
       const [removed] = project.design.elements.splice(index, 1);
+      const clearedLinks = clearInternalLinkReferences(project, new Set([removed.id]));
       if (Array.isArray(project.design.flowConnections)) {
         project.design.flowConnections = project.design.flowConnections.filter(connection => connection.sourceElementId !== removed.id);
       }
-      return { type: operation.type, id: removed.id };
+      return { type: operation.type, id: removed.id, clearedLinks };
     }
     default:
       throw new Error('Unsupported headless operation: ' + operation.type);
@@ -401,7 +416,17 @@ function isSafeColor(value) {
 
 function isSafeHref(value) {
   const href = String(value || '').trim();
-  return !href || /^(https?:\/\/|mailto:|tel:|\/|#layer-[a-z0-9_-]+$)/i.test(href);
+  if (!href) return true;
+  if (/^#layer-[a-z0-9_-]{1,120}$/i.test(href)) return true;
+  if (/^\/(?!\/)[^\\\s<>]*$/.test(href)) return true;
+  if (/^mailto:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+(?:\?[^\s<>]*)?$/i.test(href)) return true;
+  if (/^tel:\+?[0-9(). -]{3,32}$/i.test(href)) return true;
+  try {
+    const url = new URL(href);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+  } catch (_) {
+    return false;
+  }
 }
 
 function isSafeImageSource(value) {
