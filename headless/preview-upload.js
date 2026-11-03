@@ -16,6 +16,11 @@ export function validatePreviewUpload(step) {
   if (!buffer.length || buffer.length > 24000) {
     throw new Error('Preview upload file must be between 1 and 24000 bytes.');
   }
+  // Node's decoder tolerates non-zero padding bits. Require the canonical encoding
+  // so each accepted payload has exactly one Base64 representation.
+  if (buffer.toString('base64') !== step.data_base64) {
+    throw new Error('Preview upload data must use canonical Base64 encoding.');
+  }
   const matchesMime = step.mime_type === 'text/plain' ||
     (step.mime_type === 'image/png' && buffer.subarray(0, 8).equals(PNG_SIGNATURE)) ||
     (step.mime_type === 'image/jpeg' && buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255) ||

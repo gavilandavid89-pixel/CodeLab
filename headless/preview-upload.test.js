@@ -29,9 +29,16 @@ test('rejects unsafe filenames, unsupported MIME types, and malformed Base64', (
   assert.throws(() => validatePreviewUpload({ ...valid, data_base64: '%%%=' }), /valid Base64/);
 });
 
+test('rejects non-canonical Base64 padding bits', () => {
+  const valid = { file_name: 'fixture.txt', mime_type: 'text/plain', data_base64: 'Zg==' };
+  assert.equal(validatePreviewUpload(valid).buffer.toString('utf8'), 'f');
+  assert.throws(() => validatePreviewUpload({ ...valid, data_base64: 'Zh==' }), /canonical Base64/);
+  assert.throws(() => validatePreviewUpload({ ...valid, data_base64: 'Zm9=' }), /canonical Base64/);
+});
+
 test('rejects mismatched signatures and empty or oversized files', () => {
   assert.throws(() => validatePreviewUpload({ file_name: 'bad.png', mime_type: 'image/png', data_base64: Buffer.from('not png').toString('base64') }), /does not match/);
   assert.throws(() => validatePreviewUpload({ file_name: 'empty.txt', mime_type: 'text/plain', data_base64: 'AAAA'.slice(0, 0) }), /valid Base64/);
   const large = Buffer.alloc(24001, 65).toString('base64');
-  assert.throws(() => validatePreviewUpload({ file_name: 'large.txt', mime_type: 'text/plain', data_base64: large }), /at most 32000|between 1 and 24000/);
+  assert.throws(() => validatePreviewUpload({ ...{ file_name: 'large.txt', mime_type: 'text/plain' }, data_base64: large }), /at most 32000|between 1 and 24000/);
 });
