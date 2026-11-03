@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { chromium } = require('playwright');
 
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
@@ -39,6 +41,39 @@ async function main() {
   assert.equal(anonymousResponse.status, 401, 'PixelForge project API must require a CodeLab account');
   const anonymousBody = await anonymousResponse.json();
   assert.equal(anonymousBody.error, 'not_authenticated', 'anonymous access should have a clear auth error');
+
+  // Build a test-only session in the isolated E2E data directory, using the
+  // same on-disk session contract as CodeLab's real login flow.
+  const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
+  const sessionId = 'a'.repeat(48);
+  const sessionsDir = path.join(dataDir, 'sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
+    id: sessionId,
+    user: { id: 'pixelforge-integration-user', provider: 'local', name: 'PIXELFORGE_TEST', role: 'user' },
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 60_000
+  }), { mode: 0o600 });
+  const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
+  const listBefore = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
+  assert.equal(listBefore.status, 200, 'authenticated CodeLab users should list their PixelForge projects');
+  assert.deepEqual((await listBefore.json()).projects, [], 'new account should start with an empty PixelForge project list');
+
+  const fixture = { id: 'integration-artwork', name: 'Account integration artwork', width: 2, height: 2, layers: [] };
+  const saved = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: fixture })
+  });
+  assert.equal(saved.status, 201, 'first save should create a project in the account');
+  const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
+  assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
+  const loaded = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders });
+  assert.deepEqual((await loaded.json()).project, fixture, 'saved project should round-trip through account storage');
+  const deleted = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { method: 'DELETE', headers: authHeaders });
+  assert.equal(deleted.status, 200, 'account owner should be able to delete their own project');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders })).status, 404, 'deleted project should no longer be available');
+  fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
 
   const browser = await chromium.launch({ headless: true });
   try {
