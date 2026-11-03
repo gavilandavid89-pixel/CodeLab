@@ -2,6 +2,7 @@ const { codeLabRequest, getCodeLabSession } = window.CodeLabStudioCore;
 
 const API = '/api/pixelforge/projects';
 let boundAccountKey = null;
+let boundAccountHeader = null;
 
 function accountKey(user) {
   if (!user || typeof user.provider !== 'string' || user.id == null) return null;
@@ -15,6 +16,7 @@ export function bindAccountSession(user) {
   const key = accountKey(user);
   if (!key) throw new Error('No se pudo vincular PixelForge a una cuenta de CodeLab.');
   boundAccountKey = key;
+  boundAccountHeader = encodeURIComponent(JSON.stringify([user.provider, String(user.id)]));
 }
 
 async function assertBoundAccount() {
@@ -36,7 +38,10 @@ async function assertBoundAccount() {
 async function request(path, options = {}) {
   try {
     await assertBoundAccount();
-    return await codeLabRequest(path, options);
+    return await codeLabRequest(path, {
+      ...options,
+      headers: { ...(options.headers || {}), 'X-CodeLab-Expected-Account': boundAccountHeader }
+    });
   } catch (error) {
     if (error.status === 401) {
       error.message = 'Inicia sesión en CodeLab para usar PixelForge y guardar tus proyectos en tu cuenta.';
