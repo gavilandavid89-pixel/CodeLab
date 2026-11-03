@@ -1,0 +1,29 @@
+name: Design UI functional parity
+
+on:
+  push:
+    branches:
+      - work/ui-design-functional-parity-2026-11-03
+  pull_request:
+    paths:
+      - 'public/app.js'
+      - 'tests/design-ui-functional-parity.test.js'
+      - '.github/workflows/design-ui-functional-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  design-ui-functional-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check editor JavaScript syntax
+        run: node --check public/app.js
+      - name: Test integrated design UI contracts
+        run: node --test tests/design-ui-functional-parity.test.js
