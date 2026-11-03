@@ -153,7 +153,7 @@ test('duplicating a navigation layer clones its outgoing flow connection to the 
     saveProjectsToStorage: () => {},
     showToast: () => {}
   };
-  vm.runInNewContext(duplicate + '\\nduplicateDesignElement();', sandbox);
+  vm.runInNewContext(duplicate + '\nduplicateDesignElement();', sandbox);
   assert.equal(project.design.elements.length, 3);
   assert.equal(project.design.flowConnections.length, 2);
   assert.equal(project.design.flowConnections[1].sourceElementId, 'el_copy-1');
