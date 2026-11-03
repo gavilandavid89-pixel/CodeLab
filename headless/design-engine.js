@@ -81,6 +81,10 @@ function findElement(project, id) {
   return element;
 }
 
+function assertLayerUnlocked(element, operation) {
+  assert(element.locked !== true, 'Layer is locked and cannot be changed by ' + operation + ': ' + element.id);
+}
+
 function applyOperation(project, operation) {
   assert(operation && typeof operation === 'object' && typeof operation.type === 'string', 'A valid operation is required.');
   switch (operation.type) {
@@ -171,6 +175,7 @@ function applyOperation(project, operation) {
     case 'element.update': {
       assert(operation.properties && typeof operation.properties === 'object' && !Array.isArray(operation.properties), 'Layer properties are required.');
       const element = findElement(project, operation.id);
+      assertLayerUnlocked(element, 'element.update');
       validateProperties(operation.properties);
       Object.assign(element, clone(operation.properties));
       return { type: operation.type, id: element.id, element: clone(element) };
@@ -178,6 +183,7 @@ function applyOperation(project, operation) {
     case 'element.duplicate': {
       assert(project.design.elements.length < MAX_ELEMENTS, 'The design reached the ' + MAX_ELEMENTS + ' layer limit.');
       const source = findElement(project, operation.id);
+      assertLayerUnlocked(source, 'element.duplicate');
       const id = operation.newId || 'el_' + crypto.randomUUID();
       assert(typeof id === 'string' && id.length <= 100 && !project.design.elements.some(item => item.id === id), 'Invalid or duplicate new layer id.');
       const copy = { ...clone(source), id, x: (Number(source.x) || 0) + 24, y: (Number(source.y) || 0) + 24, label: (source.label || 'Capa') + ' copia' };
@@ -187,6 +193,7 @@ function applyOperation(project, operation) {
     case 'element.reorder': {
       const index = project.design.elements.findIndex(item => item.id === operation.id);
       assert(index >= 0, 'Layer not found: ' + operation.id);
+      assertLayerUnlocked(project.design.elements[index], 'element.reorder');
       assert(Number.isInteger(operation.targetIndex) && operation.targetIndex >= 0 && operation.targetIndex < project.design.elements.length, 'targetIndex is outside the layer range.');
       const [element] = project.design.elements.splice(index, 1);
       project.design.elements.splice(operation.targetIndex, 0, element);
@@ -195,7 +202,8 @@ function applyOperation(project, operation) {
     case 'elements.delete': {
       assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 100, 'elements.delete requires 1 to 100 layer IDs.');
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.delete IDs must be unique.');
-      for (const id of operation.ids) findElement(project, id);
+      const elementsToDelete = operation.ids.map(id => findElement(project, id));
+      for (const element of elementsToDelete) assertLayerUnlocked(element, 'elements.delete');
       const deleted = new Set(operation.ids);
       project.design.elements = project.design.elements.filter(item => !deleted.has(item.id));
       if (Array.isArray(project.design.flowConnections)) {
@@ -257,6 +265,7 @@ function applyOperation(project, operation) {
     case 'element.delete': {
       const index = project.design.elements.findIndex(item => item.id === operation.id);
       assert(index >= 0, 'Layer not found: ' + operation.id);
+      assertLayerUnlocked(project.design.elements[index], 'element.delete');
       const [removed] = project.design.elements.splice(index, 1);
       if (Array.isArray(project.design.flowConnections)) {
         project.design.flowConnections = project.design.flowConnections.filter(connection => connection.sourceElementId !== removed.id);
