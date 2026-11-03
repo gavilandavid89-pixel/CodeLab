@@ -43,6 +43,7 @@ jobs:
           node --check tests/interface-responsive.e2e.test.js
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
+          node --check tests/pixelforge-integration.test.js
       - name: Check assistant project lifecycle tool contracts
         run: node tests/assistant-tools-contract.test.js
       - name: Check version metadata consistency
@@ -88,6 +89,7 @@ jobs:
           node tests/interface-responsive.e2e.test.js
           node tests/web-editor-ui.e2e.test.js
           node tests/continuous-ui-stress.e2e.test.js
+          node tests/pixelforge-integration.test.js
       - name: Test offline save and reconnect recovery
         shell: bash
         run: |
