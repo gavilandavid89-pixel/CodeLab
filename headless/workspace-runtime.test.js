@@ -389,6 +389,9 @@ test('creates an isolated branch, performs a three-way merge, and can undo it', 
   assert.equal(merged.state.projects[0].code.css, 'body{color:navy}');
   assert.equal(merged.state.projects[0].branch, undefined);
   assert.equal(merged.state.projects[0].mergeHistory.length, 1);
+  const mergeBackup = merged.state.projects[0].mergeHistory[0];
+  assert.equal(typeof mergeBackup.mergedCodeHash, 'string');
+  assert.equal(mergeBackup.mergedCode, undefined, 'new backups should not duplicate the full merged source');
 
   const undone = applyHeadlessBatch(merged.state, request([
     { type: 'branch.undo_merge', projectId: 'proj_web1', approved: true }
