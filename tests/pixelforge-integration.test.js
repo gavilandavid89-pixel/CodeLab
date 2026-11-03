@@ -80,6 +80,9 @@ async function main() {
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
+  const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
+  assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
+  assert.equal((await authenticatedMalformedId.json()).error, 'invalid_project_id', 'malformed project ID should have a stable error code');
   const coreWorkspaceResponse = await fetch(base + '/api/workspace/init', {
     method: 'POST',
     headers: { ...authHeaders, 'content-type': 'application/json' },
