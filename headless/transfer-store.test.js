@@ -122,3 +122,26 @@ test('starting a new transfer sweeps abandoned expired chunk files', () => {
     assert.ok(!fs.readdirSync(dir).some(name => name.includes(old.transferId)));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('chunked image commit is idempotent and expired image tokens are swept', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-transfer-commit-retry-'));
+  try {
+    let now = 1000;
+    const store = createTransferStore(root, () => now);
+    const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4]);
+    const base64 = png.toString('base64');
+    const started = store.beginImage({ workspaceId: 'owner', projectId: 'design_123', totalChunks: 1, sha256: sha256(png), declaredMime: 'image/png' });
+    store.putImageChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: base64, sha256: sha256(base64) });
+    const first = store.commitImage({ transferId: started.transferId, workspaceId: 'owner' });
+    const retry = store.commitImage({ transferId: started.transferId, workspaceId: 'owner' });
+    assert.deepEqual(retry, first);
+    assert.equal(retry.uploadToken, started.transferId);
+    assert.equal(store.resolveImage({ uploadToken: retry.uploadToken, workspaceId: 'owner', projectId: 'design_123' }).dataUrl, 'data:image/png;base64,' + base64);
+    const dir = path.join(root, 'headless-transfers');
+    now += 10 * 60 * 1000 + 1;
+    store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'html', baseRevision: 0, totalChunks: 1, sha256: sha256('x') });
+    assert.ok(!fs.existsSync(path.join(dir, 'image-' + retry.uploadToken + '.json')));
+    assert.ok(!fs.existsSync(path.join(dir, 'image-chunks-' + started.transferId + '.json')));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
