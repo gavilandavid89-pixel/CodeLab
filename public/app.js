@@ -3438,12 +3438,15 @@ function distributeDesignElements(axis = 'horizontal') {
   const p = activeDesignProject();
   if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
   const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  if (selected.some(el => el.locked)) { showToast('Desbloquea las capas seleccionadas antes de distribuirlas.', 'warn'); return; }
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
-  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
-  const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
+  const axisKey = horizontal ? 'x' : 'y';
+  const sizeKey = horizontal ? 'width' : 'height';
+  const ordered = selected.slice().sort((a, b) => designCoordinateToPixels(p.design, a, axisKey) - designCoordinateToPixels(p.design, b, axisKey));
+  const start = designCoordinateToPixels(p.design, ordered[0], axisKey);
   const last = ordered[ordered.length - 1];
-  const end = (Number(horizontal ? last.x : last.y) || 0) + Math.max(20, Number(horizontal ? last.width : last.height) || (horizontal ? 120 : 48));
+  const end = designCoordinateToPixels(p.design, last, axisKey) + Math.max(20, Number(last[sizeKey]) || (horizontal ? 120 : 48));
   const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
   if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
@@ -3452,8 +3455,8 @@ function distributeDesignElements(axis = 'horizontal') {
   recordDesignHistory();
   let cursor = start;
   for (const el of ordered) {
-    if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
-    cursor += Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)) + gap;
+    setDesignCoordinateFromPixels(p.design, el, axisKey, Math.round(cursor));
+    cursor += Math.max(20, Number(el[sizeKey]) || (horizontal ? 120 : 48)) + gap;
   }
   renderDesignWorkspace(); saveProjectsToStorage();
   showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
@@ -3464,36 +3467,38 @@ function alignDesignElement(mode = 'center-x') {
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
+  if (selected.some(item => item.locked)) { showToast('Desbloquea las capas seleccionadas antes de alinearlas.', 'warn'); return; }
+  if (el.locked) { showToast('Desbloquea la capa antes de alinearla.', 'warn'); return; }
   if (selected.length > 1) {
-    const left = Math.min(...selected.map(item => Number(item.x) || 0));
-    const top = Math.min(...selected.map(item => Number(item.y) || 0));
-    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + Math.max(20, Number(item.width) || 120)));
-    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + Math.max(20, Number(item.height) || 48)));
+    const left = Math.min(...selected.map(item => designCoordinateToPixels(p.design, item, 'x')));
+    const top = Math.min(...selected.map(item => designCoordinateToPixels(p.design, item, 'y')));
+    const right = Math.max(...selected.map(item => designCoordinateToPixels(p.design, item, 'x') + Math.max(20, Number(item.width) || 120)));
+    const bottom = Math.max(...selected.map(item => designCoordinateToPixels(p.design, item, 'y') + Math.max(20, Number(item.height) || 48)));
     const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
     recordDesignHistory();
     for (const item of selected) {
       const width = Math.max(20, Number(item.width) || 120), height = Math.max(20, Number(item.height) || 48);
-      if (mode === 'left') item.x = left;
-      else if (mode === 'center-x') item.x = Math.round(centerX - width / 2);
-      else if (mode === 'right') item.x = right - width;
-      else if (mode === 'top') item.y = top;
-      else if (mode === 'center-y') item.y = Math.round(centerY - height / 2);
-      else if (mode === 'bottom') item.y = bottom - height;
+      if (mode === 'left') setDesignCoordinateFromPixels(p.design, item, 'x', left);
+      else if (mode === 'center-x') setDesignCoordinateFromPixels(p.design, item, 'x', Math.round(centerX - width / 2));
+      else if (mode === 'right') setDesignCoordinateFromPixels(p.design, item, 'x', right - width);
+      else if (mode === 'top') setDesignCoordinateFromPixels(p.design, item, 'y', top);
+      else if (mode === 'center-y') setDesignCoordinateFromPixels(p.design, item, 'y', Math.round(centerY - height / 2));
+      else if (mode === 'bottom') setDesignCoordinateFromPixels(p.design, item, 'y', bottom - height);
     }
     renderDesignWorkspace(); saveProjectsToStorage();
     showToast('Capas alineadas respecto a la selección.');
     return;
   }
   recordDesignHistory();
-  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
-  const height = 900;
+  const width = getDesignCanvasWidth(p.design);
+  const height = getDesignCanvasHeight(p.design) || 900;
   const ew = Math.max(20, Number(el.width) || 120), eh = Math.max(20, Number(el.height) || 48);
-  if (mode === 'left') el.x = 0;
-  else if (mode === 'center-x') el.x = Math.max(0, Math.round((width - ew) / 2));
-  else if (mode === 'right') el.x = Math.max(0, width - ew);
-  else if (mode === 'top') el.y = 0;
-  else if (mode === 'center-y') el.y = Math.max(0, Math.round((height - eh) / 2));
-  else if (mode === 'bottom') el.y = Math.max(0, height - eh);
+  if (mode === 'left') setDesignCoordinateFromPixels(p.design, el, 'x', 0);
+  else if (mode === 'center-x') setDesignCoordinateFromPixels(p.design, el, 'x', Math.max(0, Math.round((width - ew) / 2)));
+  else if (mode === 'right') setDesignCoordinateFromPixels(p.design, el, 'x', Math.max(0, width - ew));
+  else if (mode === 'top') setDesignCoordinateFromPixels(p.design, el, 'y', 0);
+  else if (mode === 'center-y') setDesignCoordinateFromPixels(p.design, el, 'y', Math.max(0, Math.round((height - eh) / 2)));
+  else if (mode === 'bottom') setDesignCoordinateFromPixels(p.design, el, 'y', Math.max(0, height - eh));
   renderDesignWorkspace(); saveProjectsToStorage();
 }
 function downloadDesignAsset(filename, content, type) {
@@ -3885,6 +3890,18 @@ function getDesignCanvasWidth(design) {
 function getDesignCanvasHeight(design) {
   const height = Number(design && design.canvasHeight);
   return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
+}
+function designCoordinateToPixels(design, element, axis) {
+  const raw = Number.isFinite(Number(element && element[axis])) ? Number(element[axis]) : 0;
+  const unit = axis === 'x' ? element.xUnit : element.yUnit;
+  const dimension = axis === 'x' ? getDesignCanvasWidth(design) : (getDesignCanvasHeight(design) || 900);
+  return unit === '%' ? raw * dimension / 100 : raw;
+}
+function setDesignCoordinateFromPixels(design, element, axis, pixelValue) {
+  const unit = axis === 'x' ? element.xUnit : element.yUnit;
+  const dimension = axis === 'x' ? getDesignCanvasWidth(design) : (getDesignCanvasHeight(design) || 900);
+  const pixels = Number.isFinite(Number(pixelValue)) ? Number(pixelValue) : 0;
+  element[axis] = unit === '%' ? pixels / dimension * 100 : pixels;
 }
 function getDesignLayoutPositions(design) {
   const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false) : [];
