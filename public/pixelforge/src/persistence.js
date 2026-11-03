@@ -39,12 +39,32 @@ async function codeLabSession() {
   }
   return codeLabSessionPromise;
 }
-async function cloudProjectList() {
-  const session = await codeLabSession();
+function invalidateCodeLabSession() {
+  codeLabSessionPromise = null;
+  codeLabSessionCache = null;
+  codeLabSessionKnown = false;
+  codeLabSessionCheckedAt = 0;
+  cloudRevisions.clear();
+}
+async function cloudProjectList(session) {
   if (!session) return null;
-  const response = await fetch('/api/pixelforge/projects', { credentials: 'same-origin', cache: 'no-store' });
+  let response = await fetch('/api/pixelforge/projects', { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) throw new Error(response.status === 401 ? 'Sign in to CodeLab to sync PixelForge projects.' : 'Could not load PixelForge cloud projects.');
-  const payload = await response.json();
+  let payload = await response.json();
+  // Detect account changes even while this tab has a cached session. Never combine a
+  // stale account's local metadata with the newly authenticated account's cloud list.
+  if (payload.workspaceId !== session.workspaceId) {
+    invalidateCodeLabSession();
+    session = await codeLabSession();
+    if (!session) return null;
+    response = await fetch('/api/pixelforge/projects', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw new Error('Could not reload PixelForge projects after the CodeLab account changed.');
+    payload = await response.json();
+    if (payload.workspaceId !== session.workspaceId) {
+      invalidateCodeLabSession();
+      throw new Error('CodeLab account changed during project listing. Reload PixelForge and retry.');
+    }
+  }
   for (const item of payload.projects || []) if (item && typeof item.id === 'string' && Number.isInteger(item.revision)) cloudRevisions.set(item.id, item.revision);
   return payload.projects || [];
 }
@@ -55,7 +75,8 @@ function metadataFor(record) {
     id: record.id, name: record.name ?? project.name ?? 'Untitled artwork',
     width: project.width ?? 0, height: project.height ?? 0,
     updatedAt: record.updatedAt ?? 0,
-    lastOpenedAt: record.lastOpenedAt ?? record.updatedAt ?? 0
+    lastOpenedAt: record.lastOpenedAt ?? record.updatedAt ?? 0,
+    cloudOwner: record.cloudOwner ?? null
   };
 }
 
@@ -82,13 +103,18 @@ function openDB() {
     request.onblocked = () => reject(new Error('Project storage upgrade is blocked by another open tab. Close other editor tabs and retry.'));
   });
 }
+function cloudOwnerKey(session) {
+  return session && session.user ? String(session.user.provider) + ':' + String(session.user.id) : null;
+}
 export async function saveProject(project) {
+  const session = await codeLabSession().catch(() => codeLabSessionCache);
+  const ownerKey = cloudOwnerKey(session);
   const db = await openDB();
   try {
     await new Promise((resolve, reject) => {
       const tx = db.transaction([STORE, META_STORE], 'readwrite');
       const updatedAt = timestampNow();
-      const record = { id: project.id, name: project.name, updatedAt, lastOpenedAt: updatedAt, project };
+      const record = { id: project.id, name: project.name, updatedAt, lastOpenedAt: updatedAt, cloudOwner: ownerKey, project };
       tx.objectStore(STORE).put(record);
       tx.objectStore(META_STORE).put(metadataFor(record));
       tx.oncomplete = resolve;
@@ -97,21 +123,32 @@ export async function saveProject(project) {
     });
   } finally { db.close(); }
 
-  const session = await codeLabSession();
   if (!session) return { savedLocally: true, cloud: false };
   const baseRevision = cloudRevisions.get(project.id);
   let response;
   try {
     response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(project.id), {
       method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, ...(baseRevision == null ? {} : { baseRevision }) })
+      body: JSON.stringify({ project, workspaceId: session.workspaceId, ...(baseRevision == null ? {} : { baseRevision }) })
     });
   } catch (error) {
     throw new Error('Local backup saved, but CodeLab cloud sync failed: ' + (error.message || 'network unavailable'));
   }
-  if (response.status === 409) throw new Error('Local backup saved. This project changed in another tab or device; reload the cloud version before continuing.');
+  if (response.status === 409) {
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    if (payload?.error === 'pixelforge_account_changed') {
+      invalidateCodeLabSession();
+      throw new Error('Local backup saved. Your CodeLab account changed; reload PixelForge before syncing again.');
+    }
+    throw new Error('Local backup saved. This project changed in another tab or device; reload the cloud version before continuing.');
+  }
   if (!response.ok) throw new Error('Local backup saved, but CodeLab cloud sync failed (' + response.status + ').');
   const result = await response.json();
+  if (result.workspaceId !== session.workspaceId) {
+    invalidateCodeLabSession();
+    throw new Error('Local backup saved. Your CodeLab account changed; reload PixelForge before syncing again.');
+  }
   if (Number.isInteger(result.revision)) cloudRevisions.set(project.id, result.revision);
   return { savedLocally: true, cloud: true, revision: result.revision };
 }
@@ -126,23 +163,34 @@ export async function listSavedProjects() {
       request.onerror = () => reject(request.error ?? new Error('Could not list saved projects.'));
     });
   } finally { db.close(); }
+  let session = await codeLabSession().catch(() => codeLabSessionCache);
   try {
-    const cloud = await cloudProjectList();
-    if (!cloud) return local;
-    const merged = new Map(local.map(item => [item.id, item]));
-    for (const item of cloud) merged.set(item.id, { ...item, lastOpenedAt: Date.parse(item.updatedAt) || 0, cloud: true });
+    const cloud = await cloudProjectList(session);
+    session = await codeLabSession().catch(() => codeLabSessionCache);
+    const ownerKey = cloudOwnerKey(session);
+    const scopedLocal = ownerKey ? local.filter(item => item.cloudOwner === ownerKey) : local;
+    if (!cloud) return scopedLocal;
+    const merged = new Map(scopedLocal.map(item => [item.id, item]));
+    for (const item of cloud) merged.set(item.id, { ...item, lastOpenedAt: Date.parse(item.updatedAt) || 0, cloud: true, cloudOwner: ownerKey });
     return [...merged.values()].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
   } catch {
-    return local;
+    session = await codeLabSession().catch(() => codeLabSessionCache);
+    const ownerKey = cloudOwnerKey(session);
+    return ownerKey ? local.filter(item => item.cloudOwner === ownerKey) : local;
   }
 }
 export async function loadProjectById(id) {
+  let session = codeLabSessionCache;
   try {
-    const session = await codeLabSession();
+    session = await codeLabSession();
     if (session) {
       const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(id), { credentials: 'same-origin', cache: 'no-store' });
       if (response.ok) {
         const payload = await response.json();
+        if (payload.workspaceId !== session.workspaceId) {
+          invalidateCodeLabSession();
+          throw new Error('CodeLab account changed. Reload PixelForge before opening cloud projects.');
+        }
         if (Number.isInteger(payload.revision)) cloudRevisions.set(id, payload.revision);
         return payload.project;
       }
@@ -161,6 +209,8 @@ export async function loadProjectById(id) {
       request.onsuccess = () => {
         const record = request.result;
         if (!record) { metadata.delete(id); return; }
+        const ownerKey = cloudOwnerKey(session);
+        if (ownerKey && record.cloudOwner !== ownerKey) return;
         project = record.project;
         const metaRequest = metadata.get(id);
         metaRequest.onsuccess = () => {
