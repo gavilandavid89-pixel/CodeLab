@@ -2081,6 +2081,24 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          if (['image_begin', 'image_chunk', 'image_commit'].includes(body.action)) {
+            if (body.action === 'image_begin') {
+              const project = current.projects.find(item => item.id === body.projectId);
+              if (!project || project.type !== 'design' || !project.design) return sendJson(res, 404, { error: 'design_project_not_found' });
+              return sendJson(res, 201, { ok: true, ...headlessTransfers.beginImage({
+                workspaceId: id, projectId: body.projectId, totalChunks: body.totalChunks, sha256: body.sha256, declaredMime: body.mime
+              }) });
+            }
+            if (body.action === 'image_chunk') {
+              return sendJson(res, 200, { ok: true, ...headlessTransfers.putImageChunk({
+                transferId: body.transferId, workspaceId: id, index: body.index, chunk: body.chunk, sha256: body.sha256
+              }) });
+            }
+            const imageRecord = headlessTransfers.commitImage({ transferId: body.transferId, workspaceId: id });
+            const project = current.projects.find(item => item.id === imageRecord.projectId);
+            if (!project || project.type !== 'design' || !project.design) return sendJson(res, 404, { error: 'design_project_not_found' });
+            return sendJson(res, 201, { ok: true, ...imageRecord });
+          }
           if (body.action === 'begin') {
             const project = current.projects.find(item => item.id === body.projectId);
             if (!project || project.type === 'design') return sendJson(res, 404, { error: 'web_project_not_found' });
