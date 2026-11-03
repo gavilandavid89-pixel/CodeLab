@@ -480,7 +480,9 @@ async function main() {
     // Reaching the per-account project cap must never silently evict an older project.
     const status = await (await fetch(base + '/api/ai/status')).json();
     const maxProjects = status.maxProjects;
-    for (let index = 1; index < maxProjects; index++) {
+    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
+    assert.ok(existingProjects.length < maxProjects, 'the test account should have room to exercise the project cap');
+    for (let index = existingProjects.length; index < maxProjects; index++) {
       const response = await fetch(base + '/api/pixelforge/projects', {
         method: 'PUT',
         headers: { ...authHeaders, 'content-type': 'application/json' },
