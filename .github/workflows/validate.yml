@@ -33,6 +33,7 @@ jobs:
           node --check public/design-flow.js
           node --check public/component-library.js
           node --check .github/scripts/codelab-bridge.mjs
+          node --check scripts/sync-pixelforge.mjs
           node --check tests/assistant-tools-contract.test.js
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
