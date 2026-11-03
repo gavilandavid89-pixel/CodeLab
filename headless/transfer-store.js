@@ -139,16 +139,26 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     write('image', id, payload);
     return { uploadToken: id, mime, bytes: bytes.length, sha256: payload.sha256, expiresInMs: TTL_MS };
   }
-  function resolveImage({ uploadToken, workspaceId, projectId }) {
+  function resolveImage({ uploadToken, workspaceId, projectId, operationId }) {
     const record = read('image', uploadToken);
     if (!record || record.workspaceId !== workspaceId || record.projectId !== projectId) throw new Error('image_upload_not_found');
+    // A saved operation may be retried after a lost HTTP response. Permit only that exact
+    // operation to resolve its consumed token again; all other reuses remain forbidden.
+    if (record.consumedByOperationId &&
+        (!operationId || record.consumedByOperationId !== operationId)) throw new Error('image_upload_already_consumed');
     const bytes = Buffer.from(record.bytes, 'base64');
     if (sha256(bytes) !== record.sha256 || imageMime(bytes) !== record.mime) throw new Error('image_upload_corrupt');
     return { mime: record.mime, dataUrl: 'data:' + record.mime + ';base64,' + bytes.toString('base64'), sha256: record.sha256 };
   }
-  function consumeImage({ uploadToken, workspaceId, projectId }) {
-    const result = resolveImage({ uploadToken, workspaceId, projectId });
-    try { fs.unlinkSync(file('image', uploadToken)); } catch (_) {}
+  function consumeImage({ uploadToken, workspaceId, projectId, operationId }) {
+    const result = resolveImage({ uploadToken, workspaceId, projectId, operationId });
+    if (typeof operationId === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(operationId)) {
+      const record = read('image', uploadToken);
+      record.consumedByOperationId = operationId;
+      write('image', uploadToken, record);
+    } else {
+      try { fs.unlinkSync(file('image', uploadToken)); } catch (_) {}
+    }
     return result;
   }
   return { beginCode, putCodeChunk, assembleCode, consumeCode, beginImage, putImageChunk, commitImage, putImage, resolveImage, consumeImage };
