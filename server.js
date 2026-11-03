@@ -2049,7 +2049,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Binary image uploads stay outside the issue mailbox. Tokens are workspace/project-bound and expire.
-      const headlessUploadMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless\\/upload$/);
+      const headlessUploadMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/upload$/);
       if (req.method === 'POST' && headlessUploadMatch) {
         const id = safeId(headlessUploadMatch[1]);
         if (!id || !isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
@@ -2072,7 +2072,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Small, hash-verified chunks let the issue bridge transport source larger than one mailbox command.
-      const codeTransferMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/headless\\/code-transfer$/);
+      const codeTransferMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/code-transfer$/);
       if (req.method === 'POST' && codeTransferMatch) {
         const id = safeId(codeTransferMatch[1]);
         const body = await readBody(req);
