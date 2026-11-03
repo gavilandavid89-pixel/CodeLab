@@ -119,6 +119,8 @@ async function main() {
     body: JSON.stringify({ project: fixture })
   });
   assert.equal(saved.status, 201, 'first save should create a project in the account');
+  fixture.serverRevision = (await saved.json()).project.serverRevision;
+  assert.equal(fixture.serverRevision, 1, 'the server should issue the first durable revision token');
   const staleWrite = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -134,6 +136,14 @@ async function main() {
   });
   assert.equal(sameRevisionFork.status, 409,
     'two divergent sessions with the same local edit revision must still conflict through serverRevision');
+  const currentRevisionSave = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: fixture })
+  });
+  assert.equal(currentRevisionSave.status, 200, 'the current revision token should permit a legitimate subsequent save');
+  fixture.serverRevision = (await currentRevisionSave.json()).project.serverRevision;
+  assert.equal(fixture.serverRevision, 2, 'a successful update should advance the server revision token');
   if (health.persistence === 'postgresql') {
     assert.equal(fs.existsSync(pixelForgeStoreFile), false, 'PostgreSQL-backed PixelForge projects must not be duplicated in workspace sidecar files');
   } else {
