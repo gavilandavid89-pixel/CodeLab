@@ -115,6 +115,7 @@ test('local SVG capture honors canvas dimensions, visibility, opacity, and rotat
       layoutMode: 'free',
       elements: [
         { id: 'el_visible', type: 'rectangle', x: 0, y: 0, width: 80, height: 100, background: '#ff0000', opacity: 0.5, rotation: 30 },
+        { id: 'el_default_opacity', type: 'rectangle', x: 100, y: 0, width: 20, height: 20, background: '#0000ff', opacity: null },
         { id: 'el_hidden', type: 'rectangle', x: 0, y: 0, width: 80, height: 100, background: '#00ff00', visible: false }
       ]
     }
@@ -123,6 +124,7 @@ test('local SVG capture honors canvas dimensions, visibility, opacity, and rotat
   assert.equal(captured.width, 720, 'capture width must use the custom canvas width');
   assert.equal(captured.height, 8000, 'capture must preserve the explicit canvas height beyond auto-layout cap');
   assert.match(captured.svg, /opacity="0\.5"/);
+  assert.match(captured.svg, /opacity="1"/, 'null opacity must keep the engine default of fully visible');
   assert.match(captured.svg, /rotate\(30 40 50\)/);
   assert.doesNotMatch(captured.svg, /#00ff00/, 'hidden layers must not leak into the AI image');
 });
@@ -149,6 +151,9 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(update, /key === 'visible' \|\| key === 'locked'/);
   assert.match(update, /x: \[0, el\.xUnit === '%' \? 100 : 10000\], y: \[0, el\.yUnit === '%' \? 100 : 10000\]/);
   assert.match(capture, /el\.visible !== false/);
+  assert.match(capture, /opacity: Math\.max/);
+  assert.match(capture, /rotation: Math\.max/);
+  assert.match(capture, /locked: el\.locked === true/);
   assert.match(exporter, /el\.visible !== false/);
   assert.match(exporter, /opacity:'\+opacity\+';transform:rotate\('\+rotation\+'deg\)/);
   assert.match(converter, /el\.visible !== false/);
