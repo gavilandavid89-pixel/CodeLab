@@ -533,18 +533,23 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
       return { error: 'pixelforge_revision_conflict', status: 409, revision: currentServerRevision };
     }
     const storedDocument = { ...project, serverRevision: currentServerRevision + 1 };
+    const storedDocumentBytes = Buffer.byteLength(JSON.stringify(storedDocument), 'utf8');
+    if (storedDocumentBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
+      await client.query('ROLLBACK');
+      return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
+    }
     if (!existing.rowCount && count >= MAX_PROJECTS) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_project_limit', status: 409, maxProjects: MAX_PROJECTS };
     }
-    if (bytes + projectBytes > PIXELFORGE_MAX_ACCOUNT_BYTES) {
+    if (bytes + storedDocumentBytes > PIXELFORGE_MAX_ACCOUNT_BYTES) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_account_storage_limit', status: 413, maxBytes: PIXELFORGE_MAX_ACCOUNT_BYTES };
     }
     const now = Date.now();
     await client.query(
       'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size',
-      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(storedDocument), Buffer.byteLength(JSON.stringify(storedDocument), 'utf8')]
+      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(storedDocument), storedDocumentBytes]
     );
     await client.query('COMMIT');
     return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision };
