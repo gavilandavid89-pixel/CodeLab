@@ -374,6 +374,18 @@ test('does not coerce small percentage dimensions to a 20px minimum', () => {
   assert.equal(context.elements[0].bounds.height, 5);
 });
 
+test('JSON import clamps coordinates to the editor range for each stored unit', () => {
+  const input = project([
+    { id: 'negative-px', type: 'rectangle', x: -5, y: -1, xUnit: 'px', yUnit: 'px' },
+    { id: 'too-large-percent', type: 'rectangle', x: 250, y: 201, xUnit: '%', yUnit: '%' },
+    { id: 'too-large-px', type: 'rectangle', x: 10001, y: 10001, xUnit: 'px', yUnit: 'px' }
+  ]);
+  const imported = importDesignJson(exportDesignJson(input).json);
+  assert.deepEqual(imported.design.elements.map(({x,y}) => ({x,y})), [
+    { x: 0, y: 0 }, { x: 200, y: 200 }, { x: 10000, y: 10000 }
+  ]);
+});
+
 test('JSON export/import round-trip preserves responsive units, layer metadata, and flow connections', () => {
   const input = {
     id: 'source-project',
