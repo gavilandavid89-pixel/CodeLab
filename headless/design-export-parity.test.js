@@ -212,6 +212,7 @@ test('design backup import rejects credentialed external links and preserves saf
   let nextId = 0;
   const imported = importDesignJson(backup.json, { idFactory: () => 'imported-' + (++nextId) });
   const links = Object.fromEntries(imported.design.elements.map(element => [element.text, element.href]));
+  const ids = Object.fromEntries(imported.design.elements.map(element => [element.text, element.id]));
 
   assert.equal(links.Root, '/contact');
   assert.equal(links.Relative, './contact');
@@ -221,4 +222,6 @@ test('design backup import rejects credentialed external links and preserves saf
   assert.equal(links.External, 'https://example.com/contact');
   assert.equal(links.Email, 'mailto:hello@example.com');
   assert.equal(links.Phone, 'tel:+15551234567');
+  assert.equal(ids.Root, 'imported-1');
+  assert.equal(ids.Phone, 'imported-8');
 });
