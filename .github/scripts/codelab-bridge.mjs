@@ -970,7 +970,7 @@ try {
 
       const current = await postHeadless('/headless/query', {
         action: 'project.code.read',
-        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 200000 },
+        args: { projectId, source, languages: ['html', 'css', 'js'], maxChars: 500000 },
         expectedRevision: baseRevision
       });
       const code = {};
