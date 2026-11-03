@@ -74,6 +74,7 @@ test('inspector numeric bounds allow the origin and clamp supported dimensions/s
   const project = { design: { canvasWidth: 720, canvasHeight: 1600, layoutMode: 'free', elements: [element] } };
   context.selectedDesignElement = () => element;
   context.activeDesignProject = () => project;
+  context.renderDesignWorkspace = () => {};
   context.document = { querySelectorAll: () => [] };
   context.getDesignLayoutPositions = () => ({ positions: new Map() });
   context.scheduleAutosave = () => {};
@@ -89,6 +90,12 @@ test('inspector numeric bounds allow the origin and clamp supported dimensions/s
 
   assert.equal(element.x, 0, 'X=0 is a valid canvas origin');
   assert.equal(element.y, 0, 'Y=0 is a valid canvas origin');
+  context.updateDesignProperty('xUnit', '%');
+  context.updateDesignProperty('yUnit', '%');
+  context.updateDesignProperty('x', '101');
+  context.updateDesignProperty('y', '-1');
+  assert.equal(element.x, 100, 'percentage X must not exceed 100%');
+  assert.equal(element.y, 0, 'percentage Y must not be negative');
   assert.equal(element.width, 4000);
   assert.equal(element.height, 20);
   assert.equal(element.radius, 0);
