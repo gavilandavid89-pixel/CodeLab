@@ -122,6 +122,25 @@ test('locked layers reject update, delete, duplicate, reorder, and bulk delete a
   }
 });
 
+test('allows an explicit unlock-only update, then permits normal edits', () => {
+  const engine = createDesignEngine();
+  const original = project({ elements: [
+    { id: 'locked', type: 'rectangle', locked: true, x: 10, y: 20, width: 100, height: 80 }
+  ] });
+  assert.throws(
+    () => engine.transact(original, [{ type: 'element.update', id: 'locked', properties: { locked: false, x: 99 } }]),
+    /Layer is locked and cannot be changed/
+  );
+  const unlocked = engine.transact(original, [
+    { type: 'element.update', id: 'locked', properties: { locked: false } }
+  ]);
+  assert.equal(unlocked.project.design.elements[0].locked, false);
+  const edited = engine.transact(unlocked.project, [
+    { type: 'element.update', id: 'locked', properties: { x: 99 } }
+  ]);
+  assert.equal(edited.project.design.elements[0].x, 99);
+});
+
 test('enforces editor canvas minimum dimensions', () => {
   const engine = createDesignEngine();
   assert.throws(() => engine.transact(project(), [{ type: 'canvas.set', width: 99, height: 1600 }]), /canvas.width/);
