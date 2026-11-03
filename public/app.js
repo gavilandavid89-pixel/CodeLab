@@ -4155,7 +4155,7 @@ function updateDesignProperty(key, value) {
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
   else if (['x','y','width','height','fontSize','weight','radius'].includes(key)) {
-    const ranges = { x: [0, 10000], y: [0, 10000], width: [20, 4000], height: [20, 4000], fontSize: [8, 240], weight: [100, 900], radius: [0, 500] };
+    const ranges = { x: [0, el.xUnit === '%' ? 100 : 10000], y: [0, el.yUnit === '%' ? 100 : 10000], width: [20, 4000], height: [20, 4000], fontSize: [8, 240], weight: [100, 900], radius: [0, 500] };
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return;
     const [min, max] = ranges[key]; el[key] = Math.max(min, Math.min(max, numeric));
