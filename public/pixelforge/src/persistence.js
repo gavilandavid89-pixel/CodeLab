@@ -16,7 +16,8 @@ async function request(path, options = {}) {
       pixelforge_account_storage_limit: 'Tu cuenta alcanzó el espacio reservado para PixelForge. Elimina proyectos antiguos o reduce el tamaño del documento.',
       pixelforge_project_limit: 'Tu cuenta alcanzó el máximo de proyectos PixelForge. Elimina uno antes de crear otro.',
       invalid_pixelforge_project: 'El proyecto contiene datos no válidos.',
-      pixelforge_storage_unavailable: 'No se pudo acceder al almacenamiento de tu cuenta.'
+      pixelforge_storage_unavailable: 'No se pudo acceder al almacenamiento de tu cuenta.',
+      pixelforge_database_unavailable: 'El almacenamiento de PixelForge no está disponible en CodeLab. Inténtalo más tarde o contacta al administrador.'
     };
     if (messages[error.code]) error.message = messages[error.code];
     throw error;
