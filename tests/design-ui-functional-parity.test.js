@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const flowSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'design-flow.js'), 'utf8');
@@ -33,6 +34,9 @@ test('locked layers cannot be edited or deleted, and duplicate attempts explain 
   assert.match(update, /if \(el\.locked\)/);
   assert.match(duplicate, /if \(selected\[i\]\.locked\)/);
   assert.match(duplicate, /Desbloquea la capa antes de duplicarla/);
+  assert.match(duplicate, /const duplicatedConnections = existingConnections/);
+  assert.match(duplicate, /duplicateIds\.has\(connection\.sourceElementId\)/);
+  assert.match(duplicate, /sourceElementId: duplicateIds\.get\(connection\.sourceElementId\)/);
   assert.match(remove, /selectedIds\.has\(el\.id\) && !el\.locked/);
   assert.match(remove, /Desbloquea la capa antes de eliminarla/);
   assert.match(align, /!selected\.length && el\.locked/);
@@ -118,4 +122,41 @@ test('multi-screen flow export honors hidden sources, responsive dimensions, opa
   assert.match(helpers, /function flowLayoutPositions/);
   assert.match(helpers, /element.hidden !== true && element.visible !== false/);
   assert.match(helpers, /unit === '%'\) return Math.max\(20, Math.min\(4000, containerSize \* Math.min\(100, value\) \/ 100\)\)/);
+});
+
+
+test('duplicating a navigation layer clones its outgoing flow connection to the new ID', () => {
+  const duplicate = extract('function duplicateDesignElement()', 'function deleteDesignElement()');
+  const project = {
+    id: 'design-project',
+    design: {
+      elements: [
+        { id: 'nav', type: 'button', label: 'Next', text: 'Next', x: 10, y: 20, width: 100, height: 40, flowRole: 'navigate' },
+        { id: 'content', type: 'heading', label: 'Content', text: 'Content', x: 20, y: 80, width: 200, height: 60 }
+      ],
+      flowConnections: [{ sourceElementId: 'nav', targetProjectId: 'target-screen' }]
+    }
+  };
+  const sandbox = {
+    activeDesignProject: () => project,
+    selectedDesignElementId: 'nav',
+    selectedDesignElementIds: ['nav'],
+    MAX_DESIGN_ELEMENTS: 500,
+    crypto: { randomUUID: () => 'copy-1' },
+    recordDesignHistory: () => {},
+    getDesignCanvasWidth: () => 720,
+    getDesignCanvasHeight: () => 1600,
+    getDesignElementPosition: (element, axis) => Number(element[axis]) || 0,
+    nextDesignElementIdentifier: () => 'nav-copy',
+    designLayerDomId: id => 'layer-' + id,
+    renderDesignWorkspace: () => {},
+    saveProjectsToStorage: () => {},
+    showToast: () => {}
+  };
+  vm.runInNewContext(duplicate + '\nduplicateDesignElement();', sandbox);
+  assert.equal(project.design.elements.length, 3);
+  assert.equal(project.design.flowConnections.length, 2);
+  assert.equal(project.design.flowConnections[1].sourceElementId, 'el_copy-1');
+  assert.equal(project.design.flowConnections[1].targetProjectId, 'target-screen');
+  assert.equal(project.design.elements[2].flowRole, 'navigate');
 });
