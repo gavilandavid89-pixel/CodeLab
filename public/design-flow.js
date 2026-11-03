@@ -4,6 +4,89 @@
   let modal, canvas, svg, pendingStart = null, draftPath = null, chooseMode = false, selectedSource = null, activeTarget = null, gestureOrigin = null;
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function designProjects() { return projects.filter(p => p && p.type === 'design' && p.design && Array.isArray(p.design.elements)); }
+
+  function flowCanvasWidth(design) {
+    const raw = Number(design && design.canvasWidth);
+    if (Number.isInteger(raw) && raw >= 100 && raw <= 4000) return raw;
+    return ({desktop:1440,tablet:768,mobile:390})[design && design.frame] || 1440;
+  }
+  function flowCanvasHeight(design) {
+    const raw = Number(design && design.canvasHeight);
+    return Number.isInteger(raw) && raw >= 100 && raw <= 10000 ? raw : 900;
+  }
+  function flowElementPosition(element, axis, containerSize) {
+    const raw = Number(element && element[axis]);
+    const value = Number.isFinite(raw) ? raw : 0;
+    if (element && element[axis + 'Unit'] === '%') return Math.max(-6000, Math.min(6000, containerSize * Math.max(-100, Math.min(200, value)) / 100));
+    return Math.max(-6000, Math.min(6000, value));
+  }
+  function flowElementDimension(element, axis, containerSize) {
+    const fallback = axis === 'width' ? 120 : 48;
+    const unit = ['px', '%', 'auto'].includes(element && element[axis + 'Unit']) ? element[axis + 'Unit'] : 'px';
+    const raw = Number(element && element[axis]);
+    const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+    if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
+    if (unit === 'auto' && element) {
+      if (element.type === 'rectangle' || element.type === 'ellipse') return 20;
+      if (element.type === 'image') return Math.max(20, Math.min(4000, value));
+      const fontSize = Math.max(8, Math.min(256, Number(element.fontSize) || 16));
+      const content = String(element.text || element.label || '');
+      if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
+      const width = flowElementDimension(element, 'width', containerSize);
+      const charsPerLine = Math.max(1, Math.floor(width / (fontSize * 0.56)));
+      return Math.max(24, Math.min(4000, Math.ceil(Math.max(1, Math.ceil(content.length / charsPerLine)) * fontSize * 1.35 + 12)));
+    }
+    return Math.max(20, Math.min(4000, value));
+  }
+  function flowElementDimensionCss(element, axis) {
+    const unit = ['px', '%', 'auto'].includes(element && element[axis + 'Unit']) ? element[axis + 'Unit'] : 'px';
+    if (unit === 'auto') return 'auto';
+    const fallback = axis === 'width' ? 120 : 48;
+    const raw = Number(element && element[axis]);
+    const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+    return unit === '%' ? Math.min(100, value) + '%' : Math.max(20, Math.min(4000, value)) + 'px';
+  }
+  function flowLayoutPositions(design) {
+    const elements = (Array.isArray(design && design.elements) ? design.elements : [])
+      .filter(element => element && typeof element === 'object' && element.hidden !== true && element.visible !== false);
+    const frameWidth = flowCanvasWidth(design);
+    const canvasHeight = flowCanvasHeight(design);
+    const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
+    const positions = new Map();
+    if (mode === 'free') {
+      let contentBottom = 0;
+      for (const element of elements) {
+        const x = flowElementPosition(element, 'x', frameWidth);
+        const y = flowElementPosition(element, 'y', canvasHeight);
+        const height = flowElementDimension(element, 'height', canvasHeight);
+        positions.set(element.id, { x, y });
+        contentBottom = Math.max(contentBottom, y + height);
+      }
+      return { positions, height: Math.min(6000, Math.max(canvasHeight, contentBottom + 24)), mode, frameWidth, padding: 0 };
+    }
+    const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+    const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+    const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+    let x = padding, y = padding, rowHeight = 0;
+    for (const element of elements) {
+      const contentWidth = Math.max(20, frameWidth - padding * 2);
+      const contentHeight = Math.max(20, canvasHeight - padding * 2);
+      const width = flowElementDimension(element, 'width', contentWidth);
+      const height = flowElementDimension(element, 'height', contentHeight);
+      if (direction === 'row') {
+        if (x > padding && x + width > frameWidth - padding) {
+          x = padding; y += rowHeight + gap; rowHeight = 0;
+        }
+        positions.set(element.id, { x, y });
+        x += width + gap; rowHeight = Math.max(rowHeight, height);
+      } else {
+        positions.set(element.id, { x: padding, y });
+        y += height + gap;
+      }
+    }
+    const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
+    return { positions, height: Math.min(6000, Math.max(canvasHeight, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
+  }
   function findProject(id) { return designProjects().find(p => p.id === id); }
   function allConnections() {
     const out = [];
@@ -211,18 +294,20 @@
     if (reachable.length < 2) return fallbackHtml;
     const escAttr = value => esc(value).replace(/\`/g, '&#96;');
     const routeId = id => 'page-' + String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
-    const frameWidth = p => typeof getDesignCanvasWidth === 'function' ? getDesignCanvasWidth(p.design) : (Number(p.design.canvasWidth) || ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440);
+    const frameWidth = p => flowCanvasWidth(p.design);
     const pages = reachable.map(p => {
-      const d=p.design, width=frameWidth(p), layout=getDesignLayoutPositions(d), auto=d.layoutMode==='auto';
-      const frameHeight=Math.max(Number(d.canvasHeight)||900, Number(layout.height)||0);
+      const d=p.design, width=frameWidth(p), layout=flowLayoutPositions(d), auto=d.layoutMode==='auto';
+      const frameHeight=Math.max(flowCanvasHeight(d), Number(layout.height)||0);
       const items=(Array.isArray(d.elements)?d.elements.filter(el=>el && !el.hidden && el.visible !== false):[]).map(el=>{
         const pos=layout.positions.get(el.id)||{x:Number(el.x)||0,y:Number(el.y)||0};
         const x=Math.max(0,Math.min(10000,Number(pos.x)||0)), y=Math.max(0,Math.min(10000,Number(pos.y)||0));
         const padding=Math.max(0,Math.min(200,Number(d.layoutPadding)||0));
-        const w=typeof getDesignElementDimension === 'function' ? getDesignElementDimension(el,'width',auto?Math.max(20,width-padding*2):width) : Math.max(20,Math.min(4000,Number(el.width)||120));
-        const h=typeof getDesignElementDimension === 'function' ? getDesignElementDimension(el,'height',auto?Math.max(20,(Number(d.canvasHeight)||900)-padding*2):(Number(d.canvasHeight)||900)) : Math.max(20,Math.min(4000,Number(el.height)||48));
-        const widthCss=auto && typeof getDesignElementDimensionCss === 'function' ? getDesignElementDimensionCss(el,'width') : w+'px';
-        const heightCss=auto && el.heightUnit !== '%' && typeof getDesignElementDimensionCss === 'function' ? getDesignElementDimensionCss(el,'height') : h+'px';
+        const contentWidth=auto?Math.max(20,width-padding*2):width;
+        const contentHeight=auto?Math.max(20,flowCanvasHeight(d)-padding*2):flowCanvasHeight(d);
+        const w=flowElementDimension(el,'width',contentWidth);
+        const h=flowElementDimension(el,'height',contentHeight);
+        const widthCss=auto?flowElementDimensionCss(el,'width'):w+'px';
+        const heightCss=auto && el.heightUnit !== '%' ? flowElementDimensionCss(el,'height') : h+'px';
         const color=safeDesignExportColor(el.color,'#111827'), bg=safeDesignExportColor(el.background,'transparent');
         const fs=Math.max(8,Math.min(256,Number(el.fontSize)||16)), weight=Math.max(100,Math.min(900,Number(el.weight)||400));
         const radius=Math.max(0,Math.min(4000,Number(el.radius)||0)), align=['left','center','right'].includes(el.textAlign)?el.textAlign:'left';
