@@ -366,7 +366,7 @@ test('rejects coercible numeric values and validates percentages by unit', () =>
   }
   assert.throws(() => engine.transact(input, [
     { type: 'element.update', id: 'numeric', properties: { x: 250, xUnit: '%' } }
-  ]), /between -200 and 200/);
+  ]), /between 0 and 200/);
   assert.throws(() => engine.transact(input, [
     { type: 'element.update', id: 'numeric', properties: { width: 200, widthUnit: '%' } }
   ]), /between 1 and 100/);
