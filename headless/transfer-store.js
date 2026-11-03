@@ -102,7 +102,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     let names;
     try { names = fs.readdirSync(root); } catch (_) { return; }
     for (const name of names) {
-      const match = /^(code|image-chunks)-([a-f0-9]{32})\.json$/.exec(name);
+      const match = /^(code|image-chunks|image)-([a-f0-9]{32})\.json$/.exec(name);
       if (!match) continue;
       const kind = match[1];
       const id = match[2];
@@ -177,6 +177,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
   function commitImage({ transferId, workspaceId }) {
     const record = read('image-chunks', transferId);
     if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
+    if (record.committedUpload) return { ...record.committedUpload };
     if (countChunks('image-chunks', transferId, record.totalChunks) !== record.totalChunks) throw new Error('image_chunks_incomplete');
     const base64 = Array.from({ length: record.totalChunks }, (_, i) => {
       const chunk = readChunk('image-chunks', transferId, i);
@@ -191,16 +192,22 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     if (bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64') !== base64 || sha256(bytes) !== record.expectedHash) {
       throw new Error('image_transfer_hash_mismatch');
     }
-    const upload = putImage({ workspaceId, projectId: record.projectId, bytes, declaredMime: record.declaredMime });
+    // Reuse the transfer ID as the upload token so a retry after a process interruption
+    // cannot create duplicate tokens or lose the successful commit result.
+    const upload = putImage({ workspaceId, projectId: record.projectId, bytes, declaredMime: record.declaredMime, id: transferId });
+    const result = { ...upload, projectId: record.projectId };
+    record.committedUpload = result;
+    record.expiresAt = now() + TTL_MS;
+    write('image-chunks', transferId, record);
     deleteChunks('image-chunks', transferId, record.totalChunks);
-    try { fs.unlinkSync(file('image-chunks', transferId)); } catch (_) {}
-    return { ...upload, projectId: record.projectId };
+    return { ...result };
   }
-  function putImage({ workspaceId, projectId, bytes, declaredMime }) {
+  function putImage({ workspaceId, projectId, bytes, declaredMime, id: requestedId }) {
     if (!workspaceId || !projectId || !Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > MAX_IMAGE_BYTES) throw new Error('invalid_image_size');
     const mime = imageMime(bytes);
     if (!mime || (declaredMime && declaredMime !== mime)) throw new Error('invalid_image_signature');
-    const id = crypto.randomUUID().replace(/-/g, '');
+    const id = requestedId || crypto.randomUUID().replace(/-/g, '');
+    if (!validId(id)) throw new Error('invalid_transfer_id');
     const payload = { id, workspaceId, projectId, mime, bytes: bytes.toString('base64'), sha256: sha256(bytes), expiresAt: now() + TTL_MS };
     write('image', id, payload);
     return { uploadToken: id, mime, bytes: bytes.length, sha256: payload.sha256, expiresInMs: TTL_MS };
