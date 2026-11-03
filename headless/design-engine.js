@@ -303,7 +303,19 @@ function isSafeColor(value) {
 
 function isSafeHref(value) {
   const href = String(value || '').trim();
-  return !href || /^(https?:\/\/|mailto:|tel:|\/|#layer-[a-z0-9_-]+$)/i.test(href);
+  if (!href) return true;
+  if (href.length > 2048 || /[\x00-\x1f\x7f<>\\]/.test(href)) return false;
+  if (/^#layer-[a-z0-9_-]{1,120}$/i.test(href)) return true;
+  // Root-relative URLs are allowed, but protocol-relative URLs are external hosts.
+  if (/^(?:\/(?!\/)|\.{1,2}\/)[^\s<>]*$/.test(href)) return true;
+  if (/^mailto:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+(?:\?[^\s<>]*)?$/i.test(href)) return true;
+  if (/^tel:\+?[0-9(). -]{3,32}$/i.test(href)) return true;
+  try {
+    const url = new URL(href);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+  } catch (_) {
+    return false;
+  }
 }
 
 function parseEditorImageDataUrl(value) {
