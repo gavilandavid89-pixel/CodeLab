@@ -55,6 +55,9 @@ function parseCommand(raw) {
     if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
     if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
     if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
+    if (args.operation_id !== undefined && (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id))) throw new Error('ai_generate operation_id must be a safe string.');
+    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('ai_generate max_tokens must be from 256 to 32768.');
+    if (typeof command.command_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(command.command_id)) throw new Error('ai_generate requires a safe command_id for idempotent retries.');
   }
   if (command.action === 'headless_ai_generate') {
     if (command.approval !== 'approved') throw new Error('Headless AI generation consumes provider quota and changes project code; approval: "approved" is required.');
