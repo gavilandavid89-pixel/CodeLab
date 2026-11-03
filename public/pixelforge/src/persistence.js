@@ -235,3 +235,33 @@ export async function loadMostRecentProject() {
   }
   return null;
 }
+
+export async function getPixelForgeAccount() {
+  return codeLabSession();
+}
+
+export async function deleteProject(id) {
+  if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(id)) throw new TypeError('Invalid project ID.');
+  const session = await codeLabSession().catch(() => codeLabSessionCache);
+  if (session) {
+    const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(id), {
+      method: 'DELETE', credentials: 'same-origin', cache: 'no-store'
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error('Could not delete the CodeLab cloud project (' + response.status + ').');
+    }
+    cloudRevisions.delete(id);
+  }
+  const db = await openDB();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE, META_STORE], 'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.objectStore(META_STORE).delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error ?? new Error('Could not delete the local project.'));
+      tx.onabort = () => reject(tx.error ?? new Error('Project deletion was interrupted.'));
+    });
+  } finally { db.close(); }
+  return { deletedLocally: true, cloud: !!session };
+}
