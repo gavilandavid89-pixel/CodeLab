@@ -68,12 +68,26 @@ async function main() {
   assert.equal(saved.status, 201, 'first save should create a project in the account');
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
+
+  const secondSessionId = 'b'.repeat(48);
+  fs.writeFileSync(path.join(sessionsDir, secondSessionId + '.json'), JSON.stringify({
+    id: secondSessionId,
+    user: { id: 'pixelforge-other-user', provider: 'local', name: 'PIXELFORGE_OTHER', role: 'user' },
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 60_000
+  }), { mode: 0o600 });
+  const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
+  const otherList = await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders });
+  assert.deepEqual((await otherList.json()).projects, [], 'a different CodeLab account must not see another account\'s PixelForge projects');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: otherHeaders })).status, 404, 'a different account must not open another account\'s project');
+
   const loaded = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders });
   assert.deepEqual((await loaded.json()).project, fixture, 'saved project should round-trip through account storage');
   const deleted = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { method: 'DELETE', headers: authHeaders });
   assert.equal(deleted.status, 200, 'account owner should be able to delete their own project');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders })).status, 404, 'deleted project should no longer be available');
   fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
+  fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
 
   const browser = await chromium.launch({ headless: true });
   try {
