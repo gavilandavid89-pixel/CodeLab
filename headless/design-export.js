@@ -194,7 +194,7 @@ function designElementDimension(el, axis, containerSize) {
   const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
   const raw = Number(el && el[axis]);
   const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
-  if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
+  if (unit === '%') return Math.max(1, Math.min(4000, containerSize * Math.min(100, value) / 100));
   if (unit === 'auto' && el) {
     if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
     if (el.type === 'image') return Math.max(20, Math.min(4000, value));
