@@ -2,6 +2,8 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { validatePreviewUpload } from '../../headless/preview-upload.js';
+import codeChunks from '../../headless/code-chunks.js';
+const { splitCodeChunks, MAX_CODE_CHUNK_CHARS } = codeChunks;
 
 const repo = process.env.GITHUB_REPOSITORY;
 const issueNumber = Number(process.env.ISSUE_NUMBER);
@@ -1028,19 +1030,9 @@ try {
       let requestKeyAttached = false;
       for (const key of changedFields) {
         const value = generated[key];
-        const chunks = [];
-        for (let offset = 0; offset < value.length;) {
-          let end = Math.min(offset + 50000, value.length);
-          // Never split a UTF-16 surrogate pair across separately persisted chunks.
-          if (end < value.length) {
-            const previous = value.charCodeAt(end - 1);
-            const next = value.charCodeAt(end);
-            if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end--;
-          }
-          chunks.push(value.slice(offset, end));
-          offset = end;
-        }
-        if (!chunks.length) chunks.push('');
+        // Size the chunk count from the actual generated field length. The shared
+        // runtime accepts larger bounded chunks, so avoid unnecessary 50k writes.
+        const chunks = splitCodeChunks(value, MAX_CODE_CHUNK_CHARS);
         chunks.forEach((chunk, index) => {
           const operation = { type: 'web.code.write', projectId, source, mode: index === 0 ? 'replace' : 'append' };
           operation[key] = chunk;
