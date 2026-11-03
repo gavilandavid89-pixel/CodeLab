@@ -434,6 +434,23 @@ test('locked layers reject mutations but can be explicitly unlocked', () => {
   assert.equal(unlocked.project.design.elements[0].locked, false);
 });
 
+test('duplicates outgoing prototype connections with the duplicate layer ID', () => {
+  const engine = createDesignEngine();
+  const connection = { sourceElementId: 'cta', targetProjectId: 'next-screen', trigger: 'click' };
+  const input = project({
+    elements: [{ id: 'cta', type: 'button', x: 10, y: 20, width: 120, height: 40, href: '#layer-next' }],
+    flowConnections: [connection]
+  });
+  const result = engine.transact(input, [
+    { type: 'element.duplicate', id: 'cta', newId: 'cta-copy' }
+  ]);
+  assert.deepEqual(result.project.design.flowConnections, [
+    connection,
+    { ...connection, sourceElementId: 'cta-copy' }
+  ]);
+  assert.equal(input.design.flowConnections.length, 1, 'the transaction must not mutate the input project');
+});
+
 test('duplicate and distribute preserve percentage position semantics', () => {
   const engine = createDesignEngine();
   const input = project({
