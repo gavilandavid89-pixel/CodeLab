@@ -55,6 +55,15 @@ test('inspector and canvas/export renderer expose opacity and font weight consis
   assert.match(exporter, /opacity:'\+opacity\+'/);
 });
 
+test('AI design capture retains remote visual review and exports the analysis report', () => {
+  assert.match(source, /async function captureDesignForAI\(\)/);
+  assert.match(source, /callRemoteDesignReviewAi\(dataUrl, context\)/);
+  assert.match(source, /async function callRemoteDesignReviewAi\(screenshotDataUrl, context\)/);
+  assert.match(source, /\/api\/ai\/design-review/);
+  assert.match(source, /downloadDesignAsset\(slug \+ '-revision-ia\.json'/);
+  assert.match(source, /designCaptureMode/);
+});
+
 test('distribution resolves mixed px/% units, preserves representable units, and rejects locked selections atomically', () => {
   assert.match(source, /x: finite\(raw\.x, 0, 0, raw\.xUnit === '%' \? 200 : 10000\)/);
   assert.match(source, /y: finite\(raw\.y, 0, 0, raw\.yUnit === '%' \? 200 : 10000\)/);
