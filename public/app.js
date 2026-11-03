@@ -5252,6 +5252,7 @@ async function importDesignProjectJson(file) {
   const oldToNewId = new Map();
   const makeId = () => 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2));
   const finite = (value, fallback, min, max) => {
+    if (value == null || (typeof value === 'string' && !value.trim())) return fallback;
     const n = Number(value);
     return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   };
