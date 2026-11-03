@@ -106,3 +106,19 @@ test('consumed image token can only be replayed by the same saved operation ID',
     assert.throws(() => f.store.resolveImage({ uploadToken: upload.uploadToken, workspaceId: 'ws1', projectId: 'design_123', operationId: 'different_operation_02' }), /already_consumed/);
   } finally { f.cleanup(); }
 });
+
+test('starting a new transfer sweeps abandoned expired chunk files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-transfer-sweep-'));
+  try {
+    let now = 1000;
+    const store = createTransferStore(root, () => now);
+    const value = 'abandoned';
+    const old = store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'js', baseRevision: 0, totalChunks: 1, sha256: sha256(value) });
+    store.putCodeChunk({ transferId: old.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) });
+    const dir = path.join(root, 'headless-transfers');
+    assert.ok(fs.readdirSync(dir).some(name => name === 'code-' + old.transferId + '-chunk-0.json'));
+    now += 10 * 60 * 1000 + 1;
+    store.beginImage({ workspaceId: 'owner', projectId: 'design_123', totalChunks: 1, sha256: 'a'.repeat(64), declaredMime: 'image/png' });
+    assert.ok(!fs.readdirSync(dir).some(name => name.includes(old.transferId)));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
