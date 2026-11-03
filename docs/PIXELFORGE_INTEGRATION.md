@@ -24,4 +24,4 @@ PixelForge's raster documents are stored under a dedicated `pixelforge-projects/
 
 ## Current boundary
 
-The account/session and cloud persistence bridge is implemented in these draft PRs. The remaining integration step is to package/serve the separately maintained PixelForge UI under CodeLab's same origin and add a CodeLab navigation entry. Until that is completed, the cloud API is not by itself a user-facing launcher.
+The account/session and cloud persistence bridge is implemented in these draft PRs. CodeLab serves a pinned PixelForge source snapshot at `/pixelforge/` and exposes a dashboard entry point. The original editor remains maintained in its own repository; `public/pixelforge/UPSTREAM.json` records the vendored source revision. The snapshot must be refreshed when the PixelForge source changes, and the integrated route must remain covered by CI before the PR is considered complete.
