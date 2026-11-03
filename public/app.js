@@ -3525,6 +3525,7 @@ function alignDesignElement(mode = 'center-x') {
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id) && !item.locked);
+  if (!selected.length && el.locked) { showToast('Desbloquea la capa antes de alinearla.', 'warn'); return; }
   if (selected.length > 1) {
     const left = Math.min(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design))));
     const top = Math.min(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900)));
@@ -3847,12 +3848,13 @@ function exportDesignHtml() {
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
     const heightCss = getDesignElementDimensionCss(el, 'height');
-    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const rotation = Math.max(-360, Math.min(360, Number(el.rotation) || 0));
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
+    const opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
     const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
     if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
@@ -4031,7 +4033,7 @@ function getDesignElementDimension(el, axis, containerSize = 900) {
   if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
   if (unit === 'auto' && el) {
     if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
-    if (el.type === 'image') return value;
+    if (el.type === 'image') return Math.max(20, Math.min(4000, value));
     const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const content = String(el.text || el.label || '');
     if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
@@ -4065,7 +4067,7 @@ function getDesignElementPositionCss(el, axis) {
 }
 
 function getDesignLayoutPositions(design) {
-  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
+  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : [];
   const frameWidth = getDesignCanvasWidth(design);
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
@@ -4173,7 +4175,8 @@ function renderDesignWorkspace() {
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
     node.style.visibility = el.hidden ? 'hidden' : 'visible';
-    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.display = el.hidden ? 'none' : 'flex';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.transformOrigin = 'center center';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
@@ -4181,11 +4184,11 @@ function renderDesignWorkspace() {
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.minWidth = '20px'; node.style.minHeight = '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
+    node.style.fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16)) + 'px'; node.style.fontWeight = String(Math.max(100, Math.min(900, Number(el.weight) || 400))); node.style.opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
     node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
-    node.style.display = 'flex'; node.style.alignItems = 'center';
+    node.style.display = el.hidden ? 'none' : 'flex'; node.style.alignItems = 'center';
     node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.padding = (el.type === 'rectangle' || el.type === 'image') ? '0' : '4px';
@@ -4312,10 +4315,10 @@ function renderDesignWorkspace() {
     (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select id="designProperty-xUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'xUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.xUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.xUnit==='%'?'selected':'')+'>%</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select id="designProperty-yUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'yUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.yUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.yUnit==='%'?'selected':'')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
-    '<div class="grid grid-cols-2 gap-2">' + field('Rotación (°)','rotation','number','min="-360" max="360" step="1"') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2">' + field('Rotación (°)','rotation','number','min="-3600" max="3600" step="1"') + '</div>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad de ancho</span><select id="designProperty-widthUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'widthUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.widthUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.widthUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.widthUnit==='auto'?'selected':'')+'>Auto</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad de alto</span><select id="designProperty-heightUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'heightUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.heightUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.heightUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.heightUnit==='auto'?'selected':'')+'>Auto</option></select></label></div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
-    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
+    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + (el.type !== 'image' && el.type !== 'rectangle' && el.type !== 'ellipse' ? field('Peso tipográfico','weight','number','min="100" max="900" step="100"') : '') + field('Opacidad','opacity','number','min="0" max="1" step="0.05"') + field('Redondeado','radius','number','min="0" max="4000" step="1"') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
     '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>' +
     '<div class="grid grid-cols-2 gap-2 mt-2"><button type="button" onclick="duplicateDesignElement()" class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800"><i class="fa-regular fa-copy mr-1"></i>Duplicar</button><button type="button" onclick="deleteDesignElement()" class="px-2 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-[11px] text-rose-200 hover:bg-rose-900"><i class="fa-regular fa-trash-can mr-1"></i>Eliminar</button></div>';
   updateDesignHistoryButtons();
@@ -4328,6 +4331,7 @@ function updateDesignProperty(key, value) {
   const p = activeDesignProject();
   const el = p && p.design.elements.find(item => item && item.id === selectedDesignElementId);
   if (!el) return;
+  if (el.locked) { showToast('Desbloquea la capa antes de editar sus propiedades.', 'warn'); return; }
   if (key === 'identifier') {
     const requested = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 120);
     const base = requested || 'id';
@@ -4349,7 +4353,18 @@ function updateDesignProperty(key, value) {
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
-  else if (key === 'rotation') el.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
+  else if (key === 'rotation') { const n = Number(value); if (!Number.isFinite(n)) return; el.rotation = Math.max(-3600, Math.min(3600, n)); }
+  else if (key === 'opacity') { const n = Number(value); if (!Number.isFinite(n)) return; el.opacity = Math.max(0, Math.min(1, n)); }
+  else if (['x','y','width','height','fontSize','weight','radius'].includes(key)) {
+    const n = Number(value); if (!Number.isFinite(n)) return;
+    const ranges = {
+      x: [0, el.xUnit === '%' ? 200 : 10000], y: [0, el.yUnit === '%' ? 200 : 10000],
+      width: [el.widthUnit === '%' ? 1 : 20, el.widthUnit === '%' ? 100 : 4000],
+      height: [el.heightUnit === '%' ? 1 : 20, el.heightUnit === '%' ? 100 : 4000],
+      fontSize: [8, 256], weight: [100, 900], radius: [0, 4000]
+    };
+    const [min, max] = ranges[key]; el[key] = Math.max(min, Math.min(max, n));
+  }
   else if (key === 'xUnit' || key === 'yUnit') {
     if (!['px', '%'].includes(value)) return;
     el[key] = value;
@@ -4361,7 +4376,7 @@ function updateDesignProperty(key, value) {
     renderDesignWorkspace(); scheduleAutosave(); return;
   }
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
-  if (p && key === 'rotation') el.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
+  if (p && key === 'rotation') el.rotation = Math.max(-3600, Math.min(3600, Number(value) || 0));
   if (p) p.updatedAt = new Date().toISOString();
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
@@ -4373,9 +4388,9 @@ function updateDesignProperty(key, value) {
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y+'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.transformOrigin = 'center center';
-    node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
+    node.style.fontSize = Math.max(8,Math.min(256,Number(el.fontSize)||16))+'px'; node.style.fontWeight = String(Math.max(100,Math.min(900,Number(el.weight)||400))); node.style.opacity = Math.max(0,Math.min(1,Number(el.opacity ?? 1))); node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Math.min(4000,Number(el.radius)||0))+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
   }
@@ -4537,7 +4552,7 @@ function duplicateDesignElement() {
   for (let i = selected.length - 1; i >= 0; i--) {
     if (selected[i].locked) selected.splice(i, 1);
   }
-  if (!selected.length) return;
+  if (!selected.length) { showToast('Desbloquea la capa antes de duplicarla.', 'warn'); return; }
   if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
     showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
@@ -4572,6 +4587,11 @@ function duplicateDesignElement() {
     const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
     if (internalTarget) copy.href = '#' + designLayerDomId(duplicateIds.get(internalTarget.id));
   });
+  const existingConnections = Array.isArray(p.design.flowConnections) ? p.design.flowConnections : [];
+  const duplicatedConnections = existingConnections
+    .filter(connection => connection && duplicateIds.has(connection.sourceElementId))
+    .map(connection => ({ ...connection, sourceElementId: duplicateIds.get(connection.sourceElementId) }));
+  if (duplicatedConnections.length) p.design.flowConnections = existingConnections.concat(duplicatedConnections);
   p.design.elements.push(...copies);
   selectedDesignElementIds = copies.map(copy => copy.id);
   selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
@@ -4580,8 +4600,11 @@ function duplicateDesignElement() {
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
+  const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
+  const deletedElementIds = new Set(p.design.elements.filter(el => selectedIds.has(el.id) && !el.locked).map(el => el.id));
+  // A rejected deletion must not create a phantom undo step.
+  if (!deletedElementIds.size) { showToast('Desbloquea la capa antes de eliminarla.', 'warn'); return; }
   recordDesignHistory();
-  const deletedElementIds = new Set(p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId).map(el => el.id));
   p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
   // Never leave graph edges pointing at a layer that no longer exists.
   if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
@@ -4693,7 +4716,7 @@ async function convertDesignToWeb() {
   const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
   const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
   const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
-  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements.filter(el => el && !el.hidden) : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : (el.type === 'rectangle' || el.type === 'ellipse') ? 'div' : 'p';
@@ -4709,14 +4732,17 @@ async function convertDesignToWeb() {
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
     const heightCss = getDesignElementDimensionCss(el, 'height');
-    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
+    const opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
-    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+    const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
@@ -5235,6 +5261,7 @@ async function importDesignProjectJson(file) {
   const oldToNewId = new Map();
   const makeId = () => 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2));
   const finite = (value, fallback, min, max) => {
+    if (value == null || (typeof value === 'string' && !value.trim())) return fallback;
     const n = Number(value);
     return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   };
@@ -5271,8 +5298,15 @@ async function importDesignProjectJson(file) {
       y: finite(raw.y, 0, -6000, 6000),
       xUnit: ['px','%'].includes(raw.xUnit) ? raw.xUnit : 'px',
       yUnit: ['px','%'].includes(raw.yUnit) ? raw.yUnit : 'px',
-      width: finite(raw.width, 120, 20, 4000),
-      height: finite(raw.height, 48, 20, 4000),
+      identifier: typeof raw.identifier === 'string' ? raw.identifier.trim().slice(0, 120) : '',
+      hidden: raw.hidden === true || raw.visible === false,
+      ...(typeof raw.visible === 'boolean' ? { visible: raw.visible } : {}),
+      locked: raw.locked === true,
+      opacity: finite(raw.opacity, 1, 0, 1),
+      rotation: finite(raw.rotation, 0, -3600, 3600),
+      ...(['navigate', 'menu'].includes(raw.flowRole) ? { flowRole: raw.flowRole } : {}),
+      width: finite(raw.width, 120, raw.widthUnit === '%' ? 1 : 20, raw.widthUnit === '%' ? 100 : 4000),
+      height: finite(raw.height, 48, raw.heightUnit === '%' ? 1 : 20, raw.heightUnit === '%' ? 100 : 4000),
       widthUnit: ['px','%','auto'].includes(raw.widthUnit) ? raw.widthUnit : 'px',
       heightUnit: ['px','%','auto'].includes(raw.heightUnit) ? raw.heightUnit : 'px',
       color: color(raw.color, '#111827'),
@@ -5296,6 +5330,7 @@ async function importDesignProjectJson(file) {
       if (targetId) elements[index].href = '#layer-' + targetId.replace(/[^a-z0-9_-]/gi, '').slice(0, 120);
     }
   });
+  normalizeDesignElementIdentifiers(elements);
   // Recheck after asynchronous file reading so import cannot race a project
   // creation or cross the workspace cap between validation and mutation.
   if (creatingProjectInFlight) {
@@ -5328,7 +5363,13 @@ async function importDesignProjectJson(file) {
       layoutGap: finite(sourceDesign.layoutGap, 16, 0, 200),
       layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200),
       ...(Number.isInteger(Number(sourceDesign.canvasWidth)) && Number(sourceDesign.canvasWidth) >= 100 && Number(sourceDesign.canvasWidth) <= 4000 ? { canvasWidth: Number(sourceDesign.canvasWidth) } : {}),
-      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {})
+      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {}),
+      ...(Array.isArray(sourceDesign.flowConnections) ? {
+        flowConnections: sourceDesign.flowConnections.filter(connection => connection && typeof connection === 'object' &&
+          typeof connection.sourceElementId === 'string' && oldToNewId.has(connection.sourceElementId) &&
+          typeof connection.targetProjectId === 'string' && connection.targetProjectId.length <= 200)
+          .map(connection => ({ ...connection, sourceElementId: oldToNewId.get(connection.sourceElementId) }))
+      } : {})
     }
   };
   projects.unshift(newProject);
