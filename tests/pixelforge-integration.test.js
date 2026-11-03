@@ -167,6 +167,12 @@ async function main() {
   const otherList = await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders });
   assert.deepEqual((await otherList.json()).projects, [], 'a different CodeLab account must not see another account\'s PixelForge projects');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: otherHeaders })).status, 404, 'a different account must not open another account\'s project');
+  const crossAccountDelete = await fetch(base + '/api/pixelforge/projects/' + fixture.id, {
+    method: 'DELETE', headers: otherHeaders
+  });
+  assert.equal(crossAccountDelete.status, 404, 'a different account must not delete another account\'s project');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders })).status, 200,
+    'a denied cross-account deletion must leave the owner\'s project intact');
 
   const concurrentProjects = Array.from({ length: 6 }, (_, index) =>
     makePixelProject('parallel-artwork-' + index, 'Parallel artwork ' + index));
