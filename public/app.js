@@ -4174,6 +4174,7 @@ function renderDesignWorkspace() {
     node.className = 'absolute select-none ' + (el.locked ? 'cursor-not-allowed' : 'cursor-move');
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
+    node.style.visibility = el.hidden ? 'hidden' : 'visible';
     node.style.display = el.hidden ? 'none' : 'flex';
     node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.transformOrigin = 'center center';
