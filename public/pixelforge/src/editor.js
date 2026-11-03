@@ -1737,6 +1737,20 @@ async function boot() {
       document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101116;color:#f3f4f6;font:16px system-ui,sans-serif"><section style="max-width:440px;text-align:center;background:#191b24;border:1px solid #343744;border-radius:18px;padding:28px"><div style="font-size:34px;margin-bottom:12px">◈</div><h1 style="margin:0 0 10px;font-size:24px">Inicia sesión en CodeLab</h1><p style="color:#b5b8c5;line-height:1.6">PixelForge usa la misma cuenta de CodeLab. Inicia sesión y vuelve a abrir el estudio para guardar tus dibujos en tu cuenta y acceder a ellos desde otros dispositivos.</p><a href="/" style="display:inline-block;margin-top:14px;padding:12px 18px;border-radius:10px;background:#d8a65d;color:#171922;text-decoration:none;font-weight:700">Ir a CodeLab e iniciar sesión</a></section></main>`;
       return;
     }
+    // Reuse the provider settings configured in CodeLab's AI settings area.
+    // The secret stays in browser memory and is never copied into PixelForge projects.
+    const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
+    if (sharedAI.baseUrl) {
+      const base = sharedAI.baseUrl.replace(/\\/+$/, '');
+      $('#ai-provider-endpoint').value = /\\/chat\\/completions$/i.test(base) ? base : base + '/chat/completions';
+    }
+    if (sharedAI.model) $('#ai-provider-model').value = sharedAI.model;
+    if (sharedAI.apiKey) $('#ai-provider-key').value = sharedAI.apiKey;
+    if (sharedAI.configured) {
+      $('#ai-connection-state').textContent = 'Configuración de IA de CodeLab detectada para ' + sharedAI.model + '. Pulsa «Use this provider» para activarla; la clave no se guarda en el proyecto.';
+    } else if (sharedAI.mode !== 'local') {
+      $('#ai-connection-state').textContent = 'Para reutilizar tu proveedor, configura modo API y tu clave en los Ajustes de IA de CodeLab.';
+    }
     paletteStorageKey = 'pixelforge.palette.v1:' + encodeURIComponent(auth.user.provider) + ':' + encodeURIComponent(auth.user.id);
     userPalette = loadUserPalette();
     renderUserPalette();
