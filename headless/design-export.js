@@ -248,7 +248,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const widthCss = autoLayout ? designElementDimensionCss(element, 'width') : (w + 'px');
     const heightCss = autoLayout && element.heightUnit !== '%' ? designElementDimensionCss(element, 'height') : (h + 'px');
     const style = positioning + 'width:' + widthCss + ';height:' + heightCss + ';color:' + color +
-      ';background:' + elementBackground + ';font-size:' + fontSize + 'px;font-weight:' + weight +
+      ';background:' + elementBackground + ';min-width:20px;min-height:20px;font-size:' + fontSize + 'px;font-weight:' + weight +
       ';text-align:' + align + ';border-radius:' + (element.type === 'ellipse' ? '50%' : radius + 'px') +
       ';display:flex;align-items:center;box-sizing:border-box;padding:' + (element.type === 'image' ? '0' : '4px') +
       ';overflow:hidden;opacity:' + opacity + ';' + (rotation ? 'transform:rotate(' + rotation + 'deg);transform-origin:center center;' : '') +
@@ -392,8 +392,8 @@ function importDesignJson(input, options = {}) {
       y: clamp(raw.y, 0, -6000, 6000),
       ...(['px', '%'].includes(raw.xUnit) ? { xUnit: raw.xUnit } : {}),
       ...(['px', '%'].includes(raw.yUnit) ? { yUnit: raw.yUnit } : {}),
-      width: clamp(raw.width, 120, 20, 4000),
-      height: clamp(raw.height, 48, 20, 4000),
+      width: clamp(raw.width, 120, raw.widthUnit === '%' ? 1 : 20, raw.widthUnit === '%' ? 100 : 4000),
+      height: clamp(raw.height, 48, raw.heightUnit === '%' ? 1 : 20, raw.heightUnit === '%' ? 100 : 4000),
       ...( ['px', '%', 'auto'].includes(raw.widthUnit) ? { widthUnit: raw.widthUnit } : {}),
       ...( ['px', '%', 'auto'].includes(raw.heightUnit) ? { heightUnit: raw.heightUnit } : {}),
       ...(typeof raw.identifier === 'string' && raw.identifier.trim() ? { identifier: raw.identifier.trim().slice(0, 120) } : {}),
