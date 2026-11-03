@@ -53,7 +53,7 @@ test('inspector unit changes preserve the layer position in pixels', () => {
   context.activeDesignProject = () => project;
   context.renderDesignWorkspace = () => {};
   context.scheduleAutosave = () => {};
-  vm.runInContext(extract('function updateDesignProperty(key, value) {', '\\nfunction bindDesignCanvasEvents'), context);
+  vm.runInContext(extract('function updateDesignProperty(key, value) {', 'function bindDesignCanvasEvents'), context);
 
   context.updateDesignProperty('xUnit', '%');
   context.updateDesignProperty('yUnit', '%');
