@@ -1,16 +1,54 @@
-const { codeLabRequest } = window.CodeLabStudioCore;
+const { codeLabRequest, getCodeLabSession } = window.CodeLabStudioCore;
 
 const API = '/api/pixelforge/projects';
+let boundAccountKey = null;
+let boundAccountHeader = null;
+
+function accountKey(user) {
+  if (!user || typeof user.provider !== 'string' || user.id == null) return null;
+  return user.provider + ':' + String(user.id);
+}
+
+// Bind this editor instance to the CodeLab account that authenticated at boot.
+// Cookies are shared across tabs, so an account switch elsewhere must not cause
+// this still-open editor to save the previous account's artwork into the new one.
+export function bindAccountSession(user) {
+  const key = accountKey(user);
+  if (!key) throw new Error('No se pudo vincular PixelForge a una cuenta de CodeLab.');
+  boundAccountKey = key;
+  boundAccountHeader = encodeURIComponent(JSON.stringify([user.provider, String(user.id)]));
+}
+
+async function assertBoundAccount() {
+  if (!boundAccountKey) {
+    const error = new Error('Recarga PixelForge para vincularlo a tu cuenta de CodeLab.');
+    error.code = 'account_session_changed';
+    error.status = 409;
+    throw error;
+  }
+  const auth = await getCodeLabSession();
+  if (accountKey(auth?.user) !== boundAccountKey) {
+    const error = new Error('La sesión de CodeLab cambió. Recarga PixelForge antes de guardar o abrir proyectos.');
+    error.code = 'account_session_changed';
+    error.status = 409;
+    throw error;
+  }
+}
 
 async function request(path, options = {}) {
   try {
-    return await codeLabRequest(path, options);
+    await assertBoundAccount();
+    return await codeLabRequest(path, {
+      ...options,
+      headers: { ...(options.headers || {}), 'X-CodeLab-Expected-Account': boundAccountHeader }
+    });
   } catch (error) {
     if (error.status === 401) {
       error.message = 'Inicia sesión en CodeLab para usar PixelForge y guardar tus proyectos en tu cuenta.';
       throw error;
     }
     const messages = {
+      account_session_changed: 'La sesión de CodeLab cambió. Recarga PixelForge antes de guardar o abrir proyectos.',
       project_not_found: 'No se encontró ese proyecto en tu cuenta.',
       pixelforge_project_too_large: 'El proyecto supera el tamaño permitido para guardarlo.',
       pixelforge_account_storage_limit: 'Tu cuenta alcanzó el espacio reservado para PixelForge. Elimina proyectos antiguos o reduce el tamaño del documento.',

@@ -2059,6 +2059,13 @@ const server = http.createServer(async (req, res) => {
       if ((pixelForgeCollection || pixelForgeItem) && ['GET', 'PUT', 'DELETE'].includes(req.method)) {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
+        // Prevent a still-open editor from redirecting an old account's in-memory
+        // document into a different account after the browser's shared session changes.
+        const expectedPixelForgeAccount = req.headers['x-codelab-expected-account'];
+        const currentPixelForgeAccount = encodeURIComponent(JSON.stringify([user.provider, String(user.id)]));
+        if (typeof expectedPixelForgeAccount === 'string' && expectedPixelForgeAccount !== currentPixelForgeAccount) {
+          return sendJson(res, 409, { error: 'account_session_changed', message: 'La sesión de CodeLab cambió. Recarga PixelForge antes de guardar o abrir proyectos.' });
+        }
         // Production must never silently downgrade the studio's durable database
         // contract to local sidecar files. File persistence is retained only for
         // isolated development/E2E environments without DATABASE_URL.
