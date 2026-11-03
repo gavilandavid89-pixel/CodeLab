@@ -1903,7 +1903,8 @@ const server = http.createServer(async (req, res) => {
 
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
       const pixelForgeCollection = pathname === '/api/pixelforge/projects';
-      const pixelForgeItem = pathname.match(/^\\/api\\/pixelforge\\/projects\\/([^/]+)$/);
+      const pixelForgeItemPath = pathname.startsWith('/api/pixelforge/projects/') ? pathname.slice('/api/pixelforge/projects/'.length) : '';
+      const pixelForgeItem = pixelForgeItemPath && !pixelForgeItemPath.includes('/') ? [pathname, pixelForgeItemPath] : null;
       if ((pixelForgeCollection || pixelForgeItem) && ['GET', 'PUT', 'DELETE'].includes(req.method)) {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
