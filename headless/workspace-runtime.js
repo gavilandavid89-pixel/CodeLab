@@ -652,8 +652,8 @@ function queryHeadlessWorkspace(inputState, request) {
         languages.every(key => ['html', 'css', 'js'].includes(key)) && new Set(languages).size === languages.length,
         'project.code.read languages must be unique html/css/js fields.', 'HEADLESS_INVALID_QUERY');
       const maxChars = args.maxChars === undefined ? 20000 : args.maxChars;
-      assert(Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 200000,
-        'project.code.read maxChars must be from 1 to 200000.', 'HEADLESS_INVALID_QUERY');
+      assert(Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 500000,
+        'project.code.read maxChars must be from 1 to 500000.', 'HEADLESS_INVALID_QUERY');
       const offset = args.offset === undefined ? 0 : args.offset;
       assert(Number.isInteger(offset) && offset >= 0 && offset <= 500000,
         'project.code.read offset must be an integer from 0 to 500000.', 'HEADLESS_INVALID_QUERY');
