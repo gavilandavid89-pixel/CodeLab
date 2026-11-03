@@ -303,6 +303,34 @@ test('deleting a layer also removes its visual-flow connection', () => {
 });
 
 
+test('adds a responsive layer atomically with identifier, opacity, visibility, and lock state', () => {
+  const engine = createDesignEngine();
+  const input = project();
+  const result = engine.transact(input, [{
+    type: 'element.add', elementType: 'rectangle', id: 'atomic-layer',
+    properties: {
+      x: 25, y: 30, xUnit: '%', yUnit: '%',
+      width: 12, height: 8, widthUnit: '%', heightUnit: '%',
+      identifier: 'hero-card', opacity: 0.65, visible: false, locked: true
+    }
+  }]);
+  const layer = result.project.design.elements.find(item => item.id === 'atomic-layer');
+  assert.equal(layer.x, 25);
+  assert.equal(layer.xUnit, '%');
+  assert.equal(layer.width, 12);
+  assert.equal(layer.widthUnit, '%');
+  assert.equal(layer.identifier, 'hero-card');
+  assert.equal(layer.opacity, 0.65);
+  assert.equal(layer.visible, false);
+  assert.equal(layer.locked, true);
+  const before = JSON.stringify(result.project);
+  assert.throws(() => engine.transact(result.project, [{
+    type: 'element.add', elementType: 'rectangle', id: 'invalid-atomic',
+    properties: { widthUnit: 'vw', identifier: 'must-not-commit' }
+  }]), /widthUnit/);
+  assert.equal(JSON.stringify(result.project), before, 'invalid initial properties must not partially mutate the project');
+});
+
 test('preserves the editor flow navigation role', () => {
   const engine = createDesignEngine();
   const result = engine.transact(project(), [
