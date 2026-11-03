@@ -3848,9 +3848,9 @@ function exportDesignHtml() {
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
     const heightCss = getDesignElementDimensionCss(el, 'height');
-    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
     const opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
@@ -4175,7 +4175,7 @@ function renderDesignWorkspace() {
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
     node.style.display = el.hidden ? 'none' : 'flex';
-    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.transformOrigin = 'center center';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
@@ -4183,11 +4183,11 @@ function renderDesignWorkspace() {
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.minWidth = '20px'; node.style.minHeight = '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16)) + 'px'; node.style.fontWeight = String(Math.max(100, Math.min(900, Number(el.weight) || 400))); node.style.opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
     node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
-    node.style.display = 'flex'; node.style.alignItems = 'center';
+    node.style.display = el.hidden ? 'none' : 'flex'; node.style.alignItems = 'center';
     node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.padding = (el.type === 'rectangle' || el.type === 'image') ? '0' : '4px';
@@ -4387,7 +4387,7 @@ function updateDesignProperty(key, value) {
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y+'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.transform = 'rotate(' + Math.max(-360, Math.min(360, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.transformOrigin = 'center center';
     node.style.fontSize = Math.max(8,Math.min(256,Number(el.fontSize)||16))+'px'; node.style.fontWeight = String(Math.max(100,Math.min(900,Number(el.weight)||400))); node.style.opacity = Math.max(0,Math.min(1,Number(el.opacity ?? 1))); node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Math.min(4000,Number(el.radius)||0))+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
@@ -4551,7 +4551,7 @@ function duplicateDesignElement() {
   for (let i = selected.length - 1; i >= 0; i--) {
     if (selected[i].locked) selected.splice(i, 1);
   }
-  if (!selected.length) return;
+  if (!selected.length) { showToast('Desbloquea la capa antes de duplicarla.', 'warn'); return; }
   if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
     showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
@@ -4725,9 +4725,9 @@ async function convertDesignToWeb() {
     const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
     const widthCss = getDesignElementDimensionCss(el, 'width');
     const heightCss = getDesignElementDimensionCss(el, 'height');
-    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
