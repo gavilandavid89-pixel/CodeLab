@@ -5268,7 +5268,7 @@ function getDesignElementDimension(el, axis, containerSize = 900) {
   if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
   if (unit === 'auto' && el) {
     if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
-    if (el.type === 'image') return value;
+    if (el.type === 'image') return Math.max(20, Math.min(4000, value));
     const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const content = String(el.text || el.label || '');
     if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
@@ -5281,10 +5281,10 @@ function getDesignElementDimension(el, axis, containerSize = 900) {
 
 function getDesignElementDimensionCss(el, axis) {
   const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
-  if (unit === 'auto') return 'auto';
   const fallback = axis === 'width' ? 120 : 48;
   const raw = Number(el && el[axis]);
   const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  if (unit === 'auto') return el && el.type === 'image' ? Math.max(20, Math.min(4000, value)) + 'px' : 'auto';
   return unit === '%' ? Math.min(100, value) + '%' : Math.max(20, Math.min(4000, value)) + 'px';
 }
 
