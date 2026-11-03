@@ -29,11 +29,12 @@ function safeColor(value, fallback) {
 }
 
 function safeImageSource(value) {
-  if (typeof value !== 'string' || value.length > MAX_EDITOR_IMAGE_DATA_URL_LENGTH) return '';
-  if (/^data:/i.test(value)) return isValidEditorImageDataUrl(value) ? value : '';
+  if (typeof value !== 'string') return '';
+  if (/^data:/i.test(value)) return value.length <= MAX_EDITOR_IMAGE_DATA_URL_LENGTH && isValidEditorImageDataUrl(value) ? value : '';
+  if (value.length > 8192) return '';
   try {
     const url = new URL(value);
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : '';
   } catch (_) {
     return '';
   }
@@ -108,9 +109,10 @@ function safeExportColor(value, fallback) {
 
 function safeExportImageSource(value) {
   const raw = String(value || '');
-  if (!raw || raw.length > MAX_EDITOR_IMAGE_DATA_URL_LENGTH) return '';
-  if (/^data:/i.test(raw)) return isValidEditorImageDataUrl(raw) ? raw : '';
+  if (!raw) return '';
+  if (/^data:/i.test(raw)) return raw.length <= MAX_EDITOR_IMAGE_DATA_URL_LENGTH && isValidEditorImageDataUrl(raw) ? raw : '';
   const source = raw.trim();
+  if (source.length > 8192) return '';
   if (/^(?:\/(?!\/)|\.\.?\/)[^\\\s<>]*$/.test(source)) return source;
   try {
     const url = new URL(source);
