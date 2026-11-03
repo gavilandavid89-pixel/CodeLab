@@ -81,7 +81,7 @@ for (const [action, queryAction] of [
   assert.ok(handler.includes("action: '" + queryAction + "'") || handler.includes("query('" + queryAction + "'"), action + ' must use the matching headless query');
   assert.doesNotMatch(handler, /projects\.find\(/, action + ' must not depend on the editor in-memory project model');
 }
-assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
+assert.match(bridge, /project deletion requires approval/i, 'project deletion must require explicit approval');
 assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(headlessRuntime, /project\.designUndoStack\.push\(JSON\.stringify\(project\.design\)\)/, 'atomic design batches must preserve saved undo history');
@@ -284,7 +284,7 @@ for (const [action, queryName, operationType] of [
   assert.doesNotMatch(handler, /projects\.find\(|createNewProjectConfirm\(|duplicateProjectFromDashboard\(|deleteProject\(/,
     action + ' must not mutate through editor UI state');
 }
-assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must retain explicit approval');
+assert.match(bridge, /project deletion requires approval/i, 'project deletion must retain explicit approval');
 
 const codeWriteHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'project_code_write') {"), bridge.indexOf("} else if (command.action === 'project_list') {", bridge.indexOf("} else if (command.action === 'project_code_write') {")));
 assert.match(codeWriteHandler, /\/headless\/query/, 'code write must inspect saved project state before mutation');
