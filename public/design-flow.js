@@ -214,6 +214,7 @@
     const frameWidth = p => typeof getDesignCanvasWidth === 'function' ? getDesignCanvasWidth(p.design) : (Number(p.design.canvasWidth) || ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440);
     const pages = reachable.map(p => {
       const d=p.design, width=frameWidth(p), layout=getDesignLayoutPositions(d), auto=d.layoutMode==='auto';
+      const frameHeight=Math.max(Number(d.canvasHeight)||900, Number(layout.height)||0);
       const items=(Array.isArray(d.elements)?d.elements.filter(el=>el && !el.hidden && el.visible !== false):[]).map(el=>{
         const pos=layout.positions.get(el.id)||{x:Number(el.x)||0,y:Number(el.y)||0};
         const x=Math.max(0,Math.min(10000,Number(pos.x)||0)), y=Math.max(0,Math.min(10000,Number(pos.y)||0));
@@ -244,7 +245,7 @@
         const tag=el.type==='heading'?'h1':el.type==='button'?'button':(el.type==='rectangle'||el.type==='ellipse')?'div':'p';
         return '<'+tag+' id="'+escAttr(id)+'"'+identifierAttribute+' style="'+style+'">'+text+'</'+tag+'>';
       }).join('');
-      const frameStyle=auto?'position:relative;width:100%;max-width:'+width+'px;min-height:'+Math.max(900,layout.height)+'px;height:auto;display:flex;flex-direction:'+(d.layoutDirection==='column'?'column':'row')+';flex-wrap:'+(d.layoutDirection==='column'?'nowrap':'wrap')+';gap:'+Math.max(0,Math.min(200,Number(d.layoutGap)||0))+'px;padding:'+Math.max(0,Math.min(200,Number(d.layoutPadding)||0))+'px;align-items:flex-start;background:'+safeDesignExportColor(d.background,'#fff')+';margin:0 auto;':'position:relative;width:'+width+'px;height:900px;min-height:900px;background:'+safeDesignExportColor(d.background,'#fff')+';transform-origin:top left;margin:0 auto;';
+      const frameStyle=auto?'position:relative;width:100%;max-width:'+width+'px;min-height:'+frameHeight+'px;height:auto;display:flex;flex-direction:'+(d.layoutDirection==='column'?'column':'row')+';flex-wrap:'+(d.layoutDirection==='column'?'nowrap':'wrap')+';gap:'+Math.max(0,Math.min(200,Number(d.layoutGap)||0))+'px;padding:'+Math.max(0,Math.min(200,Number(d.layoutPadding)||0))+'px;align-items:flex-start;background:'+safeDesignExportColor(d.background,'#fff')+';margin:0 auto;':'position:relative;width:'+width+'px;height:'+frameHeight+'px;min-height:'+frameHeight+'px;background:'+safeDesignExportColor(d.background,'#fff')+';transform-origin:top left;margin:0 auto;';
       return '<section class="flow-screen" data-page-id="'+escAttr(p.id)+'" '+(p.id===root.id?'':'hidden')+'><div class="flow-viewport"><main class="flow-frame'+(auto?' auto-layout':'')+'" style="'+frameStyle+'">'+items+'</main></div></section>';
     }).join('');
     const routeMap=Object.fromEntries(reachable.map(p=>[p.id,routeId(p.id)]));
