@@ -4587,6 +4587,11 @@ function duplicateDesignElement() {
     const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
     if (internalTarget) copy.href = '#' + designLayerDomId(duplicateIds.get(internalTarget.id));
   });
+  const existingConnections = Array.isArray(p.design.flowConnections) ? p.design.flowConnections : [];
+  const duplicatedConnections = existingConnections
+    .filter(connection => connection && duplicateIds.has(connection.sourceElementId))
+    .map(connection => ({ ...connection, sourceElementId: duplicateIds.get(connection.sourceElementId) }));
+  if (duplicatedConnections.length) p.design.flowConnections = existingConnections.concat(duplicatedConnections);
   p.design.elements.push(...copies);
   selectedDesignElementIds = copies.map(copy => copy.id);
   selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
