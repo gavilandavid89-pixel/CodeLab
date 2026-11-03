@@ -60,3 +60,33 @@ test('expired code and image tokens cannot be replayed', () => {
     assert.throws(() => store.resolveImage({ uploadToken: image.uploadToken, workspaceId: 'owner', projectId: 'proj_123' }), /not_found/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('chunked image upload verifies chunk hashes, full bytes, signature and one-time token', () => {
+  const f = fixture();
+  try {
+    const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4,5,6,7,8]);
+    const base64 = png.toString('base64');
+    const parts = [base64.slice(0, 8), base64.slice(8)];
+    const started = f.store.beginImage({ workspaceId: 'ws1', projectId: 'design_123', totalChunks: parts.length, sha256: sha256(png), declaredMime: 'image/png' });
+    f.store.putImageChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 1, chunk: parts[1], sha256: sha256(parts[1]) });
+    assert.throws(() => f.store.commitImage({ transferId: started.transferId, workspaceId: 'ws1' }), /incomplete/);
+    f.store.putImageChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 0, chunk: parts[0], sha256: sha256(parts[0]) });
+    const upload = f.store.commitImage({ transferId: started.transferId, workspaceId: 'ws1' });
+    assert.equal(upload.projectId, 'design_123');
+    assert.equal(upload.mime, 'image/png');
+    assert.equal(upload.sha256, sha256(png));
+    assert.equal(f.store.resolveImage({ uploadToken: upload.uploadToken, workspaceId: 'ws1', projectId: 'design_123' }).dataUrl, 'data:image/png;base64,' + base64);
+    assert.throws(() => f.store.putImageChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 0, chunk: parts[0], sha256: sha256(parts[0]) }), /not_found/);
+  } finally { f.cleanup(); }
+});
+test('chunked image upload rejects a changed chunk and invalid full-image hash', () => {
+  const f = fixture();
+  try {
+    const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3]);
+    const base64 = png.toString('base64');
+    const started = f.store.beginImage({ workspaceId: 'ws1', projectId: 'design_123', totalChunks: 1, sha256: '0'.repeat(64), declaredMime: 'image/png' });
+    assert.throws(() => f.store.putImageChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 0, chunk: base64, sha256: '0'.repeat(64) }), /invalid/);
+    f.store.putImageChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 0, chunk: base64, sha256: sha256(base64) });
+    assert.throws(() => f.store.commitImage({ transferId: started.transferId, workspaceId: 'ws1' }), /hash_mismatch/);
+  } finally { f.cleanup(); }
+});
