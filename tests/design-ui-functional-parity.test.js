@@ -165,3 +165,46 @@ test('duplicating a navigation layer clones its outgoing flow connection to the 
   assert.equal(project.design.flowConnections[1].targetProjectId, 'target-screen');
   assert.equal(project.design.elements[2].flowRole, 'navigate');
 });
+
+test('inspector updates enforce real numeric bounds and preserve zero coordinates', () => {
+  const update = extract('function updateDesignProperty', 'function bindDesignCanvasEvents');
+  const project = { design: { layoutMode: 'free', elements: [{
+    id: 'target', type: 'button', x: 12, y: 14, width: 100, height: 40,
+    fontSize: 16, weight: 400, radius: 4, rotation: 0, opacity: 1
+  }] } };
+  const sandbox = {
+    activeDesignProject: () => project,
+    selectedDesignElementId: 'target',
+    document: { querySelectorAll: () => [], getElementById: () => null },
+    scheduleAutosave: () => {},
+    showToast: () => {},
+    getDesignCanvasWidth: () => 720,
+    getDesignCanvasHeight: () => 1600
+  };
+  vm.runInNewContext(update + "\nupdateDesignProperty('x', 0);\nupdateDesignProperty('y', 0);\nupdateDesignProperty('opacity', 2);\nupdateDesignProperty('fontSize', 999);\nupdateDesignProperty('weight', 950);\nupdateDesignProperty('radius', 9000);\nupdateDesignProperty('rotation', -9000);", sandbox);
+  const layer = project.design.elements[0];
+  assert.equal(layer.x, 0);
+  assert.equal(layer.y, 0);
+  assert.equal(layer.opacity, 1);
+  assert.equal(layer.fontSize, 256);
+  assert.equal(layer.weight, 900);
+  assert.equal(layer.radius, 4000);
+  assert.equal(layer.rotation, -3600);
+});
+
+test('locked layer inspector rejects property edits without mutating the layer', () => {
+  const update = extract('function updateDesignProperty', 'function bindDesignCanvasEvents');
+  const layer = { id: 'locked', type: 'button', locked: true, text: 'Original' };
+  const project = { design: { elements: [layer] } };
+  const messages = [];
+  const sandbox = {
+    activeDesignProject: () => project,
+    selectedDesignElementId: 'locked',
+    document: { querySelectorAll: () => [] },
+    scheduleAutosave: () => {},
+    showToast: message => messages.push(message)
+  };
+  vm.runInNewContext(update + "\nupdateDesignProperty('text', 'Changed');", sandbox);
+  assert.equal(layer.text, 'Original');
+  assert.match(messages[0], /Desbloquea la capa/);
+});
