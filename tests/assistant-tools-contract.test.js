@@ -53,6 +53,8 @@ assert.match(bridge, /key === 'visible' \|\| key === 'locked'[\s\S]{0,180}typeof
   'visibility and lock properties must require booleans');
 assert.match(bridge, /key === 'opacity' && value === null/,
   'nullable opacity must be accepted as the editor default');
+assert.match(bridge, /key === 'src' \? 2800000/,
+  'image source updates must support the engine-compatible base64 image size limit');
 assert.match(bridge, /\['widthUnit', 'heightUnit'\][\s\S]{0,160}\['px', '%', 'auto'\]/,
   'responsive dimensions must validate px, percent, and auto units');
 assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/, 'design conversion must verify source preservation from the headless API');
