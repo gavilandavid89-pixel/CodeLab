@@ -87,8 +87,8 @@ test('UI JSON import preserves the same layer contract and remaps flow connectio
   assert.match(importer, /opacity: finite\(raw\.opacity, 1, 0, 1\)/);
   assert.match(importer, /rotation: finite\(raw\.rotation, 0, -3600, 3600\)/);
   assert.match(importer, /flowRole/);
-  assert.match(importer, /raw\.widthUnit === 'auto' \? 0 : raw\.widthUnit === '%' \? 1 : 20/);
-  assert.match(importer, /raw\.heightUnit === 'auto' \? 0 : raw\.heightUnit === '%' \? 1 : 20/);
+  assert.match(importer, /raw\.widthUnit === '%' \? 1 : raw\.widthUnit === 'auto' \? 0 : 20/);
+  assert.match(importer, /raw\.heightUnit === '%' \? 1 : raw\.heightUnit === 'auto' \? 0 : 20/);
   assert.match(importer, /raw\.heightUnit === '%' \? 100 : 4000/);
   assert.match(importer, /normalizeDesignElementIdentifiers\(elements\)/);
   assert.match(importer, /flowConnections: sourceDesign\.flowConnections\.filter/);
