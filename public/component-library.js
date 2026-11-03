@@ -143,7 +143,6 @@
         cursor = closingMatch.index + closingMatch[0].length;
         continue;
       }
-      if (tagName === 'template') depth += 1;
       cursor = tagEnd + 1;
     }
     return -1;
