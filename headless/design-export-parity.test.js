@@ -211,7 +211,7 @@ test('design backup import rejects credentialed external links and preserves saf
   const backup = exportDesignJson(original);
   let nextId = 0;
   const imported = importDesignJson(backup.json, { idFactory: () => 'imported-' + (++nextId) });
-  const links = Object.fromEntries(imported.project.design.elements.map(element => [element.text, element.href]));
+  const links = Object.fromEntries(imported.design.elements.map(element => [element.text, element.href]));
 
   assert.equal(links.Root, '/contact');
   assert.equal(links.Relative, './contact');
