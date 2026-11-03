@@ -433,6 +433,16 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+function decodePixelForgeProjectId(value) {
+  try {
+    const decoded = decodeURIComponent(value);
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(decoded)) return null;
+    return decoded;
+  } catch (_) {
+    return null;
+  }
+}
+
 const pixelForgeAccountQueues = new Map();
 async function withPixelForgeAccountLock(workspaceId, operation) {
   const previous = pixelForgeAccountQueues.get(workspaceId) || Promise.resolve();
@@ -1950,7 +1960,8 @@ const server = http.createServer(async (req, res) => {
           })).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt) });
         }
         if (pixelForgeItem && req.method === 'GET') {
-          const id = safeId(decodeURIComponent(pixelForgeItem[1]));
+          const id = decodePixelForgeProjectId(pixelForgeItem[1]);
+          if (!id) return sendJson(res, 400, { error: 'invalid_project_id' });
           const record = records.find(item => item.id === id);
           return record
             ? sendJson(res, 200, { project: record.project })
@@ -2018,7 +2029,8 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, existing ? 200 : 201, { ok: true, project: { id: record.id, name: record.name, width: record.width, height: record.height, updatedAt: now } });
         }
         if (pixelForgeItem && req.method === 'DELETE') {
-          const id = safeId(decodeURIComponent(pixelForgeItem[1]));
+          const id = decodePixelForgeProjectId(pixelForgeItem[1]);
+          if (!id) return sendJson(res, 400, { error: 'invalid_project_id' });
           const next = records.filter(item => item.id !== id);
           if (next.length === records.length) return sendJson(res, 404, { error: 'project_not_found' });
           const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
