@@ -515,8 +515,13 @@ function scheduleAutosave() {
   if (flushInProgress) return;
   autosaveTimer = setTimeout(() => {
     autosaveTimer = null;
-    const savingDoc = doc, version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
+    const savingDoc = doc;
+    // Capture the document only after earlier saves finish. Otherwise a queued
+    // autosave can carry the previous serverRevision and conflict with our own
+    // successful save when two edits happen close together.
     const operation = autosaveInFlight.catch(() => {}).then(async () => {
+      if (doc !== savingDoc) return;
+      const version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
       const saved = await saveProject(snapshot);
       if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
       savingDoc.dirty = savingDoc.saveVersion !== version;
