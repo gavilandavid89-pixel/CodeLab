@@ -164,7 +164,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
   }
   function putImageChunk({ transferId, workspaceId, index, chunk, sha256: chunkHash }) {
     const record = read('image-chunks', transferId);
-    if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
+    if (!record || record.workspaceId !== workspaceId || record.committedUpload) throw new Error('transfer_not_found');
     if (!Number.isInteger(index) || index < 0 || index >= record.totalChunks || typeof chunk !== 'string' ||
         chunk.length > MAX_CHUNK_CHARS || !/^[A-Za-z0-9+/]*={0,2}$/.test(chunk) || sha256(chunk) !== chunkHash) {
       throw new Error('invalid_image_chunk');
