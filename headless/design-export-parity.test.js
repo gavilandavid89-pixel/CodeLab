@@ -219,6 +219,26 @@ test('legacy hidden:true is omitted from HTML, SVG, capture, and auto-layout geo
   assert.equal(autoContext.elements[0].bounds.y, 0);
 });
 
+test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {
+  const dataUrl = 'data:image/png;base64,' + Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]).toString('base64');
+  const input = project([{
+    id: 'auto-image', type: 'image', src: dataUrl,
+    width: 10, height: 5000, widthUnit: 'auto', heightUnit: 'auto'
+  }]);
+  input.design.layoutMode = 'auto';
+  input.design.layoutDirection = 'column';
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /width:20px;height:4000px/);
+  assert.equal(context.elements[0].bounds.width, 20);
+  assert.equal(context.elements[0].bounds.height, 4000);
+  const roundTrip = importDesignJson(exportDesignJson(input));
+  assert.equal(roundTrip.design.elements[0].width, 10);
+  assert.equal(roundTrip.design.elements[0].height, 5000);
+  assert.equal(roundTrip.design.elements[0].widthUnit, 'auto');
+  assert.equal(roundTrip.design.elements[0].heightUnit, 'auto');
+});
+
 test('responsive width/height units resolve in free layout and remain CSS-responsive in auto layout', () => {
   const input = project([
     { id: 'responsive', type: 'rectangle', width: 50, widthUnit: '%', height: 25, heightUnit: '%', x: 0, y: 0 }
