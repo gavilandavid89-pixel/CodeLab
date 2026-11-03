@@ -2120,9 +2120,8 @@ const server = http.createServer(async (req, res) => {
             if (assembled.workspaceId !== id) return sendJson(res, 404, { error: 'transfer_not_found' });
             if (assembled.committed && assembled.receipt) return sendJson(res, 200, assembled.receipt);
             const latest = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
-            if (latest.revision !== assembled.baseRevision) return sendJson(res, 409, { error: 'revision_conflict', revision: latest.revision });
-            const project = latest.projects.find(item => item.id === assembled.projectId);
-            if (!project || project.type === 'design' || (assembled.source === 'branch' && !project.branch)) return sendJson(res, 404, { error: 'web_project_not_found' });
+            // applyHeadlessBatch checks the stable operation receipt before revision matching,
+            // so a retry can recover even if the process stopped after saving state.
             const parts = [];
             for (let offset = 0; offset < assembled.value.length; offset += 200000) parts.push(assembled.value.slice(offset, offset + 200000));
             if (parts.length === 0) parts.push('');
@@ -2133,13 +2132,16 @@ const server = http.createServer(async (req, res) => {
             });
             const result = applyHeadlessBatch(latest, { baseRevision: assembled.baseRevision, operationId: 'code_transfer_' + assembled.id, operations });
             if (!result.replayed) {
+              const savedProject = result.state.projects.find(item => item.id === assembled.projectId);
+              if (!savedProject || savedProject.type === 'design' || (assembled.source === 'branch' && !savedProject.branch)) {
+                return sendJson(res, 404, { error: 'web_project_not_found' });
+              }
               const validationError = validateProjects(result.state.projects);
               if (validationError) return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
               writeState(id, result.state);
+              const savedCode = assembled.source === 'branch' ? savedProject.branch.code : savedProject.code;
+              if (savedCode[assembled.field] !== assembled.value) return sendJson(res, 500, { error: 'code_transfer_readback_mismatch' });
             }
-            const savedProject = result.state.projects.find(item => item.id === assembled.projectId);
-            const savedCode = assembled.source === 'branch' ? savedProject.branch.code : savedProject.code;
-            if (savedCode[assembled.field] !== assembled.value) return sendJson(res, 500, { error: 'code_transfer_readback_mismatch' });
             const response = { ok: true, revision: result.revision, action: 'project.code.write', result: {
               projectId: assembled.projectId, source: assembled.source, field: assembled.field,
               characters: assembled.value.length, sha256: sha256(assembled.value), readbackVerified: true
