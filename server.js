@@ -2098,9 +2098,18 @@ const server = http.createServer(async (req, res) => {
           const id = decodePixelForgeProjectId(pixelForgeItem[1]);
           if (!id) return sendJson(res, 400, { error: 'invalid_project_id' });
           const record = records.find(item => item.id === id);
-          return record
-            ? sendJson(res, 200, { project: record.project })
-            : sendJson(res, 404, { error: 'project_not_found' });
+          if (!record) return sendJson(res, 404, { error: 'project_not_found' });
+          record.lastOpenedAt = Math.max(Date.now(), Number(record.lastOpenedAt || 0) + 1);
+          const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+          try {
+            fs.writeFileSync(tmp, JSON.stringify(records), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+            fs.renameSync(tmp, file);
+          } catch (error) {
+            try { fs.unlinkSync(tmp); } catch (_) {}
+            console.error('PixelForge recent-project update failed:', error.message);
+            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+          }
+          return sendJson(res, 200, { project: record.project });
         }
         if (req.method === 'PUT') {
           const body = await readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES));
