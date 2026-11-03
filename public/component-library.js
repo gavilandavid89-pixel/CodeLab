@@ -86,6 +86,65 @@
   function escapeHtml(value) {
     return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  function findTagEnd(source, start) {
+    let quote = '';
+    for (let index = start; index < source.length; index += 1) {
+      const character = source[index];
+      if (quote) {
+        if (character === quote) quote = '';
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === '>') {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  function findClosingBody(source) {
+    let cursor = 0;
+    while (cursor < source.length) {
+      const open = source.indexOf('<', cursor);
+      if (open === -1) return -1;
+      if (source.startsWith('<!--', open)) {
+        const commentEnd = source.indexOf('-->', open + 4);
+        if (commentEnd === -1) return -1;
+        cursor = commentEnd + 3;
+        continue;
+      }
+      if (/^<\/\s*body\s*>/i.test(source.slice(open))) return open;
+
+      const tagMatch = /^<\s*([a-z][a-z0-9:-]*)\b/i.exec(source.slice(open));
+      const tagEnd = findTagEnd(source, open + 1);
+      if (tagEnd === -1) return -1;
+      if (!tagMatch) {
+        cursor = tagEnd + 1;
+        continue;
+      }
+
+      const tagName = tagMatch[1].toLowerCase();
+      if (tagName === 'script' || tagName === 'style') {
+        const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
+        closingTag.lastIndex = tagEnd + 1;
+        const closingMatch = closingTag.exec(source);
+        if (!closingMatch) return -1;
+        cursor = closingMatch.index + closingMatch[0].length;
+        continue;
+      }
+      cursor = tagEnd + 1;
+    }
+    return -1;
+  }
+
+  function insertComponentHtml(html, componentHtml) {
+    const source = String(html || '');
+    const fragment = String(componentHtml || '');
+    const closingBody = findClosingBody(source);
+    return closingBody === -1
+      ? source + '\n' + fragment
+      : source.slice(0, closingBody) + fragment + '\n' + source.slice(closingBody);
+  }
+
   function standaloneHtml(component) {
     const item = typeof component === 'string' ? getComponent(component) : component;
     if (!item) throw new Error('Componente desconocido');
@@ -206,7 +265,7 @@
         return;
       }
       pendingInsertion = null;
-      const next = /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, item.html + '\n</body>') : html + '\n' + item.html;
+      const next = insertComponentHtml(html, item.html);
       // Keep the editor within the same per-field limit enforced by the server.
       // Reject before touching the editor so a tool action cannot create a
       // project that then fails validation during persistence/synchronization.
@@ -250,5 +309,5 @@
     get('componentLibraryInsert').addEventListener('click', insertIntoProject);
     renderList();
   }
-  return { components, getComponent, searchComponents, standaloneHtml, escapeHtml, init };
+  return { components, getComponent, searchComponents, standaloneHtml, escapeHtml, insertComponentHtml, init };
 });
