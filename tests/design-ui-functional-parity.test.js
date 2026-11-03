@@ -8,6 +8,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
 const flowSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'design-flow.js'), 'utf8');
+const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 function extract(startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -63,6 +64,19 @@ test('inspector and canvas/export renderer expose opacity and font weight consis
   assert.match(update, /key === 'opacity'/);
   assert.match(update, /weight: \[100, 900\]/);
   assert.match(exporter, /opacity:'\+opacity\+'/);
+});
+
+test('remote visual review endpoint remains available with bounded image and prompt inputs', () => {
+  const start = serverSource.indexOf("if (req.method === 'POST' && pathname === '/api/ai/design-review')");
+  const end = serverSource.indexOf("if (req.method === 'POST' && pathname === '/api/ai/complete')", start);
+  assert.notEqual(start, -1, 'missing server-side visual review endpoint');
+  assert.notEqual(end, -1, 'visual review endpoint must remain separate from generic completion');
+  const route = serverSource.slice(start, end);
+  assert.match(route, /checkAiRateLimit\(ip\)/);
+  assert.match(route, /prompt\.length > 4000/);
+  assert.match(route, /8 \* 1024 \* 1024/);
+  assert.match(route, /clientKey\.length > 4096/);
+  assert.match(route, /proxyChatCompletions\(/);
 });
 
 test('AI design capture retains remote visual review and exports the analysis report', () => {
