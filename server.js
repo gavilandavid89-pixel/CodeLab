@@ -13,9 +13,11 @@ const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
+const { createTransferStore, sha256, MAX_IMAGE_BYTES } = require('./headless/transfer-store');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
+const headlessTransfers = createTransferStore(DATA_DIR);
 const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -766,6 +768,29 @@ function redirect(res, location, extraHeaders) {
 
 function redirectWithCookie(res, location, setCookieValue) {
   redirect(res, location, { 'Set-Cookie': setCookieValue });
+}
+
+function readRawBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    let settled = false;
+    req.on('data', chunk => {
+      if (settled) return;
+      total += chunk.length;
+      if (total > maxBytes) {
+        settled = true;
+        reject(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
+        // Continue draining the request so the handler can return a structured 413 response.
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (!settled) { settled = true; resolve(Buffer.concat(chunks)); }
+    });
+    req.on('error', error => { if (!settled) { settled = true; reject(error); } });
+  });
 }
 
 function readBody(req) {
@@ -2023,6 +2048,114 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // Binary image uploads stay outside the issue mailbox. Tokens are workspace/project-bound and expire.
+      const headlessUploadMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/upload$/);
+      if (req.method === 'POST' && headlessUploadMatch) {
+        const id = safeId(headlessUploadMatch[1]);
+        if (!id || !isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        const projectId = String(req.headers['x-codelab-project-id'] || '');
+        if (!/^proj_[a-zA-Z0-9_-]{1,75}$/.test(projectId)) return sendJson(res, 400, { error: 'invalid_project_id' });
+        let current;
+        try { current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req)); }
+        catch (_) { return sendJson(res, 500, { error: 'workspace_corrupt' }); }
+        const project = current.projects.find(item => item.id === projectId);
+        if (!project || project.type !== 'design' || !project.design) return sendJson(res, 404, { error: 'design_project_not_found' });
+        let bytes;
+        try { bytes = await readRawBody(req, MAX_IMAGE_BYTES); }
+        catch (error) { return sendJson(res, error.code === 'PAYLOAD_TOO_LARGE' ? 413 : 400, { error: error.code === 'PAYLOAD_TOO_LARGE' ? 'image_too_large' : 'invalid_image_body' }); }
+        try {
+          const upload = headlessTransfers.putImage({ workspaceId: id, projectId, bytes, declaredMime: String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() });
+          return sendJson(res, 201, { ok: true, ...upload });
+        } catch (error) {
+          return sendJson(res, 400, { error: error.message === 'invalid_image_size' ? 'invalid_image_size' : 'invalid_image_signature' });
+        }
+      }
+
+      // Small, hash-verified chunks let the issue bridge transport source larger than one mailbox command.
+      const codeTransferMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless\/code-transfer$/);
+      if (req.method === 'POST' && codeTransferMatch) {
+        const id = safeId(codeTransferMatch[1]);
+        const body = await readBody(req);
+        if (!id || !body || typeof body !== 'object' || Array.isArray(body) || !isAuthorized(req, id)) {
+          return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        }
+        try {
+          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          if (['image_begin', 'image_chunk', 'image_commit'].includes(body.action)) {
+            if (body.action === 'image_begin') {
+              const project = current.projects.find(item => item.id === body.projectId);
+              if (!project || project.type !== 'design' || !project.design) return sendJson(res, 404, { error: 'design_project_not_found' });
+              return sendJson(res, 201, { ok: true, ...headlessTransfers.beginImage({
+                workspaceId: id, projectId: body.projectId, totalChunks: body.totalChunks, sha256: body.sha256, declaredMime: body.mime
+              }) });
+            }
+            if (body.action === 'image_chunk') {
+              return sendJson(res, 200, { ok: true, ...headlessTransfers.putImageChunk({
+                transferId: body.transferId, workspaceId: id, index: body.index, chunk: body.chunk, sha256: body.sha256
+              }) });
+            }
+            const imageRecord = headlessTransfers.commitImage({ transferId: body.transferId, workspaceId: id });
+            const project = current.projects.find(item => item.id === imageRecord.projectId);
+            if (!project || project.type !== 'design' || !project.design) return sendJson(res, 404, { error: 'design_project_not_found' });
+            return sendJson(res, 201, { ok: true, ...imageRecord });
+          }
+          if (body.action === 'begin') {
+            const project = current.projects.find(item => item.id === body.projectId);
+            if (!project || project.type === 'design') return sendJson(res, 404, { error: 'web_project_not_found' });
+            if (body.baseRevision !== current.revision) return sendJson(res, 409, { error: 'revision_conflict', revision: current.revision });
+            const source = body.source || 'main';
+            if (source === 'branch' && !project.branch) return sendJson(res, 404, { error: 'code_branch_not_found' });
+            return sendJson(res, 201, { ok: true, ...headlessTransfers.beginCode({
+              workspaceId: id, projectId: body.projectId, field: body.field, source, baseRevision: body.baseRevision,
+              totalChunks: body.totalChunks, sha256: body.sha256
+            }) });
+          }
+          if (body.action === 'chunk') {
+            return sendJson(res, 200, { ok: true, ...headlessTransfers.putCodeChunk({
+              transferId: body.transferId, workspaceId: id, index: body.index, chunk: body.chunk, sha256: body.sha256
+            }) });
+          }
+          if (body.action === 'commit') {
+            const assembled = headlessTransfers.assembleCode({ transferId: body.transferId, workspaceId: id });
+            if (assembled.workspaceId !== id) return sendJson(res, 404, { error: 'transfer_not_found' });
+            if (assembled.committed && assembled.receipt) return sendJson(res, 200, assembled.receipt);
+            const latest = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+            // applyHeadlessBatch checks the stable operation receipt before revision matching,
+            // so a retry can recover even if the process stopped after saving state.
+            const parts = [];
+            for (let offset = 0; offset < assembled.value.length; offset += 200000) parts.push(assembled.value.slice(offset, offset + 200000));
+            if (parts.length === 0) parts.push('');
+            const operations = parts.map((chunk, index) => {
+              const operation = { type: 'web.code.write', projectId: assembled.projectId, source: assembled.source, mode: index === 0 ? 'replace' : 'append' };
+              operation[assembled.field] = chunk;
+              return operation;
+            });
+            const result = applyHeadlessBatch(latest, { baseRevision: assembled.baseRevision, operationId: 'code_transfer_' + assembled.id, operations });
+            if (!result.replayed) {
+              const savedProject = result.state.projects.find(item => item.id === assembled.projectId);
+              if (!savedProject || savedProject.type === 'design' || (assembled.source === 'branch' && !savedProject.branch)) {
+                return sendJson(res, 404, { error: 'web_project_not_found' });
+              }
+              const validationError = validateProjects(result.state.projects);
+              if (validationError) return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
+              writeState(id, result.state);
+              const savedCode = assembled.source === 'branch' ? savedProject.branch.code : savedProject.code;
+              if (savedCode[assembled.field] !== assembled.value) return sendJson(res, 500, { error: 'code_transfer_readback_mismatch' });
+            }
+            const response = { ok: true, revision: result.revision, action: 'project.code.write', result: {
+              projectId: assembled.projectId, source: assembled.source, field: assembled.field,
+              characters: assembled.value.length, sha256: sha256(assembled.value), readbackVerified: true
+            } };
+            headlessTransfers.consumeCode(assembled.id, response);
+            return sendJson(res, 200, response);
+          }
+          return sendJson(res, 400, { error: 'invalid_code_transfer_action' });
+        } catch (error) {
+          const status = /incomplete|invalid|mismatch|conflict/.test(error.message) ? 400 : 404;
+          return sendJson(res, status, { error: error.message || 'code_transfer_failed' });
+        }
+      }
+
       // Headless batches share workspace authentication, revision checks, and atomic persistence with the regular web editor.
       const headlessMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/headless$/);
       if (req.method === 'POST' && headlessMatch) {
@@ -2032,6 +2165,27 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 400, { error: 'invalid_headless_request' });
         }
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        // Resolve one-time, project-bound binary upload tokens inside the authenticated server boundary.
+        const resolvedUploadTokens = [];
+        const resolveUploadedImages = (operations) => {
+          if (!Array.isArray(operations)) return;
+          for (const operation of operations) {
+            if (!operation || typeof operation !== 'object') continue;
+            if (operation.type === 'design.batch' && Array.isArray(operation.operations)) {
+              for (const nested of operation.operations) {
+                if (nested && nested.type === 'image.attach' && typeof nested.uploadToken === 'string') {
+                  const uploaded = headlessTransfers.resolveImage({ uploadToken: nested.uploadToken, workspaceId: id, projectId: operation.projectId, operationId: body.operationId });
+                  nested.dataUrl = uploaded.dataUrl;
+                  resolvedUploadTokens.push({ uploadToken: nested.uploadToken, projectId: operation.projectId });
+                  delete nested.uploadToken;
+                }
+              }
+            }
+          }
+        };
+        try { resolveUploadedImages(body.operations); }
+        catch (error) { return sendJson(res, 400, { error: 'image_upload_not_found_or_invalid' }); }
+
         try {
           const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
           // Exact operation receipts are checked before revision matching so a lost-response retry cannot duplicate a saved change.
@@ -2043,6 +2197,9 @@ const server = http.createServer(async (req, res) => {
               return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
             }
             writeState(id, result.state);
+            for (const upload of resolvedUploadTokens) {
+              try { headlessTransfers.consumeImage({ uploadToken: upload.uploadToken, workspaceId: id, projectId: upload.projectId, operationId: body.operationId }); } catch (_) {}
+            }
           }
           return sendJson(res, 200, {
             ok: true,
