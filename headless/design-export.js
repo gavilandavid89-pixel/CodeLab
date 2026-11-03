@@ -191,7 +191,7 @@ function designElementDimension(el, axis, containerSize) {
     if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
     const width = designElementDimension(el, 'width', containerSize);
     const charsPerLine = Math.max(1, Math.floor(width / (fontSize * 0.56)));
-    return Math.max(24, Math.min(4000, Math.ceil(Math.max(1, Math.ceil(content.length / charsPerLine)) * fontSize * 1.35 + 12));
+    return Math.max(24, Math.min(4000, Math.ceil(Math.max(1, Math.ceil(content.length / charsPerLine)) * fontSize * 1.35 + 12)));
   }
   return Math.max(20, Math.min(4000, value));
 }
