@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 
 const MAX_CODE_CHARS = 500000;
 const MAX_CHUNK_CHARS = 8000;
-const MAX_CHUNKS = 20;
+const MAX_CHUNKS = 70;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const TTL_MS = 10 * 60 * 1000;
 
