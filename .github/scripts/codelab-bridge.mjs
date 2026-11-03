@@ -98,6 +98,10 @@ function parseCommand(raw) {
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
   }
+  if (command.action === 'design_import_json' &&
+      (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) {
+    throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
+  }
   if (command.action === 'component_inspect' && args.max_chars !== undefined &&
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
