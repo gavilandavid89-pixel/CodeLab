@@ -469,7 +469,7 @@ async function main() {
       document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'),
       null, { timeout: 15000 });
     const importedMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
-      .projects.find(project => project.name === 'Imported browser artwork');
+      .projects.find(project => project.name === 'Imported browser artwork (imported)');
     assert.ok(importedMetadata, 'imported artwork should be persisted in the signed-in CodeLab account');
     const importedProject = (await (await fetch(base + '/api/pixelforge/projects/' + importedMetadata.id, { headers: authHeaders })).json()).project;
     assert.deepEqual([...Buffer.from(importedProject.layers[0].pixels, 'base64').subarray((1 * 3 + 2) * 4, (1 * 3 + 2) * 4 + 4)],
