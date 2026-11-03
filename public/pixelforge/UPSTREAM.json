@@ -1,6 +1,6 @@
 {
   "sourceRepository": "https://github.com/gavilandavid89-pixel/PixelForge-Ai",
   "sourceBranch": "feat/codelab-shared-account-adapter",
-  "sourceCommit": "788c85931faabfbfef294e22cc93e3cc433218ac",
+  "sourceCommit": "005178efc4468366ed559a3fa10b9aee7b54b12b",
   "syncPolicy": "This public/pixelforge snapshot must be refreshed from the PixelForge source repository when its editor code changes."
 }
