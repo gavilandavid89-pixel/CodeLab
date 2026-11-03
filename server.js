@@ -1927,7 +1927,7 @@ const server = http.createServer(async (req, res) => {
             try { entries = fs.readdirSync(ownerDir); } catch (error) { if (error.code !== 'ENOENT') throw error; }
             const projects = [];
             for (const entry of entries) {
-              if (!/^[a-zA-Z0-9_-]{8,100}\\.json$/.test(entry)) continue;
+              if (!/^[a-zA-Z0-9_-]{8,100}\.json$/.test(entry)) continue;
               try {
                 const record = JSON.parse(fs.readFileSync(path.join(ownerDir, entry), 'utf8'));
                 if (record && record.version === 1 && record.project && typeof record.project.id === 'string') {
