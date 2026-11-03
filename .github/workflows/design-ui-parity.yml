@@ -1,0 +1,29 @@
+name: Design UI parity
+
+on:
+  push:
+    branches:
+      - fix/ui-design-layer-parity-clean
+  pull_request:
+    paths:
+      - 'public/app.js'
+      - 'tests/design-ui-parity.test.js'
+      - '.github/workflows/design-ui-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  design-ui-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check visible editor JavaScript syntax
+        run: node --check public/app.js
+      - name: Test design UI parity contracts
+        run: node --test tests/design-ui-parity.test.js
