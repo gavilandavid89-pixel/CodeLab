@@ -99,6 +99,9 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'project_delete' && command.approval !== 'approved') {
+    throw new Error('Permanent project deletion requires approval: "approved".');
+  }
   if (command.action === 'project_export_html' && args.max_chars !== undefined &&
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
