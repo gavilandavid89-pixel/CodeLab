@@ -1028,7 +1028,19 @@ try {
       let requestKeyAttached = false;
       for (const key of changedFields) {
         const value = generated[key];
-        const chunks = value.length ? Array.from({ length: Math.ceil(value.length / 50000) }, (_, index) => value.slice(index * 50000, (index + 1) * 50000)) : [''];
+        const chunks = [];
+        for (let offset = 0; offset < value.length;) {
+          let end = Math.min(offset + 50000, value.length);
+          // Never split a UTF-16 surrogate pair across separately persisted chunks.
+          if (end < value.length) {
+            const previous = value.charCodeAt(end - 1);
+            const next = value.charCodeAt(end);
+            if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end--;
+          }
+          chunks.push(value.slice(offset, end));
+          offset = end;
+        }
+        if (!chunks.length) chunks.push('');
         chunks.forEach((chunk, index) => {
           const operation = { type: 'web.code.write', projectId, source, mode: index === 0 ? 'replace' : 'append' };
           operation[key] = chunk;
