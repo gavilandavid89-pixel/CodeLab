@@ -21,8 +21,12 @@ async function main() {
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
-  assert.match(dashboard, /id="studioChooser"/, 'dashboard should expose the studio chooser');
-  assert.match(dashboard, /href="\/pixelforge\/index\.html"/, 'PixelForge should be a separate dashboard destination');
+  assert.doesNotMatch(dashboard, /id="studioChooser"/, 'PixelForge should not appear as a separate top-level studio');
+  const designPanelStart = dashboard.indexOf('id="designStudioPanel"');
+  const pixelForgeEntry = dashboard.indexOf('id="openPixelForgeFromDesign"');
+  const designCanvas = dashboard.indexOf('id="designCanvas"');
+  assert.ok(designPanelStart >= 0 && pixelForgeEntry > designPanelStart && pixelForgeEntry < designCanvas,
+    'PixelForge should be a direct entry inside CodeLab Design, not a separate dashboard destination');
   assert.ok(dashboard.indexOf('src="/studio-core.js"') < dashboard.indexOf('src="/app.js"'), 'CodeLab dashboard must load the shared runtime before its app');
   assert.match(dashboard, /Crear proyecto/, 'existing project creation should remain available');
 
@@ -199,24 +203,12 @@ async function main() {
     await accountContext.addInitScript(() => {
       localStorage.setItem('pixelforge.palette.v1:github:pixelforge-integration-user', JSON.stringify(['#A1B2C3']));
       localStorage.setItem('pixelforge.palette.v1', JSON.stringify(['#DEAD00']));
-      localStorage.setItem('codelab_xd_ai_settings_v1:github_pixelforge-integration-user', JSON.stringify({
-        mode: 'api',
-        baseUrl: 'https://api.example.test/v1',
-        model: 'test-model',
-        apiKey: 'test-user-key-not-a-real-secret'
-      }));
     });
     await accountContext.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' } }));
     await accountContext.addCookies([{ name: 'codelab_sid', value: sessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const accountPage = await accountContext.newPage();
     await accountPage.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
-    assert.equal(await accountPage.locator('#ai-provider-endpoint').inputValue(), 'https://api.example.test/v1/chat/completions',
-      'PixelForge should reuse the authenticated account provider endpoint from CodeLab AI settings');
-    assert.equal(await accountPage.locator('#ai-provider-model').inputValue(), 'test-model',
-      'PixelForge should reuse the account model from CodeLab AI settings');
-    assert.equal(await accountPage.locator('#ai-provider-key').inputValue(), 'test-user-key-not-a-real-secret',
-      'PixelForge should prefill the current account key without persisting it in a project');
     assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 1,
       'the signed-in account should load its own palette, not the legacy shared palette');
     await accountPage.locator('#new-document').click();
