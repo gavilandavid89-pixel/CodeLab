@@ -231,6 +231,7 @@ export class RasterDocument {
     this.activeLayerId = this.layers[0].id;
     this.revision = 0;
     this.saveVersion = 0;
+    this.serverRevision = 0;
     this.history = [];
     this.future = [];
     this.maxHistory = 30;
@@ -936,7 +937,7 @@ export class RasterDocument {
     return true;
   }
   toJSON() {
-    return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion,
+    return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
       layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })) };
   }
   static fromJSON(data, { newIdentity = false } = {}) {
@@ -969,9 +970,11 @@ export class RasterDocument {
     if (data.activeLayerId !== undefined && (typeof data.activeLayerId !== 'string' || !layerIds.has(data.activeLayerId))) throw new TypeError('Active layer ID does not match a project layer.');
     if (data.revision !== undefined && (!Number.isInteger(data.revision) || data.revision < 0)) throw new RangeError('Document revision must be a non-negative integer.');
     if (data.saveVersion !== undefined && (!Number.isInteger(data.saveVersion) || data.saveVersion < 0)) throw new RangeError('Save version must be a non-negative integer.');
+    if (data.serverRevision !== undefined && (!Number.isInteger(data.serverRevision) || data.serverRevision < 0)) throw new RangeError('Server revision must be a non-negative integer.');
     doc.activeLayerId = data.activeLayerId === undefined ? doc.layers[0].id : (newIdentity ? layerIdMap.get(data.activeLayerId) : data.activeLayerId);
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
+    doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
     doc.history = []; doc.future = []; doc.historyBytes = 0; doc.dirty = false;
     return doc;
   }
