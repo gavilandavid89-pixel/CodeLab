@@ -1907,7 +1907,7 @@ const server = http.createServer(async (req, res) => {
       // dedicated data namespace so its schema and lifecycle stay isolated from web projects.
       const pixelForgeUser = getSessionUser(req);
       const pixelForgeCollection = pathname === '/api/pixelforge/projects';
-      const pixelForgeItemMatch = pathname.match(/^\\/api\\/pixelforge\\/projects\\/([a-zA-Z0-9_-]{8,100})$/);
+      const pixelForgeItemMatch = pathname.match(/^\/api\/pixelforge\/projects\/([a-zA-Z0-9_-]{8,100})$/);
       if (pathname === '/api/pixelforge/session' && req.method === 'GET') {
         if (!pixelForgeUser) return sendJson(res, 401, { error: 'codelab_login_required' });
         return sendJson(res, 200, {
