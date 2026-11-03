@@ -372,3 +372,25 @@ test('duplicate and distribute preserve percentage position semantics', () => {
   assert.ok(Math.abs(middle.x - 45) < 0.0001);
   assert.equal(middle.xUnit, '%');
 });
+
+
+test('align preserves percentage position units after computing pixel geometry', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600,
+    elements: [
+      { id: 'left', type: 'rectangle', x: 10, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' },
+      { id: 'right', type: 'rectangle', x: 40, y: 30, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' }
+    ]
+  });
+  const aligned = engine.transact(input, [
+    { type: 'elements.align', ids: ['left', 'right'], mode: 'right' },
+    { type: 'elements.align', ids: ['left', 'right'], mode: 'bottom' }
+  ]).project.design.elements;
+  for (const element of aligned) {
+    assert.equal(element.xUnit, '%');
+    assert.equal(element.yUnit, '%');
+    assert.ok(Math.abs(element.x - 40) < 0.0001);
+    assert.ok(Math.abs(element.y - 30) < 0.0001);
+  }
+});
