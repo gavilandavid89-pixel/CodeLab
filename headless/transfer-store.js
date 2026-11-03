@@ -95,7 +95,27 @@ function createTransferStore(rootDir, now = () => Date.now()) {
       }
     } catch (_) {}
   }
+  // Expired transfers may never be queried again. Sweep metadata during new transfer
+  // creation so abandoned payload files do not accumulate indefinitely.
+  function cleanupExpiredTransfers() {
+    ensure();
+    let names;
+    try { names = fs.readdirSync(root); } catch (_) { return; }
+    for (const name of names) {
+      const match = /^(code|image-chunks)-([a-f0-9]{32})\.json$/.exec(name);
+      if (!match) continue;
+      const kind = match[1];
+      const id = match[2];
+      let record;
+      try { record = JSON.parse(fs.readFileSync(path.join(root, name), 'utf8')); } catch (_) { record = null; }
+      if (record && Number.isFinite(record.expiresAt) && record.expiresAt > now()) continue;
+      if (record && Number.isInteger(record.totalChunks)) deleteChunks(kind, id, record.totalChunks);
+      else deleteAllChunks(kind, id);
+      try { fs.unlinkSync(path.join(root, name)); } catch (_) {}
+    }
+  }
   function beginCode({ workspaceId, projectId, field, source = 'main', baseRevision, totalChunks, sha256: expectedHash }) {
+    cleanupExpiredTransfers();
     if (!workspaceId || !projectId || !['html', 'css', 'js'].includes(field) || !['main', 'branch'].includes(source) ||
         !Number.isInteger(baseRevision) || baseRevision < 0 || !Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_CHUNKS ||
         !/^[a-f0-9]{64}$/i.test(expectedHash || '')) throw new Error('invalid_code_transfer');
@@ -133,6 +153,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     } catch (_) {}
   }
   function beginImage({ workspaceId, projectId, totalChunks, sha256: expectedHash, declaredMime }) {
+    cleanupExpiredTransfers();
     if (!workspaceId || !projectId || !Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_IMAGE_BASE64_CHUNKS ||
         !/^[a-f0-9]{64}$/i.test(expectedHash || '') || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(declaredMime)) {
       throw new Error('invalid_image_transfer');
