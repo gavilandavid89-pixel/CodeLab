@@ -84,7 +84,8 @@ async function createProject(page, type, name) {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
     assert.equal(await page.locator('#colorPrimary').inputValue(), '#123abc', 'the native color control should hold the selected value');
-    assert.equal(await page.locator('#designPreviewPrimary').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(18, 58, 188)');
+    assert.equal(await page.locator('#designToolsStatus').innerText(), 'Cambios sin guardar.', 'the color input handler should process the edit');
+    assert.equal(await page.locator('#designPreviewPrimary').evaluate(el => ({ inline: el.style.background, computed: getComputedStyle(el).backgroundColor })), { inline: 'rgb(18, 58, 188)', computed: 'rgb(18, 58, 188)' });
     await page.locator('#saveDesignSystem').click();
     assert.ok((await page.locator('#designToolsStatus').innerText()).length > 0);
     await page.locator('#resetDesignSystem').click();
