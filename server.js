@@ -433,6 +433,22 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+const pixelForgeAccountQueues = new Map();
+async function withPixelForgeAccountLock(workspaceId, operation) {
+  const previous = pixelForgeAccountQueues.get(workspaceId) || Promise.resolve();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const tail = previous.then(() => gate);
+  pixelForgeAccountQueues.set(workspaceId, tail);
+  await previous.catch(() => {});
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (pixelForgeAccountQueues.get(workspaceId) === tail) pixelForgeAccountQueues.delete(workspaceId);
+  }
+}
+
 const MAX_DESIGN_ELEMENTS = 500;
 
 function validateProjects(projects) {
@@ -1914,6 +1930,7 @@ const server = http.createServer(async (req, res) => {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
         const workspaceId = userWorkspaceId(user);
+        return await withPixelForgeAccountLock(workspaceId, async () => {
         const file = workspaceFile(workspaceId) + '.pixelforge.json';
         let records = [];
         try {
@@ -2014,6 +2031,7 @@ const server = http.createServer(async (req, res) => {
           }
           return sendJson(res, 200, { ok: true });
         }
+        });
       }
 
       // Workspace init
