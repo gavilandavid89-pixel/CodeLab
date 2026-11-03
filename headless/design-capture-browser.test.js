@@ -117,3 +117,51 @@ test('renders a real PNG paired with the same saved design revision in an isolat
     await browser.close();
   }
 });
+
+test('exports responsive geometry correctly at desktop and mobile canvas sizes', async () => {
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  try {
+    for (const size of [{ width: 720, height: 1600 }, { width: 390, height: 844 }]) {
+      const project = {
+        id: 'responsive-' + size.width,
+        name: 'Responsive canvas ' + size.width,
+        type: 'design',
+        code: { html: '', css: '', js: '' },
+        design: {
+          canvasWidth: size.width,
+          canvasHeight: size.height,
+          background: '#ffffff',
+          layoutMode: 'free',
+          elements: [{
+            id: 'el_responsive_box', type: 'rectangle', label: 'Responsive box',
+            x: 50, y: 25, xUnit: '%', yUnit: '%',
+            width: 50, height: 25, widthUnit: '%', heightUnit: '%',
+            background: '#2563eb'
+          }]
+        }
+      };
+      const context = buildAiDesignCaptureContext(project);
+      const html = exportDesignHtml(project, [project]);
+      const page = await browser.newPage({ viewport: size, deviceScaleFactor: 1 });
+      try {
+        await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
+        const box = await page.locator('#layer-el_responsive_box').evaluate(el => ({
+          left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height
+        }));
+        assert.equal(box.left, Math.round(size.width * 0.5) + 'px');
+        assert.equal(box.top, Math.round(size.height * 0.25) + 'px');
+        assert.equal(box.width, Math.round(size.width * 0.5) + 'px');
+        assert.equal(box.height, Math.round(size.height * 0.25) + 'px');
+        const png = await page.screenshot({ type: 'png', fullPage: false, animations: 'disabled' });
+        assert.equal(png.readUInt32BE(16), context.canvas.pixelWidth);
+        assert.equal(png.readUInt32BE(20), context.canvas.pixelHeight);
+        assert.equal(png.readUInt32BE(16), size.width);
+        assert.equal(png.readUInt32BE(20), size.height);
+      } finally {
+        await page.close();
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+});
