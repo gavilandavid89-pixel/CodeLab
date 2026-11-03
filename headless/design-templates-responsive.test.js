@@ -54,6 +54,22 @@ test('applying a template persists its effective fallback canvas width', () => {
   assert.equal(saved.canvas.width, 390);
   assert.equal(applied.results[0].canvasWidth, 390);
   assert.ok(saved.elements.every(element => element.x + element.width <= saved.canvasWidth));
+
+  const undone = applyHeadlessBatch(applied.state, {
+    operationId: 'template-width-undo-001',
+    baseRevision: applied.state.revision,
+    operations: [{ type: 'design.history.undo', projectId: 'proj_template_width' }]
+  });
+  assert.equal(undone.state.projects[0].design.canvasWidth, 10000);
+  assert.equal(undone.state.projects[0].design.canvas.width, 10000);
+
+  const redone = applyHeadlessBatch(undone.state, {
+    operationId: 'template-width-redo-001',
+    baseRevision: undone.state.revision,
+    operations: [{ type: 'design.history.redo', projectId: 'proj_template_width' }]
+  });
+  assert.equal(redone.state.projects[0].design.canvasWidth, 390);
+  assert.equal(redone.state.projects[0].design.canvas.width, 390);
 });
 
 test('template sizing falls back for canvas widths outside engine limits', () => {
