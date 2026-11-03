@@ -175,7 +175,8 @@ function applyOperation(project, operation) {
     case 'element.update': {
       assert(operation.properties && typeof operation.properties === 'object' && !Array.isArray(operation.properties), 'Layer properties are required.');
       const element = findElement(project, operation.id);
-      assertLayerUnlocked(element, 'element.update');
+      const unlockOnly = element.locked === true && Object.keys(operation.properties).length === 1 && operation.properties.locked === false;
+      if (!unlockOnly) assertLayerUnlocked(element, 'element.update');
       validateProperties(operation.properties);
       Object.assign(element, clone(operation.properties));
       return { type: operation.type, id: element.id, element: clone(element) };
