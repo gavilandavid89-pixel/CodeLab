@@ -176,6 +176,34 @@ test('rejects image uploads that do not match the editor file policy', () => {
   ]), /requires an image layer/);
 });
 
+test('accepts safe link forms but rejects protocol-relative and credentialed external URLs', () => {
+  const engine = createDesignEngine();
+  for (const [id, href] of [
+    ['root-relative', '/contact'],
+    ['dot-relative', './contact'],
+    ['parent-relative', '../contact'],
+    ['email', 'mailto:hello@example.com'],
+    ['phone', 'tel:+15551234567'],
+    ['external', 'https://example.com/contact'],
+    ['internal', '#layer-target']
+  ]) {
+    assert.doesNotThrow(() => engine.transact(project(), [
+      { type: 'element.add', elementType: 'button', id, properties: { href } }
+    ]), href);
+  }
+  for (const [id, href] of [
+    ['protocol-relative', '//evil.example/path'],
+    ['credentialed', 'https://user:pass@example.com/private'],
+    ['unsafe-scheme', 'javascript:alert(1)'],
+    ['backslash', '/\\\\evil.example/path'],
+    ['control-character', '/contact\\nInjected']
+  ]) {
+    assert.throws(() => engine.transact(project(), [
+      { type: 'element.add', elementType: 'button', id, properties: { href } }
+    ]), /safe URL scheme/, href);
+  }
+});
+
 test('supports safe image URLs and text alignment from saved design layers', () => {
   const engine = createDesignEngine();
   const result = engine.transact(project(), [
