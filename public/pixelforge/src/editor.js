@@ -1,5 +1,5 @@
 import { RasterDocument, screenToDocument, validateDimensions, rasterLinePoints, createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById } from './persistence.js';
+import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject, getPixelForgeAccount } from './persistence.js';
 import { preflightImageFile } from './image-import.js';
 import { createSpriteSheetLayout } from './asset-export.js';
 import { AIWorkspace } from './workspaces.js';
@@ -25,15 +25,18 @@ let cursorMode = false, cursorGesturePointerId = null, cursorGestureLast = null,
 let virtualCursorPointerId = null, virtualCursorScreen = null, virtualCursorPoint = null, virtualCursorVisible = false, virtualCursorCanDraw = false;
 let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = Promise.resolve(), flushInProgress = false, flushPromise = null, renderQueued = false, previewReady = false;
 
+// Keep browser-local palette preferences isolated by CodeLab identity. Standalone
+// use retains its own local palette and never reads a signed-in account's colors.
+let paletteStorageKey = 'pixelforge.palette.v1:local';
 function loadUserPalette() {
   try {
-    const parsed = JSON.parse(localStorage.getItem('pixelforge.palette.v1') || '[]');
+    const parsed = JSON.parse(localStorage.getItem(paletteStorageKey) || '[]');
     return Array.isArray(parsed) ? [...new Set(parsed.filter(value => typeof value === 'string' && /^#[0-9A-F]{6}$/i.test(value)).map(value => value.toUpperCase()))].slice(0, 64) : [];
   } catch { return []; }
 }
 let userPalette = loadUserPalette();
 function saveUserPalette() {
-  try { localStorage.setItem('pixelforge.palette.v1', JSON.stringify(userPalette)); }
+  try { localStorage.setItem(paletteStorageKey, JSON.stringify(userPalette)); }
   catch { status('Palette could not be saved in this browser storage', 'warning'); }
 }
 function renderUserPalette() {
@@ -1418,7 +1421,27 @@ async function renderProjects() {
         status('Opened saved project', 'success');
       } catch (error) { status(`Could not open project: ${error.message}`, 'error'); }
     });
-    row.append(open); list.append(row);
+    const remove = document.createElement('button');
+    remove.className = 'saved-project-delete';
+    remove.type = 'button';
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', 'Delete ' + (project.name || 'saved artwork'));
+    remove.disabled = project.id === doc.id;
+    remove.title = remove.disabled ? 'Save or open another project before deleting this one' : 'Delete this saved project';
+    remove.addEventListener('click', async () => {
+      if (remove.disabled) return;
+      if (!window.confirm('Delete "' + (project.name || 'Untitled artwork') + '"? This cannot be undone.')) return;
+      remove.disabled = true;
+      try {
+        await deleteProject(project.id);
+        await renderProjects();
+        status('Project deleted', 'success');
+      } catch (error) {
+        remove.disabled = false;
+        status('Could not delete project: ' + error.message, 'error');
+      }
+    });
+    row.append(open, remove); list.append(row);
   }
 }
 
@@ -1710,8 +1733,14 @@ window.addEventListener('blur', () => {
   render();
 });
 async function boot() {
-  resizeCanvas();
   try {
+    const account = await getPixelForgeAccount();
+    if (account?.user) {
+      paletteStorageKey = 'pixelforge.palette.v1:' + encodeURIComponent(account.user.provider) + ':' + encodeURIComponent(account.user.id);
+      userPalette = loadUserPalette();
+      renderUserPalette();
+    }
+    resizeCanvas();
     const saved = await loadMostRecentProject();
     if (saved) { doc = RasterDocument.fromJSON(saved); clearSelectionState(); resetAIWorkspaceForDocument(); status('Recovered latest local project', 'success'); }
     else status('Ready · saved locally on this device', 'success');
