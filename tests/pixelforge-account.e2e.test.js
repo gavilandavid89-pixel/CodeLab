@@ -20,6 +20,8 @@ function seedSession(id, name) {
 async function request(route, { method = 'GET', cookie, body } = {}) {
   const headers = {};
   if (cookie) headers.Cookie = cookie;
+  // Isolate this suite from the separate rate-limit stress test running in the same server process.
+  headers['X-Forwarded-For'] = '203.0.113.50, 203.0.113.1';
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(BASE_URL + route, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   let json = null;
