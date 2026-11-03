@@ -75,7 +75,7 @@ test('local SVG capture honors canvas dimensions, visibility, opacity, and rotat
     design: {
       frame: 'mobile',
       canvasWidth: 720,
-      canvasHeight: 1600,
+      canvasHeight: 8000,
       background: '#ffffff',
       layoutMode: 'free',
       elements: [
@@ -86,6 +86,7 @@ test('local SVG capture honors canvas dimensions, visibility, opacity, and rotat
   };
   const captured = context.captureDesignSvg(project);
   assert.equal(captured.width, 720, 'capture width must use the custom canvas width');
+  assert.equal(captured.height, 8000, 'capture must preserve the explicit canvas height beyond auto-layout cap');
   assert.match(captured.svg, /opacity="0\.5"/);
   assert.match(captured.svg, /rotate\(30 40 50\)/);
   assert.doesNotMatch(captured.svg, /#00ff00/, 'hidden layers must not leak into the AI image');
