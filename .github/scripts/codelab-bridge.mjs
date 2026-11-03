@@ -98,42 +98,8 @@ function parseCommand(raw) {
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
   }
-  if (command.action === 'design_import_json' &&
-      (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) {
-    throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
-  }
-  if (command.action === 'component_inspect' && args.max_chars !== undefined &&
-      (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
-    throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
-  }
-  if (command.action === 'component_inspect' && args.max_chars !== undefined &&
-      (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
-    throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
-  }
-  if (command.action === 'ai_generate') {
-    if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
-    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
-    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
-    if (args.operation_id !== undefined && (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id))) throw new Error('ai_generate operation_id must be a safe string of 8 to 100 characters.');
-    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('ai_generate max_tokens must be from 256 to 32768.');
-  }
-  if (command.action === 'project_delete' && command.approval !== 'approved') throw new Error('Permanent project deletion requires approval: "approved".');
-  if (command.action === 'design_template_apply') {
-    if (!['landing', 'dashboard', 'portfolio'].includes(args.template_id)) throw new Error('design_template_apply requires a supported template_id.');
-    if (args.replace_existing !== undefined && typeof args.replace_existing !== 'boolean') throw new Error('replace_existing must be a boolean.');
-    if (args.replace_existing === true && command.approval !== 'approved') throw new Error('Replacing existing design layers requires approval: "approved".');
-  }
-  if (command.action === 'design_history' && !['undo', 'redo'].includes(args.operation)) throw new Error('design_history operation must be undo or redo.');
-  if (command.action === 'design_flow_connect') {
-    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_flow_connect requires a valid element_id.');
-    if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_connect requires a valid target_project_id.');
-  }
-  if (command.action === 'design_flow_disconnect') {
-    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_flow_disconnect requires a valid element_id.');
-    if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
-  }
-  if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
-  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2  if (command.action === 'design_element_update') {
+  if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
+  if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
     validateDesignElementProperties(args.properties, 'design_element_update');
   }
