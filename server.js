@@ -1913,7 +1913,7 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, {
           ok: true,
           workspaceId: userWorkspaceId(pixelForgeUser),
-          user: { provider: pixelForgeUser.provider, id: String(pixelForgeUser.id), name: pixelForgeUser.name || null, avatarUrl: pixelForgeUser.avatarUrl || null }
+          user: { provider: pixelForgeUser.provider, id: String(pixelForgeUser.id), name: pixelForgeUser.name || null, avatar: pixelForgeUser.avatar || null }
         });
       }
       if ((pixelForgeCollection && req.method === 'GET') || (pixelForgeItemMatch && ['GET', 'PUT'].includes(req.method))) {
@@ -1953,7 +1953,7 @@ const server = http.createServer(async (req, res) => {
             if (!body || typeof body !== 'object' || Array.isArray(body) || !body.project || typeof body.project !== 'object' ||
                 Array.isArray(body.project) || body.project.id !== projectId || typeof body.project.name !== 'string' ||
                 !Number.isInteger(body.project.width) || !Number.isInteger(body.project.height) ||
-                body.project.width < 1 || body.project.height < 1 || body.project.width > 8192 || body.project.height > 8192) {
+                body.project.width < 1 || body.project.height < 1 || body.project.width > 8192 || body.project.height > 8192 || body.project.width * body.project.height > 16777216) {
               return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
             }
             const serialized = JSON.stringify(body.project);
@@ -1982,6 +1982,8 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 200, { ok: true, revision: record.revision, updatedAt: record.updatedAt });
           }
         } catch (error) {
+          if (error.code === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
+          if (error.code === 'INVALID_JSON') return sendJson(res, 400, { error: 'invalid_json' });
           console.error('pixelforge_storage_failed', error.message);
           return sendJson(res, 500, { error: 'pixelforge_storage_failed' });
         }
