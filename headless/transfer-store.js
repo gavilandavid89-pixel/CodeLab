@@ -8,6 +8,7 @@ const MAX_CODE_CHARS = 500000;
 const MAX_CHUNK_CHARS = 8000;
 const MAX_CHUNKS = 70;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_BASE64_CHUNKS = 400;
 const TTL_MS = 10 * 60 * 1000;
 
 function sha256(value) {
@@ -87,6 +88,48 @@ function createTransferStore(rootDir, now = () => Date.now()) {
   function consumeCode(transferId) {
     try { fs.unlinkSync(file('code', transferId)); } catch (_) {}
   }
+  function beginImage({ workspaceId, projectId, totalChunks, sha256: expectedHash, declaredMime }) {
+    if (!workspaceId || !projectId || !Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_IMAGE_BASE64_CHUNKS ||
+        !/^[a-f0-9]{64}$/i.test(expectedHash || '') || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(declaredMime)) {
+      throw new Error('invalid_image_transfer');
+    }
+    const id = crypto.randomUUID().replace(/-/g, '');
+    write('image-chunks', id, { id, workspaceId, projectId, totalChunks, expectedHash: expectedHash.toLowerCase(), declaredMime, chunks: {}, expiresAt: now() + TTL_MS });
+    return { transferId: id, expiresInMs: TTL_MS, maxChunkChars: MAX_CHUNK_CHARS, maxChunks: MAX_IMAGE_BASE64_CHUNKS };
+  }
+  function putImageChunk({ transferId, workspaceId, index, chunk, sha256: chunkHash }) {
+    const record = read('image-chunks', transferId);
+    if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
+    if (!Number.isInteger(index) || index < 0 || index >= record.totalChunks || typeof chunk !== 'string' ||
+        chunk.length > MAX_CHUNK_CHARS || !/^[A-Za-z0-9+/]*={0,2}$/.test(chunk) || sha256(chunk) !== chunkHash) {
+      throw new Error('invalid_image_chunk');
+    }
+    const previous = record.chunks[index];
+    if (previous !== undefined && previous !== chunk) throw new Error('image_chunk_conflict');
+    record.chunks[index] = chunk;
+    write('image-chunks', transferId, record);
+    return { transferId, receivedChunks: Object.keys(record.chunks).length, totalChunks: record.totalChunks };
+  }
+  function commitImage({ transferId, workspaceId }) {
+    const record = read('image-chunks', transferId);
+    if (!record || record.workspaceId !== workspaceId) throw new Error('transfer_not_found');
+    if (Object.keys(record.chunks).length !== record.totalChunks) throw new Error('image_chunks_incomplete');
+    const base64 = Array.from({ length: record.totalChunks }, (_, i) => {
+      if (typeof record.chunks[i] !== 'string') throw new Error('image_chunks_incomplete');
+      return record.chunks[i];
+    }).join('');
+    if (!base64 || base64.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 || base64.length % 4 !== 0 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+      throw new Error('invalid_image_base64');
+    }
+    const bytes = Buffer.from(base64, 'base64');
+    if (bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64') !== base64 || sha256(bytes) !== record.expectedHash) {
+      throw new Error('image_transfer_hash_mismatch');
+    }
+    const upload = putImage({ workspaceId, projectId: record.projectId, bytes, declaredMime: record.declaredMime });
+    try { fs.unlinkSync(file('image-chunks', transferId)); } catch (_) {}
+    return upload;
+  }
   function putImage({ workspaceId, projectId, bytes, declaredMime }) {
     if (!workspaceId || !projectId || !Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > MAX_IMAGE_BYTES) throw new Error('invalid_image_size');
     const mime = imageMime(bytes);
@@ -108,6 +151,6 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     try { fs.unlinkSync(file('image', uploadToken)); } catch (_) {}
     return result;
   }
-  return { beginCode, putCodeChunk, assembleCode, consumeCode, putImage, resolveImage, consumeImage };
+  return { beginCode, putCodeChunk, assembleCode, consumeCode, beginImage, putImageChunk, commitImage, putImage, resolveImage, consumeImage };
 }
-module.exports = { createTransferStore, sha256, imageMime, MAX_CODE_CHARS, MAX_CHUNK_CHARS, MAX_CHUNKS, MAX_IMAGE_BYTES, TTL_MS };
+module.exports = { createTransferStore, sha256, imageMime, MAX_CODE_CHARS, MAX_CHUNK_CHARS, MAX_CHUNKS, MAX_IMAGE_BYTES, MAX_IMAGE_BASE64_CHUNKS, TTL_MS };
