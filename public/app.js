@@ -3487,39 +3487,52 @@ function alignDesignElement(mode = 'center-x') {
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
-  if (selected.some(item => item.locked) || (!selected.length && el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de alinearlas.', 'warn'); return; }
-  if (selected.length > 1) {
-    const left = Math.min(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design))));
-    const top = Math.min(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900)));
-    const right = Math.max(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design)) + getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design))));
-    const bottom = Math.max(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900) + getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900)));
-    const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
-    recordDesignHistory();
-    for (const item of selected) {
-      const width = getDesignElementDimension(item, 'width', getDesignCanvasWidth(p.design)), height = getDesignElementDimension(item, 'height', getDesignCanvasHeight(p.design) || 900);
-      if (mode === 'left') { item.xUnit = 'px'; item.x = left; }
-      else if (mode === 'center-x') { item.xUnit = 'px'; item.x = Math.round(centerX - width / 2); }
-      else if (mode === 'right') { item.xUnit = 'px'; item.x = right - width; }
-      else if (mode === 'top') { item.yUnit = 'px'; item.y = top; }
-      else if (mode === 'center-y') { item.yUnit = 'px'; item.y = Math.round(centerY - height / 2); }
-      else if (mode === 'bottom') { item.yUnit = 'px'; item.y = bottom - height; }
-    }
-    renderDesignWorkspace(); saveProjectsToStorage();
-    showToast('Capas alineadas respecto a la selección.');
-    return;
+  if (selected.some(item => item.locked) || (!selected.length && el.locked)) {
+    showToast('Desbloquea todas las capas seleccionadas antes de alinearlas.', 'warn'); return;
   }
-  recordDesignHistory();
+  const targets = selected.length > 1 ? selected : [el];
   const width = getDesignCanvasWidth(p.design);
   const height = getDesignCanvasHeight(p.design) || 900;
-  const ew = getDesignElementDimension(el, 'width', width), eh = getDesignElementDimension(el, 'height', height);
-  if (mode === 'left') { el.xUnit = 'px'; el.x = 0; }
-  else if (mode === 'center-x') { el.xUnit = 'px'; el.x = Math.max(0, Math.round((width - ew) / 2)); }
-  else if (mode === 'right') { el.xUnit = 'px'; el.x = Math.max(0, width - ew); }
-  else if (mode === 'top') { el.yUnit = 'px'; el.y = 0; }
-  else if (mode === 'center-y') { el.yUnit = 'px'; el.y = Math.max(0, Math.round((height - eh) / 2)); }
-  else if (mode === 'bottom') { el.yUnit = 'px'; el.y = Math.max(0, height - eh); }
+  const multi = selected.length > 1;
+  let left = 0, top = 0, right = width, bottom = height;
+  if (multi) {
+    left = Math.min(...targets.map(item => getDesignElementPosition(item, 'x', width)));
+    top = Math.min(...targets.map(item => getDesignElementPosition(item, 'y', height)));
+    right = Math.max(...targets.map(item => getDesignElementPosition(item, 'x', width) + getDesignElementDimension(item, 'width', width)));
+    bottom = Math.max(...targets.map(item => getDesignElementPosition(item, 'y', height) + getDesignElementDimension(item, 'height', height)));
+  }
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const horizontal = ['left', 'center-x', 'right'].includes(mode);
+  if (!horizontal && !['top', 'center-y', 'bottom'].includes(mode)) return;
+  const axis = horizontal ? 'x' : 'y';
+  const containerSize = horizontal ? width : height;
+  const placements = [];
+  for (const item of targets) {
+    const itemWidth = getDesignElementDimension(item, 'width', width);
+    const itemHeight = getDesignElementDimension(item, 'height', height);
+    let target;
+    if (mode === 'left') target = multi ? left : 0;
+    else if (mode === 'center-x') target = multi ? centerX - itemWidth / 2 : Math.max(0, Math.round((width - itemWidth) / 2));
+    else if (mode === 'right') target = multi ? right - itemWidth : Math.max(0, width - itemWidth);
+    else if (mode === 'top') target = multi ? top : 0;
+    else if (mode === 'center-y') target = multi ? centerY - itemHeight / 2 : Math.max(0, Math.round((height - itemHeight) / 2));
+    else target = multi ? bottom - itemHeight : Math.max(0, height - itemHeight);
+    const stored = getStoredDesignElementPosition(target, containerSize);
+    if (!stored) {
+      showToast('La alineación excede los límites de posición admitidos; ajusta el lienzo o las capas.', 'warn'); return;
+    }
+    placements.push({ element: item, value: stored.value, unit: stored.unit });
+  }
+  recordDesignHistory();
+  for (const placement of placements) {
+    placement.element[axis] = placement.value;
+    placement.element[axis + 'Unit'] = placement.unit;
+  }
   renderDesignWorkspace(); saveProjectsToStorage();
+  if (multi) showToast('Capas alineadas respecto a la selección.');
 }
+
 function downloadDesignAsset(filename, content, type) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
@@ -5369,4 +5382,14 @@ function getDesignElementPosition(el, axis, containerSize = 900) {
   const value = Number.isFinite(raw) ? raw : 0;
   if (unit === '%') return containerSize * Math.max(0, Math.min(200, value)) / 100;
   return Math.max(0, Math.min(10000, value));
+}
+
+function getStoredDesignElementPosition(position, containerSize) {
+  const px = Number(position);
+  if (!Number.isFinite(px) || px < 0) return null;
+  if (px <= 10000) return { value: Math.round(px), unit: 'px' };
+  if (!Number.isFinite(containerSize) || containerSize <= 0) return null;
+  const percent = px / containerSize * 100;
+  if (percent > 200) return null;
+  return { value: Math.round(percent * 100) / 100, unit: '%' };
 }
