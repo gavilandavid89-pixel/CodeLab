@@ -1901,6 +1901,86 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, settings: settings });
       }
 
+      // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
+      const pixelForgeCollection = pathname === '/api/pixelforge/projects';
+      const pixelForgeItem = pathname.match(/^\\/api\\/pixelforge\\/projects\\/([^/]+)$/);
+      if ((pixelForgeCollection || pixelForgeItem) && ['GET', 'PUT', 'DELETE'].includes(req.method)) {
+        const user = getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
+        const workspaceId = userWorkspaceId(user);
+        const file = workspaceFile(workspaceId) + '.pixelforge.json';
+        let records = [];
+        try {
+          if (fs.existsSync(file)) {
+            const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (!Array.isArray(parsed)) throw new Error('invalid_pixel_forge_store');
+            records = parsed;
+          }
+        } catch (error) {
+          console.error('PixelForge account storage read failed:', error.message);
+          return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+        }
+        if (pixelForgeCollection && req.method === 'GET') {
+          return sendJson(res, 200, { projects: records.map(record => ({
+            id: record.id, name: record.name, width: record.width, height: record.height,
+            updatedAt: record.updatedAt, lastOpenedAt: record.lastOpenedAt
+          })).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt) });
+        }
+        if (pixelForgeItem && req.method === 'GET') {
+          const id = safeId(decodeURIComponent(pixelForgeItem[1]));
+          const record = records.find(item => item.id === id);
+          return record
+            ? sendJson(res, 200, { project: record.project })
+            : sendJson(res, 404, { error: 'project_not_found' });
+        }
+        if (req.method === 'PUT') {
+          const body = await readBody(req);
+          const project = body && body.project;
+          if (!project || typeof project !== 'object' || Array.isArray(project) ||
+              typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
+              typeof project.name !== 'string' || !project.name.trim() || project.name.length > 200 ||
+              !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
+              project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096 ||
+              !Array.isArray(project.layers) || project.layers.length > 200) {
+            return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
+          }
+          const serialized = JSON.stringify(project);
+          if (Buffer.byteLength(serialized, 'utf8') > 8 * 1024 * 1024) {
+            return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
+          }
+          const now = Date.now();
+          const existing = records.find(item => item.id === project.id);
+          const record = { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: now, lastOpenedAt: now, project };
+          records = records.filter(item => item.id !== project.id);
+          records.unshift(record);
+          if (records.length > MAX_PROJECTS) records = records.slice(0, MAX_PROJECTS);
+          const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+          try {
+            fs.writeFileSync(tmp, JSON.stringify(records), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+            fs.renameSync(tmp, file);
+          } catch (error) {
+            try { fs.unlinkSync(tmp); } catch (_) {}
+            console.error('PixelForge account storage write failed:', error.message);
+            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+          }
+          return sendJson(res, existing ? 200 : 201, { ok: true, project: { id: record.id, name: record.name, width: record.width, height: record.height, updatedAt: now } });
+        }
+        if (pixelForgeItem && req.method === 'DELETE') {
+          const id = safeId(decodeURIComponent(pixelForgeItem[1]));
+          const next = records.filter(item => item.id !== id);
+          if (next.length === records.length) return sendJson(res, 404, { error: 'project_not_found' });
+          const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
+          try {
+            fs.writeFileSync(tmp, JSON.stringify(next), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+            fs.renameSync(tmp, file);
+          } catch (error) {
+            try { fs.unlinkSync(tmp); } catch (_) {}
+            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+          }
+          return sendJson(res, 200, { ok: true });
+        }
+      }
+
       // Workspace init
       if (req.method === 'POST' && pathname === '/api/workspace/init') {
         const body = await readBody(req);
