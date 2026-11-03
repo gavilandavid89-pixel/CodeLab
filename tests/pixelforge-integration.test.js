@@ -141,9 +141,21 @@ async function main() {
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#document-name').innerText(), 'Browser account artwork', 'the editor should recover the account-saved project after reload');
     assert.equal(await accountPage.locator('#document-size').innerText(), '12 × 8', 'the account-saved project dimensions should survive reload');
+    const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
+    const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
+      method: 'PUT',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ project: deleteFixture })
+    });
+    assert.equal(deleteFixtureResponse.status, 201, 'a second saved project should be available for UI deletion');
+    accountPage.on('dialog', dialog => dialog.accept());
     await accountPage.locator('#projects-button').click();
     await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
     await accountPage.locator('.saved-project-open').filter({ hasText: 'Browser account artwork' }).waitFor({ state: 'visible' });
+    const deleteRow = accountPage.locator('.saved-project').filter({ hasText: 'Browser delete artwork' });
+    await deleteRow.locator('.saved-project-delete').click();
+    await deleteRow.waitFor({ state: 'detached' });
+    assert.equal((await fetch(base + '/api/pixelforge/projects/browser-delete-artwork', { headers: authHeaders })).status, 404, 'UI deletion must remove the account-owned project from server storage');
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
