@@ -344,3 +344,14 @@ assert.match(bridge, /from '\.\.\/\.\.\/headless\/preview-upload\.js'/);
 assert.match(previewUpload, /step\.data_base64\.length > 32000/);
 assert.match(previewUpload, /buffer\.length > 24000/);
 assert.match(bridge, /locator\.setInputFiles\(/);
+
+
+const designReadStart = bridge.indexOf("} else if (command.action === 'design_read') {");
+const designReadEnd = bridge.indexOf("} else if (command.action === 'project_code_write')", designReadStart);
+const designReadHandler = bridge.slice(designReadStart, designReadEnd);
+assert.match(designReadHandler, /const limit = command\.args\.limit === undefined \? 500 : command\.args\.limit/,
+  'design_read must default to the full 500-layer engine limit');
+assert.match(designReadHandler, /!Number\.isInteger\(limit\) \|\| limit < 1 \|\| limit > 500/,
+  'design_read must validate caller-supplied layer limits');
+assert.match(designReadHandler, /args: \{ projectId, limit \}/,
+  'design_read must forward the validated limit to the authoritative query');
