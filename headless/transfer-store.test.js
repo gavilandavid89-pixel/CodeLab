@@ -1,0 +1,47 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createTransferStore, sha256, imageMime, MAX_CHUNK_CHARS } = require('./transfer-store');
+
+function fixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-transfer-'));
+  return { root, store: createTransferStore(root), cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+}
+test('code chunks may arrive out of order and are assembled only after hash verification', () => {
+  const f = fixture();
+  try {
+    const value = 'A'.repeat(MAX_CHUNK_CHARS + 3) + '🧪 end';
+    const parts = [value.slice(0, MAX_CHUNK_CHARS), value.slice(MAX_CHUNK_CHARS)];
+    const started = f.store.beginCode({ workspaceId: 'ws1', projectId: 'proj_123', field: 'html', baseRevision: 4, totalChunks: parts.length, sha256: sha256(value) });
+    f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 1, chunk: parts[1], sha256: sha256(parts[1]) });
+    assert.throws(() => f.store.assembleCode({ transferId: started.transferId, workspaceId: 'ws1' }), /incomplete/);
+    f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'ws1', index: 0, chunk: parts[0], sha256: sha256(parts[0]) });
+    assert.equal(f.store.assembleCode({ transferId: started.transferId, workspaceId: 'ws1' }).value, value);
+  } finally { f.cleanup(); }
+});
+test('rejects tampered chunks, conflicting replay, wrong owner and oversized chunks', () => {
+  const f = fixture();
+  try {
+    const value = 'safe';
+    const started = f.store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'js', baseRevision: 0, totalChunks: 1, sha256: sha256(value) });
+    assert.throws(() => f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'other', index: 0, chunk: value, sha256: sha256(value) }), /not_found/);
+    assert.throws(() => f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: '0'.repeat(64) }), /invalid_code_chunk/);
+    f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) });
+    assert.throws(() => f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: 'evil', sha256: sha256('evil') }), /conflict/);
+    assert.throws(() => f.store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'html', baseRevision: 0, totalChunks: 21, sha256: sha256(value) }), /invalid/);
+  } finally { f.cleanup(); }
+});
+test('validates actual image signatures and rejects declared MIME mismatches', () => {
+  const f = fixture();
+  try {
+    const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3]);
+    assert.equal(imageMime(png), 'image/png');
+    assert.throws(() => f.store.putImage({ workspaceId: 'w', projectId: 'p', bytes: png, declaredMime: 'image/jpeg' }), /signature/);
+    const saved = f.store.putImage({ workspaceId: 'w', projectId: 'p', bytes: png, declaredMime: 'image/png' });
+    assert.equal(f.store.consumeImage({ uploadToken: saved.uploadToken, workspaceId: 'w', projectId: 'p' }).dataUrl, 'data:image/png;base64,' + png.toString('base64'));
+    assert.throws(() => f.store.consumeImage({ uploadToken: saved.uploadToken, workspaceId: 'w', projectId: 'p' }), /not_found/);
+  } finally { f.cleanup(); }
+});
