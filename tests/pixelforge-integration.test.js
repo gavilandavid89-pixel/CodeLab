@@ -344,6 +344,10 @@ async function main() {
     await deleteRow.locator('.saved-project-delete').click();
     await deleteRow.waitFor({ state: 'detached' });
     assert.equal((await fetch(base + '/api/pixelforge/projects/browser-delete-artwork', { headers: authHeaders })).status, 404, 'UI deletion must remove the account-owned project from server storage');
+    // Keep the project chooser open while editing is blocked; close it before
+    // exercising the still-mounted editor across an account switch.
+    await accountPage.locator('#close-projects').click();
+    await accountPage.locator('#projects-dialog').waitFor({ state: 'hidden' });
 
     // Changing the shared session cookie in another tab must not redirect this
     // still-open editor's autosave into the newly signed-in account.
