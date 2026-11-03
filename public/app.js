@@ -3436,24 +3436,33 @@ function setDesignBackground(color) {
 }
 function distributeDesignElements(axis = 'horizontal') {
   const p = activeDesignProject();
-  if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
-  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  if (!p || !p.design) return;
+  if (p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
+  const selected = p.design.elements.filter(el => selectedDesignElementIds.includes(el.id));
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
+  if (selected.some(el => el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
-  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
-  const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
+  const positionKey = horizontal ? 'x' : 'y';
+  const sizeKey = horizontal ? 'width' : 'height';
+  const canvasDimension = horizontal ? getDesignCanvasWidth(p.design) : (getDesignCanvasHeight(p.design) || 900);
+  const ordered = selected.map(el => ({
+    el,
+    position: getDesignElementPosition(el, positionKey, canvasDimension),
+    size: getDesignElementDimension(el, sizeKey, canvasDimension)
+  })).sort((a, b) => a.position - b.position);
+  const start = ordered[0].position;
   const last = ordered[ordered.length - 1];
-  const end = (Number(horizontal ? last.x : last.y) || 0) + Math.max(20, Number(horizontal ? last.width : last.height) || (horizontal ? 120 : 48));
-  const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
+  const end = last.position + last.size;
+  const totalSize = ordered.reduce((sum, item) => sum + item.size, 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
-  if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
-  // Record history only after validation; a rejected operation must not create
-  // a fake undo step for a state that never changed.
+  if (!Number.isFinite(gap) || gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
   recordDesignHistory();
   let cursor = start;
-  for (const el of ordered) {
-    if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
-    cursor += Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)) + gap;
+  for (const item of ordered) {
+    item.el[positionKey] = item.el[positionKey + 'Unit'] === '%'
+      ? (canvasDimension > 0 ? cursor / canvasDimension * 100 : 0)
+      : Math.round(cursor);
+    cursor += item.size + gap;
   }
   renderDesignWorkspace(); saveProjectsToStorage();
   showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
@@ -3463,8 +3472,8 @@ function alignDesignElement(mode = 'center-x') {
   const p = activeDesignProject(), el = selectedDesignElement();
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
-  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id) && !item.locked);
-  if (!selected.length && el.locked) { showToast('Desbloquea la capa antes de alinearla.', 'warn'); return; }
+  const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
+  if (selected.some(item => item.locked) || (!selected.length && el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de alinearlas.', 'warn'); return; }
   if (selected.length > 1) {
     const left = Math.min(...selected.map(item => getDesignElementPosition(item, 'x', getDesignCanvasWidth(p.design))));
     const top = Math.min(...selected.map(item => getDesignElementPosition(item, 'y', getDesignCanvasHeight(p.design) || 900)));
@@ -4002,7 +4011,7 @@ function renderDesignWorkspace() {
     node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
     node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y + 'px' : getDesignElementPositionCss(el, 'y');
     node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
-    node.style.minWidth = '20px'; node.style.minHeight = '20px';
+    node.style.minWidth = el.widthUnit === '%' ? '1px' : '20px'; node.style.minHeight = el.heightUnit === '%' ? '1px' : '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
     node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
@@ -4331,10 +4340,8 @@ function duplicateDesignElement() {
   if (!p || !Array.isArray(p.design.elements) || !selectedDesignElementId) return;
   const selectedIdSet = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
   const selected = p.design.elements.filter(item => selectedIdSet.has(item.id));
-  for (let i = selected.length - 1; i >= 0; i--) {
-    if (selected[i].locked) selected.splice(i, 1);
-  }
-  if (!selected.length) { showToast('Desbloquea la capa antes de duplicarla.', 'warn'); return; }
+  if (!selected.length) return;
+  if (selected.some(item => item.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de duplicarlas.', 'warn'); return; }
   if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
     showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
@@ -4382,10 +4389,12 @@ function duplicateDesignElement() {
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
-  recordDesignHistory();
   const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
-  const deletedElementIds = new Set(p.design.elements.filter(el => selectedIds.has(el.id) && !el.locked).map(el => el.id));
-  if (!deletedElementIds.size) { showToast('Desbloquea la capa antes de eliminarla.', 'warn'); return; }
+  const selectedElements = p.design.elements.filter(el => selectedIds.has(el.id));
+  if (!selectedElements.length) return;
+  if (selectedElements.some(el => el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de eliminarlas.', 'warn'); return; }
+  recordDesignHistory();
+  const deletedElementIds = new Set(selectedElements.map(el => el.id));
   p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
   // Never leave graph edges pointing at a layer that no longer exists.
   if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
@@ -5177,7 +5186,7 @@ function getDesignElementPositionCss(el, axis) {
   const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
   const raw = Number(el && el[axis]);
   const value = Number.isFinite(raw) ? raw : 0;
-  return unit === '%' ? Math.max(-100, Math.min(200, value)) + '%' : Math.max(-6000, Math.min(6000, value)) + 'px';
+  return unit === '%' ? Math.max(0, Math.min(200, value)) + '%' : Math.max(0, Math.min(10000, value)) + 'px';
 }
 
 function toggleDesignLayerVisibility(id) {
@@ -5270,7 +5279,7 @@ function getDesignElementDimension(el, axis, containerSize = 900) {
   const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
   const raw = Number(el && el[axis]);
   const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
-  if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
+  if (unit === '%') return Math.max(1, Math.min(4000, containerSize * Math.min(100, value) / 100));
   if (unit === 'auto' && el) {
     if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
     if (el.type === 'image') return Math.max(20, Math.min(4000, value));
@@ -5297,7 +5306,7 @@ function getDesignElementPosition(el, axis, containerSize = 900) {
   const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
   const raw = Number(el && el[axis]);
   const value = Number.isFinite(raw) ? raw : 0;
-  if (unit === '%') return Math.max(-6000, Math.min(6000, containerSize * Math.max(-100, Math.min(200, value)) / 100));
-  return Math.max(-6000, Math.min(6000, value));
+  if (unit === '%') return Math.max(0, Math.min(10000, containerSize * Math.max(0, Math.min(200, value)) / 100));
+  return Math.max(0, Math.min(10000, value));
 }
 
