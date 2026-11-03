@@ -433,6 +433,23 @@ test('refuses to undo a merge after later main-code edits', () => {
     'a rejected undo must not recreate the old branch');
 });
 
+test('rejects malformed merge history before changing project state', () => {
+  const malformed = webProject();
+  malformed.updatedAt = '2026-11-01T00:00:00.000Z';
+  malformed.mergeHistory = [null];
+  const initial = state([malformed]);
+  assert.throws(() => applyHeadlessBatch(initial, request([
+    { type: 'branch.undo_merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_bad_merge_history_01' })), error => {
+    assert.equal(error.code, 'HEADLESS_INVALID_MERGE_HISTORY');
+    assert.match(error.message, /history entry is invalid/i);
+    return true;
+  });
+  assert.equal(initial.projects[0].code.html, '<main>old</main>');
+  assert.deepEqual(initial.projects[0].mergeHistory, [null]);
+  assert.equal(initial.projects[0].updatedAt, '2026-11-01T00:00:00.000Z');
+});
+
 test('refuses to undo a merge over a branch created afterward', () => {
   const created = applyHeadlessBatch(state([webProject()]), request([
     { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_before_merge' }
