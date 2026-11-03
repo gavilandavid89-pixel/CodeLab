@@ -443,6 +443,8 @@ function decodePixelForgeProjectId(value) {
   }
 }
 
+let pixelForgeTableReady = false;
+
 async function ensurePixelForgeTable() {
   if (!accountPool) return;
   await accountPool.query(`
@@ -463,6 +465,7 @@ async function ensurePixelForgeTable() {
     CREATE INDEX IF NOT EXISTS codelab_pixelforge_recent_idx
     ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
   `);
+  pixelForgeTableReady = true;
 }
 
 async function listPixelForgeProjectMetadataFromDatabase(workspaceId) {
@@ -2046,7 +2049,7 @@ const server = http.createServer(async (req, res) => {
         // isolated development/E2E environments without DATABASE_URL.
         const hostedProduction = process.env.NODE_ENV === 'production' ||
           process.env.RENDER === 'true' || !!process.env.RENDER_SERVICE_ID;
-        if (!accountPool && hostedProduction) {
+        if ((!accountPool && hostedProduction) || (accountPool && !pixelForgeTableReady)) {
           return sendJson(res, 503, { error: 'pixelforge_database_unavailable', message: 'El almacenamiento de PixelForge no está disponible. Contacta al administrador de CodeLab.' });
         }
         const workspaceId = userWorkspaceId(user);
@@ -2323,7 +2326,14 @@ try {
 }
 
 seedAdminAccountIfConfigured().then(async () => {
-  await ensurePixelForgeTable();
+  try {
+    await ensurePixelForgeTable();
+  } catch (error) {
+    // A PixelForge schema/connectivity issue must disable PixelForge with a
+    // clear 503, not prevent unrelated CodeLab areas from starting.
+    pixelForgeTableReady = false;
+    console.error('PixelForge database initialization failed; studio API will return 503:', error.message);
+  }
   server.listen(PORT, () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
