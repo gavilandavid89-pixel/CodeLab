@@ -299,6 +299,14 @@ assert.ok(bridge.includes("operations = [{ type: 'element.add', elementType: arg
 assert.match(bridge, /validateDesignElementProperties\(args\.properties, 'design_element_add'\)/, 'initial properties must use the same whitelist and type validation as updates');
 assert.match(bridge, /'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit'/, 'bridge must allow responsive dimension properties');
 assert.match(bridge, /'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'/, 'bridge must allow supported metadata properties');
+const savedDesignBatch = bridge.slice(bridge.indexOf('async function executeSavedDesignBatch'), bridge.indexOf('\ntry {', bridge.indexOf('async function executeSavedDesignBatch')));
+assert.match(savedDesignBatch, /Object\.entries\(properties\)\.every/, 'design element add must verify every requested initial property after saved-state readback');
+assert.match(savedDesignBatch, /element\.hasImageSource === \(value\.length > 0\) && element\.imageSourceLength === value\.length/,
+  'image source readback must verify payload metadata without returning the source bytes');
+assert.match(savedDesignBatch, /const positionPx = \(element, axis, design\)/, 'duplicate verification must resolve coordinates in effective pixels');
+assert.match(savedDesignBatch, /unit === '%' \? value \* canvasSize \/ 100 : value/,
+  'duplicate verification must convert percentage coordinates using the saved canvas');
+assert.match(savedDesignBatch, /connectionsDuplicated = sourceConnections\.every/, 'duplicate readback must verify remapped outgoing flow connections');
 
 const componentInsertHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'component_insert') {"), bridge.indexOf("} else if (command.action === 'design_element_add') {", bridge.indexOf("} else if (command.action === 'component_insert') {")));
 assert.match(componentInsertHandler, /type: 'component\.insert'/, 'component insertion must use the shared headless runtime');
