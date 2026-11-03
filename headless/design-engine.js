@@ -404,9 +404,11 @@ function isSafeHref(value) {
 }
 
 function isSafeImageSource(value) {
-  const src = String(value || '').trim();
-  if (!src) return true;
-  if (/^data:/i.test(src)) return isValidEditorImageDataUrl(src);
+  const raw = String(value || '');
+  if (!raw) return true;
+  if (/^data:/i.test(raw)) return isValidEditorImageDataUrl(raw);
+  const src = raw.trim();
+  if (/^data:/i.test(src)) return false;
   return /^(https?:\/\/|\/|\.\.?\/)/i.test(src) && !/[\x00-\x20]/.test(src);
 }
 
