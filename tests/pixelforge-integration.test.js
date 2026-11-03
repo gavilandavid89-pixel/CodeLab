@@ -112,13 +112,21 @@ async function main() {
   assert.equal(listBefore.status, 200, 'authenticated CodeLab users should list their PixelForge projects');
   assert.deepEqual((await listBefore.json()).projects, [], 'new account should start with an empty PixelForge project list');
 
-  const fixture = makePixelProject('integration-artwork', 'Account integration artwork');
+  const fixture = { ...makePixelProject('integration-artwork', 'Account integration artwork'), revision: 2, saveVersion: 2 };
   const saved = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
     body: JSON.stringify({ project: fixture })
   });
   assert.equal(saved.status, 201, 'first save should create a project in the account');
+  const staleWrite = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: { ...fixture, name: 'Stale session overwrite', revision: 1, saveVersion: 1 } })
+  });
+  assert.equal(staleWrite.status, 409, 'a stale session must not overwrite a newer saved revision');
+  assert.equal((await staleWrite.json()).error, 'pixelforge_revision_conflict',
+    'stale project writes should return a stable revision-conflict error');
   if (health.persistence === 'postgresql') {
     assert.equal(fs.existsSync(pixelForgeStoreFile), false, 'PostgreSQL-backed PixelForge projects must not be duplicated in workspace sidecar files');
   } else {
