@@ -343,7 +343,57 @@ function exportDesignHtml(project, workspaceProjects = [project]) {
     pages + '<script>' + script.replace(/<\/script/gi, '<\\/script') + '</script></body></html>';
 }
 
+function assertImportPayloadSize(input) {
+  if (typeof input === 'string') {
+    if (Buffer.byteLength(input, 'utf8') > MAX_IMPORT_BYTES) {
+      const error = new Error('The design backup exceeds the 5 MB import limit.');
+      error.code = 'HEADLESS_INVALID_DESIGN_IMPORT';
+      throw error;
+    }
+    return;
+  }
+  if (!input || typeof input !== 'object') return;
+  const seen = new WeakSet();
+  const stack = [{ value: input, depth: 0 }];
+  let estimatedBytes = 2;
+  let visited = 0;
+  const addString = value => {
+    if (value.length > MAX_IMPORT_BYTES) throw new Error('oversized string');
+    estimatedBytes += Buffer.byteLength(JSON.stringify(value), 'utf8');
+    if (estimatedBytes > MAX_IMPORT_BYTES) throw new Error('oversized payload');
+  };
+  try {
+    while (stack.length) {
+      const { value, depth } = stack.pop();
+      if (value === null || typeof value === 'boolean' || typeof value === 'number') {
+        estimatedBytes += 16;
+      } else if (typeof value === 'string') {
+        addString(value);
+      } else if (typeof value === 'object') {
+        if (depth > 100 || seen.has(value)) throw new Error('unsupported object shape');
+        seen.add(value);
+        if (++visited > 25000) throw new Error('too many values');
+        const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item]) : Object.entries(value);
+        for (const [key, item] of entries) {
+          addString(key);
+          stack.push({ value: item, depth: depth + 1 });
+          estimatedBytes += 2;
+          if (estimatedBytes > MAX_IMPORT_BYTES) throw new Error('oversized payload');
+        }
+      } else {
+        throw new Error('unsupported value');
+      }
+      if (estimatedBytes > MAX_IMPORT_BYTES) throw new Error('oversized payload');
+    }
+  } catch (_) {
+    const error = new Error('The design backup exceeds the 5 MB import limit or contains an unsupported object shape.');
+    error.code = 'HEADLESS_INVALID_DESIGN_IMPORT';
+    throw error;
+  }
+}
+
 function importDesignJson(input, options = {}) {
+  assertImportPayloadSize(input);
   let payload;
   try {
     payload = typeof input === 'string' ? JSON.parse(input) : input;
@@ -356,11 +406,6 @@ function importDesignJson(input, options = {}) {
       payload.format !== 'codelab-design-project' || payload.version !== 1 ||
       !payload.project || typeof payload.project !== 'object' || Array.isArray(payload.project)) {
     const error = new Error('The file is not a compatible CodeLab design backup.');
-    error.code = 'HEADLESS_INVALID_DESIGN_IMPORT';
-    throw error;
-  }
-  if (typeof input === 'string' && Buffer.byteLength(input, 'utf8') > MAX_IMPORT_BYTES) {
-    const error = new Error('The design backup exceeds the 5 MB import limit.');
     error.code = 'HEADLESS_INVALID_DESIGN_IMPORT';
     throw error;
   }
