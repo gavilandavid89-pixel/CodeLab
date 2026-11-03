@@ -143,6 +143,8 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(render, /Rotación \(°\)/);
   assert.match(render, /Unidad X/);
   assert.match(render, /Unidad Y/);
+  assert.match(render, /type="checkbox" onfocus="recordDesignHistory\(\)"/);
+  assert.match(render, /aria-label="Unidad X" onfocus="recordDesignHistory\(\)"/);
   assert.match(render, /Bloqueada/);
   assert.match(update, /key === 'visible' \|\| key === 'locked'/);
   assert.match(update, /x: \[0, el\.xUnit === '%' \? 100 : 10000\], y: \[0, el\.yUnit === '%' \? 100 : 10000\]/);
