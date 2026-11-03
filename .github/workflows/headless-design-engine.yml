@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - 'headless/**'
+      - '.github/scripts/codelab-bridge.mjs'
+      - 'tests/assistant-tools-contract.test.js'
       - 'public/app.js'
       - 'public/design-flow.js'
       - 'tests/design-ui-functional-parity.test.js'
