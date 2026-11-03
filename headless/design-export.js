@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { normalizeDesignProject, renderSvg } = require('./design-engine');
-const { isValidEditorImageDataUrl } = require('./image-validation');
+const { isValidEditorImageDataUrl, MAX_EDITOR_IMAGE_DATA_URL_LENGTH } = require('./image-validation');
 
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -29,7 +29,7 @@ function safeColor(value, fallback) {
 }
 
 function safeImageSource(value) {
-  if (typeof value !== 'string' || value.length > MAX_IMAGE_BYTES) return '';
+  if (typeof value !== 'string' || value.length > MAX_EDITOR_IMAGE_DATA_URL_LENGTH) return '';
   if (/^data:/i.test(value)) return isValidEditorImageDataUrl(value) ? value : '';
   try {
     const url = new URL(value);
