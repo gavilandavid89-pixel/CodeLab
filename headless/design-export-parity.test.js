@@ -127,11 +127,14 @@ test('hidden prototype navigation does not export an unreachable target screen',
 test('semantic HTML export preserves safe rotation and opacity values', () => {
   const html = exportDesignHtml(project([
     { id: 'rotated-layer', type: 'rectangle', rotation: 15, opacity: 1, x: 10, y: 10, width: 100, height: 60 },
-    { id: 'translucent-layer', type: 'text', text: 'Translucent', opacity: 0.4, x: 10, y: 90, width: 200, height: 40 }
+    { id: 'translucent-layer', type: 'text', text: 'Translucent', opacity: 0.4, x: 10, y: 90, width: 200, height: 40 },
+    { id: 'null-opacity', type: 'text', text: 'Opaque default', opacity: null, x: 10, y: 140, width: 200, height: 40 }
   ]));
 
   assert.match(html, /transform:rotate\(15deg\);transform-origin:center center;/);
   assert.match(html, /opacity:0\.4;/);
+  const defaultOpacityHtml = html.match(/<p id="layer-null-opacity"[^>]*style="([^"]+)"/)?.[1] || '';
+  assert.match(defaultOpacityHtml, /opacity:1;/);
 
   const context = buildAiDesignCaptureContext(project([
     { id: 'rotated-layer', type: 'rectangle', rotation: 15, opacity: 1, x: 10, y: 10, width: 100, height: 60 },
@@ -139,6 +142,7 @@ test('semantic HTML export preserves safe rotation and opacity values', () => {
   ]));
   assert.equal(context.elements.find(element => element.id === 'rotated-layer').style.rotation, 15);
   assert.equal(context.elements.find(element => element.id === 'translucent-layer').style.opacity, 0.4);
+  assert.equal(context.elements.find(element => element.id === 'null-opacity').style.opacity, 1);
 });
 
 test('semantic HTML export and AI capture context use the editor font-size ceiling', () => {
