@@ -196,7 +196,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const weight = Math.max(100, Math.min(900, Number(element.weight) || 400));
     const radius = Math.max(0, Math.min(4000, Number(element.radius) || 0));
     const rotation = Number.isFinite(Number(element.rotation)) ? Math.max(-3600, Math.min(3600, Number(element.rotation))) : 0;
-    const opacity = Number.isFinite(Number(element.opacity)) ? Math.max(0, Math.min(1, Number(element.opacity))) : 1;
+    const opacity = element.opacity == null ? 1 : (Number.isFinite(Number(element.opacity)) ? Math.max(0, Math.min(1, Number(element.opacity))) : 1);
     const align = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : 'left';
     const imageSource = element.type === 'image' ? safeExportImageSource(element.src) : '';
     const link = element.type === 'button' ? safeExportLink(element.href) : '';
@@ -444,7 +444,7 @@ function buildAiDesignCaptureContext(project, scale = 2) {
           fontWeight: Math.max(100, Math.min(900, finite(el.weight, 400))),
           radius: Math.max(0, Math.min(4000, finite(el.radius, 0))),
           rotation: Math.max(-3600, Math.min(3600, finite(el.rotation, 0))),
-          opacity: Math.max(0, Math.min(1, finite(el.opacity, 1))),
+          opacity: Math.max(0, Math.min(1, el.opacity == null ? 1 : finite(el.opacity, 1))),
           textAlign: ['left', 'center', 'right'].includes(el.textAlign) ? el.textAlign : 'left'
         }
       };
