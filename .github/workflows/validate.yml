@@ -195,4 +195,6 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" > "$RUNNER_TEMP/codelab-pixelforge-postgres-health.json"
           node -e "const h=require(process.env.RUNNER_TEMP + '/codelab-pixelforge-postgres-health.json'); if (h.persistence !== 'postgresql') { console.error('Expected PostgreSQL persistence, got:', h.persistence); process.exit(1); }"
+          node --check tests/pixelforge-raster-regression.test.js
+          node tests/pixelforge-raster-regression.test.js
           node tests/pixelforge-integration.test.js
