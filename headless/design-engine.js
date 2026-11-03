@@ -327,7 +327,23 @@ function parseEditorImageDataUrl(value) {
   const bytes = Buffer.from(payload, 'base64');
   assert(bytes.length > 0 && bytes.toString('base64') === payload, 'Image upload contains invalid Base64 data.');
   assert(bytes.length <= 2 * 1024 * 1024, 'Image exceeds the editor 2 MB upload limit.');
-  return { mimeType: match[1].toLowerCase(), byteLength: bytes.length };
+  const mimeType = match[1].toLowerCase();
+  assert(matchesImageSignature(bytes, mimeType), 'Image content signature does not match its declared MIME type.');
+  return { mimeType, byteLength: bytes.length };
+}
+
+function matchesImageSignature(bytes, mimeType) {
+  const startsWith = signature => bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte);
+  if (mimeType === 'image/png') return startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (mimeType === 'image/jpeg') return startsWith([0xff, 0xd8, 0xff]);
+  if (mimeType === 'image/gif') {
+    return startsWith([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) || startsWith([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+  }
+  if (mimeType === 'image/webp') {
+    return bytes.length >= 12 && startsWith([0x52, 0x49, 0x46, 0x46]) &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  }
+  return false;
 }
 
 function isSafeImageSource(value) {
