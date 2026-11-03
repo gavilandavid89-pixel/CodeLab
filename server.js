@@ -526,11 +526,13 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
     const count = Number(usage.rows[0].count);
     const bytes = Number(usage.rows[0].bytes);
     const storedProject = existing.rowCount ? existing.rows[0].project : null;
-    const currentRevision = storedProject && Number.isInteger(storedProject.revision) ? storedProject.revision : 0;
-    if (existing.rowCount && currentRevision > project.revision) {
+    const currentServerRevision = storedProject && Number.isInteger(storedProject.serverRevision) ? storedProject.serverRevision : 0;
+    const expectedServerRevision = Number.isInteger(project.serverRevision) ? project.serverRevision : 0;
+    if (existing.rowCount && expectedServerRevision !== currentServerRevision) {
       await client.query('ROLLBACK');
-      return { error: 'pixelforge_revision_conflict', status: 409, revision: currentRevision };
+      return { error: 'pixelforge_revision_conflict', status: 409, revision: currentServerRevision };
     }
+    const storedDocument = { ...project, serverRevision: currentServerRevision + 1 };
     if (!existing.rowCount && count >= MAX_PROJECTS) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_project_limit', status: 409, maxProjects: MAX_PROJECTS };
@@ -542,10 +544,10 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
     const now = Date.now();
     await client.query(
       'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size',
-      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(project), projectBytes]
+      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(storedDocument), Buffer.byteLength(JSON.stringify(storedDocument), 'utf8')]
     );
     await client.query('COMMIT');
-    return { status: existing.rowCount ? 200 : 201, now };
+    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision };
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     throw error;
@@ -2159,7 +2161,7 @@ const server = http.createServer(async (req, res) => {
             try {
               const result = await savePixelForgeProjectToDatabase(workspaceId, project, projectBytes);
               if (result.error) return sendJson(res, result.status, { error: result.error, ...(result.maxProjects ? { maxProjects: result.maxProjects } : {}), ...(result.maxBytes ? { maxBytes: result.maxBytes } : {}), ...(Number.isInteger(result.revision) ? { revision: result.revision } : {}) });
-              return sendJson(res, result.status, { ok: true, project: { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: result.now } });
+              return sendJson(res, result.status, { ok: true, project: { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: result.now, serverRevision: result.serverRevision } });
             } catch (error) {
               console.error('PixelForge PostgreSQL write failed:', error.message);
               return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
@@ -2167,11 +2169,13 @@ const server = http.createServer(async (req, res) => {
           }
           const now = Date.now();
           const existing = records.find(item => item.id === project.id);
-          const currentRevision = existing && existing.project && Number.isInteger(existing.project.revision) ? existing.project.revision : 0;
-          if (existing && currentRevision > project.revision) {
-            return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: currentRevision });
+          const currentServerRevision = existing && existing.project && Number.isInteger(existing.project.serverRevision) ? existing.project.serverRevision : 0;
+          const expectedServerRevision = Number.isInteger(project.serverRevision) ? project.serverRevision : 0;
+          if (existing && expectedServerRevision !== currentServerRevision) {
+            return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: currentServerRevision });
           }
-          const record = { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: now, lastOpenedAt: now, project };
+          const storedDocument = { ...project, serverRevision: currentServerRevision + 1 };
+          const record = { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: now, lastOpenedAt: now, project: storedDocument };
           records = records.filter(item => item.id !== project.id);
           if (!existing && records.length >= MAX_PROJECTS) {
             return sendJson(res, 409, { error: 'pixelforge_project_limit', maxProjects: MAX_PROJECTS });
@@ -2190,7 +2194,7 @@ const server = http.createServer(async (req, res) => {
             console.error('PixelForge account storage write failed:', error.message);
             return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
           }
-          return sendJson(res, existing ? 200 : 201, { ok: true, project: { id: record.id, name: record.name, width: record.width, height: record.height, updatedAt: now } });
+          return sendJson(res, existing ? 200 : 201, { ok: true, project: { id: record.id, name: record.name, width: record.width, height: record.height, updatedAt: now, serverRevision: storedDocument.serverRevision } });
         }
         if (pixelForgeItem && req.method === 'DELETE') {
           const id = decodePixelForgeProjectId(pixelForgeItem[1]);
