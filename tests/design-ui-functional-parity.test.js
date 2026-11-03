@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+const flowSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'design-flow.js'), 'utf8');
 
 function extract(startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -97,4 +98,18 @@ test('design-to-web conversion preserves the same layer visibility and visual co
   assert.match(converter, /data-design-identifier/);
   assert.match(converter, /getDesignElementDimensionCss\(el, 'width'\)/);
   assert.match(converter, /buildFlowAwareWebHtml\(p, html\)/);
+});
+
+
+test('multi-screen flow export honors hidden sources, responsive dimensions, opacity, rotation, and identifiers', () => {
+  const start = flowSource.indexOf('function buildFlowAwareWebHtml');
+  assert.notEqual(start, -1, 'missing multi-screen flow exporter');
+  const exporter = flowSource.slice(start);
+  assert.match(exporter, /source\.hidden !== true && source\.visible !== false/);
+  assert.match(exporter, /d\.elements\.filter\(el=>el && !el\.hidden && el\.visible !== false\)/);
+  assert.match(exporter, /getDesignElementDimension\(el,'width'/);
+  assert.match(exporter, /getDesignElementDimensionCss\(el,'width'\)/);
+  assert.match(exporter, /opacity:'\+opacity\+'/);
+  assert.match(exporter, /transform:rotate\('\+rotation\+'deg\)/);
+  assert.match(exporter, /data-design-identifier/);
 });
