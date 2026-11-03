@@ -465,16 +465,23 @@ async function ensurePixelForgeTable() {
   `);
 }
 
-async function readPixelForgeProjectsFromDatabase(workspaceId) {
+async function listPixelForgeProjectMetadataFromDatabase(workspaceId) {
   const result = await accountPool.query(
-    'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt", project, byte_size AS "byteSize" FROM codelab_pixelforge_projects WHERE workspace_id = $1 ORDER BY last_opened_at DESC',
+    'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt" FROM codelab_pixelforge_projects WHERE workspace_id = $1 ORDER BY last_opened_at DESC',
     [workspaceId]
   );
   return result.rows.map(row => ({
     id: row.id, name: row.name, width: row.width, height: row.height,
-    updatedAt: Number(row.updatedAt), lastOpenedAt: Number(row.lastOpenedAt),
-    project: row.project, byteSize: Number(row.byteSize)
+    updatedAt: Number(row.updatedAt), lastOpenedAt: Number(row.lastOpenedAt)
   }));
+}
+
+async function loadPixelForgeProjectFromDatabase(workspaceId, projectId) {
+  const result = await accountPool.query(
+    'SELECT project FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+    [workspaceId, projectId]
+  );
+  return result.rowCount ? result.rows[0].project : null;
 }
 
 async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes) {
@@ -2022,11 +2029,31 @@ const server = http.createServer(async (req, res) => {
         const workspaceId = userWorkspaceId(user);
         return await withPixelForgeAccountLock(workspaceId, async () => {
         const file = workspaceFile(workspaceId) + '.pixelforge.json';
+        if (accountPool && pixelForgeCollection && req.method === 'GET') {
+          try {
+            const projects = await listPixelForgeProjectMetadataFromDatabase(workspaceId);
+            return sendJson(res, 200, { projects });
+          } catch (error) {
+            console.error('PixelForge PostgreSQL list failed:', error.message);
+            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+          }
+        }
+        if (accountPool && pixelForgeItem && req.method === 'GET') {
+          const id = decodePixelForgeProjectId(pixelForgeItem[1]);
+          if (!id) return sendJson(res, 400, { error: 'invalid_project_id' });
+          try {
+            const project = await loadPixelForgeProjectFromDatabase(workspaceId, id);
+            return project
+              ? sendJson(res, 200, { project })
+              : sendJson(res, 404, { error: 'project_not_found' });
+          } catch (error) {
+            console.error('PixelForge PostgreSQL load failed:', error.message);
+            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+          }
+        }
         let records = [];
         try {
-          if (accountPool) {
-            records = await readPixelForgeProjectsFromDatabase(workspaceId);
-          } else if (fs.existsSync(file)) {
+          if (!accountPool && fs.existsSync(file)) {
             const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
             if (!Array.isArray(parsed)) throw new Error('invalid_pixel_forge_store');
             records = parsed;
