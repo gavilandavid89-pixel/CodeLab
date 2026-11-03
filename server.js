@@ -2118,6 +2118,7 @@ const server = http.createServer(async (req, res) => {
           if (body.action === 'commit') {
             const assembled = headlessTransfers.assembleCode({ transferId: body.transferId, workspaceId: id });
             if (assembled.workspaceId !== id) return sendJson(res, 404, { error: 'transfer_not_found' });
+            if (assembled.committed && assembled.receipt) return sendJson(res, 200, assembled.receipt);
             const latest = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
             if (latest.revision !== assembled.baseRevision) return sendJson(res, 409, { error: 'revision_conflict', revision: latest.revision });
             const project = latest.projects.find(item => item.id === assembled.projectId);
@@ -2136,14 +2137,15 @@ const server = http.createServer(async (req, res) => {
               if (validationError) return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
               writeState(id, result.state);
             }
-            headlessTransfers.consumeCode(assembled.id);
             const savedProject = result.state.projects.find(item => item.id === assembled.projectId);
             const savedCode = assembled.source === 'branch' ? savedProject.branch.code : savedProject.code;
             if (savedCode[assembled.field] !== assembled.value) return sendJson(res, 500, { error: 'code_transfer_readback_mismatch' });
-            return sendJson(res, 200, { ok: true, revision: result.revision, action: 'project.code.write', result: {
+            const response = { ok: true, revision: result.revision, action: 'project.code.write', result: {
               projectId: assembled.projectId, source: assembled.source, field: assembled.field,
               characters: assembled.value.length, sha256: sha256(assembled.value), readbackVerified: true
-            } });
+            } };
+            headlessTransfers.consumeCode(assembled.id, response);
+            return sendJson(res, 200, response);
           }
           return sendJson(res, 400, { error: 'invalid_code_transfer_action' });
         } catch (error) {
