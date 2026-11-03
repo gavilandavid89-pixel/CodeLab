@@ -129,6 +129,14 @@ function pixelProject(id, name, marker) {
     assert.deepEqual(pageErrors, [], 'PixelForge must initialize without uncaught browser errors');
     const statusText = await page.locator('#status').textContent().catch(() => '');
     assert.match(statusText, /CodeLab cloud|device/i, 'Save status should disclose the active persistence path');
+
+    const otherBrowserUser = seedSession('pixel-browser-other', 'Pixel Browser Other');
+    await context.addCookies([{ name: 'codelab_sid', value: otherBrowserUser.cookie.split('=')[1], url: BASE_URL }]);
+    const projectsAfterAccountSwitch = await page.evaluate(async () => {
+      const persistence = await import('/pixelforge/src/persistence.js');
+      return await persistence.listSavedProjects();
+    });
+    assert.deepEqual(projectsAfterAccountSwitch, [], 'Switching CodeLab accounts must not expose the previous account local backup');
     await context.close();
   } finally { await browser.close(); }
 
