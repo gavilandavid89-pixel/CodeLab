@@ -123,6 +123,9 @@
       if (tagEnd === -1) return -1;
 
       const tagName = tagMatch[1].toLowerCase();
+      // The HTML plaintext state consumes the remainder of the document; no later
+      // </body> token is a real close tag once this element begins.
+      if (tagName === 'plaintext') return -1;
       if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
         const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
         closingTag.lastIndex = tagEnd + 1;
