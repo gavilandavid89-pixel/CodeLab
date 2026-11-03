@@ -81,10 +81,22 @@ function pixelProject(id, name, marker) {
   assert.equal(final.json.project.name, 'Alice sprite v2');
   assert.equal(final.json.revision, 2);
 
+  const races = await Promise.all(['race_one', 'race_two'].map(marker => request('/api/pixelforge/projects/' + id, {
+    method: 'PUT', cookie: alice.cookie, body: { baseRevision: 2, project: pixelProject(id, 'Race ' + marker, marker) }
+  })));
+  assert.equal(races.filter(item => item.status === 200).length, 1, 'Exactly one same-revision cloud save should win');
+  assert.equal(races.filter(item => item.status === 409).length, 1, 'The competing cloud save should receive a revision conflict');
+  const afterRace = await request('/api/pixelforge/projects/' + id, { cookie: alice.cookie });
+  assert.equal(afterRace.json.revision, 3, 'A concurrent race must advance the document revision only once');
+
   const invalid = await request('/api/pixelforge/projects/' + crypto.randomUUID(), {
     method: 'PUT', cookie: alice.cookie, body: { project: { id: 'mismatch_id', name: 'Invalid', width: 0, height: 0 } }
   });
   assert.equal(invalid.status, 400, 'Invalid document metadata must be rejected');
+  const tooManyPixels = await request('/api/pixelforge/projects/' + crypto.randomUUID(), {
+    method: 'PUT', cookie: alice.cookie, body: { project: { id: 'pixel_area_invalid', name: 'Oversized canvas', width: 8192, height: 8192 } }
+  });
+  assert.equal(tooManyPixels.status, 400, 'Canvas area must be bounded to prevent oversized pixel allocations');
 
-  console.log('PixelForge CodeLab-account E2E passed: authenticated identity, isolated per-account projects, atomic revisions and stale-write rejection.');
+  console.log('PixelForge CodeLab-account E2E passed: authenticated identity, isolated per-account projects, atomic revisions, stale-write/race rejection, and canvas safety limits.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
