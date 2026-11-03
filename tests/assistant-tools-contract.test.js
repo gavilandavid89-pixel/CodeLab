@@ -82,7 +82,7 @@ for (const [action, queryAction] of [
   assert.doesNotMatch(handler, /projects\.find\(/, action + ' must not depend on the editor in-memory project model');
 }
 assert.match(bridge, /project deletion requires approval/i, 'project deletion must require explicit approval');
-assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
+assert.match(bridge, /Replacing existing design layers with a template requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(headlessRuntime, /project\.designUndoStack\.push\(JSON\.stringify\(project\.design\)\)/, 'atomic design batches must preserve saved undo history');
 assert.match(bridge, /executeSavedDesignBatch/, 'core design operations must use atomic saved-state batches');
