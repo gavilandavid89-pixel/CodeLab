@@ -68,3 +68,15 @@ function testInsertionBeforeRealBodyClose() {
   assert.equal(library.insertComponentHtml(source, fragment), source + '\n' + fragment,
     'plaintext consumes the rest of the document, so its fake body close must not be used');
 }
+
+{
+  const source = '<html><body><template><section>fake </body></section></template><p>Real body</p></body></html>';
+  assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
+    'template contents must not be treated as active document body markup');
+}
+
+{
+  const source = '<html><body><template><template><p>nested </body></p></template></template><p>Real body</p></body></html>';
+  assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
+    'nested template contents must be skipped as a unit');
+}
