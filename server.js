@@ -2061,7 +2061,7 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 200, { projects });
           } catch (error) {
             console.error('PixelForge PostgreSQL list failed:', error.message);
-            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+            return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
           }
         }
         if (accountPool && pixelForgeItem && req.method === 'GET') {
@@ -2074,7 +2074,7 @@ const server = http.createServer(async (req, res) => {
               : sendJson(res, 404, { error: 'project_not_found' });
           } catch (error) {
             console.error('PixelForge PostgreSQL load failed:', error.message);
-            return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+            return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
           }
         }
         let records = [];
@@ -2156,7 +2156,7 @@ const server = http.createServer(async (req, res) => {
               return sendJson(res, result.status, { ok: true, project: { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: result.now } });
             } catch (error) {
               console.error('PixelForge PostgreSQL write failed:', error.message);
-              return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+              return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
             }
           }
           const now = Date.now();
@@ -2193,7 +2193,7 @@ const server = http.createServer(async (req, res) => {
                 : sendJson(res, 404, { error: 'project_not_found' });
             } catch (error) {
               console.error('PixelForge PostgreSQL delete failed:', error.message);
-              return sendJson(res, 500, { error: 'pixelforge_storage_unavailable' });
+              return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
             }
           }
           const next = records.filter(item => item.id !== id);
