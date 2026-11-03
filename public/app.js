@@ -3439,8 +3439,8 @@ function distributeDesignElements(axis = 'horizontal') {
   if (!p || !p.design) return;
   if (p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(el => selectedDesignElementIds.includes(el.id));
-  if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   if (selected.some(el => el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de distribuirlas.', 'warn'); return; }
+  if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
   const positionKey = horizontal ? 'x' : 'y';
   const sizeKey = horizontal ? 'width' : 'height';
@@ -3450,19 +3450,33 @@ function distributeDesignElements(axis = 'horizontal') {
     position: getDesignElementPosition(el, positionKey, canvasDimension),
     size: getDesignElementDimension(el, sizeKey, canvasDimension)
   })).sort((a, b) => a.position - b.position);
+  if (ordered.some(item => !Number.isFinite(item.position) || !Number.isFinite(item.size) || item.size <= 0)) {
+    showToast('No se pudieron resolver las posiciones o dimensiones de las capas seleccionadas.', 'warn'); return;
+  }
   const start = ordered[0].position;
   const last = ordered[ordered.length - 1];
   const end = last.position + last.size;
   const totalSize = ordered.reduce((sum, item) => sum + item.size, 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
   if (!Number.isFinite(gap) || gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
-  recordDesignHistory();
+  const placements = [];
   let cursor = start;
   for (const item of ordered) {
-    item.el[positionKey] = item.el[positionKey + 'Unit'] === '%'
-      ? (canvasDimension > 0 ? cursor / canvasDimension * 100 : 0)
+    const unit = item.el[positionKey + 'Unit'] === '%' ? '%' : 'px';
+    const value = unit === '%'
+      ? (canvasDimension > 0 ? Math.round(cursor / canvasDimension * 10000) / 100 : 0)
       : Math.round(cursor);
+    const maximum = unit === '%' ? 200 : 10000;
+    if (!Number.isFinite(value) || value < 0 || value > maximum) {
+      showToast('La distribución excede los límites de posición admitidos; ajusta el lienzo o las capas.', 'warn'); return;
+    }
+    placements.push({ element: item.el, value, unit });
     cursor += item.size + gap;
+  }
+  recordDesignHistory();
+  for (const placement of placements) {
+    placement.element[positionKey] = placement.value;
+    placement.element[positionKey + 'Unit'] = placement.unit;
   }
   renderDesignWorkspace(); saveProjectsToStorage();
   showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
@@ -5084,8 +5098,8 @@ async function importDesignProjectJson(file) {
       id, type: raw.type,
       label: String(raw.label || raw.type).slice(0, 300),
       text: String(raw.text || '').slice(0, 10000),
-      x: finite(raw.x, 0, -6000, 6000),
-      y: finite(raw.y, 0, -6000, 6000),
+      x: finite(raw.x, 0, 0, raw.xUnit === '%' ? 200 : 10000),
+      y: finite(raw.y, 0, 0, raw.yUnit === '%' ? 200 : 10000),
       xUnit: ['px','%'].includes(raw.xUnit) ? raw.xUnit : 'px',
       yUnit: ['px','%'].includes(raw.yUnit) ? raw.yUnit : 'px',
       identifier: typeof raw.identifier === 'string' ? raw.identifier.trim().slice(0, 120) : '',
@@ -5306,7 +5320,6 @@ function getDesignElementPosition(el, axis, containerSize = 900) {
   const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
   const raw = Number(el && el[axis]);
   const value = Number.isFinite(raw) ? raw : 0;
-  if (unit === '%') return Math.max(0, Math.min(10000, containerSize * Math.max(0, Math.min(200, value)) / 100));
+  if (unit === '%') return containerSize * Math.max(0, Math.min(200, value)) / 100;
   return Math.max(0, Math.min(10000, value));
 }
-
