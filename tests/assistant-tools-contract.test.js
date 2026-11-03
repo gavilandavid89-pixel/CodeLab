@@ -60,7 +60,7 @@ assert.match(bridge, /\['widthUnit', 'heightUnit'\][\s\S]{0,160}\['px', '%', 'au
 assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/, 'design conversion must verify source preservation from the headless API');
 assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/, 'design conversion must use the shared headless runtime');
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
-assert.match(bridge, /Headless AI generation consumes provider quota and changes project code; approval: \\"approved\\" is required/, 'AI generation must require explicit approval');
+assert.match(bridge, /Headless AI generation consumes provider quota and changes project code; approval: "approved" is required/, 'AI generation must require explicit approval');
 assert.match(bridge, /command\.action = 'headless_ai_generate'/, 'legacy AI generation must reuse the headless provider and saved-code path');
 assert.match(bridge, /type:\s*'design\.flow\.connect'/, 'flow connections must use the shared saved-workspace runtime');
 assert.match(bridge, /apiKeyExposed: false/, 'AI settings inspection must not expose secrets');
