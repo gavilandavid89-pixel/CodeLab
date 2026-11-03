@@ -188,6 +188,7 @@ test('deleting internal link targets clears unlocked references and preserves at
   const engine = createDesignEngine();
   const input = project({ elements: [
     { id: 'cta', type: 'button', href: '#layer-target' },
+    { id: 'legacy-case-cta', type: 'button', href: '#LAYER-target' },
     { id: 'locked-cta', type: 'button', href: '#layer-target', locked: true },
     { id: 'target', type: 'rectangle' }
   ] });
@@ -195,11 +196,13 @@ test('deleting internal link targets clears unlocked references and preserves at
   assert.equal(input.design.elements.find(item => item.id === 'target').id, 'target');
   const unlockedInput = project({ elements: [
     { id: 'cta', type: 'button', href: '#layer-target' },
+    { id: 'legacy-case-cta', type: 'button', href: '#LAYER-target' },
     { id: 'target', type: 'rectangle' }
   ] });
   const result = engine.transact(unlockedInput, [{ type: 'element.delete', id: 'target' }]);
   assert.equal(result.project.design.elements.find(item => item.id === 'cta').href, '');
-  assert.deepEqual(result.results[0].clearedLinks, ['cta']);
+  assert.equal(result.project.design.elements.find(item => item.id === 'legacy-case-cta').href, '');
+  assert.deepEqual(result.results[0].clearedLinks.sort(), ['cta', 'legacy-case-cta']);
   assert.equal(unlockedInput.design.elements.find(item => item.id === 'cta').href, '#layer-target');
   const bulkInput = project({ elements: [
     { id: 'cta-a', type: 'button', href: '#layer-target-a' },
