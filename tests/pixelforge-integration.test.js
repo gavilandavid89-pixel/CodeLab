@@ -13,6 +13,12 @@ async function main() {
   assert.match(dashboard, /href="\/pixelforge\/index\.html"/, 'PixelForge should be a separate dashboard destination');
   assert.match(dashboard, /Crear proyecto/, 'existing project creation should remain available');
 
+  const sharedCoreResponse = await fetch(base + '/studio-core.js');
+  assert.equal(sharedCoreResponse.status, 200, 'the shared CodeLab studio runtime should be served');
+  const sharedCore = await sharedCoreResponse.text();
+  assert.match(sharedCore, /getCodeLabSession/, 'shared runtime should own session resolution');
+  assert.match(sharedCore, /codeLabRequest/, 'shared runtime should own API request semantics');
+
   const pageResponse = await fetch(base + '/pixelforge/index.html');
   assert.equal(pageResponse.status, 200, 'PixelForge entry route should serve its own editor page');
   const page = await pageResponse.text();
