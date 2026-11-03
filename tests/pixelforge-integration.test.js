@@ -86,9 +86,6 @@ async function main() {
   const deleted = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { method: 'DELETE', headers: authHeaders });
   assert.equal(deleted.status, 200, 'account owner should be able to delete their own project');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders })).status, 404, 'deleted project should no longer be available');
-  fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
-  fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
-
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext();
@@ -99,10 +96,36 @@ async function main() {
     assert.match(await page.locator('body').innerText(), /Ir a CodeLab e iniciar sesión/, 'anonymous visitors should be directed to CodeLab authentication');
     assert.equal(await page.locator('#canvas').count(), 0, 'editor must not initialize before account authentication');
     await context.close();
+
+    const accountContext = await browser.newContext();
+    await accountContext.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' } }));
+    await accountContext.addCookies([{ name: 'codelab_sid', value: sessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
+    const accountPage = await accountContext.newPage();
+    await accountPage.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    await accountPage.locator('#new-document').click();
+    await accountPage.locator('#new-dialog').waitFor({ state: 'visible' });
+    await accountPage.locator('#new-name').fill('Browser account artwork');
+    await accountPage.locator('#new-width').fill('12');
+    await accountPage.locator('#new-height').fill('8');
+    await accountPage.locator('#create-new').click();
+    await accountPage.locator('#new-dialog').waitFor({ state: 'hidden' });
+    await accountPage.locator('#save').click();
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'), null, { timeout: 10000 });
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#document-name').innerText(), 'Browser account artwork', 'the editor should recover the account-saved project after reload');
+    assert.equal(await accountPage.locator('#document-size').innerText(), '12 × 8', 'the account-saved project dimensions should survive reload');
+    await accountPage.locator('#projects-button').click();
+    await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
+    await accountPage.locator('.saved-project-open').filter({ hasText: 'Browser account artwork' }).waitFor({ state: 'visible' });
+    await accountContext.close();
   } finally {
     await browser.close();
+    fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
+    fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
   }
-  console.log('PixelForge routes/assets verified; anonymous account access is correctly blocked.');
+  console.log('PixelForge account gate, project CRUD/isolation, and authenticated browser save/reload verified.');
 }
 
 main().catch(error => {
