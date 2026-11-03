@@ -2135,6 +2135,7 @@ const server = http.createServer(async (req, res) => {
               project.width < 1 || project.height < 1 || project.width > 2048 || project.height > 2048 ||
               !Number.isInteger(project.revision) || project.revision < 0 ||
               !Number.isInteger(project.saveVersion) || project.saveVersion < 0 ||
+              (project.serverRevision !== undefined && (!Number.isInteger(project.serverRevision) || project.serverRevision < 0)) ||
               !Array.isArray(project.layers) || project.layers.length < 1 || project.layers.length > 64 ||
               typeof project.activeLayerId !== 'string') {
             return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
