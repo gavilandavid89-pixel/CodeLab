@@ -257,11 +257,15 @@ async function main() {
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 0,
       'switching to another CodeLab account must not reveal the previous account palette');
+    assert.equal(await accountPage.locator('#ai-provider-key').inputValue(), '',
+      'switching accounts must not carry the previous account API key into PixelForge');
     await accountContext.addCookies([{ name: 'codelab_sid', value: sessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 1,
       'switching back should restore the original account palette');
+    assert.equal(await accountPage.locator('#ai-provider-key').inputValue(), 'test-user-key-not-a-real-secret',
+      'switching back should restore only the original account provider settings');
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
