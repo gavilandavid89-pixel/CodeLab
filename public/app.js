@@ -3534,7 +3534,7 @@ function captureDesignSvg(project) {
     const w = Math.max(20, Math.min(4000, finite(el.width, 120) || 120)), h = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
     const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
-    const opacity = Math.max(0, Math.min(1, finite(el.opacity, 1)));
+    const opacity = Math.max(0, Math.min(1, el.opacity == null ? 1 : finite(el.opacity, 1)));
     const rotation = Math.max(-3600, Math.min(3600, finite(el.rotation, 0)));
     const wrap = markup => '<g opacity="' + opacity + '" transform="rotate(' + rotation + ' ' + (x + w / 2) + ' ' + (y + h / 2) + ')">' + markup + '</g>';
     const background = safeColor(el.background);
@@ -3615,6 +3615,9 @@ async function captureDesignForAI() {
       fontSize,
       fontWeight,
       radius,
+      opacity: Math.max(0, Math.min(1, el.opacity == null ? 1 : finite(el.opacity, 1))),
+      rotation: Math.max(-3600, Math.min(3600, finite(el.rotation, 0))),
+      locked: el.locked === true,
       textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
       }
     };
@@ -3711,7 +3714,7 @@ function exportDesignHtml() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const opacity = Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1));
+    const opacity = Math.max(0, Math.min(1, el.opacity == null ? 1 : Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1));
     const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
     const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
@@ -3994,7 +3997,7 @@ function renderDesignWorkspace() {
     node.style.left = layoutPosition.x + 'px'; node.style.top = layoutPosition.y + 'px';
     node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.opacity = String(Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1)));
+    node.style.opacity = String(Math.max(0, Math.min(1, el.opacity == null ? 1 : Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1)));
     node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
@@ -4171,7 +4174,7 @@ function updateDesignProperty(key, value) {
     node.style.left = layoutPosition.x+'px'; node.style.top = layoutPosition.y+'px';
     node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.opacity = String(Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1)));
+    node.style.opacity = String(Math.max(0, Math.min(1, el.opacity == null ? 1 : Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1)));
     node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
     node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
@@ -4448,7 +4451,7 @@ async function convertDesignToWeb() {
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
     const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const opacity = Math.max(0, Math.min(1, Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1));
+    const opacity = Math.max(0, Math.min(1, el.opacity == null ? 1 : Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1));
     const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
     const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
