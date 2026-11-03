@@ -27,6 +27,7 @@ async function request(path, options = {}) {
 
 export async function saveProject(project) {
   const result = await request(API, { method: 'PUT', body: JSON.stringify({ project }) });
+  if (result.project && Number.isInteger(result.project.serverRevision)) project.serverRevision = result.project.serverRevision;
   return result.project;
 }
 export async function listSavedProjects() {
