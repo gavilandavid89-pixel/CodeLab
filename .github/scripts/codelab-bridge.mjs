@@ -51,6 +51,11 @@ function parseCommand(raw) {
     if (args.operations.some(operation => operation && operation.type === 'branch.create' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing an existing headless branch requires approval: "approved".');
     if (args.operations.some(operation => operation && operation.type === 'design.template.apply' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing existing design layers with a template requires approval: "approved".');
   }
+  if (command.action === 'ai_generate') {
+    if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
+    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
+    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
+  }
   if (command.action === 'headless_ai_generate') {
     if (command.approval !== 'approved') throw new Error('Headless AI generation consumes provider quota and changes project code; approval: "approved" is required.');
     if (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id)) throw new Error('headless_ai_generate requires a valid project_id.');
