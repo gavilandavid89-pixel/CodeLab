@@ -11,6 +11,30 @@
     return data;
   }
 
+  async function getCodeLabAISettings(session) {
+    const auth = session && session.user ? session : await getCodeLabSession();
+    if (!auth.user || !auth.user.provider || auth.user.id == null) {
+      return { configured: false, mode: 'auto', baseUrl: '', model: '', apiKey: '' };
+    }
+    const key = 'codelab_xd_ai_settings_v1:' + auth.user.provider + '_' + auth.user.id;
+    let settings = {};
+    try {
+      const raw = root.localStorage && root.localStorage.getItem(key);
+      if (raw) settings = JSON.parse(raw) || {};
+    } catch (_) {}
+    const mode = ['api', 'auto', 'local'].includes(settings.mode) ? settings.mode : 'auto';
+    const apiKey = mode === 'api' && typeof settings.apiKey === 'string' ? settings.apiKey : '';
+    const baseUrl = typeof settings.baseUrl === 'string' ? settings.baseUrl.trim() : '';
+    const model = typeof settings.model === 'string' ? settings.model.trim() : '';
+    return {
+      configured: mode === 'api' && !!apiKey && !!baseUrl && !!model,
+      mode,
+      baseUrl,
+      model,
+      apiKey
+    };
+  }
+
   async function codeLabRequest(path, options = {}) {
     const response = await fetch(path, {
       credentials: 'same-origin',
@@ -38,5 +62,5 @@
     return data;
   }
 
-  root.CodeLabStudioCore = Object.freeze({ getCodeLabSession, codeLabRequest });
+  root.CodeLabStudioCore = Object.freeze({ getCodeLabSession, getCodeLabAISettings, codeLabRequest });
 })(typeof window !== 'undefined' ? window : globalThis);
