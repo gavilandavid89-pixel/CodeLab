@@ -94,7 +94,7 @@ function assertUnlocked(element, operation) {
 function clearInternalLinkReferences(project, deletedIds) {
   const cleared = [];
   for (const element of project.design.elements) {
-    if (deletedIds.has(element.id) || typeof element.href !== 'string' || !element.href.startsWith('#layer-')) continue;
+    if (deletedIds.has(element.id) || typeof element.href !== 'string' || !/^#layer-/i.test(element.href)) continue;
     const targetId = element.href.slice('#layer-'.length);
     if (!deletedIds.has(targetId)) continue;
     assertUnlocked(element, 'clear an internal link from');
