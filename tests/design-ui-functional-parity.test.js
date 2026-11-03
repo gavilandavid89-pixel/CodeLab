@@ -60,7 +60,7 @@ test('numeric property ranges allow coordinate zero and reject non-finite edits'
   assert.match(update, /const n = Number\(value\); if \(!Number\.isFinite\(n\)\) return;/);
   assert.match(update, /x: \[0,/);
   assert.match(update, /y: \[0,/);
-  assert.match(update, /width: \[el\.widthUnit === '%' \? 1 : 20,/);
+  assert.match(update, /width: \[el\.widthUnit === '%' \? 1 : el\.widthUnit === 'auto' \? 0 : 20,/);
   assert.match(update, /fontSize: \[8, 256\], weight: \[100, 900\]/);
   assert.match(update, /radius: \[0, 4000\]/);
 });
