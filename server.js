@@ -14,6 +14,7 @@ const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
 const { createTransferStore, sha256, MAX_IMAGE_BYTES } = require('./headless/transfer-store');
+const { finalizeResolvedImageUploads } = require('./headless/image-transfer-finalize');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -2197,10 +2198,11 @@ const server = http.createServer(async (req, res) => {
               return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
             }
             writeState(id, result.state);
-            for (const upload of resolvedUploadTokens) {
-              try { headlessTransfers.consumeImage({ uploadToken: upload.uploadToken, workspaceId: id, projectId: upload.projectId, operationId: body.operationId }); } catch (_) {}
-            }
           }
+          // Finalize tokens after both first-time saves and idempotent replays.
+          // If the process stopped after writeState but before token consumption,
+          // the retry must still consume the already-saved operation's token.
+          finalizeResolvedImageUploads(headlessTransfers, id, body.operationId, resolvedUploadTokens);
           return sendJson(res, 200, {
             ok: true,
             replayed: result.replayed,
