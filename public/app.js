@@ -4600,10 +4600,11 @@ function duplicateDesignElement() {
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
-  recordDesignHistory();
   const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
   const deletedElementIds = new Set(p.design.elements.filter(el => selectedIds.has(el.id) && !el.locked).map(el => el.id));
+  // A rejected deletion must not create a phantom undo step.
   if (!deletedElementIds.size) { showToast('Desbloquea la capa antes de eliminarla.', 'warn'); return; }
+  recordDesignHistory();
   p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
   // Never leave graph edges pointing at a layer that no longer exists.
   if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
