@@ -5,6 +5,18 @@ const { chromium } = require('playwright');
 
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 
+function makePixelProject(id, name, width = 2, height = 2) {
+  const layerId = 'layer-' + id;
+  return {
+    format: 'pixelforge-project', version: 1, id, name, width, height,
+    activeLayerId: layerId, revision: 0, saveVersion: 0,
+    layers: [{
+      id: layerId, name: 'Layer 1', visible: true, opacity: 1, locked: false,
+      pixels: Buffer.alloc(width * height * 4).toString('base64')
+    }]
+  };
+}
+
 async function main() {
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
@@ -65,7 +77,7 @@ async function main() {
   assert.equal(listBefore.status, 200, 'authenticated CodeLab users should list their PixelForge projects');
   assert.deepEqual((await listBefore.json()).projects, [], 'new account should start with an empty PixelForge project list');
 
-  const fixture = { id: 'integration-artwork', name: 'Account integration artwork', width: 2, height: 2, layers: [] };
+  const fixture = makePixelProject('integration-artwork', 'Account integration artwork');
   const saved = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -134,18 +146,14 @@ async function main() {
       const response = await fetch(base + '/api/pixelforge/projects', {
         method: 'PUT',
         headers: { ...authHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify({ project: {
-          id: 'limit-project-' + index, name: 'Limit project ' + index, width: 2, height: 2, layers: []
-        } })
+        body: JSON.stringify({ project: makePixelProject('limit-project-' + index, 'Limit project ' + index) })
       });
       assert.ok(response.status === 200 || response.status === 201, 'projects below the account limit should save');
     }
     const overflow = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
       headers: { ...authHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ project: {
-        id: 'limit-project-overflow', name: 'Overflow project', width: 2, height: 2, layers: []
-      } })
+      body: JSON.stringify({ project: makePixelProject('limit-project-overflow', 'Overflow project') })
     });
     assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
     assert.equal((await overflow.json()).error, 'pixelforge_project_limit');
