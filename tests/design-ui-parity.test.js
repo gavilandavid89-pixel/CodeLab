@@ -159,8 +159,8 @@ test('visible-layer behavior is shared by editor, AI context, and HTML export; l
   assert.match(render, /layerIndex <= 0 \|\| el\.locked/);
   assert.match(render, /layerIndex >= p\.design\.elements\.length - 1 \|\| el\.locked/);
   assert.match(render, /Opacidad \(0–1\)/);
-  assert.match(render, /key === 'opacity' && el\\.opacity == null \\? '1'/);
-  assert.match(render, /key === 'rotation' && el\\.rotation == null \\? '0'/);
+  assert.match(render, /key === 'opacity' && el\.opacity == null \? '1'/);
+  assert.match(render, /key === 'rotation' && el\.rotation == null \? '0'/);
   assert.match(render, /Rotación \(°\)/);
   assert.match(render, /Unidad X/);
   assert.match(render, /Unidad Y/);
