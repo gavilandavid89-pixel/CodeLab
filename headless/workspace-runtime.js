@@ -376,19 +376,19 @@ function applyOperation(state, operation) {
       assert(sourceProject.id !== targetProject.id, 'A flow connection must target a different project.');
       const source = sourceProject.design.elements.find(item => item.id === operation.sourceElementId);
       assert(source, 'Flow source layer not found.');
-      assert(source.locked !== true, 'Cannot connect navigation from a locked layer.', 'HEADLESS_LOCKED_ELEMENT');
       assert(source.flowRole !== 'menu', 'Menu layers cannot navigate to another project.');
-      if (!Array.isArray(sourceProject.design.flowConnections)) sourceProject.design.flowConnections = [];
-      const existingForSource = sourceProject.design.flowConnections.filter(item => item && item.sourceElementId === source.id);
+      const connections = Array.isArray(sourceProject.design.flowConnections) ? sourceProject.design.flowConnections : [];
+      const existingForSource = connections.filter(item => item && item.sourceElementId === source.id);
       if (existingForSource.length === 1 && existingForSource[0].targetProjectId === targetProject.id && source.flowRole === 'navigate') {
         return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: source.id, targetProjectId: targetProject.id, designRevision: sourceProject.design.revision || 0, changed: false };
       }
+      assert(source.locked !== true, 'Cannot connect navigation from a locked layer.', 'HEADLESS_LOCKED_ELEMENT');
       if (!Array.isArray(sourceProject.designUndoStack)) sourceProject.designUndoStack = [];
       if (!Array.isArray(sourceProject.designRedoStack)) sourceProject.designRedoStack = [];
       sourceProject.designUndoStack.push(JSON.stringify(sourceProject.design));
       if (sourceProject.designUndoStack.length > 60) sourceProject.designUndoStack.shift();
       sourceProject.designRedoStack = [];
-      sourceProject.design.flowConnections = sourceProject.design.flowConnections.filter(item => !item || item.sourceElementId !== source.id);
+      sourceProject.design.flowConnections = connections.filter(item => !item || item.sourceElementId !== source.id);
       sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetProject.id });
       source.flowRole = 'navigate';
       sourceProject.design.revision = (Number.isInteger(sourceProject.design.revision) ? sourceProject.design.revision : 0) + 1;
@@ -400,7 +400,6 @@ function applyOperation(state, operation) {
       assert(sourceProject.type === 'design' && sourceProject.design, 'design.flow.disconnect requires a design source project.');
       assert(typeof operation.sourceElementId === 'string', 'sourceElementId is required.');
       const source = sourceProject.design.elements.find(item => item.id === operation.sourceElementId);
-      assert(!source || source.locked !== true, 'Cannot disconnect navigation from a locked layer.', 'HEADLESS_LOCKED_ELEMENT');
       const connections = Array.isArray(sourceProject.design.flowConnections) ? sourceProject.design.flowConnections : [];
       const remainingConnections = connections.filter(item =>
         !(item && item.sourceElementId === operation.sourceElementId && (!operation.targetProjectId || item.targetProjectId === operation.targetProjectId))
@@ -411,6 +410,7 @@ function applyOperation(state, operation) {
       if (removed === 0 && !clearStaleRole) {
         return { type: operation.type, sourceProjectId: sourceProject.id, sourceElementId: operation.sourceElementId, removed: 0, designRevision: sourceProject.design.revision || 0, changed: false };
       }
+      assert(!source || source.locked !== true, 'Cannot disconnect navigation from a locked layer.', 'HEADLESS_LOCKED_ELEMENT');
       if (!Array.isArray(sourceProject.designUndoStack)) sourceProject.designUndoStack = [];
       if (!Array.isArray(sourceProject.designRedoStack)) sourceProject.designRedoStack = [];
       sourceProject.designUndoStack.push(JSON.stringify(sourceProject.design));
