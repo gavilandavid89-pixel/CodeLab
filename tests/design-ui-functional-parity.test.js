@@ -87,3 +87,14 @@ test('UI JSON import preserves the same layer contract and remaps flow connectio
   assert.match(importer, /flowConnections: sourceDesign\.flowConnections\.filter/);
   assert.match(importer, /sourceElementId: oldToNewId\.get\(connection\.sourceElementId\)/);
 });
+
+
+test('design-to-web conversion preserves the same layer visibility and visual contract', () => {
+  const converter = extract('async function convertDesignToWeb', 'function setupNewProjectModalKeys');
+  assert.match(converter, /p\.design\.elements\.filter\(el => el && !el\.hidden\)/);
+  assert.match(converter, /const opacity = Math\.max\(0, Math\.min\(1, Number\(el\.opacity \?\? 1\)\)\)/);
+  assert.match(converter, /const rotation = Math\.max\(-3600, Math\.min\(3600, Number\(el\.rotation\) \|\| 0\)\)/);
+  assert.match(converter, /data-design-identifier/);
+  assert.match(converter, /getDesignElementDimensionCss\(el, 'width'\)/);
+  assert.match(converter, /buildFlowAwareWebHtml\(p, html\)/);
+});
