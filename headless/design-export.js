@@ -260,7 +260,7 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const widthCss = autoLayout ? designElementDimensionCss(element, 'width') : (w + 'px');
     const heightCss = autoLayout && element.heightUnit !== '%' ? designElementDimensionCss(element, 'height') : (h + 'px');
     const style = positioning + 'width:' + widthCss + ';height:' + heightCss + ';color:' + color +
-      ';background:' + elementBackground + ';min-width:20px;min-height:20px;font-size:' + fontSize + 'px;font-weight:' + weight +
+      ';background:' + elementBackground + ';min-width:' + (element.widthUnit === '%' ? '1px' : '20px') + ';min-height:' + (element.heightUnit === '%' ? '1px' : '20px') + ';font-size:' + fontSize + 'px;font-weight:' + weight +
       ';text-align:' + align + ';border-radius:' + (element.type === 'ellipse' ? '50%' : radius + 'px') +
       ';display:flex;align-items:center;box-sizing:border-box;padding:' + (element.type === 'image' ? '0' : '4px') +
       ';overflow:hidden;opacity:' + opacity + ';' + (rotation ? 'transform:rotate(' + rotation + 'deg);transform-origin:center center;' : '') +
