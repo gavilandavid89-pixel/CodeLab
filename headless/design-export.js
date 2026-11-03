@@ -7,6 +7,10 @@ const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['heading', 'text', 'button', 'rectangle', 'ellipse', 'image']);
 
+function isElementVisible(element) {
+  return !!element && element.visible !== false && element.hidden !== true;
+}
+
 function escapeHtml(value) {
   return String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -78,7 +82,13 @@ function exportDesignJson(project) {
 }
 
 function exportDesignSvg(project) {
-  return renderSvg(project);
+  const copy = JSON.parse(JSON.stringify(project));
+  if (copy && copy.design && Array.isArray(copy.design.elements)) {
+    copy.design.elements = copy.design.elements.map(element =>
+      element && element.hidden === true ? { ...element, visible: false } : element
+    );
+  }
+  return renderSvg(copy);
 }
 
 function safeExportColor(value, fallback) {
@@ -126,7 +136,7 @@ function designCanvasHeight(design) {
 
 function designLayoutPositions(design) {
   const elements = Array.isArray(design && design.elements)
-    ? design.elements.filter(el => !!el && typeof el === 'object' && el.visible !== false)
+    ? design.elements.filter(el => el && typeof el === 'object' && isElementVisible(el))
     : [];
   const frameWidth = designCanvasWidth(design);
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
@@ -139,7 +149,7 @@ function designLayoutPositions(design) {
       const x = el.xUnit === '%' ? (rawX / 100) * frameWidth : rawX;
       const canvasHeight = designCanvasHeight(design) || 900;
       const y = el.yUnit === '%' ? (rawY / 100) * canvasHeight : rawY;
-      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      const height = designElementDimension(el, 'height', canvasHeight);
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
     }
@@ -150,8 +160,8 @@ function designLayoutPositions(design) {
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
   let x = padding, y = padding, rowHeight = 0;
   for (const el of elements) {
-    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const width = designElementDimension(el, 'width', Math.max(20, frameWidth - padding * 2));
+    const height = designElementDimension(el, 'height', Math.max(20, (Number(design.canvasHeight) || 900) - padding * 2));
     if (direction === 'row') {
       if (x > padding && x + width > frameWidth - padding) {
         x = padding; y += rowHeight + gap; rowHeight = 0;
@@ -165,6 +175,34 @@ function designLayoutPositions(design) {
   }
   const contentBottom = direction === 'row' ? y + rowHeight : y - gap;
   return { positions, height: Math.min(6000, Math.max(designCanvasHeight(design) || 900, contentBottom + padding)), mode, frameWidth, direction, gap, padding };
+}
+
+function designElementDimension(el, axis, containerSize) {
+  const fallback = axis === 'width' ? 120 : 48;
+  const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  if (unit === '%') return Math.max(20, Math.min(4000, containerSize * Math.min(100, value) / 100));
+  if (unit === 'auto' && el) {
+    if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
+    if (el.type === 'image') return value;
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
+    const content = String(el.text || el.label || '');
+    if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
+    const width = designElementDimension(el, 'width', containerSize);
+    const charsPerLine = Math.max(1, Math.floor(width / (fontSize * 0.56)));
+    return Math.max(24, Math.min(4000, Math.ceil(Math.max(1, Math.ceil(content.length / charsPerLine)) * fontSize * 1.35 + 12)));
+  }
+  return Math.max(20, Math.min(4000, value));
+}
+
+function designElementDimensionCss(el, axis) {
+  const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  if (unit === 'auto') return 'auto';
+  const fallback = axis === 'width' ? 120 : 48;
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  return unit === '%' ? Math.min(100, value) + '%' : Math.max(20, Math.min(4000, value)) + 'px';
 }
 
 function designLayerDomId(id) {
@@ -183,13 +221,13 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
   const background = safeExportColor(design.background, '#ffffff');
 
   const elements = (Array.isArray(design.elements) ? design.elements : []).filter(element =>
-    element && typeof element === 'object' && element.visible !== false
+    element && typeof element === 'object' && isElementVisible(element)
   ).map(element => {
     const position = layout.positions.get(element.id) || { x: Number(element.x) || 0, y: Number(element.y) || 0 };
     const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
     const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
-    const w = Math.max(20, Math.min(4000, Number(element.width) || 120));
-    const h = Math.max(20, Math.min(4000, Number(element.height) || 48));
+    const w = designElementDimension(element, 'width', autoLayout ? Math.max(20, width - padding * 2) : width);
+    const h = designElementDimension(element, 'height', autoLayout ? Math.max(20, (designCanvasHeight(design) || 900) - padding * 2) : (designCanvasHeight(design) || 900));
     const color = safeExportColor(element.color, '#111827');
     const elementBackground = safeExportColor(element.background, 'transparent');
     const fontSize = Math.max(8, Math.min(256, Number(element.fontSize) || 16));
@@ -207,8 +245,10 @@ function renderSemanticDesignPage(project, projectsById, isRoot) {
     const positioning = autoLayout
       ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;'
       : 'position:absolute;left:' + x + 'px;top:' + y + 'px;';
-    const style = positioning + 'width:' + w + 'px;height:' + h + 'px;color:' + color +
-      ';background:' + elementBackground + ';font-size:' + fontSize + 'px;font-weight:' + weight +
+    const widthCss = autoLayout ? designElementDimensionCss(element, 'width') : (w + 'px');
+    const heightCss = autoLayout && element.heightUnit !== '%' ? designElementDimensionCss(element, 'height') : (h + 'px');
+    const style = positioning + 'width:' + widthCss + ';height:' + heightCss + ';color:' + color +
+      ';background:' + elementBackground + ';min-width:20px;min-height:20px;font-size:' + fontSize + 'px;font-weight:' + weight +
       ';text-align:' + align + ';border-radius:' + (element.type === 'ellipse' ? '50%' : radius + 'px') +
       ';display:flex;align-items:center;box-sizing:border-box;padding:' + (element.type === 'image' ? '0' : '4px') +
       ';overflow:hidden;opacity:' + opacity + ';' + (rotation ? 'transform:rotate(' + rotation + 'deg);transform-origin:center center;' : '') +
@@ -274,7 +314,7 @@ function exportDesignHtml(project, workspaceProjects = [project]) {
       if (!connection || typeof connection.targetProjectId !== 'string') continue;
       const sourceElement = (Array.isArray(item.design.elements) ? item.design.elements : [])
         .find(element => element && element.id === connection.sourceElementId);
-      if (!sourceElement || sourceElement.visible === false) continue;
+      if (!isElementVisible(sourceElement)) continue;
       visit(projectsById.get(connection.targetProjectId));
     }
   }
@@ -350,8 +390,19 @@ function importDesignJson(input, options = {}) {
       text: String(raw.text || '').slice(0, 10000),
       x: clamp(raw.x, 0, -6000, 6000),
       y: clamp(raw.y, 0, -6000, 6000),
-      width: clamp(raw.width, 120, 20, 4000),
-      height: clamp(raw.height, 48, 20, 4000),
+      ...(['px', '%'].includes(raw.xUnit) ? { xUnit: raw.xUnit } : {}),
+      ...(['px', '%'].includes(raw.yUnit) ? { yUnit: raw.yUnit } : {}),
+      width: clamp(raw.width, 120, raw.widthUnit === '%' ? 1 : 20, raw.widthUnit === '%' ? 100 : 4000),
+      height: clamp(raw.height, 48, raw.heightUnit === '%' ? 1 : 20, raw.heightUnit === '%' ? 100 : 4000),
+      ...( ['px', '%', 'auto'].includes(raw.widthUnit) ? { widthUnit: raw.widthUnit } : {}),
+      ...( ['px', '%', 'auto'].includes(raw.heightUnit) ? { heightUnit: raw.heightUnit } : {}),
+      ...(typeof raw.identifier === 'string' && raw.identifier.trim() ? { identifier: raw.identifier.trim().slice(0, 120) } : {}),
+      ...(typeof raw.hidden === 'boolean' ? { hidden: raw.hidden } : {}),
+      ...(typeof raw.visible === 'boolean' ? { visible: raw.visible } : {}),
+      ...(typeof raw.locked === 'boolean' ? { locked: raw.locked } : {}),
+      ...(Number.isFinite(Number(raw.opacity)) && raw.opacity !== null ? { opacity: clamp(raw.opacity, 1, 0, 1) } : {}),
+      ...(Number.isFinite(Number(raw.rotation)) && raw.rotation !== null ? { rotation: clamp(raw.rotation, 0, -3600, 3600) } : {}),
+      ...( ['navigate', 'menu'].includes(raw.flowRole) ? { flowRole: raw.flowRole } : {}),
       color: safeColor(raw.color, '#111827'),
       background: safeColor(raw.background, 'transparent'),
       fontSize: clamp(raw.fontSize, 16, 8, 200),
@@ -359,6 +410,7 @@ function importDesignJson(input, options = {}) {
       radius: clamp(raw.radius, 0, 0, 500),
       textAlign: ['left', 'center', 'right'].includes(raw.textAlign) ? raw.textAlign : 'left',
       ...(raw.type === 'button' ? { href: safeLink(hrefRaw) } : {}),
+      ...(typeof raw.href === 'string' && raw.type !== 'button' ? { href: safeLink(hrefRaw) } : {}),
       ...(raw.type === 'image' ? {
         src, alt: String(raw.alt || raw.label || 'Imagen del diseño').slice(0, 300),
         objectFit: ['contain', 'cover', 'fill'].includes(raw.objectFit) ? raw.objectFit : 'cover'
@@ -397,7 +449,13 @@ function importDesignJson(input, options = {}) {
       layoutGap: clamp(sourceDesign.layoutGap, 16, 0, 200),
       layoutPadding: clamp(sourceDesign.layoutPadding, 24, 0, 200),
       ...(Number.isInteger(Number(sourceDesign.canvasWidth)) && Number(sourceDesign.canvasWidth) >= 100 && Number(sourceDesign.canvasWidth) <= 4000 ? { canvasWidth: Number(sourceDesign.canvasWidth) } : {}),
-      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {})
+      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {}),
+      ...(Array.isArray(sourceDesign.flowConnections) ? {
+        flowConnections: sourceDesign.flowConnections.filter(connection => connection && typeof connection === 'object' &&
+          typeof connection.sourceElementId === 'string' && oldToNewId.has(connection.sourceElementId) &&
+          typeof connection.targetProjectId === 'string' && connection.targetProjectId.length <= 200)
+          .map(connection => ({ ...connection, sourceElementId: oldToNewId.get(connection.sourceElementId) }))
+      } : {})
     }
   };
   return normalizeDesignProject(project);
@@ -421,7 +479,7 @@ function buildAiDesignCaptureContext(project, scale = 2) {
     throw error;
   }
   const elements = (Array.isArray(design.elements) ? design.elements : [])
-    .filter(el => !!el && typeof el === 'object' && el.visible !== false)
+    .filter(el => el && typeof el === 'object' && isElementVisible(el))
     .map((el, index) => {
       const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
       const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -434,8 +492,8 @@ function buildAiDesignCaptureContext(project, scale = 2) {
         bounds: {
           x: Math.max(-6000, Math.min(6000, finite(position.x, 0))),
           y: Math.max(-6000, Math.min(6000, finite(position.y, 0))),
-          width: Math.max(20, Math.min(4000, finite(el.width, 120) || 120)),
-          height: Math.max(20, Math.min(4000, finite(el.height, 48) || 48))
+          width: designElementDimension(el, 'width', layout.mode === 'auto' ? Math.max(20, layout.frameWidth - 2 * (layout.padding || 0)) : layout.frameWidth),
+          height: designElementDimension(el, 'height', layout.mode === 'auto' ? Math.max(20, (designCanvasHeight(design) || 900) - 2 * (layout.padding || 0)) : (designCanvasHeight(design) || 900))
         },
         style: {
           color: String(el.color || '#111827').slice(0, 100),
