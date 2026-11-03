@@ -332,8 +332,10 @@ function applyOperation(state, operation) {
       project.designRedoStack = [];
       project.design.background = template.background;
       project.design.elements = template.elements;
+      project.design.canvasWidth = template.canvasWidth;
       project.design.canvasHeight = template.canvasHeight;
       if (project.design.canvas && typeof project.design.canvas === 'object' && !Array.isArray(project.design.canvas)) {
+        project.design.canvas.width = template.canvasWidth;
         project.design.canvas.height = template.canvasHeight;
       }
       project.design.revision = (Number.isInteger(project.design.revision) ? project.design.revision : 0) + 1;
