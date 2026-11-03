@@ -90,3 +90,17 @@ test('chunked image upload rejects a changed chunk and invalid full-image hash',
     assert.throws(() => f.store.commitImage({ transferId: started.transferId, workspaceId: 'ws1' }), /hash_mismatch/);
   } finally { f.cleanup(); }
 });
+
+test('consumed image token can only be replayed by the same saved operation ID', () => {
+  const f = fixture();
+  try {
+    const png = Buffer.from([137,80,78,71,13,10,26,10,1,9,8,7]);
+    const upload = f.store.putImage({ workspaceId: 'ws1', projectId: 'design_123', bytes: png, declaredMime: 'image/png' });
+    const operationId = 'design_save_retry_01';
+    const first = f.store.consumeImage({ uploadToken: upload.uploadToken, workspaceId: 'ws1', projectId: 'design_123', operationId });
+    assert.equal(first.sha256, sha256(png));
+    const retry = f.store.resolveImage({ uploadToken: upload.uploadToken, workspaceId: 'ws1', projectId: 'design_123', operationId });
+    assert.equal(retry.dataUrl, first.dataUrl);
+    assert.throws(() => f.store.resolveImage({ uploadToken: upload.uploadToken, workspaceId: 'ws1', projectId: 'design_123', operationId: 'different_operation_02' }), /already_consumed/);
+  } finally { f.cleanup(); }
+});
