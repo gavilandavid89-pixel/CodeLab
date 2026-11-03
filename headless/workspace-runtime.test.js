@@ -370,6 +370,18 @@ test('rejects invalid headless query types and unknown components', () => {
   assert.throws(() => queryHeadlessWorkspace(state(), { action: 'component.inspect', args: { componentId: 'not-real' } }), error => error.code === 'HEADLESS_COMPONENT_NOT_FOUND');
 });
 
+test('generated duplicate project names stay within the 200 character limit', () => {
+  const source = webProject();
+  source.name = 'S'.repeat(200);
+  const duplicated = applyHeadlessBatch(state([source]), request([
+    { type: 'project.duplicate', projectId: source.id, newProjectId: 'proj_long_name_copy' }
+  ], { operationId: 'test_duplicate_long_name_01' }));
+  const duplicate = duplicated.state.projects.find(project => project.id === 'proj_long_name_copy');
+  assert.equal(duplicate.name.length, 200);
+  assert.ok(duplicate.name.endsWith(' copy'));
+  assert.equal(duplicate.name, 'S'.repeat(195) + ' copy');
+});
+
 test('creates an isolated branch, performs a three-way merge, and can undo it', () => {
   const initial = state([webProject()]);
   const created = applyHeadlessBatch(initial, request([
