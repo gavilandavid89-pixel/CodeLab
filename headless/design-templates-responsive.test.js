@@ -80,6 +80,63 @@ test('template sizing falls back for canvas widths outside engine limits', () =>
   assert.ok(oversized.elements.every(element => element.x + element.width <= oversized.canvasWidth));
 });
 
+test('replacing design layers with a template removes dangling flow links and undo restores them', () => {
+  const source = {
+    id: 'proj_template_flow',
+    type: 'design',
+    name: 'Source',
+    design: {
+      frame: 'desktop',
+      canvasWidth: 1440,
+      canvasHeight: 900,
+      canvas: { width: 1440, height: 900, unit: 'px' },
+      revision: 0,
+      elements: [{ id: 'el_old_link', type: 'button', text: 'Open', flowRole: 'navigate' }],
+      flowConnections: [{ sourceElementId: 'el_old_link', targetProjectId: 'proj_template_flow_target' }]
+    }
+  };
+  const initial = {
+    revision: 0,
+    projects: [source, {
+      id: 'proj_template_flow_target',
+      type: 'design',
+      name: 'Target',
+      design: { frame: 'desktop', canvasWidth: 1440, canvasHeight: 900, revision: 0, elements: [] }
+    }]
+  };
+  const applied = applyHeadlessBatch(initial, {
+    operationId: 'template-flow-apply-001',
+    baseRevision: 0,
+    operations: [{
+      type: 'design.template.apply',
+      projectId: source.id,
+      templateId: 'landing',
+      replaceExisting: true,
+      approved: true
+    }]
+  });
+  assert.deepEqual(applied.state.projects[0].design.flowConnections, []);
+  assert.ok(applied.state.projects[0].design.elements.every(element => element.id !== 'el_old_link'));
+
+  const undone = applyHeadlessBatch(applied.state, {
+    operationId: 'template-flow-undo-001',
+    baseRevision: applied.state.revision,
+    operations: [{ type: 'design.history.undo', projectId: source.id }]
+  });
+  assert.deepEqual(undone.state.projects[0].design.flowConnections, [
+    { sourceElementId: 'el_old_link', targetProjectId: 'proj_template_flow_target' }
+  ]);
+  assert.equal(undone.state.projects[0].design.elements[0].id, 'el_old_link');
+
+  const redone = applyHeadlessBatch(undone.state, {
+    operationId: 'template-flow-redo-001',
+    baseRevision: undone.state.revision,
+    operations: [{ type: 'design.history.redo', projectId: source.id }]
+  });
+  assert.deepEqual(redone.state.projects[0].design.flowConnections, []);
+  assert.ok(redone.state.projects[0].design.elements.every(element => element.id !== 'el_old_link'));
+});
+
 test('applying a template expands persisted canvas height to fit its layers', () => {
   const state = {
     revision: 0,
