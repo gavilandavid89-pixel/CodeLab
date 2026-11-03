@@ -36,6 +36,15 @@ function testInsertionBeforeRealBodyClose() {
 }
 
 {
+  for (const tag of ['textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes']) {
+    const source = '<html><body><' + tag + '>embedded </body> text</' + tag + '><p>Existing</p></body></html>';
+    const inserted = library.insertComponentHtml(source, fragment);
+    assert.equal(inserted.indexOf(fragment), source.lastIndexOf('</body>'), tag + ' content must not be mistaken for the body close');
+    assert.ok(inserted.includes('embedded </body> text'), tag + ' content should remain unchanged');
+  }
+}
+
+{
   const source = '<html><body>Existing</BODY ></html>';
   const inserted = library.insertComponentHtml(source, fragment);
   assert.ok(inserted.endsWith('Existing' + fragment + '\n</BODY ></html>'));
