@@ -194,7 +194,7 @@ function applyOperation(state, operation) {
         'HEADLESS_BRANCH_UNDO_CONFLICT');
       project.mergeHistory = project.mergeHistory.slice(0, -1);
       project.code = clone(backup.code || { html: '', css: '', js: '' });
-      project.updatedAt = backup.updatedAt || new Date().toISOString();
+      project.updatedAt = new Date().toISOString();
       if (backup.branch) project.branch = clone(backup.branch);
       else delete project.branch;
       return { type: operation.type, projectId: project.id, restoredBranch: !!backup.branch, remainingBackups: project.mergeHistory.length };
