@@ -4121,7 +4121,7 @@ function renderDesignWorkspace() {
     updateDesignHistoryButtons(); return;
   }
   const field = (label, key, type='number', extra='') => {
-    const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (el[key] == null ? '' : String(el[key]));
+    const fieldValue = key === 'src' && String(el.src || '').startsWith('data:image/') ? '' : (key === 'opacity' && el.opacity == null ? '1' : key === 'rotation' && el.rotation == null ? '0' : (el[key] == null ? '' : String(el[key])));
     const numericRanges = { x: 'min="0" max="' + (el.xUnit === '%' ? 100 : 10000) + '" step="1"', y: 'min="0" max="' + (el.yUnit === '%' ? 100 : 10000) + '" step="1"', width: 'min="20" max="4000" step="1"', height: 'min="20" max="4000" step="1"', fontSize: 'min="8" max="240" step="1"', radius: 'min="0" max="500" step="1"', opacity: 'min="0" max="1" step="0.05"', rotation: 'min="-3600" max="3600" step="1"' };
     const constraints = type === 'number' ? (numericRanges[key] || '') : '';
     return '<label class="block space-y-1"><span class="text-slate-400">' + label + '</span><input id="designProperty-' + key + '" ' + constraints + ' ' + extra + ' type="' + type + '" value="' + escapeAttr(fieldValue) + '" onfocus="recordDesignHistory()" oninput="updateDesignProperty(\'' + key + '\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:border-violet-400 outline-none"></label>';
