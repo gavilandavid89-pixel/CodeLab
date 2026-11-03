@@ -492,6 +492,9 @@ async function main() {
     await clickDocumentPixel(0, 0);
     assert.equal(await accountPage.locator('#color').inputValue(), '#00ff00',
       'eyedropper should sample the visible pixel into the foreground color');
+    await accountPage.locator('#color').evaluate(input => {
+      input.value = '#0000ff'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     await accountPage.locator('#rectangle-tool').click();
     const shapeStart = await accountPage.evaluate(() => {
       const canvas = document.querySelector('#canvas'), rect = canvas.getBoundingClientRect();
@@ -514,6 +517,10 @@ async function main() {
     await waitForPixelSave();
     assert.match(await accountPage.locator('#status').innerText(), /Rectangle drawn/,
       'rectangle tool should commit a shape gesture');
+    toolProject = await readBrowserArtwork();
+    assert.ok(Buffer.from(toolProject.layers.find(layer => layer.id === toolProject.activeLayerId).pixels, 'base64')
+      .some((value, index, pixels) => index % 4 === 0 && value === 0 && pixels[index + 1] === 0 && pixels[index + 2] === 255 && pixels[index + 3] === 255),
+      'rectangle tool should write visible blue pixels into the persisted raster');
     await accountPage.locator('#add-layer').click();
     await waitForPixelSave();
     toolProject = await readBrowserArtwork();
