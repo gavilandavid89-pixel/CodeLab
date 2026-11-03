@@ -4,7 +4,7 @@ on:
   push:
     branches: ["main", "fix/**", "feature/**"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "feat/codelab-pixelforge-studio-entry-clean"]
 
 # Keep the newest run for each event/branch while preserving separate push and PR checks.
 concurrency:
