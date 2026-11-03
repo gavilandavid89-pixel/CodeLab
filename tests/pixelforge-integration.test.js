@@ -84,6 +84,13 @@ async function main() {
     body: JSON.stringify({ project: fixture })
   });
   assert.equal(saved.status, 201, 'first save should create a project in the account');
+  const malformed = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: { ...fixture, id: 'invalid-artwork', layers: [] } })
+  });
+  assert.equal(malformed.status, 400, 'the server must reject malformed PixelForge project structures');
+  assert.equal((await malformed.json()).error, 'invalid_pixelforge_project');
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
 
