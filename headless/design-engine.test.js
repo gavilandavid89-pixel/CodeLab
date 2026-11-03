@@ -164,6 +164,54 @@ test('rejects deceptive or incomplete absolute image URLs and protocol-relative 
   }
 });
 
+test('accepts safe root-relative links and rejects protocol-relative or deceptive URLs', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'button', id: 'root-link', properties: { href: '/pricing' } },
+    { type: 'element.add', elementType: 'button', id: 'internal-link', properties: { href: '#layer-target' } }
+  ]);
+  assert.equal(result.project.design.elements.find(item => item.id === 'root-link').href, '/pricing');
+  assert.equal(result.project.design.elements.find(item => item.id === 'internal-link').href, '#layer-target');
+  for (const href of [
+    '//evil.example/path',
+    'https://trusted.example@evil.example/path',
+    'http://',
+    'javascript:alert(1)'
+  ]) {
+    assert.throws(() => engine.transact(project(), [
+      { type: 'element.add', elementType: 'button', id: 'bad-link', properties: { href } }
+    ]), /safe URL scheme/);
+  }
+});
+
+test('deleting internal link targets clears unlocked references and preserves atomic locked-layer policy', () => {
+  const engine = createDesignEngine();
+  const input = project({ elements: [
+    { id: 'cta', type: 'button', href: '#layer-target' },
+    { id: 'locked-cta', type: 'button', href: '#layer-target', locked: true },
+    { id: 'target', type: 'rectangle' }
+  ] });
+  assert.throws(() => engine.transact(input, [{ type: 'element.delete', id: 'target' }]), /locked layer/);
+  assert.equal(input.design.elements.find(item => item.id === 'target').id, 'target');
+  const unlockedInput = project({ elements: [
+    { id: 'cta', type: 'button', href: '#layer-target' },
+    { id: 'target', type: 'rectangle' }
+  ] });
+  const result = engine.transact(unlockedInput, [{ type: 'element.delete', id: 'target' }]);
+  assert.equal(result.project.design.elements.find(item => item.id === 'cta').href, '');
+  assert.deepEqual(result.results[0].clearedLinks, ['cta']);
+  assert.equal(unlockedInput.design.elements.find(item => item.id === 'cta').href, '#layer-target');
+  const bulkInput = project({ elements: [
+    { id: 'cta-a', type: 'button', href: '#layer-target-a' },
+    { id: 'cta-b', type: 'button', href: '#layer-target-b' },
+    { id: 'target-a', type: 'rectangle' },
+    { id: 'target-b', type: 'rectangle' }
+  ] });
+  const bulk = engine.transact(bulkInput, [{ type: 'elements.delete', ids: ['target-a', 'target-b'] }]);
+  assert.deepEqual(bulk.project.design.elements.map(item => item.href), ['', '']);
+  assert.deepEqual(bulk.results[0].clearedLinks.sort(), ['cta-a', 'cta-b']);
+});
+
 test('bounds external image URLs independently from Base64 image data URLs', () => {
   const engine = createDesignEngine();
   const oversizedUrl = 'https://example.com/' + 'x'.repeat(9000);
