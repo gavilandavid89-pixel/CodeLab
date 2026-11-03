@@ -81,6 +81,7 @@ async function createProject(page, type, name) {
     await page.locator('#colorPrimary').evaluate(el => {
       el.value = '#123abc';
       el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     });
     assert.equal(await page.locator('#colorPrimary').inputValue(), '#123abc', 'the native color control should hold the selected value');
     assert.equal(await page.locator('#designPreviewPrimary').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(18, 58, 188)');
