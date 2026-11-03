@@ -118,6 +118,22 @@ async function main() {
   assert.deepEqual((await otherList.json()).projects, [], 'a different CodeLab account must not see another account\'s PixelForge projects');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: otherHeaders })).status, 404, 'a different account must not open another account\'s project');
 
+  const concurrentProjects = Array.from({ length: 6 }, (_, index) =>
+    makePixelProject('parallel-artwork-' + index, 'Parallel artwork ' + index));
+  const concurrentSaves = await Promise.all(concurrentProjects.map(project => fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project })
+  })));
+  assert.ok(concurrentSaves.every(response => response.status === 201), 'concurrent project creations should all succeed without overwriting each other');
+  const afterConcurrentSaves = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+  for (const project of concurrentProjects) {
+    assert.ok(afterConcurrentSaves.projects.some(item => item.id === project.id), 'concurrent write should preserve ' + project.id);
+  }
+  await Promise.all(concurrentProjects.map(project => fetch(base + '/api/pixelforge/projects/' + project.id, {
+    method: 'DELETE', headers: authHeaders
+  })));
+
   const loaded = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders });
   assert.deepEqual((await loaded.json()).project, fixture, 'saved project should round-trip through account storage');
   const deleted = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { method: 'DELETE', headers: authHeaders });
