@@ -150,8 +150,8 @@ function designLayoutPositions(design) {
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
   let x = padding, y = padding, rowHeight = 0;
   for (const el of elements) {
-    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const width = designElementDimension(el, 'width', frameWidth);
+    const height = designElementDimension(el, 'height', Number(design.canvasHeight) || 900);
     if (direction === 'row') {
       if (x > padding && x + width > frameWidth - padding) {
         x = padding; y += rowHeight + gap; rowHeight = 0;
@@ -350,8 +350,19 @@ function importDesignJson(input, options = {}) {
       text: String(raw.text || '').slice(0, 10000),
       x: clamp(raw.x, 0, -6000, 6000),
       y: clamp(raw.y, 0, -6000, 6000),
+      ...(raw.xUnit === '%' ? { xUnit: '%' } : {}),
+      ...(raw.yUnit === '%' ? { yUnit: '%' } : {}),
       width: clamp(raw.width, 120, 20, 4000),
       height: clamp(raw.height, 48, 20, 4000),
+      ...( ['px', '%', 'auto'].includes(raw.widthUnit) ? { widthUnit: raw.widthUnit } : {}),
+      ...( ['px', '%', 'auto'].includes(raw.heightUnit) ? { heightUnit: raw.heightUnit } : {}),
+      ...(typeof raw.identifier === 'string' && raw.identifier.trim() ? { identifier: raw.identifier.trim().slice(0, 120) } : {}),
+      ...(typeof raw.hidden === 'boolean' ? { hidden: raw.hidden } : {}),
+      ...(typeof raw.visible === 'boolean' ? { visible: raw.visible } : {}),
+      ...(typeof raw.locked === 'boolean' ? { locked: raw.locked } : {}),
+      ...(Number.isFinite(Number(raw.opacity)) && raw.opacity !== null ? { opacity: clamp(raw.opacity, 1, 0, 1) } : {}),
+      ...(Number.isFinite(Number(raw.rotation)) && raw.rotation !== null ? { rotation: clamp(raw.rotation, 0, -3600, 3600) } : {}),
+      ...( ['navigate', 'menu'].includes(raw.flowRole) ? { flowRole: raw.flowRole } : {}),
       color: safeColor(raw.color, '#111827'),
       background: safeColor(raw.background, 'transparent'),
       fontSize: clamp(raw.fontSize, 16, 8, 200),
@@ -359,6 +370,7 @@ function importDesignJson(input, options = {}) {
       radius: clamp(raw.radius, 0, 0, 500),
       textAlign: ['left', 'center', 'right'].includes(raw.textAlign) ? raw.textAlign : 'left',
       ...(raw.type === 'button' ? { href: safeLink(hrefRaw) } : {}),
+      ...(typeof raw.href === 'string' && raw.type !== 'button' ? { href: safeLink(hrefRaw) } : {}),
       ...(raw.type === 'image' ? {
         src, alt: String(raw.alt || raw.label || 'Imagen del diseño').slice(0, 300),
         objectFit: ['contain', 'cover', 'fill'].includes(raw.objectFit) ? raw.objectFit : 'cover'
@@ -397,7 +409,13 @@ function importDesignJson(input, options = {}) {
       layoutGap: clamp(sourceDesign.layoutGap, 16, 0, 200),
       layoutPadding: clamp(sourceDesign.layoutPadding, 24, 0, 200),
       ...(Number.isInteger(Number(sourceDesign.canvasWidth)) && Number(sourceDesign.canvasWidth) >= 100 && Number(sourceDesign.canvasWidth) <= 4000 ? { canvasWidth: Number(sourceDesign.canvasWidth) } : {}),
-      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {})
+      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {}),
+      ...(Array.isArray(sourceDesign.flowConnections) ? {
+        flowConnections: sourceDesign.flowConnections.filter(connection => connection && typeof connection === 'object' &&
+          typeof connection.sourceElementId === 'string' && oldToNewId.has(connection.sourceElementId) &&
+          typeof connection.targetProjectId === 'string' && connection.targetProjectId.length <= 200)
+          .map(connection => ({ ...connection, sourceElementId: oldToNewId.get(connection.sourceElementId) }))
+      } : {})
     }
   };
   return normalizeDesignProject(project);
