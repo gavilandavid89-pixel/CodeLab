@@ -28,6 +28,11 @@ const configuredMaxProjects = Number.parseInt(process.env.CODELAB_MAX_PROJECTS |
 const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxProjects > 0
   ? Math.min(500, configuredMaxProjects)
   : 50;
+// PixelForge stores base64-encoded raster projects, so its JSON payload needs a
+// separate bounded allowance without raising limits for every other API route.
+const PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024;
+const PIXELFORGE_MAX_PROJECT_BYTES = 24 * 1024 * 1024;
+const PIXELFORGE_MAX_ACCOUNT_BYTES = 128 * 1024 * 1024;
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
@@ -743,7 +748,7 @@ function redirectWithCookie(res, location, setCookieValue) {
   redirect(res, location, { 'Set-Cookie': setCookieValue });
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -757,7 +762,7 @@ function readBody(req) {
     req.on('data', chunk => {
       if (tooLarge || settled) return;
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         tooLarge = true;
         chunks.length = 0;
         // Keep the request stream alive long enough to return a real HTTP 413
@@ -1935,7 +1940,7 @@ const server = http.createServer(async (req, res) => {
             : sendJson(res, 404, { error: 'project_not_found' });
         }
         if (req.method === 'PUT') {
-          const body = await readBody(req);
+          const body = await readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES));
           const project = body && body.project;
           if (!project || typeof project !== 'object' || Array.isArray(project) ||
               typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
@@ -1946,15 +1951,22 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
           }
           const serialized = JSON.stringify(project);
-          if (Buffer.byteLength(serialized, 'utf8') > 8 * 1024 * 1024) {
-            return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
+          const projectBytes = Buffer.byteLength(serialized, 'utf8');
+          if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
+            return sendJson(res, 413, { error: 'pixelforge_project_too_large', maxBytes: PIXELFORGE_MAX_PROJECT_BYTES });
           }
           const now = Date.now();
           const existing = records.find(item => item.id === project.id);
           const record = { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: now, lastOpenedAt: now, project };
           records = records.filter(item => item.id !== project.id);
+          if (!existing && records.length >= MAX_PROJECTS) {
+            return sendJson(res, 409, { error: 'pixelforge_project_limit', maxProjects: MAX_PROJECTS });
+          }
           records.unshift(record);
-          if (records.length > MAX_PROJECTS) records = records.slice(0, MAX_PROJECTS);
+          const accountBytes = Buffer.byteLength(JSON.stringify(records), 'utf8');
+          if (accountBytes > PIXELFORGE_MAX_ACCOUNT_BYTES) {
+            return sendJson(res, 413, { error: 'pixelforge_account_storage_limit', maxBytes: PIXELFORGE_MAX_ACCOUNT_BYTES });
+          }
           const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
           try {
             fs.writeFileSync(tmp, JSON.stringify(records), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
