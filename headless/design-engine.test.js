@@ -142,7 +142,7 @@ test('rejects unsafe colors, href schemes, and image sources', () => {
 
 test('attaches an editor-compatible image file to an image layer', () => {
   const engine = createDesignEngine();
-  const pixel = Buffer.from('tiny-image').toString('base64');
+  const pixel = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]).toString('base64');
   const result = engine.transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Imagen del diseño', src: '' }] }), [
     { type: 'image.attach', id: 'hero', filename: 'hero-banner.webp', dataUrl: 'data:image/webp;base64,' + pixel }
   ]);
@@ -150,19 +150,19 @@ test('attaches an editor-compatible image file to an image layer', () => {
   assert.equal(image.src, 'data:image/webp;base64,' + pixel);
   assert.equal(image.alt, 'hero-banner');
   assert.equal(result.results[0].mimeType, 'image/webp');
-  assert.equal(result.results[0].byteLength, Buffer.from('tiny-image').length);
+  assert.equal(result.results[0].byteLength, Buffer.from([0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]).length);
 });
 
 test('uses only the image filename when deriving fallback alt text', () => {
   const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Imagen del diseño', src: '' }] }), [
-    { type: 'image.attach', id: 'hero', filename: 'C:\\uploads\\hero-banner.webp', dataUrl: 'data:image/webp;base64,' + Buffer.from('image').toString('base64') }
+    { type: 'image.attach', id: 'hero', filename: 'C:\\uploads\\hero-banner.webp', dataUrl: 'data:image/webp;base64,' + Buffer.from([0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]).toString('base64') }
   ]);
   assert.equal(result.project.design.elements[0].alt, 'hero-banner');
 });
 
 test('preserves a custom image alt text when attaching a replacement file', () => {
   const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Descripción accesible', src: '' }] }), [
-    { type: 'image.attach', id: 'hero', filename: 'new-image.png', dataUrl: 'data:image/png;base64,' + Buffer.from('image').toString('base64') }
+    { type: 'image.attach', id: 'hero', filename: 'new-image.png', dataUrl: 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64') }
   ]);
   assert.equal(result.project.design.elements[0].alt, 'Descripción accesible');
 });
@@ -316,4 +316,17 @@ test('rejects unsupported percentage positioning units', () => {
   assert.throws(() => engine.transact(input, [
     { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
   ]), /xUnit must be px or %/);
+});
+
+
+test('rejects image payloads whose binary signature does not match the declared MIME type', () => {
+  const engine = createDesignEngine();
+  const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const mismatched = 'data:image/webp;base64,' + pngBytes.toString('base64');
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'hero', type: 'image', src: '' }] }), [
+    { type: 'image.attach', id: 'hero', filename: 'spoofed.webp', dataUrl: mismatched }
+  ]), /signature does not match/i);
+  assert.throws(() => engine.transact(project(), [
+    { type: 'element.add', elementType: 'image', id: 'spoofed', properties: { src: mismatched } }
+  ]), /safe image URL/i);
 });
