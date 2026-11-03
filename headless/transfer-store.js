@@ -128,7 +128,7 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     }
     const upload = putImage({ workspaceId, projectId: record.projectId, bytes, declaredMime: record.declaredMime });
     try { fs.unlinkSync(file('image-chunks', transferId)); } catch (_) {}
-    return upload;
+    return { ...upload, projectId: record.projectId };
   }
   function putImage({ workspaceId, projectId, bytes, declaredMime }) {
     if (!workspaceId || !projectId || !Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > MAX_IMAGE_BYTES) throw new Error('invalid_image_size');
