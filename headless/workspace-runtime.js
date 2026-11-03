@@ -244,7 +244,7 @@ function applyOperation(state, operation) {
       const keys = ['html', 'css', 'js'].filter(key => Object.prototype.hasOwnProperty.call(operation, key));
       assert(keys.length > 0, 'web.code.write requires html, css, or js.');
       for (const key of keys) {
-        assert(typeof operation[key] === 'string' && operation[key].length <= 50000, key + ' chunk must be a string up to 50000 characters.');
+        assert(typeof operation[key] === 'string' && operation[key].length <= 200000, key + ' chunk must be a string up to 200000 characters.');
         const current = typeof target[key] === 'string' ? target[key] : '';
         const next = mode === 'append' ? current + operation[key] : mode === 'prepend' ? operation[key] + current : operation[key];
         assert(next.length <= 500000, key + ' exceeds the 500000 character project limit.');
@@ -652,8 +652,8 @@ function queryHeadlessWorkspace(inputState, request) {
         languages.every(key => ['html', 'css', 'js'].includes(key)) && new Set(languages).size === languages.length,
         'project.code.read languages must be unique html/css/js fields.', 'HEADLESS_INVALID_QUERY');
       const maxChars = args.maxChars === undefined ? 20000 : args.maxChars;
-      assert(Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 200000,
-        'project.code.read maxChars must be from 1 to 200000.', 'HEADLESS_INVALID_QUERY');
+      assert(Number.isInteger(maxChars) && maxChars >= 1 && maxChars <= 500000,
+        'project.code.read maxChars must be from 1 to 500000.', 'HEADLESS_INVALID_QUERY');
       const offset = args.offset === undefined ? 0 : args.offset;
       assert(Number.isInteger(offset) && offset >= 0 && offset <= 500000,
         'project.code.read offset must be an integer from 0 to 500000.', 'HEADLESS_INVALID_QUERY');

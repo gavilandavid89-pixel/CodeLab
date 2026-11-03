@@ -60,7 +60,7 @@ The current first cut caps designs at 500 layers, batches at 500 operations, can
 - `project.rename`: rename without changing identity or content.
 - `project.duplicate`: duplicate project data into a new ID, excluding active copy-branch and merge-undo state.
 - `project.delete`: delete a project only with explicit approval and remove incoming visual-flow links.
-- `web.code.write`: replace, append, or prepend HTML/CSS/JS chunks on the main project or an existing copy branch; each chunk is bounded and the final field cannot exceed 500,000 characters.
+- `web.code.write`: replace, append, or prepend HTML/CSS/JS chunks on the main project or an existing copy branch; each chunk is bounded at 200,000 characters and the final field cannot exceed 500,000 characters. The bridge calculates the required chunk count from each generated field's actual length and never splits a Unicode surrogate pair.
 - `design.batch`: apply canvas, layout, layer, alignment, distribution, duplication, reordering, and deletion operations to a saved design project and return an SVG preview.
 - `design.flow.connect` / `design.flow.disconnect`: connect one design layer to another design project or remove that connection.
 
