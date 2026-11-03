@@ -52,6 +52,20 @@ async function main() {
     await page.locator('#new-dialog').waitFor({ state: 'hidden' });
     assert.equal(await page.locator('#document-size').innerText(), '64 × 32', 'creating a document should update the editor');
 
+    // Verify the existing local-first storage survives a full page reload before
+    // any future account-sync adapter is introduced.
+    await page.locator('#save').click();
+    await page.getByRole('button', { name: /Saved on this device|Save/ }).waitFor({ state: 'visible' });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.locator('#canvas').waitFor({ state: 'visible' });
+    await page.locator('#projects-button').click();
+    await page.locator('#projects-dialog').waitFor({ state: 'visible' });
+    const savedArtwork = page.locator('.saved-project-open').filter({ hasText: 'Integration smoke artwork' });
+    await savedArtwork.waitFor({ state: 'visible' });
+    await savedArtwork.click();
+    await page.locator('#projects-dialog').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#document-size').innerText(), '64 × 32', 'saved artwork should survive reload and reopen at its original dimensions');
+
     await page.locator('a[aria-label="Back to CodeLab dashboard"]').click();
     await page.waitForURL(base + '/');
     assert.match(await page.locator('#studioChooser').innerText(), /PixelForge AI/, 'return navigation should land on the studio chooser');
