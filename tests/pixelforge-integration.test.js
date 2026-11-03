@@ -338,6 +338,7 @@ async function main() {
     const importedCanvasBox = await accountPage.locator('#canvas').boundingBox();
     assert.ok(importedCanvasBox && importedCanvasBox.width > 0 && importedCanvasBox.height > 0);
     await accountPage.locator('#canvas').click({ position: { x: importedCanvasBox.width / 2, y: importedCanvasBox.height / 2 } });
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Unsaved changes'), null, { timeout: 5000 });
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'), null, { timeout: 15000 });
     assert.doesNotMatch(await accountPage.locator('#status').innerText(), /revision conflict|changed in another session/i,
       'the first edit after importing must use the server-issued revision from the import save');
