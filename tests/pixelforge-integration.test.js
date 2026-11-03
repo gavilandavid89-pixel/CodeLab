@@ -172,8 +172,15 @@ async function main() {
     method: 'DELETE', headers: authHeaders
   })));
 
+  const recencyBefore = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+    .projects.find(project => project.id === fixture.id);
+  assert.ok(recencyBefore, 'saved project metadata should be available before opening the project');
   const loaded = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders });
   assert.deepEqual((await loaded.json()).project, fixture, 'saved project should round-trip through account storage');
+  const recencyAfter = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+    .projects.find(project => project.id === fixture.id);
+  assert.ok(recencyAfter.lastOpenedAt > recencyBefore.lastOpenedAt,
+    'opening a saved project should update its recent-project timestamp in persistent storage');
   const deleted = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { method: 'DELETE', headers: authHeaders });
   assert.equal(deleted.status, 200, 'account owner should be able to delete their own project');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders })).status, 404, 'deleted project should no longer be available');
