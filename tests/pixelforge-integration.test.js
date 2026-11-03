@@ -35,7 +35,7 @@ async function main() {
     assert.equal(response.status, 200, path + ' should be served');
     assert.ok((await response.text()).length > 0, path + ' should not be empty');
   }
-  const anonymousResponse = await fetch(base + '/api/pixelforge/projects');
+  const anonymousResponse = await fetch(base + '/api/pixelforge/projects', { headers: { 'x-forwarded-for': '198.51.100.77' } });
   assert.equal(anonymousResponse.status, 401, 'PixelForge project API must require a CodeLab account');
   const anonymousBody = await anonymousResponse.json();
   assert.equal(anonymousBody.error, 'not_authenticated', 'anonymous access should have a clear auth error');
@@ -43,6 +43,7 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext();
+    await context.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.78' } }));
     const page = await context.newPage();
     await page.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
     await page.waitForFunction(() => document.body.innerText.includes('Inicia sesión en CodeLab'));
