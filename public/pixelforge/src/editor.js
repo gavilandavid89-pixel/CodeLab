@@ -1706,12 +1706,23 @@ window.addEventListener('blur', () => {
   render();
 });
 async function boot() {
-  resizeCanvas();
   try {
+    const response = await fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw new Error('No se pudo comprobar la sesión de CodeLab.');
+    const auth = await response.json();
+    if (!auth.user) {
+      document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101116;color:#f3f4f6;font:16px system-ui,sans-serif"><section style="max-width:440px;text-align:center;background:#191b24;border:1px solid #343744;border-radius:18px;padding:28px"><div style="font-size:34px;margin-bottom:12px">◈</div><h1 style="margin:0 0 10px;font-size:24px">Inicia sesión en CodeLab</h1><p style="color:#b5b8c5;line-height:1.6">PixelForge usa la misma cuenta de CodeLab. Inicia sesión y vuelve a abrir el estudio para guardar tus dibujos en tu cuenta y acceder a ellos desde otros dispositivos.</p><a href="/" style="display:inline-block;margin-top:14px;padding:12px 18px;border-radius:10px;background:#d8a65d;color:#171922;text-decoration:none;font-weight:700">Ir a CodeLab e iniciar sesión</a></section></main>`;
+      return;
+    }
+    resizeCanvas();
     const saved = await loadMostRecentProject();
-    if (saved) { doc = RasterDocument.fromJSON(saved); clearSelectionState(); resetAIWorkspaceForDocument(); status('Recovered latest local project', 'success'); }
-    else status('Ready · saved locally on this device', 'success');
-  } catch (error) { status(`Local recovery unavailable: ${error.message}`, 'warning'); }
-  fitCanvas(); updateTitle(); renderLayers();
+    if (saved) { doc = RasterDocument.fromJSON(saved); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
+    else status('Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
+    fitCanvas(); updateTitle(); renderLayers();
+  } catch (error) {
+    status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
+    const statusNode = $('#status');
+    if (statusNode) statusNode.title = 'Comprueba tu sesión de CodeLab y vuelve a cargar.';
+  }
 }
 boot();
