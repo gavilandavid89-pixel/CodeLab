@@ -4180,8 +4180,8 @@ function updateDesignProperty(key, value) {
     const n = Number(value); if (!Number.isFinite(n)) return;
     const ranges = {
       x: [0, el.xUnit === '%' ? 200 : 10000], y: [0, el.yUnit === '%' ? 200 : 10000],
-      width: [el.widthUnit === '%' ? 1 : 20, el.widthUnit === '%' ? 100 : 4000],
-      height: [el.heightUnit === '%' ? 1 : 20, el.heightUnit === '%' ? 100 : 4000],
+      width: [el.widthUnit === '%' ? 1 : el.widthUnit === 'auto' ? 0 : 20, el.widthUnit === '%' ? 100 : 4000],
+      height: [el.heightUnit === '%' ? 1 : el.heightUnit === 'auto' ? 0 : 20, el.heightUnit === '%' ? 100 : 4000],
       fontSize: [8, 256], weight: [100, 900], radius: [0, 4000]
     };
     const [min, max] = ranges[key]; el[key] = Math.max(min, Math.min(max, n));
