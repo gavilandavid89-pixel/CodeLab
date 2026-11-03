@@ -80,3 +80,9 @@ function testInsertionBeforeRealBodyClose() {
   assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
     'nested template contents must be skipped as a unit');
 }
+
+{
+  const source = '<html><body><template><p>incomplete </body>';
+  assert.equal(library.insertComponentHtml(source, fragment), source + '\n' + fragment,
+    'an unclosed template must use the append fallback');
+}
