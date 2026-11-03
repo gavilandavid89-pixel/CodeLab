@@ -133,6 +133,10 @@ function parseCommand(raw) {
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
   }
+  if (command.action === 'component_inspect' && args.max_chars !== undefined &&
+      (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
+    throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
+  }
   if (command.action === 'ai_generate') {
     if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
     if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
