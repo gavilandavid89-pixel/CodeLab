@@ -62,9 +62,28 @@ async function main() {
     await page.locator('#projects-dialog').waitFor({ state: 'visible' });
     const savedArtwork = page.locator('.saved-project-open').filter({ hasText: 'Integration smoke artwork' });
     await savedArtwork.waitFor({ state: 'visible' });
-    await savedArtwork.click();
+    assert.equal(await savedArtwork.isDisabled(), true, 'reloaded artwork should already be the active saved project');
+    assert.match(await savedArtwork.innerText(), /64 × 32/, 'saved project listing should retain the original dimensions');
+    await page.locator('#close-projects').click();
     await page.locator('#projects-dialog').waitFor({ state: 'hidden' });
-    assert.equal(await page.locator('#document-size').innerText(), '64 × 32', 'saved artwork should survive reload and reopen at its original dimensions');
+
+    // Switch to a different document, then prove the saved artwork can actually
+    // be reopened from the project list rather than merely appearing in it.
+    await page.locator('#new-document').click();
+    await page.locator('#new-dialog').waitFor({ state: 'visible' });
+    await page.locator('#new-name').fill('Integration second artwork');
+    await page.locator('#new-width').fill('20');
+    await page.locator('#new-height').fill('10');
+    await page.locator('#create-new').click();
+    await page.locator('#new-dialog').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#document-size').innerText(), '20 × 10', 'switching documents should update the editor');
+    await page.locator('#projects-button').click();
+    await page.locator('#projects-dialog').waitFor({ state: 'visible' });
+    const reopenArtwork = page.locator('.saved-project-open').filter({ hasText: 'Integration smoke artwork' });
+    await reopenArtwork.waitFor({ state: 'visible' });
+    await reopenArtwork.click();
+    await page.locator('#projects-dialog').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#document-size').innerText(), '64 × 32', 'saved artwork should reopen with its original dimensions after switching documents');
 
     await page.locator('a[aria-label="Back to CodeLab dashboard"]').click();
     await page.waitForURL(base + '/');
