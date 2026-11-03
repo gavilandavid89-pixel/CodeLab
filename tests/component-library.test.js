@@ -14,7 +14,7 @@ for (const component of library.components) {
 assert.match(library.getComponent('contact').html, /label for=/i);
 assert.match(library.getComponent('dashboard').html, /role="progressbar"/);
 assert.equal(library.escapeHtml('<img src="x">'), '&lt;img src=&quot;x&quot;&gt;');
-console.log('Component library tests passed: searchable catalog, category filters, responsive exports and accessible starter markup.');
+
 
 
 const fragment = '<section id="inserted-component">Component</section>';
@@ -86,3 +86,5 @@ function testInsertionBeforeRealBodyClose() {
   assert.equal(library.insertComponentHtml(source, fragment), source + '\n' + fragment,
     'an unclosed template must use the append fallback');
 }
+
+console.log('Component library tests passed: searchable catalog, category filters, responsive exports, accessible markup, and HTML insertion edge cases.');
