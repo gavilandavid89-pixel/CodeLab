@@ -129,6 +129,15 @@ test('rejects unsafe colors, href schemes, and image sources', () => {
   assert.throws(() => engine.transact(project(), [
     { type: 'element.add', elementType: 'image', id: 'bad-image', properties: { src: 'javascript:alert(1)' } }
   ]), /safe image URL/);
+  for (const src of [
+    'data:image/png;base64,not-valid!',
+    'data:image/png;base64,AAAA AAAA',
+    'data:image/svg+xml;base64,PHN2Zz4='
+  ]) {
+    assert.throws(() => engine.transact(project(), [
+      { type: 'element.add', elementType: 'image', id: 'bad-data-url', properties: { src } }
+    ]), /safe image URL/);
+  }
 });
 
 test('attaches an editor-compatible image file to an image layer', () => {
