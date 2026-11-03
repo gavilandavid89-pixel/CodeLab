@@ -32,8 +32,8 @@ test('locked layers cannot be edited or deleted, and duplicate attempts explain 
   const remove = extract('function deleteDesignElement', 'function openDesignFlowGraph');
   const align = extract('function alignDesignElement', 'function downloadDesignAsset');
   assert.match(update, /if \(el\.locked\)/);
-  assert.match(duplicate, /if \(selected\[i\]\.locked\)/);
-  assert.match(duplicate, /Desbloquea la capa antes de duplicarla/);
+  assert.match(duplicate, /selected\.some\(item => item\.locked\)/);
+  assert.match(duplicate, /Desbloquea todas las capas seleccionadas antes de duplicarlas/);
   assert.match(duplicate, /const duplicatedConnections = existingConnections/);
   assert.match(duplicate, /duplicateIds\.has\(connection\.sourceElementId\)/);
   assert.match(duplicate, /sourceElementId: duplicateIds\.get\(connection\.sourceElementId\)/);
