@@ -90,7 +90,7 @@ function applyOperation(state, operation) {
       duplicate.id = newProjectId;
       duplicate.name = typeof operation.name === 'string' && operation.name.trim()
         ? operation.name.trim().slice(0, 200)
-        : (String(source.name || 'Project').slice(0, 194) + ' copy').slice(0, 200);
+        : (String(source.name || 'Project').slice(0, 195) + ' copy').slice(0, 200);
       duplicate.createdAt = new Date().toISOString();
       duplicate.updatedAt = duplicate.createdAt;
       if (duplicate.type === 'design' && duplicate.design && Array.isArray(duplicate.design.flowConnections)) {
