@@ -96,6 +96,7 @@ function resolveElementSize(element, dimension, canvasDimension) {
   const unit = element[unitKey] || 'px';
   if (unit === '%') return Math.max(0, canvasDimension * (Number.isFinite(raw) ? raw : 0) / 100);
   if (unit === 'auto') {
+    if (element.type === 'image') return Math.max(20, Math.min(4000, Number.isFinite(raw) && raw > 0 ? raw : (dimension === 'width' ? 120 : 48)));
     const fontSize = Math.max(1, Math.min(512, Number(element.fontSize) || 16));
     if (dimension === 'width' && ['heading', 'text', 'button'].includes(element.type)) {
       return Math.max(40, Math.ceil(String(element.text || '').length * fontSize * 0.56 + 24));
