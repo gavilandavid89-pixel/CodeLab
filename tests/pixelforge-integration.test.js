@@ -296,6 +296,10 @@ async function main() {
     ]);
     // Edit while the first autosave response is held. The second queued save
     // must wait for the first serverRevision before capturing its snapshot.
+    // A saved-project chooser can be open after account/project recovery; close it
+    // explicitly so the modal does not intercept the canvas interaction below.
+    const projectsDialog = accountPage.locator('#projects-dialog');
+    if (await projectsDialog.isVisible()) await accountPage.locator('#close-projects').click();
     const canvasBox = await accountPage.locator('#canvas').boundingBox();
     assert.ok(canvasBox && canvasBox.width > 0 && canvasBox.height > 0, 'PixelForge canvas should have a drawable viewport');
     await accountPage.locator('#canvas').click({ position: { x: canvasBox.width / 2, y: canvasBox.height / 2 } });
