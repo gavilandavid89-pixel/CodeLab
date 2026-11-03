@@ -124,7 +124,7 @@ async function main() {
   const staleWrite = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ project: { ...fixture, name: 'Stale session overwrite', revision: 1, saveVersion: 1 } })
+    body: JSON.stringify({ project: { ...fixture, name: 'Stale session overwrite', revision: 1, saveVersion: 1, serverRevision: 0 } })
   });
   assert.equal(staleWrite.status, 409, 'a stale session must not overwrite a newer saved revision');
   assert.equal((await staleWrite.json()).error, 'pixelforge_revision_conflict',
