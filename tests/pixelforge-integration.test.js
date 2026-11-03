@@ -316,6 +316,108 @@ async function main() {
     const recoveredProject = (await (await fetch(base + '/api/pixelforge/projects/' + recoveredMetadata.id, { headers: authHeaders })).json()).project;
     assert.ok(Buffer.from(recoveredProject.layers[0].pixels, 'base64').some(value => value !== 0),
       'actual edited raster pixels, not only project metadata, should survive autosave and reload');
+
+    // Exercise real raster tools through pointer events, then inspect the
+    // account-persisted RGBA buffers (not just button presence or status text).
+    const canvasLocator = accountPage.locator('#canvas');
+    const documentWidth = 12, documentHeight = 8;
+    async function pixelPosition(x, y) {
+      const box = await canvasLocator.boundingBox();
+      const zoomText = await accountPage.locator('#zoom-label').innerText();
+      const zoom = Number.parseFloat(zoomText) / 100;
+      assert.ok(box && Number.isFinite(zoom) && zoom > 0, 'canvas viewport and zoom should be measurable');
+      return {
+        x: box.width / 2 + (x + 0.5 - documentWidth / 2) * zoom,
+        y: box.height / 2 + (y + 0.5 - documentHeight / 2) * zoom
+      };
+    }
+    async function clickPixel(x, y) {
+      await canvasLocator.click({ position: await pixelPosition(x, y) });
+    }
+    async function waitForRasterSave() {
+      await accountPage.waitForFunction(() => {
+        const save = document.querySelector('#save');
+        return save?.dataset.dirty === 'false' &&
+          document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account');
+      }, null, { timeout: 15000 });
+    }
+    async function readSavedArtwork() {
+      const list = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+      const metadata = list.projects.find(project => project.name === 'Browser account artwork');
+      assert.ok(metadata, 'tool edits should remain attached to the saved account project');
+      const response = await fetch(base + '/api/pixelforge/projects/' + metadata.id, { headers: authHeaders });
+      assert.equal(response.status, 200, 'tool edits should be readable from persistent project storage');
+      return (await response.json()).project;
+    }
+    function rgbaAt(project, x, y, layerIndex = 0) {
+      const bytes = Buffer.from(project.layers[layerIndex].pixels, 'base64');
+      const offset = (y * project.width + x) * 4;
+      return [...bytes.subarray(offset, offset + 4)];
+    }
+
+    await accountPage.locator('#color').fill('#ff0000');
+    await accountPage.locator('#brush-tool').click();
+    await clickPixel(2, 2);
+    await waitForRasterSave();
+    let toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 2, 2), [255, 0, 0, 255],
+      'pencil pointer input should write the selected color to the expected raster pixel');
+
+    await accountPage.locator('#eraser-tool').click();
+    await clickPixel(2, 2);
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(rgbaAt(toolProject, 2, 2)[3], 0, 'eraser should clear the target pixel to transparency');
+
+    await accountPage.locator('#color').fill('#00aa44');
+    await accountPage.locator('#fill-tool').click();
+    await clickPixel(0, 0);
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 0, 0), [0, 170, 68, 255],
+      'bucket fill should update the selected connected transparent region');
+
+    await accountPage.locator('#undo').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(rgbaAt(toolProject, 0, 0)[3], 0, 'undo should revert the bucket fill in persisted pixels');
+    await accountPage.locator('#redo').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 0, 0), [0, 170, 68, 255],
+      'redo should restore the bucket fill in persisted pixels');
+
+    await accountPage.locator('#add-layer').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.layers.length, 2, 'add-layer should create a second persisted raster layer');
+    await accountPage.locator('#color').fill('#2255ee');
+    await accountPage.locator('#line-tool').click();
+    const lineStart = await pixelPosition(1, 1), lineEnd = await pixelPosition(10, 6);
+    await canvasLocator.hover({ position: lineStart });
+    await accountPage.mouse.move((await canvasLocator.boundingBox()).x + lineStart.x, (await canvasLocator.boundingBox()).y + lineStart.y);
+    await accountPage.mouse.down();
+    const canvasBoxForLine = await canvasLocator.boundingBox();
+    await accountPage.mouse.move(canvasBoxForLine.x + lineEnd.x, canvasBoxForLine.y + lineEnd.y, { steps: 8 });
+    await accountPage.mouse.up();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.ok(rgbaAt(toolProject, 1, 1, 1)[3] > 0 && rgbaAt(toolProject, 10, 6, 1)[3] > 0,
+      'line tool should rasterize its drag path into the active layer and persist both endpoints');
+
+    await accountPage.locator('#color').fill('#ffffff');
+    await accountPage.locator('#gradient-tool').click();
+    const gradientStart = await pixelPosition(0, 7), gradientEnd = await pixelPosition(11, 7);
+    const gradientBox = await canvasLocator.boundingBox();
+    await accountPage.mouse.move(gradientBox.x + gradientStart.x, gradientBox.y + gradientStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(gradientBox.x + gradientEnd.x, gradientBox.y + gradientEnd.y, { steps: 10 });
+    await accountPage.mouse.up();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.ok(rgbaAt(toolProject, 0, 7, 1)[3] > 0 && rgbaAt(toolProject, 11, 7, 1)[3] > 0,
+      'gradient tool should apply and persist a raster gradient across its drag endpoints');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
