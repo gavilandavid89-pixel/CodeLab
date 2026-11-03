@@ -54,9 +54,11 @@ test('expired code and image tokens cannot be replayed', () => {
     const value = 'expire me';
     const code = store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'css', baseRevision: 1, totalChunks: 1, sha256: sha256(value) });
     store.putCodeChunk({ transferId: code.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) });
+    assert.equal(fs.readdirSync(path.join(root, 'headless-transfers')).filter(name => name.startsWith('code-' + code.transferId + '-chunk-')).length, 1);
     const image = store.putImage({ workspaceId: 'owner', projectId: 'proj_123', bytes: Buffer.from([137,80,78,71,13,10,26,10,1]), declaredMime: 'image/png' });
     now += 10 * 60 * 1000 + 1;
     assert.throws(() => store.assembleCode({ transferId: code.transferId, workspaceId: 'owner' }), /not_found/);
+    assert.equal(fs.readdirSync(path.join(root, 'headless-transfers')).filter(name => name.startsWith('code-' + code.transferId + '-chunk-')).length, 0);
     assert.throws(() => store.resolveImage({ uploadToken: image.uploadToken, workspaceId: 'owner', projectId: 'proj_123' }), /not_found/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
