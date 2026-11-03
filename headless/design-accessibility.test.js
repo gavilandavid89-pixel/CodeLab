@@ -52,6 +52,11 @@ test('design accessibility audit warns when partial layer opacity makes contrast
   assert.equal(finding.opacity, 0.5);
   assert.equal(finding.contrastBasis, 'opacity-not-composited');
 
+  const nullableOpacity = auditDesignAccessibility(designProject([
+    { id: 'default-opacity-copy', type: 'text', text: 'Read me', fontSize: 16, color: '#000000', background: '#ffffff', opacity: null }
+  ]));
+  assert.equal(nullableOpacity.findings.some(item => item.ruleId === 'text-opacity-contrast'), false);
+
   const invalidOpacity = auditDesignAccessibility(designProject([
     { id: 'invalid-opacity-copy', type: 'text', text: 'Read me', fontSize: 16, color: '#000000', background: '#ffffff', opacity: 2 }
   ]));
