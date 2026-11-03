@@ -173,6 +173,12 @@
       // The HTML plaintext state consumes the remainder of the document; no later
       // </body> token is a real close tag once this element begins.
       if (tagName === 'plaintext') return -1;
+      if (tagName === 'template') {
+        const templateEnd = findTemplateEnd(source, tagEnd + 1);
+        if (templateEnd === -1) return -1;
+        cursor = templateEnd;
+        continue;
+      }
       if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
         const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
         closingTag.lastIndex = tagEnd + 1;
