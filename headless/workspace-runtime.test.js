@@ -129,7 +129,7 @@ test('generates project IDs when the caller leaves them out', () => {
 test('persists editor-compatible image attachments through an atomic headless design batch', () => {
   const source = designProject();
   source.design.elements = [{ id: 'el_image', type: 'image', src: '', alt: 'Imagen del diseño' }];
-  const dataUrl = 'data:image/png;base64,' + Buffer.from('image-bytes').toString('base64');
+  const dataUrl = 'data:image/png;base64,' + Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]), Buffer.from('image-bytes')]).toString('base64');
   const result = applyHeadlessBatch(state([source]), request([
     { type: 'design.batch', projectId: source.id, expectedDesignRevision: 0, operations: [
       { type: 'image.attach', id: 'el_image', filename: 'hero.png', dataUrl }
@@ -833,7 +833,7 @@ test('builds AI design capture context headlessly with custom canvas and scaled 
   project.design.layoutMode = 'free';
   project.design.elements = [
     { id: 'el_title', type: 'heading', label: 'Título', text: 'Hola mundo', x: 12, y: 24, width: 300, height: 80, fontSize: 32, weight: 700, color: '#111827', background: 'transparent' },
-    { id: 'el_image', type: 'image', label: 'Imagen', alt: 'Portada', src: 'data:image/png;base64,aGVsbG8=', x: 20, y: 130, width: 240, height: 160 }
+    { id: 'el_image', type: 'image', label: 'Imagen', alt: 'Portada', src: 'data:image/png;base64,' + Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]).toString('base64'), x: 20, y: 130, width: 240, height: 160 }
   ];
   const context = buildAiDesignCaptureContext(project, 2);
   assert.equal(context.format, 'codelab-ai-design-capture');
