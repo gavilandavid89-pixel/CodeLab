@@ -101,6 +101,54 @@
     return -1;
   }
 
+  function findTemplateEnd(source, start) {
+    let cursor = start;
+    let depth = 1;
+    while (cursor < source.length) {
+      const open = source.indexOf('<', cursor);
+      if (open === -1) return -1;
+      if (source.startsWith('<!--', open)) {
+        const commentEnd = source.indexOf('-->', open + 4);
+        if (commentEnd === -1) return -1;
+        cursor = commentEnd + 3;
+        continue;
+      }
+      const closingTemplate = /^<\/\s*template\s*>/i.exec(source.slice(open));
+      if (closingTemplate) {
+        depth -= 1;
+        cursor = open + closingTemplate[0].length;
+        if (depth === 0) return cursor;
+        continue;
+      }
+      const tagMatch = /^<\s*([a-z][a-z0-9:-]*)\b/i.exec(source.slice(open));
+      if (!tagMatch) {
+        cursor = open + 1;
+        continue;
+      }
+      const tagEnd = findTagEnd(source, open + 1);
+      if (tagEnd === -1) return -1;
+      const tagName = tagMatch[1].toLowerCase();
+      if (tagName === 'plaintext') return -1;
+      if (tagName === 'template') {
+        const templateEnd = findTemplateEnd(source, tagEnd + 1);
+        if (templateEnd === -1) return -1;
+        cursor = templateEnd;
+        continue;
+      }
+      if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
+        const closingTag = new RegExp('<\\/\\s*' + tagName + '\\s*>', 'ig');
+        closingTag.lastIndex = tagEnd + 1;
+        const closingMatch = closingTag.exec(source);
+        if (!closingMatch) return -1;
+        cursor = closingMatch.index + closingMatch[0].length;
+        continue;
+      }
+      if (tagName === 'template') depth += 1;
+      cursor = tagEnd + 1;
+    }
+    return -1;
+  }
+
   function findClosingBody(source) {
     let cursor = 0;
     while (cursor < source.length) {
