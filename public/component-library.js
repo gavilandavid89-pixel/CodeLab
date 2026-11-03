@@ -115,12 +115,12 @@
       if (/^<\/\s*body\s*>/i.test(source.slice(open))) return open;
 
       const tagMatch = /^<\s*([a-z][a-z0-9:-]*)\b/i.exec(source.slice(open));
-      const tagEnd = findTagEnd(source, open + 1);
-      if (tagEnd === -1) return -1;
       if (!tagMatch) {
-        cursor = tagEnd + 1;
+        cursor = open + 1;
         continue;
       }
+      const tagEnd = findTagEnd(source, open + 1);
+      if (tagEnd === -1) return -1;
 
       const tagName = tagMatch[1].toLowerCase();
       if (['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes'].includes(tagName)) {
