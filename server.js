@@ -1938,7 +1938,7 @@ const server = http.createServer(async (req, res) => {
               } catch (_) { /* A corrupt document is isolated from the rest of the project list. */ }
             }
             projects.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-            return sendJson(res, 200, { ok: true, projects });
+            return sendJson(res, 200, { ok: true, workspaceId: ownerWorkspace, projects });
           }
           if (req.method === 'GET' && pixelForgeItemMatch) {
             const projectId = pixelForgeItemMatch[1];
@@ -1946,7 +1946,7 @@ const server = http.createServer(async (req, res) => {
             if (!fs.existsSync(target)) return sendJson(res, 404, { error: 'pixelforge_project_not_found' });
             const record = JSON.parse(fs.readFileSync(target, 'utf8'));
             if (!record || record.version !== 1 || record.project?.id !== projectId) return sendJson(res, 500, { error: 'pixelforge_project_corrupt' });
-            return sendJson(res, 200, { ok: true, project: record.project, revision: record.revision, updatedAt: record.updatedAt });
+            return sendJson(res, 200, { ok: true, workspaceId: ownerWorkspace, project: record.project, revision: record.revision, updatedAt: record.updatedAt });
           }
           if (req.method === 'PUT' && pixelForgeItemMatch) {
             const projectId = pixelForgeItemMatch[1];
@@ -1957,6 +1957,7 @@ const server = http.createServer(async (req, res) => {
                 body.project.width < 1 || body.project.height < 1 || body.project.width > 8192 || body.project.height > 8192 || body.project.width * body.project.height > 16777216) {
               return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
             }
+            if (body.workspaceId !== ownerWorkspace) return sendJson(res, 409, { error: 'pixelforge_account_changed' });
             const serialized = JSON.stringify(body.project);
             if (Buffer.byteLength(serialized) > MAX_PIXELFORGE_PROJECT_BYTES) return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
             fs.mkdirSync(ownerDir, { recursive: true, mode: 0o700 });
@@ -1980,7 +1981,7 @@ const server = http.createServer(async (req, res) => {
               try { fs.unlinkSync(tmp); } catch (_) {}
               throw error;
             }
-            return sendJson(res, 200, { ok: true, revision: record.revision, updatedAt: record.updatedAt });
+            return sendJson(res, 200, { ok: true, workspaceId: ownerWorkspace, revision: record.revision, updatedAt: record.updatedAt });
           }
         } catch (error) {
           if (error.code === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
