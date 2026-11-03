@@ -173,6 +173,9 @@ function applyOperation(state, operation) {
       assert(Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
         'branch.undo_merge requires a saved merge backup.', 'HEADLESS_NO_MERGE_HISTORY');
       const backup = project.mergeHistory[project.mergeHistory.length - 1];
+      assert(!project.branch,
+        'Cannot undo the merge because a new branch was created afterward; inspect it before retrying.',
+        'HEADLESS_BRANCH_UNDO_CONFLICT');
       const currentCode = project.code || { html: '', css: '', js: '' };
       const mergedCode = backup.mergedCode;
       const matchesMergedCode = mergedCode && ['html', 'css', 'js'].every(key =>
