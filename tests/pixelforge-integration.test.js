@@ -94,6 +94,14 @@ async function main() {
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
   assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
+  // The database may persist between CI runs; clear only this dedicated test
+  // account so the assertions remain repeatable without touching real users.
+  const priorProjects = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+  for (const project of priorProjects.projects || []) {
+    await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(project.id), {
+      method: 'DELETE', headers: authHeaders
+    });
+  }
   const health = await (await fetch(base + '/api/health')).json();
   assert.ok(['postgresql', 'server-file'].includes(health.persistence), 'CodeLab should report its active persistence backend');
   const listBefore = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
