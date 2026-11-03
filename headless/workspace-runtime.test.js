@@ -401,6 +401,8 @@ test('creates an isolated branch, performs a three-way merge, and can undo it', 
   assert.equal(undone.state.projects[0].branch.id, 'branch_work1');
   assert.equal(undone.state.projects[0].branch.code.html, '<h1>Branch work</h1>');
   assert.equal(undone.state.projects[0].mergeHistory.length, 0);
+  assert.ok(Date.parse(undone.state.projects[0].updatedAt) >= Date.parse(merged.state.projects[0].updatedAt),
+    'undo is a new project mutation and must not move updatedAt backward');
 });
 
 test('refuses to undo a merge after later main-code edits', () => {
