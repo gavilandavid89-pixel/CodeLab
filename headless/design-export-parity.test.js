@@ -220,7 +220,7 @@ test('legacy hidden:true is omitted from HTML, SVG, capture, and auto-layout geo
 });
 
 test('JSON import and semantic export reject data URLs with mismatched or non-canonical image bytes', () => {
-  const validPng = 'data:image/png;base64,' + Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]).toString('base64');
+  const validPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
   const invalidPng = 'data:image/png;base64,' + Buffer.from([0xff,0xd8,0xff,0xd9]).toString('base64');
   const invalidWhitespace = validPng.replace('base64,', 'base64, ') + ' ';
   for (const invalidSrc of [invalidPng, invalidWhitespace, 'data:image/png;base64,' + Buffer.from('random bytes').toString('base64')]) {
@@ -252,7 +252,7 @@ test('round-trips valid PNG, JPEG, GIF, and WebP data URLs through JSON import/e
 });
 
 test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {
-  const dataUrl = 'data:image/png;base64,' + Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]).toString('base64');
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
   const input = project([{
     id: 'auto-image', type: 'image', src: dataUrl,
     width: 10, height: 5000, widthUnit: 'auto', heightUnit: 'auto'
