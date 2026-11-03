@@ -209,6 +209,27 @@ test('locked layers reject headless flow connect and disconnect without mutation
   assert.equal(JSON.stringify(disconnectState), beforeDisconnect, 'failed disconnect must preserve connections and flow role');
 });
 
+test('locked flow operations preserve already-satisfied no-ops', () => {
+  const source = designProject('proj_locked_noop');
+  source.design.elements = [{ id: 'el_locked', type: 'button', locked: true, flowRole: 'navigate' }];
+  source.design.flowConnections = [{ sourceElementId: 'el_locked', targetProjectId: 'proj_noop_target' }];
+  const target = designProject('proj_noop_target');
+  const connected = applyHeadlessBatch(state([source, target]), request([
+    { type: 'design.flow.connect', sourceProjectId: source.id, sourceElementId: 'el_locked', targetProjectId: target.id }
+  ], { operationId: 'test_locked_noop_connect_01' }));
+  assert.equal(connected.results[0].changed, false);
+  assert.equal(connected.state.projects[0].design.revision, 0);
+
+  const disconnected = designProject('proj_locked_noop_disconnect');
+  disconnected.design.elements = [{ id: 'el_locked', type: 'button', locked: true, flowRole: '' }];
+  const noConnection = applyHeadlessBatch(state([disconnected]), request([
+    { type: 'design.flow.disconnect', sourceProjectId: disconnected.id, sourceElementId: 'el_locked' }
+  ], { operationId: 'test_locked_noop_disconnect_01' }));
+  assert.equal(noConnection.results[0].changed, false);
+  assert.equal(noConnection.state.projects[0].design.revision, 0);
+  assert.equal(Object.hasOwn(noConnection.state.projects[0].design, 'flowConnections'), false);
+});
+
 test('requires explicit approval to delete a project and cleans incoming flow links', () => {
   const source = designProject('proj_source');
   source.design.flowConnections = [{ sourceElementId: 'el_link', targetProjectId: 'proj_target' }];
