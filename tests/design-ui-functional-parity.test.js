@@ -26,6 +26,16 @@ test('hidden layers stay in the layer tree but do not consume layout or canvas s
   assert.match(renderer, /el\.hidden \? 'none' : 'flex'/);
 });
 
+test('visual design review preserves the remote AI analysis flow', () => {
+  assert.match(app, /async function callRemoteDesignReviewAi\(screenshotDataUrl, context\)/);
+  assert.match(app, /const review = await callRemoteDesignReviewAi\(dataUrl, context\)/,
+    'captureDesignForAI must send the generated PNG and structured context to the remote reviewer');
+  assert.match(app, /fetch\('\/api\/ai\/design-review'/,
+    'remote visual review must use the authenticated design review endpoint');
+  assert.match(app, /downloadDesignAsset\(slug \+ '-revision-ia\.json'/,
+    'the returned visual review must remain exportable as a JSON report');
+});
+
 test('locked layers cannot be edited or deleted, and duplicate attempts explain why', () => {
   const update = extract('function updateDesignProperty', 'function bindDesignCanvasEvents');
   const duplicate = extract('function duplicateDesignElement', 'function deleteDesignElement');
