@@ -280,3 +280,95 @@ test('rejects unsupported percentage positioning units', () => {
     { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
   ]), /xUnit must be px or %/);
 });
+
+
+test('hidden legacy and current layers do not consume layout space or render', () => {
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600, layoutMode: 'auto', layoutDirection: 'column', layoutGap: 10, layoutPadding: 20,
+    elements: [
+      { id: 'legacy-hidden', type: 'rectangle', hidden: true, width: 300, height: 200, background: '#ff0000' },
+      { id: 'current-hidden', type: 'rectangle', visible: false, width: 300, height: 200, background: '#00ff00' },
+      { id: 'visible-card', type: 'rectangle', width: 100, height: 40, background: '#ffffff' }
+    ]
+  });
+  const svg = createDesignEngine().renderSvg(input);
+  assert.match(svg, /<rect x="20" y="20" width="100" height="40"/);
+  assert.doesNotMatch(svg, /fill="#ff0000"|fill="#00ff00"/);
+});
+
+test('supports responsive size units, semantic identifiers, and nullable opacity', () => {
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600,
+    elements: [{
+      id: 'hero', type: 'button', text: 'Hello', fontSize: 20,
+      x: 10, y: 5, width: 50, height: 10,
+      xUnit: '%', yUnit: '%', widthUnit: '%', heightUnit: '%',
+      identifier: 'hero-cta', opacity: null, background: '#7c3aed'
+    }]
+  });
+  const result = createDesignEngine().transact(input, [
+    { type: 'element.update', id: 'hero', properties: { widthUnit: '%', heightUnit: '%', identifier: 'hero-cta', opacity: null } }
+  ]);
+  const element = result.project.design.elements[0];
+  assert.equal(element.identifier, 'hero-cta');
+  assert.equal(element.opacity, null);
+  assert.match(result.svg, /<rect x="72" y="80" width="360" height="160"/);
+  assert.match(result.svg, /opacity="1"/);
+});
+
+test('auto dimensions resolve to content-based sizes in SVG', () => {
+  const input = project({
+    elements: [{
+      id: 'auto-button', type: 'button', text: 'Hello', fontSize: 20,
+      x: 10, y: 12, width: 1, height: 1, widthUnit: 'auto', heightUnit: 'auto',
+      background: '#7c3aed'
+    }]
+  });
+  const svg = createDesignEngine().renderSvg(input);
+  assert.match(svg, /<rect x="10" y="12" width="80" height="46"/);
+});
+
+test('locked layers reject mutations but can be explicitly unlocked', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    elements: [
+      { id: 'locked', type: 'rectangle', locked: true, x: 10, y: 10, width: 100, height: 40 },
+      { id: 'other-a', type: 'rectangle', x: 200, y: 10, width: 100, height: 40 },
+      { id: 'other-b', type: 'rectangle', x: 400, y: 10, width: 100, height: 40 }
+    ]
+  });
+  const operations = [
+    { type: 'element.update', id: 'locked', properties: { x: 20 } },
+    { type: 'element.duplicate', id: 'locked', newId: 'copy' },
+    { type: 'element.reorder', id: 'locked', targetIndex: 1 },
+    { type: 'element.delete', id: 'locked' },
+    { type: 'elements.delete', ids: ['locked', 'other-a'] },
+    { type: 'elements.align', ids: ['locked', 'other-a'], mode: 'left' },
+    { type: 'elements.distribute', ids: ['locked', 'other-a', 'other-b'], axis: 'horizontal' }
+  ];
+  for (const operation of operations) {
+    assert.throws(() => engine.transact(input, [operation]), /locked layer/);
+  }
+  const unlocked = engine.transact(input, [{ type: 'element.update', id: 'locked', properties: { locked: false } }]);
+  assert.equal(unlocked.project.design.elements[0].locked, false);
+});
+
+test('duplicate and distribute preserve percentage position semantics', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600,
+    elements: [
+      { id: 'a', type: 'rectangle', x: 10, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' },
+      { id: 'b', type: 'rectangle', x: 40, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' },
+      { id: 'c', type: 'rectangle', x: 80, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' }
+    ]
+  });
+  const duplicated = engine.transact(input, [{ type: 'element.duplicate', id: 'a', newId: 'a-copy' }]);
+  const copy = duplicated.project.design.elements.find(el => el.id === 'a-copy');
+  assert.ok(Math.abs(copy.x - (10 + 24 / 720 * 100)) < 0.0001);
+  assert.ok(Math.abs(copy.y - (10 + 24 / 1600 * 100)) < 0.0001);
+  const distributed = engine.transact(input, [{ type: 'elements.distribute', ids: ['a', 'b', 'c'], axis: 'horizontal' }]);
+  const middle = distributed.project.design.elements.find(el => el.id === 'b');
+  assert.ok(Math.abs(middle.x - 45) < 0.0001);
+  assert.equal(middle.xUnit, '%');
+});
