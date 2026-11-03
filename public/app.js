@@ -3522,7 +3522,7 @@ function designXmlEscape(value) {
 function captureDesignSvg(project) {
   const width = getDesignCanvasWidth(project.design);
   const layout = getDesignLayoutPositions(project.design);
-  const height = layout.height;
+  const height = Math.max(layout.height, getDesignCanvasHeight(project.design));
   const safeColor = value => {
     const color = String(value || 'transparent').trim();
     return /^(#[0-9a-f]{3,8}|transparent|[a-z]{1,24}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(color) ? color : 'transparent';
