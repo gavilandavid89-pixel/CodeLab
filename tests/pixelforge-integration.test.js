@@ -296,7 +296,9 @@ async function main() {
     ]);
     // Edit while the first autosave response is held. The second queued save
     // must wait for the first serverRevision before capturing its snapshot.
-    await accountPage.locator('#canvas').click({ position: { x: 40, y: 30 } });
+    const canvasBox = await accountPage.locator('#canvas').boundingBox();
+    assert.ok(canvasBox && canvasBox.width > 0 && canvasBox.height > 0, 'PixelForge canvas should have a drawable viewport');
+    await accountPage.locator('#canvas').click({ position: { x: canvasBox.width / 2, y: canvasBox.height / 2 } });
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'), null, { timeout: 15000 });
     assert.doesNotMatch(await accountPage.locator('#status').innerText(), /revision conflict|changed in another session/i,
       'rapid edits during a delayed save must not conflict with the same editor session');
