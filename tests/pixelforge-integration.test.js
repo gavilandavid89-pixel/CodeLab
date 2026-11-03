@@ -334,6 +334,12 @@ async function main() {
     async function clickPixel(x, y) {
       await canvasLocator.click({ position: await pixelPosition(x, y) });
     }
+    async function setForegroundColor(value) {
+      await accountPage.locator('#color').evaluate((input, color) => {
+        input.value = color;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }, value);
+    }
     async function waitForRasterSave() {
       await accountPage.waitForFunction(() => {
         const save = document.querySelector('#save');
@@ -355,7 +361,7 @@ async function main() {
       return [...bytes.subarray(offset, offset + 4)];
     }
 
-    await accountPage.locator('#color').fill('#ff0000');
+    await setForegroundColor('#ff0000');
     await accountPage.locator('#brush-tool').click();
     await clickPixel(2, 2);
     await waitForRasterSave();
@@ -369,7 +375,7 @@ async function main() {
     toolProject = await readSavedArtwork();
     assert.equal(rgbaAt(toolProject, 2, 2)[3], 0, 'eraser should clear the target pixel to transparency');
 
-    await accountPage.locator('#color').fill('#00aa44');
+    await setForegroundColor('#00aa44');
     await accountPage.locator('#fill-tool').click();
     await clickPixel(0, 0);
     await waitForRasterSave();
@@ -391,7 +397,7 @@ async function main() {
     await waitForRasterSave();
     toolProject = await readSavedArtwork();
     assert.equal(toolProject.layers.length, 2, 'add-layer should create a second persisted raster layer');
-    await accountPage.locator('#color').fill('#2255ee');
+    await setForegroundColor('#2255ee');
     await accountPage.locator('#line-tool').click();
     const lineStart = await pixelPosition(1, 1), lineEnd = await pixelPosition(10, 6);
     await canvasLocator.hover({ position: lineStart });
@@ -405,7 +411,7 @@ async function main() {
     assert.ok(rgbaAt(toolProject, 1, 1, 1)[3] > 0 && rgbaAt(toolProject, 10, 6, 1)[3] > 0,
       'line tool should rasterize its drag path into the active layer and persist both endpoints');
 
-    await accountPage.locator('#color').fill('#ffffff');
+    await setForegroundColor('#ffffff');
     await accountPage.locator('#gradient-tool').click();
     const gradientStart = await pixelPosition(0, 7), gradientEnd = await pixelPosition(11, 7);
     const gradientBox = await canvasLocator.boundingBox();
