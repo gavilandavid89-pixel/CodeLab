@@ -46,4 +46,4 @@ function isValidEditorImageDataUrl(value) {
   }
 }
 
-module.exports = { parseEditorImageDataUrl, isValidEditorImageDataUrl, MAX_EDITOR_IMAGE_BYTES };
+module.exports = { parseEditorImageDataUrl, isValidEditorImageDataUrl, MAX_EDITOR_IMAGE_BYTES, MAX_EDITOR_IMAGE_DATA_URL_LENGTH };
