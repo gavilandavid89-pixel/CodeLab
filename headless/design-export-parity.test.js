@@ -359,6 +359,20 @@ test('responsive width/height units resolve in free layout and remain CSS-respon
   assert.equal(autoContext.elements[0].bounds.height, 388);
 });
 
+test('does not coerce small percentage dimensions to a 20px minimum', () => {
+  const input = {
+    ...project([{ id: 'tiny-percent', type: 'rectangle', x: 0, y: 0, width: 10, widthUnit: '%', height: 5, heightUnit: '%' }]),
+    design: { ...project([]).design, canvasWidth: 100, canvasHeight: 100, elements: [
+      { id: 'tiny-percent', type: 'rectangle', x: 0, y: 0, width: 10, widthUnit: '%', height: 5, heightUnit: '%' }
+    ] }
+  };
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /width:10px;height:5px/);
+  assert.equal(context.elements[0].bounds.width, 10);
+  assert.equal(context.elements[0].bounds.height, 5);
+});
+
 test('JSON export/import round-trip preserves responsive units, layer metadata, and flow connections', () => {
   const input = {
     id: 'source-project',
