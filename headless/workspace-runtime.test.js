@@ -129,7 +129,7 @@ test('generates project IDs when the caller leaves them out', () => {
 test('persists editor-compatible image attachments through an atomic headless design batch', () => {
   const source = designProject();
   source.design.elements = [{ id: 'el_image', type: 'image', src: '', alt: 'Imagen del diseño' }];
-  const dataUrl = 'data:image/png;base64,' + Buffer.from('image-bytes').toString('base64');
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
   const result = applyHeadlessBatch(state([source]), request([
     { type: 'design.batch', projectId: source.id, expectedDesignRevision: 0, operations: [
       { type: 'image.attach', id: 'el_image', filename: 'hero.png', dataUrl }
@@ -397,16 +397,44 @@ test('inspects saved project and reads bounded main or branch code without mutat
   assert.equal(original.projects[0].code.html.length, 25000);
 });
 
-test('reads design geometry without returning embedded image payloads', () => {
+test('design.read preserves responsive metadata and reports text truncation without image payloads', () => {
   const project = designProject();
   project.design.elements = [{
-    id: 'el_image', type: 'image', x: 10, y: 20, width: 100, height: 80,
+    id: 'el_image', type: 'image', x: 10, y: 20, xUnit: '%', yUnit: '%',
+    width: 100, height: 80, widthUnit: 'auto', heightUnit: '%',
+    identifier: 'hero-image', hidden: true, visible: false, text: 'T'.repeat(2501),
     src: 'data:image/png;base64,' + 'x'.repeat(5000), alt: 'Preview'
   }];
   const result = queryHeadlessWorkspace(state([project]), { action: 'design.read', args: { projectId: project.id } });
-  assert.equal(result.result.elements[0].hasImageSource, true);
-  assert.equal(result.result.elements[0].imageSourceLength, 5022);
-  assert.equal(Object.prototype.hasOwnProperty.call(result.result.elements[0], 'src'), false);
+  const element = result.result.elements[0];
+  assert.equal(element.hasImageSource, true);
+  assert.equal(element.imageSourceLength, 5022);
+  assert.equal(Object.prototype.hasOwnProperty.call(element, 'src'), false);
+  assert.equal(element.xUnit, '%');
+  assert.equal(element.yUnit, '%');
+  assert.equal(element.widthUnit, 'auto');
+  assert.equal(element.heightUnit, '%');
+  assert.equal(element.identifier, 'hero-image');
+  assert.equal(element.hidden, true);
+  assert.equal(element.visible, false);
+  assert.equal(element.text.length, 2000);
+  assert.equal(element.textLength, 2501);
+  assert.equal(element.textTruncated, true);
+  assert.equal(element.textSha256, require('node:crypto').createHash('sha256').update('T'.repeat(2501), 'utf8').digest('hex'));
+  assert.equal(element.textSha256.length, 64);
+});
+
+test('design.read returns all layers through the 500-layer limit when requested', () => {
+  const project = designProject();
+  project.design.elements = Array.from({ length: 250 }, (_, index) => ({
+    id: 'el_' + index, type: 'rectangle', x: index, y: 0, width: 20, height: 20
+  }));
+  const result = queryHeadlessWorkspace(state([project]), {
+    action: 'design.read', args: { projectId: project.id, limit: 500 }
+  });
+  assert.equal(result.result.elements.length, 250);
+  assert.equal(result.result.elementCount, 250);
+  assert.equal(result.result.truncated, false);
 });
 
 test('runs the existing static accessibility audit against saved web HTML', () => {
@@ -833,7 +861,7 @@ test('builds AI design capture context headlessly with custom canvas and scaled 
   project.design.layoutMode = 'free';
   project.design.elements = [
     { id: 'el_title', type: 'heading', label: 'Título', text: 'Hola mundo', x: 12, y: 24, width: 300, height: 80, fontSize: 32, weight: 700, color: '#111827', background: 'transparent' },
-    { id: 'el_image', type: 'image', label: 'Imagen', alt: 'Portada', src: 'data:image/png;base64,aGVsbG8=', x: 20, y: 130, width: 240, height: 160 }
+    { id: 'el_image', type: 'image', label: 'Imagen', alt: 'Portada', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=', x: 20, y: 130, width: 240, height: 160 }
   ];
   const context = buildAiDesignCaptureContext(project, 2);
   assert.equal(context.format, 'codelab-ai-design-capture');

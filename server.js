@@ -1687,6 +1687,42 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      if (req.method === 'POST' && pathname === '/api/ai/design-review') {
+        if (!checkAiRateLimit(ip)) return sendJson(res, 429, { error: 'ai_rate_limited', message: 'Demasiadas peticiones de IA. Espera un minuto.' });
+        const body = await readBody(req);
+        const prompt = body && typeof body.prompt === 'string' ? body.prompt.trim() : '';
+        const image = body && typeof body.screenshotDataUrl === 'string' ? body.screenshotDataUrl : '';
+        const context = body && body.context && typeof body.context === 'object' ? body.context : null;
+        if (!prompt || prompt.length > 4000 || !context) return sendJson(res, 400, { error: 'invalid_design_review' });
+        const match = image.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+        if (!match || match[2].length > 8 * 1024 * 1024) return sendJson(res, 413, { error: 'invalid_or_large_screenshot', message: 'La captura debe ser PNG/JPEG/WebP y pesar menos de unos 6 MB.' });
+        const clientKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+        if (clientKey.length > 4096) return sendJson(res, 400, { error: 'invalid_api_key' });
+        const usingServerKey = !clientKey && !!AI_API_KEY;
+        const apiKey = clientKey || AI_API_KEY;
+        if (!apiKey) return sendJson(res, 503, { error: 'ai_not_configured', message: 'Configura una API compatible con visión en Ajustes del copiloto o en el servidor.' });
+        let baseUrl = AI_BASE_URL, model = AI_MODEL;
+        if (!usingServerKey) {
+          if (typeof body.baseUrl === 'string' && body.baseUrl.trim()) baseUrl = body.baseUrl.trim().replace(/\/$/, '');
+          if (typeof body.model === 'string' && body.model.trim()) model = body.model.trim();
+        } else if (typeof body.model === 'string' && body.model.trim() && body.model.includes('/')) model = body.model.trim();
+        if (baseUrl.length > 2048) return sendJson(res, 400, { error: 'invalid_provider_url' });
+        if (model.length > 200) return sendJson(res, 400, { error: 'invalid_model' });
+        try {
+          const messages = [
+            { role: 'system', content: 'Eres un revisor experto de diseño visual y UX. Analiza la imagen real, no infieras elementos que no se vean. Usa el contexto estructurado como apoyo para medidas exactas. Responde en español con resumen, hallazgos observables priorizados y recomendaciones concretas.' },
+            { role: 'user', content: [
+              { type: 'text', text: prompt + '\\n\\nContexto estructurado del diseño:\\n' + JSON.stringify(context).slice(0, 40000) },
+              { type: 'image_url', image_url: { url: image } }
+            ] }
+          ];
+          const result = await proxyChatCompletions({ apiKey, baseUrl, model, messages, temperature: 0.2, maxTokens: Math.min(AI_MAX_TOKENS, 3000), publicUrl: publicBaseUrl(req) });
+          return sendJson(res, 200, { ok: true, analysis: String(result.content || ''), model: result.model || model, via: usingServerKey ? 'server' : 'client-key', imageReceived: true });
+        } catch (e) {
+          return sendJson(res, 502, { error: 'ai_design_review_failed', message: String(e.message || e).slice(0, 400), model });
+        }
+      }
+
       if (req.method === 'POST' && pathname === '/api/ai/complete') {
         if (!checkAiRateLimit(ip)) {
           return sendJson(res, 429, { error: 'ai_rate_limited', message: 'Demasiadas peticiones al copiloto. Espera un minuto.', retryAfterSeconds: 60, rateLimitScope: 'codelab-server-ip-window' });

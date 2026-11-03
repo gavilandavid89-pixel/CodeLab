@@ -3436,24 +3436,47 @@ function setDesignBackground(color) {
 }
 function distributeDesignElements(axis = 'horizontal') {
   const p = activeDesignProject();
-  if (p && p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
-  const selected = p && p.design ? p.design.elements.filter(el => selectedDesignElementIds.includes(el.id)) : [];
+  if (!p || !p.design) return;
+  if (p.design.layoutMode === 'auto') { showToast('Auto Layout distribuye las capas automáticamente; cambia a modo libre para distribuir manualmente.', 'warn'); return; }
+  const selected = p.design.elements.filter(el => selectedDesignElementIds.includes(el.id));
+  if (selected.some(el => el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de distribuirlas.', 'warn'); return; }
   if (selected.length < 3) { showToast('Selecciona al menos tres capas (Shift + clic) para distribuirlas.', 'warn'); return; }
   const horizontal = axis !== 'vertical';
-  const ordered = selected.slice().sort((a, b) => (Number(horizontal ? a.x : a.y) || 0) - (Number(horizontal ? b.x : b.y) || 0));
-  const start = Number(horizontal ? ordered[0].x : ordered[0].y) || 0;
+  const positionKey = horizontal ? 'x' : 'y';
+  const sizeKey = horizontal ? 'width' : 'height';
+  const canvasDimension = horizontal ? getDesignCanvasWidth(p.design) : (getDesignCanvasHeight(p.design) || 900);
+  const ordered = selected.map(el => ({
+    el,
+    position: getDesignElementPosition(el, positionKey, canvasDimension),
+    size: getDesignElementDimension(el, sizeKey, canvasDimension)
+  })).sort((a, b) => a.position - b.position);
+  if (ordered.some(item => !Number.isFinite(item.position) || !Number.isFinite(item.size) || item.size <= 0)) {
+    showToast('No se pudieron resolver las posiciones o dimensiones de las capas seleccionadas.', 'warn'); return;
+  }
+  const start = ordered[0].position;
   const last = ordered[ordered.length - 1];
-  const end = (Number(horizontal ? last.x : last.y) || 0) + Math.max(20, Number(horizontal ? last.width : last.height) || (horizontal ? 120 : 48));
-  const totalSize = ordered.reduce((sum, el) => sum + Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)), 0);
+  const end = last.position + last.size;
+  const totalSize = ordered.reduce((sum, item) => sum + item.size, 0);
   const gap = (end - start - totalSize) / (ordered.length - 1);
-  if (gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
-  // Record history only after validation; a rejected operation must not create
-  // a fake undo step for a state that never changed.
-  recordDesignHistory();
+  if (!Number.isFinite(gap) || gap < 0) { showToast('No hay espacio suficiente para distribuir estas capas sin solaparlas.', 'warn'); return; }
+  const placements = [];
   let cursor = start;
-  for (const el of ordered) {
-    if (horizontal) el.x = Math.round(cursor); else el.y = Math.round(cursor);
-    cursor += Math.max(20, Number(horizontal ? el.width : el.height) || (horizontal ? 120 : 48)) + gap;
+  for (const item of ordered) {
+    const unit = item.el[positionKey + 'Unit'] === '%' ? '%' : 'px';
+    const value = unit === '%'
+      ? (canvasDimension > 0 ? Math.round(cursor / canvasDimension * 10000) / 100 : 0)
+      : Math.round(cursor);
+    const maximum = unit === '%' ? 200 : 10000;
+    if (!Number.isFinite(value) || value < 0 || value > maximum) {
+      showToast('La distribución excede los límites de posición admitidos; ajusta el lienzo o las capas.', 'warn'); return;
+    }
+    placements.push({ element: item.el, value, unit });
+    cursor += item.size + gap;
+  }
+  recordDesignHistory();
+  for (const placement of placements) {
+    placement.element[positionKey] = placement.value;
+    placement.element[positionKey + 'Unit'] = placement.unit;
   }
   renderDesignWorkspace(); saveProjectsToStorage();
   showToast(horizontal ? 'Capas distribuidas horizontalmente.' : 'Capas distribuidas verticalmente.');
@@ -3464,38 +3487,52 @@ function alignDesignElement(mode = 'center-x') {
   if (!p || !el) { showToast('Selecciona una capa primero.', 'warn'); return; }
   if (p.design.layoutMode === 'auto') { showToast('En Auto Layout la posición se calcula por flujo; cambia a modo libre para alinear manualmente.', 'warn'); return; }
   const selected = p.design.elements.filter(item => selectedDesignElementIds.includes(item.id));
-  if (selected.length > 1) {
-    const left = Math.min(...selected.map(item => Number(item.x) || 0));
-    const top = Math.min(...selected.map(item => Number(item.y) || 0));
-    const right = Math.max(...selected.map(item => (Number(item.x) || 0) + Math.max(20, Number(item.width) || 120)));
-    const bottom = Math.max(...selected.map(item => (Number(item.y) || 0) + Math.max(20, Number(item.height) || 48)));
-    const centerX = (left + right) / 2, centerY = (top + bottom) / 2;
-    recordDesignHistory();
-    for (const item of selected) {
-      const width = Math.max(20, Number(item.width) || 120), height = Math.max(20, Number(item.height) || 48);
-      if (mode === 'left') item.x = left;
-      else if (mode === 'center-x') item.x = Math.round(centerX - width / 2);
-      else if (mode === 'right') item.x = right - width;
-      else if (mode === 'top') item.y = top;
-      else if (mode === 'center-y') item.y = Math.round(centerY - height / 2);
-      else if (mode === 'bottom') item.y = bottom - height;
+  if (selected.some(item => item.locked) || (!selected.length && el.locked)) {
+    showToast('Desbloquea todas las capas seleccionadas antes de alinearlas.', 'warn'); return;
+  }
+  const targets = selected.length > 1 ? selected : [el];
+  const width = getDesignCanvasWidth(p.design);
+  const height = getDesignCanvasHeight(p.design) || 900;
+  const multi = selected.length > 1;
+  let left = 0, top = 0, right = width, bottom = height;
+  if (multi) {
+    left = Math.min(...targets.map(item => getDesignElementPosition(item, 'x', width)));
+    top = Math.min(...targets.map(item => getDesignElementPosition(item, 'y', height)));
+    right = Math.max(...targets.map(item => getDesignElementPosition(item, 'x', width) + getDesignElementDimension(item, 'width', width)));
+    bottom = Math.max(...targets.map(item => getDesignElementPosition(item, 'y', height) + getDesignElementDimension(item, 'height', height)));
+  }
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const horizontal = ['left', 'center-x', 'right'].includes(mode);
+  if (!horizontal && !['top', 'center-y', 'bottom'].includes(mode)) return;
+  const axis = horizontal ? 'x' : 'y';
+  const containerSize = horizontal ? width : height;
+  const placements = [];
+  for (const item of targets) {
+    const itemWidth = getDesignElementDimension(item, 'width', width);
+    const itemHeight = getDesignElementDimension(item, 'height', height);
+    let target;
+    if (mode === 'left') target = multi ? left : 0;
+    else if (mode === 'center-x') target = multi ? centerX - itemWidth / 2 : Math.max(0, Math.round((width - itemWidth) / 2));
+    else if (mode === 'right') target = multi ? right - itemWidth : Math.max(0, width - itemWidth);
+    else if (mode === 'top') target = multi ? top : 0;
+    else if (mode === 'center-y') target = multi ? centerY - itemHeight / 2 : Math.max(0, Math.round((height - itemHeight) / 2));
+    else target = multi ? bottom - itemHeight : Math.max(0, height - itemHeight);
+    const stored = getStoredDesignElementPosition(target, containerSize);
+    if (!stored) {
+      showToast('La alineación excede los límites de posición admitidos; ajusta el lienzo o las capas.', 'warn'); return;
     }
-    renderDesignWorkspace(); saveProjectsToStorage();
-    showToast('Capas alineadas respecto a la selección.');
-    return;
+    placements.push({ element: item, value: stored.value, unit: stored.unit });
   }
   recordDesignHistory();
-  const width = ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
-  const height = 900;
-  const ew = Math.max(20, Number(el.width) || 120), eh = Math.max(20, Number(el.height) || 48);
-  if (mode === 'left') el.x = 0;
-  else if (mode === 'center-x') el.x = Math.max(0, Math.round((width - ew) / 2));
-  else if (mode === 'right') el.x = Math.max(0, width - ew);
-  else if (mode === 'top') el.y = 0;
-  else if (mode === 'center-y') el.y = Math.max(0, Math.round((height - eh) / 2));
-  else if (mode === 'bottom') el.y = Math.max(0, height - eh);
+  for (const placement of placements) {
+    placement.element[axis] = placement.value;
+    placement.element[axis + 'Unit'] = placement.unit;
+  }
   renderDesignWorkspace(); saveProjectsToStorage();
+  if (multi) showToast('Capas alineadas respecto a la selección.');
 }
+
 function downloadDesignAsset(filename, content, type) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
@@ -3589,29 +3626,31 @@ async function captureDesignForAI() {
   const pixelCount = captured.width * captured.height * scale * scale;
   const slug = (project.name || 'codelab-design').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'codelab-design';
   const designLayout = getDesignLayoutPositions(project.design);
-  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object') : []).map((el, index) => {
+  const elements = (Array.isArray(project.design.elements) ? project.design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : []).map((el, index) => {
     const position = designLayout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const x = Math.max(-6000, Math.min(6000, finite(position.x, 0)));
     const y = Math.max(-6000, Math.min(6000, finite(position.y, 0)));
-    const width = Math.max(20, Math.min(4000, finite(el.width, 120) || 120));
-    const height = Math.max(20, Math.min(4000, finite(el.height, 48) || 48));
+    const width = getDesignElementDimension(el, 'width', designLayout.frameWidth);
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(project.design) || designLayout.height);
     const fontSize = Math.max(8, Math.min(256, finite(el.fontSize, 16) || 16));
     const fontWeight = Math.max(100, Math.min(900, finite(el.weight, 400)));
     const radius = Math.max(0, Math.min(4000, finite(el.radius, 0)));
     return {
       order: index + 1,
     id: el.id || null,
+    identifier: el.identifier || null,
     type: el.type || 'text',
     label: el.label || el.type || 'Elemento',
     text: el.text || '',
-    bounds: { x, y, width, height },
+    bounds: { x, y, width, height, xUnit: el.xUnit || 'px', yUnit: el.yUnit || 'px', widthUnit: el.widthUnit || 'px', heightUnit: el.heightUnit || 'px' },
     style: {
       color: el.color || '#111827',
       background: el.background || 'transparent',
       fontSize,
       fontWeight,
       radius,
+      rotation: Math.max(-360, Math.min(360, finite(el.rotation, 0))),
       textAlign: ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left'
       }
     };
@@ -3631,14 +3670,19 @@ async function captureDesignForAI() {
       padding: Math.max(0, Math.min(300, Number(project.design.layoutPadding) || 0))
     },
     elements: elements.map((item, index) => {
-      const source = project.design.elements.filter(el => !!el && typeof el === 'object')[index];
+      const source = project.design.elements.find(el => !!el && typeof el === 'object' && el.id === item.id);
       if (source && source.type === 'image') item.image = { alt: String(source.alt || '').slice(0, 500) };
       return item;
     }),
     aiInstructions: 'Analiza la imagen PNG para evaluar la apariencia visual y usa este JSON para conocer las posiciones, dimensiones, textos y estilos exactos. No inventes contenido. Distingue los problemas observables de las sugerencias. Propón cambios concretos y accesibles y considera también la adaptación móvil. Proyecto: ' + (project.name || 'Diseño sin título') + '. Marco: ' + (project.design.frame || 'desktop') + ' (' + captured.width + ' × ' + captured.height + ' px).'
   };
-  const json = JSON.stringify(context, null, 2);
-  downloadDesignAsset(slug + '-contexto-ia.json', json, 'application/json;charset=utf-8');
+  const captureModeControl = document.getElementById('designCaptureMode');
+  const captureMode = ['project', 'canvas', 'editor'].includes(captureModeControl && captureModeControl.value) ? captureModeControl.value : 'project';
+  context.captureMode = captureMode;
+  context.aiInstructions = 'Analiza VISUALMENTE la imagen adjunta, no te limites al JSON. Evalúa jerarquía visual, alineación, contraste, legibilidad, espacios, consistencia y responsive. Usa el JSON para medidas exactas. Separa problemas observables de sugerencias. Devuelve un análisis en español con hallazgos priorizados y cambios concretos. Vista: ' + captureMode + '. ' + context.aiInstructions;
+  let png = null;
+  let outputWidth = captured.width * scale;
+  let outputHeight = captured.height * scale;
   let svgUrl = '';
   try {
     if (pixelCount > 32000000) throw new Error('La captura ocuparía demasiada memoria. Elige una escala menor.');
@@ -3661,21 +3705,61 @@ async function captureDesignForAI() {
       image.onerror = () => finish(new Error('No se pudo renderizar el SVG.'));
       image.src = svgUrl;
     });
-    const canvas = document.createElement('canvas');
-    canvas.width = captured.width * scale; canvas.height = captured.height * scale;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
-    ctx.scale(scale, scale);
-    ctx.drawImage(image, 0, 0, captured.width, captured.height);
-    const png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('El navegador no pudo generar el PNG.')), 'image/png'));
-    downloadDesignAsset(slug + '-captura-ia.png', png, 'image/png');
-    showToast('Captura IA lista: PNG ' + scale + '× (' + canvas.width + '×' + canvas.height + ' px) y contexto JSON.');
+    let png;
+    if (captureMode === 'editor') {
+      const editorRoot = document.getElementById('designStudioPanel');
+      if (!editorRoot) throw new Error('No se encontró el editor de diseño para capturarlo.');
+      png = await captureDesignEditorElement(editorRoot, scale);
+      const editorRect = editorRoot.getBoundingClientRect();
+      outputWidth = Math.max(1, Math.ceil(editorRect.width)) * scale;
+      outputHeight = Math.max(1, Math.ceil(editorRect.height)) * scale;
+    } else {
+      const canvas = document.createElement('canvas');
+      canvas.width = captured.width * scale; canvas.height = captured.height * scale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo crear el contexto gráfico.');
+      ctx.scale(scale, scale);
+      if (captureMode === 'canvas') {
+        const canvasSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (captured.width + 80) + '" height="' + (captured.height + 100) + '" viewBox="0 0 ' + (captured.width + 80) + ' ' + (captured.height + 100) + '"><rect width="100%" height="100%" fill="#0f172a"/><rect x="24" y="24" width="' + (captured.width + 32) + '" height="' + (captured.height + 32) + '" rx="8" fill="#1e293b"/><g transform="translate(40 40)">' + captured.svg.replace(/^<svg[^>]*>|<\\/svg>$/g, '') + '</g></svg>';
+        const canvasBlob = new Blob([canvasSvg], { type: 'image/svg+xml;charset=utf-8' });
+        const canvasUrl = URL.createObjectURL(canvasBlob);
+        try { const canvasImage = new Image(); await new Promise((resolve, reject) => { canvasImage.onload = resolve; canvasImage.onerror = () => reject(new Error('No se pudo renderizar la vista del lienzo.')); canvasImage.src = canvasUrl; }); canvas.width = (captured.width + 80) * scale; canvas.height = (captured.height + 100) * scale; const cctx = canvas.getContext('2d'); cctx.scale(scale, scale); cctx.drawImage(canvasImage, 0, 0); } finally { URL.revokeObjectURL(canvasUrl); }
+      } else {
+        const projectImage = new Image();
+        const projectUrl = URL.createObjectURL(new Blob([captured.svg], { type: 'image/svg+xml;charset=utf-8' }));
+        try { await new Promise((resolve, reject) => { projectImage.onload = resolve; projectImage.onerror = () => reject(new Error('No se pudo renderizar el proyecto.')); projectImage.src = projectUrl; }); ctx.drawImage(projectImage, 0, 0, captured.width * scale, captured.height * scale); } finally { URL.revokeObjectURL(projectUrl); }
+      }
+      outputWidth = canvas.width;
+      outputHeight = canvas.height;
+      png = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo obtener la imagen para la IA.')), 'image/png'));
+    }
+    const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(png); });
+    const review = await callRemoteDesignReviewAi(dataUrl, context);
+    const report = { project: context.project, captureMode, model: review.model || aiSettings.model || serverAi.model, analysis: review.analysis, context };
+    downloadDesignAsset(slug + '-revision-ia.json', JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
+    showToast('La IA recibió la captura (' + outputWidth + '×' + outputHeight + ') y devolvió una revisión visual.');
   } catch (error) {
-    downloadDesignAsset(slug + '-captura-ia.svg', captured.svg, 'image/svg+xml;charset=utf-8');
-    showToast('No se pudo generar el PNG; descargué el SVG junto al contexto.', 'warn');
+    showToast('No se pudo completar la revisión visual: ' + String(error && error.message || error).slice(0, 180), 'warn');
   } finally {
     if (svgUrl) URL.revokeObjectURL(svgUrl);
   }
+}
+
+async function callRemoteDesignReviewAi(screenshotDataUrl, context) {
+  if (!aiCanUseRemote()) throw new Error('La revisión visual necesita una API compatible configurada; las plantillas locales no analizan imágenes.');
+  const payload = { screenshotDataUrl, context, prompt: 'Revisa visualmente el diseño adjunto. Devuelve un análisis útil en español, con resumen, problemas observables priorizados y sugerencias concretas. No modifiques el proyecto automáticamente.' };
+  if (serverAi.serverKey) {
+    if (aiSettings.model && aiSettings.model !== 'gpt-4o-mini') payload.model = aiSettings.model;
+  } else {
+    payload.model = aiSettings.model || 'gpt-4o-mini';
+    if (aiSettings.baseUrl) payload.baseUrl = aiSettings.baseUrl;
+    if (aiSettings.apiKey) payload.apiKey = aiSettings.apiKey;
+  }
+  const res = await fetch('/api/ai/design-review', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  let data = {}; try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error((data && data.message) || (data && data.error) || 'HTTP ' + res.status);
+  if (typeof data.analysis !== 'string' || !data.analysis.trim()) throw new Error('El modelo no devolvió un análisis visual legible.');
+  return data;
 }
 
 function safeDesignExportColor(value, fallback) {
@@ -3692,7 +3776,7 @@ function exportDesignHtml() {
   const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
   const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
   const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
-  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements.filter(el => el && !el.hidden) : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : el.type === 'rectangle' ? 'div' : 'p';
@@ -3702,16 +3786,23 @@ function exportDesignHtml() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Number.isFinite(Number(position.x)) ? Number(position.x) : 0;
     const y = Number.isFinite(Number(position.y)) ? Number(position.y) : 0;
-    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
-    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const leftCss = getDesignElementPositionCss(el, 'x');
+    const topCss = getDesignElementPositionCss(el, 'y');
+    const width = getDesignElementDimension(el, 'width', layout.frameWidth);
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
+    const widthCss = getDesignElementDimensionCss(el, 'width');
+    const heightCss = getDesignElementDimensionCss(el, 'height');
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
+    const opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
-    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+    const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
@@ -3879,16 +3970,16 @@ function getDesignCanvasHeight(design) {
   return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
 }
 function getDesignLayoutPositions(design) {
-  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object') : [];
+  const elements = Array.isArray(design && design.elements) ? design.elements.filter(el => !!el && typeof el === 'object' && !el.hidden) : [];
   const frameWidth = getDesignCanvasWidth(design);
   const mode = design && design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
   if (mode === 'free') {
     let contentBottom = 0;
     for (const el of elements) {
-      const x = Number.isFinite(Number(el.x)) ? Number(el.x) : 0;
-      const y = Number.isFinite(Number(el.y)) ? Number(el.y) : 0;
-      const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+      const x = getDesignElementPosition(el, 'x', frameWidth);
+      const y = getDesignElementPosition(el, 'y', getDesignCanvasHeight(design) || 900);
+      const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(design) || 900);
       positions.set(el.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
     }
@@ -3899,8 +3990,8 @@ function getDesignLayoutPositions(design) {
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
   let x = padding, y = padding, rowHeight = 0;
   for (const el of elements) {
-    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
+    const width = getDesignElementDimension(el, 'width', frameWidth);
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(design) || 900);
     if (direction === 'row') {
       if (x > padding && x + width > frameWidth - padding) {
         x = padding; y += rowHeight + gap; rowHeight = 0;
@@ -3952,6 +4043,11 @@ function renderDesignWorkspace() {
   selectedDesignElementIds = selectedDesignElementIds.filter(id => validIds.has(id));
   if (selectedDesignElementId && !validIds.has(selectedDesignElementId)) selectedDesignElementId = null;
   const layout = getDesignLayoutPositions(p.design);
+  // The design frame is a visible paper sheet inside the dark workspace.
+  // Keep its CSS dimensions identical to the configured frame dimensions.
+  canvas.style.boxSizing = 'border-box';
+  canvas.style.border = '1px solid #cbd5e1';
+  canvas.style.boxShadow = '0 12px 36px rgba(0,0,0,0.28)';
   canvas.style.width = getDesignCanvasWidth(p.design) + 'px';
   canvas.style.height = Math.max(layout.height, getDesignCanvasHeight(p.design)) + 'px';
   canvas.style.zoom = String(designZoom);
@@ -3978,17 +4074,24 @@ function renderDesignWorkspace() {
   for (const el of sorted) {
     const node = document.createElement('div');
     node.dataset.designId = el.id;
-    node.className = 'absolute select-none cursor-move';
+    node.className = 'absolute select-none ' + (el.locked ? 'cursor-not-allowed' : 'cursor-move');
     // Keep element dragging reliable on touch screens; the surrounding canvas still scrolls normally.
     node.style.touchAction = 'none';
+    node.style.visibility = el.hidden ? 'hidden' : 'visible';
+    node.style.display = el.hidden ? 'none' : 'flex';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
     const layoutPosition = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
-    node.style.left = layoutPosition.x + 'px'; node.style.top = layoutPosition.y + 'px';
-    node.style.width = Math.max(20, Number(el.width) || 120) + 'px'; node.style.height = Math.max(20, Number(el.height) || 48) + 'px';
+    node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x + 'px' : getDesignElementPositionCss(el, 'x');
+    node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y + 'px' : getDesignElementPositionCss(el, 'y');
+    node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
+    node.style.minWidth = el.widthUnit === '%' ? '1px' : '20px'; node.style.minHeight = el.heightUnit === '%' ? '1px' : '20px';
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)'; node.style.transformOrigin = 'center center';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    node.style.fontSize = Math.max(8, Number(el.fontSize) || 16) + 'px'; node.style.fontWeight = String(el.weight || 400);
+    node.style.fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16)) + 'px'; node.style.fontWeight = String(Math.max(100, Math.min(900, Number(el.weight) || 400))); node.style.opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
     node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0, Number(el.radius) || 0) + 'px';
-    node.style.display = 'flex'; node.style.alignItems = 'center';
+    node.style.display = el.hidden ? 'none' : 'flex'; node.style.alignItems = 'center';
     node.style.justifyContent = el.type === 'button' ? 'center' : 'flex-start';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.padding = (el.type === 'rectangle' || el.type === 'image') ? '0' : '4px';
@@ -4003,27 +4106,29 @@ function renderDesignWorkspace() {
       resizeHandle.dataset.designResizeHandle = el.id;
       resizeHandle.setAttribute('role', 'slider');
       resizeHandle.setAttribute('aria-label', 'Redimensionar ' + (el.label || el.type));
-      resizeHandle.setAttribute('aria-valuetext', Math.round(Number(el.width)||120) + ' por ' + Math.round(Number(el.height)||48) + ' píxeles');
+      resizeHandle.setAttribute('aria-valuetext', Math.round(getDesignElementDimension(el, 'width', getDesignCanvasWidth(p.design))) + ' por ' + Math.round(getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || 900)) + ' píxeles');
       resizeHandle.tabIndex = 0;
       resizeHandle.style.cssText = 'position:absolute;right:0;bottom:0;width:14px;height:14px;border:2px solid #fff;border-radius:3px;background:#7c3aed;box-shadow:0 0 0 1px #7c3aed;cursor:nwse-resize;z-index:5;touch-action:none;';
       resizeHandle.addEventListener('pointerdown', ev => {
-        if (ev.button !== 0) return;
+        if (ev.button !== 0 || el.locked) return;
         ev.preventDefault(); ev.stopPropagation();
         selectedDesignElementId = el.id;
         recordDesignHistory();
         const rect = canvas.getBoundingClientRect();
-        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: Number(el.width)||120, height: Number(el.height)||48, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: getDesignElementDimension(el, 'width', getDesignCanvasWidth(activeDesignProject()?.design)), height: getDesignElementDimension(el, 'height', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
         try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
       });
       resizeHandle.addEventListener('keydown', ev => {
-        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
+        if (el.locked || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)) return;
         ev.preventDefault(); ev.stopPropagation();
         recordDesignHistory();
         const step = ev.shiftKey ? 10 : 1;
-        if (ev.key === 'ArrowLeft') el.width = Math.max(20, (Number(el.width)||120) - step);
-        if (ev.key === 'ArrowRight') el.width = Math.min(4000, (Number(el.width)||120) + step);
-        if (ev.key === 'ArrowUp') el.height = Math.max(20, (Number(el.height)||48) - step);
-        if (ev.key === 'ArrowDown') el.height = Math.min(4000, (Number(el.height)||48) + step);
+        const currentWidth = getDesignElementDimension(el, 'width', getDesignCanvasWidth(activeDesignProject()?.design));
+        const currentHeight = getDesignElementDimension(el, 'height', getDesignCanvasHeight(activeDesignProject()?.design) || 900);
+        if (ev.key === 'ArrowLeft') { el.widthUnit = 'px'; el.width = Math.max(20, currentWidth - step); }
+        if (ev.key === 'ArrowRight') { el.widthUnit = 'px'; el.width = Math.min(4000, currentWidth + step); }
+        if (ev.key === 'ArrowUp') { el.heightUnit = 'px'; el.height = Math.max(20, currentHeight - step); }
+        if (ev.key === 'ArrowDown') { el.heightUnit = 'px'; el.height = Math.min(4000, currentHeight + step); }
         const resizeId = el.id;
         renderDesignWorkspace();
         const nextHandle = Array.from(document.querySelectorAll('[data-design-resize-handle]')).find(item => item.dataset.designResizeHandle === resizeId);
@@ -4053,7 +4158,7 @@ function renderDesignWorkspace() {
       else if (selectedDesignElementId !== el.id || selectedDesignElementIds.length !== 1) selectDesignElement(el.id, false);
     });
     node.addEventListener('pointerdown', ev => {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || el.locked) return;
       if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { ev.preventDefault(); return; }
       if (activeDesignProject()?.design.layoutMode === 'auto') return;
       if (ev.altKey && el.type === 'button' && safeDesignLink(el.href)) { ev.preventDefault(); return; }
@@ -4063,19 +4168,22 @@ function renderDesignWorkspace() {
       node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
-      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: Number(el.x)||0, y: Number(el.y)||0, scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: getDesignElementPosition(el, 'x', getDesignCanvasWidth(activeDesignProject()?.design)), y: getDesignElementPosition(el, 'y', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
       node.setPointerCapture && node.setPointerCapture(ev.pointerId);
       ev.preventDefault();
     });
     canvas.appendChild(node);
   }
   layers.innerHTML = sorted.length ? sorted.slice().reverse().map(el =>
-    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="w-full text-left px-2.5 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'bg-violet-500/20 text-violet-200 border border-violet-500/40' : 'text-slate-300 hover:bg-slate-800 border border-transparent') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="truncate">' + escapeHtml(el.label || el.type) + '</span></button>'
+    '<div class="flex items-center gap-1 rounded-lg border ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'border-violet-500/40 bg-violet-500/10' : 'border-transparent') + (el.hidden ? ' opacity-60' : '') + '">' +
+    '<button type="button" data-design-select="' + escapeAttr(el.id) + '" class="min-w-0 flex-1 text-left px-2 py-2 rounded-lg text-[11px] flex items-center gap-2 ' + (selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId ? 'text-violet-200' : 'text-slate-300 hover:bg-slate-800') + '"><i class="fa-solid ' + (el.type === 'heading' ? 'fa-heading' : el.type === 'button' ? 'fa-square-caret-right' : el.type === 'rectangle' ? 'fa-square' : el.type === 'ellipse' ? 'fa-circle' : el.type === 'image' ? 'fa-image' : 'fa-font') + '"></i><span class="min-w-0 flex-1 truncate">' + escapeHtml(el.label || el.type) + '</span><code class="shrink-0 text-[9px] text-cyan-300">' + escapeHtml(el.identifier || 'id') + '</code></button>' +
+    '<button type="button" data-design-visibility="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerVisibility(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 text-slate-400" aria-label="' + (el.hidden ? 'Mostrar capa ' : 'Ocultar capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.hidden ? 'Mostrar capa' : 'Ocultar capa') + '"><i class="fa-solid ' + (el.hidden ? 'fa-eye-slash' : 'fa-eye') + '"></i></button>' +
+    '<button type="button" data-design-lock="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerLock(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 ' + (el.locked ? 'text-amber-300' : 'text-slate-500') + '" aria-label="' + (el.locked ? 'Desbloquear capa ' : 'Bloquear capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.locked ? 'Desbloquear capa' : 'Bloquear capa') + '"><i class="fa-solid ' + (el.locked ? 'fa-lock' : 'fa-lock-open') + '"></i></button></div>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
-  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Lienzo</div>' +
+  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Marco de diseño</div><p class="text-[10px] text-slate-500">Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom.</p>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Ancho (px)</span><input id="designCanvasWidth" type="number" min="100" max="4000" step="1" value="'+getDesignCanvasWidth(p.design)+'" onchange="setDesignCanvasDimensions(this.value,document.getElementById(\'designCanvasHeight\').value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Alto (px)</span><input id="designCanvasHeight" type="number" min="100" max="10000" step="1" value="'+(getDesignCanvasHeight(p.design)||'')+'" placeholder="Auto" onchange="setDesignCanvasDimensions(document.getElementById(\'designCanvasWidth\').value,this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label></div>' +
-    '<button type="button" onclick="resetDesignCanvasDimensions()" class="w-full px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800">Restablecer tamaño automático</button></section>';
+    '<button type="button" onclick="resetDesignCanvasDimensions()" class="w-full px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800">Usar altura automática</button></section>';
   const layoutControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Distribución del diseño</div>' +
     '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Modo de colocación</span><select id="designLayoutMode" aria-label="Modo de colocación" onchange="setDesignLayoutMode(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="free" '+((p.design.layoutMode||'free')==='free'?'selected':'')+'>Libre (posiciones manuales)</option><option value="auto" '+(p.design.layoutMode==='auto'?'selected':'')+'>Auto Layout (flujo)</option></select></label>' +
     (p.design.layoutMode === 'auto' ? '<label class="block space-y-1"><span class="text-slate-400 text-[11px]">Dirección</span><select id="designLayoutDirection" aria-label="Dirección Auto Layout" onchange="setDesignLayoutDirection(this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="row" '+((p.design.layoutDirection||'row')==='row'?'selected':'')+'>Fila con ajuste de línea</option><option value="column" '+(p.design.layoutDirection==='column'?'selected':'')+'>Columna</option></select></label>' +
@@ -4106,34 +4214,87 @@ function renderDesignWorkspace() {
   const layerIndex = p.design.elements.findIndex(item => item.id === el.id);
   props.innerHTML = canvasControls + layoutControls + '<div class="text-[11px] font-bold text-violet-300">' + escapeHtml(el.label || el.type) + '</div>' +
     (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? field('Contenido','text','text') : '') +
-    field('Nombre de capa','label','text') + buttonControls + imageControls +
-    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>') +
+    field('Nombre de capa','label','text') + field('Identificador único','identifier','text','placeholder="id, boton-login, titulo-principal…" maxlength="120"') + '<p class="text-[10px] text-slate-500">Cada elemento tiene un identificador único para encontrarlo y referenciarlo. Se asigna automáticamente y puedes renombrarlo.</p>' + buttonControls + imageControls +
+    (p.design.layoutMode === 'auto' ? '<p class="text-[10px] text-slate-500">La posición se calcula por orden, dirección, espacio y relleno.</p>' : '<div class="grid grid-cols-2 gap-2">' + field('X','x') + field('Y','y') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad X</span><select id="designProperty-xUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'xUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.xUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.xUnit==='%'?'selected':'')+'>%</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad Y</span><select id="designProperty-yUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'yUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.yUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.yUnit==='%'?'selected':'')+'>%</option></select></label></div>') +
     '<div class="grid grid-cols-2 gap-2">' + field('Ancho','width') + field('Alto','height') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2">' + field('Rotación (°)','rotation','number','min="-3600" max="3600" step="1"') + '</div>' +
+    '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400">Unidad de ancho</span><select id="designProperty-widthUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'widthUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.widthUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.widthUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.widthUnit==='auto'?'selected':'')+'>Auto</option></select></label><label class="block space-y-1"><span class="text-slate-400">Unidad de alto</span><select id="designProperty-heightUnit" onfocus="recordDesignHistory()" onchange="updateDesignProperty(\'heightUnit\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="px" '+((el.heightUnit||'px')==='px'?'selected':'')+'>px</option><option value="%" '+(el.heightUnit==='%'?'selected':'')+'>%</option><option value="auto" '+(el.heightUnit==='auto'?'selected':'')+'>Auto</option></select></label></div>' +
     '<div class="grid grid-cols-2 gap-2">' + field('Texto','color','color','') + field('Fondo','background','color','') + '</div>' +
-    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + field('Redondeado','radius') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
+    (el.type !== 'image' && el.type !== 'ellipse' ? field('Tamaño de texto','fontSize') : '') + (el.type !== 'image' && el.type !== 'rectangle' && el.type !== 'ellipse' ? field('Peso tipográfico','weight','number','min="100" max="900" step="100"') : '') + field('Opacidad','opacity','number','min="0" max="1" step="0.05"') + field('Redondeado','radius','number','min="0" max="4000" step="1"') + (el.type !== 'rectangle' && el.type !== 'ellipse' && el.type !== 'image' ? '<label class="block space-y-1"><span class="text-slate-400">Alineación del texto</span><select onchange="updateDesignProperty(\'textAlign\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"><option value="left" '+((el.textAlign||'left')==='left'?'selected':'')+'>Izquierda</option><option value="center" '+(el.textAlign==='center'?'selected':'')+'>Centro</option><option value="right" '+(el.textAlign==='right'?'selected':'')+'>Derecha</option></select></label>' : '') +
     '<div class="grid grid-cols-2 gap-2 mt-3"><button id="designLayerDown" type="button" onclick="moveDesignLayer(-1)" '+(layerIndex <= 0 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-down mr-1"></i>Enviar atrás</button><button id="designLayerUp" type="button" onclick="moveDesignLayer(1)" '+(layerIndex >= p.design.elements.length - 1 ? 'disabled' : '')+' class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-arrow-up mr-1"></i>Traer al frente</button></div>' +
     '<div class="grid grid-cols-2 gap-2 mt-2"><button type="button" onclick="duplicateDesignElement()" class="px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800"><i class="fa-regular fa-copy mr-1"></i>Duplicar</button><button type="button" onclick="deleteDesignElement()" class="px-2 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-[11px] text-rose-200 hover:bg-rose-900"><i class="fa-regular fa-trash-can mr-1"></i>Eliminar</button></div>';
   updateDesignHistoryButtons();
 }
+
+function pDesignElementsWithoutCurrent(id) {
+  const p = activeDesignProject();
+  return p ? p.design.elements.filter(item => item && item.id !== id) : [];
+}
 function updateDesignProperty(key, value) {
-  const el = selectedDesignElement(); if (!el) return;
+  const p = activeDesignProject();
+  const el = p && p.design.elements.find(item => item && item.id === selectedDesignElementId);
+  if (!el) return;
+  if (el.locked) { showToast('Desbloquea la capa antes de editar sus propiedades.', 'warn'); return; }
+  if (key === 'identifier') {
+    const requested = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 120);
+    const base = requested || 'id';
+    const others = pDesignElementsWithoutCurrent(el.id);
+    const used = new Set(others.map(item => String(item.identifier || '').toLowerCase()));
+    let unique = base, suffix = 2;
+    while (used.has(unique.toLowerCase())) unique = base + suffix++;
+    el.identifier = unique;
+    const identifierInput = document.getElementById('designProperty-identifier');
+    if (identifierInput && identifierInput.value !== unique) identifierInput.value = unique;
+    if (p) p.updatedAt = new Date().toISOString();
+    const layerButton = document.querySelector('[data-design-select="' + CSS.escape(el.id) + '"]');
+    const layerIdentifier = layerButton && layerButton.querySelector('code');
+    if (layerIdentifier) layerIdentifier.textContent = unique;
+    scheduleAutosave(); return;
+  }
   if (['text','label','alt'].includes(key)) el[key] = String(value).slice(0, 500);
   else if (key === 'src') el.src = safeDesignImageSource(value);
   else if (key === 'href') el.href = safeDesignLink(value);
   else if (key === 'objectFit') el.objectFit = ['contain','cover','fill'].includes(value) ? value : 'cover';
   else if (key === 'color' || key === 'background') el[key] = value;
+  else if (key === 'rotation') { const n = Number(value); if (!Number.isFinite(n)) return; el.rotation = Math.max(-3600, Math.min(3600, n)); }
+  else if (key === 'opacity') { const n = Number(value); if (!Number.isFinite(n)) return; el.opacity = Math.max(0, Math.min(1, n)); }
+  else if (['x','y','width','height','fontSize','weight','radius'].includes(key)) {
+    const n = Number(value); if (!Number.isFinite(n)) return;
+    const ranges = {
+      x: [0, el.xUnit === '%' ? 200 : 10000], y: [0, el.yUnit === '%' ? 200 : 10000],
+      width: [el.widthUnit === '%' ? 1 : el.widthUnit === 'auto' ? 0 : 20, el.widthUnit === '%' ? 100 : 4000],
+      height: [el.heightUnit === '%' ? 1 : el.heightUnit === 'auto' ? 0 : 20, el.heightUnit === '%' ? 100 : 4000],
+      fontSize: [8, 256], weight: [100, 900], radius: [0, 4000]
+    };
+    const [min, max] = ranges[key]; el[key] = Math.max(min, Math.min(max, n));
+  }
+  else if (key === 'xUnit' || key === 'yUnit') {
+    if (!['px', '%'].includes(value)) return;
+    el[key] = value;
+    renderDesignWorkspace(); scheduleAutosave(); return;
+  }
+  else if (key === 'widthUnit' || key === 'heightUnit') {
+    if (!['px', '%', 'auto'].includes(value)) return;
+    el[key] = value;
+    renderDesignWorkspace(); scheduleAutosave(); return;
+  }
   else el[key] = Math.max(key === 'radius' ? 0 : 1, Number(value) || 0);
-  const p = activeDesignProject(); if (p) p.updatedAt = new Date().toISOString();
+  if (p && key === 'rotation') el.rotation = Math.max(-3600, Math.min(3600, Number(value) || 0));
+  if (p) p.updatedAt = new Date().toISOString();
   // Keep typing responsive; update canvas/layers without rebuilding the focused property field.
   const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
   if (node) {
     if (el.type === 'image') renderDesignImageContent(node, el);
     else node.textContent = el.type === 'rectangle' ? '' : (el.text || '');
     const layoutPosition = getDesignLayoutPositions(p.design).positions.get(el.id) || { x: Number(el.x)||0, y: Number(el.y)||0 };
-    node.style.left = layoutPosition.x+'px'; node.style.top = layoutPosition.y+'px';
-    node.style.width = Math.max(20,Number(el.width)||120)+'px'; node.style.height = Math.max(20,Number(el.height)||48)+'px';
+    node.style.left = p.design.layoutMode === 'auto' ? layoutPosition.x+'px' : getDesignElementPositionCss(el, 'x');
+    node.style.top = p.design.layoutMode === 'auto' ? layoutPosition.y+'px' : getDesignElementPositionCss(el, 'y');
+    node.style.width = getDesignElementDimensionCss(el, 'width'); node.style.height = getDesignElementDimensionCss(el, 'height');
     node.style.color = el.color || '#111827'; node.style.background = el.background || 'transparent';
-    node.style.fontSize = Math.max(8,Number(el.fontSize)||16)+'px'; node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Number(el.radius)||0)+'px';
+    node.style.transform = 'rotate(' + Math.max(-3600, Math.min(3600, Number(el.rotation) || 0)) + 'deg)';
+    node.style.transformOrigin = 'center center';
+    node.style.fontSize = Math.max(8,Math.min(256,Number(el.fontSize)||16))+'px'; node.style.fontWeight = String(Math.max(100,Math.min(900,Number(el.weight)||400))); node.style.opacity = Math.max(0,Math.min(1,Number(el.opacity ?? 1))); node.style.borderRadius = el.type === 'ellipse' ? '50%' : Math.max(0,Math.min(4000,Number(el.radius)||0))+'px';
     node.style.textAlign = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
     node.style.justifyContent = el.type === 'button' ? 'center' : (el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start');
   }
@@ -4249,19 +4410,65 @@ function moveDesignLayer(direction) {
   showToast(nextIndex > currentIndex ? 'Capa traída al frente.' : 'Capa enviada atrás.');
 }
 function duplicateDesignElement() {
-  const p = activeDesignProject(), el = selectedDesignElement(); if (!p || !el) return;
-  if (p.design.elements.length >= MAX_DESIGN_ELEMENTS) {
-    showToast('Este diseño alcanzó el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
+  const p = activeDesignProject();
+  if (!p || !Array.isArray(p.design.elements) || !selectedDesignElementId) return;
+  const selectedIdSet = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
+  const selected = p.design.elements.filter(item => selectedIdSet.has(item.id));
+  if (!selected.length) return;
+  if (selected.some(item => item.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de duplicarlas.', 'warn'); return; }
+  if (p.design.elements.length + selected.length > MAX_DESIGN_ELEMENTS) {
+    showToast('Este diseño alcanzaría el límite de ' + MAX_DESIGN_ELEMENTS + ' capas. Elimina alguna para duplicar.', 'warn');
     return;
   }
   recordDesignHistory();
-  const copy = { ...el, id: 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now()), x: (Number(el.x)||0)+24, y: (Number(el.y)||0)+24, label: (el.label || 'Capa') + ' copia' };
-  p.design.elements.push(copy); selectedDesignElementId = copy.id; selectedDesignElementIds = [copy.id]; renderDesignWorkspace(); saveProjectsToStorage();
+  const canvasWidth = getDesignCanvasWidth(p.design);
+  const canvasHeight = getDesignCanvasHeight(p.design) || 900;
+  const existingIds = new Set(p.design.elements.map(item => item.id));
+  let fallbackId = Date.now();
+  const makeId = () => {
+    let id;
+    do {
+      id = 'el_' + (crypto.randomUUID ? crypto.randomUUID() : String(fallbackId++));
+    } while (existingIds.has(id));
+    existingIds.add(id);
+    return id;
+  };
+  const copies = [];
+  selected.forEach(el => copies.push({
+    ...el,
+    id: makeId(),
+    identifier: nextDesignElementIdentifier(p.design.elements.concat(copies), '__reserved__'),
+    x: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'x', canvasWidth) + 24)),
+    y: Math.max(0, Math.min(6000, getDesignElementPosition(el, 'y', canvasHeight) + 24)),
+    xUnit: 'px',
+    yUnit: 'px',
+    label: (el.label || 'Capa') + ' copia'
+  }));
+  const duplicateIds = new Map(selected.map((el, index) => [el.id, copies[index].id]));
+  copies.forEach((copy, index) => {
+    const original = selected[index];
+    const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
+    if (internalTarget) copy.href = '#' + designLayerDomId(duplicateIds.get(internalTarget.id));
+  });
+  const existingConnections = Array.isArray(p.design.flowConnections) ? p.design.flowConnections : [];
+  const duplicatedConnections = existingConnections
+    .filter(connection => connection && duplicateIds.has(connection.sourceElementId))
+    .map(connection => ({ ...connection, sourceElementId: duplicateIds.get(connection.sourceElementId) }));
+  if (duplicatedConnections.length) p.design.flowConnections = existingConnections.concat(duplicatedConnections);
+  p.design.elements.push(...copies);
+  selectedDesignElementIds = copies.map(copy => copy.id);
+  selectedDesignElementId = selectedDesignElementIds[selectedDesignElementIds.length - 1] || null;
+  renderDesignWorkspace();
+  saveProjectsToStorage();
 }
 function deleteDesignElement() {
   const p = activeDesignProject(); if (!p || !selectedDesignElementId) return;
+  const selectedIds = new Set(selectedDesignElementIds.length ? selectedDesignElementIds : [selectedDesignElementId]);
+  const selectedElements = p.design.elements.filter(el => selectedIds.has(el.id));
+  if (!selectedElements.length) return;
+  if (selectedElements.some(el => el.locked)) { showToast('Desbloquea todas las capas seleccionadas antes de eliminarlas.', 'warn'); return; }
   recordDesignHistory();
-  const deletedElementIds = new Set(p.design.elements.filter(el => selectedDesignElementIds.includes(el.id) || el.id === selectedDesignElementId).map(el => el.id));
+  const deletedElementIds = new Set(selectedElements.map(el => el.id));
   p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
   // Never leave graph edges pointing at a layer that no longer exists.
   if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
@@ -4373,7 +4580,7 @@ async function convertDesignToWeb() {
   const layoutDirection = p.design.layoutDirection === 'column' ? 'column' : 'row';
   const layoutGap = Math.max(0, Math.min(200, Number(p.design.layoutGap) || 0));
   const layoutPadding = Math.max(0, Math.min(200, Number(p.design.layoutPadding) || 0));
-  const elements = (Array.isArray(p.design.elements) ? p.design.elements : []).map(el => {
+  const elements = (Array.isArray(p.design.elements) ? p.design.elements.filter(el => el && !el.hidden) : []).map(el => {
     const imageSource = el.type === 'image' ? safeDesignImageSource(el.src) : '';
     const buttonHref = el.type === 'button' ? safeDesignLink(el.href) : '';
     const tag = el.type === 'image' ? (imageSource ? 'img' : 'div') : el.type === 'heading' ? 'h1' : el.type === 'button' ? 'a' : (el.type === 'rectangle' || el.type === 'ellipse') ? 'div' : 'p';
@@ -4383,16 +4590,23 @@ async function convertDesignToWeb() {
     const position = layoutPositions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = Math.max(0, Math.min(10000, Number(position.x) || 0));
     const y = Math.max(0, Math.min(10000, Number(position.y) || 0));
-    const width = Math.max(20, Math.min(4000, Number(el.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(el.height) || 48));
-    const fontSize = Math.max(8, Math.min(240, Number(el.fontSize) || 16));
+    const leftCss = getDesignElementPositionCss(el, 'x');
+    const topCss = getDesignElementPositionCss(el, 'y');
+    const width = getDesignElementDimension(el, 'width', getDesignCanvasWidth(p.design));
+    const height = getDesignElementDimension(el, 'height', getDesignCanvasHeight(p.design) || layout.height);
+    const widthCss = getDesignElementDimensionCss(el, 'width');
+    const heightCss = getDesignElementDimensionCss(el, 'height');
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
     const weight = Math.max(100, Math.min(900, Number(el.weight) || 400));
-    const radius = Math.max(0, Math.min(500, Number(el.radius) || 0));
+    const radius = Math.max(0, Math.min(4000, Number(el.radius) || 0));
     const align = ['left','center','right'].includes(el.textAlign) ? el.textAlign : 'left';
-    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+x+'px;top:'+y+'px;')+'width:'+width+'px;height:'+height+'px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
+    const rotation = Math.max(-3600, Math.min(3600, Number(el.rotation) || 0));
+    const opacity = Math.max(0, Math.min(1, Number(el.opacity ?? 1)));
+    const style = (autoLayout ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;' : 'position:absolute;left:'+leftCss+';top:'+topCss+';')+'width:'+widthCss+';height:'+heightCss+';min-width:20px;min-height:20px;color:'+color+';background:'+background+';font-size:'+fontSize+'px;text-align:'+align+';font-weight:'+weight+';opacity:'+opacity+';transform:rotate('+rotation+'deg);transform-origin:center center;'+(el.type==='ellipse'?'border-radius:50%;':'border-radius:'+radius+'px;')+'display:flex;align-items:center;padding:4px;box-sizing:border-box;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'padding:0;object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
     const domId = designLayerDomId(el.id);
-    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'" src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
-    return '<'+tag+' id="'+escapeAttr(domId)+'"'+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
+    const identifierAttribute = ' data-design-identifier="' + escapeAttr(el.identifier || '') + '"';
+    if (el.type === 'image' && imageSource) return '<img id="'+escapeAttr(domId)+'"'+identifierAttribute+' src="'+escapeAttr(imageSource)+'" alt="'+escapeAttr(String(el.alt || el.label || 'Imagen').slice(0,300))+'" style="'+style+'">';
+    return '<'+tag+' id="'+escapeAttr(domId)+'"'+identifierAttribute+designLinkAttributes(buttonHref)+' style="'+style+'">'+text+'</'+tag+'>';
   }).join('\n');
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design));
@@ -4911,6 +5125,7 @@ async function importDesignProjectJson(file) {
   const oldToNewId = new Map();
   const makeId = () => 'el_' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2));
   const finite = (value, fallback, min, max) => {
+    if (value == null || (typeof value === 'string' && !value.trim())) return fallback;
     const n = Number(value);
     return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   };
@@ -4943,10 +5158,21 @@ async function importDesignProjectJson(file) {
       id, type: raw.type,
       label: String(raw.label || raw.type).slice(0, 300),
       text: String(raw.text || '').slice(0, 10000),
-      x: finite(raw.x, 0, -6000, 6000),
-      y: finite(raw.y, 0, -6000, 6000),
-      width: finite(raw.width, 120, 20, 4000),
-      height: finite(raw.height, 48, 20, 4000),
+      x: finite(raw.x, 0, 0, raw.xUnit === '%' ? 200 : 10000),
+      y: finite(raw.y, 0, 0, raw.yUnit === '%' ? 200 : 10000),
+      xUnit: ['px','%'].includes(raw.xUnit) ? raw.xUnit : 'px',
+      yUnit: ['px','%'].includes(raw.yUnit) ? raw.yUnit : 'px',
+      identifier: typeof raw.identifier === 'string' ? raw.identifier.trim().slice(0, 120) : '',
+      hidden: raw.hidden === true || raw.visible === false,
+      ...(typeof raw.visible === 'boolean' ? { visible: raw.visible } : {}),
+      locked: raw.locked === true,
+      opacity: finite(raw.opacity, 1, 0, 1),
+      rotation: finite(raw.rotation, 0, -3600, 3600),
+      ...(['navigate', 'menu'].includes(raw.flowRole) ? { flowRole: raw.flowRole } : {}),
+      width: finite(raw.width, 120, raw.widthUnit === '%' ? 1 : raw.widthUnit === 'auto' ? 0 : 20, raw.widthUnit === '%' ? 100 : 4000),
+      height: finite(raw.height, 48, raw.heightUnit === '%' ? 1 : raw.heightUnit === 'auto' ? 0 : 20, raw.heightUnit === '%' ? 100 : 4000),
+      widthUnit: ['px','%','auto'].includes(raw.widthUnit) ? raw.widthUnit : 'px',
+      heightUnit: ['px','%','auto'].includes(raw.heightUnit) ? raw.heightUnit : 'px',
       color: color(raw.color, '#111827'),
       background: color(raw.background, 'transparent'),
       fontSize: finite(raw.fontSize, 16, 8, 200),
@@ -4968,6 +5194,7 @@ async function importDesignProjectJson(file) {
       if (targetId) elements[index].href = '#layer-' + targetId.replace(/[^a-z0-9_-]/gi, '').slice(0, 120);
     }
   });
+  normalizeDesignElementIdentifiers(elements);
   // Recheck after asynchronous file reading so import cannot race a project
   // creation or cross the workspace cap between validation and mutation.
   if (creatingProjectInFlight) {
@@ -5000,7 +5227,13 @@ async function importDesignProjectJson(file) {
       layoutGap: finite(sourceDesign.layoutGap, 16, 0, 200),
       layoutPadding: finite(sourceDesign.layoutPadding, 24, 0, 200),
       ...(Number.isInteger(Number(sourceDesign.canvasWidth)) && Number(sourceDesign.canvasWidth) >= 100 && Number(sourceDesign.canvasWidth) <= 4000 ? { canvasWidth: Number(sourceDesign.canvasWidth) } : {}),
-      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {})
+      ...(Number.isInteger(Number(sourceDesign.canvasHeight)) && Number(sourceDesign.canvasHeight) >= 100 && Number(sourceDesign.canvasHeight) <= 10000 ? { canvasHeight: Number(sourceDesign.canvasHeight) } : {}),
+      ...(Array.isArray(sourceDesign.flowConnections) ? {
+        flowConnections: sourceDesign.flowConnections.filter(connection => connection && typeof connection === 'object' &&
+          typeof connection.sourceElementId === 'string' && oldToNewId.has(connection.sourceElementId) &&
+          typeof connection.targetProjectId === 'string' && connection.targetProjectId.length <= 200)
+          .map(connection => ({ ...connection, sourceElementId: oldToNewId.get(connection.sourceElementId) }))
+      } : {})
     }
   };
   projects.unshift(newProject);
@@ -5020,3 +5253,143 @@ async function importDesignProjectJson(file) {
   else showToast('El respaldo se abrió, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
+
+
+/* Integrated UI parity helpers from validated PR #391. */
+function getDesignElementPositionCss(el, axis) {
+  const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) ? raw : 0;
+  return unit === '%' ? Math.max(0, Math.min(200, value)) + '%' : Math.max(0, Math.min(10000, value)) + 'px';
+}
+
+function toggleDesignLayerVisibility(id) {
+  const project = activeDesignProject();
+  const element = project && project.design.elements.find(item => item.id === id);
+  if (!element) return;
+  recordDesignHistory();
+  element.hidden = !element.hidden;
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(element.hidden ? 'Capa oculta.' : 'Capa visible.');
+}
+
+function toggleDesignLayerLock(id) {
+  const project = activeDesignProject();
+  const element = project && project.design.elements.find(item => item.id === id);
+  if (!element) return;
+  recordDesignHistory();
+  element.locked = !element.locked;
+  project.updatedAt = new Date().toISOString();
+  renderDesignWorkspace();
+  saveProjectsToStorage();
+  showToast(element.locked ? 'Capa bloqueada: no se puede mover ni redimensionar.' : 'Capa desbloqueada.');
+}
+
+function nextDesignElementIdentifier(elements, currentId) {
+  const used = new Set((Array.isArray(elements) ? elements : [])
+    .filter(item => item && item.id !== currentId)
+    .map(item => String(item.identifier || '').trim().toLowerCase())
+    .filter(Boolean));
+  for (let n = 1; n < 10000; n++) {
+    const candidate = n === 1 ? 'id' : 'id' + n;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return 'elemento-' + Date.now();
+}
+
+function normalizeDesignElementIdentifiers(elements) {
+  const used = new Set();
+  for (const element of Array.isArray(elements) ? elements : []) {
+    if (!element || typeof element !== 'object') continue;
+    let identifier = String(element.identifier || '').trim().slice(0, 120);
+    if (!identifier || used.has(identifier.toLowerCase())) {
+      identifier = nextDesignElementIdentifier(elements.filter(item => item !== element).concat(
+        Array.from(used, value => ({ identifier: value, id: '__reserved__' }))
+      ), element.id);
+    }
+    // User-facing identifiers are readable names, not DOM IDs. Keep them simple and unique.
+    if (used.has(identifier.toLowerCase())) {
+      let suffix = 2, base = identifier;
+      while (used.has((base + suffix).toLowerCase())) suffix++;
+      identifier = base + suffix;
+    }
+    element.identifier = identifier;
+    used.add(identifier.toLowerCase());
+  }
+}
+
+async function captureDesignEditorElement(root, scale) {
+  const rect = root.getBoundingClientRect();
+  const width = Math.max(1, Math.ceil(rect.width)), height = Math.max(1, Math.ceil(rect.height));
+  if (width * height * scale * scale > 32000000) throw new Error('La captura del editor es demasiado grande; baja la resolución.');
+  const clone = root.cloneNode(true), originals = [root, ...root.querySelectorAll('*')], copies = [clone, ...clone.querySelectorAll('*')];
+  for (let i = 0; i < Math.min(originals.length, copies.length); i++) {
+    const original = originals[i], copy = copies[i], computed = getComputedStyle(original);
+    let css = '';
+    for (let j = 0; j < computed.length; j++) { const property = computed[j]; css += property + ':' + computed.getPropertyValue(property) + ';'; }
+    copy.setAttribute('style', (copy.getAttribute('style') || '') + ';' + css);
+    if (original instanceof HTMLInputElement || original instanceof HTMLTextAreaElement) copy.setAttribute('value', original.value);
+    if (original instanceof HTMLSelectElement) copy.querySelectorAll('option').forEach((option, index) => { if (original.options[index] && original.options[index].selected) option.setAttribute('selected', 'selected'); });
+    if (original instanceof HTMLCanvasElement) { try { const img = document.createElement('img'); img.src = original.toDataURL('image/png'); img.style.cssText = copy.getAttribute('style') || ''; copy.replaceWith(img); } catch (_) {} }
+  }
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); clone.style.width = width + 'px'; clone.style.height = height + 'px'; clone.style.overflow = 'hidden';
+  const markup = new XMLSerializer().serializeToString(clone);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (width * scale) + '" height="' + (height * scale) + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject width="100%" height="100%">' + markup + '</foreignObject></svg>';
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('El navegador no pudo renderizar la vista completa del editor.')); image.src = url; });
+    const canvas = document.createElement('canvas'); canvas.width = width * scale; canvas.height = height * scale;
+    const context = canvas.getContext('2d'); if (!context) throw new Error('No se pudo crear la imagen de captura del editor.');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo generar la captura PNG del editor.')), 'image/png'));
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function getDesignElementDimension(el, axis, containerSize = 900) {
+  const fallback = axis === 'width' ? 120 : 48;
+  const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  if (unit === '%') return Math.max(1, Math.min(4000, containerSize * Math.min(100, value) / 100));
+  if (unit === 'auto' && el) {
+    if (el.type === 'rectangle' || el.type === 'ellipse') return 20;
+    if (el.type === 'image') return Math.max(20, Math.min(4000, value));
+    const fontSize = Math.max(8, Math.min(256, Number(el.fontSize) || 16));
+    const content = String(el.text || el.label || '');
+    if (axis === 'width') return Math.max(40, Math.min(containerSize, Math.ceil(content.length * fontSize * 0.56 + 16)));
+    const width = getDesignElementDimension(el, 'width', containerSize);
+    const charsPerLine = Math.max(1, Math.floor(width / (fontSize * 0.56)));
+    return Math.max(24, Math.min(4000, Math.ceil(Math.max(1, Math.ceil(content.length / charsPerLine)) * fontSize * 1.35 + 12)));
+  }
+  return Math.max(20, Math.min(4000, value));
+}
+
+function getDesignElementDimensionCss(el, axis) {
+  const unit = ['px', '%', 'auto'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const fallback = axis === 'width' ? 120 : 48;
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  if (unit === 'auto') return el && el.type === 'image' ? Math.max(20, Math.min(4000, value)) + 'px' : 'auto';
+  return unit === '%' ? Math.min(100, value) + '%' : Math.max(20, Math.min(4000, value)) + 'px';
+}
+
+function getDesignElementPosition(el, axis, containerSize = 900) {
+  const unit = ['px', '%'].includes(el && el[axis + 'Unit']) ? el[axis + 'Unit'] : 'px';
+  const raw = Number(el && el[axis]);
+  const value = Number.isFinite(raw) ? raw : 0;
+  if (unit === '%') return containerSize * Math.max(0, Math.min(200, value)) / 100;
+  return Math.max(0, Math.min(10000, value));
+}
+
+function getStoredDesignElementPosition(position, containerSize) {
+  const px = Number(position);
+  if (!Number.isFinite(px) || px < 0) return null;
+  if (px <= 10000) return { value: Math.round(px), unit: 'px' };
+  if (!Number.isFinite(containerSize) || containerSize <= 0) return null;
+  const percent = px / containerSize * 100;
+  if (percent > 200) return null;
+  return { value: Math.round(percent * 100) / 100, unit: '%' };
+}

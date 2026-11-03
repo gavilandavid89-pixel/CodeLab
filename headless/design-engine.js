@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { parseEditorImageDataUrl, isValidEditorImageDataUrl } = require('./image-validation');
 
 const MAX_ELEMENTS = 500;
 const MAX_CANVAS_SIZE = 10000;
@@ -8,8 +9,8 @@ const MAX_CANVAS_WIDTH = 4000;
 const TYPES = new Set(['heading', 'text', 'button', 'rectangle', 'ellipse', 'image']);
 const ELEMENT_FIELDS = new Set([
   'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'color', 'background',
-  'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
-  'opacity', 'rotation', 'visible', 'locked', 'textAlign', 'flowRole'
+  'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit', 'identifier',
+  'widthUnit', 'heightUnit', 'opacity', 'rotation', 'visible', 'locked', 'textAlign', 'flowRole'
 ]);
 
 const DEFAULTS = Object.freeze({
@@ -81,6 +82,51 @@ function findElement(project, id) {
   return element;
 }
 
+function isElementVisible(element) {
+  // Legacy editor projects use hidden:true; new headless projects use visible:false.
+  return element.hidden !== true && element.visible !== false;
+}
+
+function assertUnlocked(element, operation) {
+  assert(element.locked !== true, 'Cannot ' + operation + ' locked layer: ' + element.id);
+}
+
+function clearInternalLinkReferences(project, deletedIds) {
+  const cleared = [];
+  for (const element of project.design.elements) {
+    if (deletedIds.has(element.id) || typeof element.href !== 'string' || !/^#layer-/i.test(element.href)) continue;
+    const targetId = element.href.slice('#layer-'.length);
+    if (!deletedIds.has(targetId)) continue;
+    assertUnlocked(element, 'clear an internal link from');
+    element.href = '';
+    cleared.push(element.id);
+  }
+  return cleared;
+}
+
+function resolveElementSize(element, dimension, canvasDimension) {
+  const raw = Number(element[dimension]);
+  const unitKey = dimension + 'Unit';
+  const unit = element[unitKey] || 'px';
+  if (unit === '%') return Math.max(0, canvasDimension * (Number.isFinite(raw) ? raw : 0) / 100);
+  if (unit === 'auto') {
+    if (element.type === 'image') return Math.max(20, Math.min(4000, Number.isFinite(raw) && raw > 0 ? raw : (dimension === 'width' ? 120 : 48)));
+    const fontSize = Math.max(1, Math.min(512, Number(element.fontSize) || 16));
+    if (dimension === 'width' && ['heading', 'text', 'button'].includes(element.type)) {
+      return Math.max(40, Math.ceil(String(element.text || '').length * fontSize * 0.56 + 24));
+    }
+    if (dimension === 'height' && ['heading', 'text', 'button'].includes(element.type)) {
+      return Math.max(24, Math.ceil(fontSize * 1.5 + (element.type === 'button' ? 16 : 8)));
+    }
+    return dimension === 'width' ? 120 : 48;
+  }
+  return Math.max(0, Number.isFinite(raw) ? raw : 0);
+}
+
+function toStoredPosition(px, unit, canvasDimension) {
+  return unit === '%' ? (canvasDimension > 0 ? px / canvasDimension * 100 : 0) : px;
+}
+
 function applyOperation(project, operation) {
   assert(operation && typeof operation === 'object' && typeof operation.type === 'string', 'A valid operation is required.');
   switch (operation.type) {
@@ -145,6 +191,7 @@ function applyOperation(project, operation) {
       const allowed = new Set(['type', 'id', 'dataUrl', 'filename']);
       assert(Object.keys(operation).every(key => allowed.has(key)), 'image.attach contains an unsupported property.');
       const element = findElement(project, operation.id);
+      assertUnlocked(element, 'attach an image to');
       assert(element.type === 'image', 'image.attach requires an image layer.');
       const parsed = parseEditorImageDataUrl(operation.dataUrl);
       element.src = operation.dataUrl;
@@ -164,29 +211,50 @@ function applyOperation(project, operation) {
       assert(typeof id === 'string' && id.length <= 100, 'Invalid layer id.');
       assert(!project.design.elements.some(item => item.id === id), 'Layer id already exists: ' + id);
       const element = { id, type: operation.elementType, ...clone(DEFAULTS[operation.elementType]), ...(operation.properties || {}) };
-      validateProperties(operation.properties || {});
+      validateProperties(operation.properties || {}, element);
       project.design.elements.push(element);
       return { type: operation.type, element: clone(element) };
     }
     case 'element.update': {
       assert(operation.properties && typeof operation.properties === 'object' && !Array.isArray(operation.properties), 'Layer properties are required.');
       const element = findElement(project, operation.id);
-      validateProperties(operation.properties);
+      const unlockOnly = element.locked === true && Object.keys(operation.properties).length === 1 && operation.properties.locked === false;
+      if (!unlockOnly) assertUnlocked(element, 'update');
+      validateProperties(operation.properties, element);
+      if (operation.properties.visible === true) element.hidden = false;
       Object.assign(element, clone(operation.properties));
       return { type: operation.type, id: element.id, element: clone(element) };
     }
     case 'element.duplicate': {
       assert(project.design.elements.length < MAX_ELEMENTS, 'The design reached the ' + MAX_ELEMENTS + ' layer limit.');
       const source = findElement(project, operation.id);
+      assertUnlocked(source, 'duplicate');
       const id = operation.newId || 'el_' + crypto.randomUUID();
       assert(typeof id === 'string' && id.length <= 100 && !project.design.elements.some(item => item.id === id), 'Invalid or duplicate new layer id.');
-      const copy = { ...clone(source), id, x: (Number(source.x) || 0) + 24, y: (Number(source.y) || 0) + 24, label: (source.label || 'Capa') + ' copia' };
+      const canvasWidth = Number(project.design.canvasWidth) || legacyCanvas(project.design.frame).width;
+      const canvasHeight = Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height;
+      const nextX = toStoredPosition((Number(source.x) || 0) * (source.xUnit === '%' ? canvasWidth / 100 : 1) + 24, source.xUnit, canvasWidth);
+      const nextY = toStoredPosition((Number(source.y) || 0) * (source.yUnit === '%' ? canvasHeight / 100 : 1) + 24, source.yUnit, canvasHeight);
+      const maxX = source.xUnit === '%' ? 200 : MAX_CANVAS_SIZE;
+      const maxY = source.yUnit === '%' ? 200 : MAX_CANVAS_SIZE;
+      assert(nextX >= 0 && nextX <= maxX, 'Duplicating this layer would exceed the editable x coordinate range.');
+      assert(nextY >= 0 && nextY <= maxY, 'Duplicating this layer would exceed the editable y coordinate range.');
+      const copy = {
+        ...clone(source), id, x: nextX, y: nextY,
+        label: (source.label || 'Capa') + ' copia'
+      };
       project.design.elements.push(copy);
-      return { type: operation.type, sourceId: source.id, element: clone(copy) };
+      const connections = Array.isArray(project.design.flowConnections) ? project.design.flowConnections : [];
+      const duplicatedConnections = connections
+        .filter(connection => connection && connection.sourceElementId === source.id)
+        .map(connection => ({ ...clone(connection), sourceElementId: id }));
+      if (duplicatedConnections.length) project.design.flowConnections = connections.concat(duplicatedConnections);
+      return { type: operation.type, sourceId: source.id, element: clone(copy), duplicatedConnections: clone(duplicatedConnections) };
     }
     case 'element.reorder': {
       const index = project.design.elements.findIndex(item => item.id === operation.id);
       assert(index >= 0, 'Layer not found: ' + operation.id);
+      assertUnlocked(project.design.elements[index], 'reorder');
       assert(Number.isInteger(operation.targetIndex) && operation.targetIndex >= 0 && operation.targetIndex < project.design.elements.length, 'targetIndex is outside the layer range.');
       const [element] = project.design.elements.splice(index, 1);
       project.design.elements.splice(operation.targetIndex, 0, element);
@@ -195,42 +263,48 @@ function applyOperation(project, operation) {
     case 'elements.delete': {
       assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 100, 'elements.delete requires 1 to 100 layer IDs.');
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.delete IDs must be unique.');
-      for (const id of operation.ids) findElement(project, id);
+      for (const id of operation.ids) assertUnlocked(findElement(project, id), 'delete');
       const deleted = new Set(operation.ids);
       project.design.elements = project.design.elements.filter(item => !deleted.has(item.id));
+      const clearedLinks = clearInternalLinkReferences(project, deleted);
       if (Array.isArray(project.design.flowConnections)) {
         project.design.flowConnections = project.design.flowConnections.filter(connection => !deleted.has(connection.sourceElementId));
       }
-      return { type: operation.type, deletedIds: Array.from(deleted) };
+      return { type: operation.type, deletedIds: Array.from(deleted), clearedLinks };
     }
     case 'elements.align': {
       assert(Array.isArray(operation.ids) && operation.ids.length > 0 && operation.ids.length <= 50, 'elements.align requires 1 to 50 layer IDs.');
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.align IDs must be unique.');
       assert(['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(operation.mode), 'Unsupported alignment mode.');
       const elements = operation.ids.map(id => findElement(project, id));
+      for (const element of elements) assertUnlocked(element, 'align');
       const canvasWidth = Number(project.design.canvasWidth) || legacyCanvas(project.design.frame).width;
       const canvasHeight = Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height;
       const rects = elements.map(el => ({
         el,
         x: (Number(el.x) || 0) * (el.xUnit === '%' ? canvasWidth / 100 : 1),
         y: (Number(el.y) || 0) * (el.yUnit === '%' ? canvasHeight / 100 : 1),
-        width: Number(el.width) || 120,
-        height: Number(el.height) || 48
+        width: resolveElementSize(el, 'width', canvasWidth),
+        height: resolveElementSize(el, 'height', canvasHeight)
       }));
       const left = Math.min(...rects.map(r => r.x)), top = Math.min(...rects.map(r => r.y));
       const right = Math.max(...rects.map(r => r.x + r.width)), bottom = Math.max(...rects.map(r => r.y + r.height));
       for (const r of rects) {
         if (['left', 'center-x', 'right'].includes(operation.mode)) {
-          if (operation.mode === 'left') r.el.x = left;
-          if (operation.mode === 'center-x') r.el.x = left + (right - left - r.width) / 2;
-          if (operation.mode === 'right') r.el.x = right - r.width;
-          r.el.xUnit = 'px';
+          let nextX = r.x;
+          if (operation.mode === 'left') nextX = left;
+          if (operation.mode === 'center-x') nextX = left + (right - left - r.width) / 2;
+          if (operation.mode === 'right') nextX = right - r.width;
+          r.el.xUnit = r.el.xUnit || 'px';
+          r.el.x = toStoredPosition(nextX, r.el.xUnit, canvasWidth);
         }
         if (['top', 'center-y', 'bottom'].includes(operation.mode)) {
-          if (operation.mode === 'top') r.el.y = top;
-          if (operation.mode === 'center-y') r.el.y = top + (bottom - top - r.height) / 2;
-          if (operation.mode === 'bottom') r.el.y = bottom - r.height;
-          r.el.yUnit = 'px';
+          let nextY = r.y;
+          if (operation.mode === 'top') nextY = top;
+          if (operation.mode === 'center-y') nextY = top + (bottom - top - r.height) / 2;
+          if (operation.mode === 'bottom') nextY = bottom - r.height;
+          r.el.yUnit = r.el.yUnit || 'px';
+          r.el.y = toStoredPosition(nextY, r.el.yUnit, canvasHeight);
         }
       }
       return { type: operation.type, mode: operation.mode, ids: operation.ids.slice() };
@@ -239,17 +313,29 @@ function applyOperation(project, operation) {
       assert(Array.isArray(operation.ids) && operation.ids.length >= 3 && operation.ids.length <= 100, 'elements.distribute requires 3 to 100 layer IDs.');
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.distribute IDs must be unique.');
       assert(['horizontal', 'vertical'].includes(operation.axis), 'axis must be horizontal or vertical.');
-      const items = operation.ids.map(id => findElement(project, id)).map(el => ({
-        el, position: Number(operation.axis === 'horizontal' ? el.x : el.y) || 0,
-        size: Number(operation.axis === 'horizontal' ? el.width : el.height) || (operation.axis === 'horizontal' ? 120 : 48)
-      })).sort((a, b) => a.position - b.position);
+      const canvasWidth = Number(project.design.canvasWidth) || legacyCanvas(project.design.frame).width;
+      const canvasHeight = Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height;
+      const isHorizontal = operation.axis === 'horizontal';
+      const items = operation.ids.map(id => findElement(project, id)).map(el => {
+        assertUnlocked(el, 'distribute');
+        const unit = isHorizontal ? el.xUnit : el.yUnit;
+        const canvasDimension = isHorizontal ? canvasWidth : canvasHeight;
+        const dimension = isHorizontal ? 'width' : 'height';
+        const position = Number(isHorizontal ? el.x : el.y) || 0;
+        return {
+          el, unit, canvasDimension,
+          position: position * (unit === '%' ? canvasDimension / 100 : 1),
+          size: resolveElementSize(el, dimension, canvasDimension)
+        };
+      }).sort((a, b) => a.position - b.position);
       const start = items[0].position;
       const end = items[items.length - 1].position + items[items.length - 1].size;
       const totalSize = items.reduce((sum, item) => sum + item.size, 0);
       const gap = (end - start - totalSize) / (items.length - 1);
       let cursor = start;
       for (const item of items) {
-        if (operation.axis === 'horizontal') item.el.x = cursor; else item.el.y = cursor;
+        const stored = toStoredPosition(cursor, item.unit, item.canvasDimension);
+        if (operation.axis === 'horizontal') item.el.x = stored; else item.el.y = stored;
         cursor += item.size + gap;
       }
       return { type: operation.type, axis: operation.axis, ids: operation.ids.slice(), gap };
@@ -257,27 +343,57 @@ function applyOperation(project, operation) {
     case 'element.delete': {
       const index = project.design.elements.findIndex(item => item.id === operation.id);
       assert(index >= 0, 'Layer not found: ' + operation.id);
+      assertUnlocked(project.design.elements[index], 'delete');
       const [removed] = project.design.elements.splice(index, 1);
+      const clearedLinks = clearInternalLinkReferences(project, new Set([removed.id]));
       if (Array.isArray(project.design.flowConnections)) {
         project.design.flowConnections = project.design.flowConnections.filter(connection => connection.sourceElementId !== removed.id);
       }
-      return { type: operation.type, id: removed.id };
+      return { type: operation.type, id: removed.id, clearedLinks };
     }
     default:
       throw new Error('Unsupported headless operation: ' + operation.type);
   }
 }
 
-function validateProperties(properties) {
+function validateProperties(properties, currentElement = {}) {
+  const candidate = { ...currentElement, ...properties };
+  const numericKeys = ['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'opacity', 'rotation'];
+  const validateNumeric = key => {
+    const value = candidate[key];
+    if (key === 'opacity' && value === null) return;
+    assert(typeof value === 'number' && Number.isFinite(value), key + ' must be a finite JSON number.');
+    let min = -MAX_CANVAS_SIZE, max = MAX_CANVAS_SIZE;
+    if (key === 'x' || key === 'y') {
+      min = 0;
+      max = candidate[key + 'Unit'] === '%' ? 200 : MAX_CANVAS_SIZE;
+    } else if (key === 'width' || key === 'height') {
+      const unit = candidate[key + 'Unit'] || 'px';
+      if (unit === '%') { min = 1; max = 100; }
+      else if (unit === 'auto') { min = 0; max = 4000; }
+      else { min = 20; max = 4000; }
+    } else if (key === 'fontSize') { min = 8; max = 256; }
+    else if (key === 'weight') { min = 100; max = 900; }
+    else if (key === 'radius') { min = 0; max = 4000; }
+    else if (key === 'opacity') { min = 0; max = 1; }
+    else if (key === 'rotation') { min = -3600; max = 3600; }
+    assert(value >= min && value <= max, key + ' must be between ' + min + ' and ' + max + ' for its unit.');
+  };
   for (const [key, value] of Object.entries(properties)) {
     assert(ELEMENT_FIELDS.has(key), 'Layer property is not editable: ' + key);
-    if (['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'opacity', 'rotation'].includes(key)) {
-      const min = key === 'width' || key === 'height' || key === 'fontSize' ? 0 : -MAX_CANVAS_SIZE;
-      const max = key === 'opacity' ? 1 : MAX_CANVAS_SIZE;
-      finiteNumber(value, key, min, max);
+    if (numericKeys.includes(key)) {
+      if (key === 'opacity' && value === null) continue;
+      candidate[key] = value;
+      validateNumeric(key);
     } else if (['xUnit', 'yUnit'].includes(key)) {
       assert(['px', '%'].includes(value), key + ' must be px or %.');
-    } else if (['label', 'text', 'color', 'background', 'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole'].includes(key)) {
+      const coordinate = key[0];
+      if (candidate[coordinate] !== undefined) validateNumeric(coordinate);
+    } else if (['widthUnit', 'heightUnit'].includes(key)) {
+      assert(['px', '%', 'auto'].includes(value), key + ' must be px, %, or auto.');
+      const dimension = key.startsWith('width') ? 'width' : 'height';
+      if (candidate[dimension] !== undefined) validateNumeric(dimension);
+    } else if (['label', 'text', 'color', 'background', 'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'].includes(key)) {
       assert(typeof value === 'string' && value.length <= (key === 'src' ? 2800000 : 10000), key + ' must be a bounded string.');
       if (key === 'color' || key === 'background') assert(isSafeColor(value), key + ' must be a safe CSS color.');
       if (key === 'href') assert(isSafeHref(value), 'href must use a safe URL scheme.');
@@ -285,6 +401,7 @@ function validateProperties(properties) {
       if (key === 'objectFit') assert(['contain', 'cover', 'fill'].includes(value), 'objectFit must be contain, cover, or fill.');
       if (key === 'textAlign') assert(['left', 'center', 'right'].includes(value), 'textAlign must be left, center, or right.');
       if (key === 'flowRole') assert(['', 'menu', 'navigate'].includes(value), 'flowRole is not supported by the headless engine.');
+      if (key === 'identifier') assert(value.length <= 100, 'identifier must be at most 100 characters.');
     } else if (['visible', 'locked'].includes(key)) {
       assert(typeof value === 'boolean', key + ' must be boolean.');
     }
@@ -303,30 +420,35 @@ function isSafeColor(value) {
 
 function isSafeHref(value) {
   const href = String(value || '').trim();
-  return !href || /^(https?:\/\/|mailto:|tel:|\/|#layer-[a-z0-9_-]+$)/i.test(href);
-}
-
-function parseEditorImageDataUrl(value) {
-  assert(typeof value === 'string' && value.length <= 2800000, 'Image data URL exceeds the editor limit.');
-  const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
-  assert(match, 'Image upload must be a PNG, JPEG, WebP, or GIF data URL.');
-  const payload = match[2];
-  assert(payload.length % 4 === 0, 'Image upload contains invalid Base64 data.');
-  const bytes = Buffer.from(payload, 'base64');
-  assert(bytes.length > 0 && bytes.toString('base64') === payload, 'Image upload contains invalid Base64 data.');
-  assert(bytes.length <= 2 * 1024 * 1024, 'Image exceeds the editor 2 MB upload limit.');
-  return { mimeType: match[1].toLowerCase(), byteLength: bytes.length };
+  if (!href) return true;
+  if (/^#layer-[a-z0-9_-]{1,120}$/i.test(href)) return true;
+  if (/^\/(?!\/)[^\\\s<>]*$/.test(href)) return true;
+  if (/^mailto:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+(?:\?[^\s<>]*)?$/i.test(href)) return true;
+  if (/^tel:\+?[0-9(). -]{3,32}$/i.test(href)) return true;
+  try {
+    const url = new URL(href);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+  } catch (_) {
+    return false;
+  }
 }
 
 function isSafeImageSource(value) {
-  const src = String(value || '').trim();
-  if (!src) return true;
-  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(src)) return true;
-  return /^(https?:\/\/|\/|\.\.?\/)/i.test(src) && !/[\x00-\x20]/.test(src);
+  const raw = String(value || '');
+  if (!raw) return true;
+  if (/^data:/i.test(raw)) return isValidEditorImageDataUrl(raw);
+  if (raw.length > 8192 || /[\x00-\x20<>\\\\]/.test(raw)) return false;
+  if (/^(?:\/(?!\/)|\.\.?\/)[^\\\\\s<>]*$/.test(raw)) return true;
+  try {
+    const url = new URL(raw);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+  } catch (_) {
+    return false;
+  }
 }
 
 function getDesignLayout(design) {
-  const elements = Array.isArray(design.elements) ? design.elements : [];
+  const elements = (Array.isArray(design.elements) ? design.elements : []).filter(isElementVisible);
   const frameWidth = Number(design.canvasWidth) || legacyCanvas(design.frame).width;
   const mode = design.layoutMode === 'auto' ? 'auto' : 'free';
   const positions = new Map();
@@ -338,7 +460,7 @@ function getDesignLayout(design) {
       const x = element.xUnit === '%' ? (rawX / 100) * frameWidth : rawX;
       const canvasHeight = Number(design.canvasHeight) || legacyCanvas(design.frame).height;
       const y = element.yUnit === '%' ? (rawY / 100) * canvasHeight : rawY;
-      const height = Math.max(20, Math.min(4000, Number(element.height) || 48));
+      const height = Math.max(20, Math.min(4000, resolveElementSize(element, 'height', Number(design.canvasHeight) || legacyCanvas(design.frame).height)));
       positions.set(element.id, { x, y });
       contentBottom = Math.max(contentBottom, y + height);
     }
@@ -349,8 +471,8 @@ function getDesignLayout(design) {
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 24));
   let x = padding, y = padding, rowHeight = 0;
   for (const element of elements) {
-    const width = Math.max(20, Math.min(4000, Number(element.width) || 120));
-    const height = Math.max(20, Math.min(4000, Number(element.height) || 48));
+    const width = Math.max(20, Math.min(4000, resolveElementSize(element, 'width', frameWidth)));
+    const height = Math.max(20, Math.min(4000, resolveElementSize(element, 'height', Number(design.canvasHeight) || legacyCanvas(design.frame).height)));
     if (direction === 'row') {
       if (x > padding && x + width > frameWidth - padding) {
         x = padding; y += rowHeight + gap; rowHeight = 0;
@@ -378,10 +500,11 @@ function renderSvg(input) {
     '<rect width="100%" height="100%" fill="' + escapeXml(background) + '"/>'
   ];
   for (const el of project.design.elements) {
-    if (el.visible === false) continue;
+    if (!isElementVisible(el)) continue;
     const position = layout.positions.get(el.id) || { x: Number(el.x) || 0, y: Number(el.y) || 0 };
     const x = finiteNumber(position.x ?? 0, 'x'), y = finiteNumber(position.y ?? 0, 'y');
-    const w = finiteNumber(el.width ?? 0, 'width', 0), h = finiteNumber(el.height ?? 0, 'height', 0);
+    const w = finiteNumber(resolveElementSize(el, 'width', width), 'width', 0);
+    const h = finiteNumber(resolveElementSize(el, 'height', Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height), 'height', 0);
     const fill = isSafeColor(el.background) ? el.background : 'transparent';
     const color = isSafeColor(el.color) ? el.color : '#111827';
     const radius = finiteNumber(el.radius ?? 0, 'radius', 0);

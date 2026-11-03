@@ -45,10 +45,22 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
+assert.match(bridge, /'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit'/,
+  'design element updates must expose responsive position and size units');
+assert.match(bridge, /'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'/,
+  'design element updates must expose opacity, transforms, visibility, locking, flow role, and identifier');
+assert.match(bridge, /key === 'visible' \|\| key === 'locked'[\s\S]{0,180}typeof value !== 'boolean'/,
+  'visibility and lock properties must require booleans');
+assert.match(bridge, /key === 'opacity' && value === null/,
+  'nullable opacity must be accepted as the editor default');
+assert.match(bridge, /key === 'src' \? 2800000/,
+  'image source updates must support the engine-compatible base64 image size limit');
+assert.match(bridge, /\['widthUnit', 'heightUnit'\][\s\S]{0,160}\['px', '%', 'auto'\]/,
+  'responsive dimensions must validate px, percent, and auto units');
 assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/, 'design conversion must verify source preservation from the headless API');
 assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/, 'design conversion must use the shared headless runtime');
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
-assert.match(bridge, /AI generation changes project code and may consume API quota/, 'AI generation must require explicit approval');
+assert.match(bridge, /Headless AI generation consumes provider quota and changes project code; approval: "approved" is required/, 'AI generation must require explicit approval');
 assert.match(bridge, /command\.action = 'headless_ai_generate'/, 'legacy AI generation must reuse the headless provider and saved-code path');
 assert.match(bridge, /type:\s*'design\.flow\.connect'/, 'flow connections must use the shared saved-workspace runtime');
 assert.match(bridge, /apiKeyExposed: false/, 'AI settings inspection must not expose secrets');
@@ -69,8 +81,8 @@ for (const [action, queryAction] of [
   assert.ok(handler.includes("action: '" + queryAction + "'") || handler.includes("query('" + queryAction + "'"), action + ' must use the matching headless query');
   assert.doesNotMatch(handler, /projects\.find\(/, action + ' must not depend on the editor in-memory project model');
 }
-assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must require explicit approval');
-assert.match(bridge, /Replacing existing design layers requires approval/, 'template replacement must require explicit approval');
+assert.match(bridge, /project deletion requires approval/i, 'project deletion must require explicit approval');
+assert.match(bridge, /Replacing existing design layers with a template requires approval/, 'template replacement must require explicit approval');
 assert.match(bridge, /codelab-component:/, 'component insertion must be idempotent');
 assert.match(headlessRuntime, /project\.designUndoStack\.push\(JSON\.stringify\(project\.design\)\)/, 'atomic design batches must preserve saved undo history');
 assert.match(bridge, /executeSavedDesignBatch/, 'core design operations must use atomic saved-state batches');
@@ -272,7 +284,7 @@ for (const [action, queryName, operationType] of [
   assert.doesNotMatch(handler, /projects\.find\(|createNewProjectConfirm\(|duplicateProjectFromDashboard\(|deleteProject\(/,
     action + ' must not mutate through editor UI state');
 }
-assert.match(bridge, /Permanent project deletion requires approval/, 'project deletion must retain explicit approval');
+assert.match(bridge, /project deletion requires approval/i, 'project deletion must retain explicit approval');
 
 const codeWriteHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'project_code_write') {"), bridge.indexOf("} else if (command.action === 'project_list') {", bridge.indexOf("} else if (command.action === 'project_code_write') {")));
 assert.match(codeWriteHandler, /\/headless\/query/, 'code write must inspect saved project state before mutation');
@@ -281,6 +293,25 @@ assert.match(codeWriteHandler, /project\.code\.read/, 'code write must verify ex
 assert.match(codeWriteHandler, /baseRevision: before\.revision/, 'code write must use optimistic workspace revision control');
 assert.doesNotMatch(codeWriteHandler, /projects\.find\(|getEditorValue\(|setEditorValue\(|saveCurrentCodeToActiveProject\(/,
   'code write must not depend on editor state');
+
+assert.ok(bridge.includes("operations = [{ type: 'element.add', elementType: args.type, ...(args.properties ? { properties: args.properties } : {}) }];"),
+  'design element add must forward initial properties atomically');
+assert.match(bridge, /validateDesignElementProperties\(args\.properties, 'design_element_add'\)/, 'initial properties must use the same whitelist and type validation as updates');
+assert.match(bridge, /'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit'/, 'bridge must allow responsive dimension properties');
+assert.match(bridge, /'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'/, 'bridge must allow supported metadata properties');
+const savedDesignBatch = bridge.slice(bridge.indexOf('async function executeSavedDesignBatch'), bridge.indexOf('\ntry {', bridge.indexOf('async function executeSavedDesignBatch')));
+assert.match(savedDesignBatch, /Object\.entries\(properties\)\.every/, 'design element add must verify every requested initial property after saved-state readback');
+assert.match(savedDesignBatch, /element\.hasImageSource === \(value\.length > 0\) && element\.imageSourceLength === value\.length/,
+  'image source readback must verify payload metadata without returning the source bytes');
+assert.match(savedDesignBatch, /const positionPx = \(element, axis, design\)/, 'duplicate verification must resolve coordinates in effective pixels');
+assert.match(savedDesignBatch, /const value = Number\.isFinite\(raw\) \? raw : 0/,
+  'duplicate verification must preserve legacy layers whose stored coordinates are absent');
+assert.match(savedDesignBatch, /unit === '%' \? value \* canvasSize \/ 100 : value/,
+  'duplicate verification must convert percentage coordinates using the saved canvas');
+assert.match(savedDesignBatch, /connectionsDuplicated = sourceConnections\.every/, 'duplicate readback must verify remapped outgoing flow connections');
+assert.match(headlessRuntime, /textSha256: crypto\.createHash\('sha256'\)/, 'design.read must expose a hash for truncated text without returning the full value');
+assert.match(bridge, /element\.textSha256 === createHash\('sha256'\)\.update\(value, 'utf8'\)\.digest\('hex'\)/,
+  'design add/update readback must verify long text by SHA-256');
 
 const componentInsertHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'component_insert') {"), bridge.indexOf("} else if (command.action === 'design_element_add') {", bridge.indexOf("} else if (command.action === 'component_insert') {")));
 assert.match(componentInsertHandler, /type: 'component\.insert'/, 'component insertion must use the shared headless runtime');
@@ -310,13 +341,13 @@ assert.match(canvasHandler, /serverReadbackVerified/, 'canvas settings must veri
 assert.match(canvasHandler, /zoom is view-only/, 'headless canvas config must report that zoom cannot be persisted');
 assert.doesNotMatch(canvasHandler, /projects\.find\(|openProject\(|saveProjectsToStorage\(|setDesignCanvasDimensions\(/, 'canvas configuration must not depend on editor state');
 
-assert.match(bridge, /ai_generate operation_id must be a safe string/, 'legacy AI operation IDs must be validated before headless routing');
-assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate requires a safe operation_id/, 'legacy AI operation IDs must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
 assert.match(bridge, /legacy_ai_' \+ String\(command\.command_id\)\.slice\(0, 90\)/,
   'legacy AI retries must derive a stable idempotency key from the bridge command ID');
 
-assert.match(bridge, /ai_generate operation_id must be a safe string/, 'legacy AI operation IDs must be validated before headless routing');
-assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate requires a safe operation_id/, 'legacy AI operation IDs must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
 assert.match(bridge, /legacy_ai_' \+ String\(command\.command_id\)\.slice\(0, 90\)/,
   'legacy AI retries must derive a stable idempotency key from the bridge command ID');
 
@@ -332,3 +363,14 @@ assert.match(bridge, /from '\.\.\/\.\.\/headless\/preview-upload\.js'/);
 assert.match(previewUpload, /step\.data_base64\.length > 32000/);
 assert.match(previewUpload, /buffer\.length > 24000/);
 assert.match(bridge, /locator\.setInputFiles\(/);
+
+
+const designReadStart = bridge.indexOf("} else if (command.action === 'design_read') {");
+const designReadEnd = bridge.indexOf("} else if (command.action === 'project_code_write')", designReadStart);
+const designReadHandler = bridge.slice(designReadStart, designReadEnd);
+assert.match(designReadHandler, /const limit = command\.args\.limit === undefined \? 500 : command\.args\.limit/,
+  'design_read must default to the full 500-layer engine limit');
+assert.match(designReadHandler, /!Number\.isInteger\(limit\) \|\| limit < 1 \|\| limit > 500/,
+  'design_read must validate caller-supplied layer limits');
+assert.match(designReadHandler, /args: \{ projectId, limit \}/,
+  'design_read must forward the validated limit to the authoritative query');

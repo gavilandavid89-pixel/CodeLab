@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -51,6 +52,14 @@ function parseCommand(raw) {
     if (args.operations.some(operation => operation && operation.type === 'branch.create' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing an existing headless branch requires approval: "approved".');
     if (args.operations.some(operation => operation && operation.type === 'design.template.apply' && operation.replaceExisting === true) && command.approval !== 'approved') throw new Error('Replacing existing design layers with a template requires approval: "approved".');
   }
+  if (command.action === 'ai_generate') {
+    if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
+    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
+    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
+    if (args.operation_id !== undefined && (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id))) throw new Error('ai_generate operation_id must be a safe string.');
+    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('ai_generate max_tokens must be from 256 to 32768.');
+    if (typeof command.command_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(command.command_id)) throw new Error('ai_generate requires a safe command_id for idempotent retries.');
+  }
   if (command.action === 'headless_ai_generate') {
     if (command.approval !== 'approved') throw new Error('Headless AI generation consumes provider quota and changes project code; approval: "approved" is required.');
     if (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id)) throw new Error('headless_ai_generate requires a valid project_id.');
@@ -94,72 +103,25 @@ function parseCommand(raw) {
     throw new Error('project_rename requires args.name between 1 and 200 characters.');
   }
   if (command.action === 'project_code_write') {
+  if (command.action === 'project_delete' && command.approval !== 'approved') {
+    throw new Error('Permanent project deletion requires approval: "approved".');
+  }
   if (command.action === 'project_export_html' && args.max_chars !== undefined &&
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
   }
-  if (command.action === 'ai_generate') {
-    if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
-    if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 4000) throw new Error('ai_generate requires a prompt between 1 and 4000 characters.');
-    if (args.source !== undefined && !['main', 'branch'].includes(args.source)) throw new Error('ai_generate source must be main or branch.');
-    if (args.operation_id !== undefined && (typeof args.operation_id !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.operation_id))) throw new Error('ai_generate operation_id must be a safe string of 8 to 100 characters.');
-    if (args.max_tokens !== undefined && (!Number.isInteger(args.max_tokens) || args.max_tokens < 256 || args.max_tokens > 32768)) throw new Error('ai_generate max_tokens must be from 256 to 32768.');
+  if (command.action === 'component_inspect' && args.max_chars !== undefined &&
+      (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
+    throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
   }
-  if (command.action === 'project_delete' && command.approval !== 'approved') throw new Error('Permanent project deletion requires approval: "approved".');
-  if (command.action === 'design_template_apply') {
-    if (!['landing', 'dashboard', 'portfolio'].includes(args.template_id)) throw new Error('design_template_apply requires a supported template_id.');
-    if (args.replace_existing !== undefined && typeof args.replace_existing !== 'boolean') throw new Error('replace_existing must be a boolean.');
-    if (args.replace_existing === true && command.approval !== 'approved') throw new Error('Replacing existing design layers requires approval: "approved".');
-  }
-  if (command.action === 'design_history' && !['undo', 'redo'].includes(args.operation)) throw new Error('design_history operation must be undo or redo.');
-  if (command.action === 'design_flow_connect') {
-    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_flow_connect requires a valid element_id.');
-    if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_connect requires a valid target_project_id.');
-  }
-  if (command.action === 'design_flow_disconnect') {
-    if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_flow_disconnect requires a valid element_id.');
-    if (typeof args.target_project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.target_project_id)) throw new Error('design_flow_disconnect requires a valid target_project_id.');
-  }
-  if (command.action === 'design_export' && !['svg', 'json'].includes(args.format)) throw new Error('design_export format must be svg or json.');
   if (command.action === 'design_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_import_json requires a JSON string between 2 and 50000 characters.');
   if (command.action === 'design_system_import_json' && (typeof args.json !== 'string' || args.json.length < 2 || args.json.length > 50000)) throw new Error('design_system_import_json requires a JSON string between 2 and 50000 characters.');
-  if (command.action === 'design_tokens_generate') {
-    if (args.settings !== undefined && (!args.settings || typeof args.settings !== 'object' || Array.isArray(args.settings))) throw new Error('settings must be an object.');
-  }
-  if (command.action === 'project_create') {
-    if (typeof args.name !== 'string' || !args.name.trim() || args.name.trim().length > 200) throw new Error('project_create requires a name between 1 and 200 characters.');
-    if (!['web', 'design'].includes(args.type || 'web')) throw new Error('project_create type must be web or design.');
-  }
-  if (command.action === 'component_search') {
-    if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) throw new Error('component_search query must be a string up to 200 characters.');
-    if (args.category !== undefined && (typeof args.category !== 'string' || args.category.length > 100)) throw new Error('component_search category must be a string up to 100 characters.');
-  }
-  if (command.action === 'component_inspect' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) throw new Error('component_inspect requires a valid component_id.');
-  if (command.action === 'component_inspect' && args.max_chars !== undefined && (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) throw new Error('component_inspect max_chars must be an integer from 1000 to 7000.');
-  if (command.action === 'component_insert' && (typeof args.component_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.component_id))) {
-    throw new Error('component_insert requires a valid component_id.');
-  }
-  if (command.action === 'design_element_add' && !['heading', 'text', 'button', 'rectangle', 'ellipse', 'image'].includes(args.type)) {
-    throw new Error('design_element_add requires a supported element type.');
-  }
-  if (command.action === 'design_elements_delete') {
-    if (!Array.isArray(args.element_ids) || args.element_ids.length < 1 || args.element_ids.length > 100 || args.element_ids.some(id => typeof id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(id)) || new Set(args.element_ids).size !== args.element_ids.length) {
-      throw new Error('design_elements_delete requires 1 to 100 unique valid element_ids.');
-    }
-  }
   if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
-    if (!args.properties || typeof args.properties !== 'object' || Array.isArray(args.properties)) throw new Error('design_element_update requires a properties object.');
-    const allowedProperties = ['label', 'text', 'x', 'y', 'width', 'height', 'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit', 'textAlign'];
-    for (const [key, value] of Object.entries(args.properties)) {
-      if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
-      if (typeof value === 'string' && value.length > 2000) throw new Error('Design element string properties are limited to 2000 characters.');
-      if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
-      if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
-      if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Design element numeric properties must be finite.');
-      if (!['string', 'number'].includes(typeof value)) throw new Error('Design element properties must be strings or numbers.');
-    }
-    if (!Object.keys(args.properties).length) throw new Error('design_element_update requires at least one property.');
+    validateDesignElementProperties(args.properties, 'design_element_update');
+  }
+  if (command.action === 'design_element_add' && args.properties !== undefined) {
+    validateDesignElementProperties(args.properties, 'design_element_add');
   }
   if (command.action === 'design_element_delete' && (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id))) {
     throw new Error('design_element_delete requires a valid element_id.');
@@ -277,6 +239,41 @@ function parseCommand(raw) {
     }
   }
   return { ...command, args };
+}
+
+function validateDesignElementProperties(properties, action) {
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) throw new Error(action + ' requires a properties object.');
+  const allowedProperties = [
+    'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit',
+    'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
+    'textAlign', 'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'
+  ];
+  const numericProperties = new Set(['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'rotation']);
+  const stringProperties = new Set([
+    'label', 'text', 'xUnit', 'yUnit', 'widthUnit', 'heightUnit', 'color', 'background',
+    'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'
+  ]);
+  for (const [key, value] of Object.entries(properties)) {
+    if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
+    if (key === 'opacity' && value === null) continue;
+    if (numericProperties.has(key) || key === 'opacity') {
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Design element ' + key + ' must be a finite number' + (key === 'opacity' ? ' or null.' : '.'));
+    } else if (key === 'visible' || key === 'locked') {
+      if (typeof value !== 'boolean') throw new Error('Design element ' + key + ' must be a boolean.');
+    } else if (stringProperties.has(key)) {
+      if (typeof value !== 'string') throw new Error('Design element ' + key + ' must be a string.');
+      const maxLength = key === 'src' ? 2800000 : key === 'text' ? 10000 : 2000;
+      if (value.length > maxLength) throw new Error('Design element string properties are limited to ' + maxLength + ' characters.');
+    } else {
+      throw new Error('Unsupported value type for design element property: ' + key);
+    }
+    if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
+    if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
+    if (['xUnit', 'yUnit'].includes(key) && !['px', '%'].includes(value)) throw new Error(key + ' must be px or %.');
+    if (['widthUnit', 'heightUnit'].includes(key) && !['px', '%', 'auto'].includes(value)) throw new Error(key + ' must be px, %, or auto.');
+    if (key === 'flowRole' && !['', 'menu', 'navigate'].includes(value)) throw new Error('flowRole is not supported.');
+  }
+  if (!Object.keys(properties).length) throw new Error(action + ' requires at least one property.');
 }
 
 async function comment(body) {
@@ -467,7 +464,7 @@ async function executeSavedDesignBatch(action, args) {
     let operations;
     let settings = null;
     if (action === 'design_element_add') {
-      operations = [{ type: 'element.add', elementType: args.type }];
+      operations = [{ type: 'element.add', elementType: args.type, ...(args.properties ? { properties: args.properties } : {}) }];
     } else if (action === 'design_element_update') {
       operations = [{ type: 'element.update', id: args.element_id, properties: args.properties }];
     } else if (action === 'design_element_delete') {
@@ -534,13 +531,23 @@ async function executeSavedDesignBatch(action, args) {
       elementCount: afterDesign.elementCount, operationTypes: operations.map(item => item.type)
     };
     if (action === 'design_element_add') {
-      if (!newElements[0]) throw new Error('Design element add failed authoritative server readback.');
-      return { ...base, elementId: newElements[0].id, type: newElements[0].type };
+      const element = newElements[0];
+      const properties = args.properties || {};
+      const verified = !!element && element.type === args.type && Object.entries(properties).every(([key, value]) => {
+        if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        if (key === 'text' && element.textTruncated) return element.textLength === value.length &&
+          element.textSha256 === createHash('sha256').update(value, 'utf8').digest('hex');
+        return element[key] === value;
+      });
+      if (!verified) throw new Error('Design element add failed authoritative server readback for its initial properties.');
+      return { ...base, elementId: element.id, type: element.type, verified, verifiedProperties: Object.keys(properties) };
     }
     if (action === 'design_element_update') {
       const element = afterById.get(args.element_id);
       const verified = !!element && Object.entries(args.properties).every(([key, value]) => {
         if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        if (key === 'text' && element.textTruncated) return element.textLength === value.length &&
+          element.textSha256 === createHash('sha256').update(value, 'utf8').digest('hex');
         return element[key] === value;
       });
       if (!verified) throw new Error('Design element update failed authoritative server readback.');
@@ -557,10 +564,33 @@ async function executeSavedDesignBatch(action, args) {
       if (!deleted || danglingConnections) throw new Error('Bulk deletion failed authoritative layer/connection readback.');
       return { ...base, deletedElementIds: args.element_ids, deleted, danglingConnections, remainingElements: afterDesign.elementCount };
     }
-    if (action === 'design_element_duplicate') return {
-      ...base, sourceElementId: args.element_id, elementId: newElements[0]?.id || null,
-      duplicated: !!newElements[0] && newElements[0].type === sourceBefore?.type && newElements[0].x === (Number(sourceBefore?.x) || 0) + 24 && newElements[0].y === (Number(sourceBefore?.y) || 0) + 24
-    };
+    if (action === 'design_element_duplicate') {
+      const duplicate = newElements[0];
+      const positionPx = (element, axis, design) => {
+        if (!element) return NaN;
+        const raw = Number(element[axis]);
+        const value = Number.isFinite(raw) ? raw : 0;
+        const unit = element[axis + 'Unit'];
+        const canvasSize = axis === 'x' ? design.canvas.width : design.canvas.height;
+        return unit === '%' ? value * canvasSize / 100 : value;
+      };
+      const expectedX = positionPx(sourceBefore, 'x', beforeDesign) + 24;
+      const expectedY = positionPx(sourceBefore, 'y', beforeDesign) + 24;
+      const actualX = positionPx(duplicate, 'x', afterDesign);
+      const actualY = positionPx(duplicate, 'y', afterDesign);
+      const sourceConnections = beforeDesign.flowConnections.filter(item => item && item.sourceElementId === args.element_id);
+      const duplicateConnections = afterDesign.flowConnections.filter(item => item && item.sourceElementId === duplicate?.id);
+      const connectionsDuplicated = sourceConnections.every(sourceConnection => duplicateConnections.some(duplicateConnection =>
+        JSON.stringify({ ...duplicateConnection, sourceElementId: args.element_id }) === JSON.stringify(sourceConnection)
+      ));
+      const duplicated = !!duplicate && duplicate.type === sourceBefore?.type &&
+        Math.abs(actualX - expectedX) < 0.01 && Math.abs(actualY - expectedY) < 0.01 && connectionsDuplicated;
+      if (!duplicated) throw new Error('Design element duplicate failed authoritative geometry/connection readback.');
+      return {
+        ...base, sourceElementId: args.element_id, elementId: duplicate.id,
+        duplicated, connectionsDuplicated, position: { x: actualX, y: actualY }
+      };
+    }
     if (action === 'design_layer_move') return {
       ...base, elementId: args.element_id, direction: args.direction,
       moved: (afterElements.findIndex(item => item.id === args.element_id) !== elements.findIndex(item => item.id === args.element_id)),
@@ -1599,14 +1629,16 @@ try {
     }, { projectId: command.args.project_id, source, offset, maxChars });
   } else if (command.action === 'design_read') {
     stage = 'design_read';
-    result = await page.evaluate(async projectId => {
+    const limit = command.args.limit === undefined ? 500 : command.args.limit;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('design_read limit must be an integer from 1 to 500.');
+    result = await page.evaluate(async ({ projectId, limit }) => {
       const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
       const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
       if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
       const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
-        body: JSON.stringify({ action: 'design.read', args: { projectId, limit: 200 } })
+        body: JSON.stringify({ action: 'design.read', args: { projectId, limit } })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design inspection failed.');
@@ -1616,7 +1648,7 @@ try {
         elements: saved.elements, totalElements: saved.elementCount, truncated: saved.truncated,
         flowConnections: saved.flowConnections, workspaceRevision: data.revision, readOnly: true
       };
-    }, command.args.project_id);
+    }, { projectId: command.args.project_id, limit });
   } else if (command.action === 'project_code_write') {
     stage = 'project_code_write';
     result = await page.evaluate(async ({ projectId, source, patch }) => {

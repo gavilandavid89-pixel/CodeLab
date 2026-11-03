@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { exportDesignHtml, buildAiDesignCaptureContext } = require('./design-export');
+const { exportDesignHtml, exportDesignSvg, exportDesignJson, importDesignJson, buildAiDesignCaptureContext } = require('./design-export');
 
 function project(elements) {
   return {
@@ -195,4 +195,255 @@ test('semantic HTML export preserves safe mailto and tel actions but rejects uns
   assert.doesNotMatch(html, /href="\/\/evil\.example/);
   assert.doesNotMatch(html, /href="javascript:/);
   assert.match(html, /Unsafe/);
+});
+
+
+test('legacy hidden:true is omitted from HTML, SVG, capture, and auto-layout geometry', () => {
+  const input = project([
+    { id: 'legacy-hidden', type: 'rectangle', hidden: true, text: 'Legacy hidden', width: 180, height: 80, y: 1200 },
+    { id: 'visible-after', type: 'rectangle', text: 'Visible after', width: 120, height: 40 }
+  ]);
+  const html = exportDesignHtml(input);
+  const svg = exportDesignSvg(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.doesNotMatch(html, /Legacy hidden|layer-legacy-hidden/);
+  assert.doesNotMatch(svg, /Legacy hidden|legacy-hidden/);
+  assert.equal(context.elementCount, 1);
+  assert.deepEqual(context.elements.map(item => item.id), ['visible-after']);
+
+  const auto = {
+    ...input,
+    design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column' }
+  };
+  const autoContext = buildAiDesignCaptureContext(auto);
+  assert.equal(autoContext.elements[0].bounds.y, 0);
+});
+
+test('JSON import and semantic export reject data URLs with mismatched or non-canonical image bytes', () => {
+  const validPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
+  const invalidPng = 'data:image/png;base64,' + Buffer.from([0xff,0xd8,0xff,0xd9]).toString('base64');
+  const invalidWhitespace = validPng.replace('base64,', 'base64, ') + ' ';
+  for (const invalidSrc of [invalidPng, invalidWhitespace, 'data:image/png;base64,' + Buffer.from('random bytes').toString('base64')]) {
+    const backup = {
+      format: 'codelab-design-project', version: 1,
+      project: { ...project([{ id: 'unsafe-image', type: 'image', src: invalidSrc }]) }
+    };
+    assert.throws(() => importDesignJson(backup), /unsafe or oversized image source/);
+    assert.throws(() => exportDesignJson(project([{ id: 'unsafe-image', type: 'image', src: invalidSrc }])), /unsafe or oversized image source/);
+    const html = exportDesignHtml(project([{ id: 'unsafe-image', type: 'image', src: invalidSrc }]));
+    assert.doesNotMatch(html, /src="data:image\/(?:png|jpeg|webp|gif);base64,/);
+  }
+});
+
+test('rejects oversized external image URLs during backup import and export', () => {
+  const oversizedUrl = 'https://example.com/' + 'x'.repeat(9000);
+  const backup = {
+    format: 'codelab-design-project', version: 1,
+    project: { ...project([{ id: 'long-url', type: 'image', src: oversizedUrl }]) }
+  };
+  assert.throws(() => importDesignJson(backup), /unsafe or oversized image source/);
+  assert.throws(() => exportDesignJson(project([{ id: 'long-url', type: 'image', src: oversizedUrl }])), /unsafe or oversized image source/);
+  assert.doesNotMatch(exportDesignHtml(project([{ id: 'long-url', type: 'image', src: oversizedUrl }])), /src="https:\/\/example\.com/);
+});
+
+test('preserves canonical image MIME signatures for PNG, JPEG, GIF, and WebP data URLs', () => {
+  const fixtures = {
+    'image/png': Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]),
+    'image/jpeg': Buffer.from([0xff,0xd8,0xff,0xd9,0x01]),
+    'image/gif': Buffer.from('GIF89a01'),
+    'image/webp': Buffer.from([0x52,0x49,0x46,0x46,0x04,0x00,0x00,0x00,0x57,0x45,0x42,0x50,0x01])
+  };
+  const elements = Object.entries(fixtures).map(([mime, bytes], index) => ({
+    id: 'valid-' + index, type: 'image', src: 'data:' + mime + ';base64,' + bytes.toString('base64'),
+    width: 120, height: 80
+  }));
+  const imported = importDesignJson(exportDesignJson(project(elements)).json);
+  assert.deepEqual(imported.design.elements.map(element => element.src), elements.map(element => element.src));
+  const html = exportDesignHtml(imported);
+  for (const element of elements) assert.ok(html.includes(element.src));
+});
+
+test('accepts a valid backup safely below the 5 MB import limit', () => {
+  const backup = {
+    format: 'codelab-design-project',
+    version: 1,
+    project: project([{ id: 'near-limit', type: 'text', text: 'valid' }]),
+    optionalMetadata: 'x'.repeat(4.5 * 1024 * 1024)
+  };
+  const imported = importDesignJson(backup);
+  assert.equal(imported.design.elements[0].text, 'valid');
+});
+
+test('rejects oversized JSON strings before parsing and oversized object imports before normalization', () => {
+  const oversizedString = ' '.repeat(5 * 1024 * 1024 + 1);
+  assert.throws(() => importDesignJson(oversizedString), error =>
+    error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
+  const oversizedObject = {
+    format: 'codelab-design-project',
+    version: 1,
+    project: project([{ id: 'large-text', type: 'text', text: 'x'.repeat(5 * 1024 * 1024 + 1) }])
+  };
+  assert.throws(() => importDesignJson(oversizedObject), error =>
+    error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
+});
+
+test('round-trips a real 1x1 PNG payload through JSON and semantic HTML export', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
+  const input = project([{ id: 'real-png', type: 'image', src: png, width: 1, height: 1 }]);
+  const json = exportDesignJson(input);
+  const imported = importDesignJson(json.json);
+  assert.equal(imported.design.elements[0].src, png);
+  assert.ok(exportDesignHtml(imported).includes(png));
+});
+
+test('rejects oversized JSON strings before parsing and oversized parsed objects before normalization', () => {
+  const oversizedString = ' '.repeat(5 * 1024 * 1024 + 1);
+  assert.throws(() => importDesignJson(oversizedString), error =>
+    error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
+  const oversizedObject = {
+    format: 'codelab-design-project', version: 1,
+    project: { ...project([{ id: 'oversized', type: 'text', text: 'T'.repeat(5 * 1024 * 1024 + 1) }]) }
+  };
+  assert.throws(() => importDesignJson(oversizedObject), error =>
+    error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
+});
+
+test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
+  const input = project([{
+    id: 'auto-image', type: 'image', src: dataUrl,
+    width: 10, height: 5000, widthUnit: 'auto', heightUnit: 'auto'
+  }]);
+  input.design.layoutMode = 'auto';
+  input.design.layoutDirection = 'column';
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /width:20px;height:4000px/);
+  assert.equal(context.elements[0].bounds.width, 20);
+  assert.equal(context.elements[0].bounds.height, 4000);
+  const roundTrip = importDesignJson(exportDesignJson(input).json);
+  assert.equal(roundTrip.design.elements[0].width, 10);
+  assert.equal(roundTrip.design.elements[0].height, 4000);
+  assert.equal(roundTrip.design.elements[0].widthUnit, 'auto');
+  assert.equal(roundTrip.design.elements[0].heightUnit, 'auto');
+});
+
+test('responsive width/height units resolve in free layout and remain CSS-responsive in auto layout', () => {
+  const input = project([
+    { id: 'responsive', type: 'rectangle', width: 50, widthUnit: '%', height: 25, heightUnit: '%', x: 0, y: 0 }
+  ]);
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /width:360px;height:400px/);
+  assert.equal(context.elements[0].bounds.width, 360);
+  assert.equal(context.elements[0].bounds.height, 400);
+
+  const mobile = {
+    ...input,
+    design: { ...input.design, canvasWidth: 390, canvasHeight: 844 }
+  };
+  const mobileHtml = exportDesignHtml(mobile);
+  const mobileContext = buildAiDesignCaptureContext(mobile);
+  assert.match(mobileHtml, /width:195px;height:211px/);
+  assert.equal(mobileContext.elements[0].bounds.width, 195);
+  assert.equal(mobileContext.elements[0].bounds.height, 211);
+
+  const auto = {
+    ...input,
+    design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column', layoutPadding: 24 }
+  };
+  const autoHtml = exportDesignHtml(auto);
+  const autoContext = buildAiDesignCaptureContext(auto);
+  assert.match(autoHtml, /width:50%;height:388px/);
+  assert.equal(autoContext.elements[0].bounds.width, 336);
+  assert.equal(autoContext.elements[0].bounds.height, 388);
+});
+
+test('does not coerce small percentage dimensions to a 20px minimum', () => {
+  const input = {
+    ...project([{ id: 'tiny-percent', type: 'rectangle', x: 0, y: 0, width: 10, widthUnit: '%', height: 5, heightUnit: '%' }]),
+    design: { ...project([]).design, canvasWidth: 100, canvasHeight: 100, elements: [
+      { id: 'tiny-percent', type: 'rectangle', x: 0, y: 0, width: 10, widthUnit: '%', height: 5, heightUnit: '%' }
+    ] }
+  };
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /width:10px;height:5px/);
+  assert.match(html, /min-width:1px;min-height:1px/, 'percentage dimensions must not be visually clamped to 20px by CSS minimums');
+  assert.equal(context.elements[0].bounds.width, 10);
+  assert.equal(context.elements[0].bounds.height, 5);
+});
+
+test('JSON import clamps coordinates to the editor range for each stored unit', () => {
+  const input = project([
+    { id: 'negative-px', type: 'rectangle', x: -5, y: -1, xUnit: 'px', yUnit: 'px' },
+    { id: 'too-large-percent', type: 'rectangle', x: 250, y: 201, xUnit: '%', yUnit: '%' },
+    { id: 'too-large-px', type: 'rectangle', x: 10001, y: 10001, xUnit: 'px', yUnit: 'px' }
+  ]);
+  const imported = importDesignJson(exportDesignJson(input).json);
+  assert.deepEqual(imported.design.elements.map(({x,y}) => ({x,y})), [
+    { x: 0, y: 0 }, { x: 200, y: 200 }, { x: 10000, y: 10000 }
+  ]);
+});
+
+test('JSON export/import round-trip preserves responsive units, layer metadata, and flow connections', () => {
+  const input = {
+    id: 'source-project',
+    name: 'Responsive source',
+    type: 'design',
+    code: { html: '', css: '', js: '' },
+    design: {
+      ...project([]).design,
+      elements: [
+        {
+          id: 'nav-layer', type: 'button', label: 'Next', text: 'Next', href: '#layer-content',
+          x: 12, xUnit: '%', y: 20, yUnit: 'px',
+          width: 50, widthUnit: '%', height: 48, heightUnit: 'auto',
+          identifier: 'primary-next', opacity: 0.65, rotation: 12,
+          visible: true, hidden: false, locked: true, flowRole: 'navigate'
+        },
+        { id: 'content', type: 'heading', text: 'Content', width: 300, height: 60, identifier: 'content' },
+        { id: 'tiny-responsive', type: 'rectangle', width: 10, widthUnit: '%', height: 5, heightUnit: '%', identifier: 'tiny-responsive' }
+      ],
+      flowConnections: [{ sourceElementId: 'nav-layer', targetProjectId: 'target-screen' }]
+    }
+  };
+  const exported = exportDesignJson(input);
+  const imported = importDesignJson(exported.json, { idFactory: (() => {
+    let index = 0;
+    return () => 'imported-layer-' + (++index);
+  })() });
+  const button = imported.design.elements[0];
+  assert.equal(button.xUnit, '%');
+  assert.equal(button.yUnit, 'px');
+  assert.equal(button.widthUnit, '%');
+  assert.equal(button.heightUnit, 'auto');
+  assert.equal(button.identifier, 'primary-next');
+  assert.equal(button.opacity, 0.65);
+  assert.equal(button.rotation, 12);
+  assert.equal(button.visible, true);
+  assert.equal(button.hidden, false);
+  assert.equal(button.locked, true);
+  assert.equal(button.flowRole, 'navigate');
+  assert.equal(button.href, '#layer-imported-layer-2');
+  assert.deepEqual(imported.design.flowConnections, [
+    { sourceElementId: 'imported-layer-1', targetProjectId: 'target-screen' }
+  ]);
+  assert.equal(imported.design.elements[2].width, 10);
+  assert.equal(imported.design.elements[2].height, 5);
+  assert.equal(imported.design.elements[2].widthUnit, '%');
+  assert.equal(imported.design.elements[2].heightUnit, '%');
+
+  const secondExport = exportDesignJson(imported);
+  const parsed = JSON.parse(secondExport.json);
+  assert.equal(parsed.project.design.elements[0].widthUnit, '%');
+  assert.equal(parsed.project.design.elements[0].heightUnit, 'auto');
+  assert.equal(parsed.project.design.elements[0].identifier, 'primary-next');
+  assert.equal(parsed.project.design.elements[2].width, 10);
+  assert.equal(parsed.project.design.elements[2].height, 5);
+  assert.equal(parsed.project.design.elements[2].widthUnit, '%');
+  assert.equal(parsed.project.design.elements[2].heightUnit, '%');
+  assert.deepEqual(parsed.project.design.flowConnections, [
+    { sourceElementId: 'imported-layer-1', targetProjectId: 'target-screen' }
+  ]);
 });

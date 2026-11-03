@@ -695,16 +695,23 @@ function queryHeadlessWorkspace(inputState, request) {
           padding: project.design.layoutPadding || 0
         },
         revision: Number.isInteger(project.design.revision) ? project.design.revision : 0,
-        elements: elements.slice(0, limit).map(item => ({
-          id: item.id, type: item.type, label: item.label || '', text: String(item.text || '').slice(0, 2000),
-          x: item.x, y: item.y, width: item.width, height: item.height,
-          color: item.color, background: item.background, fontSize: item.fontSize,
-          weight: item.weight, radius: item.radius, opacity: item.opacity, rotation: item.rotation,
-          textAlign: item.textAlign, href: item.href, alt: item.alt,
-          objectFit: item.objectFit, visible: item.visible, locked: item.locked, flowRole: item.flowRole,
-          hasImageSource: typeof item.src === 'string' && item.src.length > 0,
-          imageSourceLength: typeof item.src === 'string' ? item.src.length : 0
-        })),
+        elements: elements.slice(0, limit).map(item => {
+          const fullText = String(item.text || '');
+          return {
+            id: item.id, type: item.type, label: item.label || '', text: fullText.slice(0, 2000),
+            textLength: fullText.length, textTruncated: fullText.length > 2000,
+            ...(fullText.length > 2000 ? { textSha256: crypto.createHash('sha256').update(fullText, 'utf8').digest('hex') } : {}),
+            x: item.x, y: item.y, xUnit: item.xUnit, yUnit: item.yUnit,
+            width: item.width, height: item.height, widthUnit: item.widthUnit, heightUnit: item.heightUnit,
+            color: item.color, background: item.background, fontSize: item.fontSize,
+            weight: item.weight, radius: item.radius, opacity: item.opacity, rotation: item.rotation,
+            textAlign: item.textAlign, href: item.href, alt: item.alt, identifier: item.identifier,
+            hidden: item.hidden, objectFit: item.objectFit, visible: item.visible,
+            locked: item.locked, flowRole: item.flowRole,
+            hasImageSource: typeof item.src === 'string' && item.src.length > 0,
+            imageSourceLength: typeof item.src === 'string' ? item.src.length : 0
+          };
+        }),
         elementCount: elements.length,
         truncated: elements.length > limit,
         flowConnections: Array.isArray(project.design.flowConnections) ? clone(project.design.flowConnections) : []

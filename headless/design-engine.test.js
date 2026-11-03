@@ -2,6 +2,17 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+
+function imageBytes(mimeType, suffix = '') {
+  const signatures = {
+    'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+    'image/gif': Buffer.from('GIF89a'),
+    'image/webp': Buffer.from([0x52, 0x49, 0x46, 0x46, 0x04, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50])
+  };
+  if (!signatures[mimeType]) throw new Error('Unsupported test MIME type: ' + mimeType);
+  return Buffer.concat([signatures[mimeType], Buffer.from(suffix)]);
+}
 const { createDesignEngine, normalizeDesignProject, MAX_ELEMENTS } = require('./design-engine');
 
 function project(overrides = {}) {
@@ -131,9 +142,91 @@ test('rejects unsafe colors, href schemes, and image sources', () => {
   ]), /safe image URL/);
 });
 
+test('rejects deceptive or incomplete absolute image URLs and protocol-relative hosts', () => {
+  const engine = createDesignEngine();
+  const projectInput = project({ elements: [{ id: 'url-image', type: 'image', src: '' }] });
+  for (const src of [
+    'https://trusted.example@evil.example/image.png',
+    'http://',
+    '//evil.example/image.png',
+    'https://example.com\\\\image.png',
+    'https://example.com/image.png\\\\payload'
+  ]) {
+    assert.throws(() => engine.transact(projectInput, [
+      { type: 'element.update', id: 'url-image', properties: { src } }
+    ]), /safe image URL/);
+  }
+  for (const src of ['/assets/hero.png', './assets/hero.png', '../assets/hero.png', 'https://example.com/image.png']) {
+    const result = engine.transact(projectInput, [
+      { type: 'element.update', id: 'url-image', properties: { src } }
+    ]);
+    assert.equal(result.project.design.elements[0].src, src);
+  }
+});
+
+test('accepts safe root-relative links and rejects protocol-relative or deceptive URLs', () => {
+  const engine = createDesignEngine();
+  const result = engine.transact(project(), [
+    { type: 'element.add', elementType: 'button', id: 'root-link', properties: { href: '/pricing' } },
+    { type: 'element.add', elementType: 'button', id: 'internal-link', properties: { href: '#layer-target' } }
+  ]);
+  assert.equal(result.project.design.elements.find(item => item.id === 'root-link').href, '/pricing');
+  assert.equal(result.project.design.elements.find(item => item.id === 'internal-link').href, '#layer-target');
+  for (const href of [
+    '//evil.example/path',
+    'https://trusted.example@evil.example/path',
+    'http://',
+    'javascript:alert(1)'
+  ]) {
+    assert.throws(() => engine.transact(project(), [
+      { type: 'element.add', elementType: 'button', id: 'bad-link', properties: { href } }
+    ]), /safe URL scheme/);
+  }
+});
+
+test('deleting internal link targets clears unlocked references and preserves atomic locked-layer policy', () => {
+  const engine = createDesignEngine();
+  const input = project({ elements: [
+    { id: 'cta', type: 'button', href: '#layer-target' },
+    { id: 'legacy-case-cta', type: 'button', href: '#LAYER-target' },
+    { id: 'locked-cta', type: 'button', href: '#layer-target', locked: true },
+    { id: 'target', type: 'rectangle' }
+  ] });
+  assert.throws(() => engine.transact(input, [{ type: 'element.delete', id: 'target' }]), /locked layer/);
+  assert.equal(input.design.elements.find(item => item.id === 'target').id, 'target');
+  const unlockedInput = project({ elements: [
+    { id: 'cta', type: 'button', href: '#layer-target' },
+    { id: 'legacy-case-cta', type: 'button', href: '#LAYER-target' },
+    { id: 'target', type: 'rectangle' }
+  ] });
+  const result = engine.transact(unlockedInput, [{ type: 'element.delete', id: 'target' }]);
+  assert.equal(result.project.design.elements.find(item => item.id === 'cta').href, '');
+  assert.equal(result.project.design.elements.find(item => item.id === 'legacy-case-cta').href, '');
+  assert.deepEqual(result.results[0].clearedLinks.sort(), ['cta', 'legacy-case-cta']);
+  assert.equal(unlockedInput.design.elements.find(item => item.id === 'cta').href, '#layer-target');
+  const bulkInput = project({ elements: [
+    { id: 'cta-a', type: 'button', href: '#layer-target-a' },
+    { id: 'cta-b', type: 'button', href: '#layer-target-b' },
+    { id: 'target-a', type: 'rectangle' },
+    { id: 'target-b', type: 'rectangle' }
+  ] });
+  const bulk = engine.transact(bulkInput, [{ type: 'elements.delete', ids: ['target-a', 'target-b'] }]);
+  assert.deepEqual(bulk.project.design.elements.map(item => item.href), ['', '']);
+  assert.deepEqual(bulk.results[0].clearedLinks.sort(), ['cta-a', 'cta-b']);
+});
+
+test('bounds external image URLs independently from Base64 image data URLs', () => {
+  const engine = createDesignEngine();
+  const oversizedUrl = 'https://example.com/' + 'x'.repeat(9000);
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'url-image', type: 'image', src: '' }] }), [
+    { type: 'element.update', id: 'url-image', properties: { src: oversizedUrl } }
+  ]), /safe image URL/);
+});
+
 test('attaches an editor-compatible image file to an image layer', () => {
   const engine = createDesignEngine();
-  const pixel = Buffer.from('tiny-image').toString('base64');
+  const pixelBytes = imageBytes('image/webp', 'tiny-image');
+  const pixel = pixelBytes.toString('base64');
   const result = engine.transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Imagen del diseño', src: '' }] }), [
     { type: 'image.attach', id: 'hero', filename: 'hero-banner.webp', dataUrl: 'data:image/webp;base64,' + pixel }
   ]);
@@ -141,19 +234,59 @@ test('attaches an editor-compatible image file to an image layer', () => {
   assert.equal(image.src, 'data:image/webp;base64,' + pixel);
   assert.equal(image.alt, 'hero-banner');
   assert.equal(result.results[0].mimeType, 'image/webp');
-  assert.equal(result.results[0].byteLength, Buffer.from('tiny-image').length);
+  assert.equal(result.results[0].byteLength, pixelBytes.length);
+});
+
+
+test('clamps effective auto image dimensions without mutating stored values', () => {
+  const engine = createDesignEngine();
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
+  const input = project({ elements: [{
+    id: 'auto-image', type: 'image', src: dataUrl,
+    width: 10, height: 5000, widthUnit: 'auto', heightUnit: 'auto'
+  }] });
+  const result = engine.transact(input, [
+    { type: 'element.update', id: 'auto-image', properties: { alt: 'bounded image' } }
+  ]);
+  assert.equal(result.project.design.elements[0].width, 10);
+  assert.equal(result.project.design.elements[0].height, 5000);
+  assert.match(result.svg, /<image href="data:image\/png;base64,[^"]+" x="0" y="0" width="20" height="4000"/);
+});
+
+test('validates image magic bytes for PNG, JPEG, GIF, and WebP and shares policy with source updates', () => {
+  const engine = createDesignEngine();
+  const fixtures = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  for (const mimeType of fixtures) {
+    const dataUrl = 'data:' + mimeType + ';base64,' + imageBytes(mimeType, 'fixture').toString('base64');
+    const result = engine.transact(project({ elements: [{ id: 'image-' + mimeType.slice(6), type: 'image', src: '' }] }), [
+      { type: 'image.attach', id: 'image-' + mimeType.slice(6), filename: 'fixture.bin', dataUrl }
+    ]);
+    assert.equal(result.results[0].mimeType, mimeType);
+    assert.equal(result.project.design.elements[0].src, dataUrl);
+  }
+
+  const mismatched = 'data:image/png;base64,' + imageBytes('image/jpeg', 'wrong-type').toString('base64');
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'bad-upload', type: 'image', src: '' }] }), [
+    { type: 'image.attach', id: 'bad-upload', filename: 'wrong.png', dataUrl: mismatched }
+  ]), /declared MIME type/);
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'bad-update', type: 'image', src: '' }] }), [
+    { type: 'element.update', id: 'bad-update', properties: { src: mismatched } }
+  ]), /safe image URL/);
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'random-update', type: 'image', src: '' }] }), [
+    { type: 'element.update', id: 'random-update', properties: { src: 'data:image/png;base64,' + Buffer.from('random bytes').toString('base64') } }
+  ]), /safe image URL/);
 });
 
 test('uses only the image filename when deriving fallback alt text', () => {
   const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Imagen del diseño', src: '' }] }), [
-    { type: 'image.attach', id: 'hero', filename: 'C:\\uploads\\hero-banner.webp', dataUrl: 'data:image/webp;base64,' + Buffer.from('image').toString('base64') }
+    { type: 'image.attach', id: 'hero', filename: 'C:\\uploads\\hero-banner.webp', dataUrl: 'data:image/webp;base64,' + imageBytes('image/webp', 'image').toString('base64') }
   ]);
   assert.equal(result.project.design.elements[0].alt, 'hero-banner');
 });
 
 test('preserves a custom image alt text when attaching a replacement file', () => {
   const result = createDesignEngine().transact(project({ elements: [{ id: 'hero', type: 'image', alt: 'Descripción accesible', src: '' }] }), [
-    { type: 'image.attach', id: 'hero', filename: 'new-image.png', dataUrl: 'data:image/png;base64,' + Buffer.from('image').toString('base64') }
+    { type: 'image.attach', id: 'hero', filename: 'new-image.png', dataUrl: 'data:image/png;base64,' + imageBytes('image/png', 'image').toString('base64') }
   ]);
   assert.equal(result.project.design.elements[0].alt, 'Descripción accesible');
 });
@@ -172,7 +305,7 @@ test('rejects image uploads that do not match the editor file policy', () => {
     { type: 'image.attach', id: 'hero', filename: 'large.png', dataUrl: 'data:image/png;base64,' + tooLarge }
   ]), /2 MB upload limit/);
   assert.throws(() => engine.transact(project({ elements: [{ id: 'copy', type: 'text' }] }), [
-    { type: 'image.attach', id: 'copy', filename: 'image.png', dataUrl: 'data:image/png;base64,' + Buffer.from('x').toString('base64') }
+    { type: 'image.attach', id: 'copy', filename: 'image.png', dataUrl: 'data:image/png;base64,' + imageBytes('image/png', 'x').toString('base64') }
   ]), /requires an image layer/);
 });
 
@@ -243,6 +376,34 @@ test('deleting a layer also removes its visual-flow connection', () => {
 });
 
 
+test('adds a responsive layer atomically with identifier, opacity, visibility, and lock state', () => {
+  const engine = createDesignEngine();
+  const input = project();
+  const result = engine.transact(input, [{
+    type: 'element.add', elementType: 'rectangle', id: 'atomic-layer',
+    properties: {
+      x: 25, y: 30, xUnit: '%', yUnit: '%',
+      width: 12, height: 8, widthUnit: '%', heightUnit: '%',
+      identifier: 'hero-card', opacity: 0.65, visible: false, locked: true
+    }
+  }]);
+  const layer = result.project.design.elements.find(item => item.id === 'atomic-layer');
+  assert.equal(layer.x, 25);
+  assert.equal(layer.xUnit, '%');
+  assert.equal(layer.width, 12);
+  assert.equal(layer.widthUnit, '%');
+  assert.equal(layer.identifier, 'hero-card');
+  assert.equal(layer.opacity, 0.65);
+  assert.equal(layer.visible, false);
+  assert.equal(layer.locked, true);
+  const before = JSON.stringify(result.project);
+  assert.throws(() => engine.transact(result.project, [{
+    type: 'element.add', elementType: 'rectangle', id: 'invalid-atomic',
+    properties: { widthUnit: 'vw', identifier: 'must-not-commit' }
+  }]), /widthUnit/);
+  assert.equal(JSON.stringify(result.project), before, 'invalid initial properties must not partially mutate the project');
+});
+
 test('preserves the editor flow navigation role', () => {
   const engine = createDesignEngine();
   const result = engine.transact(project(), [
@@ -279,4 +440,207 @@ test('rejects unsupported percentage positioning units', () => {
   assert.throws(() => engine.transact(input, [
     { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
   ]), /xUnit must be px or %/);
+});
+
+
+test('hidden legacy and current layers do not consume layout space or render', () => {
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600, layoutMode: 'auto', layoutDirection: 'column', layoutGap: 10, layoutPadding: 20,
+    elements: [
+      { id: 'legacy-hidden', type: 'rectangle', hidden: true, width: 300, height: 200, background: '#ff0000' },
+      { id: 'current-hidden', type: 'rectangle', visible: false, width: 300, height: 200, background: '#00ff00' },
+      { id: 'visible-card', type: 'rectangle', width: 100, height: 40, background: '#ffffff' }
+    ]
+  });
+  const svg = createDesignEngine().renderSvg(input);
+  assert.match(svg, /<rect x="20" y="20" width="100" height="40"/);
+  assert.doesNotMatch(svg, /fill="#ff0000"|fill="#00ff00"/);
+});
+
+test('rejects coercible numeric values and validates percentages by unit', () => {
+  const engine = createDesignEngine();
+  const input = project({ elements: [{ id: 'numeric', type: 'rectangle', x: 10, y: 10, width: 100, height: 40 }] });
+  for (const value of [true, false, '120', null, NaN, Infinity, -Infinity]) {
+    assert.throws(() => engine.transact(input, [
+      { type: 'element.update', id: 'numeric', properties: { width: value } }
+    ]), /finite JSON number/);
+  }
+  assert.throws(() => engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { x: 250, xUnit: '%' } }
+  ]), /between 0 and 200/);
+  assert.throws(() => engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { width: 200, widthUnit: '%' } }
+  ]), /between 1 and 100/);
+  const valid = engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { x: 200, xUnit: '%', width: 100, widthUnit: '%' } }
+  ]);
+  assert.equal(valid.project.design.elements[0].x, 200);
+  assert.equal(valid.project.design.elements[0].width, 100);
+  const auto = engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { width: 10, widthUnit: 'auto' } }
+  ]);
+  assert.equal(auto.project.design.elements[0].width, 10);
+  const nullableOpacity = engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { opacity: null } }
+  ]);
+  assert.equal(nullableOpacity.project.design.elements[0].opacity, null);
+});
+
+test('supports responsive size units, semantic identifiers, and nullable opacity', () => {
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600,
+    elements: [{
+      id: 'hero', type: 'button', text: 'Hello', fontSize: 20,
+      x: 10, y: 5, width: 50, height: 10,
+      xUnit: '%', yUnit: '%', widthUnit: '%', heightUnit: '%',
+      identifier: 'hero-cta', opacity: null, background: '#7c3aed'
+    }]
+  });
+  const result = createDesignEngine().transact(input, [
+    { type: 'element.update', id: 'hero', properties: { widthUnit: '%', heightUnit: '%', identifier: 'hero-cta', opacity: null } }
+  ]);
+  const element = result.project.design.elements[0];
+  assert.equal(element.identifier, 'hero-cta');
+  assert.equal(element.opacity, null);
+  assert.match(result.svg, /<rect x="72" y="80" width="360" height="160"/);
+  assert.match(result.svg, /opacity="1"/);
+});
+
+test('auto dimensions resolve to content-based sizes in SVG', () => {
+  const input = project({
+    elements: [{
+      id: 'auto-button', type: 'button', text: 'Hello', fontSize: 20,
+      x: 10, y: 12, width: 1, height: 1, widthUnit: 'auto', heightUnit: 'auto',
+      background: '#7c3aed'
+    }]
+  });
+  const svg = createDesignEngine().renderSvg(input);
+  assert.match(svg, /<rect x="10" y="12" width="80" height="46"/);
+});
+
+test('locked layers reject mutations but can be explicitly unlocked', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    elements: [
+      { id: 'locked', type: 'rectangle', locked: true, x: 10, y: 10, width: 100, height: 40 },
+      { id: 'other-a', type: 'rectangle', x: 200, y: 10, width: 100, height: 40 },
+      { id: 'other-b', type: 'rectangle', x: 400, y: 10, width: 100, height: 40 }
+    ]
+  });
+  const operations = [
+    { type: 'element.update', id: 'locked', properties: { x: 20 } },
+    { type: 'element.duplicate', id: 'locked', newId: 'copy' },
+    { type: 'element.reorder', id: 'locked', targetIndex: 1 },
+    { type: 'element.delete', id: 'locked' },
+    { type: 'elements.delete', ids: ['locked', 'other-a'] },
+    { type: 'elements.align', ids: ['locked', 'other-a'], mode: 'left' },
+    { type: 'elements.distribute', ids: ['locked', 'other-a', 'other-b'], axis: 'horizontal' }
+  ];
+  for (const operation of operations) {
+    assert.throws(() => engine.transact(input, [operation]), /locked layer/);
+  }
+  const unlocked = engine.transact(input, [{ type: 'element.update', id: 'locked', properties: { locked: false } }]);
+  assert.equal(unlocked.project.design.elements[0].locked, false);
+});
+
+test('rejects duplicate offsets that exceed editable px or percentage coordinate bounds atomically', () => {
+  const engine = createDesignEngine();
+  const cases = [
+    { x: 10000, y: 100, xUnit: 'px', yUnit: 'px', message: /x coordinate range/ },
+    { x: 100, y: 10000, xUnit: 'px', yUnit: 'px', message: /y coordinate range/ },
+    { x: 200, y: 20, xUnit: '%', yUnit: '%', message: /x coordinate range/ },
+    { x: 20, y: 200, xUnit: '%', yUnit: '%', message: /y coordinate range/ }
+  ];
+  for (const [index, fixture] of cases.entries()) {
+    const input = project({ elements: [{
+      id: 'edge-' + index, type: 'rectangle',
+      x: fixture.x, y: fixture.y, xUnit: fixture.xUnit, yUnit: fixture.yUnit,
+      width: 100, height: 50
+    }] });
+    const before = JSON.stringify(input);
+    assert.throws(() => engine.transact(input, [
+      { type: 'element.duplicate', id: 'edge-' + index, newId: 'copy-' + index }
+    ]), fixture.message);
+    assert.equal(JSON.stringify(input), before, 'failed duplicate must not mutate the input project');
+  }
+});
+
+test('duplicates outgoing prototype connections with the duplicate layer ID', () => {
+  const engine = createDesignEngine();
+  const connection = { sourceElementId: 'cta', targetProjectId: 'next-screen', trigger: 'click' };
+  const input = project({
+    elements: [{ id: 'cta', type: 'button', x: 10, y: 20, width: 120, height: 40, href: '#layer-next' }],
+    flowConnections: [connection]
+  });
+  const result = engine.transact(input, [
+    { type: 'element.duplicate', id: 'cta', newId: 'cta-copy' }
+  ]);
+  assert.deepEqual(result.project.design.flowConnections, [
+    connection,
+    { ...connection, sourceElementId: 'cta-copy' }
+  ]);
+  assert.equal(input.design.flowConnections.length, 1, 'the transaction must not mutate the input project');
+});
+
+test('duplicate and distribute preserve percentage position semantics', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600,
+    elements: [
+      { id: 'a', type: 'rectangle', x: 10, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' },
+      { id: 'b', type: 'rectangle', x: 40, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' },
+      { id: 'c', type: 'rectangle', x: 80, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' }
+    ]
+  });
+  const duplicated = engine.transact(input, [{ type: 'element.duplicate', id: 'a', newId: 'a-copy' }]);
+  const copy = duplicated.project.design.elements.find(el => el.id === 'a-copy');
+  assert.ok(Math.abs(copy.x - (10 + 24 / 720 * 100)) < 0.0001);
+  assert.ok(Math.abs(copy.y - (10 + 24 / 1600 * 100)) < 0.0001);
+  const distributed = engine.transact(input, [{ type: 'elements.distribute', ids: ['a', 'b', 'c'], axis: 'horizontal' }]);
+  const middle = distributed.project.design.elements.find(el => el.id === 'b');
+  assert.ok(Math.abs(middle.x - 45) < 0.0001);
+  assert.equal(middle.xUnit, '%');
+});
+
+
+test('validates responsive values independently of property key order', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    elements: [{ id: 'responsive-order', type: 'rectangle', x: 10, y: 10, width: 100, height: 50 }]
+  });
+  const widthFirst = engine.transact(input, [{
+    type: 'element.update', id: 'responsive-order',
+    properties: { width: 10, widthUnit: '%', x: 150, xUnit: '%' }
+  }]);
+  const unitFirst = engine.transact(input, [{
+    type: 'element.update', id: 'responsive-order',
+    properties: { widthUnit: '%', width: 10, xUnit: '%', x: 150 }
+  }]);
+  const pick = result => {
+    const element = result.project.design.elements[0];
+    return { x: element.x, xUnit: element.xUnit, width: element.width, widthUnit: element.widthUnit };
+  };
+  assert.deepEqual(pick(widthFirst), pick(unitFirst));
+  assert.deepEqual(pick(widthFirst), { x: 150, xUnit: '%', width: 10, widthUnit: '%' });
+});
+
+test('align preserves percentage position units after computing pixel geometry', () => {
+  const engine = createDesignEngine();
+  const input = project({
+    canvasWidth: 720, canvasHeight: 1600,
+    elements: [
+      { id: 'left', type: 'rectangle', x: 10, y: 10, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' },
+      { id: 'right', type: 'rectangle', x: 40, y: 30, xUnit: '%', yUnit: '%', width: 10, height: 10, widthUnit: '%', heightUnit: '%' }
+    ]
+  });
+  const aligned = engine.transact(input, [
+    { type: 'elements.align', ids: ['left', 'right'], mode: 'right' },
+    { type: 'elements.align', ids: ['left', 'right'], mode: 'bottom' }
+  ]).project.design.elements;
+  for (const element of aligned) {
+    assert.equal(element.xUnit, '%');
+    assert.equal(element.yUnit, '%');
+    assert.ok(Math.abs(element.x - 40) < 0.0001);
+    assert.ok(Math.abs(element.y - 30) < 0.0001);
+  }
 });
