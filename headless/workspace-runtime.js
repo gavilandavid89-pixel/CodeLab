@@ -700,6 +700,7 @@ function queryHeadlessWorkspace(inputState, request) {
           return {
             id: item.id, type: item.type, label: item.label || '', text: fullText.slice(0, 2000),
             textLength: fullText.length, textTruncated: fullText.length > 2000,
+            ...(fullText.length > 2000 ? { textSha256: crypto.createHash('sha256').update(fullText, 'utf8').digest('hex') } : {}),
             x: item.x, y: item.y, xUnit: item.xUnit, yUnit: item.yUnit,
             width: item.width, height: item.height, widthUnit: item.widthUnit, heightUnit: item.heightUnit,
             color: item.color, background: item.background, fontSize: item.fontSize,
