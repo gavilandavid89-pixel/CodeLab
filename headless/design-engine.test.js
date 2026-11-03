@@ -97,6 +97,50 @@ test('deletes only the requested stable layer id', () => {
   assert.deepEqual(result.project.design.elements.map(layer => layer.id), ['b']);
 });
 
+test('locked layers reject update, delete, duplicate, reorder, and bulk delete atomically', () => {
+  const engine = createDesignEngine();
+  const original = project({ elements: [
+    { id: 'locked', type: 'rectangle', locked: true, x: 10, y: 20, width: 100, height: 80 },
+    { id: 'unlocked', type: 'ellipse', x: 30, y: 40, width: 50, height: 50 }
+  ] });
+  const operations = [
+    { type: 'element.update', id: 'locked', properties: { x: 99 } },
+    { type: 'element.delete', id: 'locked' },
+    { type: 'elements.delete', ids: ['unlocked', 'locked'] },
+    { type: 'element.duplicate', id: 'locked', newId: 'locked-copy' },
+    { type: 'element.reorder', id: 'locked', targetIndex: 1 }
+  ];
+
+  for (const operation of operations) {
+    assert.throws(
+      () => engine.transact(original, [operation]),
+      /Layer is locked and cannot be changed/
+    );
+    assert.deepEqual(original.design.elements.map(layer => layer.id), ['locked', 'unlocked']);
+    assert.equal(original.design.elements[0].x, 10);
+    assert.equal(original.design.elements[0].locked, true);
+  }
+});
+
+test('allows an explicit unlock-only update, then permits normal edits', () => {
+  const engine = createDesignEngine();
+  const original = project({ elements: [
+    { id: 'locked', type: 'rectangle', locked: true, x: 10, y: 20, width: 100, height: 80 }
+  ] });
+  assert.throws(
+    () => engine.transact(original, [{ type: 'element.update', id: 'locked', properties: { locked: false, x: 99 } }]),
+    /Layer is locked and cannot be changed/
+  );
+  const unlocked = engine.transact(original, [
+    { type: 'element.update', id: 'locked', properties: { locked: false } }
+  ]);
+  assert.equal(unlocked.project.design.elements[0].locked, false);
+  const edited = engine.transact(unlocked.project, [
+    { type: 'element.update', id: 'locked', properties: { x: 99 } }
+  ]);
+  assert.equal(edited.project.design.elements[0].x, 99);
+});
+
 test('enforces editor canvas minimum dimensions', () => {
   const engine = createDesignEngine();
   assert.throws(() => engine.transact(project(), [{ type: 'canvas.set', width: 99, height: 1600 }]), /canvas.width/);
@@ -307,4 +351,22 @@ test('rejects unsupported percentage positioning units', () => {
   assert.throws(() => engine.transact(input, [
     { type: 'element.update', id: 'card', properties: { xUnit: 'vw' } }
   ]), /xUnit must be px or %/);
+});
+
+
+test('locked layers cannot be moved through align or distribute operations', () => {
+  const engine = createDesignEngine();
+  const source = project({ elements: [
+    { id: 'locked-a', type: 'rectangle', x: 10, y: 10, width: 100, height: 50, locked: true },
+    { id: 'free-b', type: 'rectangle', x: 200, y: 30, width: 100, height: 50 },
+    { id: 'free-c', type: 'rectangle', x: 400, y: 60, width: 100, height: 50 }
+  ] });
+  const before = JSON.stringify(source.design.elements);
+  assert.throws(() => engine.transact(source, [
+    { type: 'elements.align', ids: ['locked-a', 'free-b'], mode: 'top' }
+  ]), /locked/i);
+  assert.throws(() => engine.transact(source, [
+    { type: 'elements.distribute', ids: ['locked-a', 'free-b', 'free-c'], axis: 'horizontal' }
+  ]), /locked/i);
+  assert.equal(JSON.stringify(source.design.elements), before, 'rejected geometry operations must not mutate the input');
 });
