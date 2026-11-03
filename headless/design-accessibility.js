@@ -78,7 +78,7 @@ function auditDesignAccessibility(project) {
     if (TEXT_TYPES.has(element.type)) {
       const fontSize = Number(element.fontSize);
       const weight = Number(element.weight) || 400;
-      const opacity = Number(element.opacity);
+      const opacity = element.opacity == null ? 1 : Number(element.opacity);
       if (Number.isFinite(opacity) && opacity !== 1) {
         add('warning', 'text-opacity-contrast', element,
           'La opacidad de la capa puede alterar el contraste real; esta auditoría no compone el texto y el fondo sobre el canvas.',
