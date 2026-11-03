@@ -202,6 +202,19 @@ async function main() {
   assert.equal(crossAccountDelete.status, 404, 'a different account must not delete another account\'s project');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders })).status, 200,
     'a denied cross-account deletion must leave the owner\'s project intact');
+  const staleEditorWrite = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: {
+      ...otherHeaders,
+      'content-type': 'application/json',
+      'x-codelab-expected-account': encodeURIComponent(JSON.stringify(['github', 'pixelforge-integration-user']))
+    },
+    body: JSON.stringify({ project: makePixelProject('stale-editor-cross-account-write', 'Must not cross accounts') })
+  });
+  assert.equal(staleEditorWrite.status, 409, 'the server must reject a PixelForge request whose editor-bound account differs from the active session');
+  assert.equal((await staleEditorWrite.json()).error, 'account_session_changed');
+  assert.deepEqual((await (await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders })).json()).projects, [],
+    'a mismatched editor account header must not create a project in the newly signed-in account');
 
   const concurrentProjects = Array.from({ length: 6 }, (_, index) =>
     makePixelProject('parallel-artwork-' + index, 'Parallel artwork ' + index));
