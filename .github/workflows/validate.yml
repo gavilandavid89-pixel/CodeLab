@@ -124,6 +124,7 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
           node tests/account-isolation.e2e.test.js
+          node tests/pixelforge-account.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
         run: |
