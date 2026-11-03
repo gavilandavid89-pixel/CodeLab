@@ -2013,6 +2013,12 @@ const server = http.createServer(async (req, res) => {
       if ((pixelForgeCollection || pixelForgeItem) && ['GET', 'PUT', 'DELETE'].includes(req.method)) {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
+        // Production must never silently downgrade the studio's durable database
+        // contract to local sidecar files. File persistence is retained only for
+        // isolated development/E2E environments without DATABASE_URL.
+        if (!accountPool && process.env.NODE_ENV === 'production') {
+          return sendJson(res, 503, { error: 'pixelforge_database_unavailable', message: 'El almacenamiento de PixelForge no está disponible. Contacta al administrador de CodeLab.' });
+        }
         const workspaceId = userWorkspaceId(user);
         return await withPixelForgeAccountLock(workspaceId, async () => {
         const file = workspaceFile(workspaceId) + '.pixelforge.json';
