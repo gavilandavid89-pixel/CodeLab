@@ -276,6 +276,27 @@ test('rejects oversized JSON strings before parsing and oversized object imports
     error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
 });
 
+test('round-trips a real 1x1 PNG payload through JSON and semantic HTML export', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
+  const input = project([{ id: 'real-png', type: 'image', src: png, width: 1, height: 1 }]);
+  const json = exportDesignJson(input);
+  const imported = importDesignJson(json.json);
+  assert.equal(imported.design.elements[0].src, png);
+  assert.ok(exportDesignHtml(imported).includes(png));
+});
+
+test('rejects oversized JSON strings before parsing and oversized parsed objects before normalization', () => {
+  const oversizedString = ' '.repeat(5 * 1024 * 1024 + 1);
+  assert.throws(() => importDesignJson(oversizedString), error =>
+    error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
+  const oversizedObject = {
+    format: 'codelab-design-project', version: 1,
+    project: { ...project([{ id: 'oversized', type: 'text', text: 'T'.repeat(5 * 1024 * 1024 + 1) }]) }
+  };
+  assert.throws(() => importDesignJson(oversizedObject), error =>
+    error.code === 'HEADLESS_INVALID_DESIGN_IMPORT' && /5 MB/.test(error.message));
+});
+
 test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {
   const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
   const input = project([{
