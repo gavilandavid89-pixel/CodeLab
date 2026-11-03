@@ -217,6 +217,7 @@ function applyOperation(project, operation) {
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.align IDs must be unique.');
       assert(['left', 'center-x', 'right', 'top', 'center-y', 'bottom'].includes(operation.mode), 'Unsupported alignment mode.');
       const elements = operation.ids.map(id => findElement(project, id));
+      for (const element of elements) assertLayerUnlocked(element, operation.type);
       const canvasWidth = Number(project.design.canvasWidth) || legacyCanvas(project.design.frame).width;
       const canvasHeight = Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height;
       const rects = elements.map(el => ({
@@ -248,10 +249,13 @@ function applyOperation(project, operation) {
       assert(Array.isArray(operation.ids) && operation.ids.length >= 3 && operation.ids.length <= 100, 'elements.distribute requires 3 to 100 layer IDs.');
       assert(new Set(operation.ids).size === operation.ids.length, 'elements.distribute IDs must be unique.');
       assert(['horizontal', 'vertical'].includes(operation.axis), 'axis must be horizontal or vertical.');
-      const items = operation.ids.map(id => findElement(project, id)).map(el => ({
+      const items = operation.ids.map(id => findElement(project, id)).map(el => {
+        assertLayerUnlocked(el, operation.type);
+        return ({
         el, position: Number(operation.axis === 'horizontal' ? el.x : el.y) || 0,
         size: Number(operation.axis === 'horizontal' ? el.width : el.height) || (operation.axis === 'horizontal' ? 120 : 48)
-      })).sort((a, b) => a.position - b.position);
+        });
+      }).sort((a, b) => a.position - b.position);
       const start = items[0].position;
       const end = items[items.length - 1].position + items[items.length - 1].size;
       const totalSize = items.reduce((sum, item) => sum + item.size, 0);
