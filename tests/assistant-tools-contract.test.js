@@ -307,6 +307,9 @@ assert.match(savedDesignBatch, /const positionPx = \(element, axis, design\)/, '
 assert.match(savedDesignBatch, /unit === '%' \? value \* canvasSize \/ 100 : value/,
   'duplicate verification must convert percentage coordinates using the saved canvas');
 assert.match(savedDesignBatch, /connectionsDuplicated = sourceConnections\.every/, 'duplicate readback must verify remapped outgoing flow connections');
+assert.match(bridge, /textSha256: crypto\.createHash\('sha256'\)/, 'design.read must expose a hash for truncated text without returning the full value');
+assert.match(bridge, /element\.textSha256 === createHash\('sha256'\)\.update\(value, 'utf8'\)\.digest\('hex'\)/,
+  'design add/update readback must verify long text by SHA-256');
 
 const componentInsertHandler = bridge.slice(bridge.indexOf("} else if (command.action === 'component_insert') {"), bridge.indexOf("} else if (command.action === 'design_element_add') {", bridge.indexOf("} else if (command.action === 'component_insert') {")));
 assert.match(componentInsertHandler, /type: 'component\.insert'/, 'component insertion must use the shared headless runtime');
