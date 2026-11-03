@@ -233,10 +233,14 @@ function applyOperation(project, operation) {
       assert(typeof id === 'string' && id.length <= 100 && !project.design.elements.some(item => item.id === id), 'Invalid or duplicate new layer id.');
       const canvasWidth = Number(project.design.canvasWidth) || legacyCanvas(project.design.frame).width;
       const canvasHeight = Number(project.design.canvasHeight) || legacyCanvas(project.design.frame).height;
+      const nextX = toStoredPosition((Number(source.x) || 0) * (source.xUnit === '%' ? canvasWidth / 100 : 1) + 24, source.xUnit, canvasWidth);
+      const nextY = toStoredPosition((Number(source.y) || 0) * (source.yUnit === '%' ? canvasHeight / 100 : 1) + 24, source.yUnit, canvasHeight);
+      const maxX = source.xUnit === '%' ? 200 : MAX_CANVAS_SIZE;
+      const maxY = source.yUnit === '%' ? 200 : MAX_CANVAS_SIZE;
+      assert(nextX >= 0 && nextX <= maxX, 'Duplicating this layer would exceed the editable x coordinate range.');
+      assert(nextY >= 0 && nextY <= maxY, 'Duplicating this layer would exceed the editable y coordinate range.');
       const copy = {
-        ...clone(source), id,
-        x: toStoredPosition((Number(source.x) || 0) * (source.xUnit === '%' ? canvasWidth / 100 : 1) + 24, source.xUnit, canvasWidth),
-        y: toStoredPosition((Number(source.y) || 0) * (source.yUnit === '%' ? canvasHeight / 100 : 1) + 24, source.yUnit, canvasHeight),
+        ...clone(source), id, x: nextX, y: nextY,
         label: (source.label || 'Capa') + ' copia'
       };
       project.design.elements.push(copy);
