@@ -348,6 +348,35 @@ test('hidden legacy and current layers do not consume layout space or render', (
   assert.doesNotMatch(svg, /fill="#ff0000"|fill="#00ff00"/);
 });
 
+test('rejects coercible numeric values and validates percentages by unit', () => {
+  const engine = createDesignEngine();
+  const input = project({ elements: [{ id: 'numeric', type: 'rectangle', x: 10, y: 10, width: 100, height: 40 }] });
+  for (const value of [true, false, '120', null, NaN, Infinity, -Infinity]) {
+    assert.throws(() => engine.transact(input, [
+      { type: 'element.update', id: 'numeric', properties: { width: value } }
+    ]), /finite JSON number/);
+  }
+  assert.throws(() => engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { x: 250, xUnit: '%' } }
+  ]), /between -200 and 200/);
+  assert.throws(() => engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { width: 200, widthUnit: '%' } }
+  ]), /between 1 and 100/);
+  const valid = engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { x: 200, xUnit: '%', width: 100, widthUnit: '%' } }
+  ]);
+  assert.equal(valid.project.design.elements[0].x, 200);
+  assert.equal(valid.project.design.elements[0].width, 100);
+  const auto = engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { width: 10, widthUnit: 'auto' } }
+  ]);
+  assert.equal(auto.project.design.elements[0].width, 10);
+  const nullableOpacity = engine.transact(input, [
+    { type: 'element.update', id: 'numeric', properties: { opacity: null } }
+  ]);
+  assert.equal(nullableOpacity.project.design.elements[0].opacity, null);
+});
+
 test('supports responsive size units, semantic identifiers, and nullable opacity', () => {
   const input = project({
     canvasWidth: 720, canvasHeight: 1600,
