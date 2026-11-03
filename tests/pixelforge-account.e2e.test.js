@@ -33,6 +33,11 @@ function pixelProject(id, name, marker) {
 }
 
 (async () => {
+  const editorPage = await request('/pixelforge/');
+  const editorModule = await request('/pixelforge/src/editor.js');
+  assert.equal(editorPage.status, 200, 'CodeLab should serve the separately maintained PixelForge UI at /pixelforge/');
+  assert.equal(editorModule.status, 200, 'PixelForge ES modules should be served under the same origin');
+
   const alice = seedSession('pixel-alice', 'Pixel Alice');
   const bob = seedSession('pixel-bob', 'Pixel Bob');
   const anonymous = await request('/api/pixelforge/session');
