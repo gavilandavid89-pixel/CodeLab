@@ -127,6 +127,13 @@ async function main() {
   assert.equal(staleWrite.status, 409, 'a stale session must not overwrite a newer saved revision');
   assert.equal((await staleWrite.json()).error, 'pixelforge_revision_conflict',
     'stale project writes should return a stable revision-conflict error');
+  const sameRevisionFork = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: { ...fixture, name: 'Concurrent fork with same local revision', revision: fixture.revision, saveVersion: fixture.saveVersion, serverRevision: 0 } })
+  });
+  assert.equal(sameRevisionFork.status, 409,
+    'two divergent sessions with the same local edit revision must still conflict through serverRevision');
   if (health.persistence === 'postgresql') {
     assert.equal(fs.existsSync(pixelForgeStoreFile), false, 'PostgreSQL-backed PixelForge projects must not be duplicated in workspace sidecar files');
   } else {
