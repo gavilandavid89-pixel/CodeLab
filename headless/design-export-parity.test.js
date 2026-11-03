@@ -219,6 +219,38 @@ test('legacy hidden:true is omitted from HTML, SVG, capture, and auto-layout geo
   assert.equal(autoContext.elements[0].bounds.y, 0);
 });
 
+test('JSON import and semantic export reject data URLs with mismatched or non-canonical image bytes', () => {
+  const validPng = 'data:image/png;base64,' + Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]).toString('base64');
+  const invalidPng = 'data:image/png;base64,' + Buffer.from([0xff,0xd8,0xff,0xd9]).toString('base64');
+  const invalidWhitespace = validPng.replace('base64,', 'base64, ') + ' ';
+  for (const invalidSrc of [invalidPng, invalidWhitespace, 'data:image/png;base64,' + Buffer.from('random bytes').toString('base64')]) {
+    const backup = {
+      format: 'codelab-design-project', version: 1,
+      project: { ...project([{ id: 'unsafe-image', type: 'image', src: invalidSrc }]) }
+    };
+    assert.throws(() => importDesignJson(backup), /unsafe or oversized image source/);
+    const html = exportDesignHtml(project([{ id: 'unsafe-image', type: 'image', src: invalidSrc }]));
+    assert.doesNotMatch(html, new RegExp(invalidSrc.replace(/[.*+?^${}()|[\]\\]/g, '\\test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {')));
+  }
+});
+
+test('round-trips valid PNG, JPEG, GIF, and WebP data URLs through JSON import/export', () => {
+  const fixtures = {
+    'image/png': Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]),
+    'image/jpeg': Buffer.from([0xff,0xd8,0xff,0xd9,0x01]),
+    'image/gif': Buffer.from('GIF89a01'),
+    'image/webp': Buffer.from([0x52,0x49,0x46,0x46,0x04,0x00,0x00,0x00,0x57,0x45,0x42,0x50,0x01])
+  };
+  const elements = Object.entries(fixtures).map(([mime, bytes], index) => ({
+    id: 'valid-' + index, type: 'image', src: 'data:' + mime + ';base64,' + bytes.toString('base64'),
+    width: 120, height: 80
+  }));
+  const imported = importDesignJson(exportDesignJson(project(elements)).json);
+  assert.deepEqual(imported.design.elements.map(element => element.src), elements.map(element => element.src));
+  const html = exportDesignHtml(imported);
+  for (const element of elements) assert.ok(html.includes(element.src));
+});
+
 test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {
   const dataUrl = 'data:image/png;base64,' + Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]).toString('base64');
   const input = project([{
@@ -232,7 +264,7 @@ test('auto image dimensions stay clamped across capture, export, and JSON round-
   assert.match(html, /width:20px;height:4000px/);
   assert.equal(context.elements[0].bounds.width, 20);
   assert.equal(context.elements[0].bounds.height, 4000);
-  const roundTrip = importDesignJson(exportDesignJson(input));
+  const roundTrip = importDesignJson(exportDesignJson(input).json);
   assert.equal(roundTrip.design.elements[0].width, 10);
   assert.equal(roundTrip.design.elements[0].height, 5000);
   assert.equal(roundTrip.design.elements[0].widthUnit, 'auto');
