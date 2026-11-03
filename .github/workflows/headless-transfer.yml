@@ -25,5 +25,6 @@ jobs:
         run: |
           node --check headless/transfer-store.js
           node --check server.js
+          node --check .github/scripts/codelab-bridge.mjs
       - name: Test chunk integrity, ownership, replay, expiry-safe storage and image signatures
         run: node --test headless/transfer-store.test.js
