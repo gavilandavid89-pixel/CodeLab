@@ -27,12 +27,12 @@ test('hidden layers stay in the layer tree but do not consume layout or canvas s
 });
 
 test('visual design review preserves the remote AI analysis flow', () => {
-  assert.match(app, /async function callRemoteDesignReviewAi\(screenshotDataUrl, context\)/);
-  assert.match(app, /const review = await callRemoteDesignReviewAi\(dataUrl, context\)/,
+  assert.match(source, /async function callRemoteDesignReviewAi\(screenshotDataUrl, context\)/);
+  assert.match(source, /const review = await callRemoteDesignReviewAi\(dataUrl, context\)/,
     'captureDesignForAI must send the generated PNG and structured context to the remote reviewer');
-  assert.match(app, /fetch\('\/api\/ai\/design-review'/,
+  assert.match(source, /fetch\('\/api\/ai\/design-review'/,
     'remote visual review must use the authenticated design review endpoint');
-  assert.match(app, /downloadDesignAsset\(slug \+ '-revision-ia\.json'/,
+  assert.match(source, /downloadDesignAsset\(slug \+ '-revision-ia\.json'/,
     'the returned visual review must remain exportable as a JSON report');
 });
 
