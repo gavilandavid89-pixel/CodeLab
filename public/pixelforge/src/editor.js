@@ -515,7 +515,7 @@ function scheduleAutosave() {
       await saveProject(snapshot);
       savingDoc.dirty = savingDoc.saveVersion !== version;
       if (doc === savingDoc) {
-        status(savingDoc.dirty ? 'Unsaved changes' : 'Saved on this device', savingDoc.dirty ? 'warning' : 'success');
+        status(savingDoc.dirty ? 'Unsaved changes' : 'Saved to your CodeLab account', savingDoc.dirty ? 'warning' : 'success');
         updateTitle();
       }
     });
@@ -1456,7 +1456,7 @@ $('#create-new').addEventListener('click', async () => {
   } catch (error) { $('#new-error').textContent = error.message; status(`Could not switch documents: ${error.message}`, 'error'); }
 });
 $('#save').addEventListener('click', async () => {
-  try { await flushAutosave({ force: true }); status('Saved on this device', 'success'); }
+  try { await flushAutosave({ force: true }); status('Saved to your CodeLab account', 'success'); }
   catch (error) { status(`Save failed: ${error.message}`, 'error'); }
 });
 $('#export-project').addEventListener('click', () => {
