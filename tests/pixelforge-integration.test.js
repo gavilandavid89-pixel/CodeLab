@@ -23,6 +23,7 @@ async function main() {
   const dashboard = await dashboardResponse.text();
   assert.match(dashboard, /id="studioChooser"/, 'dashboard should expose the studio chooser');
   assert.match(dashboard, /href="\/pixelforge\/index\.html"/, 'PixelForge should be a separate dashboard destination');
+  assert.ok(dashboard.indexOf('src="/studio-core.js"') < dashboard.indexOf('src="/app.js"'), 'CodeLab dashboard must load the shared runtime before its app');
   assert.match(dashboard, /Crear proyecto/, 'existing project creation should remain available');
 
   const sharedCoreResponse = await fetch(base + '/studio-core.js');
@@ -36,6 +37,7 @@ async function main() {
   const page = await pageResponse.text();
   assert.match(page, /id="canvas"/, 'PixelForge artwork canvas should be present');
   assert.match(page, /src="\.\/src\/editor\.js"/, 'PixelForge should load its editor module');
+  assert.ok(page.indexOf('src="/studio-core.js"') < page.indexOf('src="./src/editor.js"'), 'PixelForge must load the same shared runtime before its editor');
   assert.match(page, /href="\/"[^>]*CodeLab dashboard|href="\/" title="Back to CodeLab dashboard"/, 'PixelForge should provide a return path to CodeLab');
 
   for (const path of [
