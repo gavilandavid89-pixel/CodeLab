@@ -55,6 +55,66 @@ test('inspector and canvas/export renderer expose opacity and font weight consis
   assert.match(exporter, /opacity:'\+opacity\+'/);
 });
 
+test('distribution resolves mixed px/% units, preserves representable units, and rejects locked selections atomically', () => {
+  const positionStart = source.indexOf('function getDesignElementPosition(');
+  assert.notEqual(positionStart, -1, 'missing effective position helper');
+  const positionSource = source.slice(positionStart);
+  const distribution = extract('function distributeDesignElements', 'function alignDesignElement');
+  const makeProject = (locked = false) => ({
+    id: 'mixed-units',
+    design: {
+      layoutMode: 'free', canvasWidth: 500, canvasHeight: 1000,
+      elements: [
+        { id: 'a', x: 10, xUnit: 'px', width: 100, widthUnit: 'px', y: 0, height: 20 },
+        { id: 'b', x: 20, xUnit: '%', width: 10, widthUnit: '%', y: 0, height: 20, locked },
+        { id: 'c', x: 50, xUnit: '%', width: 100, widthUnit: 'px', y: 0, height: 20 }
+      ]
+    }
+  });
+  const run = project => {
+    let history = 0;
+    const toasts = [];
+    const sandbox = {
+      activeDesignProject: () => project,
+      selectedDesignElementIds: ['a', 'b', 'c'],
+      getDesignCanvasWidth: design => design.canvasWidth,
+      getDesignCanvasHeight: design => design.canvasHeight,
+      getDesignElementDimension: (el, axis, size) => {
+        const unit = el[axis + 'Unit'];
+        const raw = Number(el[axis]);
+        if (unit === '%') return Math.max(1, Math.min(4000, size * Math.min(100, raw) / 100));
+        return Number.isFinite(raw) && raw > 0 ? raw : (axis === 'width' ? 120 : 48);
+      },
+      recordDesignHistory: () => { history++; },
+      renderDesignWorkspace: () => {},
+      saveProjectsToStorage: () => {},
+      showToast: message => toasts.push(message)
+    };
+    vm.runInNewContext(positionSource + '\n' + distribution + '\nthis.position = getDesignElementPosition; this.run = distributeDesignElements;', sandbox);
+    sandbox.run('horizontal');
+    return { project, history, toasts, position: sandbox.position };
+  };
+
+  const mixed = run(makeProject());
+  const [a, b, c] = mixed.project.design.elements;
+  assert.equal(mixed.history, 1);
+  assert.equal(a.x, 10);
+  assert.equal(a.xUnit, 'px');
+  assert.equal(b.xUnit, '%');
+  assert.ok(Math.abs(b.x - 31) < 0.01, 'the 155px placement should be stored as 31% of a 500px canvas');
+  assert.equal(c.x, 50);
+  assert.equal(c.xUnit, '%');
+  assert.equal(mixed.position({ y: 200, yUnit: '%' }, 'y', 10000), 20000, 'effective percentage positions must not be capped at 10000px');
+
+  const lockedProject = makeProject(true);
+  const locked = run(lockedProject);
+  assert.equal(locked.history, 0, 'locked selection must fail before history or mutation');
+  assert.deepEqual(locked.project.design.elements.map(el => [el.x, el.xUnit]), [
+    [10, 'px'], [20, '%'], [50, '%']
+  ]);
+  assert.match(locked.toasts[0], /Desbloquea todas las capas seleccionadas/);
+});
+
 test('numeric property ranges allow coordinate zero and reject non-finite edits', () => {
   const update = extract('function updateDesignProperty', 'function bindDesignCanvasEvents');
   assert.match(update, /const n = Number\(value\); if \(!Number\.isFinite\(n\)\) return;/);
