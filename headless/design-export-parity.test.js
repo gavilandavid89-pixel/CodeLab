@@ -230,7 +230,7 @@ test('JSON import and semantic export reject data URLs with mismatched or non-ca
     };
     assert.throws(() => importDesignJson(backup), /unsafe or oversized image source/);
     const html = exportDesignHtml(project([{ id: 'unsafe-image', type: 'image', src: invalidSrc }]));
-    assert.doesNotMatch(html, new RegExp(invalidSrc.replace(/[.*+?^${}()|[\]\\]/g, '\\test('auto image dimensions stay clamped across capture, export, and JSON round-trip', () => {')));
+    assert.doesNotMatch(html, /src="data:image\/(?:png|jpeg|webp|gif);base64,/);
   }
 });
 
