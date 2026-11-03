@@ -49,7 +49,9 @@ const COOKIE_NAME = 'codelab_sid';
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
 const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
 const DATABASE_URL = process.env.DATABASE_URL || ''; 
-const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
+// Production uses TLS by default; local PostgreSQL integration tests can opt out explicitly.
+const DATABASE_SSL = process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false };
+const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: DATABASE_SSL, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
 const localLoginAttempts = new Map();
 const LOCAL_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOCAL_LOGIN_MAX_ATTEMPTS = 8;
