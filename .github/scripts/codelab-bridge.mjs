@@ -169,7 +169,7 @@ function parseCommand(raw) {
         if (typeof value !== 'boolean') throw new Error('Design element ' + key + ' must be a boolean.');
       } else if (stringProperties.has(key)) {
         if (typeof value !== 'string') throw new Error('Design element ' + key + ' must be a string.');
-        const maxLength = key === 'src' ? 50000 : key === 'text' ? 10000 : 2000;
+        const maxLength = key === 'src' ? 2800000 : key === 'text' ? 10000 : 2000;
         if (value.length > maxLength) throw new Error('Design element string properties are limited to ' + maxLength + ' characters.');
       } else {
         throw new Error('Unsupported value type for design element property: ' + key);
