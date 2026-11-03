@@ -484,6 +484,25 @@ async function loadPixelForgeProjectFromDatabase(workspaceId, projectId) {
   return result.rowCount ? result.rows[0].project : null;
 }
 
+async function deletePixelForgeProjectFromDatabase(workspaceId, projectId) {
+  const client = await accountPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
+    const deleted = await client.query(
+      'DELETE FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+      [workspaceId, projectId]
+    );
+    await client.query('COMMIT');
+    return deleted.rowCount > 0;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes) {
   const client = await accountPool.connect();
   try {
@@ -2152,11 +2171,8 @@ const server = http.createServer(async (req, res) => {
           if (!id) return sendJson(res, 400, { error: 'invalid_project_id' });
           if (accountPool) {
             try {
-              const deleted = await accountPool.query(
-                'DELETE FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
-                [workspaceId, id]
-              );
-              return deleted.rowCount
+              const deleted = await deletePixelForgeProjectFromDatabase(workspaceId, id);
+              return deleted
                 ? sendJson(res, 200, { ok: true })
                 : sendJson(res, 404, { error: 'project_not_found' });
             } catch (error) {
