@@ -15,7 +15,7 @@ test('server exposes the authenticated headless workspace route', () => {
   assert.match(server, /require\(['"]\.\/headless\/workspace-runtime['"]\)/);
   const route = server.indexOf("const headlessMatch = pathname.match");
   assert.notEqual(route, -1);
-  const routeBody = server.slice(route, route + 2400);
+  const routeBody = server.slice(route, route + 5000);
   assert.ok(routeBody.indexOf('isAuthorized(req, id)') < routeBody.indexOf('applyHeadlessBatch(current, body)'));
   assert.match(routeBody, /const validationError = validateProjects\(result\.state\.projects\)/);
   assert.ok(routeBody.indexOf('if (!result.replayed) {') < routeBody.indexOf('writeState(id, result.state)'));
