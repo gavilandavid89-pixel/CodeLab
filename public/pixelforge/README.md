@@ -1,27 +1,22 @@
-# PixelForge studio module
+# PixelForge native studio module
 
-This directory is the CodeLab-hosted integration copy of the standalone PixelForge AI editor.
+PixelForge is a first-party CodeLab studio. Its editor engine and UI stay encapsulated in `public/pixelforge/`, while CodeLab owns the account, session, platform navigation, and durable project storage.
 
-## Boundaries
+## Native integration contract
 
-- Keep editor implementation, styles, and assets for PixelForge inside `public/pixelforge/`.
-- Keep CodeLab-wide session and request semantics in `public/studio-core.js`; PixelForge imports that shared contract instead of implementing a second account/login system.
-- Keep account-bound project CRUD in the PixelForge API route in `server.js`. The API derives ownership from the authenticated CodeLab session and stores records under that account's workspace.
-- Do not change CodeLab's general workspace/project model just to add a PixelForge-specific feature unless the feature genuinely belongs to the shared platform.
-- PixelForge provider keys are held in memory while configured; do not persist them in shared local storage or attach them to saved artwork.
+- **Identity:** use `public/studio-core.js` for the active CodeLab session and same-origin API requests. Do not introduce a separate PixelForge login or account model.
+- **Entry:** open the studio directly from CodeLab's Design area at `/pixelforge/index.html`; there is no separate PixelForge home screen.
+- **Storage:** use the authenticated `/api/pixelforge/projects` API. PostgreSQL stores the project document and its raster-layer data in the dedicated `codelab_pixelforge_projects` table, scoped by the CodeLab workspace/account.
+- **Isolation:** keep PixelForge-specific editor, raster document schema, styles, and assets inside this module. Keep platform-wide authentication and shared request semantics in CodeLab's shared runtime.
+- **Durability:** production must fail clearly when the database is unavailable; it must not silently fall back to ephemeral or sidecar storage. File-backed persistence is only a development/E2E fallback when no database is configured.
+- **Safety:** validate document shape, pixel buffers, dimensions, layer references, encoded size, per-account quota, and project count on the server. Enforce account isolation on every operation and never evict existing work to make room.
+- **Provider credentials:** keep configured provider keys in memory only; never persist them in browser shared storage or attach them to artwork documents.
+- **Recent projects:** opening a saved project updates its persistent recency timestamp, so project lists reflect actual use.
 
-## Upstream source
+## Evolving the studio
 
-The standalone source project is [PixelForge-Ai](https://github.com/gavilandavid89-pixel/PixelForge-Ai). This directory is intentionally kept as a separate module in the CodeLab repository so the editor can be evolved without spreading its UI and engine changes through unrelated CodeLab files.
-
-When syncing upstream changes, review and port changes into this directory rather than replacing the whole directory blindly. Preserve the CodeLab-specific integrations in:
-
-- `index.html`: CodeLab return link and studio entry.
-- `src/persistence.js`: account-backed API adapter using `studio-core.js`.
-- `src/editor.js`: CodeLab session gate and account-scoped palette preferences.
-- `server.js` (outside this directory): authenticated, bounded project storage API.
-- `tests/pixelforge-integration.test.js`: cross-account, persistence, validation, and browser acceptance coverage.
+PixelForge is maintained directly in this CodeLab repository. No upstream repository sync step is part of the architecture. Make engine/UI changes inside this module and update the CodeLab-specific persistence adapter and integration tests when their contracts change. Avoid spreading raster-editor concerns into unrelated CodeLab modules.
 
 ## Verification expectations
 
-After changing this module, run the CodeLab validation workflow and Agent Space Browser Runner. Do not merge or deploy until the account gate, account isolation, project save/load/delete, reload recovery, malformed-project rejection, storage limits, and account-scoped palette tests pass.
+After changes, run the CodeLab validation workflow and Agent Space Browser Runner. Do not merge or deploy until authentication, account isolation, PostgreSQL persistence, save/load/delete, reload recovery, recent-project ordering, malformed-project rejection, quota enforcement, and account-scoped browser preferences pass.
