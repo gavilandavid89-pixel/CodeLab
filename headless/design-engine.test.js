@@ -142,6 +142,14 @@ test('rejects unsafe colors, href schemes, and image sources', () => {
   ]), /safe image URL/);
 });
 
+test('bounds external image URLs independently from Base64 image data URLs', () => {
+  const engine = createDesignEngine();
+  const oversizedUrl = 'https://example.com/' + 'x'.repeat(9000);
+  assert.throws(() => engine.transact(project({ elements: [{ id: 'url-image', type: 'image', src: '' }] }), [
+    { type: 'element.update', id: 'url-image', properties: { src: oversizedUrl } }
+  ]), /safe image URL/);
+});
+
 test('attaches an editor-compatible image file to an image layer', () => {
   const engine = createDesignEngine();
   const pixelBytes = imageBytes('image/webp', 'tiny-image');
