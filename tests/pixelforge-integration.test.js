@@ -304,6 +304,12 @@ async function main() {
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#document-name').innerText(), 'Browser account artwork', 'the editor should recover the account-saved project after reload');
     assert.equal(await accountPage.locator('#document-size').innerText(), '12 × 8', 'the account-saved project dimensions should survive reload');
+    const recoveredMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+      .projects.find(project => project.name === 'Browser account artwork');
+    assert.ok(recoveredMetadata, 'the browser-created artwork should remain in the account project list');
+    const recoveredProject = (await (await fetch(base + '/api/pixelforge/projects/' + recoveredMetadata.id, { headers: authHeaders })).json()).project;
+    assert.ok(Buffer.from(recoveredProject.layers[0].pixels, 'base64').some(value => value !== 0),
+      'actual edited raster pixels, not only project metadata, should survive autosave and reload');
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
