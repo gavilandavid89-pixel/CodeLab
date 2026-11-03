@@ -568,8 +568,8 @@ async function executeSavedDesignBatch(action, args) {
       const duplicate = newElements[0];
       const positionPx = (element, axis, design) => {
         if (!element) return NaN;
-        const value = Number(element[axis]);
-        if (!Number.isFinite(value)) return NaN;
+        const raw = Number(element[axis]);
+        const value = Number.isFinite(raw) ? raw : 0;
         const unit = element[axis + 'Unit'];
         const canvasSize = axis === 'x' ? design.canvas.width : design.canvas.height;
         return unit === '%' ? value * canvasSize / 100 : value;
