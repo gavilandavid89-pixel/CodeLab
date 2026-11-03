@@ -431,7 +431,7 @@ test('design.read returns all layers through the 500-layer limit when requested'
     action: 'design.read', args: { projectId: project.id, limit: 500 }
   });
   assert.equal(result.result.elements.length, 250);
-  assert.equal(result.result.totalElements, 250);
+  assert.equal(result.result.elementCount, 250);
   assert.equal(result.result.truncated, false);
 });
 
