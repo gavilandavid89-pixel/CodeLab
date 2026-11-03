@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -534,6 +535,8 @@ async function executeSavedDesignBatch(action, args) {
       const properties = args.properties || {};
       const verified = !!element && element.type === args.type && Object.entries(properties).every(([key, value]) => {
         if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        if (key === 'text' && element.textTruncated) return element.textLength === value.length &&
+          element.textSha256 === createHash('sha256').update(value, 'utf8').digest('hex');
         return element[key] === value;
       });
       if (!verified) throw new Error('Design element add failed authoritative server readback for its initial properties.');
@@ -543,6 +546,8 @@ async function executeSavedDesignBatch(action, args) {
       const element = afterById.get(args.element_id);
       const verified = !!element && Object.entries(args.properties).every(([key, value]) => {
         if (key === 'src') return element.hasImageSource === (value.length > 0) && element.imageSourceLength === value.length;
+        if (key === 'text' && element.textTruncated) return element.textLength === value.length &&
+          element.textSha256 === createHash('sha256').update(value, 'utf8').digest('hex');
         return element[key] === value;
       });
       if (!verified) throw new Error('Design element update failed authoritative server readback.');
