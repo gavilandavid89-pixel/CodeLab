@@ -540,6 +540,28 @@ test('locked layers reject mutations but can be explicitly unlocked', () => {
   assert.equal(unlocked.project.design.elements[0].locked, false);
 });
 
+test('rejects duplicate offsets that exceed editable px or percentage coordinate bounds atomically', () => {
+  const engine = createDesignEngine();
+  const cases = [
+    { x: 10000, y: 100, xUnit: 'px', yUnit: 'px', message: /x coordinate range/ },
+    { x: 100, y: 10000, xUnit: 'px', yUnit: 'px', message: /y coordinate range/ },
+    { x: 200, y: 20, xUnit: '%', yUnit: '%', message: /x coordinate range/ },
+    { x: 20, y: 200, xUnit: '%', yUnit: '%', message: /y coordinate range/ }
+  ];
+  for (const [index, fixture] of cases.entries()) {
+    const input = project({ elements: [{
+      id: 'edge-' + index, type: 'rectangle',
+      x: fixture.x, y: fixture.y, xUnit: fixture.xUnit, yUnit: fixture.yUnit,
+      width: 100, height: 50
+    }] });
+    const before = JSON.stringify(input);
+    assert.throws(() => engine.transact(input, [
+      { type: 'element.duplicate', id: 'edge-' + index, newId: 'copy-' + index }
+    ]), fixture.message);
+    assert.equal(JSON.stringify(input), before, 'failed duplicate must not mutate the input project');
+  }
+});
+
 test('duplicates outgoing prototype connections with the duplicate layer ID', () => {
   const engine = createDesignEngine();
   const connection = { sourceElementId: 'cta', targetProjectId: 'next-screen', trigger: 'click' };
