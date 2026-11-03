@@ -167,11 +167,17 @@ async function main() {
     await context.close();
 
     const accountContext = await browser.newContext();
+    await accountContext.addInitScript(() => {
+      localStorage.setItem('pixelforge.palette.v1:github:pixelforge-integration-user', JSON.stringify(['#A1B2C3']));
+      localStorage.setItem('pixelforge.palette.v1', JSON.stringify(['#DEAD00']));
+    });
     await accountContext.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' } }));
     await accountContext.addCookies([{ name: 'codelab_sid', value: sessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const accountPage = await accountContext.newPage();
     await accountPage.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 1,
+      'the signed-in account should load its own palette, not the legacy shared palette');
     await accountPage.locator('#new-document').click();
     await accountPage.locator('#new-dialog').waitFor({ state: 'visible' });
     await accountPage.locator('#new-name').fill('Browser account artwork');
@@ -200,6 +206,17 @@ async function main() {
     await deleteRow.locator('.saved-project-delete').click();
     await deleteRow.waitFor({ state: 'detached' });
     assert.equal((await fetch(base + '/api/pixelforge/projects/browser-delete-artwork', { headers: authHeaders })).status, 404, 'UI deletion must remove the account-owned project from server storage');
+
+    await accountContext.addCookies([{ name: 'codelab_sid', value: secondSessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 0,
+      'switching to another CodeLab account must not reveal the previous account palette');
+    await accountContext.addCookies([{ name: 'codelab_sid', value: sessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#user-palette .palette-item').count(), 1,
+      'switching back should restore the original account palette');
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
