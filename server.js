@@ -14,6 +14,7 @@ const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
 const { createTransferStore, sha256, MAX_IMAGE_BYTES } = require('./headless/transfer-store');
+const { transferErrorResponse } = require('./headless/transfer-http');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -2151,8 +2152,8 @@ const server = http.createServer(async (req, res) => {
           }
           return sendJson(res, 400, { error: 'invalid_code_transfer_action' });
         } catch (error) {
-          const status = /incomplete|invalid|mismatch|conflict/.test(error.message) ? 400 : 404;
-          return sendJson(res, status, { error: error.message || 'code_transfer_failed' });
+          const mapped = transferErrorResponse(error);
+          return sendJson(res, mapped.status, mapped.body);
         }
       }
 
