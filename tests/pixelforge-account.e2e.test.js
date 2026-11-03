@@ -29,7 +29,15 @@ async function request(route, { method = 'GET', cookie, body } = {}) {
   return { status: response.status, json };
 }
 function pixelProject(id, name, marker) {
-  return { id, name, width: 16, height: 16, layers: [{ id: 'layer_' + marker, name: 'Layer', visible: true, opacity: 1, locked: false, pixels: Array(16 * 16 * 4).fill(0) }] };
+  const layerId = 'layer_' + marker;
+  return {
+    format: 'pixelforge-project', version: 1, id, name, width: 16, height: 16,
+    activeLayerId: layerId, revision: 0, saveVersion: 0,
+    layers: [{
+      id: layerId, name: 'Layer', visible: true, opacity: 1, locked: false,
+      pixels: Buffer.alloc(16 * 16 * 4).toString('base64')
+    }]
+  };
 }
 
 (async () => {
