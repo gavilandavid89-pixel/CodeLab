@@ -173,6 +173,9 @@ function applyOperation(state, operation) {
       assert(Array.isArray(project.mergeHistory) && project.mergeHistory.length > 0,
         'branch.undo_merge requires a saved merge backup.', 'HEADLESS_NO_MERGE_HISTORY');
       const backup = project.mergeHistory[project.mergeHistory.length - 1];
+      assert(backup && typeof backup === 'object' && !Array.isArray(backup) &&
+        backup.code && typeof backup.code === 'object' && !Array.isArray(backup.code),
+        'Saved merge history entry is invalid.', 'HEADLESS_INVALID_MERGE_HISTORY');
       assert(!project.branch,
         'Cannot undo the merge because a new branch was created afterward; inspect it before retrying.',
         'HEADLESS_BRANCH_UNDO_CONFLICT');
