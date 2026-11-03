@@ -11,8 +11,9 @@
     return data;
   }
 
-  async function getCodeLabAISettings(session) {
-    const auth = session && session.user ? session : await getCodeLabSession();
+  async function getCodeLabAISettings() {
+    // Resolve the live server session each time; never trust a stale caller-supplied identity.
+    const auth = await getCodeLabSession();
     if (!auth.user || !auth.user.provider || auth.user.id == null) {
       return { configured: false, mode: 'auto', baseUrl: '', model: '', apiKey: '' };
     }
