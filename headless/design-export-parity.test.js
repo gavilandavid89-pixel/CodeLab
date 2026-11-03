@@ -229,6 +229,16 @@ test('responsive width/height units resolve in free layout and remain CSS-respon
   assert.equal(context.elements[0].bounds.width, 360);
   assert.equal(context.elements[0].bounds.height, 400);
 
+  const mobile = {
+    ...input,
+    design: { ...input.design, canvasWidth: 390, canvasHeight: 844 }
+  };
+  const mobileHtml = exportDesignHtml(mobile);
+  const mobileContext = buildAiDesignCaptureContext(mobile);
+  assert.match(mobileHtml, /width:195px;height:211px/);
+  assert.equal(mobileContext.elements[0].bounds.width, 195);
+  assert.equal(mobileContext.elements[0].bounds.height, 211);
+
   const auto = {
     ...input,
     design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column' }
