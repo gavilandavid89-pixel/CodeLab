@@ -278,7 +278,7 @@ test('auto image dimensions stay clamped across capture, export, and JSON round-
   assert.equal(context.elements[0].bounds.height, 4000);
   const roundTrip = importDesignJson(exportDesignJson(input).json);
   assert.equal(roundTrip.design.elements[0].width, 10);
-  assert.equal(roundTrip.design.elements[0].height, 5000);
+  assert.equal(roundTrip.design.elements[0].height, 4000);
   assert.equal(roundTrip.design.elements[0].widthUnit, 'auto');
   assert.equal(roundTrip.design.elements[0].heightUnit, 'auto');
 });
