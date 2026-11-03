@@ -34,6 +34,7 @@ jobs:
       - name: Check headless engine and workspace runtime syntax
         run: |
           node --check headless/design-engine.js
+          node --check .github/scripts/codelab-bridge.mjs
           node --check headless/design-accessibility.js
           node --check headless/workspace-runtime.js
           node --check server.js
