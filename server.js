@@ -781,7 +781,7 @@ function readRawBody(req, maxBytes) {
       if (total > maxBytes) {
         settled = true;
         reject(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
-        req.destroy();
+        // Continue draining the request so the handler can return a structured 413 response.
         return;
       }
       chunks.push(chunk);
