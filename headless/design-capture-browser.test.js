@@ -98,7 +98,7 @@ test('renders a real PNG paired with the same saved design revision in an isolat
     await page.evaluate(() => document.fonts?.ready || Promise.resolve());
     assert.match(await page.locator('body').innerText(), /Headless PNG fixture/);
     const imageDecode = await page.locator('#layer-el_real_png').evaluate(async el => {
-      const image = el.querySelector('img');
+      const image = el.tagName === 'IMG' ? el : el.querySelector('img');
       if (!image) return { present: false, complete: false, width: 0, height: 0 };
       if (!image.complete) await new Promise((resolve, reject) => { image.addEventListener('load', resolve, { once: true }); image.addEventListener('error', reject, { once: true }); });
       return { present: true, complete: image.complete, width: image.naturalWidth, height: image.naturalHeight };
@@ -140,7 +140,7 @@ test('exports responsive geometry correctly at desktop and mobile canvas sizes',
           }]
         }
       };
-      const context = buildAiDesignCaptureContext(project);
+      const context = buildAiDesignCaptureContext(project, 1);
       const html = exportDesignHtml(project, [project]);
       const page = await browser.newPage({ viewport: size, deviceScaleFactor: 1 });
       try {
