@@ -1739,7 +1739,7 @@ async function boot() {
     }
     // Reuse the provider settings configured in CodeLab's AI settings area.
     // The secret stays in browser memory and is never copied into PixelForge projects.
-    const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
+    const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings();
     if (sharedAI.baseUrl) {
       const base = sharedAI.baseUrl.replace(/\/+$/, '');
       $('#ai-provider-endpoint').value = /\/chat\/completions$/i.test(base) ? base : base + '/chat/completions';
