@@ -50,7 +50,7 @@ async function main() {
   fs.mkdirSync(sessionsDir, { recursive: true });
   fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
     id: sessionId,
-    user: { id: 'pixelforge-integration-user', provider: 'local', name: 'PIXELFORGE_TEST', role: 'user' },
+    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
@@ -72,7 +72,7 @@ async function main() {
   const secondSessionId = 'b'.repeat(48);
   fs.writeFileSync(path.join(sessionsDir, secondSessionId + '.json'), JSON.stringify({
     id: secondSessionId,
-    user: { id: 'pixelforge-other-user', provider: 'local', name: 'PIXELFORGE_OTHER', role: 'user' },
+    user: { id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
