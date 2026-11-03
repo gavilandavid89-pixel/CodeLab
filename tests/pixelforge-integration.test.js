@@ -151,7 +151,7 @@ async function main() {
     assert.equal((await overflow.json()).error, 'pixelforge_project_limit');
     const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
     assert.equal(afterLimit.projects.length, maxProjects, 'hitting the cap must preserve all existing projects');
-    assert.ok(afterLimit.projects.some(project => project.id === 'Browser-account-artwork'), 'existing project records must remain available');
+    assert.ok(afterLimit.projects.some(project => project.name === 'Browser account artwork'), 'existing project records must remain available');
   } finally {
     await browser.close();
     fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
