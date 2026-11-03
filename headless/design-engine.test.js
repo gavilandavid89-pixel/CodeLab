@@ -159,7 +159,7 @@ test('attaches an editor-compatible image file to an image layer', () => {
 
 test('clamps effective auto image dimensions without mutating stored values', () => {
   const engine = createDesignEngine();
-  const dataUrl = 'data:image/png;base64,' + imageBytes('image/png', 'auto-size').toString('base64');
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l6kAAAAASUVORK5CYII=';
   const input = project({ elements: [{
     id: 'auto-image', type: 'image', src: dataUrl,
     width: 10, height: 5000, widthUnit: 'auto', heightUnit: 'auto'
