@@ -151,12 +151,14 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     if (!record) return;
     if (record.committed) return;
     const assembled = assembleCode({ transferId, workspaceId: record.workspaceId });
-    deleteChunks('code', transferId, record.totalChunks);
+    // Persist the recovery receipt before deleting chunks. If the process stops between
+    // these operations, a retry can still return the committed value and receipt.
     record.committed = true;
     record.committedValue = assembled.value;
     record.receipt = receipt && typeof receipt === 'object' ? receipt : null;
     record.expiresAt = now() + TTL_MS;
     write('code', transferId, record);
+    deleteChunks('code', transferId, record.totalChunks);
   }
   function beginImage({ workspaceId, projectId, totalChunks, sha256: expectedHash, declaredMime }) {
     cleanupExpiredTransfers();
