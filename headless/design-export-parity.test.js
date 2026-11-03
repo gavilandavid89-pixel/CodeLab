@@ -369,6 +369,7 @@ test('does not coerce small percentage dimensions to a 20px minimum', () => {
   const html = exportDesignHtml(input);
   const context = buildAiDesignCaptureContext(input);
   assert.match(html, /width:10px;height:5px/);
+  assert.match(html, /min-width:1px;min-height:1px/, 'percentage dimensions must not be visually clamped to 20px by CSS minimums');
   assert.equal(context.elements[0].bounds.width, 10);
   assert.equal(context.elements[0].bounds.height, 5);
 });
