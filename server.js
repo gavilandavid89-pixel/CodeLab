@@ -13,7 +13,7 @@ const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const { applyHeadlessBatch, queryHeadlessWorkspace } = require('./headless/workspace-runtime');
-const { createTransferStore, sha256, MAX_CHUNK_CHARS, MAX_IMAGE_BYTES } = require('./headless/transfer-store');
+const { createTransferStore, sha256, MAX_IMAGE_BYTES } = require('./headless/transfer-store');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
