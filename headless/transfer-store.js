@@ -42,6 +42,8 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     let value;
     try { value = JSON.parse(fs.readFileSync(target, 'utf8')); } catch (_) { fs.unlinkSync(target); return null; }
     if (!value || !Number.isFinite(value.expiresAt) || value.expiresAt <= now()) {
+      if (value && Number.isInteger(value.totalChunks)) deleteChunks(kind, id, value.totalChunks);
+      else deleteAllChunks(kind, id);
       try { fs.unlinkSync(target); } catch (_) {}
       return null;
     }
@@ -84,6 +86,14 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     let count = 0;
     for (let i = 0; i < totalChunks; i++) if (readChunk(kind, id, i) !== undefined) count++;
     return count;
+  }
+  function deleteAllChunks(kind, id) {
+    try {
+      const prefix = kind + '-' + id + '-chunk-';
+      for (const name of fs.readdirSync(root)) if (name.startsWith(prefix) && name.endsWith('.json')) {
+        try { fs.unlinkSync(path.join(root, name)); } catch (_) {}
+      }
+    } catch (_) {}
   }
   function beginCode({ workspaceId, projectId, field, source = 'main', baseRevision, totalChunks, sha256: expectedHash }) {
     if (!workspaceId || !projectId || !['html', 'css', 'js'].includes(field) || !['main', 'branch'].includes(source) ||
