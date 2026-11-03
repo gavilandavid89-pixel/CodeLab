@@ -68,6 +68,34 @@ test('inspector unit changes preserve the layer position in pixels', () => {
   assert.equal(element.y, 800);
 });
 
+test('inspector numeric bounds allow the origin and clamp supported dimensions/styles', () => {
+  const context = makeContext();
+  const element = { id: 'el_bounds', x: 10, y: 10, width: 100, height: 50, radius: 8, opacity: 1, rotation: 0 };
+  const project = { design: { canvasWidth: 720, canvasHeight: 1600, layoutMode: 'free', elements: [element] } };
+  context.selectedDesignElement = () => element;
+  context.activeDesignProject = () => project;
+  context.document = { querySelectorAll: () => [] };
+  context.getDesignLayoutPositions = () => ({ positions: new Map() });
+  context.scheduleAutosave = () => {};
+  vm.runInContext(extract('function updateDesignProperty(key, value) {', 'function bindDesignCanvasEvents'), context);
+
+  context.updateDesignProperty('x', '0');
+  context.updateDesignProperty('y', '0');
+  context.updateDesignProperty('width', '99999');
+  context.updateDesignProperty('height', '0');
+  context.updateDesignProperty('radius', '0');
+  context.updateDesignProperty('opacity', '1.5');
+  context.updateDesignProperty('rotation', '99999');
+
+  assert.equal(element.x, 0, 'X=0 is a valid canvas origin');
+  assert.equal(element.y, 0, 'Y=0 is a valid canvas origin');
+  assert.equal(element.width, 4000);
+  assert.equal(element.height, 20);
+  assert.equal(element.radius, 0);
+  assert.equal(element.opacity, 1);
+  assert.equal(element.rotation, 3600);
+});
+
 test('local SVG capture honors canvas dimensions, visibility, opacity, and rotation', () => {
   const context = makeContext();
   vm.runInContext(extract('function captureDesignSvg(project) {', '\nasync function captureDesignForAI'), context);
