@@ -211,6 +211,10 @@ function createTransferStore(rootDir, now = () => Date.now()) {
     return { ...result };
   }
   function putImage({ workspaceId, projectId, bytes, declaredMime, id: requestedId }) {
+    // The raw headless upload endpoint calls putImage directly, without a
+    // preceding beginImage/beginCode. Sweep expired metadata here too so
+    // direct uploads cannot leave expired image tokens on disk indefinitely.
+    cleanupExpiredTransfers();
     if (!workspaceId || !projectId || !Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > MAX_IMAGE_BYTES) throw new Error('invalid_image_size');
     const mime = imageMime(bytes);
     if (!mime || (declaredMime && declaredMime !== mime)) throw new Error('invalid_image_signature');

@@ -164,3 +164,23 @@ test('committed code transfers replay the saved receipt after a lost response', 
     assert.ok(!fs.readdirSync(dir).some(name => name.startsWith('code-' + started.transferId + '-chunk-')));
   } finally { f.cleanup(); }
 });
+
+
+test('direct image uploads sweep expired upload tokens without requiring a chunked transfer', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-direct-image-expiry-'));
+  try {
+    let now = 1000;
+    const store = createTransferStore(root, () => now);
+    const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4]);
+    const first = store.putImage({ workspaceId: 'owner', projectId: 'design_123', bytes: png, declaredMime: 'image/png' });
+    const dir = path.join(root, 'headless-transfers');
+    assert.ok(fs.existsSync(path.join(dir, 'image-' + first.uploadToken + '.json')));
+    now += 10 * 60 * 1000 + 1;
+    const second = store.putImage({ workspaceId: 'owner', projectId: 'design_123', bytes: png, declaredMime: 'image/png' });
+    assert.ok(!fs.existsSync(path.join(dir, 'image-' + first.uploadToken + '.json')),
+      'an expired direct-upload token should be removed when the next direct upload begins');
+    assert.ok(fs.existsSync(path.join(dir, 'image-' + second.uploadToken + '.json')));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
