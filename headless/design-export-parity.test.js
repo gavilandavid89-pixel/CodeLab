@@ -246,7 +246,7 @@ test('rejects oversized external image URLs during backup import and export', ()
   assert.doesNotMatch(exportDesignHtml(project([{ id: 'long-url', type: 'image', src: oversizedUrl }])), /src="https:\/\/example\.com/);
 });
 
-test('round-trips valid PNG, JPEG, GIF, and WebP data URLs through JSON import/export', () => {
+test('preserves canonical image MIME signatures for PNG, JPEG, GIF, and WebP data URLs', () => {
   const fixtures = {
     'image/png': Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]),
     'image/jpeg': Buffer.from([0xff,0xd8,0xff,0xd9,0x01]),
