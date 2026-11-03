@@ -477,9 +477,11 @@ async function listPixelForgeProjectMetadataFromDatabase(workspaceId) {
 }
 
 async function loadPixelForgeProjectFromDatabase(workspaceId, projectId) {
+  // Opening a project updates its recency atomically with the read, so the
+  // dashboard's "recent projects" list reflects actual use, not only saves.
   const result = await accountPool.query(
-    'SELECT project FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
-    [workspaceId, projectId]
+    'UPDATE codelab_pixelforge_projects SET last_opened_at = GREATEST($3, last_opened_at + 1) WHERE workspace_id = $1 AND project_id = $2 RETURNING project',
+    [workspaceId, projectId, Date.now()]
   );
   return result.rowCount ? result.rows[0].project : null;
 }
