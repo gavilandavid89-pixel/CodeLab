@@ -24,6 +24,38 @@ test('all responsive design templates keep layer bounds within narrow canvas wid
   }
 });
 
+test('applying a template persists its effective fallback canvas width', () => {
+  const state = {
+    revision: 0,
+    projects: [{
+      id: 'proj_template_width',
+      type: 'design',
+      design: {
+        frame: 'mobile',
+        canvasWidth: 10000,
+        canvasHeight: 900,
+        canvas: { width: 10000, height: 900, unit: 'px' },
+        revision: 0,
+        elements: []
+      }
+    }]
+  };
+  const applied = applyHeadlessBatch(state, {
+    operationId: 'template-width-001',
+    baseRevision: 0,
+    operations: [{
+      type: 'design.template.apply',
+      projectId: 'proj_template_width',
+      templateId: 'landing'
+    }]
+  });
+  const saved = applied.state.projects[0].design;
+  assert.equal(saved.canvasWidth, 390);
+  assert.equal(saved.canvas.width, 390);
+  assert.equal(applied.results[0].canvasWidth, 390);
+  assert.ok(saved.elements.every(element => element.x + element.width <= saved.canvasWidth));
+});
+
 test('template sizing falls back for canvas widths outside engine limits', () => {
   const oversized = createDesignTemplate('landing', { frame: 'mobile', canvasWidth: 10000 }, {
     idFactory: (() => { let id = 0; return () => 'oversized-' + (++id); })()
