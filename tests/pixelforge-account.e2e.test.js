@@ -71,6 +71,12 @@ function pixelProject(id, name, marker) {
   assert.equal(listed.json.projects.length, 1);
   assert.equal(listed.json.projects[0].id, id);
 
+  const aliceNewSession = seedSession('pixel-alice', 'Pixel Alice New Session');
+  const sameAccountList = await request('/api/pixelforge/projects', { cookie: aliceNewSession.cookie });
+  assert.equal(sameAccountList.status, 200);
+  assert.ok(sameAccountList.json.projects.some(project => project.id === id),
+    'A new session for the same CodeLab account must recover the same cloud project');
+
   const loaded = await request('/api/pixelforge/projects/' + id, { cookie: alice.cookie });
   assert.equal(loaded.status, 200);
   assert.equal(loaded.json.project.name, 'Alice sprite');
