@@ -241,10 +241,13 @@ test('responsive width/height units resolve in free layout and remain CSS-respon
 
   const auto = {
     ...input,
-    design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column' }
+    design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column', layoutPadding: 24 }
   };
   const autoHtml = exportDesignHtml(auto);
-  assert.match(autoHtml, /width:50%;height:25%/);
+  const autoContext = buildAiDesignCaptureContext(auto);
+  assert.match(autoHtml, /width:50%;height:388px/);
+  assert.equal(autoContext.elements[0].bounds.width, 336);
+  assert.equal(autoContext.elements[0].bounds.height, 388);
 });
 
 test('JSON export/import round-trip preserves responsive units, layer metadata, and flow connections', () => {
