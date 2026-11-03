@@ -263,6 +263,17 @@ test('preserves canonical image MIME signatures for PNG, JPEG, GIF, and WebP dat
   for (const element of elements) assert.ok(html.includes(element.src));
 });
 
+test('accepts a valid backup safely below the 5 MB import limit', () => {
+  const backup = {
+    format: 'codelab-design-project',
+    version: 1,
+    project: project([{ id: 'near-limit', type: 'text', text: 'valid' }]),
+    optionalMetadata: 'x'.repeat(4.5 * 1024 * 1024)
+  };
+  const imported = importDesignJson(backup);
+  assert.equal(imported.design.elements[0].text, 'valid');
+});
+
 test('rejects oversized JSON strings before parsing and oversized object imports before normalization', () => {
   const oversizedString = ' '.repeat(5 * 1024 * 1024 + 1);
   assert.throws(() => importDesignJson(oversizedString), error =>
