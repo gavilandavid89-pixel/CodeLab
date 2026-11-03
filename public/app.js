@@ -3491,7 +3491,7 @@ function alignDesignElement(mode = 'center-x') {
   }
   recordDesignHistory();
   const width = getDesignCanvasWidth(p.design);
-  const height = getDesignCanvasHeight(p.design) || getDesignLayoutPositions(p.design).height;
+  const height = getDesignCanvasHeight(p.design) || 900;
   const ew = Math.max(20, Number(el.width) || 120), eh = Math.max(20, Number(el.height) || 48);
   if (mode === 'left') setDesignCoordinateFromPixels(p.design, el, 'x', 0);
   else if (mode === 'center-x') setDesignCoordinateFromPixels(p.design, el, 'x', Math.max(0, Math.round((width - ew) / 2)));
