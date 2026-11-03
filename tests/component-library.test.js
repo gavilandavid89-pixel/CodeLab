@@ -61,3 +61,10 @@ function testInsertionBeforeRealBodyClose() {
   const source = '<main>Fragment without body close</main>';
   assert.equal(library.insertComponentHtml(source, fragment), source + '\n' + fragment);
 }
+
+
+{
+  const source = '<html><body><plaintext>embedded </body> text</plaintext></html>';
+  assert.equal(library.insertComponentHtml(source, fragment), source + '\\n' + fragment,
+    'plaintext consumes the rest of the document, so its fake body close must not be used');
+}
