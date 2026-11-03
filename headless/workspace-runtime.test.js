@@ -428,6 +428,33 @@ test('refuses to undo a merge after later main-code edits', () => {
     'a rejected undo must not recreate the old branch');
 });
 
+test('refuses to undo a merge over a branch created afterward', () => {
+  const created = applyHeadlessBatch(state([webProject()]), request([
+    { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_before_merge' }
+  ], { operationId: 'test_undo_branch_guard_01' }));
+  const edited = applyHeadlessBatch(created.state, request([
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'branch', html: '<h1>Merged</h1>' }
+  ], { operationId: 'test_undo_branch_guard_02', baseRevision: 4 }));
+  const merged = applyHeadlessBatch(edited.state, request([
+    { type: 'branch.merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_undo_branch_guard_03', baseRevision: 5 }));
+  const newBranch = applyHeadlessBatch(merged.state, request([
+    { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_after_merge' },
+    { type: 'web.code.write', projectId: 'proj_web1', source: 'branch', html: '<h1>New branch work</h1>' }
+  ], { operationId: 'test_undo_branch_guard_04', baseRevision: 6 }));
+
+  assert.throws(() => applyHeadlessBatch(newBranch.state, request([
+    { type: 'branch.undo_merge', projectId: 'proj_web1', approved: true }
+  ], { operationId: 'test_undo_branch_guard_05', baseRevision: 7 })), error => {
+    assert.equal(error.code, 'HEADLESS_BRANCH_UNDO_CONFLICT');
+    assert.match(error.message, /new branch was created afterward/i);
+    return true;
+  });
+  assert.equal(newBranch.state.projects[0].branch.id, 'branch_after_merge');
+  assert.equal(newBranch.state.projects[0].branch.code.html, '<h1>New branch work</h1>');
+  assert.equal(newBranch.state.projects[0].mergeHistory.length, 1);
+});
+
 test('rejects conflicting branch merges without changing main or branch data', () => {
   const created = applyHeadlessBatch(state([webProject()]), request([
     { type: 'branch.create', projectId: 'proj_web1', branchId: 'branch_conflict' }
