@@ -55,7 +55,7 @@ async function main() {
     // Verify the existing local-first storage survives a full page reload before
     // any future account-sync adapter is introduced.
     await page.locator('#save').click();
-    await page.getByRole('button', { name: /Saved on this device|Save/ }).waitFor({ state: 'visible' });
+    await page.locator('#status').getByText('Saved on this device').waitFor({ state: 'visible' });
     await page.reload({ waitUntil: 'networkidle' });
     await page.locator('#canvas').waitFor({ state: 'visible' });
     await page.locator('#projects-button').click();
