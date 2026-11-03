@@ -31,7 +31,7 @@ test('rejects tampered chunks, conflicting replay, wrong owner and oversized chu
     assert.throws(() => f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: '0'.repeat(64) }), /invalid_code_chunk/);
     f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) });
     assert.throws(() => f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: 'evil', sha256: sha256('evil') }), /conflict/);
-    assert.throws(() => f.store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'html', baseRevision: 0, totalChunks: 21, sha256: sha256(value) }), /invalid/);
+    assert.throws(() => f.store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'html', baseRevision: 0, totalChunks: 71, sha256: sha256(value) }), /invalid/);
   } finally { f.cleanup(); }
 });
 test('validates actual image signatures and rejects declared MIME mismatches', () => {
@@ -44,4 +44,19 @@ test('validates actual image signatures and rejects declared MIME mismatches', (
     assert.equal(f.store.consumeImage({ uploadToken: saved.uploadToken, workspaceId: 'w', projectId: 'p' }).dataUrl, 'data:image/png;base64,' + png.toString('base64'));
     assert.throws(() => f.store.consumeImage({ uploadToken: saved.uploadToken, workspaceId: 'w', projectId: 'p' }), /not_found/);
   } finally { f.cleanup(); }
+});
+
+test('expired code and image tokens cannot be replayed', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-transfer-expiry-'));
+  try {
+    let now = 1000;
+    const store = createTransferStore(root, () => now);
+    const value = 'expire me';
+    const code = store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'css', baseRevision: 1, totalChunks: 1, sha256: sha256(value) });
+    store.putCodeChunk({ transferId: code.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) });
+    const image = store.putImage({ workspaceId: 'owner', projectId: 'proj_123', bytes: Buffer.from([137,80,78,71,13,10,26,10,1]), declaredMime: 'image/png' });
+    now += 10 * 60 * 1000 + 1;
+    assert.throws(() => store.assembleCode({ transferId: code.transferId, workspaceId: 'owner' }), /not_found/);
+    assert.throws(() => store.resolveImage({ uploadToken: image.uploadToken, workspaceId: 'owner', projectId: 'proj_123' }), /not_found/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
