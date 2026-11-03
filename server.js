@@ -1552,7 +1552,7 @@ const server = http.createServer(async (req, res) => {
         const body = {
           ok: true,
           version: APP_VERSION,
-          persistence: 'server-file',
+          persistence: accountPool ? 'postgresql' : 'server-file',
           maxBodyBytes: MAX_BODY_BYTES,
           maxProjects: MAX_PROJECTS,
           oauth: cfg,
@@ -2081,8 +2081,6 @@ const server = http.createServer(async (req, res) => {
           if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
             return sendJson(res, 413, { error: 'pixelforge_project_too_large', maxBytes: PIXELFORGE_MAX_PROJECT_BYTES });
           }
-          const serialized = JSON.stringify(project);
-          const projectBytes = Buffer.byteLength(serialized, 'utf8');
           if (accountPool) {
             try {
               const result = await savePixelForgeProjectToDatabase(workspaceId, project, projectBytes);
