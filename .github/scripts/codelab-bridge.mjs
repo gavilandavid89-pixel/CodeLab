@@ -1620,14 +1620,16 @@ try {
     }, { projectId: command.args.project_id, source, offset, maxChars });
   } else if (command.action === 'design_read') {
     stage = 'design_read';
-    result = await page.evaluate(async projectId => {
+    const limit = command.args.limit === undefined ? 500 : command.args.limit;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('design_read limit must be an integer from 1 to 500.');
+    result = await page.evaluate(async ({ projectId, limit }) => {
       const workspaceId = localStorage.getItem('codelab_xd_workspace_v4');
       const workspaceToken = localStorage.getItem('codelab_xd_workspace_token_v1');
       if (!workspaceId || !workspaceToken) throw new Error('Authenticated workspace credentials are unavailable.');
       const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/headless/query', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'x-workspace-token': workspaceToken },
-        body: JSON.stringify({ action: 'design.read', args: { projectId, limit: 200 } })
+        body: JSON.stringify({ action: 'design.read', args: { projectId, limit } })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.ok !== true) throw new Error(data.error || 'Saved design inspection failed.');
@@ -1637,7 +1639,7 @@ try {
         elements: saved.elements, totalElements: saved.elementCount, truncated: saved.truncated,
         flowConnections: saved.flowConnections, workspaceRevision: data.revision, readOnly: true
       };
-    }, command.args.project_id);
+    }, { projectId: command.args.project_id, limit });
   } else if (command.action === 'project_code_write') {
     stage = 'project_code_write';
     result = await page.evaluate(async ({ projectId, source, patch }) => {
