@@ -56,6 +56,8 @@ test('inspector and canvas/export renderer expose opacity and font weight consis
 });
 
 test('distribution resolves mixed px/% units, preserves representable units, and rejects locked selections atomically', () => {
+  assert.match(source, /x: finite\(raw\.x, 0, 0, raw\.xUnit === '%' \? 200 : 10000\)/);
+  assert.match(source, /y: finite\(raw\.y, 0, 0, raw\.yUnit === '%' \? 200 : 10000\)/);
   const positionStart = source.indexOf('function getDesignElementPosition(');
   assert.notEqual(positionStart, -1, 'missing effective position helper');
   const positionSource = source.slice(positionStart);
