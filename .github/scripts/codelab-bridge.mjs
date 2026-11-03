@@ -150,14 +150,35 @@ function parseCommand(raw) {
   if (command.action === 'design_element_update') {
     if (typeof args.element_id !== 'string' || !/^el_[a-zA-Z0-9_-]{1,100}$/.test(args.element_id)) throw new Error('design_element_update requires a valid element_id.');
     if (!args.properties || typeof args.properties !== 'object' || Array.isArray(args.properties)) throw new Error('design_element_update requires a properties object.');
-    const allowedProperties = ['label', 'text', 'x', 'y', 'width', 'height', 'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit', 'textAlign'];
+    const allowedProperties = [
+      'label', 'text', 'x', 'y', 'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit',
+      'color', 'background', 'fontSize', 'weight', 'radius', 'href', 'src', 'alt', 'objectFit',
+      'textAlign', 'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'
+    ];
+    const numericProperties = new Set(['x', 'y', 'width', 'height', 'fontSize', 'weight', 'radius', 'rotation']);
+    const stringProperties = new Set([
+      'label', 'text', 'xUnit', 'yUnit', 'widthUnit', 'heightUnit', 'color', 'background',
+      'href', 'src', 'alt', 'objectFit', 'textAlign', 'flowRole', 'identifier'
+    ]);
     for (const [key, value] of Object.entries(args.properties)) {
       if (!allowedProperties.includes(key)) throw new Error('Unsupported design element property: ' + key);
-      if (typeof value === 'string' && value.length > 2000) throw new Error('Design element string properties are limited to 2000 characters.');
+      if (key === 'opacity' && value === null) continue;
+      if (numericProperties.has(key) || key === 'opacity') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Design element ' + key + ' must be a finite number' + (key === 'opacity' ? ' or null.' : '.'));
+      } else if (key === 'visible' || key === 'locked') {
+        if (typeof value !== 'boolean') throw new Error('Design element ' + key + ' must be a boolean.');
+      } else if (stringProperties.has(key)) {
+        if (typeof value !== 'string') throw new Error('Design element ' + key + ' must be a string.');
+        const maxLength = key === 'src' ? 50000 : key === 'text' ? 10000 : 2000;
+        if (value.length > maxLength) throw new Error('Design element string properties are limited to ' + maxLength + ' characters.');
+      } else {
+        throw new Error('Unsupported value type for design element property: ' + key);
+      }
       if (key === 'textAlign' && !['left', 'center', 'right'].includes(value)) throw new Error('textAlign must be left, center, or right.');
       if (key === 'objectFit' && !['contain', 'cover', 'fill'].includes(value)) throw new Error('objectFit must be contain, cover, or fill.');
-      if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Design element numeric properties must be finite.');
-      if (!['string', 'number'].includes(typeof value)) throw new Error('Design element properties must be strings or numbers.');
+      if (['xUnit', 'yUnit'].includes(key) && !['px', '%'].includes(value)) throw new Error(key + ' must be px or %.');
+      if (['widthUnit', 'heightUnit'].includes(key) && !['px', '%', 'auto'].includes(value)) throw new Error(key + ' must be px, %, or auto.');
+      if (key === 'flowRole' && !['', 'menu', 'navigate'].includes(value)) throw new Error('flowRole is not supported.');
     }
     if (!Object.keys(args.properties).length) throw new Error('design_element_update requires at least one property.');
   }
