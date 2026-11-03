@@ -7,10 +7,10 @@ async function main() {
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
   assert.match(dashboard, /id="studioChooser"/, 'dashboard should expose the studio chooser');
-  assert.match(dashboard, /href="\/pixelforge\//, 'PixelForge should be a separate dashboard destination');
+  assert.match(dashboard, /href="\/pixelforge\/index\.html", 'PixelForge should be a separate dashboard destination');
   assert.match(dashboard, /Crear proyecto/, 'existing project creation should remain available');
 
-  const pageResponse = await fetch(base + '/pixelforge/');
+  const pageResponse = await fetch(base + '/pixelforge/index.html');
   assert.equal(pageResponse.status, 200, 'PixelForge entry route should serve its own editor page');
   const page = await pageResponse.text();
   assert.match(page, /id="canvas"/, 'PixelForge artwork canvas should be present');
