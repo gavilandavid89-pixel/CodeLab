@@ -235,6 +235,17 @@ test('JSON import and semantic export reject data URLs with mismatched or non-ca
   }
 });
 
+test('rejects oversized external image URLs during backup import and export', () => {
+  const oversizedUrl = 'https://example.com/' + 'x'.repeat(9000);
+  const backup = {
+    format: 'codelab-design-project', version: 1,
+    project: { ...project([{ id: 'long-url', type: 'image', src: oversizedUrl }]) }
+  };
+  assert.throws(() => importDesignJson(backup), /unsafe or oversized image source/);
+  assert.throws(() => exportDesignJson(project([{ id: 'long-url', type: 'image', src: oversizedUrl }])), /unsafe or oversized image source/);
+  assert.doesNotMatch(exportDesignHtml(project([{ id: 'long-url', type: 'image', src: oversizedUrl }])), /src="https:\/\/example\.com/);
+});
+
 test('round-trips valid PNG, JPEG, GIF, and WebP data URLs through JSON import/export', () => {
   const fixtures = {
     'image/png': Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x01]),
