@@ -1916,7 +1916,7 @@ const server = http.createServer(async (req, res) => {
           user: { provider: pixelForgeUser.provider, id: String(pixelForgeUser.id), name: pixelForgeUser.name || null, avatarUrl: pixelForgeUser.avatarUrl || null }
         });
       }
-      if ((pixelForgeCollection || pixelForgeItemMatch) && ['GET', 'PUT'].includes(req.method)) {
+      if ((pixelForgeCollection && req.method === 'GET') || (pixelForgeItemMatch && ['GET', 'PUT'].includes(req.method))) {
         if (!pixelForgeUser) return sendJson(res, 401, { error: 'codelab_login_required' });
         const ownerWorkspace = safeId(userWorkspaceId(pixelForgeUser));
         const ownerDir = path.join(PIXELFORGE_PROJECTS_DIR, ownerWorkspace);
