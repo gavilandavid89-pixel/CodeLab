@@ -145,3 +145,22 @@ test('chunked image commit is idempotent and expired image tokens are swept', ()
     assert.ok(!fs.existsSync(path.join(dir, 'image-chunks-' + started.transferId + '.json')));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('committed code transfers replay the saved receipt after a lost response', () => {
+  const f = fixture();
+  try {
+    const value = '<main>retry-safe</main>';
+    const started = f.store.beginCode({ workspaceId: 'owner', projectId: 'proj_123', field: 'html', baseRevision: 2, totalChunks: 1, sha256: sha256(value) });
+    f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) });
+    const receipt = { ok: true, revision: 3, action: 'project.code.write', result: { projectId: 'proj_123', field: 'html', readbackVerified: true } };
+    f.store.consumeCode(started.transferId, receipt);
+    const retry = f.store.assembleCode({ transferId: started.transferId, workspaceId: 'owner' });
+    assert.equal(retry.value, value);
+    assert.deepEqual(retry.receipt, receipt);
+    assert.equal(retry.committed, true);
+    assert.throws(() => f.store.putCodeChunk({ transferId: started.transferId, workspaceId: 'owner', index: 0, chunk: value, sha256: sha256(value) }), /not_found/);
+    const dir = path.join(f.root, 'headless-transfers');
+    assert.ok(!fs.readdirSync(dir).some(name => name.startsWith('code-' + started.transferId + '-chunk-')));
+  } finally { f.cleanup(); }
+});
