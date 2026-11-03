@@ -253,7 +253,24 @@ async function main() {
         apiKey: 'test-user-key-not-a-real-secret'
       }));
     });
-    await accountContext.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' } }));
+    let holdFirstProjectSave = true;
+    let notifyFirstProjectSaveStarted;
+    const firstProjectSaveStarted = new Promise(resolve => { notifyFirstProjectSaveStarted = resolve; });
+    await accountContext.route('**/*', async route => {
+      const headers = { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' };
+      if (holdFirstProjectSave && route.request().method() === 'PUT' &&
+          new URL(route.request().url()).pathname === '/api/pixelforge/projects') {
+        holdFirstProjectSave = false;
+        notifyFirstProjectSaveStarted();
+        const response = await route.fetch({ headers });
+        // Keep the first response in flight long enough for another edit to
+        // queue an autosave. The queued snapshot must use the new server token.
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        await route.fulfill({ response });
+        return;
+      }
+      await route.continue({ headers });
+    });
     await accountContext.addCookies([{ name: 'codelab_sid', value: sessionId, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const accountPage = await accountContext.newPage();
     await accountPage.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
@@ -273,8 +290,16 @@ async function main() {
     await accountPage.locator('#new-height').fill('8');
     await accountPage.locator('#create-new').click();
     await accountPage.locator('#new-dialog').waitFor({ state: 'hidden' });
-    await accountPage.locator('#save').click();
-    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'), null, { timeout: 10000 });
+    await Promise.race([
+      firstProjectSaveStarted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('PixelForge autosave did not start')), 10000))
+    ]);
+    // Edit while the first autosave response is held. The second queued save
+    // must wait for the first serverRevision before capturing its snapshot.
+    await accountPage.locator('#canvas').click({ position: { x: 40, y: 30 } });
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'), null, { timeout: 15000 });
+    assert.doesNotMatch(await accountPage.locator('#status').innerText(), /revision conflict|changed in another session/i,
+      'rapid edits during a delayed save must not conflict with the same editor session');
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#document-name').innerText(), 'Browser account artwork', 'the editor should recover the account-saved project after reload');
