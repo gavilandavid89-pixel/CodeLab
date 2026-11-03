@@ -328,13 +328,13 @@ assert.match(canvasHandler, /serverReadbackVerified/, 'canvas settings must veri
 assert.match(canvasHandler, /zoom is view-only/, 'headless canvas config must report that zoom cannot be persisted');
 assert.doesNotMatch(canvasHandler, /projects\.find\(|openProject\(|saveProjectsToStorage\(|setDesignCanvasDimensions\(/, 'canvas configuration must not depend on editor state');
 
-assert.match(bridge, /ai_generate operation_id must be a safe string/, 'legacy AI operation IDs must be validated before headless routing');
-assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate requires a safe operation_id/, 'legacy AI operation IDs must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
 assert.match(bridge, /legacy_ai_' \+ String\(command\.command_id\)\.slice\(0, 90\)/,
   'legacy AI retries must derive a stable idempotency key from the bridge command ID');
 
-assert.match(bridge, /ai_generate operation_id must be a safe string/, 'legacy AI operation IDs must be validated before headless routing');
-assert.match(bridge, /ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate requires a safe operation_id/, 'legacy AI operation IDs must be validated before headless routing');
+assert.match(bridge, /headless_ai_generate max_tokens must be from 256 to 32768/, 'legacy AI token budgets must be validated before headless routing');
 assert.match(bridge, /legacy_ai_' \+ String\(command\.command_id\)\.slice\(0, 90\)/,
   'legacy AI retries must derive a stable idempotency key from the bridge command ID');
 
