@@ -520,11 +520,17 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
       [workspaceId, project.id]
     );
     const existing = await client.query(
-      'SELECT 1 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+      'SELECT project FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
       [workspaceId, project.id]
     );
     const count = Number(usage.rows[0].count);
     const bytes = Number(usage.rows[0].bytes);
+    const storedProject = existing.rowCount ? existing.rows[0].project : null;
+    const currentRevision = storedProject && Number.isInteger(storedProject.revision) ? storedProject.revision : 0;
+    if (existing.rowCount && currentRevision > project.revision) {
+      await client.query('ROLLBACK');
+      return { error: 'pixelforge_revision_conflict', status: 409, revision: currentRevision };
+    }
     if (!existing.rowCount && count >= MAX_PROJECTS) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_project_limit', status: 409, maxProjects: MAX_PROJECTS };
@@ -2152,7 +2158,7 @@ const server = http.createServer(async (req, res) => {
           if (accountPool) {
             try {
               const result = await savePixelForgeProjectToDatabase(workspaceId, project, projectBytes);
-              if (result.error) return sendJson(res, result.status, { error: result.error, ...(result.maxProjects ? { maxProjects: result.maxProjects } : {}), ...(result.maxBytes ? { maxBytes: result.maxBytes } : {}) });
+              if (result.error) return sendJson(res, result.status, { error: result.error, ...(result.maxProjects ? { maxProjects: result.maxProjects } : {}), ...(result.maxBytes ? { maxBytes: result.maxBytes } : {}), ...(Number.isInteger(result.revision) ? { revision: result.revision } : {}) });
               return sendJson(res, result.status, { ok: true, project: { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: result.now } });
             } catch (error) {
               console.error('PixelForge PostgreSQL write failed:', error.message);
@@ -2161,6 +2167,10 @@ const server = http.createServer(async (req, res) => {
           }
           const now = Date.now();
           const existing = records.find(item => item.id === project.id);
+          const currentRevision = existing && existing.project && Number.isInteger(existing.project.revision) ? existing.project.revision : 0;
+          if (existing && currentRevision > project.revision) {
+            return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: currentRevision });
+          }
           const record = { id: project.id, name: project.name.trim(), width: project.width, height: project.height, updatedAt: now, lastOpenedAt: now, project };
           records = records.filter(item => item.id !== project.id);
           if (!existing && records.length >= MAX_PROJECTS) {
