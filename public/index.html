@@ -159,6 +159,270 @@
       #studioView > header { padding-top: 4px !important; padding-bottom: 4px !important; }
       #studioView #currentProjectTitle { max-width: 24vw; }
     }
+  
+    /* Visual refinement: consistent hierarchy, spacing, contrast and interaction states. */
+    :root {
+      color-scheme: dark;
+      --ui-bg: #070d1b;
+      --ui-surface: #0f172a;
+      --ui-surface-raised: #131f35;
+      --ui-border: rgba(148, 163, 184, .16);
+      --ui-border-strong: rgba(148, 163, 184, .28);
+      --ui-accent: #22d3ee;
+      --ui-focus: rgba(34, 211, 238, .48);
+      --ui-radius: 14px;
+    }
+    body {
+      background:
+        radial-gradient(ellipse at 8% 0%, rgba(8, 145, 178, .075), transparent 32rem),
+        var(--ui-bg);
+      color: #e5edf8;
+      letter-spacing: .005em;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, a:focus-visible, input:focus-visible,
+    select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--ui-accent);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 3px var(--ui-focus);
+    }
+    button:disabled { cursor: not-allowed; opacity: .48; filter: saturate(.65); }
+    button:not(:disabled) { transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease; }
+    button:not(:disabled):active { transform: translateY(1px); }
+    input, select, textarea {
+      border-color: var(--ui-border-strong);
+      accent-color: var(--ui-accent);
+    }
+    input::placeholder, textarea::placeholder { color: #718096; opacity: 1; }
+    ::selection { color: #ecfeff; background: rgba(8, 145, 178, .48); }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(2, 6, 23, .65); }
+    ::-webkit-scrollbar-thumb { background: #334155; border: 2px solid #0b1220; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52647e; }
+
+    /* Dashboard: clearer page rhythm and more deliberate cards. */
+    #welcomeDashboard {
+      background:
+        radial-gradient(ellipse at 80% 8%, rgba(37, 99, 235, .10), transparent 28rem),
+        radial-gradient(ellipse at 15% 20%, rgba(8, 145, 178, .11), transparent 32rem),
+        #070d1b;
+    }
+    #welcomeDashboard > header {
+      background: rgba(9, 16, 31, .88) !important;
+      border-color: rgba(148, 163, 184, .14) !important;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, .12);
+    }
+    #welcomeDashboard main { gap: clamp(1.25rem, 3vw, 2rem); }
+    #welcomeDashboard main > div:first-child {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      padding: clamp(1.15rem, 3vw, 2.25rem) !important;
+      border-color: rgba(34, 211, 238, .19) !important;
+      border-radius: 22px !important;
+      background: linear-gradient(120deg, rgba(15, 23, 42, .98), rgba(15, 23, 42, .88) 55%, rgba(8, 47, 73, .58)) !important;
+      box-shadow: 0 22px 70px rgba(0, 0, 0, .20), inset 0 1px rgba(255,255,255,.035) !important;
+    }
+    #welcomeDashboard main > div:first-child::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      width: 18rem; height: 18rem; right: -6rem; top: -10rem;
+      border-radius: 50%;
+      background: rgba(34, 211, 238, .10);
+      filter: blur(4px);
+      pointer-events: none;
+    }
+    #welcomeDashboard main > div:first-child h2 {
+      max-width: 18ch;
+      line-height: 1.14;
+      letter-spacing: -.035em;
+      text-wrap: balance;
+    }
+    #welcomeDashboard main > div:first-child p { max-width: 58ch; line-height: 1.7; }
+    #welcomeDashboard main > section > h3,
+    #welcomeDashboard main > div.space-y-3 > div:first-child h3 {
+      color: #dbeafe !important;
+      font-size: .82rem !important;
+      letter-spacing: .015em;
+    }
+    #welcomeDashboard main > section > div > div,
+    #welcomeDashboard main > section > div > button {
+      border-color: var(--ui-border) !important;
+      background: linear-gradient(145deg, rgba(15, 23, 42, .9), rgba(11, 18, 32, .94)) !important;
+      border-radius: 15px !important;
+      box-shadow: inset 0 1px rgba(255,255,255,.025);
+    }
+    #welcomeDashboard main > section > div > button:hover {
+      border-color: rgba(34, 211, 238, .38) !important;
+      background: linear-gradient(145deg, rgba(19, 31, 53, .98), rgba(11, 26, 43, .98)) !important;
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(0,0,0,.18);
+    }
+    #welcomeDashboard main > section > div > div h4 { letter-spacing: -.01em; }
+    #welcomeDashboard #projectsGrid { align-items: stretch; }
+    #projectsGrid > * {
+      min-width: 0;
+      border: 1px solid var(--ui-border) !important;
+      border-radius: 16px !important;
+      background: linear-gradient(145deg, rgba(15, 23, 42, .98), rgba(10, 16, 29, .98)) !important;
+      box-shadow: 0 10px 28px rgba(0,0,0,.10), inset 0 1px rgba(255,255,255,.025);
+      transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+    }
+    #projectsGrid > *:hover {
+      border-color: rgba(34, 211, 238, .36) !important;
+      transform: translateY(-2px);
+      box-shadow: 0 16px 34px rgba(0,0,0,.22);
+    }
+    #searchProjectInput {
+      min-height: 42px;
+      border-radius: 11px;
+      background: rgba(2, 6, 23, .62);
+    }
+    #workspaceStatusBar > span { border-radius: 999px; }
+
+    /* Studio chrome: make the editor feel like one cohesive workspace. */
+    #studioView {
+      background: var(--ui-bg);
+      color: #e2e8f0;
+    }
+    #studioView > header {
+      min-height: 58px;
+      background: rgba(10, 17, 31, .96) !important;
+      border-color: var(--ui-border) !important;
+      box-shadow: 0 8px 26px rgba(0,0,0,.16);
+    }
+    #studioView > header button,
+    #studioView .tab-btn,
+    #mobileBottomBar button {
+      border-radius: 9px;
+    }
+    #studioView #currentProjectTitle {
+      color: #67e8f9 !important;
+      letter-spacing: -.02em;
+    }
+    #studioView #mainSplit { background: #080e1b; gap: 0; }
+    #editorPanel, #previewPanel {
+      background: #0b1220 !important;
+      border-color: var(--ui-border) !important;
+    }
+    #editorPanel > div:first-child,
+    #previewPanel > div:first-child {
+      min-height: 43px;
+      background: #101a2c !important;
+      border-color: var(--ui-border) !important;
+    }
+    #editorPanel .tab-btn { padding-inline: 14px; min-height: 42px; }
+    #editorPanel .tab-btn.active {
+      background: rgba(34, 211, 238, .075);
+      border-bottom-color: #22d3ee !important;
+      color: #67e8f9 !important;
+    }
+    #splitDivider { background: #1e293b !important; }
+    #splitDivider:hover { background: rgba(34, 211, 238, .35) !important; }
+    #previewContainer {
+      box-shadow: 0 0 0 1px rgba(148,163,184,.10);
+    }
+    #designStudioPanel { background-color: #080e1b !important; }
+    #designStudioPanel > .design-toolbar {
+      border-color: var(--ui-border) !important;
+      background: rgba(13, 22, 39, .97) !important;
+      box-shadow: 0 18px 54px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.025) !important;
+    }
+    #designStudioPanel > .design-toolbar button,
+    #designStudioPanel #designLayersPanel button {
+      border: 1px solid rgba(148,163,184,.12);
+      border-radius: 9px;
+    }
+    #designStudioPanel > .design-toolbar button:hover,
+    #designStudioPanel #designLayersPanel button:hover {
+      border-color: rgba(34,211,238,.28);
+    }
+    #designStudioPanel #designLayersPanel {
+      border-color: var(--ui-border) !important;
+      background: rgba(13, 22, 39, .97) !important;
+      box-shadow: 0 18px 54px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.025) !important;
+      backdrop-filter: blur(16px);
+    }
+    #designStudioPanel #designCanvas {
+      box-shadow: 0 18px 55px rgba(0,0,0,.30), 0 0 0 1px rgba(148,163,184,.20);
+    }
+    #designCanvasEmpty { color: #94a3b8; }
+    #mobileBottomBar {
+      background: rgba(8, 14, 27, .96) !important;
+      border-color: var(--ui-border) !important;
+      box-shadow: 0 -10px 32px rgba(0,0,0,.20);
+      backdrop-filter: blur(18px);
+    }
+    #mobileBottomBar button { min-height: 52px; }
+    #mobileBottomBar button[aria-pressed="true"],
+    #mobileBottomBar button.active {
+      background: rgba(34, 211, 238, .10);
+    }
+
+    /* Dialogs and floating panels share the same visual language. */
+    [role="dialog"] > div,
+    #consoleModal, #aiDrawer {
+      border-color: var(--ui-border-strong) !important;
+      box-shadow: 0 28px 90px rgba(0,0,0,.52) !important;
+    }
+    [role="dialog"] header, [role="dialog"] footer {
+      border-color: var(--ui-border) !important;
+    }
+    [role="dialog"] header { box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+    #designToolsModal [role="tablist"] button[aria-selected="true"] {
+      background: rgba(34, 211, 238, .13);
+      color: #a5f3fc;
+      box-shadow: inset 0 0 0 1px rgba(34,211,238,.15);
+    }
+    #designToolsModal [role="tablist"] button[aria-selected="false"]:hover {
+      background: rgba(148,163,184,.08);
+      color: #e2e8f0;
+    }
+    #webCaptureBtn {
+      min-height: 32px;
+      padding: 6px 10px !important;
+      border: 1px solid rgba(196,181,253,.30);
+      border-radius: 8px !important;
+      background: linear-gradient(135deg, #7c3aed, #6d28d9) !important;
+      box-shadow: 0 5px 16px rgba(109,40,217,.18);
+      letter-spacing: .01em;
+    }
+    #webCaptureBtn:hover {
+      background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
+      box-shadow: 0 7px 20px rgba(109,40,217,.28);
+    }
+    #webCaptureViewport, #webCaptureScale {
+      min-height: 32px;
+      border-radius: 8px !important;
+      background-color: #0b1220 !important;
+    }
+
+    @media (max-width: 767px) {
+      #welcomeDashboard > header { gap: 10px; }
+      #welcomeDashboard main { padding-top: 18px !important; }
+      #welcomeDashboard main > div:first-child { border-radius: 17px !important; }
+      #welcomeDashboard main > div:first-child h2 { font-size: clamp(1.4rem, 6vw, 2rem); }
+      #welcomeDashboard main > section > div > div,
+      #welcomeDashboard main > section > div > button { min-height: 112px; }
+      #studioView > header { gap: 8px; }
+      #studioView > header button { min-height: 38px; }
+      #editorPanel > div:first-child, #previewPanel > div:first-child { min-height: 42px; }
+      #designStudioPanel > .design-toolbar { border-radius: 12px; }
+      #designStudioPanel #designCanvas { max-width: none; }
+      #designLayersPanel { max-width: calc(100vw - 24px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-full flex flex-col font-sans overflow-hidden">
