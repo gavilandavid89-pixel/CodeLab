@@ -539,13 +539,15 @@ async function flushAutosave({ force = false } = {}) {
     try {
       await autosaveInFlight;
       if (!savingDoc.dirty && !pending && !force) return;
+      let lastSaveResult = null;
       while (doc === savingDoc) {
         const version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
-        await saveProject(snapshot);
+        lastSaveResult = await saveProject(snapshot);
         if (savingDoc.saveVersion === version) { savingDoc.dirty = false; break; }
         savingDoc.dirty = true;
       }
       if (doc === savingDoc) updateTitle();
+      return lastSaveResult;
     } finally {
       flushInProgress = false;
       if (doc === savingDoc && savingDoc.dirty) scheduleAutosave();
@@ -1456,8 +1458,10 @@ $('#create-new').addEventListener('click', async () => {
   } catch (error) { $('#new-error').textContent = error.message; status(`Could not switch documents: ${error.message}`, 'error'); }
 });
 $('#save').addEventListener('click', async () => {
-  try { await flushAutosave({ force: true }); status('Saved on this device', 'success'); }
-  catch (error) { status(`Save failed: ${error.message}`, 'error'); }
+  try {
+    const result = await flushAutosave({ force: true });
+    status(result?.cloud ? 'Saved to CodeLab cloud' : 'Saved on this device', 'success');
+  } catch (error) { status(`Save failed: ${error.message}`, 'error'); }
 });
 $('#export-project').addEventListener('click', () => {
   try {
