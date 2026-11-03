@@ -118,7 +118,7 @@ test('integral project journey: create, design, revise, convert, read back, and 
   // with the edited code from the same saved project. Browser is always closed.
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 360, height: 800 } });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
 
@@ -150,6 +150,9 @@ test('integral project journey: create, design, revise, convert, read back, and 
       '<style>' + saved.projects[0].code.css + '</style><script>' +
       saved.projects[0].code.js + '</script>', { waitUntil: 'load' });
     await expectVisible(page, '#brand');
+    const mobileLayout = await page.evaluate(() => ({ viewportWidth: document.documentElement.clientWidth, contentWidth: document.documentElement.scrollWidth }));
+    assert.equal(mobileLayout.viewportWidth, 390, 'integrated browser journey must exercise the 390px mobile viewport');
+    assert.ok(mobileLayout.contentWidth <= mobileLayout.viewportWidth, 'mobile code view must not introduce horizontal page overflow');
     assert.equal(await page.locator('#brand').innerText(), 'Pril Videos');
     await page.locator('#explore').click();
     assert.equal(await page.locator('#status').innerText(), 'Videos listos para explorar');
