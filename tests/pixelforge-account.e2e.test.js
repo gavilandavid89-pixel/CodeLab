@@ -105,5 +105,32 @@ function pixelProject(id, name, marker) {
   });
   assert.equal(tooManyPixels.status, 400, 'Canvas area must be bounded to prevent oversized pixel allocations');
 
-  console.log('PixelForge CodeLab-account E2E passed: authenticated identity, isolated per-account projects, atomic revisions, stale-write/race rejection, and canvas safety limits.');
+  // Exercise the actual editor under CodeLab's origin: its Save button must persist through
+  // the authenticated cloud adapter, not only through the local IndexedDB fallback.
+  const browserUser = seedSession('pixel-browser-user', 'Pixel Browser User');
+  const { chromium } = require('playwright');
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  try {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await context.addCookies([{ name: 'codelab_sid', value: browserUser.cookie.split('=')[1], url: BASE_URL }]);
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    const response = await page.goto(BASE_URL + '/pixelforge/', { waitUntil: 'domcontentloaded' });
+    assert.equal(response.status(), 200, 'PixelForge must load under the same CodeLab origin');
+    await page.locator('#canvas').waitFor({ state: 'visible' });
+    await page.locator('#save').click();
+    await page.waitForFunction(async () => {
+      const response = await fetch('/api/pixelforge/projects', { cache: 'no-store' });
+      if (!response.ok) return false;
+      const payload = await response.json();
+      return Array.isArray(payload.projects) && payload.projects.length === 1;
+    }, null, { timeout: 10000 });
+    assert.deepEqual(pageErrors, [], 'PixelForge must initialize without uncaught browser errors');
+    const statusText = await page.locator('#status').textContent().catch(() => '');
+    assert.match(statusText, /CodeLab cloud|device/i, 'Save status should disclose the active persistence path');
+    await context.close();
+  } finally { await browser.close(); }
+
+  console.log('PixelForge CodeLab-account E2E passed: same-origin editor boot, authenticated cloud save, account isolation, atomic revisions, stale-write/race rejection, and canvas safety limits.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
