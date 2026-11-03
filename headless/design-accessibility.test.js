@@ -41,6 +41,15 @@ test('design accessibility audit reports missing accessible names, alt text, sma
   assert.equal(report.findings.find(item => item.ruleId === 'text-contrast').contrastBasis, 'declared-layer-background');
 });
 
+test('design accessibility audit treats null opacity as the default fully opaque layer', () => {
+  const report = auditDesignAccessibility(designProject([
+    { id: 'null-opacity-copy', type: 'text', text: 'Readable', fontSize: 16, color: '#000000', background: '#ffffff', opacity: null }
+  ]));
+
+  assert.equal(report.findings.some(item => item.ruleId === 'text-opacity-contrast'), false);
+  assert.equal(report.findings.some(item => item.ruleId === 'text-contrast'), false);
+});
+
 test('design accessibility audit warns when partial layer opacity makes contrast uncertain', () => {
   const report = auditDesignAccessibility(designProject([
     { id: 'semi-transparent-copy', type: 'text', text: 'Read me', fontSize: 16, color: '#000000', background: '#ffffff', opacity: 0.5 }
