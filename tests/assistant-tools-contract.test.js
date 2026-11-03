@@ -45,6 +45,18 @@ for (const action of ['workspace_inspect', 'project_inspect', 'project_code_read
   assert.match(bridge, new RegExp("command.action === '" + action + "'"), action + ' must have an implementation');
 }
 assert.match(bridge, /length > 50000/, 'code write must enforce a size limit');
+assert.match(bridge, /'xUnit', 'yUnit', 'width', 'height', 'widthUnit', 'heightUnit'/,
+  'design element updates must expose responsive position and size units');
+assert.match(bridge, /'opacity', 'rotation', 'visible', 'locked', 'flowRole', 'identifier'/,
+  'design element updates must expose opacity, transforms, visibility, locking, flow role, and identifier');
+assert.match(bridge, /key === 'visible' \|\| key === 'locked'[\s\S]{0,180}typeof value !== 'boolean'/,
+  'visibility and lock properties must require booleans');
+assert.match(bridge, /key === 'opacity' && value === null/,
+  'nullable opacity must be accepted as the editor default');
+assert.match(bridge, /key === 'src' \? 2800000/,
+  'image source updates must support the engine-compatible base64 image size limit');
+assert.match(bridge, /\['widthUnit', 'heightUnit'\][\s\S]{0,160}\['px', '%', 'auto'\]/,
+  'responsive dimensions must validate px, percent, and auto units');
 assert.match(bridge, /designPreserved: data\.results\?\.\[0\]\?\.designPreserved === true/, 'design conversion must verify source preservation from the headless API');
 assert.match(bridge, /operations: \[\{ type: 'design\.convert\.toWeb', projectId \}\]/, 'design conversion must use the shared headless runtime');
 assert.match(bridge, /truncated: content\.length > limit/, 'HTML export must report truncation');
