@@ -121,5 +121,6 @@ const bridgeBulkDeleteSource = fs.readFileSync('.github/scripts/codelab-bridge.m
 assert.match(bridgeBulkDeleteSource, /'design_elements_delete'/, 'bulk layer deletion must be exposed and authorized by the bridge');
 assert.match(bridgeBulkDeleteSource, /1 to 100 unique valid element_ids/, 'bulk layer deletion must validate a bounded unique ID list');
 assert.match(designEngineSource, /case 'elements\.delete'/, 'bulk deletion must use the shared atomic design engine operation');
-assert.match(bridgeBulkDeleteSource, /danglingConnections\.length/, 'bulk deletion must verify it did not leave dangling outgoing flow connections');
+assert.match(bridgeBulkDeleteSource, /const danglingConnections = afterDesign\.flowConnections\.filter[\s\S]*?\.length;/, 'bulk deletion must count dangling outgoing flow connections from server readback');
+assert.match(bridgeBulkDeleteSource, /if \(!deleted \|\| danglingConnections\)/, 'bulk deletion must reject when readback still contains dangling outgoing flow connections');
 assert.match(bridgeBulkDeleteSource, /afterDesign\.flowConnections\.filter/, 'bulk deletion must verify outgoing flow links are cleaned from server state');
