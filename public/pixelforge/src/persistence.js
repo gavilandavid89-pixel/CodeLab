@@ -13,6 +13,8 @@ async function request(path, options = {}) {
     const messages = {
       project_not_found: 'No se encontró ese proyecto en tu cuenta.',
       pixelforge_project_too_large: 'El proyecto supera el tamaño permitido para guardarlo.',
+      pixelforge_account_storage_limit: 'Tu cuenta alcanzó el espacio reservado para PixelForge. Elimina proyectos antiguos o reduce el tamaño del documento.',
+      pixelforge_project_limit: 'Tu cuenta alcanzó el máximo de proyectos PixelForge. Elimina uno antes de crear otro.',
       invalid_pixelforge_project: 'El proyecto contiene datos no válidos.',
       pixelforge_storage_unavailable: 'No se pudo acceder al almacenamiento de tu cuenta.'
     };
