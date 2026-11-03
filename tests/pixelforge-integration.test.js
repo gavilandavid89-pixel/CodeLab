@@ -55,7 +55,7 @@ async function main() {
     // Verify the existing local-first storage survives a full page reload before
     // any future account-sync adapter is introduced.
     await page.locator('#save').click();
-    await page.locator('#status').getByText('Saved on this device').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => document.querySelector('#status')?.textContent.trim() === 'Saved on this device', null, { timeout: 10000 });
     await page.reload({ waitUntil: 'networkidle' });
     await page.locator('#canvas').waitFor({ state: 'visible' });
     await page.locator('#projects-button').click();
