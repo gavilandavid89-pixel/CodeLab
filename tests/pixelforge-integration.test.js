@@ -126,6 +126,32 @@ async function main() {
     await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
     await accountPage.locator('.saved-project-open').filter({ hasText: 'Browser account artwork' }).waitFor({ state: 'visible' });
     await accountContext.close();
+
+    // Reaching the per-account project cap must never silently evict an older project.
+    const status = await (await fetch(base + '/api/ai/status')).json();
+    const maxProjects = status.maxProjects;
+    for (let index = 1; index < maxProjects; index++) {
+      const response = await fetch(base + '/api/pixelforge/projects', {
+        method: 'PUT',
+        headers: { ...authHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify({ project: {
+          id: 'limit-project-' + index, name: 'Limit project ' + index, width: 2, height: 2, layers: []
+        } })
+      });
+      assert.ok(response.status === 200 || response.status === 201, 'projects below the account limit should save');
+    }
+    const overflow = await fetch(base + '/api/pixelforge/projects', {
+      method: 'PUT',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ project: {
+        id: 'limit-project-overflow', name: 'Overflow project', width: 2, height: 2, layers: []
+      } })
+    });
+    assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
+    assert.equal((await overflow.json()).error, 'pixelforge_project_limit');
+    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+    assert.equal(afterLimit.projects.length, maxProjects, 'hitting the cap must preserve all existing projects');
+    assert.ok(afterLimit.projects.some(project => project.id === 'Browser-account-artwork'), 'existing project records must remain available');
   } finally {
     await browser.close();
     fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
