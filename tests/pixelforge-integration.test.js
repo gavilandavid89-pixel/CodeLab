@@ -108,6 +108,20 @@ async function main() {
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
 
+  // A fresh session for the same provider/account must resolve the same workspace,
+  // matching the cross-device behavior of CodeLab's deterministic account binding.
+  const sameAccountSessionId = 'c'.repeat(48);
+  fs.writeFileSync(path.join(sessionsDir, sameAccountSessionId + '.json'), JSON.stringify({
+    id: sameAccountSessionId,
+    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
+    createdAt: Date.now(), expiresAt: Date.now() + 60_000
+  }), { mode: 0o600 });
+  const sameAccountHeaders = { cookie: 'codelab_sid=' + sameAccountSessionId, 'x-forwarded-for': '198.51.100.82' };
+  const sameAccountList = await fetch(base + '/api/pixelforge/projects', { headers: sameAccountHeaders });
+  assert.equal(sameAccountList.status, 200);
+  assert.ok((await sameAccountList.json()).projects.some(project => project.id === fixture.id),
+    'a new session for the same CodeLab account must see its saved PixelForge projects');
+
   const secondSessionId = 'b'.repeat(48);
   fs.writeFileSync(path.join(sessionsDir, secondSessionId + '.json'), JSON.stringify({
     id: secondSessionId,
@@ -212,6 +226,7 @@ async function main() {
   } finally {
     await browser.close();
     fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
+    fs.rmSync(path.join(sessionsDir, sameAccountSessionId + '.json'), { force: true });
     fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
   }
   console.log('PixelForge account gate, project CRUD/isolation, and authenticated browser save/reload verified.');
