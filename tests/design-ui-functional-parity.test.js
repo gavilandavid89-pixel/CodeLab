@@ -38,7 +38,7 @@ test('locked layers cannot be edited or deleted, and duplicate attempts explain 
   assert.match(duplicate, /duplicateIds\.has\(connection\.sourceElementId\)/);
   assert.match(duplicate, /sourceElementId: duplicateIds\.get\(connection\.sourceElementId\)/);
   assert.match(remove, /selectedElements\.some\(el => el\.locked\)/);
-  assert.match(remove, /Desbloquea la capa antes de eliminarla/);
+  assert.match(remove, /Desbloquea todas las capas seleccionadas antes de eliminarlas/);
   assert.match(align, /!selected\.length && el\.locked/);
 });
 
