@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { exportDesignHtml, buildAiDesignCaptureContext } = require('./design-export');
+const { exportDesignHtml, exportDesignSvg, exportDesignJson, importDesignJson, buildAiDesignCaptureContext } = require('./design-export');
 
 function project(elements) {
   return {
@@ -195,4 +195,97 @@ test('semantic HTML export preserves safe mailto and tel actions but rejects uns
   assert.doesNotMatch(html, /href="\/\/evil\.example/);
   assert.doesNotMatch(html, /href="javascript:/);
   assert.match(html, /Unsafe/);
+});
+
+
+test('legacy hidden:true is omitted from HTML, SVG, capture, and auto-layout geometry', () => {
+  const input = project([
+    { id: 'legacy-hidden', type: 'rectangle', hidden: true, text: 'Legacy hidden', width: 180, height: 80, y: 1200 },
+    { id: 'visible-after', type: 'rectangle', text: 'Visible after', width: 120, height: 40 }
+  ]);
+  const html = exportDesignHtml(input);
+  const svg = exportDesignSvg(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.doesNotMatch(html, /Legacy hidden|layer-legacy-hidden/);
+  assert.doesNotMatch(svg, /Legacy hidden|legacy-hidden/);
+  assert.equal(context.elementCount, 1);
+  assert.deepEqual(context.elements.map(item => item.id), ['visible-after']);
+
+  const auto = {
+    ...input,
+    design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column' }
+  };
+  const autoContext = buildAiDesignCaptureContext(auto);
+  assert.equal(autoContext.elements[0].bounds.y, 0);
+});
+
+test('responsive width/height units resolve in free layout and remain CSS-responsive in auto layout', () => {
+  const input = project([
+    { id: 'responsive', type: 'rectangle', width: 50, widthUnit: '%', height: 25, heightUnit: '%', x: 0, y: 0 }
+  ]);
+  const html = exportDesignHtml(input);
+  const context = buildAiDesignCaptureContext(input);
+  assert.match(html, /width:360px;height:400px/);
+  assert.equal(context.elements[0].bounds.width, 360);
+  assert.equal(context.elements[0].bounds.height, 400);
+
+  const auto = {
+    ...input,
+    design: { ...input.design, layoutMode: 'auto', layoutDirection: 'column' }
+  };
+  const autoHtml = exportDesignHtml(auto);
+  assert.match(autoHtml, /width:50%;height:25%/);
+});
+
+test('JSON export/import round-trip preserves responsive units, layer metadata, and flow connections', () => {
+  const input = {
+    id: 'source-project',
+    name: 'Responsive source',
+    type: 'design',
+    code: { html: '', css: '', js: '' },
+    design: {
+      ...project([]).design,
+      elements: [
+        {
+          id: 'nav-layer', type: 'button', label: 'Next', text: 'Next', href: '#layer-content',
+          x: 12, xUnit: '%', y: 20, yUnit: 'px',
+          width: 50, widthUnit: '%', height: 48, heightUnit: 'auto',
+          identifier: 'primary-next', opacity: 0.65, rotation: 12,
+          visible: true, hidden: false, locked: true, flowRole: 'navigate'
+        },
+        { id: 'content', type: 'heading', text: 'Content', width: 300, height: 60, identifier: 'content' }
+      ],
+      flowConnections: [{ sourceElementId: 'nav-layer', targetProjectId: 'target-screen' }]
+    }
+  };
+  const exported = exportDesignJson(input);
+  const imported = importDesignJson(exported.json, { idFactory: (() => {
+    let index = 0;
+    return () => 'imported-layer-' + (++index);
+  })() });
+  const button = imported.design.elements[0];
+  assert.equal(button.xUnit, '%');
+  assert.equal(button.yUnit, 'px');
+  assert.equal(button.widthUnit, '%');
+  assert.equal(button.heightUnit, 'auto');
+  assert.equal(button.identifier, 'primary-next');
+  assert.equal(button.opacity, 0.65);
+  assert.equal(button.rotation, 12);
+  assert.equal(button.visible, true);
+  assert.equal(button.hidden, false);
+  assert.equal(button.locked, true);
+  assert.equal(button.flowRole, 'navigate');
+  assert.equal(button.href, '#layer-imported-layer-2');
+  assert.deepEqual(imported.design.flowConnections, [
+    { sourceElementId: 'imported-layer-1', targetProjectId: 'target-screen' }
+  ]);
+
+  const secondExport = exportDesignJson(imported);
+  const parsed = JSON.parse(secondExport.json);
+  assert.equal(parsed.project.design.elements[0].widthUnit, '%');
+  assert.equal(parsed.project.design.elements[0].heightUnit, 'auto');
+  assert.equal(parsed.project.design.elements[0].identifier, 'primary-next');
+  assert.deepEqual(parsed.project.design.flowConnections, [
+    { sourceElementId: 'imported-layer-1', targetProjectId: 'target-screen' }
+  ]);
 });
