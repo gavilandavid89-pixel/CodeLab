@@ -67,6 +67,14 @@ function normalizeCode(code) {
 }
 
 function exportDesignJson(project) {
+  const sourceElements = project && project.design && Array.isArray(project.design.elements) ? project.design.elements : [];
+  for (const element of sourceElements) {
+    if (element && element.type === 'image' && element.src && !safeImageSource(element.src)) {
+      const error = new Error('Design export contains an unsafe or oversized image source.');
+      error.code = 'HEADLESS_INVALID_DESIGN_EXPORT';
+      throw error;
+    }
+  }
   const payload = {
     format: 'codelab-design-project',
     version: 1,
@@ -99,9 +107,10 @@ function safeExportColor(value, fallback) {
 }
 
 function safeExportImageSource(value) {
-  const source = String(value || '').trim();
-  if (!source || source.length > MAX_IMAGE_BYTES * 1.5) return '';
-  if (/^data:/i.test(source)) return isValidEditorImageDataUrl(source) ? source : '';
+  const raw = String(value || '');
+  if (!raw || raw.length > MAX_EDITOR_IMAGE_DATA_URL_LENGTH) return '';
+  if (/^data:/i.test(raw)) return isValidEditorImageDataUrl(raw) ? raw : '';
+  const source = raw.trim();
   if (/^(?:\/(?!\/)|\.\.?\/)[^\\\s<>]*$/.test(source)) return source;
   try {
     const url = new URL(source);
