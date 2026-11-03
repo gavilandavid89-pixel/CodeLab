@@ -19,6 +19,7 @@ test('hidden layers stay in the layer tree but do not consume layout or canvas s
   const layout = extract('function getDesignLayoutPositions', 'function setDesignLayoutMode');
   const renderer = extract('function renderDesignWorkspace', 'function pDesignElementsWithoutCurrent');
   assert.match(layout, /filter\(el => !!el && typeof el === 'object' && !el\.hidden\)/);
+  assert.match(renderer, /node\.style\.visibility = el\.hidden \? 'hidden' : 'visible'/);
   assert.match(renderer, /node\.style\.display = el\.hidden \? 'none' : 'flex'/);
   assert.match(renderer, /el\.hidden \? 'none' : 'flex'/);
 });
