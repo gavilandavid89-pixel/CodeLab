@@ -553,7 +553,7 @@ async function flushAutosave({ force = false } = {}) {
       if (doc === savingDoc && savingDoc.dirty) scheduleAutosave();
     }
   })();
-  try { await flushPromise; }
+  try { return await flushPromise; }
   finally { flushPromise = null; }
 }
 function changed() { clearTransformPreview(); clearCropPreview(); syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave(); }
