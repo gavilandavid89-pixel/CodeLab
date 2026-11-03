@@ -1,0 +1,29 @@
+name: Component Library Tests
+
+on:
+  push:
+    branches:
+      - fix/component-library-body-insertion
+  pull_request:
+    paths:
+      - 'public/component-library.js'
+      - 'tests/component-library.test.js'
+      - '.github/workflows/component-library-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  component-library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check component library syntax
+        run: node --check public/component-library.js
+      - name: Test component library catalog and HTML insertion
+        run: node tests/component-library.test.js
