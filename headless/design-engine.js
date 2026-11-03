@@ -409,7 +409,7 @@ function isSafeImageSource(value) {
   if (!raw) return true;
   if (/^data:/i.test(raw)) return isValidEditorImageDataUrl(raw);
   const src = raw.trim();
-  if (/^data:/i.test(src)) return false;
+  if (/^data:/i.test(src) || src.length > 8192) return false;
   return /^(https?:\/\/|\/|\.\.?\/)/i.test(src) && !/[\x00-\x20]/.test(src);
 }
 
