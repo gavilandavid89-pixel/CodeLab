@@ -75,6 +75,7 @@ test('UI JSON import preserves the same layer contract and remaps flow connectio
   const start = source.indexOf('async function importDesignProjectJson');
   assert.notEqual(start, -1, 'missing UI design JSON importer');
   const importer = source.slice(start);
+  assert.match(importer, /if \(value == null \|\| \(typeof value === 'string' && !value\.trim\(\)\)\) return fallback;/);
   assert.match(importer, /identifier: typeof raw\.identifier/);
   assert.match(importer, /hidden: raw\.hidden === true \|\| raw\.visible === false/);
   assert.match(importer, /locked: raw\.locked === true/);
