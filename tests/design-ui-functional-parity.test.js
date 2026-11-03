@@ -88,6 +88,72 @@ test('AI design capture retains remote visual review and exports the analysis re
   assert.match(source, /designCaptureMode/);
 });
 
+test('alignment resolves mixed units and rejects locked or out-of-range placements atomically', () => {
+  const positionStart = source.indexOf('function getDesignElementPosition(');
+  assert.notEqual(positionStart, -1, 'missing effective position helper');
+  const positionSource = source.slice(positionStart);
+  const align = extract('function alignDesignElement', 'function downloadDesignAsset');
+  const makeProject = (locked = false, boundary = false) => ({
+    id: 'align-mixed-units',
+    design: {
+      layoutMode: 'free', canvasWidth: 500, canvasHeight: boundary ? 10000 : 1000,
+      elements: boundary ? [
+        { id: 'top', x: 0, y: 200, yUnit: '%', width: 100, height: 1000, heightUnit: 'px' },
+        { id: 'short', x: 10, y: 190, yUnit: '%', width: 100, height: 500, heightUnit: 'px' }
+      ] : [
+        { id: 'a', x: 10, xUnit: 'px', width: 100, widthUnit: 'px', y: 0, height: 20 },
+        { id: 'b', x: 20, xUnit: '%', width: 10, widthUnit: '%', y: 0, height: 20, locked },
+        { id: 'c', x: 50, xUnit: '%', width: 100, widthUnit: 'px', y: 0, height: 20 }
+      ]
+    }
+  });
+  const run = (project, ids, mode) => {
+    let history = 0;
+    const toasts = [];
+    const sandbox = {
+      activeDesignProject: () => project,
+      selectedDesignElement: () => project.design.elements.find(el => el.id === ids[0]),
+      selectedDesignElementIds: ids,
+      getDesignCanvasWidth: design => design.canvasWidth,
+      getDesignCanvasHeight: design => design.canvasHeight,
+      getDesignElementDimension: (el, axis, size) => {
+        const unit = el[axis + 'Unit'];
+        const raw = Number(el[axis]);
+        if (unit === '%') return Math.max(1, Math.min(4000, size * Math.min(100, raw) / 100));
+        return Number.isFinite(raw) && raw > 0 ? raw : (axis === 'width' ? 120 : 48);
+      },
+      recordDesignHistory: () => { history++; },
+      renderDesignWorkspace: () => {},
+      saveProjectsToStorage: () => {},
+      showToast: message => toasts.push(message)
+    };
+    vm.runInNewContext(positionSource + '\n' + align + '\nthis.run = alignDesignElement;', sandbox);
+    sandbox.run(mode);
+    return { project, history, toasts };
+  };
+
+  const mixed = run(makeProject(), ['a', 'b', 'c'], 'right');
+  const [a, b, c] = mixed.project.design.elements;
+  assert.equal(mixed.history, 1);
+  assert.deepEqual([a.x, a.xUnit, b.x, b.xUnit, c.x, c.xUnit], [250, 'px', 300, 'px', 250, 'px']);
+
+  const lockedProject = makeProject(true);
+  const locked = run(lockedProject, ['a', 'b', 'c'], 'right');
+  assert.equal(locked.history, 0);
+  assert.deepEqual(locked.project.design.elements.map(el => [el.x, el.xUnit]), [
+    [10, 'px'], [20, '%'], [50, '%']
+  ]);
+  assert.match(locked.toasts[0], /Desbloquea todas las capas seleccionadas/);
+
+  const boundaryProject = makeProject(false, true);
+  const boundary = run(boundaryProject, ['top', 'short'], 'bottom');
+  assert.equal(boundary.history, 0, 'an unrepresentable target must be rejected before history');
+  assert.deepEqual(boundary.project.design.elements.map(el => [el.y, el.yUnit]), [
+    [200, '%'], [190, '%']
+  ]);
+  assert.match(boundary.toasts[0], /excede los límites de posición/);
+});
+
 test('distribution resolves mixed px/% units, preserves representable units, and rejects locked selections atomically', () => {
   assert.match(source, /x: finite\(raw\.x, 0, 0, raw\.xUnit === '%' \? 200 : 10000\)/);
   assert.match(source, /y: finite\(raw\.y, 0, 0, raw\.yUnit === '%' \? 200 : 10000\)/);
