@@ -14,7 +14,7 @@ for (const component of library.components) {
 assert.match(library.getComponent('contact').html, /label for=/i);
 assert.match(library.getComponent('dashboard').html, /role="progressbar"/);
 assert.equal(library.escapeHtml('<img src="x">'), '&lt;img src=&quot;x&quot;&gt;');
-console.log('Component library tests passed: searchable catalog, category filters, responsive exports and accessible starter markup.');
+
 
 
 const fragment = '<section id="inserted-component">Component</section>';
@@ -68,3 +68,31 @@ function testInsertionBeforeRealBodyClose() {
   assert.equal(library.insertComponentHtml(source, fragment), source + '\n' + fragment,
     'plaintext consumes the rest of the document, so its fake body close must not be used');
 }
+
+{
+  const source = '<html><body><template><section>fake </body></section></template><p>Real body</p></body></html>';
+  assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
+    'template contents must not be treated as active document body markup');
+}
+
+{
+  const source = '<html><body><template><template><p>nested </body></p></template></template><p>Real body</p></body></html>';
+  assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
+    'nested template contents must be skipped as a unit');
+}
+
+{
+  const source = '<html><body><template><p>incomplete </body>';
+  assert.equal(library.insertComponentHtml(source, fragment), source + '\n' + fragment,
+    'an unclosed template must use the append fallback');
+}
+
+
+
+{
+  const source = '<html><body><noscript><p>embedded </body> text</p></noscript><p>Real body</p></body></html>';
+  assert.equal(library.insertComponentHtml(source, fragment).indexOf(fragment), source.lastIndexOf('</body>'),
+    'noscript fallback markup must not be treated as the active body close');
+}
+
+console.log('Component library tests passed: searchable catalog, category filters, responsive exports, accessible markup, and HTML insertion edge cases.');
