@@ -73,6 +73,17 @@ async function main() {
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
+  const coreWorkspaceResponse = await fetch(base + '/api/workspace/init', {
+    method: 'POST',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  assert.equal(coreWorkspaceResponse.status, 200, 'PixelForge must use the same authenticated CodeLab workspace identity');
+  const coreWorkspace = await coreWorkspaceResponse.json();
+  assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
+  const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
+  assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
+  const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
   const listBefore = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal(listBefore.status, 200, 'authenticated CodeLab users should list their PixelForge projects');
   assert.deepEqual((await listBefore.json()).projects, [], 'new account should start with an empty PixelForge project list');
@@ -84,6 +95,7 @@ async function main() {
     body: JSON.stringify({ project: fixture })
   });
   assert.equal(saved.status, 201, 'first save should create a project in the account');
+  assert.ok(fs.existsSync(pixelForgeStoreFile), 'PixelForge project data should be stored under the same CodeLab workspace identity');
   const malformed = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
