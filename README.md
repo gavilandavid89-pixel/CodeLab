@@ -146,3 +146,8 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El Inspector completo se puede plegar y volver a abrir desde la barra del editor para liberar el lienzo, por ejemplo al trabajar con diagramas y conexiones de nodos.
 - Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
+
+
+## PixelForge account integration
+
+The current draft integration contract is documented in [`docs/PIXELFORGE_INTEGRATION.md`](docs/PIXELFORGE_INTEGRATION.md). CodeLab remains the identity source; PixelForge documents are stored in a separate, account-scoped namespace. The UI still needs to be packaged under the same origin before this becomes a complete user-facing integration.

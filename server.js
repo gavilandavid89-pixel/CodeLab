@@ -15,6 +15,10 @@ const designTools = require('./public/design-tools.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
+const PIXELFORGE_PROJECTS_DIR = path.join(DATA_DIR, 'pixelforge-projects');
+const MAX_PIXELFORGE_BODY_BYTES = 32 * 1024 * 1024;
+const MAX_PIXELFORGE_PROJECT_BYTES = 24 * 1024 * 1024;
+const MAX_PIXELFORGE_ACCOUNT_BYTES = 128 * 1024 * 1024;
 const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -743,7 +747,7 @@ function redirectWithCookie(res, location, setCookieValue) {
   redirect(res, location, { 'Set-Cookie': setCookieValue });
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -757,7 +761,7 @@ function readBody(req) {
     req.on('data', chunk => {
       if (tooLarge || settled) return;
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         tooLarge = true;
         chunks.length = 0;
         // Keep the request stream alive long enough to return a real HTTP 413
@@ -882,6 +886,7 @@ function serveStatic(req, res, urlPath) {
     return res.end('Not Found');
   }
   if (rel === '/' || rel === '') rel = '/index.html';
+  else if (rel.endsWith('/')) rel += 'index.html';
   const filePath = path.resolve(PUBLIC_DIR, '.' + path.sep + rel.replace(/^[/]+/, ''));
   const relToPublic = path.relative(PUBLIC_DIR, filePath);
   if (relToPublic === '..' || relToPublic.startsWith('..' + path.sep) || path.isAbsolute(relToPublic)) {
@@ -1899,6 +1904,137 @@ const server = http.createServer(async (req, res) => {
         const settings = designTools.sanitizeSettings(input);
         writeDesignSystem(id, settings);
         return sendJson(res, 200, { ok: true, settings: settings });
+      }
+
+      // PixelForge uses CodeLab's authenticated identity but keeps raster documents in a
+      // dedicated data namespace so its schema and lifecycle stay isolated from web projects.
+      const pixelForgeUser = getSessionUser(req);
+      const pixelForgeCollection = pathname === '/api/pixelforge/projects';
+      const pixelForgeItemMatch = pathname.match(/^\/api\/pixelforge\/projects\/([a-zA-Z0-9_-]{8,100})$/);
+      if (pathname === '/api/pixelforge/session' && req.method === 'GET') {
+        if (!pixelForgeUser) return sendJson(res, 401, { error: 'codelab_login_required' });
+        return sendJson(res, 200, {
+          ok: true,
+          workspaceId: userWorkspaceId(pixelForgeUser),
+          user: { provider: pixelForgeUser.provider, id: String(pixelForgeUser.id), name: pixelForgeUser.name || null, avatar: pixelForgeUser.avatar || null }
+        });
+      }
+      if ((pixelForgeCollection && req.method === 'GET') || (pixelForgeItemMatch && ['GET', 'PUT', 'DELETE'].includes(req.method))) {
+        if (!pixelForgeUser) return sendJson(res, 401, { error: 'codelab_login_required' });
+        const ownerWorkspace = safeId(userWorkspaceId(pixelForgeUser));
+        const ownerDir = path.join(PIXELFORGE_PROJECTS_DIR, ownerWorkspace);
+        const projectFile = id => path.join(ownerDir, safeId(id) + '.json');
+        try {
+          if (req.method === 'GET' && pixelForgeCollection) {
+            let entries = [];
+            try { entries = fs.readdirSync(ownerDir); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+            const projects = [];
+            for (const entry of entries) {
+              if (!/^[a-zA-Z0-9_-]{8,100}\.json$/.test(entry)) continue;
+              try {
+                const record = JSON.parse(fs.readFileSync(path.join(ownerDir, entry), 'utf8'));
+                if (record && record.version === 1 && record.project && typeof record.project.id === 'string') {
+                  projects.push({ id: record.project.id, name: String(record.project.name || 'Untitled artwork'), width: record.project.width || 0,
+                    height: record.project.height || 0, updatedAt: record.updatedAt, revision: record.revision });
+                }
+              } catch (_) { /* A corrupt document is isolated from the rest of the project list. */ }
+            }
+            projects.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+            return sendJson(res, 200, { ok: true, workspaceId: ownerWorkspace, projects });
+          }
+          if (req.method === 'GET' && pixelForgeItemMatch) {
+            const projectId = pixelForgeItemMatch[1];
+            const target = projectFile(projectId);
+            if (!fs.existsSync(target)) return sendJson(res, 404, { error: 'pixelforge_project_not_found' });
+            const record = JSON.parse(fs.readFileSync(target, 'utf8'));
+            if (!record || record.version !== 1 || record.project?.id !== projectId) return sendJson(res, 500, { error: 'pixelforge_project_corrupt' });
+            return sendJson(res, 200, { ok: true, workspaceId: ownerWorkspace, project: record.project, revision: record.revision, updatedAt: record.updatedAt });
+          }
+          if (req.method === 'DELETE' && pixelForgeItemMatch) {
+            const projectId = pixelForgeItemMatch[1];
+            const target = projectFile(projectId);
+            if (!fs.existsSync(target)) return sendJson(res, 404, { error: 'pixelforge_project_not_found' });
+            fs.unlinkSync(target);
+            return sendJson(res, 200, { ok: true });
+          }
+          if (req.method === 'PUT' && pixelForgeItemMatch) {
+            const projectId = pixelForgeItemMatch[1];
+            const body = await readBody(req, Math.max(MAX_BODY_BYTES, MAX_PIXELFORGE_BODY_BYTES));
+            const project = body && body.project;
+            if (!body || typeof body !== 'object' || Array.isArray(body) || !project || typeof project !== 'object' || Array.isArray(project) ||
+                project.format !== 'pixelforge-project' || project.version !== 1 || project.id !== projectId ||
+                typeof project.name !== 'string' || !project.name.trim() || project.name.length > 180 ||
+                !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
+                project.width < 1 || project.height < 1 || project.width > 2048 || project.height > 2048 || project.width * project.height > 4194304 ||
+                !Number.isInteger(project.revision) || project.revision < 0 || !Number.isInteger(project.saveVersion) || project.saveVersion < 0 ||
+                !Array.isArray(project.layers) || project.layers.length < 1 || project.layers.length > 64 || typeof project.activeLayerId !== 'string') {
+              return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
+            }
+            if (project.width * project.height * 4 * project.layers.length > 64 * 1024 * 1024) {
+              return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
+            }
+            const expectedPixelBase64Length = Math.ceil(project.width * project.height * 4 / 3) * 4;
+            const layerIds = new Set();
+            for (const layer of project.layers) {
+              if (!layer || typeof layer !== 'object' || Array.isArray(layer) ||
+                  typeof layer.id !== 'string' || !layer.id || layer.id.length > 180 || layerIds.has(layer.id) ||
+                  typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 180 ||
+                  typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
+                  !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
+                  typeof layer.pixels !== 'string' || layer.pixels.length !== expectedPixelBase64Length ||
+                  !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(layer.pixels)) {
+                return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
+              }
+              layerIds.add(layer.id);
+            }
+            if (!layerIds.has(project.activeLayerId)) return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
+            if (body.workspaceId !== ownerWorkspace) return sendJson(res, 409, { error: 'pixelforge_account_changed' });
+            const serialized = JSON.stringify(project);
+            if (Buffer.byteLength(serialized, 'utf8') > MAX_PIXELFORGE_PROJECT_BYTES) return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
+            fs.mkdirSync(ownerDir, { recursive: true, mode: 0o700 });
+            try { fs.chmodSync(ownerDir, 0o700); } catch (_) {}
+            const target = projectFile(projectId);
+            let previous = null;
+            try { previous = JSON.parse(fs.readFileSync(target, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') return sendJson(res, 500, { error: 'pixelforge_project_corrupt' }); }
+            const currentRevision = previous?.revision || 0;
+            if (previous && body.baseRevision !== currentRevision) {
+              return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: currentRevision });
+            }
+            if (!previous && body.baseRevision != null && body.baseRevision !== 0) {
+              return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: 0 });
+            }
+            if (!previous) {
+              let entries = [];
+              try { entries = fs.readdirSync(ownerDir); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+              const projectEntries = entries.filter(entry => /^[a-zA-Z0-9_-]{8,100}\.json$/.test(entry));
+              if (projectEntries.length >= MAX_PROJECTS) return sendJson(res, 409, { error: 'pixelforge_project_limit', maxProjects: MAX_PROJECTS });
+            }
+            const record = { version: 1, revision: currentRevision + 1, updatedAt: new Date().toISOString(), project };
+            let accountBytes = 0;
+            let entries = [];
+            try { entries = fs.readdirSync(ownerDir); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+            for (const entry of entries) {
+              if (!/^[a-zA-Z0-9_-]{8,100}\.json$/.test(entry) || entry === projectId + '.json') continue;
+              try { accountBytes += fs.statSync(path.join(ownerDir, entry)).size; } catch (_) {}
+            }
+            accountBytes += Buffer.byteLength(JSON.stringify(record), 'utf8');
+            if (accountBytes > MAX_PIXELFORGE_ACCOUNT_BYTES) return sendJson(res, 413, { error: 'pixelforge_account_storage_limit', maxBytes: MAX_PIXELFORGE_ACCOUNT_BYTES });
+            const tmp = target + '.tmp-' + crypto.randomBytes(6).toString('hex');
+            try {
+              fs.writeFileSync(tmp, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 });
+              fs.renameSync(tmp, target);
+            } catch (error) {
+              try { fs.unlinkSync(tmp); } catch (_) {}
+              throw error;
+            }
+            return sendJson(res, 200, { ok: true, workspaceId: ownerWorkspace, revision: record.revision, updatedAt: record.updatedAt });
+          }
+        } catch (error) {
+          if (error.code === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { error: 'pixelforge_project_too_large' });
+          if (error.code === 'INVALID_JSON') return sendJson(res, 400, { error: 'invalid_json' });
+          console.error('pixelforge_storage_failed', error.message);
+          return sendJson(res, 500, { error: 'pixelforge_storage_failed' });
+        }
       }
 
       // Workspace init

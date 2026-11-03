@@ -33,6 +33,7 @@ jobs:
           node --check public/design-flow.js
           node --check public/component-library.js
           node --check .github/scripts/codelab-bridge.mjs
+          node --check scripts/sync-pixelforge.mjs
           node --check tests/assistant-tools-contract.test.js
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
@@ -123,6 +124,7 @@ jobs:
             sleep 1
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/pixelforge-account.e2e.test.js
           node tests/account-isolation.e2e.test.js
       - name: Smoke test API and Groq model normalization
         shell: bash
