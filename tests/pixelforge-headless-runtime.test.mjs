@@ -759,7 +759,12 @@ test('Headless proposal diff reports exact changed animation cel pixels and boun
 
 test('Headless proposal diff reports animation timing, FPS, loop and active-frame metadata changes', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
-  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'A', durationMs: 100 });
+  // Establish a persisted baseline timeline first so the diff measures a real
+  // duration update, rather than treating a newly-created frame as an update.
+  const initial = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'A', durationMs: 100 });
+  assert.equal(initial.ok, true);
+  runtime.createProposal('Initialize animation timeline');
+  assert.equal(runtime.acceptProposal().status, 'applied');
   runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
   runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
   runtime.execute({ name: 'animation.set_fps', fps: 24 });
