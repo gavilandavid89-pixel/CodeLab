@@ -410,7 +410,7 @@ export class PixelForgeAnimation {
       throw new RangeError(`Animation must contain 1–${MAX_ANIMATION_FRAMES} frames.`);
     }
     if (data.frames.length * data.layerIds.length * byteLength > MAX_ANIMATION_BYTES) {
-      throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+      throw new RangeError('Animation exceeds PixelForge’s 256 MiB animation-memory budget.');
     }
     if (!Number.isInteger(data.activeFrameIndex) || data.activeFrameIndex < 0 || data.activeFrameIndex >= data.frames.length) {
       throw new RangeError('Active animation frame index is outside the timeline.');
@@ -461,7 +461,7 @@ export class PixelForgeAnimation {
 
   #assertMemoryBudget() {
     if (this.memoryBytes > MAX_ANIMATION_BYTES) {
-      throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+      throw new RangeError('Animation exceeds PixelForge’s 256 MiB animation-memory budget.');
     }
   }
 }
