@@ -27,11 +27,26 @@ async function main() {
       const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
       await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: base }]);
       const page = await context.newPage();
+      const pageErrors = [];
+      page.on('pageerror', error => pageErrors.push(error.message));
       await page.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
-      await page.waitForFunction(() => {
-        const status = document.querySelector('#status')?.textContent || '';
-        return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
-      }, null, { timeout: 15000 });
+      const authResponse = await page.request.get(base + '/api/auth/status');
+      const authStatus = await authResponse.json();
+      assert.ok(authStatus.user, viewport.label + ': the test session must be accepted by /api/auth/status; got ' + JSON.stringify(authStatus));
+      try {
+        await page.waitForFunction(() => {
+          const status = document.querySelector('#status')?.textContent || '';
+          return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
+        }, null, { timeout: 15000 });
+      } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+          status: document.querySelector('#status')?.textContent || null,
+          bodyText: document.body.innerText.slice(0, 1200),
+          canvasCount: document.querySelectorAll('#canvas').length
+        }));
+        throw new Error(viewport.label + ': PixelForge boot did not reach ready state; diagnostics=' +
+          JSON.stringify({ authUser: authStatus.user, diagnostics, pageErrors }) + '; cause=' + error.message);
+      }
 
       assert.equal(await page.locator('#files-tab').isVisible(), true, viewport.label + ': Files tab should be visible');
       await page.locator('#files-tab').click();
