@@ -652,7 +652,7 @@ test('canvas reference exposes stable pixel coordinates, landmarks, grid and lay
   assert.deepEqual(result.result.landmarks.center, { x: 8, y: 6 });
   assert.deepEqual(result.result.grid.xLines, [0, 4, 8, 12, 15]);
   assert.deepEqual(result.result.grid.yLines, [0, 4, 8, 11]);
-  assert.equal(result.result.activeLayer.id, runtime.document.activeLayerId);
+  assert.equal(result.result.activeLayer.id, runtime.workspace.sandbox.activeLayerId);
   assert.equal(runtime.hasPendingChanges, false);
   assert.equal(runtime.toJSON().revision, 0);
 });
