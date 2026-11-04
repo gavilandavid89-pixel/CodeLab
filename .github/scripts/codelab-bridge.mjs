@@ -1474,7 +1474,7 @@ try {
       sheet: manifest.sheet,
       frameSize: manifest.frameSize,
       files: { spriteSheet: spriteSheetPath, manifest: manifestPath },
-      artifactName: 'codelab-ui-evidence-' + process.env.GITHUB_RUN_ID,
+      artifactName: 'pixelforge-animation-' + process.env.GITHUB_RUN_ID,
       artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID,
       projectPersisted: false,
     };
