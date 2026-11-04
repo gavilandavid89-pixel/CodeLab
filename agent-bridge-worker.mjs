@@ -480,6 +480,45 @@ async function inspectCodeLabProject(command) {
   };
 }
 
+function renderProjectSvg(project) {
+  const width = Number(project?.width), height = Number(project?.height);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > 1048576) throw new Error('Project dimensions are invalid for image export.');
+  if (!Array.isArray(project.layers) || !project.layers.length) throw new Error('Project has no raster layers.');
+  const layerMarkup = [];
+  for (const layer of project.layers) {
+    if (!layer || layer.visible === false) continue;
+    const opacity = Math.max(0, Math.min(1, Number(layer.opacity ?? 1)));
+    if (!opacity) continue;
+    const pixels = Buffer.from(String(layer.pixels || ''), 'base64');
+    if (pixels.length !== width * height * 4) throw new Error('A raster layer has an invalid RGBA buffer.');
+    const paths = new Map();
+    for (let y = 0; y < height; y++) {
+      let x = 0;
+      while (x < width) {
+        const offset = (y * width + x) * 4, alpha = pixels[offset + 3] / 255;
+        if (!alpha) { x++; continue; }
+        const red = pixels[offset], green = pixels[offset + 1], blue = pixels[offset + 2];
+        const color = '#' + [red, green, blue].map(value => value.toString(16).padStart(2, '0')).join('');
+        const combinedOpacity = Math.round(alpha * opacity * 10000) / 10000, key = color + ':' + combinedOpacity;
+        let run = 1;
+        while (x + run < width) {
+          const next = (y * width + x + run) * 4, nextAlpha = pixels[next + 3] / 255;
+          if (!nextAlpha || pixels[next] !== red || pixels[next + 1] !== green || pixels[next + 2] !== blue ||
+              Math.round(nextAlpha * opacity * 10000) / 10000 !== combinedOpacity) break;
+          run++;
+        }
+        if (!paths.has(key)) paths.set(key, { color, opacity: combinedOpacity, commands: [] });
+        paths.get(key).commands.push('M' + x + ' ' + y + 'h' + run + 'v1h-' + run + 'z');
+        x += run;
+      }
+    }
+    const pathMarkup = [...paths.values()].map(item => '<path fill="' + item.color + '" fill-opacity="' + item.opacity + '" d="' + item.commands.join('') + '"/>').join('');
+    layerMarkup.push('<g>' + pathMarkup + '</g>');
+  }
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" shape-rendering="crispEdges">' + layerMarkup.join('') + '</svg>';
+  return { svg, width, height };
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   if (new Date(command.expires_at).getTime() < Date.now()) {
@@ -518,6 +557,23 @@ async function processCommand(command) {
         inspection: compactInspection(runtime.inspect()),
         serverRevision: loaded.serverRevision,
         contentSha256: loaded.contentSha256,
+      });
+      return;
+    }
+    case 'pixelforge_export_image': {
+      assertProjectId(payload.project_id);
+      const loaded = await loadProject(payload.project_id);
+      const rendered = renderProjectSvg(loaded.project);
+      await finish(command.command_id, 'succeeded', {
+        projectId: payload.project_id,
+        serverRevision: loaded.serverRevision,
+        width: rendered.width,
+        height: rendered.height,
+        image: {
+          mimeType: 'image/svg+xml',
+          fileName: String(loaded.project.name || 'pixelforge-artwork').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 80) + '.svg',
+          dataBase64: Buffer.from(rendered.svg, 'utf8').toString('base64'),
+        },
       });
       return;
     }
