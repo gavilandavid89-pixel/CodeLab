@@ -184,7 +184,7 @@ async function main() {
             summary: 'Headless adds a raster mark and a third animation frame',
             actions: [
               { name: 'canvas.draw_line', x0: 2, y0: 2, x1: 8, y1: 2, color: '#16C784', size: 2 },
-              { name: 'animation.frame.duplicate', index: 1 },
+              { name: 'animation.frame.capture_document', durationMs: 150, frameName: 'Headless pose' },
               { name: 'animation.frame.set_active', index: 2 },
               { name: 'animation.frame.set_duration', index: 2, durationMs: 150 },
               { name: 'animation.set_fps', fps: 18 },
@@ -213,8 +213,19 @@ async function main() {
         assert.equal(headlessResult.animation.fps, 18, 'Headless animation timing changes must persist');
         assert.equal(headlessResult.animation.loop, false, 'Headless loop changes must persist');
         assert.equal(headlessResult.animation.frames[2].durationMs, 150, 'Headless frame duration must persist');
-        assert.ok(Buffer.from(headlessResult.rasterPixels, 'base64').some(value => value !== 0),
-          'Headless raster edits must be present in the saved visual project');
+        const savedRaster = Buffer.from(savedProject.layers[0].pixels, 'base64');
+        const headlessRaster = Buffer.from(headlessResult.rasterPixels, 'base64');
+        assert.notDeepEqual(headlessRaster, savedRaster, 'Headless drawing must change the same raster layer saved by the visual editor');
+        const headlessFramePixels = Buffer.from(headlessResult.headlessFramePixels, 'base64');
+        let capturedHeadlessColor = false;
+        for (let offset = 0; offset < headlessFramePixels.length; offset += 4) {
+          if (headlessFramePixels[offset] === 22 && headlessFramePixels[offset + 1] === 199 &&
+              headlessFramePixels[offset + 2] === 132 && headlessFramePixels[offset + 3] === 255) {
+            capturedHeadlessColor = true;
+            break;
+          }
+        }
+        assert.ok(capturedHeadlessColor, 'Headless animation capture must include the new raster artwork in its third frame');
 
         // A fresh editor session must reconstruct the timeline from the account-backed project.
         await page.reload({ waitUntil: 'networkidle' });
