@@ -90,7 +90,7 @@ export class AICommandSession {
     if (DENIED_ACTIONS.has(action.name)) {
       return { ok: false, error: { code: 'permission_denied', message: 'AI tools cannot delete, export, upload, or publish a project.' } };
     }
-    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_pixel', 'canvas.preview_transform_region', 'selection.clear']);
+    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_pixel', 'canvas.preview_transform_region']);
     if (this.#workspace.hasProposal && !readOnlyActions.has(action.name)) {
       return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more sandbox edits.' } };
     }
@@ -349,10 +349,6 @@ export class AICommandSession {
           result = { changedPixels: transformed.changedPixels, selectedPixels: transformed.selectedPixels, bounds: transformed.bounds };
           break;
         }
-        case 'selection.clear':
-          doc.setSelectionMask(null);
-          result = { cleared: true };
-          break;
         case 'selection.clear': {
           const cleared = Boolean(doc.selectionMask);
           doc.setSelectionMask(null);
