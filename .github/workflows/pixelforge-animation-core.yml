@@ -5,7 +5,11 @@ on:
     branches: ["feat/pixelforge-animation-core", "feat/pixelforge-hq-capacity"]
     paths:
       - "public/pixelforge/src/animation.mjs"
-      - "tests/pixelforge-animation.test.mjs"\n      - "tests/pixelforge-zip-export.test.mjs"\n      - "public/pixelforge/src/zip-export.js"\n      - "public/pixelforge/src/editor.js"\n      - "public/pixelforge/index.html"
+      - "tests/pixelforge-animation.test.mjs"
+      - "tests/pixelforge-zip-export.test.mjs"
+      - "public/pixelforge/src/zip-export.js"
+      - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/index.html"
       - ".github/workflows/pixelforge-animation-core.yml"
       - "server.js"
       - "public/pixelforge/src/core.js"
@@ -17,6 +21,10 @@ on:
     paths:
       - "public/pixelforge/src/animation.mjs"
       - "tests/pixelforge-animation.test.mjs"
+      - "tests/pixelforge-zip-export.test.mjs"
+      - "public/pixelforge/src/zip-export.js"
+      - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/index.html"
       - ".github/workflows/pixelforge-animation-core.yml"
       - "public/pixelforge/src/core.js"
 
@@ -33,12 +41,16 @@ jobs:
           node-version: "20"
       - name: Validate animation and persistence module syntax
         run: |
-          node --check public/pixelforge/src/animation.mjs\n          node --experimental-default-type=module --check public/pixelforge/src/zip-export.js\n          node --input-type=module --check < public/pixelforge/src/editor.js
+          node --check public/pixelforge/src/animation.mjs
+          node --experimental-default-type=module --check public/pixelforge/src/zip-export.js
+          node --input-type=module --check < public/pixelforge/src/editor.js
           node --input-type=module --check < public/pixelforge/src/persistence.js
           node --check pixelforge-upload-store.js
           node --check server.js
           node --check tests/pixelforge-integration.test.js
       - name: Test frame timeline model
         run: node --test tests/pixelforge-animation.test.mjs
+      - name: Test ZIP archive export
+        run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
       - name: Guard original editor feature parity
         run: node --test tests/pixelforge-feature-parity.test.mjs
