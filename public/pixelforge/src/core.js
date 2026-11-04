@@ -235,7 +235,7 @@ export class RasterDocument {
     this.history = [];
     this.future = [];
     this.maxHistory = 30;
-    this.maxHistoryBytes = 64 * 1024 * 1024;
+    this.maxHistoryBytes = 256 * 1024 * 1024;
     this.historyBytes = 0;
     this.dirty = false;
     this.selectionMask = null;
