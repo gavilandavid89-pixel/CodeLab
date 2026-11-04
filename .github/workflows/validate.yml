@@ -27,6 +27,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check server.js
+          node --check pixelforge-upload-store.js
           node --check public/app.js
           node --check public/capture.js
           node --check public/design-tools.js
