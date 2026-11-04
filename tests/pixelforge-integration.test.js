@@ -614,7 +614,7 @@ async function main() {
     const animationSheetDownloadPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#animation-export-sheet').click();
     const animationSheetDownload = await animationSheetDownloadPromise;
-    assert.match(animationSheetDownload.suggestedFilename(), /-animation-sheet\\.zip$/);
+    assert.match(animationSheetDownload.suggestedFilename(), /-animation-sheet\.zip$/);
     const animationSheetEntries = await readZipDownload(animationSheetDownload);
     assert.ok(animationSheetEntries.has('animation-manifest.json'));
     assert.ok([...animationSheetEntries.keys()].some(name => name.endsWith('-animation.png')));
@@ -629,7 +629,7 @@ async function main() {
     const projectBackupPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#export-project').click();
     const projectBackupDownload = await projectBackupPromise;
-    assert.match(projectBackupDownload.suggestedFilename(), /-animation\\.zip$/);
+    assert.match(projectBackupDownload.suggestedFilename(), /-animation\.zip$/);
     const projectBackupEntries = await readZipDownload(projectBackupDownload);
     const projectBackupEntry = [...projectBackupEntries.values()].find(entry => entry.name.endsWith('.pforge'));
     assert.ok(projectBackupEntry, 'the project ZIP must contain an editable .pforge source file');
@@ -640,7 +640,7 @@ async function main() {
     const layerSheetDownloadPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#export-sprite-sheet').click();
     const layerSheetDownload = await layerSheetDownloadPromise;
-    assert.match(layerSheetDownload.suggestedFilename(), /-spritesheet\\.zip$/);
+    assert.match(layerSheetDownload.suggestedFilename(), /-spritesheet\.zip$/);
     const layerSheetEntries = await readZipDownload(layerSheetDownload);
     const layerManifestEntry = layerSheetEntries.get('spritesheet-manifest.json');
     assert.ok(layerManifestEntry, 'layer sprite-sheet ZIP must include its JSON manifest');
