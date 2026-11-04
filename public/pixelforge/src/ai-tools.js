@@ -151,8 +151,8 @@ export class AICommandSession {
         case 'canvas.get_region': {
           const { x, y, width, height } = action;
           rectangle(doc, x, y, width, height);
-          if (width > 128 || height > 128 || width * height > 16384) {
-            throw new RangeError('Region reads are limited to 128 × 128 pixels (16,384 pixels total).');
+          if (width > 32 || height > 32 || width * height > 1024) {
+            throw new RangeError('Region reads are limited to 32 × 32 pixels (1,024 pixels total) so agent responses remain complete.');
           }
           const merged = action.merged ?? true;
           if (typeof merged !== 'boolean') throw new TypeError('merged must be a boolean.');
