@@ -14,6 +14,8 @@ export class HeadlessEditorRuntime {
   #animation;
   #sandboxAnimation;
   #animationDirty = false;
+  #animationHistory = [];
+  #animationFuture = [];
   #hasAnimation = false;
 
   constructor({ width = 128, height = 128, name = 'Untitled artwork', project = null } = {}) {
@@ -30,6 +32,8 @@ export class HeadlessEditorRuntime {
     this.#commands = new AICommandSession(this.#workspace);
     this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
+    this.#animationHistory = [];
+    this.#animationFuture = [];
   }
 
   get document() { return this.#document; }
@@ -44,10 +48,31 @@ export class HeadlessEditorRuntime {
         return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more animation edits.' } };
       }
       try {
+        if (action.name === 'animation.undo') {
+          if (!this.#animationHistory.length) return { ok: true, action: action.name, result: { changed: false } };
+          this.#animationFuture.push(JSON.parse(JSON.stringify(this.#sandboxAnimation)));
+          this.#sandboxAnimation = this.#animationHistory.pop();
+          this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
+          return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
+        }
+        if (action.name === 'animation.redo') {
+          if (!this.#animationFuture.length) return { ok: true, action: action.name, result: { changed: false } };
+          this.#animationHistory.push(JSON.parse(JSON.stringify(this.#sandboxAnimation)));
+          this.#sandboxAnimation = this.#animationFuture.pop();
+          this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
+          return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
+        }
+        const before = JSON.parse(JSON.stringify(this.#sandboxAnimation));
         const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, action);
+        const changed = JSON.stringify(before) !== JSON.stringify(outcome.timeline);
+        if (changed) {
+          this.#animationHistory.push(before);
+          if (this.#animationHistory.length > 100) this.#animationHistory.shift();
+          this.#animationFuture = [];
+        }
         this.#sandboxAnimation = outcome.timeline;
-        this.#animationDirty = this.#animationDirty || outcome.changed;
-        return { ok: true, action: action.name, result: outcome.result };
+        this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
+        return { ok: true, action: action.name, result: { ...outcome.result, changed } };
       } catch (error) {
         return { ok: false, action: action.name, error: {
           code: error instanceof RangeError ? 'out_of_bounds_or_limit' : error instanceof TypeError ? 'invalid_arguments' : 'operation_failed',
@@ -113,6 +138,8 @@ export class HeadlessEditorRuntime {
         this.#animation = JSON.parse(JSON.stringify(this.#sandboxAnimation));
         this.#hasAnimation = true;
         this.#animationDirty = false;
+        this.#animationHistory = [];
+        this.#animationFuture = [];
       }
       if (!hadRasterChanges && hadAnimationChanges) {
         this.#document.revision++;
@@ -128,6 +155,8 @@ export class HeadlessEditorRuntime {
     const discarded = this.#workspace.discardProposal();
     this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
+    this.#animationHistory = [];
+    this.#animationFuture = [];
     return discarded || hadAnimationChanges;
   }
   discardSandboxChanges() {
@@ -135,6 +164,8 @@ export class HeadlessEditorRuntime {
     const discarded = this.#workspace.discardSandboxChanges();
     this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
+    this.#animationHistory = [];
+    this.#animationFuture = [];
     return discarded || hadAnimationChanges;
   }
   syncFromSource(options) {
@@ -142,6 +173,8 @@ export class HeadlessEditorRuntime {
     if (result.status === 'synced') {
       this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
       this.#animationDirty = false;
+      this.#animationHistory = [];
+      this.#animationFuture = [];
     }
     return result;
   }
