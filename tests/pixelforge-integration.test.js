@@ -621,7 +621,7 @@ async function main() {
     let checkerOrigin = null;
     for (let y = 0; y < beforeCheckerFill.height && !checkerOrigin; y++) {
       for (let x = 0; x < beforeCheckerFill.width - 1; x++) {
-        if (rgbaAt(beforeCheckerFill, x, y, 2)[3] === 0 && rgbaAt(beforeCheckerFill, x + 1, y, 2)[3] === 0) {
+        if ((x + y) % 2 === 0 && rgbaAt(beforeCheckerFill, x, y, 2)[3] === 0 && rgbaAt(beforeCheckerFill, x + 1, y, 2)[3] === 0) {
           checkerOrigin = { x, y }; break;
         }
       }
