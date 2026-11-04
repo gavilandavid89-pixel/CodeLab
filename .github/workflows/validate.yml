@@ -35,6 +35,8 @@ jobs:
           node --check public/component-library.js
           node --check .github/scripts/codelab-bridge.mjs
           node --experimental-default-type=module --check public/pixelforge/src/headless-vision.js
+          node --experimental-default-type=module --check public/pixelforge/src/zip-export.js
+          node --input-type=module --check < public/pixelforge/src/editor.js
           node --check tests/pixelforge-headless-vision.test.mjs
           node --check tests/assistant-tools-contract.test.js
           node --check tests/server-resilience.test.js
@@ -49,6 +51,8 @@ jobs:
           node --check tests/pixelforge-integration.test.js
       - name: Test PixelForge animation model and UI–Headless contract
         run: node --test tests/pixelforge-animation.test.mjs
+      - name: Test PixelForge ZIP export package
+        run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
       - name: Test PixelForge Headless runtime, authenticated bridge and vision
         run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs tests/pixelforge-headless-vision.test.mjs
       - name: Check assistant project lifecycle tool contracts
