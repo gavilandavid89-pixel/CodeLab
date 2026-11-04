@@ -637,16 +637,13 @@ async function main() {
     assert.equal(exportedProject.animation.frames.length, 2, 'portable ZIP export must include the complete animation timeline');
     assert.equal(exportedProject.animation.loop, false, 'portable ZIP export must preserve the loop setting');
 
-    const zipImportResponsePromise = accountPage.waitForResponse(response =>
-      response.url().includes('/api/pixelforge/projects') && response.request().method() === 'PUT');
     const projectBackupPath = await projectBackupDownload.path();
     await accountPage.locator('#import-file').setInputFiles({
       name: 'animation-backup.zip',
       mimeType: 'application/zip',
       buffer: fs.readFileSync(projectBackupPath),
     });
-    const zipImportResponse = await zipImportResponsePromise;
-    assert.equal(zipImportResponse.status(), 200, 'the editor should reopen the editable project directly from its ZIP package');
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Import complete and saved'));
     const reimportedProject = await readSavedArtwork();
     assert.equal(reimportedProject.animation.frames.length, 2, 'ZIP reimport should restore every animation frame');
     assert.equal(reimportedProject.animation.loop, false, 'ZIP reimport should restore the animation loop setting');
