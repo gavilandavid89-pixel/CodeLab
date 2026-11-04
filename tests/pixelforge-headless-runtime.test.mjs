@@ -766,8 +766,10 @@ test('Headless proposal diff reports animation timing, FPS, loop and active-fram
   runtime.createProposal('Initialize animation timeline');
   assert.equal(runtime.acceptProposal().status, 'applied');
   runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
-  runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
+  // FPS normalizes all frame durations, so apply the explicit per-frame timing
+  // after changing FPS to verify that the diff retains the intended 240 ms.
   runtime.execute({ name: 'animation.set_fps', fps: 24 });
+  runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
   runtime.execute({ name: 'animation.set_loop', loop: false });
   runtime.execute({ name: 'animation.frame.set_active', index: 1 });
   const diff = runtime.getDiff();
