@@ -709,10 +709,11 @@ async function main() {
       'selection-outline controls should move the mask without changing artwork pixels');
 
     // View controls should update their UI state without modifying saved artwork.
+    await accountPage.locator('#zoom-out').click();
     const zoomBefore = await accountPage.locator('#zoom-label').innerText();
     await accountPage.locator('#zoom-in').click();
     assert.notEqual(await accountPage.locator('#zoom-label').innerText(), zoomBefore,
-      'zoom-in should increase the visible canvas zoom');
+      'zoom-in should increase the visible canvas zoom after moving below its maximum');
     await accountPage.locator('#zoom-out').click();
     await accountPage.locator('#fit').click();
     await accountPage.locator('#grid-toggle').click();
