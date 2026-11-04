@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   requestPixelForgeVisionConsent,
   preparePixelForgeVisionRequest,
+  capturePixelForgeArtworkDataUrl,
   PIXELFORGE_VISION_CONSENT_TTL_MS,
 } from '../public/pixelforge/src/pixelforge-vision.js';
 
@@ -133,4 +134,49 @@ test('checks PNG signature and decoded dimensions instead of trusting the data U
   assert.throws(() => preparePixelForgeVisionRequest({
     consent: nextConsent, projectId: 'project-1', artworkImage: pngHeader(8193, 1),
   }), /dimensions exceed/);
+});
+
+test('captures only the raster composite through an injected canvas without reading editor UI', () => {
+  const pixels = new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]);
+  let written = null, canvasSize = null;
+  const dataUrl = capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 2, height: 1, composite: () => pixels },
+    canvasFactory: () => ({
+      width: 0, height: 0,
+      getContext(type, options) {
+        assert.equal(type, '2d');
+        assert.equal(options.alpha, true);
+        return {
+          createImageData(width, height) {
+            return { width, height, data: new Uint8ClampedArray(width * height * 4) };
+          },
+          putImageData(imageData, x, y) {
+            written = [...imageData.data];
+            canvasSize = [imageData.width, imageData.height, x, y];
+          },
+        };
+      },
+      toDataURL(type) {
+        assert.equal(type, 'image/png');
+        return PNG;
+      },
+    }),
+  });
+  assert.equal(dataUrl, PNG);
+  assert.deepEqual(written, [...pixels]);
+  assert.deepEqual(canvasSize, [2, 1, 0, 0]);
+});
+
+test('rejects invalid raster dimensions, pixel lengths and missing canvas capability', () => {
+  assert.throws(() => capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 0, height: 1, composite: () => new Uint8Array(0) },
+    canvasFactory: () => ({}),
+  }), /canvas limits/);
+  assert.throws(() => capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 2, height: 2, composite: () => new Uint8Array(4) },
+    canvasFactory: () => ({}),
+  }), /pixel length/);
+  assert.throws(() => capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 1, height: 1, composite: () => new Uint8Array(4) },
+  }), /canvas factory/);
 });
