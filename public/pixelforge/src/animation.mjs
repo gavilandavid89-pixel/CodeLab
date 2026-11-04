@@ -7,6 +7,22 @@
  */
 export const MAX_ANIMATION_FRAMES = 240;
 export const MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
+export const MAX_ANIMATION_JSON_BYTES = 112 * 1024 * 1024;
+const ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024;
+
+// Conservative preflight for the current base64 JSON representation. The
+// reserve covers frame/layer metadata; the remaining 16 MiB below the server's
+// 128 MiB project cap is left for the project envelope and server revision.
+export function estimateAnimationJSONBytes({ width, height, layerCount, frameCount }) {
+  assertDimensions(width, height);
+  if (!Number.isInteger(layerCount) || layerCount < 1 || layerCount > 64 ||
+      !Number.isInteger(frameCount) || frameCount < 1 || frameCount > MAX_ANIMATION_FRAMES) {
+    throw new RangeError('Animation layer/frame counts are outside the supported limits.');
+  }
+  const rawBytes = width * height * 4 * layerCount * frameCount;
+  const base64Bytes = Math.ceil(rawBytes / 3) * 4;
+  return base64Bytes + ANIMATION_JSON_METADATA_RESERVE_BYTES;
+}
 export const MIN_FRAME_DURATION_MS = 1;
 export const MAX_FRAME_DURATION_MS = 10_000;
 export const MIN_ANIMATION_FPS = 1;
@@ -177,6 +193,9 @@ export class PixelForgeAnimation {
   get layerIds() { return [...this.#layerIds]; }
   get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
   get memoryBytes() { return this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4; }
+  get estimatedJSONBytes() {
+    return estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
+  }
 
   getFrame(index) {
     const frame = this.#frameAt(index);
@@ -378,6 +397,9 @@ export class PixelForgeAnimation {
   }
 
   toJSON() {
+    if (this.estimatedJSONBytes > MAX_ANIMATION_JSON_BYTES) {
+      throw new RangeError('Animation JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
+    }
     return {
       format: 'pixelforge-animation',
       version: 1,
@@ -462,6 +484,9 @@ export class PixelForgeAnimation {
   #assertMemoryBudget() {
     if (this.memoryBytes > MAX_ANIMATION_BYTES) {
       throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+    }
+    if (this.estimatedJSONBytes > MAX_ANIMATION_JSON_BYTES) {
+      throw new RangeError('Animation JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
     }
   }
 }
