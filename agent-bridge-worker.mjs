@@ -299,6 +299,9 @@ async function processCommand(command) {
         approvalRequired: true, persistence: 'PostgreSQL',
       });
       return;
+    case 'pixelforge_create':
+      await finish(command.command_id, 'succeeded', await createProject(payload));
+      return;
     case 'pixelforge_list':
       await finish(command.command_id, 'succeeded', await listProjects());
       return;
