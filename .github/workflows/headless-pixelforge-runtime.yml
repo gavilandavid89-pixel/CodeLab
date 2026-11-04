@@ -10,6 +10,7 @@ on:
       - "tests/pixelforge-headless-runtime.test.mjs"
       - "tests/pixelforge-headless-bridge.test.mjs"
       - "tests/pixelforge-agent-bridge-contract.test.mjs"
+      - "tests/pixelforge-headless-vision.test.mjs"
       - ".github/scripts/codelab-bridge.mjs"
       - ".github/workflows/headless-pixelforge-runtime.yml"
 
