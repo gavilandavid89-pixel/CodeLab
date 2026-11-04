@@ -161,7 +161,10 @@ test('renders memory-bounded animation thumbnails without allocating full-resolu
   const ink = new Uint8ClampedArray(16);
   ink.set([255, 0, 0, 255], 0);
   timeline.setLayerPixels(0, 'ink', ink);
-  const thumbnail = timeline.compositeThumbnail(0, null, 16);
+  const thumbnail = timeline.compositeThumbnail(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: false, opacity: 1 },
+  ], 16);
   assert.equal(thumbnail.width, 2);
   assert.equal(thumbnail.height, 2);
   assert.deepEqual([...thumbnail.pixels.slice(0, 4)], [255, 0, 0, 255]);
