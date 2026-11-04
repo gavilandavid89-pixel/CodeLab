@@ -2,16 +2,20 @@ name: PixelForge mobile UI
 
 on:
   push:
-    branches: ["fix/**", "feat/**"]
+    branches: ["fix/**", "feat/**", "integration/**"]
     paths:
       - "public/pixelforge/**"
       - "server.js"
       - "tests/pixelforge-animation.test.mjs"
       - "tests/pixelforge-mobile-ui.test.js"
       - "tests/pixelforge-mobile-browser.test.js"
+      - "tests/pixelforge-headless-runtime.test.mjs"
+      - "tests/pixelforge-headless-bridge.test.mjs"
+      - "public/pixelforge/src/headless.js"
+      - "public/pixelforge/src/headless-bridge.js"
       - ".github/workflows/pixelforge-mobile-ui.yml"
   pull_request:
-    branches: ["feat/codelab-pixelforge-studio-entry-clean"]
+    branches: ["main", "feat/codelab-pixelforge-studio-entry-clean"]
     paths:
       - "public/pixelforge/**"
       - "server.js"
