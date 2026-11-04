@@ -616,6 +616,108 @@ async function main() {
     assert.notEqual(toolProject.layers.at(-1).id, duplicatedLayerId,
       'layer reorder should change the persisted layer stack order');
 
+    // Global checker fill should paint both foreground/background cells across matching pixels.
+    await setForegroundColor('#ff0000');
+    await accountPage.locator('#fill-mode').selectOption('global');
+    await accountPage.locator('#fill-pattern').selectOption('checker');
+    await accountPage.locator('#fill-scale').evaluate(input => {
+      input.value = '1';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await accountPage.locator('#fill-tool').click();
+    await clickPixel(0, 0);
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 0, 0, 2), [255, 0, 0, 255],
+      'global checker fill should use foreground color on the first checker cell');
+    assert.deepEqual(rgbaAt(toolProject, 1, 0, 2), [36, 38, 50, 255],
+      'global checker fill should use background color on the alternating cell');
+    await accountPage.locator('#fill-mode').selectOption('contiguous');
+    await accountPage.locator('#fill-pattern').selectOption('solid');
+
+    // Symmetry mode 2 mirrors a brush stroke across the vertical document axis.
+    await setForegroundColor('#00ff00');
+    await accountPage.locator('#symmetry-mode').selectOption('2');
+    await accountPage.locator('#brush-tool').click();
+    await clickPixel(2, 4);
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 2, 4, 2), [0, 255, 0, 255],
+      'symmetry should draw the source brush pixel');
+    assert.deepEqual(rgbaAt(toolProject, 9, 4, 2), [0, 255, 0, 255],
+      'two-part symmetry should draw the mirrored brush pixel');
+    await accountPage.locator('#symmetry-mode').selectOption('0');
+
+    // Color replacement and flips must alter persisted raster buffers.
+    await accountPage.locator('#replace-source').evaluate(input => {
+      input.value = '#ff8800';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await setForegroundColor('#113355');
+    await accountPage.locator('#replace-color').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 3, 2, 2), [17, 51, 85, 255],
+      'replace-color should replace exact source-color pixels on the active layer');
+    await accountPage.locator('#flip-horizontal').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 8, 2, 2), [17, 51, 85, 255],
+      'horizontal flip should mirror the replaced pixel to the opposite canvas coordinate');
+    await accountPage.locator('#flip-horizontal').click();
+    await waitForRasterSave();
+
+    // Ellipse and lasso selection modes should both create usable selection masks.
+    await accountPage.locator('#ellipse-select-tool').click();
+    const ellipseSelectionBox = await canvasLocator.boundingBox();
+    const ellipseSelectionStart = await pixelPosition(2, 1), ellipseSelectionEnd = await pixelPosition(6, 5);
+    await accountPage.mouse.move(ellipseSelectionBox.x + ellipseSelectionStart.x, ellipseSelectionBox.y + ellipseSelectionStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(ellipseSelectionBox.x + ellipseSelectionEnd.x, ellipseSelectionBox.y + ellipseSelectionEnd.y, { steps: 6 });
+    await accountPage.mouse.up();
+    assert.match(await accountPage.locator('#status').innerText(), /Selected 5 × 5 pixels/,
+      'elliptical selection should create a bounded mask');
+
+    await accountPage.locator('#lasso-select-tool').click();
+    const lassoBox = await canvasLocator.boundingBox();
+    const lassoPoints = [[1, 1], [5, 1], [5, 5], [1, 5], [1, 1]];
+    const lassoStart = await pixelPosition(...lassoPoints[0]);
+    await accountPage.mouse.move(lassoBox.x + lassoStart.x, lassoBox.y + lassoStart.y);
+    await accountPage.mouse.down();
+    for (const [x, y] of lassoPoints.slice(1)) {
+      const point = await pixelPosition(x, y);
+      await accountPage.mouse.move(lassoBox.x + point.x, lassoBox.y + point.y, { steps: 2 });
+    }
+    await accountPage.mouse.up();
+    assert.match(await accountPage.locator('#status').innerText(), /Selected/,
+      'freehand lasso should close a polygon and create a selection mask');
+    await accountPage.locator('#selection-outline-move [data-selection-move="1,0"]').click();
+    assert.match(await accountPage.locator('#status').innerText(), /Transformed selection/,
+      'selection-outline controls should move the mask without changing artwork pixels');
+
+    // View controls should update their UI state without modifying saved artwork.
+    const zoomBefore = await accountPage.locator('#zoom-label').innerText();
+    await accountPage.locator('#zoom-in').click();
+    assert.notEqual(await accountPage.locator('#zoom-label').innerText(), zoomBefore,
+      'zoom-in should increase the visible canvas zoom');
+    await accountPage.locator('#zoom-out').click();
+    await accountPage.locator('#fit').click();
+    await accountPage.locator('#grid-toggle').click();
+    assert.equal(await accountPage.locator('#grid-toggle').getAttribute('aria-pressed'), 'true',
+      'pixel grid toggle should expose its enabled state');
+    await accountPage.locator('#grid-toggle').click();
+    assert.equal(await accountPage.locator('#grid-toggle').getAttribute('aria-pressed'), 'false',
+      'pixel grid toggle should return to its disabled state');
+
+    // Palette controls should add and remove a local swatch.
+    const paletteCount = await accountPage.locator('#user-palette .palette-item').count();
+    await accountPage.locator('#palette-add').click();
+    assert.equal(await accountPage.locator('#user-palette .palette-item').count(), paletteCount + 1,
+      'palette-add should create a visible local color swatch');
+    await accountPage.locator('#user-palette .palette-item').last().locator('.palette-remove').click();
+    assert.equal(await accountPage.locator('#user-palette .palette-item').count(), paletteCount,
+      'palette remove should delete only the selected swatch');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
