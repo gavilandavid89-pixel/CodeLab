@@ -132,7 +132,6 @@ async function main() {
         await page.locator('#animation-duration').evaluate(node => {
           node.value = '120'; node.dispatchEvent(new Event('change', { bubbles: true }));
         });
-        await page.locator('#animation-loop').uncheck();
         await page.locator('#animation-onion').check();
         await page.waitForTimeout(80);
         await page.locator('#animation-onion').uncheck();
@@ -143,6 +142,8 @@ async function main() {
           null, { timeout: 3000 });
         await page.locator('#animation-stop').click();
         await page.waitForFunction(() => document.querySelector('#animation-stop')?.disabled);
+        await page.locator('#animation-frames .animation-frame').nth(1).click();
+        await page.locator('#animation-loop').uncheck();
 
         // Both outputs are generated from the actual frame cels.
         const pngDownloadPromise = page.waitForEvent('download');
