@@ -182,7 +182,7 @@ test('isolates every frame/layer cel and stays responsive at 64 layers across th
   firstPreview.pixels[0] = 250;
   assert.equal(timeline.compositeThumbnail(137, null, 48).pixels[0], 12,
     'callers must not be able to mutate the cached thumbnail');
-  const changed = new Uint8ClampedArray(16 * 16 * 4);
+  const changed = new Uint8ClampedArray(32 * 32 * 4);
   changed.set([90, 80, 70, 255], 0);
   timeline.setLayerPixels(137, 'layer-63', changed);
   assert.deepEqual([...timeline.compositeThumbnail(137, null, 48).pixels.slice(0, 4)], [90, 80, 70, 255],
