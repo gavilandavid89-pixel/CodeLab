@@ -231,6 +231,9 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(server.includes('PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024'));
   assert.ok(server.includes('readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES)'));
   assert.ok(server.includes('pixelForgeUploads.assembleUpload'));
+  assert.ok(server.includes('pixelForgeUploads.getUploadStatus'));
+  assert.ok(server.includes('pixelForgeUploadStatus'));
+  assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('async function getUploadStatus'));
   assert.ok(server.includes('validatePixelForgeAnimation(project)'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
 });
