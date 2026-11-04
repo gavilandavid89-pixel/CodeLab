@@ -37,3 +37,18 @@ After changes, run the CodeLab validation workflow and Agent Space Browser Runne
 - Chunk sessions are stored in PostgreSQL, become unusable after 24 hours and are cleaned on the next upload initialization, accept idempotent retries, expose an authenticated status endpoint so clients resend only missing chunks, verify SHA-256 per chunk, and publish only after the full payload validates and the server-revision compare-and-swap succeeds. Each account may have at most two active sessions and 256 MiB of staged data; a failed or abandoned transfer leaves the previous saved project untouched.
 - The current timeline JSON uses base64 cel payloads. A 64 MiB raw animation payload expands to roughly 85.3 MiB of base64 before metadata, leaving only a small margin under the 96 MiB project cap when stored as the primary payload. The timeline is not yet connected to the project save adapter; when it is, the serializer must account for the complete project envelope (including any raster layers stored alongside the timeline) before encoding or uploading. It must not serialize duplicate frame-zero raster pixels alongside the timeline unless the combined size is preflighted. Compressed/chunked cel storage is the next step for larger animations.
 - These coordinated limits are intended for development/testing. Production deployment still depends on validating Render ingress limits, PostgreSQL row/TOAST behavior, memory headroom, and account quota behavior under concurrent saves.
+
+## Shared visual and Headless runtime
+
+PixelForge now exposes a DOM-free `HeadlessEditorRuntime` for Node.js, workers, browser automation, and agent workflows. It uses the same `RasterDocument`, `AIWorkspace`, and `AICommandSession` engine as the visual editor. Its animation adapter (`src/animation.js`) delegates to the visual editor's canonical `PixelForgeAnimation` model in `src/animation.mjs`; there is one versioned timeline/cel format, not a second Headless-only animation store.
+
+Headless actions run against an isolated sandbox. A mutating batch produces a review proposal and a pixel diff; it does not write the account project until explicit approval. Acceptance is guarded by the source revision and the server-issued `serverRevision`. A stale revision is returned as a conflict rather than silently overwriting newer work. Large approved projects reuse the editor's authenticated, resumable 6 MiB chunk upload path; the project envelope remains capped at 96 MiB.
+
+The Headless contract tests cover raster drawing/fill/transforms, layers, selections, symmetry, animation frame/cel operations, undo/redo, sprite-sheet export, proposal isolation, approval, revision conflicts, and persistence bridge recovery. The browser E2E test also creates an artwork in the visual editor, edits its raster and animation through Headless, approves the proposal, and reopens the same saved project in the visual editor to verify cross-mode parity.
+
+Run the focused tests with:
+
+```sh
+node --test tests/pixelforge-animation.test.mjs
+node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs
+```
