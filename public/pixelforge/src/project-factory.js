@@ -38,35 +38,30 @@ export function normalizePixelForgeProjectOptions(options = {}) {
   return { template, width, height, name: name.trim(), layerNames: [...layers] };
 }
 
-/** Create a new, unpersisted PixelForge project through the same Headless runtime used for edits. */
-export function createPixelForgeProject(options = {}, { HeadlessEditorRuntime } = {}) {
-  if (typeof HeadlessEditorRuntime !== 'function') throw new TypeError('A HeadlessEditorRuntime constructor is required.');
+/** Create a new project with the same initial layer/history semantics as the visual editor. */
+export function createPixelForgeProject(options = {}, { RasterDocument, HeadlessEditorRuntime } = {}) {
+  if (typeof RasterDocument !== 'function' || typeof HeadlessEditorRuntime !== 'function') {
+    throw new TypeError('RasterDocument and HeadlessEditorRuntime constructors are required.');
+  }
   const normalized = normalizePixelForgeProjectOptions(options);
-  const runtime = new HeadlessEditorRuntime({
-    width: normalized.width,
-    height: normalized.height,
-    name: normalized.name,
-  });
-  const firstLayerId = runtime.sandbox.activeLayerId;
-  if (runtime.sandbox.activeLayer.name !== normalized.layerNames[0]) {
-    const renamed = runtime.execute({
-      name: 'layer.rename',
-      layerId: firstLayerId,
-      newName: normalized.layerNames[0],
-    });
-    if (!renamed.ok) throw new Error(renamed.error?.message || 'Could not name the first PixelForge layer.');
+  const document = new RasterDocument(normalized.width, normalized.height, normalized.name);
+  const firstLayerId = document.activeLayerId;
+  if (document.activeLayer.name !== normalized.layerNames[0]) {
+    document.renameLayer(firstLayerId, normalized.layerNames[0]);
   }
-  for (const layerName of normalized.layerNames.slice(1)) {
-    const added = runtime.execute({ name: 'layer.add', layerName });
-    if (!added.ok) throw new Error(added.error?.message || 'Could not add a PixelForge starter layer.');
-  }
-  if (runtime.hasPendingChanges) {
-    runtime.createProposal('Create a new PixelForge project');
-    const accepted = runtime.acceptProposal();
-    if (accepted.status !== 'applied') {
-      throw new Error('PixelForge starter project proposal could not be accepted.');
-    }
-  }
+  for (const layerName of normalized.layerNames.slice(1)) document.addLayer(layerName);
+  document.setActiveLayer(firstLayerId);
+
+  // Starter scaffolding is the initial project state, not an undoable edit.
+  document.history.length = 0;
+  document.future.length = 0;
+  document.historyBytes = 0;
+  document.revision = 0;
+  document.saveVersion = 0;
+  document.serverRevision = 0;
+  document.dirty = false;
+
+  const runtime = new HeadlessEditorRuntime({ project: document.toJSON() });
   const project = runtime.toJSON();
   return {
     project,
@@ -77,6 +72,8 @@ export function createPixelForgeProject(options = {}, { HeadlessEditorRuntime } 
       height: project.height,
       layerCount: project.layers.length,
       activeLayerId: project.activeLayerId,
+      revision: project.revision,
+      serverRevision: project.serverRevision,
     },
   };
 }
