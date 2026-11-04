@@ -117,3 +117,85 @@ export function createZip(entries) {
   archive.set(end, cursor);
   return archive;
 }
+
+/**
+ * Streaming-friendly ZIP builder. Blob payloads are checksummed one at a time
+ * and retained as Blob parts, avoiding a second full-size copy of an animation
+ * package in memory on mobile devices.
+ */
+export async function createZipBlob(entries) {
+  if (!Array.isArray(entries) || entries.length < 1 || entries.length > 65535) {
+    throw new RangeError('ZIP archives must contain between 1 and 65,535 entries.');
+  }
+  const names = new Set();
+  const parts = [];
+  const centralParts = [];
+  let localOffset = 0;
+  let totalBytes = 0;
+  for (const entry of entries) {
+    if (!entry || typeof entry.name !== 'string' || !entry.name || entry.name.startsWith('/') ||
+        entry.name.includes('\\\\') || entry.name.split('/').some(part => part === '..' || part === '.')) {
+      throw new TypeError('ZIP entry names must be safe relative paths.');
+    }
+    if (names.has(entry.name)) throw new TypeError('ZIP entry names must be unique.');
+    names.add(entry.name);
+    const nameBytes = UTF8.encode(entry.name);
+    if (nameBytes.length > 65535) throw new RangeError('ZIP entry name is too long.');
+    const blob = entry.data instanceof Blob ? entry.data : new Blob([asBytes(entry.data)]);
+    if (blob.size > 0xffffffff) throw new RangeError('ZIP64 entries are not supported.');
+    totalBytes += blob.size;
+    if (totalBytes > 0xffffffff) throw new RangeError('ZIP64 archives are not supported.');
+    const checksum = crc32(new Uint8Array(await blob.arrayBuffer()));
+    const local = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(local.buffer);
+    write32(localView, 0, 0x04034b50);
+    write16(localView, 4, 20);
+    write16(localView, 6, 0x0800);
+    write16(localView, 8, 0);
+    write16(localView, 10, 0);
+    write16(localView, 12, 0);
+    write32(localView, 14, checksum);
+    write32(localView, 18, blob.size);
+    write32(localView, 22, blob.size);
+    write16(localView, 26, nameBytes.length);
+    write16(localView, 28, 0);
+    local.set(nameBytes, 30);
+    parts.push(local, blob);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const view = new DataView(central.buffer);
+    write32(view, 0, 0x02014b50);
+    write16(view, 4, 20);
+    write16(view, 6, 20);
+    write16(view, 8, 0x0800);
+    write16(view, 10, 0);
+    write16(view, 12, 0);
+    write16(view, 14, 0);
+    write32(view, 16, checksum);
+    write32(view, 20, blob.size);
+    write32(view, 24, blob.size);
+    write16(view, 28, nameBytes.length);
+    write16(view, 30, 0);
+    write16(view, 32, 0);
+    write16(view, 34, 0);
+    write16(view, 36, 0);
+    write32(view, 38, 0);
+    write32(view, 42, localOffset);
+    central.set(nameBytes, 46);
+    centralParts.push(central);
+    localOffset += local.length + blob.size;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = new Uint8Array(22);
+  const view = new DataView(end.buffer);
+  write32(view, 0, 0x06054b50);
+  write16(view, 4, 0);
+  write16(view, 6, 0);
+  write16(view, 8, entries.length);
+  write16(view, 10, entries.length);
+  write32(view, 12, centralSize);
+  write32(view, 16, localOffset);
+  write16(view, 20, 0);
+  parts.push(...centralParts, end);
+  return new Blob(parts, { type: 'application/zip' });
+}
