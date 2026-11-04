@@ -71,6 +71,7 @@ test('PixelForge portable project import is allowlisted, admin-scoped, approved,
   assert.ok(bridge.includes("'/commit'"));
   assert.ok(bridge.includes('createHash(\'sha256\')'));
   assert.ok(bridge.includes('readbackVerified: true'));
+  assert.ok(bridge.includes('semanticDigest: digest'));
   assert.ok(bridge.includes('relativePath.startsWith(\'..\')'));
 });
 
