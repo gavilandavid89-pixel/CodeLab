@@ -140,4 +140,43 @@ export function preparePixelForgeVisionRequest({
   });
 }
 
+
+/**
+ * Render a RasterDocument composite into a PNG data URL in the browser host.
+ * The canvas factory is injected so this module remains testable and does not
+ * capture the editor DOM or interface chrome.
+ */
+export function capturePixelForgeArtworkDataUrl({ rasterDocument, canvasFactory } = {}) {
+  if (!rasterDocument || !Number.isInteger(rasterDocument.width) ||
+      !Number.isInteger(rasterDocument.height) || rasterDocument.width < 1 ||
+      rasterDocument.height < 1 || rasterDocument.width > 2048 ||
+      rasterDocument.height > 2048 || rasterDocument.width * rasterDocument.height > 4_194_304) {
+    throw new RangeError('A valid PixelForge raster document within canvas limits is required.');
+  }
+  if (typeof canvasFactory !== 'function') throw new TypeError('A browser canvas factory is required for artwork capture.');
+  const pixels = rasterDocument.composite();
+  if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) {
+    throw new TypeError('RasterDocument composite must return RGBA pixel bytes.');
+  }
+  if (pixels.byteLength !== rasterDocument.width * rasterDocument.height * 4) {
+    throw new RangeError('RasterDocument composite pixel length does not match its dimensions.');
+  }
+  const canvas = canvasFactory();
+  if (!canvas || typeof canvas.getContext !== 'function' || typeof canvas.toDataURL !== 'function') {
+    throw new TypeError('Canvas factory must return a PNG-capable canvas.');
+  }
+  canvas.width = rasterDocument.width;
+  canvas.height = rasterDocument.height;
+  const context = canvas.getContext('2d', { alpha: true });
+  if (!context || typeof context.createImageData !== 'function' || typeof context.putImageData !== 'function') {
+    throw new Error('Canvas 2D context cannot accept PixelForge RGBA pixels.');
+  }
+  const imageData = context.createImageData(rasterDocument.width, rasterDocument.height);
+  imageData.data.set(pixels);
+  context.putImageData(imageData, 0, 0);
+  const dataUrl = canvas.toDataURL('image/png');
+  assertPngDataUrl(dataUrl, 'captured artwork');
+  return dataUrl;
+}
+
 export const PIXELFORGE_VISION_CONSENT_TTL_MS = CONSENT_TTL_MS;
