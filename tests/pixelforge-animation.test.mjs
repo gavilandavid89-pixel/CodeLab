@@ -116,8 +116,10 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
 
 test('uses 60 FPS timing and rejects oversized allocations before decoding cels', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture());
-  assert.equal(timeline.setFps(60), 17);
-  assert.equal(timeline.activeFrame.durationMs, 17);
+  assert.equal(timeline.setFps(60), 1000 / 60);
+  assert.equal(timeline.activeFrame.durationMs, 1000 / 60);
+  timeline.setFrameDuration(0, 16.5);
+  assert.equal(timeline.activeFrame.durationMs, 16.5);
   const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
   assert.throws(() => new PixelForgeAnimation({ width: 2048, height: 2048, layerIds }), /64 MiB/);
   assert.throws(() => PixelForgeAnimation.fromJSON({
