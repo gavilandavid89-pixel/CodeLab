@@ -54,7 +54,7 @@ export class AICommandSession {
     if (DENIED_ACTIONS.has(action.name)) {
       return { ok: false, error: { code: 'permission_denied', message: 'AI tools cannot delete, export, upload, or publish a project.' } };
     }
-    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_pixel']);
+    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_pixel', 'canvas.preview_transform_region']);
     if (this.#workspace.hasProposal && !readOnlyActions.has(action.name)) {
       return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more sandbox edits.' } };
     }
@@ -274,6 +274,23 @@ export class AICommandSession {
           integer(tolerance, 'tolerance');
           if (tolerance < 0 || tolerance > 255) throw new RangeError('Tolerance must be between 0 and 255.');
           result = { changedPixels: doc.replaceColor(color(action.from, 'from'), color(action.to, 'to'), tolerance) };
+          break;
+        }
+        case 'canvas.preview_transform_region': {
+          rectangle(doc, action.x, action.y, action.width, action.height);
+          const dx = action.dx ?? 0, dy = action.dy ?? 0, rotate = action.rotate ?? 0;
+          const scaleX = action.scaleX ?? 1, scaleY = action.scaleY ?? 1;
+          const skewX = action.skewX ?? 0, skewY = action.skewY ?? 0;
+          const interpolation = action.interpolation ?? 'nearest';
+          integer(dx, 'dx'); integer(dy, 'dy'); integer(rotate, 'rotate');
+          if (![0, 90, 180, 270].includes(rotate)) throw new RangeError('rotate must be 0, 90, 180, or 270 degrees.');
+          if (![scaleX, scaleY, skewX, skewY].every(Number.isFinite)) throw new TypeError('scaleX, scaleY, skewX and skewY must be finite numbers.');
+          if (!['nearest', 'bilinear'].includes(interpolation)) throw new TypeError('interpolation must be nearest or bilinear.');
+          const preview = doc.previewTransformRect(action.x, action.y, action.width, action.height, {
+            dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation,
+          });
+          result = { selectedPixels: preview.selectedPixels, bounds: preview.bounds,
+            rect: preview.rect, options: preview.options };
           break;
         }
         case 'canvas.transform_region': {
