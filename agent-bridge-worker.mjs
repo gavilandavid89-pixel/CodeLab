@@ -329,8 +329,13 @@ async function mutateAdminWorkspace(transform) {
     const current = await loadAdminWorkspace();
     const nextProjects = await transform(current.projects);
     if (nextProjects === null) return { state: current, unchanged: true };
-    const saved = await workspaceApi('PUT', { projects: nextProjects, baseRevision: current.revision });
-    return { state: { ...current, revision: saved.revision, projects: nextProjects }, unchanged: false };
+    try {
+      const saved = await workspaceApi('PUT', { projects: nextProjects, baseRevision: current.revision });
+      return { state: { ...current, revision: saved.revision, projects: nextProjects }, unchanged: false };
+    } catch (error) {
+      if (error.status === 409 && attempt < 2) continue;
+      throw error;
+    }
   }
   throw new Error('Workspace revision conflict persisted after three safe retries.');
 }
