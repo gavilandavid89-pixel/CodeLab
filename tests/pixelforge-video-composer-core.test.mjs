@@ -45,10 +45,10 @@ test('Video Composer web interface wires every referenced control and includes a
   const html = fs.readFileSync(new URL('../public/pixelforge/video-composer.html', import.meta.url), 'utf8');
   const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../public/pixelforge/video-composer.css', import.meta.url), 'utf8');
-  const ids = [...js.matchAll(/\\$\\('#([^']+)'\\)/g)].map(match => match[1]);
+  const ids = [...js.matchAll(/\$\('#([^']+)'\)/g)].map(match => match[1]);
   assert.ok(ids.length > 20, 'the composer should wire its import, preview, timeline and export controls');
   for (const id of new Set(ids)) assert.ok(html.includes('id="' + id + '"'), 'missing UI control: ' + id);
-  assert.match(html, /video-composer\\.js/);
+  assert.match(html, /video-composer\.js/);
   assert.match(css, /max-width:620px/);
   assert.match(js, /MediaRecorder/);
   assert.match(js, /captureStream/);
