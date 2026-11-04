@@ -104,6 +104,14 @@ async function main() {
         assert.equal(await page.locator('#animation-frames .animation-frame').count(), 1,
           'starting the timeline must preserve the current artwork as frame 1');
 
+        const guideToggle = page.locator('#reference-guides-toggle');
+        assert.equal(await guideToggle.getAttribute('aria-pressed'), 'false', 'coordinate guides start hidden');
+        await guideToggle.click();
+        assert.equal(await guideToggle.getAttribute('aria-pressed'), 'true', 'coordinate guides can be enabled');
+        assert.match(await guideToggle.textContent(), /Guides: On/);
+        await guideToggle.click();
+        assert.equal(await guideToggle.getAttribute('aria-pressed'), 'false', 'coordinate guides can be disabled without changing artwork');
+
         const canvasBox = await page.locator('#canvas').boundingBox();
         assert.ok(canvasBox && canvasBox.width > 0 && canvasBox.height > 0, 'the raster canvas must be visible');
         const drawAtCenter = async color => {
