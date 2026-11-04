@@ -33,7 +33,7 @@ test('rejects unsafe, duplicate, invalid and oversized ZIP entry definitions', (
   assert.throws(() => createZip([]), /between 1/);
   assert.throws(() => createZip([{ name: '../escape.txt', data: 'x' }]), /safe relative paths/);
   assert.throws(() => createZip([{ name: '/absolute.txt', data: 'x' }]), /safe relative paths/);
-  assert.throws(() => createZip([{ name: 'folder\\\\escape.txt', data: 'x' }]), /safe relative paths/);
+  assert.throws(() => createZip([{ name: 'folder\\escape.txt', data: 'x' }]), /safe relative paths/);
   assert.throws(() => createZip([{ name: 'same.txt', data: 'a' }, { name: 'same.txt', data: 'b' }]), /unique/);
   assert.throws(() => createZip([{ name: 'bad.txt', data: {} }]), /must be text/);
 });
