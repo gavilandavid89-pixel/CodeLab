@@ -91,6 +91,7 @@ test('PixelForge raster exports are explicit, bounded, and require approval', ()
   assert.ok(bridge.includes('pixelforge-composite.png'));
   assert.ok(bridge.includes('pixelforge-project.pforge'));
   assert.ok(bridge.includes('pixelforge-layer-spritesheet.json'));
+  assert.ok(bridge.includes('frameCount: frames.length'));
 });
 
 test('PixelForge animation export artifacts have a dedicated 14-day retention policy', () => {
