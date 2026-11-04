@@ -50,7 +50,7 @@ function parseCommand(raw) {
     }
     const readOnlyPixelForgeActions = new Set([
       'document.get_summary', 'canvas.get_pixel', 'canvas.preview_transform_region',
-      'animation.get_summary', 'canvas.copy_region',
+      'animation.get_summary', 'canvas.copy_region', 'selection.clear',
     ]);
     const hasProjectMutation = args.actions.some(action =>
       !action || typeof action.name !== 'string' || !readOnlyPixelForgeActions.has(action.name)
