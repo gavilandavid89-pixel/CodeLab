@@ -728,3 +728,58 @@ test('Headless preserves independent cel ownership across 64 layers and 240 fram
     'editing the top layer must not mutate the bottom layer');
   assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
 });
+
+
+test('Headless proposal diff reports exact changed animation cel pixels and bounds', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Idle' }).ok, true);
+  runtime.createProposal('Create baseline animation frame');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+
+  const layerId = runtime.inspect().animation.layerIds[0];
+  const cel = runtime.execute({ name: 'animation.frame.get_cel', layerId });
+  assert.equal(cel.ok, true);
+  const pixels = Buffer.from(cel.result.pixels, 'base64');
+  const offset = (6 * 16 + 5) * 4;
+  pixels.set([240, 80, 20, 255], offset);
+  assert.equal(runtime.execute({
+    name: 'animation.frame.set_cel',
+    layerId,
+    pixels: pixels.toString('base64'),
+  }).ok, true);
+
+  const diff = runtime.getDiff();
+  assert.equal(diff.rasterChangedPixels, 0);
+  assert.equal(diff.animationChangedPixels, 1);
+  assert.equal(diff.changedPixels, 1);
+  assert.equal(diff.animation.changedFrameCount, 1);
+  assert.equal(diff.animation.changedCelCount, 1);
+  assert.deepEqual(diff.animation.frames[0].cels[0].bounds, { x: 5, y: 6, width: 1, height: 1 });
+});
+
+test('Headless proposal diff reports animation timing, FPS, loop and active-frame metadata changes', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'A', durationMs: 100 });
+  runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
+  runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
+  runtime.execute({ name: 'animation.set_fps', fps: 24 });
+  runtime.execute({ name: 'animation.set_loop', loop: false });
+  runtime.execute({ name: 'animation.frame.set_active', index: 1 });
+  const diff = runtime.getDiff();
+  assert.deepEqual(diff.animation.settingsChanged.sort(), ['activeFrameIndex', 'fps', 'loop']);
+  assert.ok(diff.animation.frames.some(frame => frame.durationChanged && frame.durationMs === 240));
+});
+
+test('Headless inspection publishes its supported actions and safety limits', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const capabilities = runtime.inspect().capabilities;
+  assert.equal(capabilities.protocol, 'pixelforge-headless/v1');
+  assert.equal(capabilities.maxBatchActions, 500);
+  assert.equal(capabilities.maxLayers, 64);
+  assert.equal(capabilities.maxFrames, 240);
+  assert.equal(capabilities.proposalApprovalRequired, true);
+  assert.ok(capabilities.rasterActions.includes('canvas.get_reference'));
+  assert.ok(capabilities.rasterActions.includes('canvas.draw_stroke'));
+  assert.ok(capabilities.animationActions.includes('animation.frame.set_cel'));
+  assert.ok(capabilities.animationActions.includes('animation.frame.get_onion_skin'));
+});
