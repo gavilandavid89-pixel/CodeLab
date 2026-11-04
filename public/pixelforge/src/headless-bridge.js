@@ -17,6 +17,14 @@ function cleanExpiredSessions(now = Date.now()) {
   }
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonicalJson(value[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
 async function readJson(response, label) {
   let payload;
   try { payload = await response.json(); }
@@ -90,21 +98,27 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
   if (approved !== true) throw new Error('Explicit approved:true is required to persist a PixelForge proposal.');
   const session = sessions.get(sessionId);
   if (!session) throw new Error('The PixelForge proposal session is missing or expired.');
-  const accepted = session.runtime.acceptProposal();
-  if (accepted.status !== 'applied') {
-    sessions.delete(sessionId);
-    return { status: 'rejected', projectId: session.projectId, result: accepted };
+  if (!session.pendingSaveProject) {
+    const accepted = session.runtime.acceptProposal();
+    if (accepted.status !== 'applied') {
+      sessions.delete(sessionId);
+      return { status: 'rejected', projectId: session.projectId, result: accepted };
+    }
+    const project = session.runtime.toJSON();
+    const projectBytes = new TextEncoder().encode(JSON.stringify(project)).byteLength;
+    if (projectBytes > MAX_PERSISTED_PROJECT_BYTES) {
+      sessions.delete(sessionId);
+      const error = new RangeError('The proposed PixelForge project is ' + projectBytes + ' bytes; the account persistence limit is ' + MAX_PERSISTED_PROJECT_BYTES + ' bytes. Reduce layers or animation frames before retrying.');
+      error.code = 'pixelforge_project_too_large';
+      error.maxBytes = MAX_PERSISTED_PROJECT_BYTES;
+      error.projectBytes = projectBytes;
+      throw error;
+    }
+    session.pendingSaveProject = project;
+    session.acceptResult = accepted;
   }
-  const project = session.runtime.toJSON();
-  const projectBytes = new TextEncoder().encode(JSON.stringify(project)).byteLength;
-  if (projectBytes > MAX_PERSISTED_PROJECT_BYTES) {
-    sessions.delete(sessionId);
-    const error = new RangeError('The proposed PixelForge project is ' + projectBytes + ' bytes; the account persistence limit is ' + MAX_PERSISTED_PROJECT_BYTES + ' bytes. Reduce layers or animation frames before retrying.');
-    error.code = 'pixelforge_project_too_large';
-    error.maxBytes = MAX_PERSISTED_PROJECT_BYTES;
-    error.projectBytes = projectBytes;
-    throw error;
-  }
+
+  const project = session.pendingSaveProject;
   let response;
   try {
     response = await session.fetcher('/api/pixelforge/projects/' + encodeURIComponent(session.projectId), {
@@ -113,7 +127,27 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ project }),
     });
-    const saved = await readJson(response, 'PixelForge project save');
+    let saved;
+    try {
+      saved = await readJson(response, 'PixelForge project save');
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      // A response may be lost after the server committed. Read back and
+      // reconcile exact project content before treating a retry as successful.
+      const current = await readJson(await session.fetcher('/api/pixelforge/projects/' + encodeURIComponent(session.projectId), {
+        method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' },
+      }), 'PixelForge conflict readback');
+      const currentProject = current.project && { ...current.project };
+      const expectedProject = { ...project };
+      if (currentProject) delete currentProject.serverRevision;
+      delete expectedProject.serverRevision;
+      if (!currentProject || canonicalJson(currentProject) !== canonicalJson(expectedProject) ||
+          !Number.isInteger(current.project.serverRevision) || current.project.serverRevision <= (project.serverRevision || 0)) {
+        sessions.delete(sessionId);
+        throw error;
+      }
+      saved = { project: { id: current.project.id, serverRevision: current.project.serverRevision } };
+    }
     if (!Number.isInteger(saved?.project?.serverRevision)) throw new Error('PixelForge save did not return a valid server revision.');
     session.runtime.document.serverRevision = saved.project.serverRevision;
     sessions.delete(sessionId);
@@ -121,7 +155,7 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
       status: 'saved',
       projectId: session.projectId,
       serverRevision: saved.project.serverRevision,
-      result: accepted,
+      result: session.acceptResult,
       inspection: session.runtime.inspect(),
     };
   } catch (error) {
