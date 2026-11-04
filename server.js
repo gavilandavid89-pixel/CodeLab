@@ -2179,8 +2179,8 @@ const server = http.createServer(async (req, res) => {
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
       // Large PixelForge projects use authenticated, idempotent PostgreSQL chunks.
       const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
-      const pixelForgeUploadChunk = pathname.match(/^\\/api\\/pixelforge\\/projects\\/uploads\\/([a-f0-9]{32})\\/(\\d+)$/) && req.method === 'PUT';
-      const pixelForgeUploadCommit = pathname.match(/^\\/api\\/pixelforge\\/projects\\/uploads\\/([a-f0-9]{32})\\/commit$/) && req.method === 'POST';
+      const pixelForgeUploadChunk = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/(\d+)$/) && req.method === 'PUT';
+      const pixelForgeUploadCommit = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/commit$/) && req.method === 'POST';
       if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit) {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
