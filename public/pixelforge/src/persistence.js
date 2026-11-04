@@ -102,7 +102,19 @@ async function saveProjectChunked(project) {
     if (begin.chunkSize !== UPLOAD_CHUNK_BYTES || begin.totalChunks !== totalChunks) {
       throw new Error('El servidor devolvió una configuración de bloques incompatible.');
     }
+    const status = await request(API + '/uploads/' + pending.uploadId);
+    if (status.committed && status.receipt?.project) {
+      pendingUploads.delete(project.id);
+      project.serverRevision = status.receipt.project.serverRevision;
+      return status.receipt.project;
+    }
+    if (status.chunkSize !== UPLOAD_CHUNK_BYTES || status.totalChunks !== totalChunks ||
+        status.totalBytes !== blob.size || !Array.isArray(status.receivedChunks)) {
+      throw new Error('El estado de la carga no coincide con el proyecto actual.');
+    }
+    const receivedChunks = new Set(status.receivedChunks);
     for (let index = 0; index < totalChunks; index++) {
+      if (receivedChunks.has(index)) continue;
       const bytes = new Uint8Array(await blob.slice(index * UPLOAD_CHUNK_BYTES, (index + 1) * UPLOAD_CHUNK_BYTES).arrayBuffer());
       const hash = toHex(await crypto.subtle.digest('SHA-256', bytes));
       await request(API + '/uploads/' + pending.uploadId + '/' + index, {
