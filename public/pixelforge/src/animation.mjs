@@ -400,6 +400,7 @@ export class PixelForgeAnimation {
     if (this.#layerIds.length <= 1) throw new RangeError('An animation must keep at least one raster layer.');
     this.#layerIds = this.#layerIds.filter(id => id !== layerId);
     this.#thumbnailCache.clear();
+    this.#thumbnailCacheBytes = 0;
     for (const frame of this.#frames) frame.cels.delete(layerId);
     return this.#layerIds.length;
   }
@@ -413,6 +414,7 @@ export class PixelForgeAnimation {
     for (const frame of this.#frames) frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
     this.#layerIds = [...layerIds];
     this.#thumbnailCache.clear();
+    this.#thumbnailCacheBytes = 0;
     return true;
   }
 
