@@ -56,7 +56,7 @@ function diffPreviewDataUrl(runtime) {
  * Load a project through CodeLab's same-origin authenticated API, run actions
  * in an isolated PixelForge sandbox, and hold the proposal for explicit review.
  */
-export async function preparePixelForgeProposal({ projectId, actions, summary, fetcher = fetch } = {}) {
+export async function preparePixelForgeProposal({ projectId, actions, summary, fetcher = (...args) => globalThis.fetch(...args) } = {}) {
   cleanExpiredSessions();
   projectId = assertProjectId(projectId);
   if (!Array.isArray(actions) || actions.length < 1 || actions.length > 500) {
