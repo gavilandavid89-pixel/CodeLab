@@ -804,6 +804,12 @@ async function main() {
     assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
     fs.rmSync(largeFixturePath, { force: true });
     fs.rmSync(importFixturePath, { force: true });
+    // Free the deliberately huge fixture before testing the independent project-count
+    // limit; otherwise the account byte quota can reject a small project first.
+    const deleteLargeFixture = await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, {
+      method: 'DELETE', headers: authHeaders
+    });
+    assert.equal(deleteLargeFixture.status, 200, 'large upload fixture should be removed before the separate project-count limit test');
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
