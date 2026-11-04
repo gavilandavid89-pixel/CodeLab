@@ -2283,7 +2283,11 @@ window.addEventListener('blur', () => {
   render();
 });
 function renderAuthenticationRequired() {
-  document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101116;color:#f3f4f6;font:16px system-ui,sans-serif"><section style="max-width:440px;text-align:center;background:#191b24;border:1px solid #343744;border-radius:18px;padding:28px"><div style="font-size:34px;margin-bottom:12px">◈</div><h1 style="margin:0 0 10px;font-size:24px">Inicia sesión en CodeLab</h1><p style="color:#b5b8c5;line-height:1.6">PixelForge usa la misma cuenta de CodeLab. Inicia sesión y vuelve a abrir el estudio para guardar tus dibujos en tu cuenta y acceder a ellos desde otros dispositivos.</p><a href="/" style="display:inline-block;margin-top:14px;padding:12px 18px;border-radius:10px;background:#d8a65d;color:#171922;text-decoration:none;font-weight:700">Ir a CodeLab e iniciar sesión</a></section></main>`;
+  // Use CodeLab's own account flow. Preserve this editor URL so a successful
+  // sign-in returns directly to the same PixelForge document.
+  const returnTo = window.location.pathname + window.location.search + window.location.hash;
+  try { localStorage.setItem('codelab.postLoginRedirect', returnTo); } catch (_) {}
+  window.location.replace('/');
 }
 async function boot() {
   try {
@@ -2294,7 +2298,9 @@ async function boot() {
     }
     // Reuse the provider settings configured in CodeLab's AI settings area.
     // The secret stays in browser memory and is never copied into PixelForge projects.
-    const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings();
+    const accountChip = $('#codelab-account-chip');
+    if (accountChip) accountChip.textContent = 'CodeLab · ' + (auth.user.name || auth.user.email || 'Cuenta');
+    const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
     if (sharedAI.baseUrl) {
       const base = sharedAI.baseUrl.replace(/\/+$/, '');
       $('#ai-provider-endpoint').value = /\/chat\/completions$/i.test(base) ? base : base + '/chat/completions';

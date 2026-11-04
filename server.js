@@ -46,7 +46,7 @@ const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   : 60000;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 120;
-const APP_VERSION = '2.6.7';
+const APP_VERSION = '2.6.8';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const configuredSessionCleanupInterval = Number.parseInt(process.env.CODELAB_SESSION_CLEANUP_INTERVAL_MS || '', 10);
 const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInterval) && configuredSessionCleanupInterval > 0
@@ -59,6 +59,7 @@ const DATABASE_URL = process.env.DATABASE_URL || '';
 // Production uses TLS by default; local PostgreSQL integration tests can opt out explicitly.
 const DATABASE_SSL = process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false };
 const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: DATABASE_SSL, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
+let authSessionTableReady = false;
 const localLoginAttempts = new Map();
 const LOCAL_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOCAL_LOGIN_MAX_ATTEMPTS = 8;
@@ -341,7 +342,12 @@ function parseOAuthState(state) {
 // Rotate through large session directories so entries after the first batch
 // are also eventually checked, while keeping each cleanup pass bounded.
 let sessionCleanupCursor = 0;
-function cleanupExpiredSessions() {
+async function cleanupExpiredSessions() {
+  if (accountPool && authSessionTableReady) {
+    try { await accountPool.query('DELETE FROM codelab_auth_sessions WHERE expires_at <= NOW()'); }
+    catch (error) { console.warn('CodeLab session cleanup failed:', error.message); }
+    return;
+  }
   try {
     const allSessionFiles = fs.readdirSync(SESSIONS_DIR).filter(file => file.endsWith('.json'));
     let files = allSessionFiles;
@@ -361,17 +367,9 @@ function cleanupExpiredSessions() {
         const sessionFile = path.join(SESSIONS_DIR, file);
         const raw = fs.readFileSync(sessionFile, 'utf8');
         let session;
-        try {
-          session = JSON.parse(raw);
-        } catch (_) {
-          // A malformed session can never authenticate; remove it rather than
-          // retaining an orphan file forever after every cleanup pass.
-          fs.unlinkSync(sessionFile);
-          continue;
-        }
-        if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) {
-          fs.unlinkSync(sessionFile);
-        }
+        try { session = JSON.parse(raw); }
+        catch (_) { fs.unlinkSync(sessionFile); continue; }
+        if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) fs.unlinkSync(sessionFile);
       } catch (_) {}
     }
   } catch (_) {}
@@ -563,6 +561,26 @@ function decodePixelForgeProjectId(value) {
   }
 }
 
+async function ensureAuthSessionTable() {
+  if (!accountPool) return;
+  await accountPool.query("CREATE TABLE IF NOT EXISTS codelab_auth_sessions (session_id VARCHAR(48) PRIMARY KEY CHECK (session_id ~ '^[a-f0-9]{48}$'), user_data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, CHECK (jsonb_typeof(user_data) = 'object'))");
+  await accountPool.query('CREATE INDEX IF NOT EXISTS codelab_auth_sessions_expiry_idx ON codelab_auth_sessions (expires_at)');
+  authSessionTableReady = true;
+}
+
+async function migrateLegacySessionsToDatabase() {
+  if (!accountPool || !authSessionTableReady) return;
+  let files = [];
+  try { files = fs.readdirSync(SESSIONS_DIR).filter(file => /^[a-f0-9]{48}\.json$/.test(file)); }
+  catch (_) { return; }
+  for (const file of files) {
+    try {
+      const session = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, file), 'utf8'));
+      if (!session || session.id !== file.slice(0, 48) || !Number.isFinite(session.createdAt) || !Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now() || !isValidSessionUser(session.user)) continue;
+      await accountPool.query('INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, to_timestamp($3 / 1000.0), to_timestamp($4 / 1000.0)) ON CONFLICT (session_id) DO NOTHING', [session.id, JSON.stringify(session.user), session.createdAt, session.expiresAt]);
+    } catch (error) { console.warn('Legacy CodeLab session migration skipped:', error.message); }
+  }
+}
 let pixelForgeTableReady = false;
 
 async function ensurePixelForgeTable() {
@@ -860,8 +878,16 @@ function sessionPath(sid) {
   return path.join(SESSIONS_DIR, safeId(sid) + '.json');
 }
 
-function createSession(user) {
+function isValidSessionUser(user) {
+  return !!(user && typeof user === 'object' && !Array.isArray(user) &&
+    typeof user.id === 'string' && user.id.length > 0 &&
+    ['github', 'google', 'local'].includes(user.provider));
+}
+
+async function createSession(user) {
+  if (!isValidSessionUser({ ...user, id: String(user.id) })) throw new Error('invalid_session_user');
   const sid = crypto.randomBytes(24).toString('hex');
+  const now = Date.now();
   const session = {
     id: sid,
     user: {
@@ -872,41 +898,49 @@ function createSession(user) {
       avatar: user.avatar || user.avatar_url || null,
       role: user.role || 'user'
     },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + SESSION_TTL_MS
+    createdAt: now,
+    expiresAt: now + SESSION_TTL_MS
   };
+  if (accountPool) {
+    await accountPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, to_timestamp($3 / 1000.0), to_timestamp($4 / 1000.0))',
+      [sid, JSON.stringify(session.user), session.createdAt, session.expiresAt]
+    );
+    return session;
+  }
   const file = sessionPath(sid);
   const tmp = file + '.tmp.' + process.pid + '.' + crypto.randomBytes(6).toString('hex');
   try {
     fs.writeFileSync(tmp, JSON.stringify(session), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     fs.renameSync(tmp, file);
   } catch (error) {
-    // Session creation must not leave partial credentials or orphaned temp files.
     try { fs.unlinkSync(tmp); } catch (_) {}
     throw error;
   }
   return session;
 }
 
-function readSession(sid) {
-  // Session IDs are generated as 24 random bytes encoded as lowercase hex.
-  // Reject anything else before mapping a cookie value to a filesystem path.
+async function readSession(sid) {
   if (typeof sid !== 'string' || !/^[a-f0-9]{48}$/.test(sid)) return null;
+  if (accountPool) {
+    const result = await accountPool.query(
+      'SELECT user_data, (extract(epoch FROM created_at) * 1000)::bigint AS created_at_ms, (extract(epoch FROM expires_at) * 1000)::bigint AS expires_at_ms FROM codelab_auth_sessions WHERE session_id = $1 AND expires_at > NOW()',
+      [sid]
+    );
+    if (!result.rowCount) return null;
+    const user = result.rows[0].user_data;
+    if (!isValidSessionUser(user)) {
+      await accountPool.query('DELETE FROM codelab_auth_sessions WHERE session_id = $1', [sid]);
+      return null;
+    }
+    return { id: sid, user, createdAt: Number(result.rows[0].created_at_ms), expiresAt: Number(result.rows[0].expires_at_ms) };
+  }
   const file = sessionPath(sid);
   try {
-    const raw = fs.readFileSync(file, 'utf8');
-    const session = JSON.parse(raw);
-    const valid =
-      session &&
-      typeof session === 'object' &&
-      !Array.isArray(session) &&
-      session.id === sid &&
-      Number.isFinite(session.expiresAt) &&
-      session.expiresAt > Date.now() &&
-      session.user &&
-      typeof session.user === 'object' &&
-      typeof session.user.id === 'string' &&
-      (session.user.provider === 'github' || session.user.provider === 'google' || session.user.provider === 'local');
+    const session = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const valid = session && typeof session === 'object' && !Array.isArray(session) &&
+      session.id === sid && Number.isFinite(session.expiresAt) && session.expiresAt > Date.now() &&
+      isValidSessionUser(session.user);
     if (!valid) {
       try { fs.unlinkSync(file); } catch (_) {}
       return null;
@@ -917,15 +951,18 @@ function readSession(sid) {
   }
 }
 
-function destroySession(sid) {
-  // Logout cookies are untrusted input; only generated session IDs may map to files.
+async function destroySession(sid) {
   if (typeof sid !== 'string' || !/^[a-f0-9]{48}$/.test(sid)) return;
+  if (accountPool) {
+    await accountPool.query('DELETE FROM codelab_auth_sessions WHERE session_id = $1', [sid]);
+    return;
+  }
   try { fs.unlinkSync(sessionPath(sid)); } catch (_) {}
 }
 
-function getSessionUser(req) {
+async function getSessionUser(req) {
   const cookies = parseCookies(req);
-  const session = readSession(cookies[COOKIE_NAME]);
+  const session = await readSession(cookies[COOKIE_NAME]);
   return session ? session.user : null;
 }
 
@@ -962,7 +999,7 @@ function publicBaseUrl(req) {
   return proto + '://' + host;
 }
 
-function isAuthorized(req, id) {
+async function isAuthorized(req, id) {
   const token = req.headers['x-workspace-token'] || '';
   const expected = Buffer.from(signWorkspace(id));
   const received = Buffer.from(token);
@@ -970,7 +1007,7 @@ function isAuthorized(req, id) {
     return true;
   }
   // Session owner can access their bound workspace
-  const user = getSessionUser(req);
+  const user = await getSessionUser(req);
   if (user && userWorkspaceId(user) === id) return true;
   return false;
 }
@@ -1704,7 +1741,7 @@ const server = http.createServer(async (req, res) => {
     // Admin accounts are exempt from the app-wide API request cap. Keep the
     // exemption tied to a validated local admin session, never a client header
     // or request parameter. The dedicated AI/provider limiter remains separate.
-    const apiSessionUser = getSessionUser(req);
+    const apiSessionUser = await getSessionUser(req);
     const isAdminSession = !!(
       apiSessionUser &&
       apiSessionUser.provider === 'local' &&
@@ -1767,13 +1804,13 @@ const server = http.createServer(async (req, res) => {
           role: account.role
         };
         await ensureUserWorkspace(user);
-        const session = createSession(user);
+        const session = await createSession(user);
         setSessionCookie(res, session.id, req);
         return sendJson(res, 200, { ok: true, user, workspaceId: userWorkspaceId(user), mustChangePassword: !!account.mustChangePassword });
       }
 
       if (req.method === 'POST' && pathname === '/api/auth/change-password') {
-        const user = getSessionUser(req);
+        const user = await getSessionUser(req);
         if (!user || user.provider !== 'local') return sendJson(res, 401, { error: 'not_authenticated' });
         const body = await readBody(req);
         const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
@@ -1793,15 +1830,15 @@ const server = http.createServer(async (req, res) => {
         account.passwordChangedAt = new Date().toISOString();
         await writeLocalAccounts(accounts);
         const cookies = parseCookies(req);
-        destroySession(cookies[COOKIE_NAME]);
-        const session = createSession({ ...user, id: account.id, role: account.role });
+        await destroySession(cookies[COOKIE_NAME]);
+        const session = await createSession({ ...user, id: account.id, role: account.role });
         setSessionCookie(res, session.id, req);
         return sendJson(res, 200, { ok: true, mustChangePassword: false });
       }
 
       // Minimal administrator-only account directory and user creation.
       if (pathname === '/api/admin/accounts' && (req.method === 'GET' || req.method === 'POST')) {
-        const actor = getSessionUser(req);
+        const actor = await getSessionUser(req);
         if (!actor || actor.provider !== 'local' || actor.role !== 'admin') {
           return sendJson(res, 403, { error: 'admin_required' });
         }
@@ -1843,7 +1880,7 @@ const server = http.createServer(async (req, res) => {
       // Auth status / me
       if (req.method === 'GET' && pathname === '/api/auth/status') {
         const cfg = oauthConfigured();
-        const user = getSessionUser(req);
+        const user = await getSessionUser(req);
         return sendJson(res, 200, {
           oauth: cfg,
           demoFallback: !(cfg.github || cfg.google),
@@ -1854,7 +1891,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === 'GET' && pathname === '/api/auth/me') {
-        const user = getSessionUser(req);
+        const user = await getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
         return sendJson(res, 200, {
           user,
@@ -1865,7 +1902,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST' && pathname === '/api/auth/logout') {
         const cookies = parseCookies(req);
-        destroySession(cookies[COOKIE_NAME]);
+        await destroySession(cookies[COOKIE_NAME]);
         clearSessionCookie(res, req);
         return sendJson(res, 200, { ok: true });
       }
@@ -2085,7 +2122,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const user = await handleGithubCallback(code);
           await ensureUserWorkspace(user);
-          const session = createSession(user);
+          const session = await createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
             COOKIE_NAME + '=' + encodeURIComponent(session.id) +
@@ -2131,7 +2168,7 @@ const server = http.createServer(async (req, res) => {
           const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
           const user = await handleGoogleCallback(code, redirectUri);
           await ensureUserWorkspace(user);
-          const session = createSession(user);
+          const session = await createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
             COOKIE_NAME + '=' + encodeURIComponent(session.id) +
@@ -2148,10 +2185,10 @@ const server = http.createServer(async (req, res) => {
       if (designSystemMatch && (req.method === 'GET' || req.method === 'PUT')) {
         const id = safeId(designSystemMatch[1]);
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
-        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!(await isAuthorized(req, id))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         if (!(await workspaceExists(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
         try {
-          await enforceSessionWorkspaceOwner(id, await readState(id), getSessionUser(req));
+          await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
         } catch (error) {
           console.error('workspace_corrupt', id, error.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
@@ -2186,7 +2223,7 @@ const server = http.createServer(async (req, res) => {
       const pixelForgeUploadCancel = req.method === 'DELETE'
         ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) : null;
       if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit || pixelForgeUploadStatus || pixelForgeUploadCancel) {
-        const user = getSessionUser(req);
+        const user = await getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
         if (!accountPool || !pixelForgeTableReady) {
           return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
@@ -2312,7 +2349,7 @@ const server = http.createServer(async (req, res) => {
       const pixelForgeItemPath = pathname.startsWith('/api/pixelforge/projects/') ? pathname.slice('/api/pixelforge/projects/'.length) : '';
       const pixelForgeItem = pixelForgeItemPath && !pixelForgeItemPath.includes('/') ? [pathname, pixelForgeItemPath] : null;
       if ((pixelForgeCollection || pixelForgeItem) && ['GET', 'PUT', 'DELETE'].includes(req.method)) {
-        const user = getSessionUser(req);
+        const user = await getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
         // Production must never silently downgrade the studio's durable database
         // contract to local sidecar files. File persistence is retained only for
@@ -2463,7 +2500,7 @@ const server = http.createServer(async (req, res) => {
       // Workspace init
       if (req.method === 'POST' && pathname === '/api/workspace/init') {
         const body = await readBody(req);
-        const sessionUser = getSessionUser(req);
+        const sessionUser = await getSessionUser(req);
         let id;
         if (sessionUser) {
           // Logged-in users always use their bound workspace (portable across devices)
@@ -2475,7 +2512,7 @@ const server = http.createServer(async (req, res) => {
           if (await workspaceExists(id)) {
             // Existing workspaces still require their token; never overwrite or
             // rebind an existing deterministic OAuth workspace anonymously.
-            if (!isAuthorized(req, id)) {
+            if (!(await isAuthorized(req, id))) {
               return sendJson(res, 401, { error: 'workspace_unauthorized' });
             }
           } else {
@@ -2509,9 +2546,9 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET' && getMatch) {
         const id = safeId(getMatch[1]);
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
-        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!(await isAuthorized(req, id))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
-          const state = await enforceSessionWorkspaceOwner(id, await readState(id), getSessionUser(req));
+          const state = await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
           return sendJson(res, 200, state);
         } catch (e) {
           console.error('workspace_corrupt', id, e.message);
@@ -2526,13 +2563,13 @@ const server = http.createServer(async (req, res) => {
             !Array.isArray(body.projects) || !Number.isInteger(body.baseRevision)) {
           return sendJson(res, 400, { error: 'invalid_workspace' });
         }
-        if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!(await isAuthorized(req, id))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         const validationError = validateProjects(body.projects);
         if (validationError) {
           return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
         }
         try {
-          const current = await enforceSessionWorkspaceOwner(id, await readState(id), getSessionUser(req));
+          const current = await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
           if (body.baseRevision !== current.revision) {
             return sendJson(res, 409, {
               error: 'revision_conflict',
@@ -2585,7 +2622,12 @@ try {
 }
 
 seedAdminAccountIfConfigured().then(async () => {
-  if (accountPool) await accountPool.query('SELECT 1 FROM codelab_workspace_states LIMIT 0');
+  if (accountPool) {
+    await accountPool.query('SELECT 1 FROM codelab_workspace_states LIMIT 0');
+    await ensureAuthSessionTable();
+    await migrateLegacySessionsToDatabase();
+    await cleanupExpiredSessions();
+  }
   try {
     await ensurePixelForgeTable();
   } catch (error) {
@@ -2633,7 +2675,7 @@ seedAdminAccountIfConfigured().then(async () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
-    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; las sesiones locales y el secreto de respaldo usan disco efímero. Los proyectos del workspace se guardan en PostgreSQL.');
+    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; el secreto de respaldo y los archivos locales de desarrollo usan disco efímero. Las sesiones y los proyectos del workspace se guardan en PostgreSQL.');
   }
   if (!process.env.CODELAB_WORKSPACE_SECRET) {
     console.warn('WARNING: CODELAB_WORKSPACE_SECRET no está fijado; si se regenera el secreto, los tokens de workspace existentes dejarán de ser válidos.');

@@ -435,6 +435,9 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       updateOauthDemoBanner();
       maybeOfferLocalImport();
+      // Complete a PixelForge sign-in round-trip only after CodeLab has confirmed
+      // the real server session and loaded that account's workspace.
+      if (resumePostLoginRedirect()) return;
       // Initial-password rotation is temporarily optional; do not block the workspace UI.
     })
     .finally(() => {
@@ -1608,6 +1611,16 @@ async function changeNativePassword() {
   }
 }
 
+function resumePostLoginRedirect() {
+  if (!currentUser || !currentUser.real) return false;
+  let returnTo = '';
+  try { returnTo = localStorage.getItem('codelab.postLoginRedirect') || ''; } catch (_) {}
+  if (!/^\/pixelforge\/(?:index\.html)?(?:[?#].*)?$/.test(returnTo)) return false;
+  try { localStorage.removeItem('codelab.postLoginRedirect'); } catch (_) {}
+  window.location.replace(returnTo);
+  return true;
+}
+
 async function refreshWorkspaceAfterNativeLogin() {
   workspaceId = null;
   initialWorkspaceId = null;
@@ -1621,6 +1634,7 @@ async function refreshWorkspaceAfterNativeLogin() {
   window.dispatchEvent(new Event('codelab-workspace-ready'));
   renderProjectsList();
   updateDashboardStatus();
+  resumePostLoginRedirect();
 }
 
 function openAuthModal(provider) {

@@ -11,9 +11,9 @@
     return data;
   }
 
-  async function getCodeLabAISettings() {
-    // Resolve the live server session each time; never trust a stale caller-supplied identity.
-    const auth = await getCodeLabSession();
+  async function getCodeLabAISettings(sessionSnapshot = null) {
+    // Reuse the already validated CodeLab session when a studio bootstraps; otherwise resolve it live.
+    const auth = sessionSnapshot && typeof sessionSnapshot === 'object' ? sessionSnapshot : await getCodeLabSession();
     if (!auth.user || !auth.user.provider || auth.user.id == null) {
       return { configured: false, mode: 'auto', baseUrl: '', model: '', apiKey: '' };
     }

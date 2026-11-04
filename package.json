@@ -1,6 +1,6 @@
 {
   "name": "codelab-xd-studio-pro",
-  "version": "2.6.6",
+  "version": "2.6.8",
   "description": "CodeLab XD Studio Pro - Editor web multiproyecto con ramas, sincronización segura y control de versiones",
   "main": "server.js",
   "scripts": {
