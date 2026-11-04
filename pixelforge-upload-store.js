@@ -30,11 +30,14 @@ async function ensureSchema(pool) {
 }
 
 async function beginUpload(pool, workspaceId, body, maxProjectBytes, maxAccountBytes, maxProjects) {
+  if (body && typeof body === 'object' && Number.isSafeInteger(body.totalBytes) && body.totalBytes > maxProjectBytes) {
+    throw new PixelForgeUploadError('pixelforge_project_too_large', 413, { maxBytes: maxProjectBytes });
+  }
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
       !/^[a-f0-9]{32}$/.test(body.uploadId || '') ||
       !/^[A-Za-z0-9_-]{1,100}$/.test(body.projectId || '') ||
       !Number.isSafeInteger(body.expectedServerRevision) || body.expectedServerRevision < 0 ||
-      !Number.isSafeInteger(body.totalBytes) || body.totalBytes < 1 || body.totalBytes > maxProjectBytes ||
+      !Number.isSafeInteger(body.totalBytes) || body.totalBytes < 1 ||
       !Number.isInteger(body.totalChunks) || body.totalChunks !== Math.ceil(body.totalBytes / CHUNK_BYTES)) {
     throw new PixelForgeUploadError('invalid_pixelforge_upload', 400);
   }
