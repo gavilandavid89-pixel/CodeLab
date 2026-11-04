@@ -446,6 +446,49 @@ async function main() {
     assert.deepEqual(rgbaAt(toolProject, 5, 4, 1), [255, 136, 0, 255],
       'rectangle tool should persist its opposite corner');
 
+    await setForegroundColor('#00ccdd');
+    await accountPage.locator('#ellipse-tool').click();
+    const ellipseBox = await canvasLocator.boundingBox();
+    const ellipseStart = await pixelPosition(7, 2), ellipseEnd = await pixelPosition(10, 5);
+    await accountPage.mouse.move(ellipseBox.x + ellipseStart.x, ellipseBox.y + ellipseStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(ellipseBox.x + ellipseEnd.x, ellipseBox.y + ellipseEnd.y, { steps: 8 });
+    await accountPage.mouse.up();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.ok(rgbaAt(toolProject, 8, 3, 1)[3] > 0,
+      'ellipse tool should persist pixels inside the ellipse');
+
+    // Selection masks constrain edits, and the selection operations remain usable.
+    await accountPage.locator('#select-tool').click();
+    const selectionBox = await canvasLocator.boundingBox();
+    const selectionStart = await pixelPosition(4, 5), selectionEnd = await pixelPosition(6, 6);
+    await accountPage.mouse.move(selectionBox.x + selectionStart.x, selectionBox.y + selectionStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(selectionBox.x + selectionEnd.x, selectionBox.y + selectionEnd.y, { steps: 4 });
+    await accountPage.mouse.up();
+    assert.match(await accountPage.locator('#status').innerText(), /Selected 3 × 2 pixels/,
+      'rectangular selection should create the expected mask');
+    await accountPage.locator('#selection-invert').click();
+    await accountPage.locator('#selection-invert').click();
+    await accountPage.locator('#selection-expand').click();
+    await accountPage.locator('#selection-contract').click();
+    await setForegroundColor('#cc22aa');
+    await accountPage.locator('#brush-tool').click();
+    await clickPixel(5, 5);
+    await clickPixel(9, 0);
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 5, 5, 1), [204, 34, 170, 255],
+      'brush edits inside a selection should change selected pixels');
+    assert.notDeepEqual(rgbaAt(toolProject, 9, 0, 1), [204, 34, 170, 255],
+      'brush edits outside a selection should not alter unselected pixels');
+
+    await accountPage.locator('#magic-select-tool').click();
+    await clickPixel(1, 1);
+    assert.match(await accountPage.locator('#status').innerText(), /Color selection/,
+      'magic wand should create a color-based selection');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
