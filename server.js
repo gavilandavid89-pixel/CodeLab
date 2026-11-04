@@ -1,5 +1,5 @@
 /**
- * CodeLab XD Studio Pro v2.6.6
+ * CodeLab XD Studio Pro v2.6.7
  * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
  */
 const http = require('http');
@@ -2554,7 +2554,10 @@ const server = http.createServer(async (req, res) => {
             updatedAt: next.updatedAt
           });
         } catch (e) {
-          if (e && e.code === 'WORKSPACE_REVISION_CONFLICT') return sendJson(res, 409, { error: 'revision_conflict' });
+          if (e && e.code === 'WORKSPACE_REVISION_CONFLICT') {
+            const latest = await readState(id);
+            return sendJson(res, 409, { error: 'revision_conflict', revision: latest.revision, updatedAt: latest.updatedAt, projects: latest.projects });
+          }
           console.error('workspace_write_failed', id, e.message);
           return sendJson(res, 500, { error: 'workspace_write_failed' });
         }
