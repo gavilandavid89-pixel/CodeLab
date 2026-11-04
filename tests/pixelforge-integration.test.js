@@ -138,9 +138,10 @@ async function main() {
     body: JSON.stringify({ project: fixture })
   });
   assert.equal(saved.status, 201, 'first save should create a project in the account');
-  fixture.serverRevision = (await saved.json()).project.serverRevision;
+  const savedPayload = await saved.json();
+  fixture.serverRevision = savedPayload.project.serverRevision;
   assert.equal(fixture.serverRevision, 1, 'the server should issue the first durable revision token');
-  assert.deepEqual((await saved.clone().json()).project.animation, fixture.animation,
+  assert.deepEqual(savedPayload.project.animation, fixture.animation,
     'the authenticated persistence API must retain multi-frame, per-layer animation cels');
   const staleWrite = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
