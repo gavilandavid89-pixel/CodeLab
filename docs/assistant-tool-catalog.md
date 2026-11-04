@@ -255,7 +255,7 @@ The PixelForge Headless bridge adds two commands against the signed-in CodeLab a
 - `pixelforge_headless_inspect` reads an existing PixelForge project and returns canvas dimensions, stable layer IDs/order, visibility/opacity/lock state, local/server revisions, and animation timeline summary.
 - `pixelforge_headless_batch` executes 1–500 allowlisted raster/layer/selection/animation actions in an isolated PixelForge sandbox. Read-only batches (`document.get_summary`, `canvas.get_pixel`, `canvas.preview_transform_region`, `animation.get_summary`, or session-local `canvas.copy_region`) return `status: "inspected"` without creating a proposal or writing the project. Any batch containing a project-changing action requires `approval: "approved"`, creates a proposal, and persists through the authenticated API.
 
-Both commands require `use_admin_session: true` and an exact `args.project_id`. A mutating batch also requires `approval: "approved"`, a short `args.summary`, and `args.actions`.
+Both commands require `use_admin_session: true` and an exact `args.project_id`. Every batch requires a short `args.summary` and `args.actions`; if any action changes project state, the command also requires `approval: "approved"`.
 
 Example read:
 
