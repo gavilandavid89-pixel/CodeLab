@@ -38,6 +38,7 @@ test('authenticated bridge loads, proposes, and persists only after explicit app
   });
   assert.equal(prepared.status, 'proposal');
   assert.ok(prepared.sessionId);
+  assert.ok(prepared.diff.bounds, 'drawing proposals should report their exact changed pixel bounds');
   assert.equal(savedPayload, null, 'preparing a proposal must never persist it');
   await assert.rejects(() => acceptPixelForgeProposal({ sessionId: prepared.sessionId }), /approved:true/);
   const accepted = await acceptPixelForgeProposal({ sessionId: prepared.sessionId, approved: true });
