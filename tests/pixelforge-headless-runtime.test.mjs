@@ -288,11 +288,13 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
 });
 
 test('Headless edits one animation layer in one frame without mutating neighboring cels', () => {
-  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const fixture = projectFixture();
+  const sourceBaseId = fixture.layers[0].id;
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
   const added = runtime.execute({ name: 'layer.add', layerName: 'Overlay' });
   assert.equal(added.ok, true);
   const overlayId = added.result.layerId;
-  const baseId = runtime.sandbox.layers.find(layer => layer.name === 'Layer 1').id;
+  const baseId = sourceBaseId;
   const editedCel = Buffer.alloc(16 * 16 * 4);
   editedCel.set([31, 91, 171, 255], 0);
   const batch = runtime.executeBatch([
@@ -336,7 +338,7 @@ test('headless shapes, selections, crop and rename compose into one accepted doc
     { name: 'canvas.draw_shape', shape: 'ellipse', x: 4, y: 4, width: 4, height: 4, color: '#EE2211', size: 1 },
     { name: 'canvas.crop', x: 0, y: 0, width: 10, height: 10 },
   ]);
-  assert.equal(batch.ok, true);
+  assert.equal(batch.ok, true, JSON.stringify(batch));
   runtime.createProposal('Create a sprite study with selected fill and ellipse');
   assert.equal(runtime.acceptProposal().status, 'applied');
   const saved = runtime.toJSON();
