@@ -146,6 +146,45 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
   assert.throws(() => timeline.removeLayer('shadow'), /at least one raster layer/);
 });
 
+test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', () => {
+  const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
+  const timeline = new PixelForgeAnimation({ width: 16, height: 16, layerIds, fps: 24 });
+  for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
+  assert.equal(timeline.frameCount, 240);
+  assert.equal(timeline.layerIds.length, 64);
+  assert.equal(timeline.memoryBytes, 16 * 16 * 4 * 64 * 240);
+  assert.ok(timeline.memoryBytes < MAX_ANIMATION_BYTES);
+
+  const edited = new Uint8ClampedArray(16 * 16 * 4);
+  edited.set([12, 34, 56, 255], 0);
+  timeline.setLayerPixels(137, 'layer-63', edited);
+  assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [12, 34, 56, 255]);
+  assert.equal(timeline.getLayerPixels(137, 'layer-62')[3], 0, 'editing one layer must not bleed into its sibling layer');
+  assert.equal(timeline.getLayerPixels(136, 'layer-63')[3], 0, 'editing one frame must not alter the previous frame');
+  assert.equal(timeline.getLayerPixels(138, 'layer-63')[3], 0, 'editing one frame must not alter the next frame');
+
+  const firstPreview = timeline.compositeThumbnail(137, null, 48);
+  assert.deepEqual([...firstPreview.pixels.slice(0, 4)], [12, 34, 56, 255]);
+  firstPreview.pixels[0] = 250;
+  assert.equal(timeline.compositeThumbnail(137, null, 48).pixels[0], 12,
+    'callers must not be able to mutate the cached thumbnail');
+  const changed = new Uint8ClampedArray(16 * 16 * 4);
+  changed.set([90, 80, 70, 255], 0);
+  timeline.setLayerPixels(137, 'layer-63', changed);
+  assert.deepEqual([...timeline.compositeThumbnail(137, null, 48).pixels.slice(0, 4)], [90, 80, 70, 255],
+    'editing a cel must invalidate only its stale preview');
+  assert.equal(timeline.compositeThumbnail(136, null, 48).pixels[3], 0,
+    'thumbnail caching must preserve frame isolation');
+
+  timeline.reorderLayers([...layerIds].reverse());
+  assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [90, 80, 70, 255],
+    'reordering the layer stack must not reassign pixel data to another layer');
+  assert.equal(timeline.removeLayer('layer-0'), 63);
+  assert.equal(timeline.addLayer('layer-extra'), 64);
+  assert.equal(timeline.getLayerPixels(137, 'layer-extra')[3], 0);
+  assert.throws(() => timeline.addLayer('layer-overflow'), /up to 64 raster layers/);
+});
+
 test('uses 60 FPS timing and rejects oversized allocations before decoding cels', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture());
   assert.equal(timeline.setFps(60), 1000 / 60);
