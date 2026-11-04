@@ -1113,7 +1113,7 @@ try {
         serverRevision: accepted.serverRevision,
         result: accepted.result,
         inspection: accepted.inspection,
-        proposal: { summary: prepared.proposal?.summary || summary, changedPixels: prepared.diff?.changedPixels ?? null, bounds: prepared.diff?.bounds ?? null },
+        proposal: { summary: prepared.proposal?.summary || summary, changedPixels: prepared.diff?.changedPixels ?? null, rasterChangedPixels: prepared.diff?.rasterChangedPixels ?? null, animation: prepared.diff?.animation ?? null, bounds: prepared.diff?.bounds ?? null },
         approved: true,
       };
     }, { projectId: command.args.project_id, actions: command.args.actions, summary: command.args.summary });
