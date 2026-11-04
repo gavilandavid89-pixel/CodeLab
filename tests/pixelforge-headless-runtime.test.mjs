@@ -783,3 +783,15 @@ test('Headless inspection publishes its supported actions and safety limits', ()
   assert.ok(capabilities.animationActions.includes('animation.frame.set_cel'));
   assert.ok(capabilities.animationActions.includes('animation.frame.get_onion_skin'));
 });
+
+
+test('Headless animation diff distinguishes frame insertion from reordering', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'A' });
+  runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
+  assert.equal(runtime.getDiff().animation.reordered, false, 'adding a frame must not be mislabeled as reordering');
+  runtime.createProposal('Create two baseline frames');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.execute({ name: 'animation.frame.reorder', from: 1, to: 0 }).ok, true);
+  assert.equal(runtime.getDiff().animation.reordered, true, 'moving existing frames must be reported as reordering');
+});
