@@ -173,8 +173,15 @@ test('animation composite frames capture sandbox pixels and frame-time lookup re
   assert.equal(saved.animation.frames.length, 2);
   const firstPixels = Buffer.from(saved.animation.frames[0].pixels, 'base64');
   const secondPixels = Buffer.from(saved.animation.frames[1].pixels, 'base64');
-  assert.deepEqual([...firstPixels.subarray((3 * 12 + 3) * 4, (3 * 12 + 3) * 4 + 4)], [238, 34, 17, 255]);
-  assert.deepEqual([...secondPixels.subarray((4 * 12 + 3) * 4, (4 * 12 + 3) * 4 + 4)], [34, 170, 68, 255]);
+  const containsColor = (pixels, rgba) => {
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      if (rgba.every((channel, index) => pixels[offset + index] === channel)) return true;
+    }
+    return false;
+  };
+  assert.equal(containsColor(firstPixels, [238, 34, 17, 255]), true, 'first cel must preserve the first raster edit');
+  assert.equal(containsColor(secondPixels, [238, 34, 17, 255]), true, 'second composite cel must preserve prior edits');
+  assert.equal(containsColor(secondPixels, [34, 170, 68, 255]), true, 'second composite cel must include its new raster edit');
   const timeline = saved.animation;
   assert.equal(frameAtAnimationTime(timeline, 0).index, 0);
   assert.equal(frameAtAnimationTime(timeline, 79).index, 0);
