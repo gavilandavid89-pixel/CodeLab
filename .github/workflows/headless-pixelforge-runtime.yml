@@ -9,6 +9,8 @@ on:
       - "public/pixelforge/src/**"
       - "tests/pixelforge-headless-runtime.test.mjs"
       - "tests/pixelforge-headless-bridge.test.mjs"
+      - "tests/pixelforge-agent-bridge-contract.test.mjs"
+      - ".github/scripts/codelab-bridge.mjs"
       - ".github/workflows/headless-pixelforge-runtime.yml"
 
 permissions:
@@ -24,10 +26,13 @@ jobs:
           node-version: "22"
       - name: Validate runtime module syntax
         run: |
+          node --check .github/scripts/codelab-bridge.mjs
           node --experimental-default-type=module --check public/pixelforge/src/headless.js
           node --experimental-default-type=module --check public/pixelforge/src/animation.js
           node --experimental-default-type=module --check public/pixelforge/src/ai-tools.js
           node --experimental-default-type=module --check public/pixelforge/src/workspaces.js
           node --experimental-default-type=module --check public/pixelforge/src/headless-bridge.js
+      - name: Run agent bridge and canvas coordinate contract tests
+        run: node --test tests/pixelforge-agent-bridge-contract.test.mjs
       - name: Run headless runtime contract tests
         run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs
