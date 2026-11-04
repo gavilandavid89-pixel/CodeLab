@@ -134,7 +134,7 @@ export async function createZipBlob(entries) {
   let totalBytes = 0;
   for (const entry of entries) {
     if (!entry || typeof entry.name !== 'string' || !entry.name || entry.name.startsWith('/') ||
-        entry.name.includes('\\\\') || entry.name.split('/').some(part => part === '..' || part === '.')) {
+        entry.name.includes('\\') || entry.name.split('/').some(part => part === '..' || part === '.')) {
       throw new TypeError('ZIP entry names must be safe relative paths.');
     }
     if (names.has(entry.name)) throw new TypeError('ZIP entry names must be unique.');
