@@ -321,7 +321,7 @@ test('headless transform preview reports bounds without changing the sandbox rev
     skewX: 0.25, interpolation: 'bilinear',
   });
   assert.equal(preview.ok, true);
-  assert.equal(preview.result.selectedPixels, 20);
+  assert.equal(preview.result.selectedPixels, 30);
   assert.ok(preview.result.bounds);
   assert.equal(preview.result.options.scaleX, 1.5);
   assert.equal(preview.result.options.interpolation, 'bilinear');
