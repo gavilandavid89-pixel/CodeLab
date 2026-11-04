@@ -146,7 +146,7 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
   assert.throws(() => timeline.removeLayer('shadow'), /at least one raster layer/);
 });
 
-test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', () => {
+test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', t => {
   const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
   const timeline = new PixelForgeAnimation({ width: 32, height: 32, layerIds, fps: 24 });
   for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
@@ -163,6 +163,7 @@ test('isolates every frame/layer cel and stays responsive at 64 layers across th
   for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 48);
   const warmRenderMs = performance.now() - warmStart;
   assert.ok(warmRenderMs < 1000, 'cached timeline refreshes must stay below one second');
+  t.diagnostic(`64 layers × 240 frames at 32×32: cold previews ${coldRenderMs.toFixed(1)} ms; cached refresh ${warmRenderMs.toFixed(1)} ms`);
 
   const edited = new Uint8ClampedArray(32 * 32 * 4);
   edited.set([12, 34, 56, 255], 0);
