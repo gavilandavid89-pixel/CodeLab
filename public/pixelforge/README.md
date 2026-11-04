@@ -18,6 +18,13 @@ PixelForge is a first-party CodeLab studio. Its editor engine and UI stay encaps
 
 PixelForge is maintained directly in this CodeLab repository. No upstream repository sync step is part of the architecture. Make engine/UI changes inside this module and update the CodeLab-specific persistence adapter and integration tests when their contracts change. Avoid spreading raster-editor concerns into unrelated CodeLab modules.
 
+## Animation roadmap
+
+- The isolated `src/animation.mjs` module provides a validated, UI-independent timeline model with independent per-layer RGBA cels, frame duplication/reordering/deletion, precise FPS and frame durations, playback time mapping, onion-skin neighbor metadata, and versioned animation JSON.
+- The animation model synchronizes add/remove/reorder operations for raster layers and enforces a bounded in-memory frame budget before allocating or decoding cel buffers.
+- The current raster editor remains the drawing surface. Animation UI, frame switching into the existing `RasterDocument`, playback rendering, project persistence, and animation export are intentionally separate integration steps; do not replace the editor or bypass its existing tools/history.
+- Before animation data is attached to account-backed projects, extend and test the server-side project validator and storage-size policy. The current project JSON limit is smaller than the animation model's raw memory ceiling, so do not assume every valid in-memory animation can already be saved to PostgreSQL.
+
 ## Verification expectations
 
 After changes, run the CodeLab validation workflow and Agent Space Browser Runner. Do not merge or deploy until authentication, account isolation, PostgreSQL persistence, save/load/delete, reload recovery, recent-project ordering, malformed-project rejection, quota enforcement, and account-scoped browser preferences pass.
