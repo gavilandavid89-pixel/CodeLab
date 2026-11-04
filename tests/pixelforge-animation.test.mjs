@@ -221,6 +221,7 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(core.includes('MAX_PROJECT_JSON_BYTES = 112 * 1024 * 1024'));
   assert.ok(core.includes('estimateRasterProjectJSONBytes(this.layers)'));
   assert.ok(server.includes('PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('project.width > 4096 || project.height > 4096 || project.width * project.height > 16_777_216'));
   assert.ok(server.includes('project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES'));
   assert.ok(core.includes('this.maxHistoryBytes = 256 * 1024 * 1024')); // history is a separate RAM-only budget
   assert.ok(server.includes('PIXELFORGE_MAX_BODY_BYTES = 144 * 1024 * 1024'));
