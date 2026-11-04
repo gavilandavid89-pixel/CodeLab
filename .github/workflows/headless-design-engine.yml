@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - 'headless/**'
+      - 'public/pixelforge/src/**'
+      - 'tests/pixelforge-*'
       - '.github/scripts/codelab-bridge.mjs'
       - 'docs/assistant-tool-catalog.md'
       - '.github/workflows/headless-design-engine.yml'
