@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createZipBlob } from '../public/pixelforge/src/zip-export.js';
 import { readStoredZip, parsePixelForgeVideoPackage } from '../public/pixelforge/src/video-composer-core.mjs';
 
@@ -38,4 +39,17 @@ test('rejects invalid, compressed, incomplete and over-limit video packages', as
   await assert.rejects(() => readStoredZip(new Blob(['not a zip'])), /valid PixelForge ZIP/);
   const good = await createZipBlob([{ name: 'a.txt', data: 'a' }]);
   await assert.rejects(() => readStoredZip(good, { maxEntries: 0 }), /too many entries/);
+});
+
+test('Video Composer web interface wires every referenced control and includes a mobile layout', () => {
+  const html = fs.readFileSync(new URL('../public/pixelforge/video-composer.html', import.meta.url), 'utf8');
+  const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../public/pixelforge/video-composer.css', import.meta.url), 'utf8');
+  const ids = [...js.matchAll(/\\$\\('#([^']+)'\\)/g)].map(match => match[1]);
+  assert.ok(ids.length > 20, 'the composer should wire its import, preview, timeline and export controls');
+  for (const id of new Set(ids)) assert.ok(html.includes('id="' + id + '"'), 'missing UI control: ' + id);
+  assert.match(html, /video-composer\\.js/);
+  assert.match(css, /max-width:620px/);
+  assert.match(js, /MediaRecorder/);
+  assert.match(js, /captureStream/);
 });
