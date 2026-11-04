@@ -260,6 +260,11 @@ async function exportVideo() {
   const solidBackground = $('#vc-solid-bg').checked;
   const width = packageData.manifest.width * scale;
   const height = packageData.manifest.height * scale;
+  if (width > 8192 || height > 8192 || width * height > 16_777_216) {
+    exportBusy = false; refreshFormatSupport();
+    setStatus('La escala seleccionada supera el límite seguro de 16 megapíxeles. Reduce la escala de salida.', 'error');
+    return;
+  }
   const exportCanvas = document.createElement('canvas');
   exportCanvas.width = width;
   exportCanvas.height = height;
@@ -274,7 +279,7 @@ async function exportVideo() {
   const chunks = [];
   let recorder;
   try {
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: Math.max(1_000_000, width * height * outputFps * 0.12) });
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: Math.min(25_000_000, Math.max(1_000_000, width * height * outputFps * 0.12)) });
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
     exportBusy = false; refreshFormatSupport();
