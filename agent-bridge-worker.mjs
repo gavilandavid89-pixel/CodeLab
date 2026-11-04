@@ -99,6 +99,48 @@ async function loadProject(projectId) {
     contentSha256: result.rows[0].content_sha256,
   };
 }
+async function createProject(payload) {
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  const width = payload.width === undefined ? 128 : payload.width;
+  const height = payload.height === undefined ? 128 : payload.height;
+  if (!name || name.length > 100) throw new Error('Project name must contain 1–100 characters.');
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 16 || height < 16 || width > 1024 || height > 1024 || width * height > 262144) {
+    throw new Error('Canvas dimensions must be integers from 16 to 1024 with at most 262144 pixels.');
+  }
+  const runtime = new HeadlessEditorRuntime({ width, height, name });
+  const document = { ...runtime.toJSON(), serverRevision: 1 };
+  const serialized = JSON.stringify(document);
+  const bytes = Buffer.byteLength(serialized, 'utf8');
+  if (bytes > MAX_PROJECT_BYTES) throw new Error('New project exceeds the PixelForge project storage limit.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
+    const usage = await client.query(
+      'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size),0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id=$1',
+      [workspaceId]
+    );
+    if (Number(usage.rows[0].count) >= MAX_PROJECTS) throw new Error('PixelForge project limit reached.');
+    if (Number(usage.rows[0].bytes) + bytes > MAX_ACCOUNT_BYTES) throw new Error('PixelForge account storage limit reached.');
+    const now = Date.now();
+    const sha = createHash('sha256').update(serialized).digest('hex');
+    await client.query(
+      'INSERT INTO codelab_pixelforge_projects (workspace_id,project_id,name,width,height,updated_at,last_opened_at,project,byte_size,server_revision,content_sha256) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,1,$9)',
+      [workspaceId, document.id, document.name, document.width, document.height, now, serialized, bytes, sha]
+    );
+    await client.query('COMMIT');
+    return {
+      projectId: document.id, name: document.name, width, height,
+      serverRevision: 1, byteSize: bytes, contentSha256: sha,
+      inspection: compactInspection(HeadlessEditorRuntime.fromJSON(document).inspect()),
+    };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 async function listProjects() {
   const result = await pool.query(
     'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt", server_revision AS "serverRevision" FROM codelab_pixelforge_projects WHERE workspace_id=$1 ORDER BY last_opened_at DESC',
@@ -256,6 +298,9 @@ async function processCommand(command) {
         workspaceId, runtime: 'PixelForge Headless',
         approvalRequired: true, persistence: 'PostgreSQL',
       });
+      return;
+    case 'pixelforge_create':
+      await finish(command.command_id, 'succeeded', await createProject(payload));
       return;
     case 'pixelforge_list':
       await finish(command.command_id, 'succeeded', await listProjects());
