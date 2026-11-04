@@ -489,6 +489,65 @@ async function main() {
     assert.match(await accountPage.locator('#status').innerText(), /Color selection/,
       'magic wand should create a color-based selection');
 
+    // Transform preview is non-destructive until Apply; the committed transform is undoable.
+    await accountPage.locator('#select-tool').click();
+    const transformBox = await canvasLocator.boundingBox();
+    const transformStart = await pixelPosition(1, 1), transformEnd = await pixelPosition(3, 3);
+    await accountPage.mouse.move(transformBox.x + transformStart.x, transformBox.y + transformStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(transformBox.x + transformEnd.x, transformBox.y + transformEnd.y, { steps: 4 });
+    await accountPage.mouse.up();
+    const beforeTransform = await readSavedArtwork();
+    const beforeTransformBytes = Buffer.from(beforeTransform.layers[1].pixels, 'base64');
+    await accountPage.locator('#transform-rotation').selectOption('90');
+    await accountPage.locator('#transform-preview').click();
+    assert.match(await accountPage.locator('#status').innerText(), /Transform preview/,
+      'transform should create a preview before modifying pixels');
+    assert.equal(await accountPage.locator('#transform-apply').isDisabled(), false,
+      'a valid transform preview should enable Apply');
+    await accountPage.locator('#transform-cancel').click();
+    let afterTransformCancel = await readSavedArtwork();
+    assert.deepEqual(Buffer.from(afterTransformCancel.layers[1].pixels, 'base64'), beforeTransformBytes,
+      'cancelling transform preview should preserve persisted pixels');
+    await accountPage.locator('#transform-preview').click();
+    await accountPage.locator('#transform-apply').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.notDeepEqual(Buffer.from(toolProject.layers[1].pixels, 'base64'), beforeTransformBytes,
+      'applying transform should commit changed raster pixels');
+    await accountPage.locator('#undo').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(Buffer.from(toolProject.layers[1].pixels, 'base64'), beforeTransformBytes,
+      'undo should restore the exact pre-transform pixel buffer');
+
+    // Crop preview/cancel is non-destructive; applying crop resizes every layer.
+    await accountPage.locator('#select-tool').click();
+    const cropBox = await canvasLocator.boundingBox();
+    const cropStart = await pixelPosition(2, 1), cropEnd = await pixelPosition(8, 5);
+    await accountPage.mouse.move(cropBox.x + cropStart.x, cropBox.y + cropStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(cropBox.x + cropEnd.x, cropBox.y + cropEnd.y, { steps: 5 });
+    await accountPage.mouse.up();
+    await accountPage.locator('#crop-preview').click();
+    assert.match(await accountPage.locator('#status').innerText(), /Crop preview/,
+      'crop should create a preview before resizing the canvas');
+    await accountPage.locator('#crop-cancel').click();
+    assert.equal((await readSavedArtwork()).width, 12,
+      'cancelling crop preview should preserve the original canvas width');
+    await accountPage.locator('#crop-preview').click();
+    await accountPage.locator('#crop-apply').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.width, 7, 'crop should resize canvas width to the selection');
+    assert.equal(toolProject.height, 5, 'crop should resize canvas height to the selection');
+    assert.equal(toolProject.layers.length, 2, 'crop should preserve every raster layer');
+    await accountPage.locator('#undo').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.width, 12, 'undo should restore canvas width after crop');
+    assert.equal(toolProject.height, 8, 'undo should restore canvas height after crop');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
