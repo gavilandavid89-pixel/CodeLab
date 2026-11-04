@@ -4,7 +4,7 @@ on:
   push:
     branches: ["feat/headless-pixelforge-runtime"]
   pull_request:
-    branches: ["main", "feat/codelab-pixelforge-studio-entry-clean"]
+    branches: ["main", "feat/codelab-pixelforge-studio-entry-clean", "feat/headless-pixelforge-runtime"]
     paths:
       - "public/pixelforge/src/**"
       - "tests/pixelforge-headless-runtime.test.mjs"
