@@ -205,7 +205,7 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
     { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 6, y1: 3, color: '#22AA44' },
     { name: 'animation.frame.add_from_layer', layerId: baseLayerId, frameName: 'Pose B' },
   ]);
-  assert.equal(first.ok, true);
+  assert.equal(first.ok, true, JSON.stringify(first));
   runtime.createProposal('Create two independent multi-layer animation poses');
   assert.equal(runtime.acceptProposal().status, 'applied');
   let saved = runtime.toJSON();
