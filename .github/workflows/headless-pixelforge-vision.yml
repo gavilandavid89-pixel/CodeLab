@@ -1,0 +1,31 @@
+name: PixelForge Headless Vision Consent
+
+on:
+  push:
+    branches: ["feat/headless-pixelforge-vision-consent"]
+    paths:
+      - "public/pixelforge/src/pixelforge-vision.js"
+      - "tests/pixelforge-headless-vision.test.mjs"
+      - ".github/workflows/headless-pixelforge-vision.yml"
+  pull_request:
+    branches: ["feat/headless-pixelforge-runtime"]
+    paths:
+      - "public/pixelforge/src/pixelforge-vision.js"
+      - "tests/pixelforge-headless-vision.test.mjs"
+      - ".github/workflows/headless-pixelforge-vision.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  vision-consent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate vision consent module
+        run: node --check public/pixelforge/src/pixelforge-vision.js
+      - name: Test consent, project binding and snapshot limits
+        run: node --test tests/pixelforge-headless-vision.test.mjs
