@@ -1459,11 +1459,16 @@ try {
       }
       try {
         await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/commit', 'POST', {});
-      } catch (error) {
-        if (error.code !== 'pixelforge_upload_committed') throw error;
-        await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/commit', 'POST', {});
+        committed = true;
+      } catch (firstCommitError) {
+        // A lost response after DB commit is ambiguous; retry the idempotent commit once before cleanup.
+        try {
+          await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/commit', 'POST', {});
+          committed = true;
+        } catch (_) {
+          throw firstCommitError;
+        }
       }
-      committed = true;
       const read = await apiRequest('/api/pixelforge/projects/' + encodeURIComponent(prepared.project.id), 'GET');
       if (!read.project || read.project.id !== prepared.project.id || read.project.layers.length !== prepared.layerCount ||
           (read.project.animation?.frames?.length ?? 0) !== prepared.frameCount ||
