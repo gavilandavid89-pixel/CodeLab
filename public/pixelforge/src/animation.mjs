@@ -7,12 +7,12 @@
  */
 export const MAX_ANIMATION_FRAMES = 240;
 export const MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
-export const MAX_ANIMATION_JSON_BYTES = 112 * 1024 * 1024;
+export const MAX_ANIMATION_JSON_BYTES = 96 * 1024 * 1024;
 const ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024;
 
 // Conservative preflight for the current base64 JSON representation. The
-// reserve covers frame/layer metadata; the remaining 16 MiB below the server's
-// 128 MiB project cap is left for the project envelope and server revision.
+// reserve covers timeline metadata. This is a component-only estimate: a project
+// containing raster layers as well as a timeline must preflight the combined 96 MiB envelope.
 export function estimateAnimationJSONBytes({ width, height, layerCount, frameCount }) {
   assertDimensions(width, height);
   if (!Number.isInteger(layerCount) || layerCount < 1 || layerCount > 64 ||
@@ -401,7 +401,7 @@ export class PixelForgeAnimation {
 
   toJSON() {
     if (this.estimatedJSONBytes > MAX_ANIMATION_JSON_BYTES) {
-      throw new RangeError('Animation JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
+      throw new RangeError('Animation JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
     return {
       format: 'pixelforge-animation',
