@@ -4,6 +4,7 @@ import {
   requestPixelForgeVisionConsent,
   preparePixelForgeVisionRequest,
   capturePixelForgeArtworkDataUrl,
+  preparePixelForgeVisionFromRuntime,
   PIXELFORGE_VISION_CONSENT_TTL_MS,
 } from '../public/pixelforge/src/pixelforge-vision.js';
 
@@ -179,4 +180,36 @@ test('rejects invalid raster dimensions, pixel lengths and missing canvas capabi
   assert.throws(() => capturePixelForgeArtworkDataUrl({
     rasterDocument: { width: 1, height: 1, composite: () => new Uint8Array(4) },
   }), /canvas factory/);
+});
+
+test('runtime preparation asks for consent before capturing sandbox pixels', async () => {
+  const runtime = {
+    sandbox: { width: 1, height: 1, composite: () => new Uint8ClampedArray([0, 0, 0, 0]) },
+  };
+  let captures = 0;
+  const canvasFactory = () => {
+    captures++;
+    return {
+      width: 0, height: 0,
+      getContext: () => ({
+        createImageData: () => ({ data: new Uint8ClampedArray(4) }),
+        putImageData: () => {},
+      }),
+      toDataURL: () => PNG,
+    };
+  };
+  const declined = await preparePixelForgeVisionFromRuntime({
+    projectId: 'project-1', runtime, confirm: async () => false, canvasFactory,
+  });
+  assert.equal(declined, null);
+  assert.equal(captures, 0, 'declining consent must prevent artwork capture');
+
+  const prepared = await preparePixelForgeVisionFromRuntime({
+    projectId: 'project-1', runtime, confirm: async () => true, canvasFactory,
+    project: { name: 'Draft', width: 1, height: 1, accountId: 'private' },
+  });
+  assert.equal(captures, 1);
+  assert.equal(prepared.imageCount, 1);
+  assert.equal(prepared.context.project.name, 'Draft');
+  assert.equal(prepared.context.project.accountId, undefined);
 });
