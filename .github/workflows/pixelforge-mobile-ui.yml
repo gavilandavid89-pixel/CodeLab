@@ -1,0 +1,31 @@
+name: PixelForge mobile UI
+
+on:
+  push:
+    branches: ["fix/**", "feat/**"]
+    paths:
+      - "public/pixelforge/**"
+      - "tests/pixelforge-mobile-ui.test.js"
+      - ".github/workflows/pixelforge-mobile-ui.yml"
+  pull_request:
+    branches: ["feat/codelab-pixelforge-studio-entry-clean"]
+    paths:
+      - "public/pixelforge/**"
+      - "tests/pixelforge-mobile-ui.test.js"
+      - ".github/workflows/pixelforge-mobile-ui.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check editor module syntax
+        run: node --check public/pixelforge/src/editor.js
+      - name: Verify mobile inspector and navigation contracts
+        run: node tests/pixelforge-mobile-ui.test.js
