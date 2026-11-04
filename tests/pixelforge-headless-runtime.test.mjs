@@ -667,3 +667,64 @@ test('canvas coordinate reference remains readable while a drawing proposal awai
   assert.deepEqual(reference.result.landmarks.center, { x: 8, y: 8 });
   assert.equal(runtime.hasPendingProposal, true);
 });
+
+
+test('Headless preserves independent cel ownership across 64 layers and 240 frames', () => {
+  const fixture = new HeadlessEditorRuntime({ width: 8, height: 8, name: '64-layer stress fixture' }).toJSON();
+  const byteLength = fixture.width * fixture.height * 4;
+  const blank = Buffer.alloc(byteLength).toString('base64');
+  fixture.layers = Array.from({ length: 64 }, (_, index) => ({
+    id: `persisted-layer-${index}`,
+    name: `Layer ${index}`,
+    visible: true,
+    opacity: 1,
+    locked: false,
+    pixels: blank,
+  }));
+  fixture.activeLayerId = fixture.layers[0].id;
+  fixture.animation = {
+    format: 'pixelforge-animation',
+    version: 1,
+    width: fixture.width,
+    height: fixture.height,
+    layerIds: fixture.layers.map(layer => layer.id),
+    fps: 24,
+    loop: true,
+    activeFrameIndex: 0,
+    frames: Array.from({ length: 240 }, (_, frameIndex) => ({
+      id: `stress-frame-${frameIndex}`,
+      durationMs: 1000 / 24,
+      cels: fixture.layers.map(layer => ({ layerId: layer.id, pixels: blank })),
+    })),
+  };
+
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  assert.equal(runtime.inspect().animation.frameCount, 240);
+  assert.equal(runtime.inspect().animation.layerCount, 64);
+  const targetLayer = runtime.sandbox.layers[63];
+  const changed = Buffer.alloc(byteLength);
+  changed.set([19, 87, 155, 255], 0);
+  const edit = runtime.execute({
+    name: 'animation.frame.set_cel',
+    index: 239,
+    layerId: targetLayer.id,
+    pixels: changed.toString('base64'),
+  });
+  assert.equal(edit.ok, true, JSON.stringify(edit));
+
+  runtime.createProposal('Stress-test one cel in a 64-layer / 240-frame document');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  const celPixels = (frameIndex, layerId) => Buffer.from(
+    saved.animation.frames[frameIndex].cels.find(cel => cel.layerId === layerId).pixels,
+    'base64',
+  );
+  assert.deepEqual([...celPixels(239, fixture.layers[63].id).subarray(0, 4)], [19, 87, 155, 255]);
+  assert.equal(celPixels(239, fixture.layers[62].id).some(value => value !== 0), false,
+    'editing layer 64 must not bleed into layer 63');
+  assert.equal(celPixels(238, fixture.layers[63].id).some(value => value !== 0), false,
+    'editing frame 240 must not mutate frame 239');
+  assert.equal(celPixels(239, fixture.layers[0].id).some(value => value !== 0), false,
+    'editing the top layer must not mutate the bottom layer');
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+});
