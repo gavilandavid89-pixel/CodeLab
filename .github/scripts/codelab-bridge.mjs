@@ -1476,7 +1476,6 @@ try {
       files: { spriteSheet: spriteSheetPath, manifest: manifestPath },
       artifactName: 'codelab-ui-evidence-' + process.env.GITHUB_RUN_ID,
       artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID,
-      networkRequestsBlocked: false,
       projectPersisted: false,
     };
   } else if (command.action === 'headless_batch') {
