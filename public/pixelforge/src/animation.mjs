@@ -20,6 +20,9 @@ export function estimateAnimationJSONBytes({ width, height, layerCount, frameCou
     throw new RangeError('Animation layer/frame counts are outside the supported limits.');
   }
   const rawBytes = width * height * 4 * layerCount * frameCount;
+  if (rawBytes > MAX_ANIMATION_BYTES) {
+    throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+  }
   const base64Bytes = Math.ceil(rawBytes / 3) * 4;
   return base64Bytes + ANIMATION_JSON_METADATA_RESERVE_BYTES;
 }
