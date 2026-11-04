@@ -10,6 +10,7 @@ test('builds a complete 12-frame orbital animation with independent raster layer
   assert.equal(doc.layers.length, 4);
   assert.equal(doc.history.length, 0, 'the demo should open with a clean undo history');
   assert.equal(doc.dirty, false, 'the freshly generated demo should be ready to save without phantom edits');
+  assert.ok(doc.composite().some(value => value !== 0), 'the actual editor canvas should render the generated artwork');
   assert.deepEqual(doc.layers.map(layer => layer.name), ['Deep space', 'Starlight', 'Ion thruster', 'Explorer']);
   assert.equal(animation.frameCount, 12);
   assert.equal(animation.fps, 12);
