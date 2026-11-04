@@ -23,7 +23,7 @@ PixelForge is maintained directly in this CodeLab repository. No upstream reposi
 - The isolated `src/animation.mjs` module provides a validated, UI-independent timeline model with independent per-layer RGBA cels, frame duplication/reordering/deletion, precise FPS and frame durations, playback time mapping, onion-skin neighbor metadata, and versioned animation JSON.
 - The animation model synchronizes add/remove/reorder operations for raster layers and enforces a 64 MiB aggregate raw RGBA frame/cel budget before allocating or decoding cel buffers. This keeps one 4096×4096 RGBA cel representable as base64 inside the 96 MiB project envelope when it is the main payload.
 - The current raster editor remains the drawing surface. Animation UI, frame switching into the existing `RasterDocument`, playback rendering, project persistence, and animation export are intentionally separate integration steps; do not replace the editor or bypass its existing tools/history.
-- Before animation data is attached to account-backed projects, extend and test the server-side project validator and storage-size policy. The animation component can approach the 96 MiB envelope on its own; do not assume a full-size raster document and a full-size timeline can both fit together. The server rejects a combined payload above 96 MiB.
+- The server-side project validator now checks the optional animation contract before persistence. The animation component can approach the 96 MiB envelope on its own; do not assume a full-size raster document and a full-size timeline can both fit together. The server rejects a combined payload above 96 MiB.
 
 ## Verification expectations
 
