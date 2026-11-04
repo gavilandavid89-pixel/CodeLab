@@ -287,6 +287,35 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
   assert.ok(saved.animation.frames.every(frame => frame.cels.length === saved.layers.length));
 });
 
+test('Headless edits one animation layer in one frame without mutating neighboring cels', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const added = runtime.execute({ name: 'layer.add', layerName: 'Overlay' });
+  assert.equal(added.ok, true);
+  const overlayId = added.result.layerId;
+  const baseId = runtime.sandbox.layers.find(layer => layer.name === 'Layer 1').id;
+  const editedCel = Buffer.alloc(16 * 16 * 4);
+  editedCel.set([31, 91, 171, 255], 0);
+  const batch = runtime.executeBatch([
+    { name: 'animation.frame.capture_document', frameName: 'Before' },
+    { name: 'animation.frame.capture_document', frameName: 'After' },
+    { name: 'animation.frame.set_cel', index: 1, layerId: overlayId, pixels: editedCel.toString('base64') },
+  ]);
+  assert.equal(batch.ok, true, JSON.stringify(batch));
+  runtime.createProposal('Edit only the Overlay cel in frame 2');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+
+  const saved = runtime.toJSON();
+  const cel = (frame, id) => Buffer.from(frame.cels.find(item => item.layerId === id).pixels, 'base64');
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.deepEqual([...cel(saved.animation.frames[1], overlayId).subarray(0, 4)], [31, 91, 171, 255]);
+  assert.equal(cel(saved.animation.frames[0], overlayId).some(value => value !== 0), false,
+    'frame 1 overlay must remain untouched');
+  assert.equal(cel(saved.animation.frames[1], baseId).some(value => value !== 0), false,
+    'frame 2 base layer must remain untouched');
+  assert.equal(cel(saved.animation.frames[0], baseId).some(value => value !== 0), false,
+    'frame 1 base layer must remain untouched');
+});
+
 test('Headless blocks dimension-changing crop while multi-layer animation frames exist', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
   assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer' }).ok, true);
