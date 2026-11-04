@@ -174,7 +174,7 @@ async function importPackage(file) {
     $('#vc-timeline-count').textContent = parsed.frames.length + ' fotogramas';
     $('#vc-audio-status').textContent = parsed.manifest.audio?.length ? 'Pista de audio incluida en el paquete' : 'Este paquete no contiene audio';
     $('#vc-loop').checked = parsed.manifest.loop !== false;
-    $('#vc-loop-export').checked = parsed.manifest.loop !== false;
+    $('#vc-loop-export').checked = false;
     $('#vc-output-fps').value = String(parsed.manifest.fps);
     setEnabled(true);
     refreshFormatSupport();
