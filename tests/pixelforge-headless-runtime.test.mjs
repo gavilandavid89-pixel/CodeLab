@@ -311,3 +311,20 @@ test('headless region transforms expose scale, skew and interpolation controls f
     x: 3, y: 3, width: 4, height: 4, interpolation: 'lanczos',
   }).ok, false);
 });
+
+test('headless transform preview reports bounds without changing the sandbox revision', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const preview = runtime.execute({
+    name: 'canvas.preview_transform_region',
+    x: 2, y: 3, width: 5, height: 4,
+    dx: 1, dy: 2, rotate: 90, scaleX: 1.5, scaleY: 1,
+    skewX: 0.25, interpolation: 'bilinear',
+  });
+  assert.equal(preview.ok, true);
+  assert.equal(preview.result.selectedPixels, 20);
+  assert.ok(preview.result.bounds);
+  assert.equal(preview.result.options.scaleX, 1.5);
+  assert.equal(preview.result.options.interpolation, 'bilinear');
+  assert.equal(runtime.hasPendingChanges, false);
+  assert.equal(runtime.document.revision, 0);
+});
