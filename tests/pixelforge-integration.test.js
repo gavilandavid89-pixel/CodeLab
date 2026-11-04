@@ -617,16 +617,13 @@ async function main() {
       'layer reorder should change the persisted layer stack order');
 
     // Global checker fill should paint both foreground/background cells across matching pixels.
+    await accountPage.locator('#add-layer').click();
+    await waitForRasterSave();
     const beforeCheckerFill = await readSavedArtwork();
-    let checkerOrigin = null;
-    for (let y = 0; y < beforeCheckerFill.height && !checkerOrigin; y++) {
-      for (let x = 0; x < beforeCheckerFill.width - 1; x++) {
-        if ((x + y) % 2 === 0 && rgbaAt(beforeCheckerFill, x, y, 2)[3] === 0 && rgbaAt(beforeCheckerFill, x + 1, y, 2)[3] === 0) {
-          checkerOrigin = { x, y }; break;
-        }
-      }
-    }
-    assert.ok(checkerOrigin, 'checker fill fixture should contain adjacent transparent pixels');
+    assert.equal(beforeCheckerFill.layers.length, 4, 'a fresh transparent layer should be available for checker fill');
+    const checkerOrigin = { x: 0, y: 0 };
+    assert.equal(rgbaAt(beforeCheckerFill, 0, 0, 3)[3], 0, 'fresh checker-fill layer should start transparent');
+    assert.equal(rgbaAt(beforeCheckerFill, 1, 0, 3)[3], 0, 'fresh checker-fill layer should contain an adjacent transparent cell');
     await accountPage.keyboard.press('Control+A');
     await setForegroundColor('#ff0000');
     await accountPage.locator('#fill-tool').click();
@@ -639,12 +636,14 @@ async function main() {
     await clickPixel(checkerOrigin.x, checkerOrigin.y);
     await waitForRasterSave();
     toolProject = await readSavedArtwork();
-    assert.deepEqual(rgbaAt(toolProject, checkerOrigin.x, checkerOrigin.y, 2), [255, 0, 0, 255],
+    assert.deepEqual(rgbaAt(toolProject, checkerOrigin.x, checkerOrigin.y, 3), [255, 0, 0, 255],
       'global checker fill should use foreground color on the first checker cell');
-    assert.deepEqual(rgbaAt(toolProject, checkerOrigin.x + 1, checkerOrigin.y, 2), [36, 38, 50, 255],
+    assert.deepEqual(rgbaAt(toolProject, checkerOrigin.x + 1, checkerOrigin.y, 3), [36, 38, 50, 255],
       'global checker fill should use background color on the alternating cell');
     await accountPage.locator('#fill-mode').selectOption('contiguous');
     await accountPage.locator('#fill-pattern').selectOption('solid');
+    await accountPage.locator('.layer-row').nth(1).locator('.layer-select').click();
+    await waitForRasterSave();
 
     // Symmetry mode 2 mirrors a brush stroke across the vertical document axis.
     await setForegroundColor('#00ff00');
