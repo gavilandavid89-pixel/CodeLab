@@ -657,6 +657,44 @@ test('canvas reference exposes stable pixel coordinates, landmarks, grid and lay
   assert.equal(runtime.toJSON().revision, 0);
 });
 
+test('Headless reads bounded RGBA regions with exact canvas coordinates and layer identity', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 12, name: 'Region inspection fixture' });
+  const layerId = runtime.sandbox.activeLayerId;
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 3, y0: 4, x1: 5, y1: 4, color: '#2A7BCD',
+  }).ok, true);
+  const region = runtime.execute({ name: 'canvas.get_region', x: 2, y: 3, width: 5, height: 3 });
+  assert.equal(region.ok, true, JSON.stringify(region));
+  assert.deepEqual(region.result.origin, { x: 2, y: 3 });
+  assert.equal(region.result.width, 5);
+  assert.equal(region.result.height, 3);
+  assert.equal(region.result.encoding, 'rgba8-base64');
+  assert.equal(region.result.merged, true);
+  const bytes = Buffer.from(region.result.pixels, 'base64');
+  assert.equal(bytes.length, 5 * 3 * 4);
+  assert.deepEqual([...bytes.subarray((1 * 5 + 1) * 4, (1 * 5 + 1) * 4 + 4)], [42, 123, 205, 255]);
+
+  const layerRegion = runtime.execute({
+    name: 'canvas.get_region', x: 2, y: 3, width: 5, height: 3,
+    merged: false, layerId,
+  });
+  assert.equal(layerRegion.ok, true);
+  assert.equal(layerRegion.result.layerId, layerId);
+  assert.deepEqual(Buffer.from(layerRegion.result.pixels, 'base64'), bytes);
+  assert.equal(runtime.hasPendingChanges, true, 'region inspection must not add edits');
+});
+
+test('Headless region reads stay read-only during proposals and enforce strict bounds', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 16 });
+  assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 3, y1: 1, color: '#123456' }).ok, true);
+  runtime.createProposal('Draw a small line');
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 4, height: 4 }).ok, true);
+  assert.equal(runtime.hasPendingProposal, true);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 14, y: 14, width: 4, height: 4 }).ok, false);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 129, height: 1 }).ok, false);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 128, height: 128 }).ok, false);
+});
+
 test('canvas coordinate reference remains readable while a drawing proposal awaits approval', () => {
   const runtime = new HeadlessEditorRuntime({ width: 16, height: 16 });
   const edit = runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 5, y1: 1, color: '#FF0000' });
