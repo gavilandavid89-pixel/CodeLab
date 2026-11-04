@@ -263,7 +263,11 @@ export class RasterDocument {
   }
   setActiveLayer(id) {
     if (!this.layers.some(layer => layer.id === id)) throw new Error('Unknown layer ID.');
-    if (this.activeLayerId !== id) { this.activeLayerId = id; this.dirty = true; this.saveVersion++; }
+    if (this.activeLayerId !== id) {
+      const before = this.activeLayerId;
+      this.activeLayerId = id;
+      this.#record({ type: 'layer-active', before, after: id });
+    }
   }
   moveLayer(id, targetIndex) {
     if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= this.layers.length) throw new RangeError('Layer target index is outside the layer stack.');
@@ -1126,6 +1130,8 @@ export class RasterDocument {
         this.layers.splice(Math.min(targetIndex, this.layers.length), 0, layer);
         this.#markAllCompositeDirty();
       }
+    } else if (entry.type === 'layer-active') {
+      this.activeLayerId = forward ? entry.after : entry.before;
     } else if (entry.type === 'layer-rename') {
       const layer = this.layers.find(item => item.id === entry.layerId);
       if (layer) layer.name = forward ? entry.after : entry.before;
