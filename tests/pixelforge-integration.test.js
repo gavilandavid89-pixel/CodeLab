@@ -817,7 +817,7 @@ async function main() {
     await accountPage.route('**/api/pixelforge/**', async route => {
       const requestPath = new URL(route.request().url()).pathname;
       if (failChunkOnce && route.request().method() === 'PUT' &&
-          /\\/uploads\\/[a-f0-9]{32}\\/2$/.test(requestPath)) {
+          /\/uploads\/[a-f0-9]{32}\/2$/.test(requestPath)) {
         failChunkOnce = false;
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'simulated_chunk_interruption' }) });
         return;
