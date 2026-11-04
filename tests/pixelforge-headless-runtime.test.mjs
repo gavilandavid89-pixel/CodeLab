@@ -190,3 +190,25 @@ test('animation composite frames capture sandbox pixels and frame-time lookup re
   timeline.loop = false;
   assert.equal(frameAtAnimationTime(timeline, 10000).index, 1);
 });
+
+test('headless shapes, selections, crop and rename compose into one accepted document change', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'document.rename', newName: 'Sprite study' },
+    { name: 'selection.create_rect', x: 1, y: 1, width: 3, height: 3 },
+    { name: 'canvas.fill', x: 1, y: 1, color: '#22AA44' },
+    { name: 'selection.clear' },
+    { name: 'canvas.draw_shape', shape: 'ellipse', x: 4, y: 4, width: 4, height: 4, color: '#EE2211', size: 1 },
+    { name: 'canvas.crop', x: 0, y: 0, width: 10, height: 10 },
+  ]);
+  assert.equal(batch.ok, true);
+  runtime.createProposal('Create a sprite study with selected fill and ellipse');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.name, 'Sprite study');
+  assert.equal(saved.width, 10);
+  assert.equal(saved.height, 10);
+  const pixels = Buffer.from(saved.layers[0].pixels, 'base64');
+  assert.deepEqual([...pixels.subarray((1 * 10 + 1) * 4, (1 * 10 + 1) * 4 + 4)], [34, 170, 68, 255]);
+  assert.ok(pixels.some((value, index) => index % 4 === 0 && value === 238), 'ellipse outline should be persisted');
+});
