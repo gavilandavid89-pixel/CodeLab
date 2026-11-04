@@ -166,8 +166,8 @@ export class HeadlessEditorRuntime {
         this.#animation = JSON.parse(JSON.stringify(this.#sandboxAnimation));
         this.#hasAnimation = true;
         this.#animationDirty = false;
-        this.#clearAnimationHistory();
       }
+      this.#clearAnimationHistory();
       if (!hadRasterChanges && hadAnimationChanges) {
         this.#document.revision++;
         this.#document.saveVersion++;
