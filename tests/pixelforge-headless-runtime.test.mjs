@@ -59,7 +59,7 @@ test('headless proposal rejects a stale source revision', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
   assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 5, y1: 1, color: '#123456' }).ok, true);
   runtime.createProposal('Stale proposal');
-  runtime.document.beginStroke({ color: '#FFFFFF', size: 1 });
+  runtime.document.setLayerOpacity(runtime.document.activeLayerId, 0.5);
   const result = runtime.acceptProposal();
   assert.equal(result.status, 'rejected');
   assert.equal(result.reason, 'stale-base');
