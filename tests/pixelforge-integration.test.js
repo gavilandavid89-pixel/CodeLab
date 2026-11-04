@@ -114,7 +114,6 @@ async function main() {
       method: 'DELETE', headers: authHeaders
     });
   }
-  const health = await (await fetch(base + '/api/health')).json();
   assert.ok(['postgresql', 'server-file'].includes(health.persistence), 'CodeLab should report its active persistence backend');
   const listBefore = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal(listBefore.status, 200, 'authenticated CodeLab users should list their PixelForge projects');
