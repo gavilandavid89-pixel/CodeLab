@@ -6,6 +6,21 @@ import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationL
 const MAX_ANIMATION_HISTORY_STEPS = 100;
 const MAX_ANIMATION_HISTORY_BYTES = 16 * 1024 * 1024;
 
+function remapAnimationLayerIds(timeline, targetLayerIds) {
+  if (!Array.isArray(targetLayerIds) || targetLayerIds.length !== timeline.layerIds.length) {
+    throw new TypeError('Animation layer identity mapping must preserve the complete layer stack.');
+  }
+  const mapping = new Map(timeline.layerIds.map((id, index) => [id, targetLayerIds[index]]));
+  return {
+    ...timeline,
+    layerIds: [...targetLayerIds],
+    frames: timeline.frames.map(frame => ({
+      ...frame,
+      cels: frame.cels.map(cel => ({ ...cel, layerId: mapping.get(cel.layerId) ?? cel.layerId })),
+    })),
+  };
+}
+
 /**
  * DOM-free, provider-independent PixelForge automation runtime.
  * Mutations stay in an isolated sandbox until an explicit proposal is accepted.
@@ -56,7 +71,8 @@ export class HeadlessEditorRuntime {
   #resetWorkspace() {
     this.#workspace = new AIWorkspace(this.#document);
     this.#commands = new AICommandSession(this.#workspace);
-    this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    const sandboxLayerIds = this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds);
+    this.#sandboxAnimation = remapAnimationLayerIds(this.#animation, sandboxLayerIds);
     this.#animationDirty = false;
     this.#clearAnimationHistory();
   }
@@ -78,7 +94,7 @@ export class HeadlessEditorRuntime {
           const previous = this.#animationHistory.pop();
           this.#animationHistoryBytes -= previous.bytes;
           this.#pushAnimationHistory(this.#animationFuture, this.#sandboxAnimation);
-          this.#sandboxAnimation = previous.snapshot;
+          this.#sandboxAnimation = synchronizeAnimationLayers(previous.snapshot, this.#workspace.sandbox);
           this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
@@ -87,7 +103,7 @@ export class HeadlessEditorRuntime {
           const next = this.#animationFuture.pop();
           this.#animationHistoryBytes -= next.bytes;
           this.#pushAnimationHistory(this.#animationHistory, this.#sandboxAnimation);
-          this.#sandboxAnimation = next.snapshot;
+          this.#sandboxAnimation = synchronizeAnimationLayers(next.snapshot, this.#workspace.sandbox);
           this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
@@ -123,11 +139,7 @@ export class HeadlessEditorRuntime {
       const before = JSON.stringify(this.#sandboxAnimation);
       const synchronized = synchronizeAnimationLayers(this.#sandboxAnimation, this.#workspace.sandbox);
       if (JSON.stringify(synchronized) !== before) {
-        if (synchronized.frames.length || this.#hasAnimation) {
-          this.#clearAnimationFuture();
-          this.#pushAnimationHistory(this.#animationHistory, this.#sandboxAnimation);
-          this.#animationDirty = true;
-        }
+        if (synchronized.frames.length || this.#hasAnimation) this.#animationDirty = true;
         this.#sandboxAnimation = synchronized;
       }
     }
@@ -183,13 +195,17 @@ export class HeadlessEditorRuntime {
   acceptProposal() {
     const hadRasterChanges = this.#workspace.hasSandboxChanges;
     const hadAnimationChanges = this.#animationDirty;
+    const committedAnimation = remapAnimationLayerIds(
+      this.#sandboxAnimation,
+      this.#workspace.mapSandboxLayerIdsToSource(this.#sandboxAnimation.layerIds),
+    );
     const result = this.#workspace.acceptProposal();
     if (result.status === 'applied') {
-      if (hadAnimationChanges) {
-        this.#animation = JSON.parse(JSON.stringify(this.#sandboxAnimation));
-        this.#hasAnimation = true;
-        this.#animationDirty = false;
-      }
+      this.#animation = committedAnimation;
+      if (hadAnimationChanges && this.#animation.frames.length) this.#hasAnimation = true;
+      const nextSandboxLayerIds = this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds);
+      this.#sandboxAnimation = remapAnimationLayerIds(this.#animation, nextSandboxLayerIds);
+      this.#animationDirty = false;
       this.#clearAnimationHistory();
       if (!hadRasterChanges && hadAnimationChanges) {
         this.#document.revision++;
@@ -203,7 +219,7 @@ export class HeadlessEditorRuntime {
   discardProposal() {
     const hadAnimationChanges = this.#animationDirty;
     const discarded = this.#workspace.discardProposal();
-    this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#sandboxAnimation = remapAnimationLayerIds(this.#animation, this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds));
     this.#animationDirty = false;
     this.#clearAnimationHistory();
     return discarded || hadAnimationChanges;
@@ -211,7 +227,7 @@ export class HeadlessEditorRuntime {
   discardSandboxChanges() {
     const hadAnimationChanges = this.#animationDirty;
     const discarded = this.#workspace.discardSandboxChanges();
-    this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#sandboxAnimation = remapAnimationLayerIds(this.#animation, this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds));
     this.#animationDirty = false;
     this.#clearAnimationHistory();
     return discarded || hadAnimationChanges;
@@ -219,7 +235,7 @@ export class HeadlessEditorRuntime {
   syncFromSource(options) {
     const result = this.#workspace.syncFromUser(options);
     if (result.status === 'synced') {
-      this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+      this.#sandboxAnimation = remapAnimationLayerIds(this.#animation, this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds));
       this.#animationDirty = false;
       this.#clearAnimationHistory();
     }
