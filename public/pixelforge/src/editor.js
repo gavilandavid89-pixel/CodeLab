@@ -10,6 +10,7 @@ import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
+import { readStoredZip } from './video-composer-core.mjs';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -2060,8 +2061,15 @@ $('#import-file').addEventListener('change', async event => {
   try {
     if (file.size > 100 * 1024 * 1024) throw new RangeError('This file is larger than the 100 MiB import safety limit.');
     let importedDoc;
-    if (file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
-      const parsed = JSON.parse(await file.text());
+    let zipProject = null;
+    if (file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip') {
+      const entries = await readStoredZip(file);
+      const projectEntry = [...entries.values()].find(entry => entry.name.toLowerCase().endsWith('.pforge'));
+      if (!projectEntry) throw new TypeError('This ZIP does not contain an editable PixelForge .pforge project.');
+      zipProject = JSON.parse(await projectEntry.blob.text());
+    }
+    if (zipProject || file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
+      const parsed = zipProject || JSON.parse(await file.text());
       importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: true });
       importedDoc.animationLoop = parsed.animation?.loop !== false;
       if (parsed.animation) {
