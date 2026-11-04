@@ -90,7 +90,7 @@ export function preparePixelForgeVisionRequest({
   const snapshot = createVisionSnapshot({
     mode: 'artwork',
     artworkImage,
-    project: { ...safeProject, projectId },
+    project: safeProject,
     selection: safeSelection,
     viewport: safeViewport,
     animation: safeAnimation,
