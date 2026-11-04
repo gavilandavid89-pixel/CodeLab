@@ -623,6 +623,46 @@ async function main() {
     const [spriteSheetDownload, animationManifestDownload] = await animationDownloadsPromise;
     assert.match(spriteSheetDownload.suggestedFilename(), /-animation\.png$/);
     assert.match(animationManifestDownload.suggestedFilename(), /-animation\.json$/);
+
+    const compositePngPromise = accountPage.waitForEvent('download');
+    await accountPage.locator('#export-png').click();
+    const compositePngDownload = await compositePngPromise;
+    assert.match(compositePngDownload.suggestedFilename(), /\.png$/);
+
+    const projectBackupPromise = accountPage.waitForEvent('download');
+    await accountPage.locator('#export-project').click();
+    const projectBackupDownload = await projectBackupPromise;
+    assert.match(projectBackupDownload.suggestedFilename(), /\.pforge$/);
+    const projectBackupPath = await projectBackupDownload.path();
+    const exportedProject = JSON.parse(fs.readFileSync(projectBackupPath, 'utf8'));
+    assert.equal(exportedProject.animation.frames.length, 2, 'portable .pforge export must include the complete animation timeline');
+    assert.equal(exportedProject.animation.loop, false, 'portable .pforge export must preserve the loop setting');
+
+    const layerSheetDownloadsPromise = new Promise((resolve, reject) => {
+      const downloads = [];
+      const onDownload = download => {
+        downloads.push(download);
+        if (downloads.length === 2) {
+          clearTimeout(timeout);
+          accountPage.off('download', onDownload);
+          resolve(downloads);
+        }
+      };
+      const timeout = setTimeout(() => {
+        accountPage.off('download', onDownload);
+        reject(new Error('Layer sprite-sheet export did not emit both PNG and JSON manifest'));
+      }, 10000);
+      accountPage.on('download', onDownload);
+    });
+    await accountPage.locator('#export-sprite-sheet').click();
+    const [layerSheetDownload, layerManifestDownload] = await layerSheetDownloadsPromise;
+    assert.match(layerSheetDownload.suggestedFilename(), /-spritesheet\.png$/);
+    assert.match(layerManifestDownload.suggestedFilename(), /-spritesheet\.json$/);
+    const layerManifestPath = await layerManifestDownload.path();
+    const layerManifest = JSON.parse(fs.readFileSync(layerManifestPath, 'utf8'));
+    assert.equal(layerManifest.format, 'pixelforge-sprite-sheet');
+    assert.equal(layerManifest.frames.length, 1, 'layer sprite sheet should include the current raster layer');
+
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#animation-frame-count').innerText(), '2 frames',
