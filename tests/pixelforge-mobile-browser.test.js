@@ -3,6 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+
+async function readZipDownload(download) {
+  const { readStoredZip } = await import('../public/pixelforge/src/video-composer-core.mjs');
+  const archivePath = await download.path();
+  return readStoredZip(new Blob([fs.readFileSync(archivePath)]));
+}
+
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
 const sessionId = 'd'.repeat(48);
@@ -159,19 +166,13 @@ async function main() {
         await page.locator('#animation-frames .animation-frame').nth(1).click();
         await page.locator('#animation-loop').uncheck();
 
-        // Both outputs are generated from the actual frame cels.
-        const downloadsPromise = new Promise(resolve => {
-          const downloads = [];
-          const onDownload = download => {
-            downloads.push(download);
-            if (downloads.length === 2) { page.off('download', onDownload); resolve(downloads); }
-          };
-          page.on('download', onDownload);
-        });
+        // The animation sprite sheet and manifest are delivered as one ZIP file.
+        const animationZipPromise = page.waitForEvent('download');
         await page.locator('#animation-export-sheet').click();
-        const [pngDownload, manifestDownload] = await downloadsPromise;
-        assert.match(pngDownload.suggestedFilename(), /-animation\.png$/);
-        assert.match(manifestDownload.suggestedFilename(), /-animation\.json$/);
+        const animationZipDownload = await animationZipPromise;
+        assert.match(animationZipDownload.suggestedFilename(), /-animation-sheet\\.zip$/);
+        const animationZipEntries = await readZipDownload(animationZipDownload);
+        assert.ok(animationZipEntries.has('animation-manifest.json'));
 
         await saveResponse();
         const projectListResponse = await page.request.get(base + '/api/pixelforge/projects');
