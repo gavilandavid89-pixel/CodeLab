@@ -387,6 +387,71 @@ async function main() {
   assert.equal(invalidUtf8Commit.status, 400, 'invalid UTF-8 must be rejected before JSON parsing or persistence');
   assert.equal((await invalidUtf8Commit.json()).error, 'invalid_pixelforge_upload_encoding');
   await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id, { method: 'DELETE', headers: authHeaders });
+
+  // Staging quota must cap concurrent sessions and release reservations on cancellation.
+  const quotaHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.84' };
+  const quotaUploadIds = ['9'.repeat(32), '8'.repeat(32), '7'.repeat(32)];
+  for (let index = 0; index < 2; index++) {
+    const started = await fetch(base + '/api/pixelforge/projects/uploads', {
+      method: 'POST', headers: { ...quotaHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        uploadId: quotaUploadIds[index], projectId: 'staging-project-' + index,
+        expectedServerRevision: 0, totalBytes: 1, totalChunks: 1
+      })
+    });
+    assert.equal(started.status, 201, 'the first two active upload sessions should be reserved');
+  }
+  const overQuotaStart = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...quotaHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: quotaUploadIds[2], projectId: 'staging-project-overflow',
+      expectedServerRevision: 0, totalBytes: 1, totalChunks: 1
+    })
+  });
+  assert.equal(overQuotaStart.status, 429, 'a third active upload session must be rejected by the staging quota');
+  assert.equal((await overQuotaStart.json()).error, 'pixelforge_upload_quota_exceeded');
+  for (const uploadId of quotaUploadIds.slice(0, 2)) {
+    await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { method: 'DELETE', headers: quotaHeaders });
+  }
+
+  // Two chunked writers may start from the same revision, but only one may publish.
+  const casHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.83' };
+  const casWinner = { ...makePixelProject('chunk-cas-project', 'Chunk CAS winner'), serverRevision: 1 };
+  const casLoser = { ...casWinner, name: 'Chunk CAS stale loser' };
+  const casWinnerBytes = Buffer.from(JSON.stringify(casWinner), 'utf8');
+  const casLoserBytes = Buffer.from(JSON.stringify(casLoser), 'utf8');
+  const casUploadIds = ['1'.repeat(32), '2'.repeat(32)];
+  const casPayloads = [casWinnerBytes, casLoserBytes];
+  for (let index = 0; index < 2; index++) {
+    const bytes = casPayloads[index];
+    const started = await fetch(base + '/api/pixelforge/projects/uploads', {
+      method: 'POST', headers: { ...casHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        uploadId: casUploadIds[index], projectId: casWinner.id, expectedServerRevision: 0,
+        totalBytes: bytes.length, totalChunks: 1
+      })
+    });
+    assert.equal(started.status, 201, 'divergent sessions should be able to stage against the same starting revision');
+    const uploaded = await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[index] + '/0', {
+      method: 'PUT', headers: { ...casHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ chunk: bytes.toString('base64'), sha256: crypto.createHash('sha256').update(bytes).digest('hex') })
+    });
+    assert.equal(uploaded.status, 200);
+  }
+  const casWinnerCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[0] + '/commit', {
+    method: 'POST', headers: { ...casHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(casWinnerCommit.status, 201);
+  const casLoserCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[1] + '/commit', {
+    method: 'POST', headers: { ...casHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(casLoserCommit.status, 409, 'a stale chunked writer must not overwrite a newer project revision');
+  assert.equal((await casLoserCommit.json()).error, 'pixelforge_revision_conflict');
+  const casStored = (await (await fetch(base + '/api/pixelforge/projects/' + casWinner.id, { headers: casHeaders })).json()).project;
+  assert.equal(casStored.name, casWinner.name, 'the winning revision must remain unchanged after a stale commit');
+  assert.equal(casStored.serverRevision, 1);
+  await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[1], { method: 'DELETE', headers: casHeaders });
+  await fetch(base + '/api/pixelforge/projects/' + casWinner.id, { method: 'DELETE', headers: casHeaders });
   await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { method: 'DELETE', headers: authHeaders });
   }
 
