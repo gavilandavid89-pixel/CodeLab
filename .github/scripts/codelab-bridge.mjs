@@ -1417,6 +1417,68 @@ try {
       actions: command.args.actions,
       summary: command.args.summary,
     });
+  } else if (command.action === 'pixelforge_headless_export_animation') {
+    stage = 'pixelforge_headless_export_animation';
+    const downloadPromise = page.waitForEvent('download', { timeout: 30000 })
+      .then(download => ({ download }), error => ({ error }));
+    const exportInfo = await page.evaluate(async ({ projectId, columns, padding }) => {
+      const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), {
+        method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.project) {
+        throw new Error('PixelForge animation export could not read project (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      }
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
+      const { exportAnimationSpriteSheet } = await import('/pixelforge/src/animation.js');
+      const runtime = HeadlessEditorRuntime.fromJSON(data.project);
+      const project = runtime.toJSON();
+      if (!project.animation || !Array.isArray(project.animation.frames) || !project.animation.frames.length) {
+        throw new Error('PixelForge project has no animation frames to export.');
+      }
+      const options = {};
+      if (columns !== undefined) options.columns = columns;
+      if (padding !== undefined) options.padding = padding;
+      const exported = await exportAnimationSpriteSheet(project.animation, project.width, project.height, options);
+      const objectUrl = URL.createObjectURL(exported.blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = 'pixelforge-animation-spritesheet.png';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      return { manifest: exported.manifest, filename: anchor.download };
+    }, {
+      projectId: command.args.project_id,
+      columns: command.args.columns,
+      padding: command.args.padding,
+    });
+    const downloadResult = await downloadPromise;
+    if (downloadResult.error) throw new Error('PixelForge sprite sheet download did not start: ' + String(downloadResult.error.message || downloadResult.error));
+    await fs.mkdir('.codelab-artifacts', { recursive: true });
+    const spriteSheetPath = '.codelab-artifacts/pixelforge-animation-spritesheet.png';
+    const manifestPath = '.codelab-artifacts/pixelforge-animation-manifest.json';
+    await downloadResult.download.saveAs(spriteSheetPath);
+    const manifest = {
+      ...exportInfo.manifest,
+      exportedAt: new Date().toISOString(),
+      imageFile: 'pixelforge-animation-spritesheet.png',
+    };
+    await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    result = {
+      status: 'exported',
+      projectId: command.args.project_id,
+      frameCount: manifest.frameCount,
+      fps: manifest.fps,
+      loop: manifest.loop,
+      sheet: manifest.sheet,
+      frameSize: manifest.frameSize,
+      files: { spriteSheet: spriteSheetPath, manifest: manifestPath },
+      artifactName: 'codelab-ui-evidence-' + process.env.GITHUB_RUN_ID,
+      artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID,
+      networkRequestsBlocked: false,
+      projectPersisted: false,
+    };
   } else if (command.action === 'headless_batch') {
     stage = 'headless_batch';
     result = await page.evaluate(async ({ baseRevision, operationId, operations }) => {
