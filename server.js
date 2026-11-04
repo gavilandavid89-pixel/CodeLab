@@ -571,7 +571,7 @@ async function ensureAuthSessionTable() {
 async function migrateLegacySessionsToDatabase() {
   if (!accountPool || !authSessionTableReady) return;
   let files = [];
-  try { files = fs.readdirSync(SESSIONS_DIR).filter(file => /^[a-f0-9]{48}\\.json$/.test(file)); }
+  try { files = fs.readdirSync(SESSIONS_DIR).filter(file => /^[a-f0-9]{48}\.json$/.test(file)); }
   catch (_) { return; }
   for (const file of files) {
     try {
@@ -2675,7 +2675,7 @@ seedAdminAccountIfConfigured().then(async () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
-    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; las sesiones locales y el secreto de respaldo usan disco efímero. Los proyectos del workspace se guardan en PostgreSQL.');
+    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; el secreto de respaldo y los archivos locales de desarrollo usan disco efímero. Las sesiones y los proyectos del workspace se guardan en PostgreSQL.');
   }
   if (!process.env.CODELAB_WORKSPACE_SECRET) {
     console.warn('WARNING: CODELAB_WORKSPACE_SECRET no está fijado; si se regenera el secreto, los tokens de workspace existentes dejarán de ser válidos.');
