@@ -685,14 +685,15 @@ test('Headless reads bounded RGBA regions with exact canvas coordinates and laye
 });
 
 test('Headless region reads stay read-only during proposals and enforce strict bounds', () => {
-  const runtime = new HeadlessEditorRuntime({ width: 16, height: 16 });
+  const runtime = new HeadlessEditorRuntime({ width: 64, height: 64 });
   assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 3, y1: 1, color: '#123456' }).ok, true);
   runtime.createProposal('Draw a small line');
   assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 4, height: 4 }).ok, true);
   assert.equal(runtime.hasPendingProposal, true);
   assert.equal(runtime.execute({ name: 'canvas.get_region', x: 14, y: 14, width: 4, height: 4 }).ok, false);
-  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 129, height: 1 }).ok, false);
-  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 128, height: 128 }).ok, false);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 32, height: 32 }).ok, true);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 33, height: 1 }).ok, false);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 1, height: 33 }).ok, false);
 });
 
 test('canvas coordinate reference remains readable while a drawing proposal awaits approval', () => {
@@ -829,9 +830,9 @@ test('Headless inspection publishes its supported actions and safety limits', ()
   assert.equal(capabilities.maxBatchActions, 500);
   assert.equal(capabilities.maxLayers, 64);
   assert.equal(capabilities.maxFrames, 240);
-  assert.equal(capabilities.maxRegionWidth, 128);
-  assert.equal(capabilities.maxRegionHeight, 128);
-  assert.equal(capabilities.maxRegionPixels, 16384);
+  assert.equal(capabilities.maxRegionWidth, 32);
+  assert.equal(capabilities.maxRegionHeight, 32);
+  assert.equal(capabilities.maxRegionPixels, 1024);
   assert.equal(capabilities.proposalApprovalRequired, true);
   assert.ok(capabilities.rasterActions.includes('canvas.get_reference'));
   assert.ok(capabilities.rasterActions.includes('canvas.draw_stroke'));
