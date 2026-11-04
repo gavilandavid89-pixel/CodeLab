@@ -1,4 +1,5 @@
 import { AIWorkspace } from './workspaces.js';
+import { createSelectionMask, modifySelectionMask } from './core.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -96,6 +97,75 @@ export class AICommandSession {
           }
           break;
         }
+        case 'canvas.draw_stroke': {
+          if (!Array.isArray(action.points) || action.points.length < 1 || action.points.length > 4096) throw new TypeError('points must contain 1–4096 coordinates.');
+          for (const point of action.points) coordinate(doc, point?.x, point?.y);
+          const size = action.size ?? 1, opacity = action.opacity ?? 1, hardness = action.hardness ?? 1;
+          integer(size, 'size');
+          if (size < 1 || size > 128 || !Number.isFinite(opacity) || opacity < 0 || opacity > 1 ||
+              !Number.isFinite(hardness) || hardness < 0 || hardness > 1) throw new RangeError('Brush size, opacity or hardness is outside the supported range.');
+          const mode = action.mode ?? 'draw', shape = action.shape ?? 'square';
+          if (!['draw', 'erase'].includes(mode) || !['square', 'circle'].includes(shape)) throw new TypeError('Unsupported brush mode or shape.');
+          const stroke = doc.beginStroke({ color: color(action.color), size, opacity, hardness, shape, mode });
+          try {
+            for (const point of action.points) doc.strokeTo(stroke, point.x, point.y);
+            result = { changed: doc.endStroke(stroke), pointCount: action.points.length };
+          } catch (error) {
+            doc.endStroke(stroke, { commit: false });
+            throw error;
+          }
+          break;
+        }
+        case 'layer.add': {
+          const layer = doc.addLayer(action.name ?? undefined);
+          result = { layerId: layer.id, name: layer.name, index: doc.layers.length - 1 };
+          break;
+        }
+        case 'layer.select':
+          if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
+          doc.setActiveLayer(action.layerId);
+          result = { activeLayerId: doc.activeLayerId };
+          break;
+        case 'layer.move': {
+          if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
+          result = { moved: doc.moveLayer(action.layerId, integer(action.targetIndex, 'targetIndex')) };
+          break;
+        }
+        case 'layer.rename': {
+          if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
+          result = { renamed: doc.renameLayer(action.layerId, action.name), layerId: action.layerId };
+          break;
+        }
+        case 'layer.set_opacity': {
+          if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
+          if (!Number.isFinite(action.opacity)) throw new TypeError('opacity must be a finite number.');
+          result = { changed: doc.setLayerOpacity(action.layerId, action.opacity) };
+          break;
+        }
+        case 'layer.set_visibility': {
+          if (typeof action.layerId !== 'string' || typeof action.visible !== 'boolean') throw new TypeError('layerId and boolean visible are required.');
+          doc.setLayerVisibility(action.layerId, action.visible);
+          result = { layerId: action.layerId, visible: action.visible };
+          break;
+        }
+        case 'layer.set_locked': {
+          if (typeof action.layerId !== 'string' || typeof action.locked !== 'boolean') throw new TypeError('layerId and boolean locked are required.');
+          doc.setLayerLocked(action.layerId, action.locked);
+          result = { layerId: action.layerId, locked: action.locked };
+          break;
+        }
+        case 'layer.duplicate': {
+          if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
+          const layer = doc.duplicateLayer(action.layerId, action.name);
+          result = { layerId: layer.id, name: layer.name, index: doc.layers.findIndex(item => item.id === layer.id) };
+          break;
+        }
+        case 'layer.delete': {
+          if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
+          const removed = doc.deleteLayer(action.layerId);
+          result = { deletedLayerId: removed.id, activeLayerId: doc.activeLayerId };
+          break;
+        }
         case 'canvas.fill': {
           coordinate(doc, action.x, action.y);
           const tolerance = action.tolerance ?? 0;
@@ -109,6 +179,24 @@ export class AICommandSession {
         case 'canvas.clear_region':
           rectangle(doc, action.x, action.y, action.width, action.height);
           result = { changedPixels: doc.clearRect(action.x, action.y, action.width, action.height) };
+          break;
+        case 'canvas.fill_gradient': {
+          coordinate(doc, action.x0, action.y0); coordinate(doc, action.x1, action.y1);
+          const opacity = action.opacity ?? 1;
+          if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Gradient opacity must be between 0 and 1.');
+          result = { changedPixels: doc.fillGradient(action.x0, action.y0, action.x1, action.y1, {
+            startColor: color(action.startColor, 'startColor'), endColor: color(action.endColor, 'endColor'), opacity
+          }) };
+          break;
+        }
+        case 'canvas.flip_region': {
+          rectangle(doc, action.x, action.y, action.width, action.height);
+          if (!['horizontal', 'vertical'].includes(action.axis)) throw new TypeError('axis must be horizontal or vertical.');
+          result = { changedPixels: doc.flipRect(action.x, action.y, action.width, action.height, action.axis) };
+          break;
+        }
+        case 'canvas.create_outline':
+          result = { changedPixels: doc.createOutline(color(action.color), { diagonals: action.diagonals !== false }) };
           break;
         case 'canvas.replace_color': {
           const tolerance = action.tolerance ?? 0;
@@ -138,6 +226,26 @@ export class AICommandSession {
           }
           doc.setSelectionMask(mask);
           result = { x: action.x, y: action.y, width: action.width, height: action.height, selectedPixels: action.width * action.height };
+          break;
+        }
+        case 'selection.create_ellipse':
+        case 'selection.create_lasso': {
+          rectangle(doc, action.x, action.y, action.width, action.height);
+          const selection = action.name === 'selection.create_ellipse'
+            ? { x: action.x, y: action.y, width: action.width, height: action.height, shape: 'ellipse' }
+            : { x: action.x, y: action.y, width: action.width, height: action.height, shape: 'polygon', points: action.points };
+          const mask = createSelectionMask(doc.width, doc.height, selection);
+          doc.setSelectionMask(mask);
+          result = { x: action.x, y: action.y, width: action.width, height: action.height, selectedPixels: mask.reduce((sum, value) => sum + value, 0) };
+          break;
+        }
+        case 'selection.modify': {
+          const operation = action.operation;
+          const current = doc.selectionMask;
+          if (!current) throw new Error('There is no active selection to modify.');
+          const mask = modifySelectionMask(doc.width, doc.height, current, operation, action.radius ?? 1);
+          doc.setSelectionMask(mask);
+          result = { operation, selectedPixels: mask.reduce((sum, value) => sum + value, 0) };
           break;
         }
         case 'history.undo':
