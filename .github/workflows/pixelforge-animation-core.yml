@@ -1,0 +1,31 @@
+name: PixelForge animation core
+
+on:
+  push:
+    branches: ["feat/pixelforge-animation-core"]
+    paths:
+      - "public/pixelforge/src/animation.mjs"
+      - "tests/pixelforge-animation.test.mjs"
+      - ".github/workflows/pixelforge-animation-core.yml"
+  pull_request:
+    branches: ["fix/pixelforge-mobile-files-panel"]
+    paths:
+      - "public/pixelforge/src/animation.mjs"
+      - "tests/pixelforge-animation.test.mjs"
+      - ".github/workflows/pixelforge-animation-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  animation-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate animation module syntax
+        run: node --check public/pixelforge/src/animation.mjs
+      - name: Test frame timeline model
+        run: node --test tests/pixelforge-animation.test.mjs
