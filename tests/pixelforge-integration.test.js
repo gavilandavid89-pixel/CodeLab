@@ -118,6 +118,20 @@ async function main() {
   assert.deepEqual((await listBefore.json()).projects, [], 'new account should start with an empty PixelForge project list');
 
   const fixture = { ...makePixelProject('integration-artwork', 'Account integration artwork'), revision: 2, saveVersion: 2 };
+  const animationLayerId = fixture.layers[0].id;
+  const animationFrameA = Buffer.alloc(fixture.width * fixture.height * 4);
+  const animationFrameB = Buffer.alloc(fixture.width * fixture.height * 4);
+  animationFrameA.set([255, 32, 16, 255], 0);
+  animationFrameB.set([16, 128, 255, 255], 4);
+  fixture.animation = {
+    format: 'pixelforge-animation', version: 1,
+    width: fixture.width, height: fixture.height,
+    layerIds: [animationLayerId], fps: 12, loop: true, activeFrameIndex: 0,
+    frames: [
+      { id: 'integration-frame-a', durationMs: 83, cels: [{ layerId: animationLayerId, pixels: animationFrameA.toString('base64') }] },
+      { id: 'integration-frame-b', durationMs: 120, cels: [{ layerId: animationLayerId, pixels: animationFrameB.toString('base64') }] },
+    ],
+  };
   const saved = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -126,6 +140,8 @@ async function main() {
   assert.equal(saved.status, 201, 'first save should create a project in the account');
   fixture.serverRevision = (await saved.json()).project.serverRevision;
   assert.equal(fixture.serverRevision, 1, 'the server should issue the first durable revision token');
+  assert.deepEqual((await saved.clone().json()).project.animation, fixture.animation,
+    'the authenticated persistence API must retain multi-frame, per-layer animation cels');
   const staleWrite = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -223,7 +239,7 @@ async function main() {
     .projects.find(project => project.id === fixture.id);
   assert.ok(recencyBefore, 'saved project metadata should be available before opening the project');
   const loaded = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders });
-  assert.deepEqual((await loaded.json()).project, fixture, 'saved project should round-trip through account storage');
+  assert.deepEqual((await loaded.json()).project, fixture, 'saved project and every animation cel should round-trip through account storage');
   const recencyAfter = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
     .projects.find(project => project.id === fixture.id);
   assert.ok(recencyAfter.lastOpenedAt > recencyBefore.lastOpenedAt,
