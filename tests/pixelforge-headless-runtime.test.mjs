@@ -327,4 +327,15 @@ test('headless transform preview reports bounds without changing the sandbox rev
   assert.equal(preview.result.options.interpolation, 'bilinear');
   assert.equal(runtime.hasPendingChanges, false);
   assert.equal(runtime.document.revision, 0);
+
+  const pending = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(pending.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 3, y1: 1, color: '#112233',
+  }).ok, true);
+  pending.createProposal('Keep a draft pending while checking transform bounds');
+  const pendingPreview = pending.execute({
+    name: 'canvas.preview_transform_region', x: 0, y: 0, width: 4, height: 4,
+  });
+  assert.equal(pendingPreview.ok, true, 'read-only transform preview should be allowed while a proposal is pending');
+  assert.equal(pending.hasPendingProposal, true);
 });
