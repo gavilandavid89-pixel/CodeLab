@@ -526,6 +526,7 @@ async function ensurePixelForgeTable() {
     CREATE INDEX IF NOT EXISTS codelab_pixelforge_recent_idx
     ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
   `);
+  await pixelForgeUploads.ensureSchema(accountPool);
   pixelForgeTableReady = true;
 }
 
