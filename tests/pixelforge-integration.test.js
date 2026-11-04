@@ -40,6 +40,7 @@ async function main() {
   assert.equal(pageResponse.status, 200, 'PixelForge entry route should serve its own editor page');
   const page = await pageResponse.text();
   assert.match(page, /id="canvas"/, 'PixelForge artwork canvas should be present');
+  assert.match(page, /id="files-tab"/, 'PixelForge import/export controls should have a dedicated inspector tab');
   assert.match(page, /src="\.\/src\/editor\.js"/, 'PixelForge should load its editor module');
   assert.ok(page.indexOf('src="/studio-core.js"') < page.indexOf('src="./src/editor.js"'), 'PixelForge must load the same shared runtime before its editor');
   assert.match(page, /href="\/"[^>]*CodeLab dashboard|href="\/" title="Back to CodeLab dashboard"/, 'PixelForge should provide a return path to CodeLab');
@@ -62,6 +63,9 @@ async function main() {
     assert.ok((await response.text()).length > 0, path + ' should not be empty');
   }
   const pixelForgeHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'index.html'), 'utf8');
+  assert.match(pixelForgeHtml, /id="files-tab"/, 'the Files panel must be reachable from the inspector tabs');
+  const pixelForgeStyles = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'styles.css'), 'utf8');
+  assert.match(pixelForgeStyles, /\.inspector\[data-panel="files"\] \.files-section\{display:block/, 'mobile Files panel must explicitly reveal import/export controls');
   assert.match(pixelForgeHtml, /Projects autosave to your CodeLab account/,
     'the studio should describe account-backed persistence, not local-only autosave');
   assert.doesNotMatch(pixelForgeHtml, /Projects autosave locally/,
