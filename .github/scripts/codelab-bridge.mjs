@@ -45,9 +45,18 @@ function parseCommand(raw) {
     throw new Error(command.action + ' requires a valid PixelForge args.project_id.');
   }
   if (command.action === 'pixelforge_headless_batch') {
-    if (command.approval !== 'approved') throw new Error('PixelForge Headless edits require approval: "approved".');
     if (!Array.isArray(args.actions) || args.actions.length < 1 || args.actions.length > 500) {
       throw new Error('pixelforge_headless_batch requires 1 to 500 allowlisted actions.');
+    }
+    const readOnlyPixelForgeActions = new Set([
+      'document.get_summary', 'canvas.get_pixel', 'canvas.preview_transform_region',
+      'animation.get_summary', 'canvas.copy_region',
+    ]);
+    const hasProjectMutation = args.actions.some(action =>
+      !action || typeof action.name !== 'string' || !readOnlyPixelForgeActions.has(action.name)
+    );
+    if (hasProjectMutation && command.approval !== 'approved') {
+      throw new Error('PixelForge Headless edits require approval: "approved".');
     }
     if (JSON.stringify(args.actions).length > 40000) throw new Error('PixelForge Headless actions exceed 40000 characters.');
     if (typeof args.summary !== 'string' || !args.summary.trim() || args.summary.length > 500) {
