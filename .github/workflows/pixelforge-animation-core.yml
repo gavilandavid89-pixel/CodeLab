@@ -9,6 +9,10 @@ on:
       - "tests/pixelforge-zip-export.test.mjs"
       - "public/pixelforge/src/zip-export.js"
       - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/src/showcase-animation.mjs"
+      - "tests/pixelforge-showcase-animation.test.mjs"
+      - "public/pixelforge/src/showcase-animation.mjs"
+      - "tests/pixelforge-showcase-animation.test.mjs"
       - "public/pixelforge/index.html"
       - ".github/workflows/pixelforge-animation-core.yml"
       - "server.js"
@@ -52,5 +56,7 @@ jobs:
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test ZIP archive export
         run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
+      - name: Test 12-frame showcase animation
+        run: node --experimental-default-type=module --test tests/pixelforge-showcase-animation.test.mjs
       - name: Guard original editor feature parity
         run: node --test tests/pixelforge-feature-parity.test.mjs
