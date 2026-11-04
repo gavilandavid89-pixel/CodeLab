@@ -8,6 +8,7 @@ on:
     paths:
       - "public/pixelforge/src/**"
       - "tests/pixelforge-headless-runtime.test.mjs"
+      - "tests/pixelforge-headless-bridge.test.mjs"
       - ".github/workflows/headless-pixelforge-runtime.yml"
 
 permissions:
@@ -27,5 +28,6 @@ jobs:
           node --experimental-default-type=module --check public/pixelforge/src/animation.js
           node --experimental-default-type=module --check public/pixelforge/src/ai-tools.js
           node --experimental-default-type=module --check public/pixelforge/src/workspaces.js
+          node --experimental-default-type=module --check public/pixelforge/src/headless-bridge.js
       - name: Run headless runtime contract tests
-        run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs
+        run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs
