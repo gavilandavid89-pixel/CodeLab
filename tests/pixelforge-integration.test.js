@@ -603,10 +603,24 @@ async function main() {
     assert.equal(savedAnimationProject.animation.fps, 24, 'FPS control should persist its new value');
     assert.equal(savedAnimationProject.animation.loop, false, 'loop control should persist its unchecked state');
     assert.equal(savedAnimationProject.animation.frames[1].durationMs, 250, 'per-frame duration control should persist its new value');
-    const pngDownloadPromise = accountPage.waitForEvent('download');
-    const manifestDownloadPromise = accountPage.waitForEvent('download');
+    const animationDownloadsPromise = new Promise((resolve, reject) => {
+      const downloads = [];
+      const onDownload = download => {
+        downloads.push(download);
+        if (downloads.length === 2) {
+          clearTimeout(timeout);
+          accountPage.off('download', onDownload);
+          resolve(downloads);
+        }
+      };
+      const timeout = setTimeout(() => {
+        accountPage.off('download', onDownload);
+        reject(new Error('PixelForge animation export did not emit both PNG and JSON downloads'));
+      }, 10000);
+      accountPage.on('download', onDownload);
+    });
     await accountPage.locator('#animation-export-sheet').click();
-    const [spriteSheetDownload, animationManifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
+    const [spriteSheetDownload, animationManifestDownload] = await animationDownloadsPromise;
     assert.match(spriteSheetDownload.suggestedFilename(), /-animation\.png$/);
     assert.match(animationManifestDownload.suggestedFilename(), /-animation\.json$/);
     await accountPage.reload({ waitUntil: 'networkidle' });
