@@ -3,6 +3,9 @@ import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, validateAnimationTimeline } from './animation.js';
 
+const MAX_ANIMATION_HISTORY_STEPS = 100;
+const MAX_ANIMATION_HISTORY_BYTES = 16 * 1024 * 1024;
+
 /**
  * DOM-free, provider-independent PixelForge automation runtime.
  * Mutations stay in an isolated sandbox until an explicit proposal is accepted.
@@ -16,6 +19,7 @@ export class HeadlessEditorRuntime {
   #animationDirty = false;
   #animationHistory = [];
   #animationFuture = [];
+  #animationHistoryBytes = 0;
   #hasAnimation = false;
 
   constructor({ width = 128, height = 128, name = 'Untitled artwork', project = null } = {}) {
@@ -27,13 +31,34 @@ export class HeadlessEditorRuntime {
     this.#resetWorkspace();
   }
 
+  #clearAnimationHistory() {
+    this.#animationHistory = [];
+    this.#animationFuture = [];
+    this.#animationHistoryBytes = 0;
+  }
+
+  #pushAnimationHistory(stack, snapshot) {
+    const bytes = JSON.stringify(snapshot).length;
+    stack.push({ snapshot, bytes });
+    this.#animationHistoryBytes += bytes;
+    while (stack.length > MAX_ANIMATION_HISTORY_STEPS || this.#animationHistoryBytes > MAX_ANIMATION_HISTORY_BYTES) {
+      const removed = stack.shift();
+      if (!removed) break;
+      this.#animationHistoryBytes -= removed.bytes;
+    }
+  }
+
+  #clearAnimationFuture() {
+    for (const entry of this.#animationFuture) this.#animationHistoryBytes -= entry.bytes;
+    this.#animationFuture = [];
+  }
+
   #resetWorkspace() {
     this.#workspace = new AIWorkspace(this.#document);
     this.#commands = new AICommandSession(this.#workspace);
     this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
-    this.#animationHistory = [];
-    this.#animationFuture = [];
+    this.#clearAnimationHistory();
   }
 
   get document() { return this.#document; }
@@ -50,15 +75,19 @@ export class HeadlessEditorRuntime {
       try {
         if (action.name === 'animation.undo') {
           if (!this.#animationHistory.length) return { ok: true, action: action.name, result: { changed: false } };
-          this.#animationFuture.push(JSON.parse(JSON.stringify(this.#sandboxAnimation)));
-          this.#sandboxAnimation = this.#animationHistory.pop();
+          const previous = this.#animationHistory.pop();
+          this.#animationHistoryBytes -= previous.bytes;
+          this.#pushAnimationHistory(this.#animationFuture, this.#sandboxAnimation);
+          this.#sandboxAnimation = previous.snapshot;
           this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
         if (action.name === 'animation.redo') {
           if (!this.#animationFuture.length) return { ok: true, action: action.name, result: { changed: false } };
-          this.#animationHistory.push(JSON.parse(JSON.stringify(this.#sandboxAnimation)));
-          this.#sandboxAnimation = this.#animationFuture.pop();
+          const next = this.#animationFuture.pop();
+          this.#animationHistoryBytes -= next.bytes;
+          this.#pushAnimationHistory(this.#animationHistory, this.#sandboxAnimation);
+          this.#sandboxAnimation = next.snapshot;
           this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
@@ -66,9 +95,8 @@ export class HeadlessEditorRuntime {
         const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, action);
         const changed = JSON.stringify(before) !== JSON.stringify(outcome.timeline);
         if (changed) {
-          this.#animationHistory.push(before);
-          if (this.#animationHistory.length > 100) this.#animationHistory.shift();
-          this.#animationFuture = [];
+          this.#clearAnimationFuture();
+          this.#pushAnimationHistory(this.#animationHistory, before);
         }
         this.#sandboxAnimation = outcome.timeline;
         this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
@@ -138,8 +166,7 @@ export class HeadlessEditorRuntime {
         this.#animation = JSON.parse(JSON.stringify(this.#sandboxAnimation));
         this.#hasAnimation = true;
         this.#animationDirty = false;
-        this.#animationHistory = [];
-        this.#animationFuture = [];
+        this.#clearAnimationHistory();
       }
       if (!hadRasterChanges && hadAnimationChanges) {
         this.#document.revision++;
@@ -155,8 +182,7 @@ export class HeadlessEditorRuntime {
     const discarded = this.#workspace.discardProposal();
     this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
-    this.#animationHistory = [];
-    this.#animationFuture = [];
+    this.#clearAnimationHistory();
     return discarded || hadAnimationChanges;
   }
   discardSandboxChanges() {
@@ -173,8 +199,7 @@ export class HeadlessEditorRuntime {
     if (result.status === 'synced') {
       this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
       this.#animationDirty = false;
-      this.#animationHistory = [];
-      this.#animationFuture = [];
+      this.#clearAnimationHistory();
     }
     return result;
   }
