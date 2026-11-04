@@ -228,6 +228,7 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
   const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
   const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
+  const editorHtml = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/index.html'), 'utf8');
   assert.ok(animation.includes('MAX_ANIMATION_BYTES = 64 * 1024 * 1024'));
   assert.ok(server.includes('function hasBase64CharactersAndPadding'));
   assert.ok(animation.includes('function hasBase64CharactersAndPadding'));
@@ -237,6 +238,10 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(!core.includes('(?:[A-Za-z0-9+/]{4})*'), 'raster decoding must not use recursive repeated-group Base64 regex');
   assert.ok(core.includes('value.length > MAX_PROJECT_JSON_BYTES'));
   assert.ok(animation.includes('MAX_ANIMATION_JSON_BYTES = 96 * 1024 * 1024'));
+  assert.ok(animation.includes('96 MiB safe serialization budget'));
+  assert.ok(!animation.includes('112 MiB safe serialization budget'));
+  assert.ok(editorHtml.includes('max="4096"'));
+  assert.ok(editorHtml.includes('16,777,216 pixels'));
   assert.ok(animation.includes('ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024'));
   assert.ok(animation.includes('width > 4096 || height > 4096'));
   assert.ok(core.includes('MAX_DIMENSION = 4096'));
