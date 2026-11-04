@@ -174,6 +174,23 @@ async function main() {
         assert.ok(framePixels[0].some(value => value !== 0), 'drawing on frame 1 must change its persisted pixels');
         assert.ok(framePixels[1].some(value => value !== 0), 'drawing on frame 2 must change its persisted pixels');
         assert.notDeepEqual(framePixels[0], framePixels[1], 'frame 1 and frame 2 must retain independent pixel buffers');
+
+        // A fresh editor session must reconstruct the timeline from the account-backed project.
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForFunction(() => {
+          const status = document.querySelector('#status')?.textContent || '';
+          return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
+        }, null, { timeout: 15000 });
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
+          'reopening the saved project must restore both timeline frames');
+        assert.equal(await page.locator('#animation-fps').inputValue(), '24',
+          'reopening the saved project must restore its FPS');
+        assert.equal(await page.locator('#animation-duration').inputValue(), '120',
+          'reopening the saved project must restore the active frame duration');
+        assert.equal(await page.locator('#animation-loop').isChecked(), false,
+          'reopening the saved project must restore its loop setting');
+        await page.locator('#animation-frames .animation-frame').nth(0).click();
+        await page.locator('#animation-frames .animation-frame').nth(1).click();
       }
 
       if (viewport.width <= 420) {
