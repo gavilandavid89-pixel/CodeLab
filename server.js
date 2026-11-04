@@ -494,6 +494,51 @@ function validatePixelForgeAnimation(project) {
   return null;
 }
 
+function validatePixelForgeProjectPayload(project) {
+  if (!project || typeof project !== 'object' || Array.isArray(project) ||
+      project.format !== 'pixelforge-project' || project.version !== 1 ||
+      typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
+      typeof project.name !== 'string' || !project.name.trim() || project.name.length > 180 ||
+      !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
+      project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096 ||
+      project.width * project.height > 16_777_216 ||
+      !Number.isInteger(project.revision) || project.revision < 0 ||
+      !Number.isInteger(project.saveVersion) || project.saveVersion < 0 ||
+      (project.serverRevision !== undefined && (!Number.isInteger(project.serverRevision) || project.serverRevision < 0)) ||
+      !Array.isArray(project.layers) || project.layers.length < 1 || project.layers.length > 64 ||
+      typeof project.activeLayerId !== 'string') {
+    return { error: 'invalid_pixelforge_project', status: 400 };
+  }
+  if (project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES) {
+    return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
+  }
+  const expectedPixelBase64Length = Math.ceil(project.width * project.height * 4 / 3) * 4;
+  const layerIds = new Set();
+  for (const layer of project.layers) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer) ||
+        typeof layer.id !== 'string' || !layer.id || layer.id.length > 180 || layerIds.has(layer.id) ||
+        typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 180 ||
+        typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
+        !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
+        typeof layer.pixels !== 'string' || layer.pixels.length !== expectedPixelBase64Length ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(layer.pixels)) {
+      return { error: 'invalid_pixelforge_project', status: 400 };
+    }
+    layerIds.add(layer.id);
+  }
+  if (!layerIds.has(project.activeLayerId)) return { error: 'invalid_pixelforge_project', status: 400 };
+  const animationError = validatePixelForgeAnimation(project);
+  if (animationError) {
+    return { error: animationError, status: animationError === 'pixelforge_project_too_large' ? 413 : 400 };
+  }
+  const serialized = JSON.stringify(project);
+  const projectBytes = Buffer.byteLength(serialized, 'utf8');
+  if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
+    return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
+  }
+  return { serialized, projectBytes };
+}
+
 function decodePixelForgeProjectId(value) {
   try {
     const decoded = decodeURIComponent(value);
