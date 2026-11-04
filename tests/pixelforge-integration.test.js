@@ -866,6 +866,26 @@ async function main() {
       fs.rmSync(importFixturePath, { force: true });
       console.log('Skipped PostgreSQL-only chunked upload/resume checks in file-backed mode.');
     }
+    const demoPage = await accountContext.newPage();
+    await demoPage.goto(base + '/pixelforge/index.html?createDemo=orbital-12', { waitUntil: 'networkidle' });
+    await demoPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Demo Orbital'),
+      null, { timeout: 60000 });
+    assert.equal(await demoPage.evaluate(() => window.location.search), '',
+      'the demo creation query should be removed after the account save succeeds');
+    const demoProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
+    const demoMetadata = demoProjects.find(project => project.name === 'Orbital · PixelForge 12-frame loop');
+    assert.ok(demoMetadata, 'the Orbital sample must be saved in the signed-in CodeLab account');
+    const savedDemo = (await (await fetch(base + '/api/pixelforge/projects/' + demoMetadata.id, { headers: authHeaders })).json()).project;
+    assert.equal(savedDemo.animation.frames.length, 12, 'the saved sample must contain exactly 12 animation frames');
+    assert.equal(savedDemo.animation.fps, 12, 'the saved sample must play at 12 FPS');
+    assert.equal(savedDemo.layers.length, 4, 'the saved sample must preserve all four independent drawing layers');
+    assert.ok(savedDemo.animation.frames.every(frame => frame.cels.length === 4),
+      'each sample frame must retain an independent cel for every layer');
+    await demoPage.locator('#animation-play').click();
+    await demoPage.waitForFunction(() => !document.querySelector('#animation-stop')?.disabled,
+      null, { timeout: 3000 });
+    await demoPage.locator('#animation-stop').click();
+    await demoPage.close();
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
