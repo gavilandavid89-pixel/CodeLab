@@ -200,14 +200,19 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
   const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
   const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
-  assert.ok(animation.includes('MAX_ANIMATION_BYTES = 256 * 1024 * 1024'));
+  assert.ok(animation.includes('MAX_ANIMATION_BYTES = 64 * 1024 * 1024'));
   assert.ok(animation.includes('width > 4096 || height > 4096'));
   assert.ok(core.includes('MAX_DIMENSION = 4096'));
   assert.ok(core.includes('MAX_PIXELS = 16_777_216'));
-  assert.ok(core.includes('MAX_DOCUMENT_BYTES = 256 * 1024 * 1024'));
-  assert.ok(core.includes('this.maxHistoryBytes = 256 * 1024 * 1024'));
+  assert.ok(core.includes('MAX_DOCUMENT_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES'));
+  assert.ok(core.includes('this.maxHistoryBytes = 256 * 1024 * 1024')); // history is a separate RAM-only budget
   assert.ok(server.includes('PIXELFORGE_MAX_BODY_BYTES = 144 * 1024 * 1024'));
   assert.ok(server.includes('PIXELFORGE_MAX_PROJECT_BYTES = 128 * 1024 * 1024'));
   assert.ok(server.includes('PIXELFORGE_MAX_ACCOUNT_BYTES = 2 * 1024 * 1024 * 1024'));
   assert.ok(server.includes('readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES)'));
+  assert.ok(server.includes('PIXELFORGE_MAX_PROJECT_BYTES = 128 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_BODY_BYTES = 144 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_ACCOUNT_BYTES = 2 * 1024 * 1024 * 1024'));
 });
