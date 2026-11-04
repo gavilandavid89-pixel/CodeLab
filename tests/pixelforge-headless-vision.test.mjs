@@ -213,3 +213,15 @@ test('runtime preparation asks for consent before capturing sandbox pixels', asy
   assert.equal(prepared.context.project.name, 'Draft');
   assert.equal(prepared.context.project.accountId, undefined);
 });
+
+test('runtime vision preparation rejects missing runtime before prompting or capturing', async () => {
+  let prompted = false, captured = false;
+  await assert.rejects(() => preparePixelForgeVisionFromRuntime({
+    projectId: 'project-1',
+    runtime: null,
+    confirm: async () => { prompted = true; return true; },
+    canvasFactory: () => { captured = true; return null; },
+  }), /Headless runtime with a raster sandbox/);
+  assert.equal(prompted, false);
+  assert.equal(captured, false);
+});
