@@ -79,4 +79,6 @@ test('AI edit coordinator forwards consented vision snapshots and semantic conte
   assert.equal(providerRequest.imageDataUrls.length, 2);
   assert.equal(providerRequest.context.visualObservation.animation.selectedFrame, 0);
   assert.equal(providerRequest.context.visualObservation.project.width, 8);
+  assert.deepEqual(providerRequest.context.canvasReference.landmarks.topLeft, { x: 0, y: 0 });
+  assert.deepEqual(providerRequest.context.canvasReference.landmarks.bottomRight, { x: 7, y: 7 });
 });
