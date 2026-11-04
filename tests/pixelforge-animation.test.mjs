@@ -165,6 +165,10 @@ test('isolates every frame/layer cel and stays responsive at 64 layers across th
 
   const firstPreview = timeline.compositeThumbnail(137, null, 48);
   assert.deepEqual([...firstPreview.pixels.slice(0, 4)], [12, 34, 56, 255]);
+  const hiddenPreview = timeline.compositeThumbnail(137, new Map([['layer-63', { visible: false }]]), 48);
+  assert.equal(hiddenPreview.pixels[3], 0, 'thumbnail cache keys must include layer visibility settings');
+  assert.equal(timeline.compositeThumbnail(137, null, 48).pixels[3], 255,
+    'a hidden-layer preview must not poison the visible-layer cache entry');
   firstPreview.pixels[0] = 250;
   assert.equal(timeline.compositeThumbnail(137, null, 48).pixels[0], 12,
     'callers must not be able to mutate the cached thumbnail');
