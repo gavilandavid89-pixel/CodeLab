@@ -253,3 +253,21 @@ test('animation sprite-sheet export returns a PNG blob and frame manifest', asyn
     if (originalImageData === undefined) delete globalThis.ImageData; else globalThis.ImageData = originalImageData;
   }
 });
+
+test('headless fill exposes the editor checker pattern and validates dither scale', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const filled = runtime.execute({
+    name: 'canvas.fill', x: 0, y: 0, color: '#112233',
+    secondaryColor: '#AABBCC', pattern: 'checker', scale: 1, contiguous: false,
+  });
+  assert.equal(filled.ok, true);
+  assert.equal(filled.result.pattern, 'checker');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 0, y: 0 }).result.color, '#112233');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 1, y: 0 }).result.color, '#AABBCC');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 0, y: 1 }).result.color, '#AABBCC');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 1, y: 1 }).result.color, '#112233');
+  assert.equal(runtime.execute({
+    name: 'canvas.fill', x: 0, y: 0, color: '#112233',
+    pattern: 'checker', scale: 17,
+  }).ok, false);
+});
