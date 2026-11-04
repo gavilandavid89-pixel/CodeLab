@@ -2298,6 +2298,8 @@ async function boot() {
     }
     // Reuse the provider settings configured in CodeLab's AI settings area.
     // The secret stays in browser memory and is never copied into PixelForge projects.
+    const accountChip = $('#codelab-account-chip');
+    if (accountChip) accountChip.textContent = 'CodeLab · ' + (auth.user.name || auth.user.email || 'Cuenta');
     const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
     if (sharedAI.baseUrl) {
       const base = sharedAI.baseUrl.replace(/\/+$/, '');
