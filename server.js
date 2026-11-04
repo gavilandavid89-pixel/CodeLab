@@ -31,9 +31,9 @@ const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxPro
 // PixelForge has a dedicated high-resolution asset budget. Keep these limits
 // scoped to its project API; do not inflate unrelated CodeLab request bodies.
 // The request envelope exceeds the stored-project cap to allow JSON metadata.
-const PIXELFORGE_MAX_BODY_BYTES = 80 * 1024 * 1024;
-const PIXELFORGE_MAX_PROJECT_BYTES = 64 * 1024 * 1024;
-const PIXELFORGE_MAX_ACCOUNT_BYTES = 1024 * 1024 * 1024;
+const PIXELFORGE_MAX_BODY_BYTES = 144 * 1024 * 1024;
+const PIXELFORGE_MAX_PROJECT_BYTES = 128 * 1024 * 1024;
+const PIXELFORGE_MAX_ACCOUNT_BYTES = 2 * 1024 * 1024 * 1024;
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
