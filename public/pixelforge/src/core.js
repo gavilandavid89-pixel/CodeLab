@@ -249,6 +249,15 @@ export class RasterDocument {
     if (!(mask instanceof Uint8Array) || mask.length !== this.width * this.height) throw new TypeError('Selection mask must be a Uint8Array matching document dimensions.');
     this.selectionMask = new Uint8Array(mask);
   }
+  renameDocument(name) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 180) throw new TypeError('Document name must contain 1–180 characters.');
+    const after = name.trim();
+    if (this.name === after) return false;
+    const before = this.name;
+    this.name = after;
+    this.#record({ type: 'document-rename', before, after });
+    return true;
+  }
   get activeLayer() { return this.layers.find(layer => layer.id === this.activeLayerId) ?? this.layers[0]; }
   addLayer(name = `Layer ${this.layers.length + 1}`) {
     if (typeof name !== 'string' || !name.trim() || name.length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
@@ -1111,6 +1120,8 @@ export class RasterDocument {
   #applyEntry(entry, forward) {
     if (entry.type === 'document-state') {
       this.#applyDocumentState(forward ? entry.after : entry.before);
+    } else if (entry.type === 'document-rename') {
+      this.name = forward ? entry.after : entry.before;
     } else if (entry.type === 'document-crop') {
       if (forward) this.#cropTo(entry.x, entry.y, entry.width, entry.height);
       else this.#restoreDocument(entry.before);
