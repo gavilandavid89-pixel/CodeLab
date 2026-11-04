@@ -211,6 +211,7 @@ export class PixelForgeAnimation {
   get layerIds() { return [...this.#layerIds]; }
   get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
   get memoryBytes() { return this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4; }
+  get thumbnailCacheBytes() { return this.#thumbnailCacheBytes; }
   get estimatedJSONBytes() {
     return estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
   }
