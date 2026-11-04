@@ -1,6 +1,7 @@
 import { RasterDocument } from './core.js';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
+import { applyAnimationAction, createAnimationTimeline, summarizeAnimationTimeline, validateAnimationTimeline } from './animation.js';
 
 /**
  * DOM-free, provider-independent PixelForge automation runtime.
@@ -10,26 +11,52 @@ export class HeadlessEditorRuntime {
   #document;
   #workspace;
   #commands;
+  #animation;
+  #sandboxAnimation;
+  #animationDirty = false;
+  #hasAnimation = false;
 
   constructor({ width = 128, height = 128, name = 'Untitled artwork', project = null } = {}) {
     this.#document = project === null
       ? new RasterDocument(width, height, name)
       : RasterDocument.fromJSON(project);
+    this.#hasAnimation = Boolean(project?.animation);
+    this.#animation = validateAnimationTimeline(project?.animation, this.#document.width, this.#document.height);
     this.#resetWorkspace();
   }
 
   #resetWorkspace() {
     this.#workspace = new AIWorkspace(this.#document);
     this.#commands = new AICommandSession(this.#workspace);
+    this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#animationDirty = false;
   }
 
   get document() { return this.#document; }
   get sandbox() { return this.#workspace.sandbox; }
   get workspace() { return this.#workspace; }
-  get hasPendingChanges() { return this.#workspace.hasSandboxChanges; }
+  get hasPendingChanges() { return this.#workspace.hasSandboxChanges || this.#animationDirty; }
   get hasPendingProposal() { return this.#workspace.hasProposal; }
 
-  execute(action) { return this.#commands.execute(action); }
+  execute(action) {
+    if (action && typeof action.name === 'string' && action.name.startsWith('animation.')) {
+      if (this.#workspace.hasProposal && action.name !== 'animation.get_summary') {
+        return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more animation edits.' } };
+      }
+      try {
+        const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, action);
+        this.#sandboxAnimation = outcome.timeline;
+        this.#animationDirty = this.#animationDirty || outcome.changed;
+        return { ok: true, action: action.name, result: outcome.result };
+      } catch (error) {
+        return { ok: false, action: action.name, error: {
+          code: error instanceof RangeError ? 'out_of_bounds_or_limit' : error instanceof TypeError ? 'invalid_arguments' : 'operation_failed',
+          message: error instanceof Error ? error.message : 'Animation operation failed.',
+        } };
+      }
+    }
+    return this.#commands.execute(action);
+  }
 
   executeBatch(actions) {
     if (!Array.isArray(actions) || actions.length < 1 || actions.length > 500) {
@@ -63,11 +90,12 @@ export class HeadlessEditorRuntime {
         layerCount: sandbox.layers.length, hasChanges: this.#workspace.hasSandboxChanges,
       },
       proposal: this.#workspace.proposalSummary,
+      animation: summarizeAnimationTimeline(this.#sandboxAnimation),
     };
   }
 
   createProposal(summary) {
-    if (!this.#workspace.hasSandboxChanges) throw new Error('There are no sandbox changes to propose.');
+    if (!this.hasPendingChanges) throw new Error('There are no sandbox or animation changes to propose.');
     return this.#commands.createProposal(summary);
   }
 
@@ -77,20 +105,52 @@ export class HeadlessEditorRuntime {
   }
 
   acceptProposal() {
+    const hadRasterChanges = this.#workspace.hasSandboxChanges;
+    const hadAnimationChanges = this.#animationDirty;
     const result = this.#workspace.acceptProposal();
-    if (result.status === 'applied') this.#document.dirty = true;
+    if (result.status === 'applied') {
+      if (hadAnimationChanges) {
+        this.#animation = JSON.parse(JSON.stringify(this.#sandboxAnimation));
+        this.#hasAnimation = true;
+        this.#animationDirty = false;
+      }
+      if (!hadRasterChanges && hadAnimationChanges) {
+        this.#document.revision++;
+        this.#document.saveVersion++;
+      }
+      if (hadRasterChanges || hadAnimationChanges) this.#document.dirty = true;
+    }
     return result;
   }
 
-  discardProposal() { return this.#workspace.discardProposal(); }
-  discardSandboxChanges() { return this.#workspace.discardSandboxChanges(); }
-  syncFromSource(options) { return this.#workspace.syncFromUser(options); }
+  discardProposal() {
+    const discarded = this.#workspace.discardProposal();
+    if (discarded) this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#animationDirty = false;
+    return discarded;
+  }
+  discardSandboxChanges() {
+    const discarded = this.#workspace.discardSandboxChanges();
+    if (discarded || this.#animationDirty) this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#animationDirty = false;
+    return discarded || true;
+  }
+  syncFromSource(options) {
+    const result = this.#workspace.syncFromUser(options);
+    if (result.status === 'synced') {
+      this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+      this.#animationDirty = false;
+    }
+    return result;
+  }
 
   toJSON() {
-    if (this.#workspace.hasProposal || this.#workspace.hasSandboxChanges) {
+    if (this.#workspace.hasProposal || this.hasPendingChanges) {
       throw new Error('Unreviewed sandbox changes cannot be serialized. Create and accept a proposal first.');
     }
-    return this.#document.toJSON();
+    const project = this.#document.toJSON();
+    if (this.#hasAnimation || this.#animation.frames.length > 0) project.animation = JSON.parse(JSON.stringify(this.#animation));
+    return project;
   }
 
   static fromJSON(project) { return new HeadlessEditorRuntime({ project }); }
