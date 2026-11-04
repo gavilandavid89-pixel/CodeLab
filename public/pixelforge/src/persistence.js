@@ -157,7 +157,7 @@ async function request(path, options = {}) {
     return await codeLabRequest(path, options);
   } catch (error) {
     if (error.status === 401) {
-      error.message = 'Inicia sesión en CodeLab para usar PixelForge y guardar tus proyectos en tu cuenta.';
+      error.message = 'Tu sesión de CodeLab expiró. Vuelve a iniciar sesión para continuar.';
       throw error;
     }
     const messages = {
