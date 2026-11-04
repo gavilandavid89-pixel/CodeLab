@@ -12,7 +12,7 @@ test('builds a complete 12-frame orbital animation with independent raster layer
   assert.equal(animation.frameCount, 12);
   assert.equal(animation.fps, 12);
   assert.equal(loop, true);
-  assert.equal(animation.totalDurationMs, 1000);
+  assert.ok(Math.abs(animation.totalDurationMs - 1000) < 0.001, '12 frames at 12 FPS should last one second');
   assert.deepEqual(animation.layerIds, doc.layers.map(layer => layer.id));
   for (let frame = 0; frame < 12; frame++) {
     for (const layer of doc.layers) {
