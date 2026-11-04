@@ -63,7 +63,7 @@ test('PixelForge animation export writes a downloadable artifact instead of a ma
 test('PixelForge project management lists, creates, and deletes only through explicit admin commands', () => {
   for (const action of ['pixelforge_headless_list_projects', 'pixelforge_headless_create_project', 'pixelforge_headless_delete_project']) {
     assert.ok(bridge.includes("'" + action + "'"), action + ' must be allowlisted');
-    assert.ok(bridge.includes("'" + action + "'"), action + ' must be registered');
+    assert.ok(bridge.includes("command.action === '" + action + "'"), action + ' must have an execution handler');
   }
   const projectStart = bridge.indexOf('const projectActions = [');
   const projectEnd = bridge.indexOf('];', projectStart);
