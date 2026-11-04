@@ -193,7 +193,7 @@ test('animation composite frames capture sandbox pixels and frame-time lookup re
 
 test('Headless keeps independent animation cels aligned with layer add, reorder, and delete operations', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
-  const baseLayerId = runtime.document.layers[0].id;
+  const baseLayerId = runtime.sandbox.layers[0].id;
   const addedLayer = runtime.execute({ name: 'layer.add', layerName: 'Ink' });
   assert.equal(addedLayer.ok, true);
   const inkLayerId = addedLayer.result.layerId;
