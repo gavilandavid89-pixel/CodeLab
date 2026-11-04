@@ -35,3 +35,8 @@ test('PixelForge read-only batch actions do not require project-write approval',
   assert.match(bridge, /hasProjectMutation && command\.approval !== 'approved'/);
   assert.match(catalog, /status: "inspected"/);
 });
+
+test('ephemeral selection clearing is classified as read-only for bridge approval', () => {
+  assert.match(bridge, /'canvas.copy_region', 'selection.clear'/);
+  assert.match(catalog, /selection clear/);
+});
