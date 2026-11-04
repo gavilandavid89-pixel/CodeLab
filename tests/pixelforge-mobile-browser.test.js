@@ -152,10 +152,16 @@ async function main() {
         await page.locator('#animation-loop').uncheck();
 
         // Both outputs are generated from the actual frame cels.
-        const pngDownloadPromise = page.waitForEvent('download');
-        const manifestDownloadPromise = page.waitForEvent('download');
+        const downloadsPromise = new Promise(resolve => {
+          const downloads = [];
+          const onDownload = download => {
+            downloads.push(download);
+            if (downloads.length === 2) { page.off('download', onDownload); resolve(downloads); }
+          };
+          page.on('download', onDownload);
+        });
         await page.locator('#animation-export-sheet').click();
-        const [pngDownload, manifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
+        const [pngDownload, manifestDownload] = await downloadsPromise;
         assert.match(pngDownload.suggestedFilename(), /-animation\.png$/);
         assert.match(manifestDownload.suggestedFilename(), /-animation\.json$/);
 
