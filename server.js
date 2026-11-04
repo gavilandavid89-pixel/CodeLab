@@ -1042,7 +1042,7 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
         chunks.length = 0;
         // Keep the request stream alive long enough to return a real HTTP 413
         // instead of resetting the socket before the caller can send JSON.
-        fail(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
+        fail(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE', status: 413 }));
         return;
       }
       chunks.push(chunk);
@@ -1059,11 +1059,11 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
         settled = true;
         resolve(parsed);
       } catch (_) {
-        fail(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON' }));
+        fail(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON', status: 400 }));
       }
     });
     req.on('aborted', () => {
-      fail(Object.assign(new Error('request_aborted'), { code: 'REQUEST_ABORTED' }));
+      fail(Object.assign(new Error('request_aborted'), { code: 'REQUEST_ABORTED', status: 400 }));
     });
     req.on('error', error => fail(error));
   });
