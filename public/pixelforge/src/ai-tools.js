@@ -309,10 +309,6 @@ export class AICommandSession {
           result = { changedPixels: transformed.changedPixels, selectedPixels: transformed.selectedPixels, bounds: transformed.bounds };
           break;
         }
-        case 'selection.clear':
-          doc.setSelectionMask(null);
-          result = { cleared: true };
-          break;
         case 'selection.clear': {
           const cleared = Boolean(doc.selectionMask);
           doc.setSelectionMask(null);
