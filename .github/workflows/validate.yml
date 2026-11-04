@@ -46,6 +46,7 @@ jobs:
           node --check tests/pixelforge-integration.test.js
           node --experimental-default-type=module --check public/pixelforge/src/headless.js
           node --experimental-default-type=module --check public/pixelforge/src/headless-bridge.js
+          node --experimental-default-type=module --check public/pixelforge/src/animation.js
           node --experimental-default-type=module --check public/pixelforge/src/ai-tools.js
           node --experimental-default-type=module --check public/pixelforge/src/workspaces.js
           node --experimental-default-type=module --check tests/pixelforge-headless-runtime.test.mjs
