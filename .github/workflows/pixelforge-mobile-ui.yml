@@ -6,12 +6,14 @@ on:
     paths:
       - "public/pixelforge/**"
       - "tests/pixelforge-mobile-ui.test.js"
+      - "tests/pixelforge-mobile-browser.test.js"
       - ".github/workflows/pixelforge-mobile-ui.yml"
   pull_request:
     branches: ["feat/codelab-pixelforge-studio-entry-clean"]
     paths:
       - "public/pixelforge/**"
       - "tests/pixelforge-mobile-ui.test.js"
+      - "tests/pixelforge-mobile-browser.test.js"
       - ".github/workflows/pixelforge-mobile-ui.yml"
 
 permissions:
