@@ -58,5 +58,7 @@ jobs:
             .codelab-artifacts/bridge-ui.png
             .codelab-artifacts/design-capture.png
             .codelab-artifacts/design-capture.json
+            .codelab-artifacts/pixelforge-animation-spritesheet.png
+            .codelab-artifacts/pixelforge-animation-manifest.json
           if-no-files-found: ignore
           retention-days: 1
