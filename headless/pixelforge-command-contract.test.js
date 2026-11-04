@@ -38,10 +38,14 @@ test('PixelForge read-only batch actions do not require project-write approval',
 });
 
 test('selection.clear is classified as a mutation and requires bridge approval', () => {
-  assert.match(bridge, /readOnlyPixelForgeActions = new Set/);
-  assert.match(bridge, /'animation\\.get_summary', 'canvas\\.copy_region',\\s*\\n\\s*\\]\\);/);
-  assert.doesNotMatch(bridge, /'canvas\\.copy_region', 'selection\\.clear'/);
-  assert.match(bridge, /hasProjectMutation && command\\.approval !== 'approved'/);
+  const start = bridge.indexOf('const readOnlyPixelForgeActions = new Set([');
+  const end = bridge.indexOf(']);', start);
+  assert.ok(start >= 0 && end > start, 'bridge read-only action set must exist');
+  const readOnlyBlock = bridge.slice(start, end);
+  assert.ok(readOnlyBlock.includes("'animation.get_summary'"));
+  assert.ok(readOnlyBlock.includes("'canvas.copy_region'"));
+  assert.equal(readOnlyBlock.includes("'selection.clear'"), false, 'selection clearing must not be read-only');
+  assert.ok(bridge.includes("hasProjectMutation && command.approval !== 'approved'"));
 });
 
 test('PixelForge animation export writes a downloadable artifact instead of a mailbox Base64 payload', () => {
