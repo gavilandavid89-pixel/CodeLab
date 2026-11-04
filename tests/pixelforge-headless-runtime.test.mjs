@@ -376,3 +376,15 @@ test('animation undo history is bounded to 100 steps', () => {
   assert.equal(runtime.inspect().animation.frameCount, 5);
   assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false);
 });
+
+test('animation undo history also respects the 16 MiB serialized snapshot budget', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 512, height: 512 });
+  for (let index = 0; index < 8; index++) {
+    assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Large ' + index }).ok, true);
+  }
+  assert.equal(runtime.inspect().animation.frameCount, 8);
+  let undoCount = 0;
+  while (runtime.execute({ name: 'animation.undo' }).result.changed) undoCount++;
+  assert.ok(undoCount >= 1);
+  assert.ok(undoCount < 8, 'large timeline snapshots must be evicted once the byte budget is reached');
+});
