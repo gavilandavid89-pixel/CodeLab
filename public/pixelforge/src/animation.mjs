@@ -7,7 +7,7 @@
  */
 export const MAX_ANIMATION_FRAMES = 240;
 export const MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
-export const MIN_FRAME_DURATION_MS = 20;
+export const MIN_FRAME_DURATION_MS = 1;
 export const MAX_FRAME_DURATION_MS = 10_000;
 export const MIN_ANIMATION_FPS = 1;
 export const MAX_ANIMATION_FPS = 60;
@@ -106,6 +106,13 @@ export class PixelForgeAnimation {
     this.#layerIds = [...layerIds];
     this.#fps = fps;
     const byteLength = width * height * 4;
+    if (frames !== null && (!Array.isArray(frames) || frames.length < 1 || frames.length > MAX_ANIMATION_FRAMES)) {
+      throw new RangeError(`Animation must contain 1–${MAX_ANIMATION_FRAMES} frames.`);
+    }
+    const estimatedBytes = (frames === null ? 1 : frames.length) * this.#layerIds.length * byteLength;
+    if (estimatedBytes > MAX_ANIMATION_BYTES) {
+      throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+    }
     if (frames === null) {
       this.#frames = [{
         id: crypto.randomUUID(),
@@ -113,9 +120,6 @@ export class PixelForgeAnimation {
         cels: makeBlankCels(this.#layerIds, byteLength),
       }];
     } else {
-      if (!Array.isArray(frames) || frames.length < 1 || frames.length > MAX_ANIMATION_FRAMES) {
-        throw new RangeError(`Animation must contain 1–${MAX_ANIMATION_FRAMES} frames.`);
-      }
       this.#frames = frames.map(frame => {
         if (!frame || typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180) {
           throw new TypeError('Animation frame ID is invalid.');
@@ -205,6 +209,10 @@ export class PixelForgeAnimation {
       throw new RangeError(`PixelForge supports up to ${MAX_ANIMATION_FRAMES} animation frames.`);
     }
     this.#frameAt(afterIndex);
+    const nextFrameCount = this.#frames.length + 1;
+    if (nextFrameCount * this.#layerIds.length * this.#width * this.#height * 4 > MAX_ANIMATION_BYTES) {
+      throw new RangeError('Adding this frame would exceed PixelForge’s 64 MiB animation-memory budget.');
+    }
     const source = this.#frames[afterIndex];
     const nextDuration = durationMs ?? source.durationMs;
     assertDuration(nextDuration);
@@ -240,6 +248,45 @@ export class PixelForgeAnimation {
     const [frame] = this.#frames.splice(fromIndex, 1);
     this.#frames.splice(toIndex, 0, frame);
     this.#activeFrameIndex = this.#frames.findIndex(item => item.id === activeId);
+    return true;
+  }
+
+  addLayer(layerId, { copyFromLayerId = null } = {}) {
+    if (typeof layerId !== 'string' || !layerId.trim() || layerId.length > 180 || this.#layerIds.includes(layerId)) {
+      throw new TypeError('New animation layer ID must be unique non-empty text.');
+    }
+    if (this.#layerIds.length >= 64) throw new RangeError('Animation supports up to 64 raster layers.');
+    const byteLength = this.#width * this.#height * 4;
+    if ((this.#frames.length * (this.#layerIds.length + 1) * byteLength) > MAX_ANIMATION_BYTES) {
+      throw new RangeError('Adding this layer would exceed PixelForge’s 64 MiB animation-memory budget.');
+    }
+    if (copyFromLayerId !== null && !this.#layerIds.includes(copyFromLayerId)) {
+      throw new Error('Source animation layer ID does not exist.');
+    }
+    this.#layerIds.push(layerId);
+    for (const frame of this.#frames) {
+      const source = copyFromLayerId === null ? null : frame.cels.get(copyFromLayerId);
+      frame.cels.set(layerId, source ? new Uint8ClampedArray(source) : new Uint8ClampedArray(byteLength));
+    }
+    return this.#layerIds.length;
+  }
+
+  removeLayer(layerId) {
+    if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
+    if (this.#layerIds.length <= 1) throw new RangeError('An animation must keep at least one raster layer.');
+    this.#layerIds = this.#layerIds.filter(id => id !== layerId);
+    for (const frame of this.#frames) frame.cels.delete(layerId);
+    return this.#layerIds.length;
+  }
+
+  reorderLayers(layerIds) {
+    assertLayerIds(layerIds);
+    if (layerIds.length !== this.#layerIds.length || this.#layerIds.some(id => !layerIds.includes(id))) {
+      throw new TypeError('Layer reordering must preserve the existing animation layer IDs.');
+    }
+    if (layerIds.every((id, index) => id === this.#layerIds[index])) return false;
+    for (const frame of this.#frames) frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
+    this.#layerIds = [...layerIds];
     return true;
   }
 
@@ -317,6 +364,12 @@ export class PixelForgeAnimation {
     assertLayerIds(data.layerIds);
     assertFps(data.fps);
     const byteLength = data.width * data.height * 4;
+    if (data.frames.length < 1 || data.frames.length > MAX_ANIMATION_FRAMES) {
+      throw new RangeError(`Animation must contain 1–${MAX_ANIMATION_FRAMES} frames.`);
+    }
+    if (data.frames.length * data.layerIds.length * byteLength > MAX_ANIMATION_BYTES) {
+      throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+    }
     const frames = data.frames.map(frame => {
       if (!frame || !Array.isArray(frame.cels)) throw new TypeError('Animation frame cels are invalid.');
       return {
