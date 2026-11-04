@@ -425,6 +425,27 @@ async function main() {
       'gradient tool should apply and persist a raster gradient across its drag endpoints');
 
 
+    // Additional UI-level coverage for tools beyond pencil, eraser, fill, line and gradient.
+    await accountPage.locator('#eyedropper-tool').click();
+    await clickPixel(1, 1);
+    assert.equal((await accountPage.locator('#color').inputValue()).toLowerCase(), '#2255ee',
+      'eyedropper should sample the visible line color into the foreground control');
+
+    await setForegroundColor('#ff8800');
+    await accountPage.locator('#rectangle-tool').click();
+    const rectangleBox = await canvasLocator.boundingBox();
+    const rectangleStart = await pixelPosition(3, 2), rectangleEnd = await pixelPosition(5, 4);
+    await accountPage.mouse.move(rectangleBox.x + rectangleStart.x, rectangleBox.y + rectangleStart.y);
+    await accountPage.mouse.down();
+    await accountPage.mouse.move(rectangleBox.x + rectangleEnd.x, rectangleBox.y + rectangleEnd.y, { steps: 8 });
+    await accountPage.mouse.up();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.deepEqual(rgbaAt(toolProject, 3, 2, 1), [255, 136, 0, 255],
+      'rectangle tool should persist its first corner');
+    assert.deepEqual(rgbaAt(toolProject, 5, 4, 1), [255, 136, 0, 255],
+      'rectangle tool should persist its opposite corner');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
