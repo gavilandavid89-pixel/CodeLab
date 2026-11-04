@@ -253,7 +253,7 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
   runtime.createProposal('Create two independent multi-layer animation poses');
   assert.equal(runtime.acceptProposal().status, 'applied');
   let saved = runtime.toJSON();
-  assert.deepEqual(saved.animation.layerIds, [sourceBaseLayerId, inkLayerId]);
+  assert.deepEqual(saved.animation.layerIds, [sourceBaseLayerId, inkLayerId], JSON.stringify({ sourceBaseLayerId, baseLayerId, inkLayerId, savedLayerIds: saved.layers.map(layer => layer.id) }));
   const cel = (frame, layerId) => frame.cels.find(item => item.layerId === layerId);
   const firstBase = Buffer.from(cel(saved.animation.frames[0], sourceBaseLayerId).pixels, 'base64');
   const firstInk = Buffer.from(cel(saved.animation.frames[0], inkLayerId).pixels, 'base64');
