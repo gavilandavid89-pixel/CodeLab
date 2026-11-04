@@ -190,8 +190,7 @@ export class HeadlessEditorRuntime {
     const discarded = this.#workspace.discardSandboxChanges();
     this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
-    this.#animationHistory = [];
-    this.#animationFuture = [];
+    this.#clearAnimationHistory();
     return discarded || hadAnimationChanges;
   }
   syncFromSource(options) {
