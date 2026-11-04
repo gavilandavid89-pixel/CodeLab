@@ -27,7 +27,7 @@ PixelForge is maintained directly in this CodeLab repository. No upstream reposi
 - Known visual-editor limitations: canvas crop is disabled while a multi-frame timeline is active because a safe all-cel crop operation is not yet exposed; animated image import currently opens as a still image (first frame); export currently provides sprite sheets with a JSON frame/pivot manifest rather than animated GIF/APNG/video.
 - The server-side project validator checks the optional animation contract before persistence and rejects a combined payload above 96 MiB.
 
-## Verification expectations
+### Local ZIP package export\n\n- Project and animation downloads use a single `.zip` file rather than triggering one browser download per frame. An animation package contains the editable `.pforge` project, transparent composite PNG frames in playback order, a `manifest.json` with per-frame durations/FPS/loop/dimensions, and a short README. No server-side render is required.\n- ZIP entries are stored without recompression (PNG is already compressed). The browser builds the archive from Blob parts and computes each entry checksum sequentially, avoiding a second full-size archive copy in memory on mobile. The package can be opened in any ZIP utility; the `.pforge` remains the source of truth for editable independent layers/cels.\n\n## Verification expectations
 
 After changes, run the CodeLab validation workflow and Agent Space Browser Runner. Do not merge or deploy until authentication, account isolation, PostgreSQL persistence, save/load/delete, reload recovery, recent-project ordering, malformed-project rejection, quota enforcement, and account-scoped browser preferences pass.
 
