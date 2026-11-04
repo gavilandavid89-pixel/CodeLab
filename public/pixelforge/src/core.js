@@ -1,6 +1,6 @@
 export const MAX_DIMENSION = 4096;
 export const MAX_PIXELS = 16_777_216;
-export const MAX_DOCUMENT_BYTES = 256 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 
 export function validateDimensions(width, height) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) throw new RangeError('Canvas dimensions must be positive integers.');
@@ -250,7 +250,7 @@ export class RasterDocument {
     if (typeof name !== 'string' || !name.trim() || name.length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
     name = name.trim();
     if (this.layers.length >= 64) throw new RangeError('The initial editor supports up to 64 layers.');
-    if ((this.layers.length + 1) * this.width * this.height * 4 > MAX_DOCUMENT_BYTES) throw new RangeError('Adding this layer would exceed the 256 MiB total pixel-memory budget for this document size. Reduce the canvas dimensions or use fewer layers.');
+    if ((this.layers.length + 1) * this.width * this.height * 4 > MAX_DOCUMENT_BYTES) throw new RangeError('Adding this layer would exceed the 64 MiB total pixel-memory budget for this document size. Reduce the canvas dimensions or use fewer layers.');
     const layer = makeLayer(crypto.randomUUID(), name, this.width, this.height);
     this.layers.push(layer);
     this.activeLayerId = layer.id;
@@ -298,7 +298,7 @@ export class RasterDocument {
     const sourceIndex = this.layers.findIndex(item => item.id === id);
     if (sourceIndex < 0) throw new Error('Unknown layer ID.');
     if (this.layers.length >= 64) throw new RangeError('The initial editor supports up to 64 layers.');
-    if ((this.layers.length + 1) * this.width * this.height * 4 > MAX_DOCUMENT_BYTES) throw new RangeError('Duplicating this layer would exceed the 256 MiB total pixel-memory budget.');
+    if ((this.layers.length + 1) * this.width * this.height * 4 > MAX_DOCUMENT_BYTES) throw new RangeError('Duplicating this layer would exceed the 64 MiB total pixel-memory budget.');
     const source = this.layers[sourceIndex];
     const duplicate = cloneLayer(source);
     duplicate.id = crypto.randomUUID();
@@ -944,7 +944,7 @@ export class RasterDocument {
     if (!data || data.format !== 'pixelforge-project' || data.version !== 1 || !Array.isArray(data.layers)) throw new TypeError('Unsupported or invalid PixelForge project file.');
     validateDimensions(data.width, data.height);
     if (data.layers.length < 1 || data.layers.length > 64) throw new RangeError('Project layer count is outside the supported limit.');
-    if (data.width * data.height * 4 * data.layers.length > MAX_DOCUMENT_BYTES) throw new RangeError('Project exceeds the 256 MiB total pixel-memory budget.');
+    if (data.width * data.height * 4 * data.layers.length > MAX_DOCUMENT_BYTES) throw new RangeError('Project exceeds the 64 MiB total pixel-memory budget.');
     const projectName = typeof data.name === 'string' ? data.name.trim().slice(0, 180) : '';
     const doc = new RasterDocument(data.width, data.height, projectName || 'Imported project');
     if (newIdentity) doc.name = `${doc.name.slice(0, 169)} (imported)`;
