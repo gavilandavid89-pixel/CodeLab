@@ -166,9 +166,14 @@ export async function exportAnimationSpriteSheet(timeline, width, height, { colu
   if (!Number.isInteger(padding) || padding < 0 || padding > 64) throw new RangeError('Sprite sheet padding must be from 0 to 64 pixels.');
   if (typeof document === 'undefined' || typeof ImageData === 'undefined') throw new Error('Sprite sheet export requires a browser canvas.');
   const rows = Math.ceil(timeline.frames.length / columns);
+  const sheetWidth = columns * width + (columns + 1) * padding;
+  const sheetHeight = rows * height + (rows + 1) * padding;
+  if (sheetWidth > 16384 || sheetHeight > 16384 || sheetWidth * sheetHeight > 16_777_216) {
+    throw new RangeError('Sprite sheet exceeds the 16-megapixel / 16384-pixel export surface limit. Increase columns or export fewer frames.');
+  }
   const sheet = document.createElement('canvas');
-  sheet.width = columns * width + (columns + 1) * padding;
-  sheet.height = rows * height + (rows + 1) * padding;
+  sheet.width = sheetWidth;
+  sheet.height = sheetHeight;
   const context = sheet.getContext('2d', { alpha: true });
   if (!context) throw new Error('Could not create the animation sprite sheet surface.');
   context.clearRect(0, 0, sheet.width, sheet.height);
