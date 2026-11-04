@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { PixelForgeAnimation, MAX_ANIMATION_FRAMES } from '../public/pixelforge/src/animation.mjs';
 
 function documentFixture() {
@@ -191,4 +193,16 @@ test('enforces the maximum frame count', () => {
   for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
   assert.equal(timeline.frameCount, MAX_ANIMATION_FRAMES);
   assert.throws(() => timeline.addFrame(), /up to 240/);
+});
+
+
+test('keeps high-resolution animation budgets aligned with PixelForge API limits', () => {
+  const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
+  assert.match(animation, /MAX_ANIMATION_BYTES = 256 \* 1024 \* 1024/);
+  assert.match(animation, /width > 4096 \|\| height > 4096/);
+  assert.match(server, /PIXELFORGE_MAX_BODY_BYTES = 80 \* 1024 \* 1024/);
+  assert.match(server, /PIXELFORGE_MAX_PROJECT_BYTES = 64 \* 1024 \* 1024/);
+  assert.match(server, /PIXELFORGE_MAX_ACCOUNT_BYTES = 1024 \* 1024 \* 1024/);
+  assert.match(server, /readBody\(req, Math\.max\(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES\)\)/);
 });
