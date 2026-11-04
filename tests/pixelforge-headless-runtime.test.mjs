@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
+import { frameAtAnimationTime } from '../public/pixelforge/src/animation.js';
 
 function projectFixture() {
   const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Headless fixture' });
@@ -155,4 +156,30 @@ test('animation timeline rejects invalid frame dimensions and timing values', ()
   assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', durationMs: 0 }).ok, false);
   assert.equal(runtime.execute({ name: 'animation.set_fps', fps: 240 }).ok, false);
   assert.equal(runtime.hasPendingChanges, false);
+});
+
+test('animation composite frames capture sandbox pixels and frame-time lookup respects timing and looping', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 7, y1: 3, color: '#EE2211' },
+    { name: 'animation.frame.capture_composite', frameName: 'Walk 1', durationMs: 80 },
+    { name: 'canvas.draw_line', x0: 2, y0: 4, x1: 7, y1: 4, color: '#22AA44' },
+    { name: 'animation.frame.capture_composite', frameName: 'Walk 2', durationMs: 120 },
+  ]);
+  assert.equal(batch.ok, true);
+  runtime.createProposal('Create two walking frames');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.animation.frames.length, 2);
+  const firstPixels = Buffer.from(saved.animation.frames[0].pixels, 'base64');
+  const secondPixels = Buffer.from(saved.animation.frames[1].pixels, 'base64');
+  assert.deepEqual([...firstPixels.subarray((3 * 12 + 3) * 4, (3 * 12 + 3) * 4 + 4)], [238, 34, 17, 255]);
+  assert.deepEqual([...secondPixels.subarray((4 * 12 + 3) * 4, (4 * 12 + 3) * 4 + 4)], [34, 170, 68, 255]);
+  const timeline = saved.animation;
+  assert.equal(frameAtAnimationTime(timeline, 0).index, 0);
+  assert.equal(frameAtAnimationTime(timeline, 79).index, 0);
+  assert.equal(frameAtAnimationTime(timeline, 80).index, 1);
+  assert.equal(frameAtAnimationTime(timeline, 200).index, 0);
+  timeline.loop = false;
+  assert.equal(frameAtAnimationTime(timeline, 10000).index, 1);
 });
