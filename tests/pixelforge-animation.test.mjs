@@ -205,6 +205,7 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(core.includes('MAX_DIMENSION = 4096'));
   assert.ok(core.includes('MAX_PIXELS = 16_777_216'));
   assert.ok(core.includes('MAX_DOCUMENT_BYTES = 256 * 1024 * 1024'));
+  assert.ok(core.includes('this.maxHistoryBytes = 256 * 1024 * 1024'));
   assert.ok(server.includes('PIXELFORGE_MAX_BODY_BYTES = 144 * 1024 * 1024'));
   assert.ok(server.includes('PIXELFORGE_MAX_PROJECT_BYTES = 128 * 1024 * 1024'));
   assert.ok(server.includes('PIXELFORGE_MAX_ACCOUNT_BYTES = 2 * 1024 * 1024 * 1024'));
