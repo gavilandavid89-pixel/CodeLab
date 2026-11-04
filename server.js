@@ -59,6 +59,7 @@ const DATABASE_URL = process.env.DATABASE_URL || '';
 // Production uses TLS by default; local PostgreSQL integration tests can opt out explicitly.
 const DATABASE_SSL = process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false };
 const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: DATABASE_SSL, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
+let authSessionTableReady = false;
 const localLoginAttempts = new Map();
 const LOCAL_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOCAL_LOGIN_MAX_ATTEMPTS = 8;
@@ -559,8 +560,6 @@ function decodePixelForgeProjectId(value) {
     return null;
   }
 }
-
-let authSessionTableReady = false;
 
 async function ensureAuthSessionTable() {
   if (!accountPool) return;
