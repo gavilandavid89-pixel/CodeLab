@@ -76,10 +76,23 @@ function encodeBase64(bytes) {
   return btoa(binary);
 }
 
+function hasBase64CharactersAndPadding(value, expectedPadding = '') {
+  if (typeof value !== 'string') return false;
+  if (expectedPadding && !value.endsWith(expectedPadding)) return false;
+  const payloadEnd = value.length - expectedPadding.length;
+  for (let index = 0; index < payloadEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  return true;
+}
+
 function decodeBase64(value, expectedBytes) {
   const expectedChars = Math.ceil(expectedBytes / 3) * 4;
+  const expectedPadding = expectedBytes % 3 === 1 ? '==' : expectedBytes % 3 === 2 ? '=' : '';
   if (typeof value !== 'string' || value.length !== expectedChars ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      !hasBase64CharactersAndPadding(value, expectedPadding)) {
     throw new TypeError('Animation cel contains invalid or oversized base64 data.');
   }
   let binary;
