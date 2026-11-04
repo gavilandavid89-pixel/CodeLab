@@ -28,8 +28,12 @@ async function main() {
       await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: base }]);
       const page = await context.newPage();
       const pageErrors = [];
+      const consoleErrors = [];
+      const failedResponses = [];
       const pendingRequests = new Map();
       page.on('pageerror', error => pageErrors.push(error.message));
+      page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+      page.on('response', response => { if (response.status() >= 400) failedResponses.push({ url: response.url(), status: response.status() }); });
       page.on('request', request => pendingRequests.set(request.url(), request.method()));
       page.on('requestfinished', request => pendingRequests.delete(request.url()));
       page.on('requestfailed', request => pendingRequests.delete(request.url()));
@@ -52,8 +56,8 @@ async function main() {
         }));
         throw new Error(viewport.label + ': PixelForge boot did not reach ready state; diagnostics=' +
           JSON.stringify({ authUser: authStatus.user, projectListStatus: projectListResponse.status(),
-            projectListBody: projectListBody.slice(0, 500), diagnostics, pageErrors,
-            pendingRequests: [...pendingRequests.entries()] }) + '; cause=' + error.message);
+            projectListBody: projectListBody.slice(0, 500), diagnostics, pageErrors, consoleErrors,
+            failedResponses, pendingRequests: [...pendingRequests.entries()] }) + '; cause=' + error.message);
       }
 
       assert.equal(await page.locator('#files-tab').isVisible(), true, viewport.label + ': Files tab should be visible');
