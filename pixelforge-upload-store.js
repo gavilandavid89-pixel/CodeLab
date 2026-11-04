@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { StringDecoder } = require('node:string_decoder');
+const { TextDecoder } = require('node:util');
 
 const CHUNK_BYTES = 6 * 1024 * 1024;
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
