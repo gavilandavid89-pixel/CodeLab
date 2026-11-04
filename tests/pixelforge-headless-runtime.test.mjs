@@ -362,3 +362,17 @@ test('animation timeline has isolated undo and redo history before proposal acce
   assert.equal(runtime.toJSON().animation.frames[0].durationMs, 250);
   assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false, 'accepted timeline clears its temporary undo stack');
 });
+
+test('animation undo history is bounded to 100 steps', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  for (let index = 0; index < 105; index++) {
+    const result = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Frame ' + index });
+    assert.equal(result.ok, true);
+  }
+  assert.equal(runtime.inspect().animation.frameCount, 105);
+  for (let index = 0; index < 100; index++) {
+    assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, true);
+  }
+  assert.equal(runtime.inspect().animation.frameCount, 5);
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false);
+});
