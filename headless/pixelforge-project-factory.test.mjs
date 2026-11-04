@@ -20,23 +20,6 @@ class FakeHeadlessEditorRuntime {
   toJSON() { return JSON.parse(JSON.stringify(this.project)); }
 }
 
-class FakeHeadlessEditorRuntime {
-  constructor({ width, height, name }) {
-    const layer = { id: 'layer-1', name: 'Layer 1', visible: true, locked: false, opacity: 1, pixels: '' };
-    this.document = { id: 'project-1', format: 'pixelforge-project', version: 1, name, width, height, activeLayerId: layer.id, revision: 0, saveVersion: 0, serverRevision: 0, layers: [layer] };
-    this.sandbox = { activeLayerId: layer.id, activeLayer: layer, layers: this.document.layers };
-    this.hasPendingChanges = false;
-  }
-  execute(action) {
-    if (action.name === 'layer.rename') { this.sandbox.activeLayer.name = action.newName; this.hasPendingChanges = true; return { ok: true }; }
-    if (action.name === 'layer.add') { const layer = { id: 'layer-' + (this.sandbox.layers.length + 1), name: action.layerName, visible: true, locked: false, opacity: 1, pixels: '' }; this.sandbox.layers.push(layer); this.hasPendingChanges = true; return { ok: true }; }
-    return { ok: false, error: { message: 'unsupported fake action' } };
-  }
-  createProposal() { this.pending = true; }
-  acceptProposal() { this.pending = false; this.hasPendingChanges = false; this.document.layers = this.sandbox.layers.map(layer => ({ ...layer })); this.document.revision++; this.document.saveVersion++; return { status: 'applied' }; }
-  toJSON() { if (this.pending || this.hasPendingChanges) throw new Error('pending'); return JSON.parse(JSON.stringify(this.document)); }
-}
-
 test('custom PixelForge project factory creates a valid blank canvas', () => {
   const created = createPixelForgeProject({}, { RasterDocument: FakeRasterDocument, HeadlessEditorRuntime: FakeHeadlessEditorRuntime });
   assert.equal(created.project.format, 'pixelforge-project');
@@ -52,13 +35,16 @@ test('custom PixelForge project factory creates a valid blank canvas', () => {
   assert.equal(created.readback.layerCount, 1);
 });
 
-test('starter templates preserve the editor layer stacks through Headless proposal acceptance', () => {
+test('starter templates preserve the editor layer stacks in a clean Headless project', () => {
   const created = createPixelForgeProject({ template: 'character' }, { RasterDocument: FakeRasterDocument, HeadlessEditorRuntime: FakeHeadlessEditorRuntime });
   assert.equal(created.project.width, 64);
   assert.equal(created.project.height, 64);
   assert.equal(created.project.name, 'Character sprite');
   assert.deepEqual(created.project.layers.map(layer => layer.name), ['Sketch', 'Lineart', 'Color', 'Shading']);
   assert.equal(created.project.layers.length, created.readback.layerCount);
+  assert.equal(created.project.activeLayerId, created.project.layers[0].id);
+  assert.equal(created.project.revision, 0);
+  assert.equal(created.project.saveVersion, 0);
   assert.ok(created.project.layers.every(layer => typeof layer.pixels === 'string'));
 });
 
