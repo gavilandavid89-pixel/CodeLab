@@ -2177,6 +2177,106 @@ const server = http.createServer(async (req, res) => {
       }
 
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
+      // Large PixelForge projects use authenticated, idempotent PostgreSQL chunks.
+      const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
+      const pixelForgeUploadChunk = pathname.match(/^\\/api\\/pixelforge\\/projects\\/uploads\\/([a-f0-9]{32})\\/(\\d+)$/) && req.method === 'PUT';
+      const pixelForgeUploadCommit = pathname.match(/^\\/api\\/pixelforge\\/projects\\/uploads\\/([a-f0-9]{32})\\/commit$/) && req.method === 'POST';
+      if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit) {
+        const user = getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) {
+          return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        }
+        const workspaceId = userWorkspaceId(user);
+        try {
+          if (pixelForgeUploadBegin) {
+            const body = await readBody(req, 1024 * 1024);
+            const result = await pixelForgeUploads.beginUpload(
+              accountPool, workspaceId, body,
+              PIXELFORGE_MAX_PROJECT_BYTES, PIXELFORGE_MAX_ACCOUNT_BYTES, MAX_PROJECTS
+            );
+            return sendJson(res, result.status, result);
+          }
+          if (pixelForgeUploadChunk) {
+            const body = await readBody(req, PIXELFORGE_MAX_CHUNK_BODY_BYTES);
+            const result = await pixelForgeUploads.putChunk(
+              accountPool, workspaceId, pixelForgeUploadChunk[1], Number(pixelForgeUploadChunk[2]), body
+            );
+            return sendJson(res, 200, result);
+          }
+          return await withPixelForgeAccountLock(workspaceId, () => withPixelForgeUploadCommitLock(async () => {
+            const uploadId = pixelForgeUploadCommit[1];
+            const assembled = await pixelForgeUploads.assembleUpload(accountPool, workspaceId, uploadId);
+            if (assembled.committed) return sendJson(res, 200, assembled.receipt);
+            let project;
+            try { project = JSON.parse(assembled.serialized); }
+            catch (_) { return sendJson(res, 400, { error: 'invalid_pixelforge_project' }); }
+            const validation = validatePixelForgeProjectPayload(project);
+            if (validation.error) {
+              return sendJson(res, validation.status, {
+                error: validation.error,
+                ...(validation.maxBytes ? { maxBytes: validation.maxBytes } : {})
+              });
+            }
+            const upload = assembled.upload;
+            const expectedRevision = Number(upload.expected_server_revision);
+            if (project.id !== upload.project_id || project.serverRevision !== expectedRevision + 1 ||
+                validation.projectBytes !== Number(upload.total_bytes)) {
+              return sendJson(res, 400, { error: 'pixelforge_upload_manifest_mismatch' });
+            }
+            const current = await accountPool.query(
+              'SELECT name,width,height,updated_at,server_revision,content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+              [workspaceId, upload.project_id]
+            );
+            const currentRevision = current.rowCount ? Number(current.rows[0].server_revision || 0) : 0;
+            if (current.rowCount && currentRevision === expectedRevision + 1 &&
+                current.rows[0].content_sha256 === assembled.contentSha256) {
+              const row = current.rows[0];
+              const receipt = { ok: true, project: {
+                id: upload.project_id, name: row.name, width: row.width, height: row.height,
+                updatedAt: Number(row.updated_at), serverRevision: currentRevision
+              } };
+              await pixelForgeUploads.markCommitted(accountPool, uploadId, receipt);
+              return sendJson(res, 200, receipt);
+            }
+            if (currentRevision !== expectedRevision) {
+              return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: currentRevision });
+            }
+            const saved = await savePixelForgeProjectToDatabase(
+              workspaceId, project, validation.projectBytes,
+              {
+                expectedServerRevision: expectedRevision,
+                preassignedServerRevision: true,
+                serializedDocument: assembled.serialized,
+                contentSha256: assembled.contentSha256
+              }
+            );
+            if (saved.error) return sendJson(res, saved.status, {
+              error: saved.error,
+              ...(saved.maxProjects ? { maxProjects: saved.maxProjects } : {}),
+              ...(saved.maxBytes ? { maxBytes: saved.maxBytes } : {}),
+              ...(Number.isInteger(saved.revision) ? { revision: saved.revision } : {})
+            });
+            const receipt = { ok: true, project: {
+              id: project.id, name: project.name.trim(), width: project.width, height: project.height,
+              updatedAt: saved.now, serverRevision: saved.serverRevision
+            } };
+            await pixelForgeUploads.markCommitted(accountPool, uploadId, receipt);
+            return sendJson(res, saved.status, receipt);
+          }));
+        } catch (error) {
+          if ((error.status || 500) >= 500) console.error('PixelForge chunk upload failed:', error.message);
+          return sendJson(res, error.status || 500, {
+            error: error.code || 'pixelforge_upload_failed',
+            ...(Number.isInteger(error.maxBytes) ? { maxBytes: error.maxBytes } : {}),
+            ...(Number.isInteger(error.maxProjects) ? { maxProjects: error.maxProjects } : {}),
+            ...(Number.isInteger(error.revision) ? { revision: error.revision } : {}),
+            ...(Number.isInteger(error.receivedChunks) ? { receivedChunks: error.receivedChunks } : {}),
+            ...(Number.isInteger(error.totalChunks) ? { totalChunks: error.totalChunks } : {})
+          });
+        }
+      }
+
       const pixelForgeCollection = pathname === '/api/pixelforge/projects';
       const pixelForgeItemPath = pathname.startsWith('/api/pixelforge/projects/') ? pathname.slice('/api/pixelforge/projects/'.length) : '';
       const pixelForgeItem = pixelForgeItemPath && !pixelForgeItemPath.includes('/') ? [pathname, pixelForgeItemPath] : null;
