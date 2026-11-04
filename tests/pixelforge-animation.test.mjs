@@ -323,7 +323,7 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   const declaredButtons = [...editorHtml.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
   const unreferencedButtons = declaredButtons.filter(id => !editorSource.includes('#' + id));
   assert.deepEqual(unreferencedButtons, [], 'every static PixelForge button must be referenced by the editor controller');
-  assert.ok(editorSource.includes("closest('[data-selection-move]')") && editorSource.includes("closest('[data-transform]')"),
+  assert.ok(editorSource.includes("closest('[data-selection-move]')") && editorSource.includes("closest('button[data-transform]')"),
     'delegated selection and transform controls must remain wired');
   assert.ok(editorSource.includes("setInspectorPanel('properties')") && editorSource.includes("setInspectorPanel('layers')") &&
     editorSource.includes("setInspectorPanel('ai')") && editorSource.includes("setInspectorPanel('files')"),
