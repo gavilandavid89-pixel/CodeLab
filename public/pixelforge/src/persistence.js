@@ -2,7 +2,7 @@ const { codeLabRequest } = window.CodeLabStudioCore;
 
 const API = '/api/pixelforge/projects';
 const DIRECT_SAVE_BYTES = 24 * 1024 * 1024;
-const MAX_PROJECT_BYTES = 128 * 1024 * 1024;
+const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const UPLOAD_CHUNK_BYTES = 6 * 1024 * 1024;
 const pendingUploads = new Map();
 
@@ -22,7 +22,7 @@ async function saveProjectChunked(project) {
   const serialized = JSON.stringify(uploadProject);
   const blob = new Blob([serialized], { type: 'application/json' });
   if (blob.size > MAX_PROJECT_BYTES) {
-    const error = new RangeError('El proyecto supera el límite total de 128 MiB para guardado.');
+    const error = new RangeError('El proyecto supera el límite total de 96 MiB para guardado.');
     error.code = 'pixelforge_project_too_large';
     throw error;
   }
