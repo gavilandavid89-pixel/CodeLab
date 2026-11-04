@@ -1103,7 +1103,7 @@ function setInspectorPanel(panel) {
   inspector.dataset.panel = panel;
   inspector.classList.toggle('show-layers', panel === 'layers' && mobileInspector.matches);
   if (mobileInspector.matches) inspector.scrollTop = 0;
-  const panels = { properties: '#properties-tab', layers: '#layers-tab', ai: '#ai-tab' };
+  const panels = { properties: '#properties-tab', layers: '#layers-tab', ai: '#ai-tab', files: '#files-tab' };
   for (const [name, selector] of Object.entries(panels)) {
     $(selector).classList.toggle('active', name === panel);
     $(selector).setAttribute('aria-selected', String(name === panel));
@@ -1131,6 +1131,10 @@ $('#ai-tab').addEventListener('click', () => {
   setInspectorPanel('ai');
   if (!mobileInspector.matches) scrollInspectorTo('#ai-workspace-panel');
   aiPanelVisible = true; renderAIWorkspacePreview();
+});
+$('#files-tab').addEventListener('click', () => {
+  setInspectorPanel('files');
+  if (!mobileInspector.matches) scrollInspectorTo('.files-section');
 });
 $('#ai-sync').addEventListener('click', () => {
   const result = aiWorkspace.syncFromUser();
