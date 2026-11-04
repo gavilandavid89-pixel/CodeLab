@@ -1,7 +1,7 @@
 import { RasterDocument } from './core.js';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
-import { applyAnimationAction, summarizeAnimationTimeline, validateAnimationTimeline } from './animation.js';
+import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
 
 const MAX_ANIMATION_HISTORY_STEPS = 100;
 const MAX_ANIMATION_HISTORY_BYTES = 16 * 1024 * 1024;
@@ -27,7 +27,7 @@ export class HeadlessEditorRuntime {
       ? new RasterDocument(width, height, name)
       : RasterDocument.fromJSON(project);
     this.#hasAnimation = Boolean(project?.animation);
-    this.#animation = validateAnimationTimeline(project?.animation, this.#document.width, this.#document.height);
+    this.#animation = validateAnimationTimeline(project?.animation, this.#document.width, this.#document.height, this.#document.layers);
     this.#resetWorkspace();
   }
 
@@ -108,7 +108,20 @@ export class HeadlessEditorRuntime {
         } };
       }
     }
-    return this.#commands.execute(action);
+    const commandResult = this.#commands.execute(action);
+    if (commandResult.ok) {
+      const before = JSON.stringify(this.#sandboxAnimation);
+      const synchronized = synchronizeAnimationLayers(this.#sandboxAnimation, this.#workspace.sandbox);
+      if (JSON.stringify(synchronized) !== before) {
+        if (synchronized.frames.length || this.#hasAnimation) {
+          this.#clearAnimationFuture();
+          this.#pushAnimationHistory(this.#animationHistory, this.#sandboxAnimation);
+          this.#animationDirty = true;
+        }
+        this.#sandboxAnimation = synchronized;
+      }
+    }
+    return commandResult;
   }
 
   executeBatch(actions) {
