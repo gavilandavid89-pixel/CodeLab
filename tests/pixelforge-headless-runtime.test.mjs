@@ -191,6 +191,48 @@ test('animation composite frames capture sandbox pixels and frame-time lookup re
   assert.equal(frameAtAnimationTime(timeline, 10000).index, 1);
 });
 
+test('Headless remaps existing animation cel identities across load, proposal acceptance, and sandbox refresh', () => {
+  const fixture = projectFixture();
+  const sourceLayerId = fixture.layers[0].id;
+  const originalPixels = Buffer.alloc(fixture.width * fixture.height * 4);
+  originalPixels.set([12, 34, 56, 255], 0);
+  fixture.animation = {
+    format: 'pixelforge-animation', version: 1,
+    width: fixture.width, height: fixture.height,
+    layerIds: [sourceLayerId], fps: 12, loop: true, activeFrameIndex: 0,
+    frames: [{
+      id: 'persisted-frame-1', durationMs: 100,
+      cels: [{ layerId: sourceLayerId, pixels: originalPixels.toString('base64') }],
+    }],
+  };
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const sandboxLayerId = runtime.sandbox.layers[0].id;
+  assert.notEqual(sandboxLayerId, sourceLayerId, 'sandbox layer identity must be isolated from the persisted project');
+  const initialCel = runtime.execute({ name: 'animation.frame.get_cel', layerId: sandboxLayerId });
+  assert.equal(initialCel.ok, true);
+  assert.deepEqual(Buffer.from(initialCel.result.pixels, 'base64'), originalPixels);
+
+  const changedPixels = Buffer.from(originalPixels);
+  changedPixels.set([200, 150, 100, 255], 4);
+  assert.equal(runtime.execute({
+    name: 'animation.frame.set_cel', layerId: sandboxLayerId, pixels: changedPixels.toString('base64'),
+  }).ok, true);
+  runtime.createProposal('Edit a persisted animation cel');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+
+  const saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.equal(saved.animation.layerIds[0], sourceLayerId);
+  assert.equal(saved.animation.frames[0].cels[0].layerId, sourceLayerId);
+  assert.deepEqual(Buffer.from(saved.animation.frames[0].cels[0].pixels, 'base64'), changedPixels);
+
+  const refreshedSandboxLayerId = runtime.sandbox.layers[0].id;
+  assert.notEqual(refreshedSandboxLayerId, sourceLayerId);
+  const reloadedCel = runtime.execute({ name: 'animation.frame.get_cel', layerId: refreshedSandboxLayerId });
+  assert.equal(reloadedCel.ok, true);
+  assert.deepEqual(Buffer.from(reloadedCel.result.pixels, 'base64'), changedPixels);
+});
+
 test('Headless keeps independent animation cels aligned with layer add, reorder, and delete operations', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
   const baseLayerId = runtime.sandbox.layers[0].id;
