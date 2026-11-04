@@ -486,4 +486,10 @@ test('headless brush and line actions reproduce the editor 2/4/8-way symmetry mo
     name: 'canvas.draw_line', x0: 1, y0: 1, x1: 2, y1: 1,
     color: '#112233', symmetryMode: 3,
   }).ok, false);
+  const eightWay = runtime.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 5, x1: 2, y1: 5,
+    color: '#008877', symmetryMode: 8,
+  });
+  assert.equal(eightWay.ok, true);
+  assert.equal(eightWay.result.symmetryMode, 8);
 });
