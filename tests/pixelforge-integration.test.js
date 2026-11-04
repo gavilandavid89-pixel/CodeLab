@@ -619,6 +619,7 @@ async function main() {
     // Global checker fill should paint both foreground/background cells across matching pixels.
     await accountPage.locator('#add-layer').click();
     await waitForRasterSave();
+    await accountPage.locator('#properties-tab').click();
     const beforeCheckerFill = await readSavedArtwork();
     assert.equal(beforeCheckerFill.layers.length, 4, 'a fresh transparent layer should be available for checker fill');
     const checkerOrigin = { x: 0, y: 0 };
