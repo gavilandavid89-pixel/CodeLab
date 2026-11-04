@@ -105,6 +105,9 @@ export function preparePixelForgeVisionRequest({
       throw new TypeError('Animation vision metadata must be an object.');
     }
     if (!Array.isArray(animation.frames)) throw new TypeError('Animation frames must be an array.');
+    if (animation.frames.length < 1 || animation.frames.length > 23) {
+      throw new RangeError('PixelForge vision accepts between 1 and 23 animation frames per snapshot.');
+    }
     safeAnimation = {
       fps: animation.fps,
       loop: animation.loop,
