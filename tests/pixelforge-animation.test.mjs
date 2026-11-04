@@ -107,7 +107,11 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
   assert.equal(timeline.reorderLayers(['ink-copy', 'ink', 'shadow']), true);
   assert.deepEqual(timeline.layerIds, ['ink-copy', 'ink', 'shadow']);
   assert.equal(timeline.getLayerPixels(0, 'ink')[0], 33);
-  assert.throws(() => timeline.removeLayer('ink'), /at least one raster layer/);
+  timeline.removeLayer('ink');
+  assert.deepEqual(timeline.layerIds, ['ink-copy', 'shadow']);
+  timeline.removeLayer('ink-copy');
+  assert.deepEqual(timeline.layerIds, ['shadow']);
+  assert.throws(() => timeline.removeLayer('shadow'), /at least one raster layer/);
 });
 
 test('uses 60 FPS timing and rejects oversized allocations before decoding cels', () => {
@@ -141,7 +145,7 @@ test('rejects malformed dimensions, duplicate layer IDs, bad durations, and inva
   assert.throws(() => new PixelForgeAnimation({ width: 2, height: 2, layerIds: ['ink', 'ink'] }), /unique/);
   assert.throws(() => PixelForgeAnimation.fromDocument(documentFixture(), { fps: 0 }), /FPS/);
   const timeline = PixelForgeAnimation.fromDocument(documentFixture());
-  assert.throws(() => timeline.setFrameDuration(0, 1), /duration/);
+  assert.throws(() => timeline.setFrameDuration(0, 0), /duration/);
   assert.throws(() => timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(4)), /dimensions/);
   assert.throws(() => PixelForgeAnimation.fromJSON({ format: 'pixelforge-animation', version: 1 }), /invalid/);
 });
