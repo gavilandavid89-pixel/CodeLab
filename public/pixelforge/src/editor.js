@@ -20,7 +20,7 @@ let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiC
 let aiPanelVisible = false;
 let color = $('#color').value, backgroundColor = '#242632', recentColors = [], brushSize = Number($('#brush-size').value);
 let fillTolerance = 0, fillContiguous = true, sampleMerged = true, returnTool = 'draw';
-let zoom = 3, panX = 0, panY = 0, activeStroke = null, pointerId = null, gridEnabled = false;
+let zoom = 3, panX = 0, panY = 0, activeStroke = null, pointerId = null, gridEnabled = false, referenceGuidesEnabled = false;
 let drawHeld = false, drawHoldPointerId = null;
 let selection = null, selectionStart = null, selectionPointerId = null, pixelClipboard = null;
 let transformPreview = null, cropPreview = null;
@@ -236,6 +236,31 @@ function zoomAt(point, targetZoom) {
   panX = point.x - before.x * zoom; panY = point.y - before.y * zoom;
   render();
 }
+function drawCoordinateGuides() {
+  if (!referenceGuidesEnabled || !doc.width || !doc.height) return;
+  const maxX = doc.width - 1, maxY = doc.height - 1;
+  const anchors = [0.25, 0.5, 0.75].map(ratio => ({ x: Math.round(maxX * ratio), y: Math.round(maxY * ratio), ratio }));
+  ctx.save();
+  ctx.beginPath(); ctx.rect(panX, panY, doc.width * zoom, doc.height * zoom); ctx.clip();
+  ctx.setLineDash([7, 5]); ctx.lineWidth = 1;
+  for (const anchor of anchors) {
+    const x = panX + (anchor.x + 0.5) * zoom;
+    const y = panY + (anchor.y + 0.5) * zoom;
+    ctx.strokeStyle = anchor.ratio === 0.5 ? 'rgba(255, 190, 110, .82)' : 'rgba(105, 223, 187, .48)';
+    ctx.beginPath(); ctx.moveTo(x, panY); ctx.lineTo(x, panY + doc.height * zoom); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(panX, y); ctx.lineTo(panX + doc.width * zoom, y); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.font = '11px ui-monospace, SFMono-Regular, monospace';
+  ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(245, 247, 255, .94)';
+  ctx.fillText('(0,0)', panX + 4, panY + 4);
+  const center = anchors[1];
+  ctx.fillStyle = '#ffd09a';
+  ctx.fillText('center (' + center.x + ',' + center.y + ')', panX + 5, panY + 18);
+  ctx.textBaseline = 'bottom'; ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(245, 247, 255, .94)';
+  ctx.fillText('(' + maxX + ',' + maxY + ')', panX + doc.width * zoom - 4, panY + doc.height * zoom - 4);
+  ctx.restore();
+}
+
 function render() {
   if (renderQueued) return;
   renderQueued = true;
@@ -309,6 +334,7 @@ function render() {
       ctx.stroke();
       ctx.restore();
     }
+    drawCoordinateGuides();
     if (cropPreview && cropPreview.docWidth === doc.width && cropPreview.docHeight === doc.height) {
       const left = panX + cropPreview.x * zoom, top = panY + cropPreview.y * zoom;
       const right = left + cropPreview.width * zoom, bottom = top + cropPreview.height * zoom;
@@ -1599,6 +1625,14 @@ function redoDocument() {
 $('#undo').addEventListener('click', undoDocument);
 $('#redo').addEventListener('click', redoDocument);
 $('#fit').addEventListener('click', fitCanvas);
+$('#reference-guides-toggle').addEventListener('click', () => {
+  referenceGuidesEnabled = !referenceGuidesEnabled;
+  const button = $('#reference-guides-toggle');
+  button.textContent = 'Guides: ' + (referenceGuidesEnabled ? 'On' : 'Off');
+  button.setAttribute('aria-pressed', String(referenceGuidesEnabled));
+  status(referenceGuidesEnabled ? 'Canvas coordinates, center and quarter guides enabled' : 'Canvas coordinate guides hidden', 'success');
+  render();
+});
 $('#grid-toggle').addEventListener('click', () => {
   gridEnabled = !gridEnabled;
   const button = $('#grid-toggle');
