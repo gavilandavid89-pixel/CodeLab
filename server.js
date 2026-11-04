@@ -34,11 +34,11 @@ const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxPro
 // The request envelope exceeds the stored-project cap to allow JSON metadata.
 const PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024;
 const PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024;
-const PIXELFORGE_MAX_PROJECT_BYTES = 128 * 1024 * 1024;
+const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 // Keep the server-side raster allocation ceiling identical to the editor's
 // MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
 const PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024;
-const PIXELFORGE_MAX_ACCOUNT_BYTES = 2 * 1024 * 1024 * 1024;
+const PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
