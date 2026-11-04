@@ -24,6 +24,22 @@ function asBytes(value) {
   throw new TypeError('ZIP entry data must be text, an ArrayBuffer, or a byte array.');
 }
 
+async function crc32Blob(blob) {
+  if (typeof blob.stream === 'function') {
+    let crc = 0xffffffff;
+    const reader = blob.stream().getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        for (const byte of value) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+      }
+    } finally { reader.releaseLock(); }
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+  return crc32(new Uint8Array(await blob.arrayBuffer()));
+}
+
 function write16(view, offset, value) { view.setUint16(offset, value, true); }
 function write32(view, offset, value) { view.setUint32(offset, value >>> 0, true); }
 
@@ -145,7 +161,7 @@ export async function createZipBlob(entries) {
     if (blob.size > 0xffffffff) throw new RangeError('ZIP64 entries are not supported.');
     totalBytes += blob.size;
     if (totalBytes > 0xffffffff) throw new RangeError('ZIP64 archives are not supported.');
-    const checksum = crc32(new Uint8Array(await blob.arrayBuffer()));
+    const checksum = await crc32Blob(blob);
     const local = new Uint8Array(30 + nameBytes.length);
     const localView = new DataView(local.buffer);
     write32(localView, 0, 0x04034b50);
