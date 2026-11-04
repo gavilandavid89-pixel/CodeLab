@@ -5,6 +5,8 @@ on:
     branches: ["fix/**", "feat/**"]
     paths:
       - "public/pixelforge/**"
+      - "server.js"
+      - "tests/pixelforge-animation.test.mjs"
       - "tests/pixelforge-mobile-ui.test.js"
       - "tests/pixelforge-mobile-browser.test.js"
       - ".github/workflows/pixelforge-mobile-ui.yml"
@@ -12,6 +14,8 @@ on:
     branches: ["feat/codelab-pixelforge-studio-entry-clean"]
     paths:
       - "public/pixelforge/**"
+      - "server.js"
+      - "tests/pixelforge-animation.test.mjs"
       - "tests/pixelforge-mobile-ui.test.js"
       - "tests/pixelforge-mobile-browser.test.js"
       - ".github/workflows/pixelforge-mobile-ui.yml"
