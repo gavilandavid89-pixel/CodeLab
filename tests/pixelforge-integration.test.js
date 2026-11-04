@@ -618,13 +618,13 @@ async function main() {
 
     // Global checker fill should paint both foreground/background cells across matching pixels.
     await setForegroundColor('#ff0000');
+    await accountPage.locator('#fill-tool').click();
     await accountPage.locator('#fill-mode').selectOption('global');
     await accountPage.locator('#fill-pattern').selectOption('checker');
     await accountPage.locator('#fill-scale').evaluate(input => {
       input.value = '1';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await accountPage.locator('#fill-tool').click();
     await clickPixel(0, 0);
     await waitForRasterSave();
     toolProject = await readSavedArtwork();
