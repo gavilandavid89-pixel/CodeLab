@@ -439,6 +439,59 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+const PIXELFORGE_MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
+
+function validatePixelForgeAnimation(project) {
+  if (!Object.prototype.hasOwnProperty.call(project, 'animation')) return null;
+  const animation = project.animation;
+  if (!animation || typeof animation !== 'object' || Array.isArray(animation) ||
+      animation.format !== 'pixelforge-animation' || animation.version !== 1 ||
+      animation.width !== project.width || animation.height !== project.height ||
+      !Number.isInteger(animation.fps) || animation.fps < 1 || animation.fps > 60 ||
+      !Number.isInteger(animation.activeFrameIndex) ||
+      !Array.isArray(animation.layerIds) || animation.layerIds.length !== project.layers.length ||
+      !Array.isArray(animation.frames) || animation.frames.length < 1 || animation.frames.length > 240) {
+    return 'invalid_pixelforge_animation';
+  }
+
+  const projectLayerIds = project.layers.map(layer => layer.id);
+  if (animation.layerIds.some((id, index) => typeof id !== 'string' || id !== projectLayerIds[index]) ||
+      new Set(animation.layerIds).size !== animation.layerIds.length ||
+      animation.activeFrameIndex < 0 || animation.activeFrameIndex >= animation.frames.length) {
+    return 'invalid_pixelforge_animation';
+  }
+
+  const celBytes = project.width * project.height * 4;
+  if (celBytes * animation.layerIds.length * animation.frames.length > PIXELFORGE_MAX_ANIMATION_BYTES) {
+    return 'pixelforge_project_too_large';
+  }
+  const expectedBase64Length = Math.ceil(celBytes / 3) * 4;
+  const expectedPadding = celBytes % 3 === 1 ? '==' : celBytes % 3 === 2 ? '=' : '';
+  const frameIds = new Set();
+  for (const frame of animation.frames) {
+    if (!frame || typeof frame !== 'object' || Array.isArray(frame) ||
+        typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180 || frameIds.has(frame.id) ||
+        !Number.isFinite(frame.durationMs) || frame.durationMs < 1 || frame.durationMs > 10000 ||
+        !Array.isArray(frame.cels) || frame.cels.length !== animation.layerIds.length) {
+      return 'invalid_pixelforge_animation';
+    }
+    frameIds.add(frame.id);
+    const celLayerIds = new Set();
+    for (const cel of frame.cels) {
+      if (!cel || typeof cel !== 'object' || Array.isArray(cel) ||
+          typeof cel.layerId !== 'string' || !animation.layerIds.includes(cel.layerId) || celLayerIds.has(cel.layerId) ||
+          typeof cel.pixels !== 'string' || cel.pixels.length !== expectedBase64Length ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(cel.pixels) ||
+          (expectedPadding && (!cel.pixels.endsWith(expectedPadding) || cel.pixels.slice(0, -expectedPadding.length).includes('=')))) {
+        return 'invalid_pixelforge_animation';
+      }
+      celLayerIds.add(cel.layerId);
+    }
+    if (celLayerIds.size !== animation.layerIds.length) return 'invalid_pixelforge_animation';
+  }
+  return null;
+}
+
 function decodePixelForgeProjectId(value) {
   try {
     const decoded = decodeURIComponent(value);
@@ -2164,6 +2217,8 @@ const server = http.createServer(async (req, res) => {
             layerIds.add(layer.id);
           }
           if (!layerIds.has(project.activeLayerId)) return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
+          const animationError = validatePixelForgeAnimation(project);
+          if (animationError) return sendJson(res, animationError === 'pixelforge_project_too_large' ? 413 : 400, { error: animationError });
           const serialized = JSON.stringify(project);
           const projectBytes = Buffer.byteLength(serialized, 'utf8');
           if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
