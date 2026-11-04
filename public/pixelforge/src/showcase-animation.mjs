@@ -166,5 +166,9 @@ export function createOrbitalShowcase() {
   doc.setActiveLayer(shipLayer.id);
   doc.revision = 1;
   doc.saveVersion = 1;
+  doc.history = [];
+  doc.future = [];
+  doc.historyBytes = 0;
+  doc.dirty = false;
   return { doc, animation, loop: true };
 }
