@@ -2,7 +2,8 @@ import { HeadlessEditorRuntime } from './headless.js';
 
 const sessions = new Map();
 const SESSION_TTL_MS = 10 * 60 * 1000;
-const MAX_PERSISTED_PROJECT_BYTES = 24 * 1024 * 1024;
+const MAX_PERSISTED_PROJECT_BYTES = 96 * 1024 * 1024;
+const DIRECT_PERSISTED_PROJECT_BYTES = 24 * 1024 * 1024;
 
 function assertProjectId(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) {
@@ -130,15 +131,22 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
   const project = session.pendingSaveProject;
   let response;
   try {
-    response = await session.fetcher('/api/pixelforge/projects/' + encodeURIComponent(session.projectId), {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ project }),
-    });
     let saved;
-    try {
-      saved = await readJson(response, 'PixelForge project save');
+    if (projectBytes > DIRECT_PERSISTED_PROJECT_BYTES) {
+      // Reuse the visual editor's authenticated, resumable 6 MiB chunk transport.
+      // This keeps Headless saves aligned with the same 96 MiB project envelope.
+      const { saveProject } = await import('./persistence.js');
+      const savedProject = await saveProject(project);
+      saved = { project: savedProject };
+    } else {
+      response = await session.fetcher('/api/pixelforge/projects/' + encodeURIComponent(session.projectId), {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ project }),
+      });
+      try {
+        saved = await readJson(response, 'PixelForge project save');
     } catch (error) {
       if (error.status !== 409) throw error;
       // A response may be lost after the server committed. Read back and
@@ -155,7 +163,8 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
         sessions.delete(sessionId);
         throw error;
       }
-      saved = { project: { id: current.project.id, serverRevision: current.project.serverRevision } };
+        saved = { project: { id: current.project.id, serverRevision: current.project.serverRevision } };
+      }
     }
     if (!Number.isInteger(saved?.project?.serverRevision)) throw new Error('PixelForge save did not return a valid server revision.');
     session.runtime.document.serverRevision = saved.project.serverRevision;
