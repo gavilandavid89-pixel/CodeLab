@@ -2312,21 +2312,31 @@ async function boot() {
     resizeCanvas();
     const params = new URLSearchParams(window.location.search);
     if (params.get('createDemo') === 'orbital-12') {
-      const showcase = createOrbitalShowcase();
-      doc = showcase.doc;
-      animation = showcase.animation;
-      animationLoop = showcase.loop;
-      const snapshot = doc.toJSON();
-      snapshot.animation = { ...animation.toJSON(), loop: animationLoop };
-      const savedDemo = await saveProject(snapshot);
-      if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
-      doc.dirty = false;
+      const existingProjects = await listSavedProjects();
+      const existingDemo = existingProjects.find(project => project.name === 'Orbital · PixelForge 12-frame loop');
+      const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
+      if (existingSnapshot?.animation) {
+        doc = RasterDocument.fromJSON(existingSnapshot);
+        animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
+        animationLoop = existingSnapshot.animation.loop !== false;
+        status('Demo Orbital recuperada de tu cuenta · 12 fotogramas a 12 FPS', 'success');
+      } else {
+        const showcase = createOrbitalShowcase();
+        doc = showcase.doc;
+        animation = showcase.animation;
+        animationLoop = showcase.loop;
+        const snapshot = doc.toJSON();
+        snapshot.animation = { ...animation.toJSON(), loop: animationLoop };
+        const savedDemo = await saveProject(snapshot);
+        if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
+        doc.dirty = false;
+        status('Demo Orbital guardada en tu cuenta · 12 fotogramas a 12 FPS', 'success');
+      }
       animationFrameHistory.clear();
       animationOrphanCels.clear();
       clearSelectionState();
       resetAIWorkspaceForDocument();
       window.history.replaceState(null, '', window.location.pathname + window.location.hash);
-      status('Demo Orbital guardada en tu cuenta · 12 fotogramas a 12 FPS', 'success');
     } else {
       const saved = await loadMostRecentProject();
       if (saved) { doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
