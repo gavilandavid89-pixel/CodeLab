@@ -264,6 +264,11 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(server.includes('pixelForgeUploadStatus'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('async function getUploadStatus'));
   const persistence = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/persistence.js'), 'utf8');
+  const uploadStore = fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8');
+  assert.ok((uploadStore.match(/FOR UPDATE/g) || []).length >= 2,
+    'chunk writes and assembly must lock the upload manifest against commit/cleanup races');
+  assert.ok(uploadStore.includes("await client.query('BEGIN')") && uploadStore.includes("await client.query('COMMIT')"),
+    'chunk writes and assembly must use transactions');
   assert.ok(persistence.indexOf('if (estimatedBytes > MAX_PROJECT_BYTES)') < persistence.indexOf('JSON.stringify({ project })'),
     'the combined project envelope must be preflighted before building the serialized save body');
   assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
