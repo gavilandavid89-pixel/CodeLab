@@ -191,6 +191,65 @@ test('animation composite frames capture sandbox pixels and frame-time lookup re
   assert.equal(frameAtAnimationTime(timeline, 10000).index, 1);
 });
 
+test('Headless keeps independent animation cels aligned with layer add, reorder, and delete operations', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const baseLayerId = runtime.document.layers[0].id;
+  const addedLayer = runtime.execute({ name: 'layer.add', layerName: 'Ink' });
+  assert.equal(addedLayer.ok, true);
+  const inkLayerId = addedLayer.result.layerId;
+  const first = runtime.executeBatch([
+    { name: 'layer.select', layerId: inkLayerId },
+    { name: 'canvas.draw_line', x0: 2, y0: 2, x1: 6, y1: 2, color: '#EE2211' },
+    { name: 'animation.frame.add_from_layer', layerId: inkLayerId, frameName: 'Pose A' },
+    { name: 'layer.select', layerId: baseLayerId },
+    { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 6, y1: 3, color: '#22AA44' },
+    { name: 'animation.frame.add_from_layer', layerId: baseLayerId, frameName: 'Pose B' },
+  ]);
+  assert.equal(first.ok, true);
+  runtime.createProposal('Create two independent multi-layer animation poses');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  let saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, [baseLayerId, inkLayerId]);
+  const cel = (frame, layerId) => frame.cels.find(item => item.layerId === layerId);
+  const firstBase = Buffer.from(cel(saved.animation.frames[0], baseLayerId).pixels, 'base64');
+  const firstInk = Buffer.from(cel(saved.animation.frames[0], inkLayerId).pixels, 'base64');
+  const secondBase = Buffer.from(cel(saved.animation.frames[1], baseLayerId).pixels, 'base64');
+  const secondInk = Buffer.from(cel(saved.animation.frames[1], inkLayerId).pixels, 'base64');
+  const pixel = (bytes, x, y) => [...bytes.subarray((y * saved.width + x) * 4, (y * saved.width + x) * 4 + 4)];
+  assert.deepEqual(pixel(firstBase, 2, 3), [0, 0, 0, 0]);
+  assert.deepEqual(pixel(firstInk, 2, 2), [238, 34, 17, 255]);
+  assert.deepEqual(pixel(secondBase, 2, 3), [34, 170, 68, 255]);
+  assert.deepEqual(pixel(secondInk, 2, 2), [238, 34, 17, 255]);
+
+  const shadow = runtime.execute({ name: 'layer.add', layerName: 'Shadow' });
+  assert.equal(shadow.ok, true);
+  const shadowId = shadow.result.layerId;
+  assert.deepEqual(runtime.inspect().animation.layerCount, 3);
+  assert.equal(runtime.execute({ name: 'layer.move', layerId: inkLayerId, targetIndex: 0 }).ok, true);
+  assert.deepEqual(runtime.inspect().animation.layerIds, runtime.sandbox.layers.map(layer => layer.id));
+  runtime.createProposal('Add and reorder a synchronized animation layer');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.equal(saved.animation.frames[0].cels.find(item => item.layerId === shadowId).pixels.length, 1368);
+  assert.equal(runtime.execute({ name: 'layer.delete', layerId: baseLayerId }).ok, true);
+  runtime.createProposal('Delete a layer and its animation cels together');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.ok(saved.animation.frames.every(frame => frame.cels.length === saved.layers.length));
+});
+
+test('Headless blocks dimension-changing crop while multi-layer animation frames exist', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer' }).ok, true);
+  const result = runtime.execute({ name: 'canvas.crop', x: 0, y: 0, width: 8, height: 8 });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'animation_dimension_change_requires_frame_transform');
+  assert.equal(runtime.sandbox.width, 16);
+  assert.equal(runtime.sandbox.height, 16);
+});
+
 test('headless shapes, selections, crop and rename compose into one accepted document change', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
   const batch = runtime.executeBatch([
