@@ -173,3 +173,9 @@
 .ai-prompt-card .file-button:disabled{opacity:.4;cursor:not-allowed}
 
 .selection-transform-panel{margin-top:14px;padding-top:13px;border-top:1px solid #303340}.transform-number-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.transform-number-grid label,.transform-interpolation{display:flex;flex-direction:column;gap:6px;color:#9da3b5;font-size:9px}.transform-number-grid input,.transform-interpolation select{width:100%;min-width:0;height:31px;padding:0 7px;border:1px solid #393c4a;border-radius:6px;background:#20222c;color:#e4e6ef;font:inherit}.transform-interpolation{margin-top:10px}.selection-transform-panel .transform-actions{margin-top:10px;grid-template-columns:1fr 1fr}.selection-transform-panel .transform-actions button:disabled{opacity:.35;cursor:not-allowed}.selection-transform-panel .control-heading{margin-bottom:10px}.selection-transform-panel .small-note{margin-top:9px}
+
+
+/* Small-screen navigation: the brand itself returns to CodeLab, so avoid a duplicate header action. */
+@media(max-width:760px){.top-actions>a.quiet-button[href="/"]{display:none}}
+@media(max-width:420px){.topbar{gap:6px;padding-right:7px;padding-left:7px}.brand{gap:6px;font-size:12px}.brand-mark{width:22px;height:22px}.top-actions{gap:1px}.quiet-button,.more-button{min-width:24px}.secondary-button,.primary-button{padding:0 5px}}
+@media(max-width:760px) and (max-height:560px){.topbar{height:48px}.contextbar{height:32px}.bottom-bar{display:none}.work-area{min-height:140px}.inspector{max-height:30vh}.inspector-tabs{height:30px}.inspector-section{padding-top:8px;padding-bottom:8px}.tool-rail{padding-top:6px}.tool-button{height:40px;margin-bottom:2px}}
