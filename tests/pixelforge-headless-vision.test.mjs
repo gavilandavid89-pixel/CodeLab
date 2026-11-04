@@ -6,7 +6,15 @@ import {
   PIXELFORGE_VISION_CONSENT_TTL_MS,
 } from '../public/pixelforge/src/pixelforge-vision.js';
 
-const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/n7sAAAAASUVORK5CYII=';
+function pngHeader(width, height) {
+  const bytes = Buffer.alloc(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return 'data:image/png;base64,' + bytes.toString('base64');
+}
 
 test('requires a user-facing confirmation callback and refuses declined consent', async () => {
   await assert.rejects(() => requestPixelForgeVisionConsent({ projectId: 'project-1' }), /confirmation callback/);
@@ -110,4 +118,17 @@ test('enforces the existing vision snapshot image-count and per-image byte limit
   assert.throws(() => preparePixelForgeVisionRequest({
     consent: nextConsent, projectId: 'project-1', artworkImage: oversized,
   }), /no larger than 8 MiB/);
+});
+
+test('checks PNG signature and decoded dimensions instead of trusting the data URL MIME label', async () => {
+  const consent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  const mislabeled = 'data:image/png;base64,' + Buffer.from('not a png').toString('base64');
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent, projectId: 'project-1', artworkImage: mislabeled,
+  }), /PNG signature/);
+
+  const nextConsent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: nextConsent, projectId: 'project-1', artworkImage: pngHeader(8193, 1),
+  }), /dimensions exceed/);
 });
