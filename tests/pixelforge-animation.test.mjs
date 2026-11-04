@@ -175,6 +175,15 @@ test('rejects malformed dimensions, duplicate layer IDs, bad durations, and inva
   assert.throws(() => timeline.setFrameDuration(0, 0), /duration/);
   assert.throws(() => timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(4)), /dimensions/);
   assert.throws(() => PixelForgeAnimation.fromJSON({ format: 'pixelforge-animation', version: 1 }), /invalid/);
+  assert.throws(() => PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 2, height: 2,
+    layerIds: ['ink', 'color'], fps: 12, activeFrameIndex: 0,
+    frames: [{ id: 'frame-1', durationMs: 100, cels: [
+      { layerId: 'ink', pixels: '!'.repeat(1_000_000) },
+      { layerId: 'ink', pixels: '!' },
+      { layerId: 'color', pixels: '!' },
+    ] }],
+  }), /exactly one cel/);
 });
 
 test('enforces the maximum frame count', () => {
