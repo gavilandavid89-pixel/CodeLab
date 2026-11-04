@@ -753,8 +753,8 @@ async function main() {
     assert.equal(importedAfterSave.serverRevision, importedRevisionBeforeEdit + 1,
       'the first explicit save after import must advance the server revision instead of conflicting with its own import');
     const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
-    assert.match(editorSource, /doc = importedDoc; clearSelectionState\(\); resetAIWorkspaceForDocument\(\);/,
-      'importing a document must rebind the AI workspace to the newly active raster document');
+    assert.match(editorSource, /doc = importedDoc;[\\s\\S]*?animation = importedDoc\.animationData[\\s\\S]*?clearSelectionState\(\); resetAIWorkspaceForDocument\(\);/,
+      'importing a document must restore its animation, clear stale selection state, and rebind the AI workspace');
 
     // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
     // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
