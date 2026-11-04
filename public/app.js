@@ -1403,9 +1403,7 @@ function handleAuthQueryParams() {
 
 async function loadAuthFromServer() {
   try {
-    const r = await fetch('/api/auth/status', { credentials: 'same-origin' });
-    if (!r.ok) throw new Error('auth_status_failed');
-    const data = await r.json();
+    const data = await window.CodeLabStudioCore.getCodeLabSession();
     oauthConfig = {
       github: !!(data.oauth && data.oauth.github),
       google: !!(data.oauth && data.oauth.google),

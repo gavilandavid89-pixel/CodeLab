@@ -1,0 +1,436 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { PixelForgeAnimation, MAX_ANIMATION_FRAMES, MAX_ANIMATION_BYTES, MAX_ANIMATION_JSON_BYTES, estimateAnimationJSONBytes } from '../public/pixelforge/src/animation.mjs';
+
+function documentFixture() {
+  return {
+    width: 2,
+    height: 2,
+    layers: [
+      { id: 'ink', pixels: new Uint8ClampedArray(16).fill(10) },
+      { id: 'color', pixels: new Uint8ClampedArray(16).fill(20) },
+    ],
+  };
+}
+
+test('creates a one-frame timeline from the existing raster document without sharing pixel buffers', () => {
+  const source = documentFixture();
+  const timeline = PixelForgeAnimation.fromDocument(source, { fps: 12 });
+  assert.equal(timeline.frameCount, 1);
+  assert.equal(timeline.fps, 12);
+  assert.equal(timeline.activeFrameIndex, 0);
+  assert.deepEqual(timeline.layerIds, ['ink', 'color']);
+  const pixels = timeline.getLayerPixels(0, 'ink');
+  assert.equal(pixels[0], 10);
+  pixels[0] = 255;
+  assert.equal(timeline.getLayerPixels(0, 'ink')[0], 10);
+  assert.equal(source.layers[0].pixels[0], 10);
+});
+
+test('keeps the serialized timeline contract compatible with the DOM-free Headless adapter', () => {
+  const source = documentFixture();
+  const timeline = PixelForgeAnimation.fromDocument(source, { fps: 18 });
+  timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(91));
+  timeline.addFrame({ duplicate: true, durationMs: 125 });
+  timeline.setLayerPixels(1, 'color', new Uint8ClampedArray(16).fill(37));
+
+  // The Headless animation adapter consumes this same versioned model shape.
+  // The project envelope adds loop metadata; it is intentionally not model state.
+  const serialized = { ...timeline.toJSON(), loop: false };
+  assert.deepEqual(Object.keys(serialized).sort(), [
+    'activeFrameIndex', 'format', 'fps', 'frames', 'height', 'layerIds', 'loop', 'version', 'width',
+  ]);
+  assert.equal(serialized.format, 'pixelforge-animation');
+  assert.equal(serialized.version, 1);
+  assert.equal(serialized.loop, false);
+  assert.deepEqual(serialized.layerIds, ['ink', 'color']);
+  assert.equal(serialized.frames.length, 2);
+  assert.deepEqual(serialized.frames[0].cels.map(cel => cel.layerId), ['ink', 'color']);
+  assert.equal(Buffer.from(serialized.frames[0].cels[0].pixels, 'base64').length, 16);
+  assert.equal(Buffer.from(serialized.frames[1].cels[1].pixels, 'base64')[0], 37);
+
+  const restored = PixelForgeAnimation.fromJSON(serialized);
+  assert.equal(restored.fps, 18);
+  assert.equal(restored.activeFrameIndex, 1);
+  assert.equal(restored.getFrame(1).durationMs, 125);
+  assert.equal(restored.getLayerPixels(0, 'ink')[0], 91);
+  assert.equal(restored.getLayerPixels(1, 'color')[0], 37);
+});
+
+test('adds blank and duplicated frames with independent cels', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(77));
+  timeline.addFrame({ duplicate: true });
+  assert.equal(timeline.frameCount, 2);
+  assert.equal(timeline.activeFrameIndex, 1);
+  assert.equal(timeline.getLayerPixels(1, 'ink')[0], 77);
+  timeline.setLayerPixels(1, 'ink', new Uint8ClampedArray(16).fill(88));
+  assert.equal(timeline.getLayerPixels(0, 'ink')[0], 77);
+  assert.equal(timeline.getLayerPixels(1, 'ink')[0], 88);
+  timeline.addFrame({ duplicate: false, durationMs: 100 });
+  assert.equal(timeline.frameCount, 3);
+  assert.equal(timeline.getLayerPixels(2, 'ink')[0], 0);
+  assert.equal(timeline.activeFrame.durationMs, 100);
+});
+
+test('reorders and deletes frames while keeping the active frame attached to its identity', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  const firstId = timeline.getFrame(0).id;
+  timeline.addFrame({ duplicate: true });
+  const secondId = timeline.getFrame(1).id;
+  timeline.addFrame({ duplicate: true });
+  timeline.setActiveFrame(1);
+  timeline.moveFrame(1, 0);
+  assert.equal(timeline.activeFrame.id, secondId);
+  assert.equal(timeline.getFrame(1).id, firstId);
+  timeline.deleteFrame(0);
+  assert.equal(timeline.activeFrameIndex, 0);
+  assert.equal(timeline.activeFrame.id, firstId);
+  assert.equal(timeline.frameCount, 2);
+  timeline.deleteFrame(0);
+  assert.equal(timeline.frameCount, 1);
+  assert.throws(() => timeline.deleteFrame(0), /at least one frame/);
+});
+
+test('supports per-frame duration, global FPS, and deterministic playback time mapping', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 10 });
+  timeline.addFrame({ duplicate: true });
+  timeline.addFrame({ duplicate: true });
+  timeline.setFrameDuration(1, 250);
+  assert.equal(timeline.totalDurationMs, 450);
+  assert.equal(timeline.frameIndexAtTime(0), 0);
+  assert.equal(timeline.frameIndexAtTime(99), 0);
+  assert.equal(timeline.frameIndexAtTime(100), 1);
+  assert.equal(timeline.frameIndexAtTime(349), 1);
+  assert.equal(timeline.frameIndexAtTime(350), 2);
+  assert.equal(timeline.frameIndexAtTime(450), 0);
+  assert.equal(timeline.frameIndexAtTime(450, { loop: false }), 2);
+  timeline.setFps(20);
+  assert.equal(timeline.fps, 20);
+  assert.equal(timeline.totalDurationMs, 150);
+  assert.equal(timeline.activeFrame.durationMs, 50);
+});
+
+test('returns bounded onion-skin neighbors without crossing timeline edges', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  timeline.addFrame({ duplicate: true });
+  timeline.addFrame({ duplicate: true });
+  timeline.addFrame({ duplicate: true });
+  timeline.setActiveFrame(2);
+  assert.deepEqual(timeline.getOnionSkinFrames({ previous: 2, next: 1 }).map(item => [item.index, item.direction]), [
+    [0, 'previous'], [1, 'previous'], [3, 'next'],
+  ]);
+  assert.throws(() => timeline.getOnionSkinFrames({ previous: 4 }), /from 0 to 3/);
+});
+
+test('keeps animation cels synchronized with layer add, duplicate, delete, and reorder operations', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(33));
+  timeline.addFrame({ duplicate: true });
+  timeline.addLayer('shadow');
+  assert.deepEqual(timeline.layerIds, ['ink', 'color', 'shadow']);
+  assert.equal(timeline.getLayerPixels(0, 'shadow')[0], 0);
+  timeline.addLayer('ink-copy', { copyFromLayerId: 'ink' });
+  assert.equal(timeline.getLayerPixels(1, 'ink-copy')[0], 33);
+  assert.equal(timeline.removeLayer('color'), 3);
+  assert.deepEqual(timeline.layerIds, ['ink', 'shadow', 'ink-copy']);
+  assert.equal(timeline.reorderLayers(['ink-copy', 'ink', 'shadow']), true);
+  assert.deepEqual(timeline.layerIds, ['ink-copy', 'ink', 'shadow']);
+  assert.equal(timeline.getLayerPixels(0, 'ink')[0], 33);
+  timeline.removeLayer('ink');
+  assert.deepEqual(timeline.layerIds, ['ink-copy', 'shadow']);
+  timeline.removeLayer('ink-copy');
+  assert.deepEqual(timeline.layerIds, ['shadow']);
+  assert.throws(() => timeline.removeLayer('shadow'), /at least one raster layer/);
+});
+
+test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', t => {
+  const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
+  const timeline = new PixelForgeAnimation({ width: 32, height: 32, layerIds, fps: 24 });
+  for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
+  assert.equal(timeline.frameCount, 240);
+  assert.equal(timeline.layerIds.length, 64);
+  assert.equal(timeline.memoryBytes, 32 * 32 * 4 * 64 * 240);
+  assert.ok(timeline.memoryBytes < MAX_ANIMATION_BYTES);
+
+  const coldStart = performance.now();
+  for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 48);
+  const coldRenderMs = performance.now() - coldStart;
+  assert.ok(coldRenderMs < 10000, 'the complete 240-frame / 64-layer preview pass must finish within 10 seconds');
+  const warmStart = performance.now();
+  for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 48);
+  const warmRenderMs = performance.now() - warmStart;
+  assert.ok(warmRenderMs < 1000, 'cached timeline refreshes must stay below one second');
+  t.diagnostic(`64 layers × 240 frames at 32×32: cold previews ${coldRenderMs.toFixed(1)} ms; cached refresh ${warmRenderMs.toFixed(1)} ms`);
+
+  const edited = new Uint8ClampedArray(32 * 32 * 4);
+  edited.set([12, 34, 56, 255], 0);
+  timeline.setLayerPixels(137, 'layer-63', edited);
+  assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [12, 34, 56, 255]);
+  assert.equal(timeline.getLayerPixels(137, 'layer-62')[3], 0, 'editing one layer must not bleed into its sibling layer');
+  assert.equal(timeline.getLayerPixels(136, 'layer-63')[3], 0, 'editing one frame must not alter the previous frame');
+  assert.equal(timeline.getLayerPixels(138, 'layer-63')[3], 0, 'editing one frame must not alter the next frame');
+
+  const firstPreview = timeline.compositeThumbnail(137, null, 48);
+  assert.deepEqual([...firstPreview.pixels.slice(0, 4)], [12, 34, 56, 255]);
+  const hiddenSettings = layerIds.map(id => ({ id, visible: id !== 'layer-63', opacity: 1 }));
+  const hiddenPreview = timeline.compositeThumbnail(137, hiddenSettings, 48);
+  assert.equal(hiddenPreview.pixels[3], 0, 'thumbnail cache keys must include layer visibility settings');
+  assert.equal(timeline.compositeThumbnail(137, null, 48).pixels[3], 255,
+    'a hidden-layer preview must not poison the visible-layer cache entry');
+  firstPreview.pixels[0] = 250;
+  assert.equal(timeline.compositeThumbnail(137, null, 48).pixels[0], 12,
+    'callers must not be able to mutate the cached thumbnail');
+  const changed = new Uint8ClampedArray(32 * 32 * 4);
+  changed.set([90, 80, 70, 255], 0);
+  timeline.setLayerPixels(137, 'layer-63', changed);
+  assert.deepEqual([...timeline.compositeThumbnail(137, null, 48).pixels.slice(0, 4)], [90, 80, 70, 255],
+    'editing a cel must invalidate only its stale preview');
+  assert.equal(timeline.compositeThumbnail(136, null, 48).pixels[3], 0,
+    'thumbnail caching must preserve frame isolation');
+
+  timeline.reorderLayers([...layerIds].reverse());
+  assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [90, 80, 70, 255],
+    'reordering the layer stack must not reassign pixel data to another layer');
+  assert.equal(timeline.removeLayer('layer-0'), 63);
+  assert.equal(timeline.addLayer('layer-extra'), 64);
+  assert.equal(timeline.getLayerPixels(137, 'layer-extra')[3], 0);
+  assert.throws(() => timeline.addLayer('layer-overflow'), /up to 64 raster layers/);
+});
+
+test('keeps large animation thumbnail previews inside an 8 MiB cache budget', () => {
+  const timeline = new PixelForgeAnimation({ width: 256, height: 256, layerIds: ['layer-large'] });
+  for (let index = 1; index < 33; index++) timeline.addFrame({ duplicate: false });
+  for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 256);
+  assert.equal(timeline.frameCount, 33);
+  assert.ok(timeline.thumbnailCacheBytes > 0);
+  assert.ok(timeline.thumbnailCacheBytes <= 8 * 1024 * 1024,
+    'large previews must evict least-recently-used entries instead of growing without bound');
+});
+
+test('uses 60 FPS timing and rejects oversized allocations before decoding cels', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  assert.equal(timeline.setFps(60), 1000 / 60);
+  assert.equal(timeline.activeFrame.durationMs, 1000 / 60);
+  timeline.setFrameDuration(0, 16.5);
+  assert.equal(timeline.activeFrame.durationMs, 16.5);
+  const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
+  assert.throws(() => new PixelForgeAnimation({ width: 4096, height: 4096, layerIds }), /64 MiB/);
+  assert.throws(() => PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 4096, height: 4096,
+    layerIds, fps: 12, activeFrameIndex: 0,
+    frames: [{ id: 'oversized', durationMs: 100, cels: [] }],
+  }), /64 MiB/);
+});
+
+test('composites animation cels using the shared raster layer visibility and opacity rules', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  const red = new Uint8ClampedArray(16);
+  const blue = new Uint8ClampedArray(16);
+  for (let offset = 0; offset < 16; offset += 4) {
+    red.set([255, 0, 0, 255], offset);
+    blue.set([0, 0, 255, 128], offset);
+  }
+  timeline.setLayerPixels(0, 'ink', red);
+  timeline.setLayerPixels(0, 'color', blue);
+  const merged = timeline.compositeFrame(0);
+  assert.deepEqual([...merged.slice(0, 4)], [127, 0, 128, 255]);
+  const translucent = timeline.compositeFrame(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: true, opacity: 0.5 },
+  ]);
+  assert.deepEqual([...translucent.slice(0, 4)], [191, 0, 64, 255]);
+  const hidden = timeline.compositeFrame(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: false, opacity: 1 },
+  ]);
+  assert.deepEqual([...hidden.slice(0, 4)], [255, 0, 0, 255]);
+  assert.throws(() => timeline.compositeFrame(0, [{ id: 'ink' }]), /match the animation layer stack/);
+});
+
+test('renders memory-bounded animation thumbnails without allocating full-resolution frame composites', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  const ink = new Uint8ClampedArray(16);
+  ink.set([255, 0, 0, 255], 0);
+  timeline.setLayerPixels(0, 'ink', ink);
+  const thumbnail = timeline.compositeThumbnail(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: false, opacity: 1 },
+  ], 16);
+  assert.equal(thumbnail.width, 2);
+  assert.equal(thumbnail.height, 2);
+  assert.deepEqual([...thumbnail.pixels.slice(0, 4)], [255, 0, 0, 255]);
+  assert.throws(() => timeline.compositeThumbnail(0, null, 4), /8 to 256/);
+});
+
+test('round-trips timeline metadata and RGBA cels through a validated JSON format', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 8 });
+  timeline.setLayerPixels(0, 'color', new Uint8ClampedArray(16).fill(201));
+  timeline.addFrame({ duplicate: true, durationMs: 240 });
+  timeline.setActiveFrame(0);
+  const restored = PixelForgeAnimation.fromJSON(JSON.parse(JSON.stringify(timeline)));
+  assert.equal(restored.frameCount, 2);
+  assert.equal(restored.fps, 8);
+  assert.equal(restored.getFrame(1).durationMs, 240);
+  assert.equal(restored.getLayerPixels(1, 'color')[0], 201);
+  assert.equal(restored.activeFrameIndex, 0);
+});
+
+test('rejects malformed dimensions, duplicate layer IDs, bad durations, and invalid cel buffers', () => {
+  assert.throws(() => new PixelForgeAnimation({ width: 0, height: 2, layerIds: ['ink'] }), /dimensions/);
+  assert.throws(() => new PixelForgeAnimation({ width: 2, height: 2, layerIds: ['ink', 'ink'] }), /unique/);
+  assert.throws(() => PixelForgeAnimation.fromDocument(documentFixture(), { fps: 0 }), /FPS/);
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  assert.throws(() => timeline.setFrameDuration(0, 0), /duration/);
+  assert.throws(() => timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(4)), /dimensions/);
+  assert.throws(() => PixelForgeAnimation.fromJSON({ format: 'pixelforge-animation', version: 1 }), /invalid/);
+  assert.throws(() => PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 2, height: 2,
+    layerIds: ['ink', 'color'], fps: 12, activeFrameIndex: 0,
+    frames: [{ id: 'frame-1', durationMs: 100, cels: [
+      { layerId: 'ink', pixels: '!'.repeat(1_000_000) },
+      { layerId: 'ink', pixels: '!' },
+      { layerId: 'color', pixels: '!' },
+    ] }],
+  }), /exactly one cel/);
+});
+
+test('enforces the maximum frame count', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
+  assert.equal(timeline.frameCount, MAX_ANIMATION_FRAMES);
+  assert.throws(() => timeline.addFrame(), /up to 240/);
+});
+
+
+test('preflights base64 expansion against the persisted animation JSON budget', () => {
+  const estimate = estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 1, frameCount: 1 });
+  const rawBytes = 4096 * 4096 * 4;
+  const base64Bytes = Math.ceil(rawBytes / 3) * 4;
+  assert.equal(rawBytes, MAX_ANIMATION_BYTES);
+  assert.equal(estimate, base64Bytes + 8 * 1024 * 1024);
+  assert.ok(estimate < MAX_ANIMATION_JSON_BYTES);
+  assert.ok(estimate < 96 * 1024 * 1024);
+  assert.throws(() => estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 2, frameCount: 1 }), /64 MiB/);
+});
+
+test('decodes multi-megabyte animation cels without regex stack overflow', () => {
+  const expectedBytes = 1200 * 1200 * 4;
+  const pixels = Buffer.alloc(expectedBytes, 0x5a).toString('base64');
+  const timeline = PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 1200, height: 1200,
+    layerIds: ['large-layer'], fps: 12, activeFrameIndex: 0,
+    frames: [{
+      id: 'large-frame', durationMs: 83.333,
+      cels: [{ layerId: 'large-layer', pixels }]
+    }]
+  });
+  const decoded = timeline.getLayerPixels(0, 'large-layer');
+  assert.equal(decoded.length, expectedBytes);
+  assert.equal(decoded[0], 0x5a);
+  assert.equal(decoded[decoded.length - 1], 0x5a);
+});
+
+test('keeps high-resolution animation budgets aligned with PixelForge API limits', () => {
+  const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
+  const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
+  const editorHtml = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/index.html'), 'utf8');
+  assert.ok(animation.includes('MAX_ANIMATION_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(animation.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(core.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(!server.includes('(?:[A-Za-z0-9+/]{4})*'), 'server validation must not use recursive repeated-group Base64 regex');
+  assert.ok(!animation.includes('(?:[A-Za-z0-9+/]{4})*'), 'animation decoding must not use recursive repeated-group Base64 regex');
+  assert.ok(!core.includes('(?:[A-Za-z0-9+/]{4})*'), 'raster decoding must not use recursive repeated-group Base64 regex');
+  assert.ok(core.includes('value.length > MAX_PROJECT_JSON_BYTES'));
+  assert.ok(animation.includes('MAX_ANIMATION_JSON_BYTES = 96 * 1024 * 1024'));
+  assert.ok(animation.includes('96 MiB safe serialization budget'));
+  assert.ok(!animation.includes('112 MiB safe serialization budget'));
+  assert.ok(editorHtml.includes('max="4096"'));
+  assert.ok(editorHtml.includes('16,777,216 pixels'));
+  assert.ok(animation.includes('ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024'));
+  assert.ok(animation.includes('width > 4096 || height > 4096'));
+  assert.ok(core.includes('MAX_DIMENSION = 4096'));
+  assert.ok(core.includes('MAX_PIXELS = 16_777_216'));
+  assert.ok(core.includes('MAX_DOCUMENT_BYTES = 64 * 1024 * 1024'));
+  assert.ok(core.includes('MAX_PROJECT_JSON_BYTES = 96 * 1024 * 1024'));
+  assert.ok(core.includes('estimateRasterProjectJSONBytes(this.layers)'));
+  assert.ok(server.includes('PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('project.width > 4096 || project.height > 4096'));
+  assert.ok(server.includes('project.width * project.height > 16_777_216'));
+  assert.ok(server.includes('project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES'));
+  assert.ok(core.includes('this.maxHistoryBytes = 256 * 1024 * 1024')); // history is a separate RAM-only budget
+  assert.ok(server.includes('PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024'));
+  assert.ok(server.includes('readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES)'));
+  assert.ok(server.includes('pixelForgeUploads.assembleUpload'));
+  assert.ok(server.includes('pixelForgeUploads.getUploadStatus'));
+  assert.ok(server.includes('pixelForgeUploadStatus'));
+  assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('async function getUploadStatus'));
+  const persistence = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/persistence.js'), 'utf8');
+  const uploadStore = fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8');
+  assert.ok(uploadStore.includes("const { TextDecoder } = require('node:util')") &&
+    uploadStore.includes("new TextDecoder('utf-8', { fatal: true })") &&
+    uploadStore.includes("decoder.decode(bytes, { stream: true })") && uploadStore.includes("decoder.decode()"),
+    'chunk assembly must use a fatal streaming TextDecoder across UTF-8 chunk boundaries');
+  assert.ok((uploadStore.match(/FOR UPDATE/g) || []).length >= 2,
+    'chunk writes and assembly must lock the upload manifest against commit/cleanup races');
+  assert.ok(uploadStore.includes("await client.query('BEGIN')") && uploadStore.includes("await client.query('COMMIT')"),
+    'chunk writes and assembly must use transactions');
+  assert.ok(persistence.indexOf('if (estimatedBytes > MAX_PROJECT_BYTES)') < persistence.indexOf('JSON.stringify({ project })'),
+    'the combined project envelope must be preflighted before building the serialized save body');
+  assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
+    'large saves should consult upload status before resending chunks');
+  const serverSource = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  assert.ok(serverSource.includes("'.mjs': 'application/javascript; charset=utf-8'") &&
+    serverSource.includes("ext === '.mjs'"), 'server must serve and revalidate imported .mjs browser modules with a JavaScript MIME type');
+  const editorSource = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/editor.js'), 'utf8');
+  const editorStyles = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/styles.css'), 'utf8');
+  const declaredButtons = [...editorHtml.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
+  const unreferencedButtons = declaredButtons.filter(id => !editorSource.includes('#' + id));
+  assert.deepEqual(unreferencedButtons, [], 'every static PixelForge button must be referenced by the editor controller');
+  assert.ok(editorSource.includes("closest('[data-selection-move]')") && editorSource.includes("closest('button[data-transform]')"),
+    'delegated selection and transform controls must remain wired');
+  assert.ok(editorSource.includes("setInspectorPanel('properties')") && editorSource.includes("setInspectorPanel('layers')") &&
+    editorSource.includes("setInspectorPanel('ai')") && editorSource.includes("setInspectorPanel('files')"),
+    'all inspector screens must have working navigation handlers');
+  assert.ok(editorStyles.includes('@media(max-width:760px)') && editorStyles.includes('.animation-panel') &&
+    editorStyles.includes('.inspector[data-panel="files"]'), 'editor and timeline screens must retain responsive mobile layouts');
+  assert.ok(editorSource.includes('const thumbScale = Math.min(48 / preview.width, 48 / preview.height)') &&
+    editorSource.includes('Math.floor((48 - thumbWidth) / 2)'), 'timeline thumbnails must preserve canvas aspect ratio');
+
+  assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
+    editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
+    'the raster editor must expose the animation timeline controls');
+  assert.ok(editorSource.includes('function renderAuthenticationRequired()') &&
+    editorSource.includes("error?.status === 401 || error?.code === 'not_authenticated'"),
+    'PixelForge must render its CodeLab sign-in screen when the shared session API rejects an anonymous visitor');
+  const addFrameHandler = editorSource.slice(editorSource.indexOf("$('#animation-add-frame').addEventListener"), editorSource.indexOf("$('#animation-duplicate-frame').addEventListener"));
+  assert.ok(addFrameHandler.includes('const timelineWasActive = Boolean(animation)') &&
+    addFrameHandler.includes("if (!timelineWasActive)") && addFrameHandler.includes("status('Animation timeline started'"),
+    'the first timeline click must start a single-frame timeline instead of silently adding a second blank frame');
+  assert.ok(editorSource.includes('function buildProjectSnapshot') && editorSource.includes('snapshot.animation'),
+    'animation data must travel with the normal project save/export lifecycle');
+  assert.ok(editorSource.includes('snapshot.animation = { ...animation.toJSON(), loop: animationLoop }'),
+    'the project envelope must preserve the loop flag expected by Headless');
+  assert.ok(editorSource.includes('function switchAnimationFrame') && editorSource.includes('doc.replaceLayerPixelsBatch'),
+    'frame switching must reuse the existing raster document and drawing tools');
+  assert.ok(editorSource.includes('function canGrowAnimationLayer') && editorSource.includes('Cannot restore that layer'),
+    'layer operations and undo/redo must respect the combined animation memory budget');
+  const cropDisabledAt = editorSource.indexOf("$('#crop-preview').disabled = enabled");
+  const enabledDeclaredAt = editorSource.indexOf('const enabled = Boolean(animation)', editorSource.indexOf('function renderAnimationTimeline'));
+  assert.ok(enabledDeclaredAt >= 0 && cropDisabledAt > enabledDeclaredAt,
+    'animation UI state must be initialized before crop controls read it');
+  assert.ok(editorSource.includes("$('#crop-preview').disabled = enabled"),
+    'canvas crop must not silently desynchronize all animation cels');
+  assert.ok(editorSource.includes('function drawOnionSkinOverlay') && editorSource.includes('startAnimationPlayback'),
+    'the editor must wire onion-skin preview and playback');
+  assert.ok(animation.includes('compositeThumbnail('), 'timeline thumbnails must use bounded-size compositing');
+  assert.ok(server.includes('validatePixelForgeAnimation(project)'));
+  assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
+});

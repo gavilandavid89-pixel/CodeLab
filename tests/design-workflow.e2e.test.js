@@ -416,7 +416,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.evaluate(() => returnToDashboard());
     await page.waitForSelector('#welcomeDashboard:not(.hidden)');
     const webProjectCard = page.locator('#projectsGrid > div').filter({ hasText: 'Flujo integral web E2E' }).first();
-    await webProjectCard.locator('button[data-action="dup"]').dblclick();
+    await webProjectCard.locator('button[data-action="dup"]').click();
     await page.waitForFunction(() => {
       const snapshot = JSON.parse(localStorage.getItem('codelab_xd_projects_v2') || '[]');
       return Array.isArray(snapshot) &&

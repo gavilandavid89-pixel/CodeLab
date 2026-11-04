@@ -2,9 +2,9 @@ name: Validate CodeLab
 
 on:
   push:
-    branches: ["main", "fix/**", "feature/**"]
+    branches: ["main", "fix/**", "feature/**", "feat/**", "integration/**"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "feat/codelab-pixelforge-studio-entry-clean"]
 
 # Keep the newest run for each event/branch while preserving separate push and PR checks.
 concurrency:
@@ -27,12 +27,21 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check server.js
+          node --check pixelforge-upload-store.js
           node --check public/app.js
           node --check public/capture.js
           node --check public/design-tools.js
           node --check public/design-flow.js
           node --check public/component-library.js
           node --check .github/scripts/codelab-bridge.mjs
+          node --experimental-default-type=module --check public/pixelforge/src/headless-vision.js
+          node --experimental-default-type=module --check public/pixelforge/src/zip-export.js
+          node --check public/pixelforge/src/showcase-animation.mjs
+          node --check public/pixelforge/src/video-composer-core.mjs
+          node --input-type=module --check < public/pixelforge/video-composer.js
+          node --check tests/pixelforge-video-composer.e2e.test.mjs
+          node --input-type=module --check < public/pixelforge/src/editor.js
+          node --check tests/pixelforge-headless-vision.test.mjs
           node --check tests/assistant-tools-contract.test.js
           node --check tests/server-resilience.test.js
           node --check tests/version-consistency.test.js
@@ -43,6 +52,17 @@ jobs:
           node --check tests/interface-responsive.e2e.test.js
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
+          node --check tests/pixelforge-integration.test.js
+      - name: Test PixelForge animation model and UI–Headless contract
+        run: node --test tests/pixelforge-animation.test.mjs
+      - name: Test PixelForge ZIP export package
+        run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
+      - name: Test PixelForge showcase animation
+        run: node --experimental-default-type=module --test tests/pixelforge-showcase-animation.test.mjs
+      - name: Test Video Composer ZIP package reader
+        run: node --experimental-default-type=module --test tests/pixelforge-video-composer-core.test.mjs
+      - name: Test PixelForge Headless runtime, authenticated bridge and vision
+        run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs tests/pixelforge-headless-vision.test.mjs
       - name: Check assistant project lifecycle tool contracts
         run: node tests/assistant-tools-contract.test.js
       - name: Check version metadata consistency
@@ -66,6 +86,7 @@ jobs:
           node tests/capture-browser.test.js
           node tests/design-tools-browser.test.js
           node tests/component-library-browser.test.js
+          node --experimental-default-type=module tests/pixelforge-video-composer.e2e.test.mjs
       - name: Chained full-system E2E in the real app
         shell: bash
         run: |
@@ -83,6 +104,7 @@ jobs:
             sleep 1
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/pixelforge-integration.test.js
           node tests/design-workflow.e2e.test.js
           node tests/design-tools-usage.e2e.test.js
           node tests/interface-responsive.e2e.test.js
@@ -143,3 +165,54 @@ jobs:
           done
           test -s "$RUNNER_TEMP/health.json"
           node -e "const h=require(process.env.RUNNER_TEMP + '/health.json'); if (!h.ok) process.exit(1); if (h.ai.model !== 'openai/gpt-oss-120b') { console.error('Unexpected AI model:', h.ai.model); process.exit(1); } console.log('Health OK; Groq model ID preserved:', h.ai.model);"
+
+  pixelforge-postgresql:
+    name: PixelForge PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: codelab_test
+          POSTGRES_USER: codelab
+          POSTGRES_PASSWORD: codelab_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U codelab -d codelab_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install runtime and browser test dependencies
+        run: npm install --no-save --package-lock=false playwright
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Run PixelForge integration against real PostgreSQL
+        shell: bash
+        run: |
+          export PORT=3191
+          export DATABASE_URL="postgres://codelab:codelab_test@127.0.0.1:5432/codelab_test"
+          export CODELAB_DATABASE_SSL=disable
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-pixelforge-postgres-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-pixelforge-postgres-secret"
+          node server.js > "$RUNNER_TEMP/codelab-pixelforge-postgres.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== PixelForge PostgreSQL E2E server log ====="; cat "$RUNNER_TEMP/codelab-pixelforge-postgres.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" > "$RUNNER_TEMP/codelab-pixelforge-postgres-health.json"
+          node -e "const h=require(process.env.RUNNER_TEMP + '/codelab-pixelforge-postgres-health.json'); if (h.persistence !== 'postgresql') { console.error('Expected PostgreSQL persistence, got:', h.persistence); process.exit(1); }"
+          node tests/pixelforge-integration.test.js

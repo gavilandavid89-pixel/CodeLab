@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101116">
+  <meta name="description" content="Monta animaciones de PixelForge y expórtalas como vídeo directamente en tu dispositivo.">
+  <title>Video Composer · PixelForge</title>
+  <link rel="stylesheet" href="./video-composer.css">
+</head>
+<body>
+<div class="vc-shell">
+  <header class="vc-topbar">
+    <a class="vc-brand" href="./index.html" aria-label="Volver a PixelForge Studio">
+      <span class="vc-mark"><i></i><i></i><i></i><i></i></span>
+      <span>PixelForge <b>AI</b><small>VIDEO COMPOSER</small></span>
+    </a>
+    <div class="vc-project">
+      <span class="vc-live"></span>
+      <div><strong id="vc-project-name">Sin paquete cargado</strong><small id="vc-project-meta">Importa una secuencia ZIP para comenzar</small></div>
+    </div>
+    <div class="vc-top-actions">
+      <a class="vc-back" href="./index.html">← <span>Editor</span></a>
+      <button class="vc-primary" id="vc-export-top" type="button" disabled><span>⇩</span> Exportar vídeo</button>
+    </div>
+  </header>
+
+  <main class="vc-layout">
+    <aside class="vc-source-panel">
+      <div class="vc-panel-heading"><div><small>PROYECTO</small><h2>Material de origen</h2></div><span class="vc-count" id="vc-source-count">0</span></div>
+      <button class="vc-dropzone" id="vc-dropzone" type="button">
+        <span class="vc-upload-icon">⇧</span>
+        <strong>Importar paquete ZIP</strong>
+        <small>Arrastra el archivo aquí o selecciónalo desde tu dispositivo</small>
+        <span class="vc-file-types">.ZIP · PixelForge Package</span>
+      </button>
+      <input id="vc-file" type="file" accept=".zip,application/zip" hidden>
+      <div class="vc-source-card" id="vc-source-card" hidden>
+        <div class="vc-file-icon">ZIP</div>
+        <div class="vc-source-info"><strong id="vc-source-filename">animation.zip</strong><small id="vc-source-size">—</small></div>
+        <button id="vc-remove-source" type="button" aria-label="Quitar paquete">×</button>
+      </div>
+      <div class="vc-divider"></div>
+      <div class="vc-section-title">DATOS DE LA SECUENCIA</div>
+      <div class="vc-stat-grid">
+        <div><small>Fotogramas</small><strong id="vc-stat-frames">—</strong></div>
+        <div><small>Frecuencia</small><strong id="vc-stat-fps">—</strong></div>
+        <div><small>Resolución</small><strong id="vc-stat-size">—</strong></div>
+        <div><small>Duración</small><strong id="vc-stat-duration">—</strong></div>
+      </div>
+      <div class="vc-audio-card">
+        <span class="vc-audio-icon">♫</span>
+        <div><strong>Pista de audio</strong><small id="vc-audio-status">Este paquete no contiene audio</small></div>
+        <span class="vc-tag">LOCAL</span>
+      </div>
+      <div class="vc-source-foot"><span class="vc-lock">◈</span> El procesamiento ocurre en tu dispositivo. No subimos tus archivos.</div>
+    </aside>
+
+    <section class="vc-workspace">
+      <div class="vc-workspace-head">
+        <div><small>VISTA PREVIA</small><h1>Composición</h1></div>
+        <div class="vc-view-tools"><span id="vc-preview-resolution">—</span><button id="vc-fit" type="button" title="Ajustar vista">⛶</button><button id="vc-checker" type="button" aria-pressed="true" title="Fondo de transparencia">▦</button></div>
+      </div>
+      <div class="vc-preview-stage" id="vc-preview-stage">
+        <div class="vc-empty-state" id="vc-empty">
+          <div class="vc-empty-art"><span></span><span></span><span></span><span></span><span></span></div>
+          <strong>Tu animación aparecerá aquí</strong>
+          <p>Importa el ZIP exportado desde PixelForge para revisar los fotogramas y montar tu vídeo.</p>
+          <button id="vc-empty-import" type="button">Seleccionar paquete <span>→</span></button>
+        </div>
+        <canvas id="vc-preview" width="640" height="640" hidden></canvas>
+        <div class="vc-preview-overlay"><span id="vc-preview-frame">FRAME — / —</span><span id="vc-preview-time">00:00.000</span></div>
+      </div>
+      <div class="vc-player">
+        <div class="vc-player-main">
+          <button id="vc-first" type="button" title="Primer fotograma" disabled>⏮</button>
+          <button id="vc-prev" type="button" title="Fotograma anterior" disabled>‹</button>
+          <button class="vc-play" id="vc-play" type="button" aria-label="Reproducir" disabled>▶</button>
+          <button id="vc-next" type="button" title="Fotograma siguiente" disabled>›</button>
+          <button id="vc-last" type="button" title="Último fotograma" disabled>⏭</button>
+        </div>
+        <div class="vc-scrub"><span id="vc-current-time">00:00.000</span><input id="vc-scrubber" type="range" min="0" max="0" value="0" disabled aria-label="Posición de reproducción"><span id="vc-total-time">00:00.000</span></div>
+        <div class="vc-player-side"><label><input id="vc-loop" type="checkbox" checked disabled> Loop</label><span id="vc-playback-fps">— FPS</span></div>
+      </div>
+      <section class="vc-timeline">
+        <div class="vc-timeline-head"><div><strong>Secuencia de fotogramas</strong><span id="vc-timeline-count">0 elementos</span></div><span class="vc-timeline-hint">Selecciona un fotograma para inspeccionarlo</span></div>
+        <div class="vc-timeline-track" id="vc-timeline-track"><div class="vc-timeline-empty">Los fotogramas se mostrarán aquí después de importar el paquete.</div></div>
+      </section>
+    </section>
+
+    <aside class="vc-export-panel">
+      <div class="vc-panel-heading"><div><small>ENTREGA</small><h2>Exportación</h2></div><span class="vc-export-symbol">↗</span></div>
+      <div class="vc-export-preview"><div class="vc-export-preview-icon">▶</div><div><strong>Vídeo final</strong><small>Renderizado local en tiempo real</small></div><span class="vc-tag">LOCAL</span></div>
+      <div class="vc-form-group">
+        <label for="vc-format">Formato de salida</label>
+        <select id="vc-format"><option value="auto">Automático · mejor compatible</option><option value="webm-vp9">WebM · VP9</option><option value="webm-vp8">WebM · VP8</option><option value="mp4">MP4 · H.264 (si está disponible)</option></select>
+        <small id="vc-format-support">La compatibilidad depende del navegador.</small>
+      </div>
+      <div class="vc-form-group">
+        <label for="vc-output-fps">Frecuencia de salida</label>
+        <select id="vc-output-fps"><option value="12">12 FPS · Pixel art</option><option value="24">24 FPS · Cine</option><option value="30" selected>30 FPS · Estándar</option><option value="60">60 FPS · Fluido</option></select>
+      </div>
+      <div class="vc-form-group">
+        <label for="vc-scale">Escala de imagen</label>
+        <select id="vc-scale"><option value="1">Original · 1×</option><option value="2" selected>Grande · 2×</option><option value="3">3×</option><option value="4">4×</option></select>
+        <small>Se conserva el borde nítido del pixel art.</small>
+      </div>
+      <div class="vc-export-options">
+        <label><input id="vc-loop-export" type="checkbox"> Duplicar secuencia (2 vueltas)</label>
+        <label><input id="vc-solid-bg" type="checkbox" checked> Fondo sólido oscuro</label>
+      </div>
+      <div class="vc-export-summary"><div><span>Duración</span><strong id="vc-export-duration">—</strong></div><div><span>Dimensiones</span><strong id="vc-export-dimensions">—</strong></div></div>
+      <button class="vc-export-button" id="vc-export" type="button" disabled><span>⇩</span> Exportar vídeo</button>
+      <div class="vc-progress" id="vc-progress" hidden><div><span id="vc-progress-label">Preparando…</span><span class="vc-progress-actions"><strong id="vc-progress-value">0%</strong><button id="vc-cancel-export" type="button" hidden>Cancelar</button></span></div><div class="vc-progress-track"><i id="vc-progress-bar"></i></div></div>
+      <p class="vc-export-note" id="vc-export-note">Importa una secuencia para habilitar la exportación. El vídeo se genera localmente y se descarga como un solo archivo.</p>
+      <div class="vc-divider"></div>
+      <div class="vc-zip-info"><span>▣</span><div><strong>¿Necesitas conservar el proyecto?</strong><small>El ZIP original incluye las capas editables, fotogramas y tiempos. Guarda ese paquete como respaldo.</small></div></div>
+    </aside>
+  </main>
+  <footer class="vc-footer"><span><i></i> Video Composer listo</span><span>PixelForge Studio · CodeLab</span><a href="./index.html">Volver al editor ↗</a></footer>
+</div>
+<script type="module" src="./video-composer.js"></script>
+</body>
+</html>
