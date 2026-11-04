@@ -782,9 +782,9 @@ async function main() {
     // Reaching the per-account project cap must never silently evict an older project.
     const status = await (await fetch(base + '/api/ai/status')).json();
     const maxProjects = status.maxProjects;
-    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
-    assert.ok(existingProjects.length < maxProjects, 'the test account should have room to exercise the project cap');
     const limitHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.81' };
+    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: limitHeaders })).json()).projects;
+    assert.ok(existingProjects.length < maxProjects, 'the test account should have room to exercise the project cap');
     for (let index = existingProjects.length; index < maxProjects; index++) {
       const response = await fetch(base + '/api/pixelforge/projects', {
         method: 'PUT',
@@ -802,7 +802,7 @@ async function main() {
     });
     assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
     assert.equal((await overflow.json()).error, 'pixelforge_project_limit');
-    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: limitHeaders })).json();
     assert.equal(afterLimit.projects.length, maxProjects, 'hitting the cap must preserve all existing projects');
     assert.ok(afterLimit.projects.some(project => project.name === 'Browser account artwork'), 'existing project records must remain available');
   } finally {
