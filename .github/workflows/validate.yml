@@ -45,6 +45,8 @@ jobs:
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
           node --check tests/pixelforge-integration.test.js
+      - name: Test PixelForge animation model and UI–Headless contract
+        run: node --test tests/pixelforge-animation.test.mjs
       - name: Check assistant project lifecycle tool contracts
         run: node tests/assistant-tools-contract.test.js
       - name: Check version metadata consistency
