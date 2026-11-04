@@ -186,9 +186,9 @@ async function main() {
               { name: 'canvas.draw_line', x0: 2, y0: 2, x1: 8, y1: 2, color: '#16C784', size: 2 },
               { name: 'animation.frame.capture_document', durationMs: 150, frameName: 'Headless pose' },
               { name: 'animation.frame.set_active', index: 2 },
-              { name: 'animation.frame.set_duration', index: 2, durationMs: 150 },
               { name: 'animation.set_fps', fps: 18 },
-              { name: 'animation.set_loop', loop: false }
+              { name: 'animation.set_loop', loop: false },
+              { name: 'animation.frame.set_duration', index: 2, durationMs: 150 }
             ]
           });
           if (proposal.status !== 'proposal') throw new Error('Headless did not create an isolated review proposal: ' + JSON.stringify(proposal));
