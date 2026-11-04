@@ -117,7 +117,7 @@ export class AICommandSession {
           break;
         }
         case 'layer.add': {
-          const layer = doc.addLayer(action.name ?? undefined);
+          const layer = doc.addLayer(action.layerName ?? undefined);
           result = { layerId: layer.id, name: layer.name, index: doc.layers.length - 1 };
           break;
         }
@@ -133,7 +133,7 @@ export class AICommandSession {
         }
         case 'layer.rename': {
           if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
-          result = { renamed: doc.renameLayer(action.layerId, action.name), layerId: action.layerId };
+          result = { renamed: doc.renameLayer(action.layerId, action.newName), layerId: action.layerId };
           break;
         }
         case 'layer.set_opacity': {
@@ -156,7 +156,7 @@ export class AICommandSession {
         }
         case 'layer.duplicate': {
           if (typeof action.layerId !== 'string') throw new TypeError('layerId is required.');
-          const layer = doc.duplicateLayer(action.layerId, action.name);
+          const layer = doc.duplicateLayer(action.layerId, action.layerName);
           result = { layerId: layer.id, name: layer.name, index: doc.layers.findIndex(item => item.id === layer.id) };
           break;
         }
