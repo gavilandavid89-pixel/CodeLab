@@ -37,6 +37,7 @@ test('portable raster import gets a fresh project/layer identity and resets revi
   assert.equal(result.project.name, 'Hero (imported)');
   assert.equal(result.layerCount, 1);
   assert.equal(result.frameCount, 0);
+  assert.match(result.semanticDigest, /^[a-f0-9]{64}$/);
 });
 
 test('animated import remaps every cel while preserving pixels, fps, frame timing and loop=false', () => {
@@ -50,6 +51,7 @@ test('animated import remaps every cel while preserving pixels, fps, frame timin
   assert.equal(result.project.animation.frames[0].cels[0].pixels, '/////w==');
   assert.equal(result.project.animation.frames[0].durationMs, 120);
   assert.equal(result.frameCount, 1);
+  assert.match(result.semanticDigest, /^[a-f0-9]{64}$/);
 });
 
 test('portable import rejects invalid loop, layer mapping, dimensions and noncanonical pixels', () => {
