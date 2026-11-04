@@ -606,6 +606,9 @@ function syncAnimationLayerStack(copyFromByNewId = new Map()) {
   animation.reorderLayers(currentIds);
 }
 function markAnimationChanged() { doc.revision++; doc.saveVersion++; doc.dirty = true; }
+function canGrowAnimationLayer() {
+  return !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
+}
 function captureAnimationFrame() {
   if (!animation) return;
   syncAnimationLayerStack();
@@ -651,6 +654,7 @@ function switchAnimationFrame(index, { autosave = true } = {}) {
 }
 function ensureAnimation() {
   if (!animation) {
+    if (cropPreview || transformPreview) throw new Error('Finish or cancel the active preview before starting an animation timeline.');
     animation = PixelForgeAnimation.fromDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
     animationFrameHistory.set(animationFrameId(0), { history: [...doc.history], future: [...doc.future], historyBytes: doc.historyBytes });
     renderAnimationTimeline();
@@ -688,6 +692,8 @@ function renderAnimationTimeline() {
   const host = $('#animation-frames');
   if (!host) return;
   const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-loop','animation-onion','animation-export-sheet'];
+  $('#crop-preview').disabled = enabled;
+  $('#crop-preview').title = enabled ? 'Canvas crop is temporarily unavailable while a multi-frame timeline is active' : 'Preview crop for the current canvas';
   const enabled = Boolean(animation);
   for (const id of controls) { const node = $('#' + id); if (node) node.disabled = !enabled; }
   $('#animation-play').disabled = !enabled || animation.frameCount < 2 || animationPlayback.playing;
@@ -1567,6 +1573,9 @@ brushScrub.addEventListener('keydown', event => {
 
 function undoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
+  if (animation && doc.history.at(-1)?.type === 'layer-delete' && !canGrowAnimationLayer()) {
+    status('Cannot restore that layer: it would exceed the active animation memory budget.', 'warning'); return false;
+  }
   if (!doc.undo()) return false;
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
@@ -1574,6 +1583,9 @@ function undoDocument() {
 }
 function redoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
+  if (animation && doc.future.at(-1)?.type === 'layer-add' && !canGrowAnimationLayer()) {
+    status('Cannot redo that layer: it would exceed the active animation memory budget.', 'warning'); return false;
+  }
   if (!doc.redo()) return false;
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
@@ -1595,7 +1607,7 @@ const viewportCenter = () => ({ x: canvas.clientWidth / 2, y: canvas.clientHeigh
 $('#zoom-in').addEventListener('click', () => zoomAt(viewportCenter(), zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => zoomAt(viewportCenter(), zoom / 1.25));
 $('#add-layer').addEventListener('click', () => {
-  try { doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
+  try { if (!canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#animation-add-frame').addEventListener('click', () => {
@@ -1946,7 +1958,7 @@ $('#rename-layer')?.addEventListener('click', () => {
   } catch (error) { status(error.message, 'error'); }
 });
 $('#duplicate-layer')?.addEventListener('click', () => {
-  try { const sourceId = doc.activeLayer.id; const duplicate = doc.duplicateLayer(sourceId); changed(new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
+  try { if (!canGrowAnimationLayer()) throw new RangeError('Duplicating this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const sourceId = doc.activeLayer.id; const duplicate = doc.duplicateLayer(sourceId); changed(new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#delete-layer')?.addEventListener('click', () => {
