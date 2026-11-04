@@ -978,6 +978,11 @@ canvas.addEventListener('pointerdown', event => {
   beginStroke(event);
 });
 canvas.addEventListener('pointermove', event => {
+  const pointerPixel = docPoint(event);
+  const coordinateReadout = $('#coordinate-readout');
+  if (coordinateReadout) coordinateReadout.textContent = pointerPixel.x >= 0 && pointerPixel.y >= 0 && pointerPixel.x < doc.width && pointerPixel.y < doc.height
+    ? 'x: ' + pointerPixel.x + ' · y: ' + pointerPixel.y
+    : 'outside canvas';
   if (gradientGesture && event.pointerId === gradientGesture.pointerId) {
     const point = docPoint(event);
     gradientGesture.x2 = Math.max(0, Math.min(doc.width - 1, point.x));
