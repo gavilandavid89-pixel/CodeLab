@@ -308,6 +308,10 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'animation data must travel with the normal project save/export lifecycle');
   assert.ok(editorSource.includes('function switchAnimationFrame') && editorSource.includes('doc.replaceLayerPixelsBatch'),
     'frame switching must reuse the existing raster document and drawing tools');
+  assert.ok(editorSource.includes('function canGrowAnimationLayer') && editorSource.includes('Cannot restore that layer'),
+    'layer operations and undo/redo must respect the combined animation memory budget');
+  assert.ok(editorSource.includes("$('#crop-preview').disabled = enabled"),
+    'canvas crop must not silently desynchronize all animation cels');
   assert.ok(editorSource.includes('function drawOnionSkinOverlay') && editorSource.includes('startAnimationPlayback'),
     'the editor must wire onion-skin preview and playback');
   assert.ok(animation.includes('compositeThumbnail('), 'timeline thumbnails must use bounded-size compositing');
