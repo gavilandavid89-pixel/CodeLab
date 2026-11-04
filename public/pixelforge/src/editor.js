@@ -7,6 +7,7 @@ import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
+import { createVisionSnapshot } from './headless-vision.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -1406,6 +1407,66 @@ $('#ai-cancel-request').addEventListener('click', () => {
     status('Cancelling AI request…', 'warning');
   }
 });
+
+function pixelsToVisionDataUrl(pixels, width, height, maxDimension = 512) {
+  const scale = Math.min(1, maxDimension / Math.max(width, height));
+  const targetWidth = Math.max(1, Math.round(width * scale));
+  const targetHeight = Math.max(1, Math.round(height * scale));
+  const source = document.createElement('canvas');
+  source.width = width; source.height = height;
+  const sourceContext = source.getContext('2d', { alpha: true });
+  if (!sourceContext) throw new Error('Could not prepare the artwork vision image.');
+  sourceContext.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0);
+  if (targetWidth === width && targetHeight === height) return source.toDataURL('image/png');
+  const target = document.createElement('canvas');
+  target.width = targetWidth; target.height = targetHeight;
+  const targetContext = target.getContext('2d', { alpha: true });
+  if (!targetContext) throw new Error('Could not resize the artwork vision image.');
+  targetContext.imageSmoothingEnabled = false;
+  targetContext.drawImage(source, 0, 0, targetWidth, targetHeight);
+  return target.toDataURL('image/png');
+}
+
+function createEditorVisionSnapshot() {
+  const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  const artworkImage = pixelsToVisionDataUrl(doc.composite(), doc.width, doc.height);
+  let animationContext = null;
+  if (animation) {
+    const neighbors = animation.getOnionSkinFrames({ previous: 2, next: 2 });
+    const frameIndexes = [animation.activeFrameIndex, ...neighbors.map(frame => frame.index)]
+      .filter((index, position, indexes) => indexes.indexOf(index) === position)
+      .slice(0, 5);
+    animationContext = {
+      fps: animation.fps,
+      loop: animationLoop,
+      selectedFrame: animation.activeFrameIndex,
+      frames: frameIndexes.map(index => {
+        const frame = animation.getFrame(index);
+        const pixels = index === animation.activeFrameIndex
+          ? doc.composite()
+          : animation.compositeFrame(index, layerSettings);
+        return {
+          index,
+          name: frame.name || 'Frame ' + (index + 1),
+          durationMs: frame.durationMs,
+          image: pixelsToVisionDataUrl(pixels, doc.width, doc.height),
+        };
+      }),
+    };
+  }
+  const selectedPixels = doc.selectionMask
+    ? doc.selectionMask.reduce((sum, value) => sum + (value ? 1 : 0), 0)
+    : 0;
+  return createVisionSnapshot({
+    mode: 'artwork',
+    artworkImage,
+    project: { id: doc.id, name: doc.name, width: doc.width, height: doc.height, revision: doc.revision, layerCount: doc.layers.length },
+    selection: { active: Boolean(doc.selectionMask), selectedPixels },
+    viewport: { zoom, panX, panY },
+    animation: animationContext,
+  });
+}
+
 $('#ai-generate-proposal').addEventListener('click', async () => {
   if (!aiCoordinator) { status('Configure an AI provider first.', 'warning'); return; }
   if (activeAIRequestController) return;
@@ -1419,17 +1480,10 @@ $('#ai-generate-proposal').addEventListener('click', async () => {
   status('Asking the configured model for a structured edit plan…', 'neutral');
   try {
     const includeArtwork = $('#ai-send-artwork').checked;
-    let imageDataUrl;
-    if (includeArtwork) {
-      const imageCanvas = document.createElement('canvas');
-      imageCanvas.width = doc.width; imageCanvas.height = doc.height;
-      const imageContext = imageCanvas.getContext('2d', { alpha: true });
-      imageContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
-      imageDataUrl = imageCanvas.toDataURL('image/png');
-    }
+    const visionSnapshot = includeArtwork ? createEditorVisionSnapshot() : null;
     const result = await aiCoordinator.requestEdit(prompt, {
       includeArtwork,
-      ...(imageDataUrl ? { imageDataUrl } : {}),
+      ...(visionSnapshot ? { visionSnapshot } : {}),
       signal: controller.signal,
     });
     if (result.status === 'proposal') {
