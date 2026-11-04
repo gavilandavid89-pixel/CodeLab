@@ -240,6 +240,16 @@ async function main() {
   });
   assert.equal(malformedUploadManifest.status, 400, 'malformed upload JSON should be a client error, not a server outage');
   assert.equal((await malformedUploadManifest.json()).error, 'INVALID_JSON');
+  const overLimitBytes = 96 * 1024 * 1024 + 1;
+  const overLimitManifest = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: 'f'.repeat(32), projectId: 'over-limit-project', expectedServerRevision: 0,
+      totalBytes: overLimitBytes, totalChunks: Math.ceil(overLimitBytes / (6 * 1024 * 1024))
+    })
+  });
+  assert.equal(overLimitManifest.status, 413, 'the upload manifest must reject projects above the 96 MiB envelope');
+  assert.equal((await overLimitManifest.json()).error, 'pixelforge_project_too_large');
   const uploadId = 'a'.repeat(32);
   const totalChunks = Math.ceil(chunkBytes.length / chunkSize);
   assert.equal(totalChunks, 3, 'the integration fixture must exercise multiple chunks and a split UTF-8 character');
@@ -301,6 +311,47 @@ async function main() {
   assert.equal(repeatedCommit.status, 200, 'retrying a completed commit must return its saved receipt');
   assert.deepEqual((await (await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { headers: authHeaders })).json()).project, chunkFixture,
     'the committed chunked project must round-trip without altering its JSON payload');
+
+  // Exercise the actual high-resolution ceiling: one full 4096×4096 RGBA layer.
+  const full4kHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.82' };
+  const full4kFixture = makePixelProject('full-4k-capacity', 'Full 4K capacity', 1, 1);
+  full4kFixture.width = 4096;
+  full4kFixture.height = 4096;
+  full4kFixture.serverRevision = 1;
+  full4kFixture.layers[0].pixels = Buffer.alloc(64 * 1024 * 1024, 0x5a).toString('base64');
+  const full4kBytes = Buffer.from(JSON.stringify(full4kFixture), 'utf8');
+  assert.ok(full4kBytes.length > 80 * 1024 * 1024 && full4kBytes.length < 96 * 1024 * 1024,
+    'a single 4K RGBA layer should fit inside the complete project envelope');
+  const full4kUploadId = 'f'.repeat(32);
+  const full4kTotalChunks = Math.ceil(full4kBytes.length / chunkSize);
+  assert.equal(full4kTotalChunks, 15, 'the full 4K layer should use fifteen bounded chunks');
+  const full4kBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...full4kHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: full4kUploadId, projectId: full4kFixture.id, expectedServerRevision: 0,
+      totalBytes: full4kBytes.length, totalChunks: full4kTotalChunks
+    })
+  });
+  assert.equal(full4kBegin.status, 201, 'the API should accept a project containing one full 4K RGBA layer');
+  for (let index = 0; index < full4kTotalChunks; index++) {
+    const bytes = full4kBytes.subarray(index * chunkSize, (index + 1) * chunkSize);
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+    const uploaded = await fetch(base + '/api/pixelforge/projects/uploads/' + full4kUploadId + '/' + index, {
+      method: 'PUT', headers: { ...full4kHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ chunk: bytes.toString('base64'), sha256: hash })
+    });
+    assert.equal(uploaded.status, 200, 'full 4K upload chunk ' + index + ' should be accepted');
+  }
+  const full4kCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + full4kUploadId + '/commit', {
+    method: 'POST', headers: { ...full4kHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(full4kCommit.status, 201, 'the complete 4K project should commit to PostgreSQL');
+  assert.equal((await full4kCommit.json()).project.serverRevision, 1);
+  const full4kListed = await (await fetch(base + '/api/pixelforge/projects', { headers: full4kHeaders })).json();
+  const full4kMetadata = full4kListed.projects.find(project => project.id === full4kFixture.id);
+  assert.ok(full4kMetadata && full4kMetadata.width === 4096 && full4kMetadata.height === 4096,
+    'the complete 4K project must be durably listed with its original dimensions');
+  await fetch(base + '/api/pixelforge/projects/' + full4kFixture.id, { method: 'DELETE', headers: full4kHeaders });
   const committedStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
   assert.equal((await committedStatus.json()).committed, true, 'status should expose a durable receipt after commit');
   const cancelledUploadId = 'b'.repeat(32);
