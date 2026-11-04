@@ -64,3 +64,46 @@ test('headless proposal rejects a stale source revision', () => {
   assert.equal(result.status, 'rejected');
   assert.equal(result.reason, 'stale-base');
 });
+
+test('headless structural layer changes are reviewed and committed as one undoable source transaction', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'layer.add', name: 'Ink' },
+  ]);
+  assert.equal(batch.ok, true);
+  assert.equal(runtime.inspect().sandbox.layerCount, 2);
+  runtime.createProposal('Add an ink layer');
+  const accepted = runtime.acceptProposal();
+  assert.equal(accepted.status, 'applied');
+  assert.equal(runtime.document.layers.length, 2);
+  assert.equal(runtime.document.layers[1].name, 'Ink');
+  assert.equal(runtime.document.undo(), true);
+  assert.equal(runtime.document.layers.length, 1);
+  assert.equal(runtime.document.redo(), true);
+  assert.equal(runtime.document.layers.length, 2);
+});
+
+test('headless layer selection advances the sandbox revision and is proposal-visible', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const added = runtime.execute({ name: 'layer.add', name: 'Color' });
+  assert.equal(added.ok, true);
+  const layerId = added.result.layerId;
+  const selected = runtime.execute({ name: 'layer.select', layerId });
+  assert.equal(selected.ok, true);
+  assert.equal(runtime.hasPendingChanges, true);
+  runtime.createProposal('Add and select Color layer');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.document.activeLayerId, layerId);
+});
+
+test('headless brush actions validate points and keep edits in the sandbox', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const result = runtime.execute({
+    name: 'canvas.draw_stroke',
+    points: [{ x: 2, y: 2 }, { x: 3, y: 3 }, { x: 4, y: 4 }],
+    color: '#CC2288', size: 3, opacity: 0.75, shape: 'circle', hardness: 0.6,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(runtime.hasPendingChanges, true);
+  assert.equal(runtime.document.revision, 0);
+});
