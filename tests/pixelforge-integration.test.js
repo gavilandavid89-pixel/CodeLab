@@ -219,15 +219,18 @@ async function main() {
   assert.ok(Number.isInteger(animationRevision) && animationRevision === 1, 'the animation project should receive a server revision token');
 
   // The upload protocol must be resumable, integrity checked, and idempotent.
-  const chunkFixture = { ...makePixelProject('chunk-api-contract', 'Chunk API contract'), serverRevision: 1 };
+  const chunkFixture = { ...makePixelProject('chunk-api-contract', 'Chunk API contract', 1200, 1200), serverRevision: 1 };
   const chunkSerialized = JSON.stringify(chunkFixture);
   const chunkBytes = Buffer.from(chunkSerialized, 'utf8');
   const uploadId = 'a'.repeat(32);
+  const chunkSize = 6 * 1024 * 1024;
+  const totalChunks = Math.ceil(chunkBytes.length / chunkSize);
+  assert.equal(totalChunks, 2, 'the integration fixture must exercise a multi-chunk transfer');
   const uploadBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
     method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
     body: JSON.stringify({
       uploadId, projectId: chunkFixture.id, expectedServerRevision: 0,
-      totalBytes: chunkBytes.length, totalChunks: 1
+      totalBytes: chunkBytes.length, totalChunks
     })
   });
   assert.equal(uploadBegin.status, 201, 'authenticated project chunk uploads should be initialized');
@@ -236,16 +239,19 @@ async function main() {
   });
   assert.equal(incompleteCommit.status, 409, 'commit must not publish a project while chunks are missing');
   assert.equal((await incompleteCommit.json()).error, 'pixelforge_upload_incomplete');
-  const chunkHash = crypto.createHash('sha256').update(chunkBytes).digest('hex');
+  const firstChunk = chunkBytes.subarray(0, chunkSize);
+  const secondChunk = chunkBytes.subarray(chunkSize);
+  const firstChunkHash = crypto.createHash('sha256').update(firstChunk).digest('hex');
+  const secondChunkHash = crypto.createHash('sha256').update(secondChunk).digest('hex');
   const badChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
     method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: '0'.repeat(64) })
+    body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: '0'.repeat(64) })
   });
   assert.equal(badChunk.status, 400, 'a chunk with a mismatched SHA-256 must be rejected');
   assert.equal((await badChunk.json()).error, 'pixelforge_chunk_integrity_failed');
   const goodChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
     method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
+    body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: firstChunkHash })
   });
   assert.equal(goodChunk.status, 200, 'a verified chunk should be accepted');
   const uploadStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
@@ -256,6 +262,13 @@ async function main() {
     body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
   });
   assert.equal(duplicateChunk.status, 200, 'retrying the same verified chunk must be idempotent');
+  const secondChunkUpload = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/1', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: secondChunk.toString('base64'), sha256: secondChunkHash })
+  });
+  assert.equal(secondChunkUpload.status, 200, 'the final partial chunk should be accepted with its exact byte length');
+  const completeStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
+  assert.deepEqual((await completeStatus.json()).receivedChunks, [0, 1], 'status should report the complete chunk manifest');
   const chunkCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
     method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
   });
