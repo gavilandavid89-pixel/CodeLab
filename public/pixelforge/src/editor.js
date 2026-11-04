@@ -2059,7 +2059,7 @@ $('#export-png').addEventListener('click', () => {
 $('#import-file').addEventListener('change', async event => {
   const file = event.target.files?.[0]; if (!file) return;
   try {
-    if (file.size > 100 * 1024 * 1024) throw new RangeError('This file is larger than the 100 MiB import safety limit.');
+    if (file.size > 256 * 1024 * 1024) throw new RangeError('This file is larger than the 256 MiB import safety limit.');
     let importedDoc;
     let zipProject = null;
     if (file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip') {
