@@ -222,6 +222,11 @@ async function main() {
   const chunkFixture = { ...makePixelProject('chunk-api-contract', 'Chunk API contract', 1200, 1200), serverRevision: 1 };
   const chunkSerialized = JSON.stringify(chunkFixture);
   const chunkBytes = Buffer.from(chunkSerialized, 'utf8');
+  const malformedUploadManifest = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{'
+  });
+  assert.equal(malformedUploadManifest.status, 400, 'malformed upload JSON should be a client error, not a server outage');
+  assert.equal((await malformedUploadManifest.json()).error, 'INVALID_JSON');
   const uploadId = 'a'.repeat(32);
   const chunkSize = 6 * 1024 * 1024;
   const totalChunks = Math.ceil(chunkBytes.length / chunkSize);
