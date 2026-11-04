@@ -84,7 +84,7 @@ export class AICommandSession {
     if (DENIED_ACTIONS.has(action.name)) {
       return { ok: false, error: { code: 'permission_denied', message: 'AI tools cannot delete, export, upload, or publish a project.' } };
     }
-    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_pixel', 'canvas.preview_transform_region']);
+    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_reference', 'canvas.get_pixel', 'canvas.preview_transform_region']);
     if (this.#workspace.hasProposal && !readOnlyActions.has(action.name)) {
       return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more sandbox edits.' } };
     }
@@ -106,6 +106,33 @@ export class AICommandSession {
         case 'document.rename':
           result = { renamed: doc.renameDocument(action.newName), name: doc.name };
           break;
+        case 'canvas.get_reference': {
+          const gridStep = action.gridStep ?? 8;
+          integer(gridStep, 'gridStep');
+          if (gridStep < 1 || gridStep > 256) throw new RangeError('gridStep must be between 1 and 256 pixels.');
+          const maxX = doc.width - 1, maxY = doc.height - 1;
+          const point = (x, y) => ({ x: Math.round(x), y: Math.round(y) });
+          const at = (xRatio, yRatio) => point(maxX * xRatio, maxY * yRatio);
+          const xLines = [], yLines = [];
+          for (let x = 0; x <= maxX && xLines.length < 512; x += gridStep) xLines.push(x);
+          for (let y = 0; y <= maxY && yLines.length < 512; y += gridStep) yLines.push(y);
+          if (xLines[xLines.length - 1] !== maxX) xLines.push(maxX);
+          if (yLines[yLines.length - 1] !== maxY) yLines.push(maxY);
+          const active = doc.activeLayer;
+          result = {
+            coordinateSystem: { unit: 'pixel', origin: 'top-left', xAxis: 'right', yAxis: 'down', integerCoordinates: 'pixel indices; (0,0) is the top-left pixel', bounds: { minX: 0, minY: 0, maxX, maxY, width: doc.width, height: doc.height } },
+            landmarks: {
+              topLeft: point(0, 0), topCenter: at(0.5, 0), topRight: point(maxX, 0),
+              middleLeft: at(0, 0.5), center: at(0.5, 0.5), middleRight: at(1, 0.5),
+              bottomLeft: point(0, maxY), bottomCenter: at(0.5, 1), bottomRight: point(maxX, maxY),
+              quarterPoints: { topLeft: at(0.25, 0.25), topRight: at(0.75, 0.25), bottomLeft: at(0.25, 0.75), bottomRight: at(0.75, 0.75) },
+            },
+            grid: { step: gridStep, xLines, yLines, includesCanvasEdges: true },
+            activeLayer: { id: active.id, name: active.name, index: doc.layers.findIndex(layer => layer.id === active.id), visible: active.visible, locked: active.locked, opacity: active.opacity },
+            layers: doc.layers.map((layer, index) => ({ id: layer.id, name: layer.name, index, visible: layer.visible, locked: layer.locked, opacity: layer.opacity })),
+          };
+          break;
+        }
         case 'canvas.get_pixel': {
           coordinate(doc, action.x, action.y);
           const merged = action.merged ?? true;
