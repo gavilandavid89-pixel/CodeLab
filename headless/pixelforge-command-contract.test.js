@@ -86,7 +86,7 @@ test('PixelForge project management lists, creates, and deletes only through exp
   assert.ok(projectActionBlock.includes("'pixelforge_headless_list_projects'"));
   assert.ok(projectActionBlock.includes("'pixelforge_headless_create_project'"));
   assert.ok(projectActionBlock.includes("'pixelforge_headless_delete_project'"));
-  assert.ok(bridge.includes('PixelForge project creation/deletion requires approval'));
+  assert.ok(bridge.includes('PixelForge project creation/deletion/import requires approval'));
   assert.ok(bridge.includes('readbackVerified: true'));
   assert.ok(bridge.includes('64 * 1024 * 1024'));
 });
