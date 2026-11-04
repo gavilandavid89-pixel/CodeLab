@@ -284,6 +284,7 @@ test('headless region copy and paste preserve masked pixels inside the proposal 
   ]);
   assert.equal(batch.ok, true);
   assert.equal(batch.results[2].result.selectedPixels, 2);
+  assert.equal(batch.results[3].result.cleared, true);
   assert.equal(batch.results[4].result.changedPixels, 2);
   assert.equal(runtime.document.sampleColorAt(5, 5), null, 'source document remains isolated before approval');
   runtime.createProposal('Copy the selected two-pixel stroke to a second location');
