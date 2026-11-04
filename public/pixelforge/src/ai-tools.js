@@ -39,6 +39,7 @@ function plainResult(value) {
  */
 export class AICommandSession {
   #workspace;
+  #clipboard = null;
 
   constructor(workspace) {
     if (!(workspace instanceof AIWorkspace)) throw new TypeError('Expected an AIWorkspace.');
@@ -191,6 +192,25 @@ export class AICommandSession {
           rectangle(doc, action.x, action.y, action.width, action.height);
           result = { changedPixels: doc.clearRect(action.x, action.y, action.width, action.height) };
           break;
+        case 'canvas.copy_region': {
+          rectangle(doc, action.x, action.y, action.width, action.height);
+          this.#clipboard = doc.copyRect(action.x, action.y, action.width, action.height);
+          result = { copied: true, x: this.#clipboard.x, y: this.#clipboard.y,
+            width: this.#clipboard.width, height: this.#clipboard.height,
+            selectedPixels: this.#clipboard.mask.reduce((sum, value) => sum + value, 0) };
+          break;
+        }
+        case 'canvas.paste_region': {
+          if (!this.#clipboard) throw new Error('There is no copied PixelForge region in this Headless session.');
+          const x = integer(action.x ?? this.#clipboard.x, 'x');
+          const y = integer(action.y ?? this.#clipboard.y, 'y');
+          if (x < -doc.width || y < -doc.height || x > doc.width || y > doc.height) {
+            throw new RangeError('Paste position is too far outside the canvas.');
+          }
+          result = { changedPixels: doc.pasteRect(this.#clipboard, { x, y }), x, y,
+            width: this.#clipboard.width, height: this.#clipboard.height };
+          break;
+        }
         case 'canvas.crop':
           rectangle(doc, action.x, action.y, action.width, action.height);
           result = { changed: doc.cropCanvas(action.x, action.y, action.width, action.height), width: action.width, height: action.height };
