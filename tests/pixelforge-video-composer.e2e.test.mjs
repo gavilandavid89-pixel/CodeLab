@@ -72,7 +72,10 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   await page.waitForSelector('.vc-frame-card');
   assert.equal(await page.locator('.vc-frame-card').count(), 1);
   assert.equal(await page.locator('#vc-stat-fps').textContent(), '12 FPS');
-  assert.equal(await page.locator('#vc-export').isDisabled(), false);
+  const encoderStatus = await page.locator('#vc-format-support').textContent();
+  assert.ok(encoderStatus.length > 0, 'the interface should explain the current encoder capability');
+  assert.equal(await page.locator('#vc-export').isDisabled(), !encoderStatus.startsWith('Disponible'),
+    'export must be enabled only when the browser can capture and encode video');
   assert.equal(await page.locator('#vc-preview').isVisible(), true);
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
