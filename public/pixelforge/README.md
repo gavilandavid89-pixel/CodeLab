@@ -28,3 +28,11 @@ PixelForge is maintained directly in this CodeLab repository. No upstream reposi
 ## Verification expectations
 
 After changes, run the CodeLab validation workflow and Agent Space Browser Runner. Do not merge or deploy until authentication, account isolation, PostgreSQL persistence, save/load/delete, reload recovery, recent-project ordering, malformed-project rejection, quota enforcement, and account-scoped browser preferences pass.
+
+
+### High-resolution capacity (testing profile)
+
+- PixelForge animation canvas bounds are now 4096 × 4096 pixels (16,777,216 pixels maximum) and the in-memory timeline budget is 256 MiB. These are hard safety ceilings, not a promise that every combination of resolution, layers, and frames fits; the model rejects combinations that exceed the aggregate budget before allocating.
+- The PixelForge API accepts request bodies up to 80 MiB, stored project JSON up to 64 MiB, and 1 GiB total project storage per account. These limits are scoped to PixelForge and do not raise unrelated CodeLab API limits.
+- The current timeline JSON uses base64 cel payloads, so the 64 MiB persisted-project ceiling can be reached before the 256 MiB raw in-memory ceiling. A compressed/chunked cel storage format is still required to persist larger animations efficiently; do not claim that the entire memory budget is saveable yet.
+- These expanded limits are intended for development/testing. Production deployment still depends on validating Render ingress limits, PostgreSQL row/TOAST behavior, memory headroom, and account quota behavior under concurrent saves.
