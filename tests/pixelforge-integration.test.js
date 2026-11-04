@@ -548,6 +548,56 @@ async function main() {
     assert.equal(toolProject.width, 12, 'undo should restore canvas width after crop');
     assert.equal(toolProject.height, 8, 'undo should restore canvas height after crop');
 
+    // Layer-management controls must persist structure and metadata, not only update the panel.
+    await accountPage.locator('#layers-tab').click();
+    await accountPage.locator('#duplicate-layer').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.layers.length, 3, 'duplicate-layer should persist a third layer');
+    const duplicatedLayerId = toolProject.activeLayerId;
+    assert.equal(toolProject.layers.find(layer => layer.id === duplicatedLayerId)?.name, 'Layer 2 copy',
+      'duplicated layer should receive a distinct default name');
+
+    accountPage.once('dialog', dialog => dialog.accept('Layer QA'));
+    await accountPage.locator('#rename-layer').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.layers.find(layer => layer.id === duplicatedLayerId)?.name, 'Layer QA',
+      'rename-layer should persist the new layer name');
+
+    await accountPage.locator('#layer-opacity').evaluate(input => {
+      input.value = '50';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.layers.find(layer => layer.id === duplicatedLayerId)?.opacity, 0.5,
+      'active layer opacity should persist its numeric value');
+
+    const activeLayerRow = accountPage.locator('.layer-row').first();
+    await activeLayerRow.locator('.layer-visibility').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.layers.find(layer => layer.id === duplicatedLayerId)?.visible, false,
+      'layer visibility toggle should persist hidden state');
+    await activeLayerRow.locator('.layer-visibility').click();
+    await waitForRasterSave();
+
+    await activeLayerRow.locator('.layer-lock').click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.equal(toolProject.layers.find(layer => layer.id === duplicatedLayerId)?.locked, true,
+      'layer lock toggle should persist locked state');
+    await activeLayerRow.locator('.layer-lock').click();
+    await waitForRasterSave();
+
+    await activeLayerRow.locator('.layer-order').last().click();
+    await waitForRasterSave();
+    toolProject = await readSavedArtwork();
+    assert.notEqual(toolProject.layers.at(-1).id, duplicatedLayerId,
+      'layer reorder should change the persisted layer stack order');
+
     const deleteFixture = makePixelProject('browser-delete-artwork', 'Browser delete artwork');
     const deleteFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
