@@ -60,6 +60,22 @@ test('PixelForge animation export writes a downloadable artifact instead of a ma
   assert.match(catalog, /Actions run URL/);
 });
 
+test('PixelForge project management lists, creates, and deletes only through explicit admin commands', () => {
+  for (const action of ['pixelforge_headless_list_projects', 'pixelforge_headless_create_project', 'pixelforge_headless_delete_project']) {
+    assert.ok(bridge.includes("'" + action + "'"), action + ' must be allowlisted');
+    assert.ok(bridge.includes("command.action === '" + action + "'"), action + ' must have an execution handler');
+  }
+  const projectStart = bridge.indexOf('const projectActions = [');
+  const projectEnd = bridge.indexOf('];', projectStart);
+  const projectActionBlock = bridge.slice(projectStart, projectEnd);
+  assert.ok(projectActionBlock.includes("'pixelforge_headless_list_projects'"));
+  assert.ok(projectActionBlock.includes("'pixelforge_headless_create_project'"));
+  assert.ok(projectActionBlock.includes("'pixelforge_headless_delete_project'"));
+  assert.ok(bridge.includes('PixelForge project creation/deletion requires approval'));
+  assert.ok(bridge.includes('readbackVerified: true'));
+  assert.ok(bridge.includes('64 * 1024 * 1024'));
+});
+
 test('PixelForge raster exports are explicit, bounded, and require approval', () => {
   const projectStart = bridge.indexOf('const projectActions = [');
   const projectEnd = bridge.indexOf('];', projectStart);
