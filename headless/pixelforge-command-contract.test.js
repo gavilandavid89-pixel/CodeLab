@@ -71,7 +71,7 @@ test('PixelForge raster exports are explicit, bounded, and require approval', ()
   }
   assert.ok(bridge.includes("PixelForge raster/project export requires approval: \"approved\"."));
   assert.ok(bridge.includes('createSpriteSheetLayout'));
-  assert.ok(bridge.includes('24 * 1024 * 1024'));
+  assert.ok(bridge.includes('96 * 1024 * 1024'));
   assert.ok(bridge.includes('pixelforge-composite.png'));
   assert.ok(bridge.includes('pixelforge-project.pforge'));
   assert.ok(bridge.includes('pixelforge-layer-spritesheet.json'));
