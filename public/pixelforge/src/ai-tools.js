@@ -33,6 +33,14 @@ function plainResult(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function encodeBase64(bytes) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 function symmetryPoints(doc, point, mode) {
   if (mode === 0) return [point];
   const cx = (doc.width - 1) / 2, cy = (doc.height - 1) / 2;
@@ -84,7 +92,7 @@ export class AICommandSession {
     if (DENIED_ACTIONS.has(action.name)) {
       return { ok: false, error: { code: 'permission_denied', message: 'AI tools cannot delete, export, upload, or publish a project.' } };
     }
-    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_reference', 'canvas.get_pixel', 'canvas.preview_transform_region']);
+    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_reference', 'canvas.get_pixel', 'canvas.get_region', 'canvas.preview_transform_region']);
     if (this.#workspace.hasProposal && !readOnlyActions.has(action.name)) {
       return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more sandbox edits.' } };
     }
@@ -138,6 +146,33 @@ export class AICommandSession {
           const merged = action.merged ?? true;
           if (typeof merged !== 'boolean') throw new TypeError('merged must be a boolean.');
           result = { x: action.x, y: action.y, color: doc.sampleColorAt(action.x, action.y, { merged }) };
+          break;
+        }
+        case 'canvas.get_region': {
+          const { x, y, width, height } = action;
+          rectangle(doc, x, y, width, height);
+          if (width > 128 || height > 128 || width * height > 16384) {
+            throw new RangeError('Region reads are limited to 128 × 128 pixels (16,384 pixels total).');
+          }
+          const merged = action.merged ?? true;
+          if (typeof merged !== 'boolean') throw new TypeError('merged must be a boolean.');
+          if (merged && action.layerId !== undefined) throw new TypeError('layerId cannot be used when merged is true.');
+          const layer = merged ? null : action.layerId === undefined
+            ? doc.activeLayer
+            : doc.layers.find(item => item.id === action.layerId);
+          if (!merged && !layer) throw new Error('Requested raster layer was not found.');
+          const source = merged ? doc.composite() : layer.pixels;
+          const pixels = new Uint8ClampedArray(width * height * 4);
+          for (let row = 0; row < height; row++) {
+            const start = ((y + row) * doc.width + x) * 4;
+            pixels.set(source.subarray(start, start + width * 4), row * width * 4);
+          }
+          result = {
+            origin: { x, y }, width, height, merged,
+            layerId: layer?.id ?? null,
+            encoding: 'rgba8-base64',
+            pixels: encodeBase64(pixels),
+          };
           break;
         }
         case 'canvas.draw_line': {
