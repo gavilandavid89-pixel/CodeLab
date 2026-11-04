@@ -450,3 +450,40 @@ test('sprite sheet export returns a PNG Blob and frame manifest with determinist
     else globalThis.ImageData = previousImageData;
   }
 });
+
+
+test('headless magic selection matches the editor active-layer tolerance and combination modes', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 5, y1: 3, color: '#3366CC' },
+    { name: 'selection.create_magic', x: 3, y: 3, tolerance: 0, contiguous: true },
+  ]);
+  assert.equal(batch.ok, true);
+  assert.equal(batch.results[1].result.selectedPixels, 4);
+  assert.equal(runtime.sandbox.selectionMask.reduce((sum, value) => sum + value, 0), 4);
+  const added = runtime.execute({
+    name: 'selection.create_magic', x: 0, y: 0, tolerance: 0,
+    contiguous: false, operation: 'add',
+  });
+  assert.equal(added.ok, true);
+  assert.equal(added.result.selectedPixels, 256);
+  assert.equal(runtime.execute({ name: 'selection.create_magic', x: 0, y: 0, tolerance: 256 }).ok, false);
+});
+
+test('headless brush and line actions reproduce the editor 2/4/8-way symmetry modes', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const result = runtime.execute({
+    name: 'canvas.draw_stroke', points: [{ x: 2, y: 3 }, { x: 3, y: 3 }],
+    color: '#AA2244', symmetryMode: 4,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.result.symmetryMode, 4);
+  assert.equal(runtime.sandbox.sampleColorAt(2, 3), '#AA2244');
+  assert.equal(runtime.sandbox.sampleColorAt(13, 3), '#AA2244');
+  assert.equal(runtime.sandbox.sampleColorAt(2, 12), '#AA2244');
+  assert.equal(runtime.sandbox.sampleColorAt(13, 12), '#AA2244');
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 2, y1: 1,
+    color: '#112233', symmetryMode: 3,
+  }).ok, false);
+});
