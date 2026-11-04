@@ -290,3 +290,24 @@ test('headless region copy and paste preserve masked pixels inside the proposal 
   assert.equal(runtime.document.sampleColorAt(6, 5), '#D02040');
   assert.equal(runtime.document.sampleColorAt(7, 5), '#D02040');
 });
+
+test('headless region transforms expose scale, skew and interpolation controls from the raster engine', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const drawn = runtime.execute({
+    name: 'canvas.draw_shape', shape: 'rectangle',
+    x: 3, y: 3, width: 4, height: 4, color: '#3366CC',
+  });
+  assert.equal(drawn.ok, true);
+  const transformed = runtime.execute({
+    name: 'canvas.transform_region',
+    x: 3, y: 3, width: 4, height: 4,
+    dx: 1, dy: 0, rotate: 0, scaleX: 1.5, scaleY: 1.25,
+    skewX: 0.25, skewY: 0, interpolation: 'bilinear',
+  });
+  assert.equal(transformed.ok, true);
+  assert.equal(transformed.result.selectedPixels > 0, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.transform_region',
+    x: 3, y: 3, width: 4, height: 4, interpolation: 'lanczos',
+  }).ok, false);
+});
