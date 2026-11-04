@@ -1,7 +1,37 @@
 import { createVisionSnapshot, toProviderImageParts } from './headless-vision.js';
 
 const CONSENT_TTL_MS = 5 * 60 * 1000;
+const MAX_IMAGE_LENGTH = 8 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 8192;
+const MAX_IMAGE_PIXELS = 16_777_216;
+const PNG_PREFIX = 'data:image/png;base64,';
+const PNG_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 const consentTokens = new WeakMap();
+
+function assertPngDataUrl(value, label) {
+  if (typeof value !== 'string' || !value.startsWith(PNG_PREFIX) || value.length > MAX_IMAGE_LENGTH) {
+    throw new TypeError(label + ' must be a PNG data URL no larger than 8 MiB.');
+  }
+  const encoded = value.slice(PNG_PREFIX.length);
+  if (!PNG_BASE64.test(encoded)) throw new TypeError(label + ' contains invalid PNG Base64.');
+  let binary;
+  try { binary = atob(encoded); } catch { throw new TypeError(label + ' contains invalid PNG Base64.'); }
+  if (btoa(binary) !== encoded || binary.length < 24) throw new TypeError(label + ' is not a canonical PNG image.');
+  for (let index = 0; index < PNG_SIGNATURE.length; index++) {
+    if (binary.charCodeAt(index) !== PNG_SIGNATURE[index]) throw new TypeError(label + ' has an invalid PNG signature.');
+  }
+  if (binary.slice(12, 16) !== 'IHDR') throw new TypeError(label + ' is missing the PNG IHDR header.');
+  const width = ((binary.charCodeAt(16) << 24) | (binary.charCodeAt(17) << 16) |
+    (binary.charCodeAt(18) << 8) | binary.charCodeAt(19)) >>> 0;
+  const height = ((binary.charCodeAt(20) << 24) | (binary.charCodeAt(21) << 16) |
+    (binary.charCodeAt(22) << 8) | binary.charCodeAt(23)) >>> 0;
+  if (!width || !height || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION ||
+      width * height > MAX_IMAGE_PIXELS) {
+    throw new RangeError(label + ' dimensions exceed the PixelForge vision safety limit.');
+  }
+  return value;
+}
 
 function assertProjectId(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) {
@@ -86,6 +116,12 @@ export function preparePixelForgeVisionRequest({
         image: frame?.image,
       })),
     };
+  }
+  assertPngDataUrl(artworkImage, 'artworkImage');
+  if (safeAnimation) {
+    for (const [index, frame] of safeAnimation.frames.entries()) {
+      assertPngDataUrl(frame.image, 'animation frame ' + index + ' image');
+    }
   }
   const snapshot = createVisionSnapshot({
     mode: 'artwork',
