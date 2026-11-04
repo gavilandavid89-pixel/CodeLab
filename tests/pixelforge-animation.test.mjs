@@ -346,6 +346,10 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(editorSource.includes('function renderAuthenticationRequired()') &&
     editorSource.includes("error?.status === 401 || error?.code === 'not_authenticated'"),
     'PixelForge must render its CodeLab sign-in screen when the shared session API rejects an anonymous visitor');
+  const addFrameHandler = editorSource.slice(editorSource.indexOf("$('#animation-add-frame').addEventListener"), editorSource.indexOf("$('#animation-duplicate-frame').addEventListener"));
+  assert.ok(addFrameHandler.includes('const timelineWasActive = Boolean(animation)') &&
+    addFrameHandler.includes("if (!timelineWasActive)") && addFrameHandler.includes("status('Animation timeline started'"),
+    'the first timeline click must start a single-frame timeline instead of silently adding a second blank frame');
   assert.ok(editorSource.includes('function buildProjectSnapshot') && editorSource.includes('snapshot.animation'),
     'animation data must travel with the normal project save/export lifecycle');
   assert.ok(editorSource.includes('snapshot.animation = { ...animation.toJSON(), loop: animationLoop }'),
