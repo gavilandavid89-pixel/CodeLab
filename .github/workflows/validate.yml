@@ -74,6 +74,7 @@ jobs:
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3188"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-e2e-data"
           export CODELAB_WORKSPACE_SECRET="test-only-e2e-secret"
+          export CODELAB_MAX_PROJECTS=10
           node server.js > "$RUNNER_TEMP/codelab-e2e.log" 2>&1 &
           SERVER_PID=$!
           trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab E2E server log ====="; cat "$RUNNER_TEMP/codelab-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
@@ -184,6 +185,7 @@ jobs:
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-pixelforge-postgres-data"
           export CODELAB_WORKSPACE_SECRET="test-only-pixelforge-postgres-secret"
+          export CODELAB_MAX_PROJECTS=10
           node server.js > "$RUNNER_TEMP/codelab-pixelforge-postgres.log" 2>&1 &
           SERVER_PID=$!
           trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== PixelForge PostgreSQL E2E server log ====="; cat "$RUNNER_TEMP/codelab-pixelforge-postgres.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
