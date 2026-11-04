@@ -617,6 +617,17 @@ async function main() {
       'layer reorder should change the persisted layer stack order');
 
     // Global checker fill should paint both foreground/background cells across matching pixels.
+    const beforeCheckerFill = await readSavedArtwork();
+    let checkerOrigin = null;
+    for (let y = 0; y < beforeCheckerFill.height && !checkerOrigin; y++) {
+      for (let x = 0; x < beforeCheckerFill.width - 1; x++) {
+        if (rgbaAt(beforeCheckerFill, x, y, 2)[3] === 0 && rgbaAt(beforeCheckerFill, x + 1, y, 2)[3] === 0) {
+          checkerOrigin = { x, y }; break;
+        }
+      }
+    }
+    assert.ok(checkerOrigin, 'checker fill fixture should contain adjacent transparent pixels');
+    await accountPage.keyboard.press('Control+A');
     await setForegroundColor('#ff0000');
     await accountPage.locator('#fill-tool').click();
     await accountPage.locator('#fill-mode').selectOption('global');
@@ -625,12 +636,12 @@ async function main() {
       input.value = '1';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await clickPixel(0, 0);
+    await clickPixel(checkerOrigin.x, checkerOrigin.y);
     await waitForRasterSave();
     toolProject = await readSavedArtwork();
-    assert.deepEqual(rgbaAt(toolProject, 0, 0, 2), [255, 0, 0, 255],
+    assert.deepEqual(rgbaAt(toolProject, checkerOrigin.x, checkerOrigin.y, 2), [255, 0, 0, 255],
       'global checker fill should use foreground color on the first checker cell');
-    assert.deepEqual(rgbaAt(toolProject, 1, 0, 2), [36, 38, 50, 255],
+    assert.deepEqual(rgbaAt(toolProject, checkerOrigin.x + 1, checkerOrigin.y, 2), [36, 38, 50, 255],
       'global checker fill should use background color on the alternating cell');
     await accountPage.locator('#fill-mode').selectOption('contiguous');
     await accountPage.locator('#fill-pattern').selectOption('solid');
