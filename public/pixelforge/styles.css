@@ -30,6 +30,16 @@
 .saved-project-delete:disabled{opacity:.4;cursor:not-allowed}
 .project-empty{padding:15px;border:1px dashed #3a3d4b;border-radius:8px;color:#9298aa;font-size:11px;line-height:1.6}
 @media(max-width:760px){.projects-button{padding:4px 6px;font-size:9px}.context-right{gap:6px}}
+@media(max-width:760px){
+  .context-right #reference-guides-toggle,.context-right #grid-toggle{min-width:26px;padding:4px 6px;font-size:0}
+  .context-right #reference-guides-toggle::before{content:"⌖";font-size:13px}
+  .context-right #grid-toggle::before{content:"▦";font-size:12px}
+  .context-right #projects-button{min-width:26px;padding:4px 6px;font-size:0}
+  .context-right #projects-button::before{content:"▣";font-size:12px}
+  .context-right .symmetry-control{gap:2px;font-size:0}
+  .context-right .symmetry-control select{max-width:43px;min-width:39px;padding:2px;font-size:9px}
+  .context-right #layer-count{display:none}
+}
 
 /* Bucket fill controls share the editor's compact inspector styling. */
 .fill-select{width:100%;min-height:32px;padding:0 8px;border:1px solid #3b3e4c;border-radius:7px;background:#20222c;color:#d8dbe7;font-size:10px;}
