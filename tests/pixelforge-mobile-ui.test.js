@@ -8,7 +8,7 @@ const js = fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), '
 const css = fs.readFileSync(path.join(root, 'public/pixelforge/styles.css'), 'utf8');
 
 assert.match(html, /id="files-tab"/, 'Files tab must exist in the inspector');
-assert.match(html, /class="files-section"/, 'Files tab must have an import/export panel');
+assert.match(html, /class="inspector-section files-section"/, 'Files tab must have an import/export panel');
 assert.match(html, /id="import-file"/, 'image and project import must remain available');
 assert.match(html, /id="export-project"/, 'editable project export must remain available');
 assert.match(html, /id="export-sprite-sheet"/, 'sprite-sheet export must remain available');
