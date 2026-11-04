@@ -224,6 +224,57 @@ export class PixelForgeAnimation {
     if (!pixels) throw new Error('Unknown animation layer ID.');
     return new Uint8ClampedArray(pixels);
   }
+  compositeThumbnail(frameIndex, layerSettings = null, maxDimension = 48) {
+    const frame = this.#frameAt(frameIndex);
+    if (!Number.isInteger(maxDimension) || maxDimension < 8 || maxDimension > 256) {
+      throw new RangeError('Animation thumbnail size must be from 8 to 256 pixels.');
+    }
+    const settings = new Map();
+    if (layerSettings !== null) {
+      if (!Array.isArray(layerSettings) || layerSettings.length !== this.#layerIds.length) {
+        throw new TypeError('Thumbnail layer settings must match the animation layer stack.');
+      }
+      for (const layer of layerSettings) {
+        if (!layer || !this.#layerIds.includes(layer.id) || settings.has(layer.id) ||
+            (layer.visible !== undefined && typeof layer.visible !== 'boolean') ||
+            (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1))) {
+          throw new TypeError('Thumbnail layer settings contain invalid layer metadata.');
+        }
+        settings.set(layer.id, { visible: layer.visible !== false, opacity: layer.opacity ?? 1 });
+      }
+      if (settings.size !== this.#layerIds.length) throw new TypeError('Thumbnail settings are missing a raster layer.');
+    }
+    const scale = Math.min(1, maxDimension / Math.max(this.#width, this.#height));
+    const width = Math.max(1, Math.round(this.#width * scale));
+    const height = Math.max(1, Math.round(this.#height * scale));
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const sourceX = Math.min(this.#width - 1, Math.floor((x + .5) * this.#width / width));
+      const sourceY = Math.min(this.#height - 1, Math.floor((y + .5) * this.#height / height));
+      const sourceOffset = (sourceY * this.#width + sourceX) * 4;
+      let red = 0, green = 0, blue = 0, alpha = 0;
+      for (const layerId of this.#layerIds) {
+        const layerSettingsForId = settings.get(layerId) ?? { visible: true, opacity: 1 };
+        if (!layerSettingsForId.visible || layerSettingsForId.opacity <= 0) continue;
+        const source = frame.cels.get(layerId), sa = source[sourceOffset + 3] / 255 * layerSettingsForId.opacity;
+        if (sa <= 0) continue;
+        const remaining = 1 - sa;
+        red = source[sourceOffset] * sa + red * remaining;
+        green = source[sourceOffset + 1] * sa + green * remaining;
+        blue = source[sourceOffset + 2] * sa + blue * remaining;
+        alpha = sa + alpha * remaining;
+      }
+      const target = (y * width + x) * 4;
+      if (alpha > 0) {
+        pixels[target] = Math.round(red / alpha);
+        pixels[target + 1] = Math.round(green / alpha);
+        pixels[target + 2] = Math.round(blue / alpha);
+        pixels[target + 3] = Math.round(alpha * 255);
+      }
+    }
+    return { width, height, pixels };
+  }
+
 
   setLayerPixels(frameIndex, layerId, pixels) {
     const frame = this.#frameAt(frameIndex);
