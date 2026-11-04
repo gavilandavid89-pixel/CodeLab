@@ -169,6 +169,17 @@ async function main() {
   });
   assert.equal(invalidServerRevision.status, 400, 'server revision tokens must be non-negative integers');
   assert.equal((await invalidServerRevision.json()).error, 'invalid_pixelforge_project');
+  const invalidRasterPaddingProject = { ...fixture, id: 'invalid-raster-padding', layers: fixture.layers.map(layer => ({
+    ...layer, pixels: layer.pixels.slice(0, -2) + 'AA'
+  })) };
+  const invalidRasterPadding = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: invalidRasterPaddingProject })
+  });
+  assert.equal(invalidRasterPadding.status, 400, 'raster Base64 with noncanonical padding must be rejected');
+  assert.equal((await invalidRasterPadding.json()).error, 'invalid_pixelforge_project');
+
   // The server is the authoritative animation validator; browser-side checks are not a trust boundary.
   const animationProject = makePixelProject('animation-validation', 'Animation validation artwork');
   const animationLayerId = animationProject.layers[0].id;
