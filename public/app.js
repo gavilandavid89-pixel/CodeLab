@@ -415,6 +415,12 @@ window.addEventListener('DOMContentLoaded', () => {
       window.codelabWorkspaceReady = true;
       window.dispatchEvent(new Event('codelab-workspace-ready'));
       renderProjectsList();
+      // A project deep link is resolved only after the authenticated workspace has loaded.
+      // This keeps shared project links from opening against an empty/pre-auth local snapshot.
+      const requestedProjectId = new URLSearchParams(window.location.search).get('projectId');
+      if (requestedProjectId && projects.some(project => project && project.id === requestedProjectId)) {
+        openProject(requestedProjectId);
+      }
       updateDashboardStatus();
       updateAiUI();
       startReconnectLoop();
