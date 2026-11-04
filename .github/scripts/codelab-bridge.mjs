@@ -1768,7 +1768,7 @@ try {
     }
   }
   stage = 'report_result';
-  await comment('## CodeLab Bridge result\n\n```json\n' + JSON.stringify({
+  const report = {
     protocol: 'codelab-agent-bridge/v1',
     command_id: commandId,
     status: 'succeeded',
@@ -1783,7 +1783,23 @@ try {
       issue_number: Number.isFinite(issueNumber) ? issueNumber : null
     },
     result
-  }, null, 2).slice(0, 9000) + '\n```');
+  };
+  const serializedReport = JSON.stringify(report, null, 2);
+  const boundedReport = Buffer.byteLength(serializedReport, 'utf8') <= 55000
+    ? serializedReport
+    : JSON.stringify({
+      ...report,
+      diagnostics: { ...report.diagnostics, result_truncated: true },
+      result: {
+        status: result?.status || 'succeeded',
+        projectId: result?.projectId || null,
+        serverRevision: result?.serverRevision ?? null,
+        approved: result?.approved ?? null,
+        resultTruncated: true,
+        message: 'The result exceeded the safe GitHub comment size. Re-run inspection with a smaller region or fewer requested details; the command status above remains authoritative.'
+      }
+    }, null, 2);
+  await comment('## CodeLab Bridge result\n\n```json\n' + boundedReport + '\n```');
 } catch (error) {
   const rawMessage = String(error?.message || error);
   const safeMessage = rawMessage.replace(/<[^>]*>/g, '<element>').slice(0, 1000);
