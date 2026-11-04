@@ -33,6 +33,11 @@ function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function totalDuration() {
   return packageData?.frames.reduce((sum, frame) => sum + frame.durationMs, 0) ?? 0;
 }
+function refreshExportSummary() {
+  if (!packageData) return;
+  const repeats = $('#vc-loop-export').checked ? 2 : 1;
+  $('#vc-export-duration').textContent = (totalDuration() * repeats / 1000).toFixed(2) + ' s';
+}
 function frameStart(index) {
   return packageData.frames.slice(0, index).reduce((sum, frame) => sum + frame.durationMs, 0);
 }
@@ -169,7 +174,7 @@ async function importPackage(file) {
     $('#vc-stat-duration').textContent = (parsed.manifest.totalDurationMs / 1000).toFixed(2) + ' s';
     $('#vc-preview-resolution').textContent = parsed.manifest.width + ' × ' + parsed.manifest.height;
     $('#vc-total-time').textContent = formatTime(parsed.manifest.totalDurationMs);
-    $('#vc-export-duration').textContent = (parsed.manifest.totalDurationMs / 1000).toFixed(2) + ' s';
+    refreshExportSummary();
     $('#vc-export-dimensions').textContent = parsed.manifest.width * Number($('#vc-scale').value) + ' × ' + parsed.manifest.height * Number($('#vc-scale').value);
     $('#vc-timeline-count').textContent = parsed.frames.length + ' fotogramas';
     $('#vc-audio-status').textContent = parsed.manifest.audio?.length ? 'Pista de audio incluida en el paquete' : 'Este paquete no contiene audio';
@@ -367,6 +372,7 @@ $('#vc-scale').addEventListener('change', () => {
   $('#vc-export-dimensions').textContent = packageData.manifest.width * Number($('#vc-scale').value) + ' × ' + packageData.manifest.height * Number($('#vc-scale').value);
 });
 $('#vc-format').addEventListener('change', refreshFormatSupport);
+$('#vc-loop-export').addEventListener('change', refreshExportSummary);
 $('#vc-export').addEventListener('click', exportVideo);
 $('#vc-export-top').addEventListener('click', exportVideo);
 resetComposer();
