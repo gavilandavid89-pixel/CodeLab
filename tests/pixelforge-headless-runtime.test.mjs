@@ -68,7 +68,7 @@ test('headless proposal rejects a stale source revision', () => {
 test('headless structural layer changes are reviewed and committed as one undoable source transaction', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
   const batch = runtime.executeBatch([
-    { name: 'layer.add', name: 'Ink' },
+    { name: 'layer.add', layerName: 'Ink' },
   ]);
   assert.equal(batch.ok, true);
   assert.equal(runtime.inspect().sandbox.layerCount, 2);
@@ -85,7 +85,7 @@ test('headless structural layer changes are reviewed and committed as one undoab
 
 test('headless layer selection advances the sandbox revision and is proposal-visible', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
-  const added = runtime.execute({ name: 'layer.add', name: 'Color' });
+  const added = runtime.execute({ name: 'layer.add', layerName: 'Color' });
   assert.equal(added.ok, true);
   const layerId = added.result.layerId;
   const selected = runtime.execute({ name: 'layer.select', layerId });
