@@ -5,7 +5,7 @@ CREATE TABLE public.codelab_agent_commands (
   command_id text PRIMARY KEY,
   workspace_id text NOT NULL,
   action text NOT NULL CHECK (action IN (
-    'status','pixelforge_list','pixelforge_inspect',
+    'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
     'pixelforge_propose','pixelforge_approve','pixelforge_discard'
   )),
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
