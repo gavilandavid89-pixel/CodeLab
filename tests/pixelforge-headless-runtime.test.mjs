@@ -339,3 +339,26 @@ test('headless transform preview reports bounds without changing the sandbox rev
   assert.equal(pendingPreview.ok, true, 'read-only transform preview should be allowed while a proposal is pending');
   assert.equal(pending.hasPendingProposal, true);
 });
+
+test('animation timeline has isolated undo and redo history before proposal acceptance', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false);
+  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Pose A' });
+  runtime.execute({ name: 'animation.frame.set_duration', index: 0, durationMs: 250 });
+  assert.equal(runtime.inspect().animation.frames[0].durationMs, 250);
+
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frames[0].durationMs, 83);
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frameCount, 0);
+  assert.equal(runtime.hasPendingChanges, false, 'undoing back to the committed timeline clears dirty state');
+
+  assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frameCount, 1);
+  assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frames[0].durationMs, 250);
+  runtime.createProposal('Create Pose A with a 250 ms duration');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.toJSON().animation.frames[0].durationMs, 250);
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false, 'accepted timeline clears its temporary undo stack');
+});
