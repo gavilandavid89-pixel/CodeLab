@@ -99,6 +99,29 @@ async function beginUpload(pool, workspaceId, body, maxProjectBytes, maxAccountB
   }
 }
 
+async function getUploadStatus(pool, workspaceId, uploadId) {
+  if (!/^[a-f0-9]{32}$/.test(uploadId || '')) throw new PixelForgeUploadError('invalid_pixelforge_upload', 400);
+  const result = await pool.query(
+    'SELECT total_bytes,total_chunks,expires_at,committed,receipt FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2',
+    [uploadId, workspaceId]
+  );
+  if (!result.rowCount) throw new PixelForgeUploadError('pixelforge_upload_not_found', 404);
+  const upload = result.rows[0];
+  if (Number(upload.expires_at) <= Date.now()) throw new PixelForgeUploadError('pixelforge_upload_expired', 410);
+  if (upload.committed) return { uploadId, committed: true, receipt: upload.receipt };
+  const received = await pool.query(
+    'SELECT chunk_index FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1 ORDER BY chunk_index',
+    [uploadId]
+  );
+  return {
+    uploadId, committed: false, chunkSize: CHUNK_BYTES,
+    totalChunks: Number(upload.total_chunks),
+    receivedChunks: received.rows.map(row => Number(row.chunk_index)),
+    totalBytes: Number(upload.total_bytes),
+    expiresAt: Number(upload.expires_at)
+  };
+}
+
 async function putChunk(pool, workspaceId, uploadId, index, body) {
   if (!/^[a-f0-9]{32}$/.test(uploadId || '') || !Number.isInteger(index) ||
       !body || typeof body.chunk !== 'string' || !/^[a-f0-9]{64}$/i.test(body.sha256 || '')) {
@@ -209,4 +232,4 @@ async function markCommitted(pool, uploadId, receipt) {
   }
 }
 
-module.exports = { CHUNK_BYTES, UPLOAD_TTL_MS, PixelForgeUploadError, ensureSchema, beginUpload, putChunk, assembleUpload, cancelUpload, markCommitted };
+module.exports = { CHUNK_BYTES, UPLOAD_TTL_MS, PixelForgeUploadError, ensureSchema, beginUpload, getUploadStatus, putChunk, assembleUpload, cancelUpload, markCommitted };
