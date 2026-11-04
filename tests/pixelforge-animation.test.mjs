@@ -200,6 +200,16 @@ test('isolates every frame/layer cel and stays responsive at 64 layers across th
   assert.throws(() => timeline.addLayer('layer-overflow'), /up to 64 raster layers/);
 });
 
+test('keeps large animation thumbnail previews inside an 8 MiB cache budget', () => {
+  const timeline = new PixelForgeAnimation({ width: 256, height: 256, layerIds: ['layer-large'] });
+  for (let index = 1; index < 33; index++) timeline.addFrame({ duplicate: false });
+  for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 256);
+  assert.equal(timeline.frameCount, 33);
+  assert.ok(timeline.thumbnailCacheBytes > 0);
+  assert.ok(timeline.thumbnailCacheBytes <= 8 * 1024 * 1024,
+    'large previews must evict least-recently-used entries instead of growing without bound');
+});
+
 test('uses 60 FPS timing and rejects oversized allocations before decoding cels', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture());
   assert.equal(timeline.setFps(60), 1000 / 60);
