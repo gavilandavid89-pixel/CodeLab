@@ -128,6 +128,7 @@ export class PixelForgeAnimation {
   #height;
   #fps;
   #activeFrameIndex;
+  #thumbnailCache = new Map();
 
   constructor({ width, height, layerIds, fps = 12, frames = null, activeFrameIndex = 0 }) {
     assertDimensions(width, height);
@@ -244,6 +245,20 @@ export class PixelForgeAnimation {
       }
       if (settings.size !== this.#layerIds.length) throw new TypeError('Thumbnail settings are missing a raster layer.');
     }
+    // Timeline renders are frequent (selection, drawing, playback controls). Cache
+    // small previews per immutable frame identity + layer presentation settings so
+    // a 64-layer / 240-frame project does not recomposite every thumbnail on each UI refresh.
+    const settingsKey = this.#layerIds.map(id => {
+      const setting = settings.get(id);
+      return [id, setting?.visible !== false, setting?.opacity ?? 1];
+    });
+    const cacheKey = frame.id + ':' + maxDimension + ':' + JSON.stringify(settingsKey);
+    const cached = this.#thumbnailCache.get(cacheKey);
+    if (cached) {
+      this.#thumbnailCache.delete(cacheKey);
+      this.#thumbnailCache.set(cacheKey, cached);
+      return { width: cached.width, height: cached.height, pixels: new Uint8ClampedArray(cached.pixels) };
+    }
     const scale = Math.min(1, maxDimension / Math.max(this.#width, this.#height));
     const width = Math.max(1, Math.round(this.#width * scale));
     const height = Math.max(1, Math.round(this.#height * scale));
@@ -272,6 +287,8 @@ export class PixelForgeAnimation {
         pixels[target + 3] = Math.round(alpha * 255);
       }
     }
+    this.#thumbnailCache.set(cacheKey, { width, height, pixels: new Uint8ClampedArray(pixels) });
+    while (this.#thumbnailCache.size > 480) this.#thumbnailCache.delete(this.#thumbnailCache.keys().next().value);
     return { width, height, pixels };
   }
 
@@ -280,6 +297,7 @@ export class PixelForgeAnimation {
     const frame = this.#frameAt(frameIndex);
     if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
     frame.cels.set(layerId, clonePixels(pixels, this.#width * this.#height * 4));
+    for (const key of this.#thumbnailCache.keys()) if (key.startsWith(frame.id + ':')) this.#thumbnailCache.delete(key);
     this.#assertMemoryBudget();
     return true;
   }
@@ -319,6 +337,7 @@ export class PixelForgeAnimation {
     this.#frameAt(index);
     if (this.#frames.length === 1) throw new RangeError('An animation must keep at least one frame.');
     const [removed] = this.#frames.splice(index, 1);
+    for (const key of this.#thumbnailCache.keys()) if (key.startsWith(removed.id + ':')) this.#thumbnailCache.delete(key);
     if (this.#activeFrameIndex > index) this.#activeFrameIndex--;
     else if (this.#activeFrameIndex === index) this.#activeFrameIndex = Math.min(index, this.#frames.length - 1);
     return Object.freeze({ id: removed.id, index });
@@ -350,6 +369,7 @@ export class PixelForgeAnimation {
       throw new Error('Source animation layer ID does not exist.');
     }
     this.#layerIds.push(layerId);
+    this.#thumbnailCache.clear();
     for (const frame of this.#frames) {
       const source = copyFromLayerId === null ? null : frame.cels.get(copyFromLayerId);
       frame.cels.set(layerId, source ? new Uint8ClampedArray(source) : new Uint8ClampedArray(byteLength));
@@ -361,6 +381,7 @@ export class PixelForgeAnimation {
     if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
     if (this.#layerIds.length <= 1) throw new RangeError('An animation must keep at least one raster layer.');
     this.#layerIds = this.#layerIds.filter(id => id !== layerId);
+    this.#thumbnailCache.clear();
     for (const frame of this.#frames) frame.cels.delete(layerId);
     return this.#layerIds.length;
   }
@@ -373,6 +394,7 @@ export class PixelForgeAnimation {
     if (layerIds.every((id, index) => id === this.#layerIds[index])) return false;
     for (const frame of this.#frames) frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
     this.#layerIds = [...layerIds];
+    this.#thumbnailCache.clear();
     return true;
   }
 
