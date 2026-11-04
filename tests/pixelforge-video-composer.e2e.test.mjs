@@ -81,7 +81,7 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
     const videoDownloadPromise = page.waitForEvent('download', { timeout: 15000 });
     await page.locator('#vc-export').click();
     const videoDownload = await videoDownloadPromise;
-    assert.match(videoDownload.suggestedFilename(), /\\.(webm|mp4)$/);
+    assert.match(videoDownload.suggestedFilename(), /\.(webm|mp4)$/);
     const videoPath = await videoDownload.path();
     assert.ok(fs.statSync(videoPath).size > 0, 'the browser encoder must produce a non-empty local video file');
   }
