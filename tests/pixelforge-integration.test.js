@@ -543,8 +543,23 @@ async function main() {
     const context = await browser.newContext();
     await context.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.78' } }));
     const page = await context.newPage();
+    const anonymousPageErrors = [];
+    page.on('pageerror', error => anonymousPageErrors.push(error.message));
+    const anonymousAuthResponse = await page.request.get(base + '/api/auth/status');
+    const anonymousAuth = await anonymousAuthResponse.json();
+    assert.equal(anonymousAuth.user, null, 'the anonymous browser context must not inherit an account session');
     await page.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => document.body.innerText.includes('Inicia sesión en CodeLab'));
+    try {
+      await page.waitForFunction(() => document.body.innerText.includes('Inicia sesión en CodeLab'), null, { timeout: 10000 });
+    } catch (error) {
+      const diagnostics = await page.evaluate(() => ({
+        bodyText: document.body.innerText.slice(0, 1200),
+        status: document.querySelector('#status')?.textContent || null,
+        sharedRuntimeAvailable: Boolean(window.CodeLabStudioCore)
+      }));
+      throw new Error('Anonymous PixelForge sign-in gate did not render; diagnostics=' +
+        JSON.stringify({ auth: anonymousAuth, diagnostics, pageErrors: anonymousPageErrors }) + '; cause=' + error.message);
+    }
     assert.match(await page.locator('body').innerText(), /Ir a CodeLab e iniciar sesión/, 'anonymous visitors should be directed to CodeLab authentication');
     assert.equal(await page.locator('#canvas').count(), 0, 'editor must not initialize before account authentication');
     await context.close();
@@ -676,6 +691,61 @@ async function main() {
       return [...bytes.subarray(offset, offset + 4)];
     }
 
+    // Exercise the actual timeline controls in Chromium and verify that the
+    // multi-layer animation survives the authenticated PostgreSQL save path.
+    await accountPage.locator('#animation-add-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '1 frame');
+    await accountPage.locator('#animation-duplicate-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '2 frames');
+    await accountPage.locator('#animation-fps').fill('24');
+    await accountPage.locator('#animation-fps').press('Tab');
+    await accountPage.locator('#animation-duration').fill('250');
+    await accountPage.locator('#animation-duration').press('Tab');
+    await accountPage.locator('#animation-play').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-stop')?.disabled === false);
+    await accountPage.waitForTimeout(60);
+    await accountPage.locator('#animation-stop').click();
+    await accountPage.locator('#animation-loop').uncheck();
+    await accountPage.locator('#animation-onion').check();
+    await accountPage.locator('#animation-add-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '3 frames');
+    await accountPage.locator('#animation-frame-left').click();
+    await accountPage.locator('#animation-frame-right').click();
+    await accountPage.locator('#animation-delete-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '2 frames');
+    await waitForRasterSave();
+    const savedAnimationProject = await readSavedArtwork();
+    assert.equal(savedAnimationProject.animation.frames.length, 2, 'timeline add/duplicate/delete actions should persist the expected frame count');
+    assert.equal(savedAnimationProject.animation.fps, 24, 'FPS control should persist its new value');
+    assert.equal(savedAnimationProject.animation.loop, false, 'loop control should persist its unchecked state');
+    assert.equal(savedAnimationProject.animation.frames[1].durationMs, 250, 'per-frame duration control should persist its new value');
+    const animationDownloadsPromise = new Promise((resolve, reject) => {
+      const downloads = [];
+      const onDownload = download => {
+        downloads.push(download);
+        if (downloads.length === 2) {
+          clearTimeout(timeout);
+          accountPage.off('download', onDownload);
+          resolve(downloads);
+        }
+      };
+      const timeout = setTimeout(() => {
+        accountPage.off('download', onDownload);
+        reject(new Error('PixelForge animation export did not emit both PNG and JSON downloads'));
+      }, 10000);
+      accountPage.on('download', onDownload);
+    });
+    await accountPage.locator('#animation-export-sheet').click();
+    const [spriteSheetDownload, animationManifestDownload] = await animationDownloadsPromise;
+    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\.png$/);
+    assert.match(animationManifestDownload.suggestedFilename(), /-animation\.json$/);
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#animation-frame-count').innerText(), '2 frames',
+      'the timeline should be restored after reloading the saved account project');
+    assert.equal(await accountPage.locator('#animation-loop').isChecked(), false,
+      'the saved loop setting should be restored after reload');
+
     await setForegroundColor('#ff0000');
     await accountPage.locator('#brush-tool').click();
     await clickPixel(2, 2);
@@ -799,8 +869,11 @@ async function main() {
     assert.equal(importedAfterSave.serverRevision, importedRevisionBeforeEdit + 1,
       'the first explicit save after import must advance the server revision instead of conflicting with its own import');
     const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
-    assert.match(editorSource, /doc = importedDoc; clearSelectionState\(\); resetAIWorkspaceForDocument\(\);/,
-      'importing a document must rebind the AI workspace to the newly active raster document');
+    const importDocAssignmentAt = editorSource.indexOf('doc = importedDoc;');
+    const importAnimationRestoreAt = editorSource.indexOf('animation = importedDoc.animationData', importDocAssignmentAt);
+    const importWorkspaceRebindAt = editorSource.indexOf('clearSelectionState(); resetAIWorkspaceForDocument();', importAnimationRestoreAt);
+    assert.ok(importDocAssignmentAt >= 0 && importAnimationRestoreAt > importDocAssignmentAt && importWorkspaceRebindAt > importAnimationRestoreAt,
+      'importing a document must restore its animation, clear stale selection state, and rebind the AI workspace');
 
     // Large resumable transfers require the PostgreSQL-backed chunk routes.
     if (process.env.DATABASE_URL) {

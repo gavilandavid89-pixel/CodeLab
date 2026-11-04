@@ -29,6 +29,36 @@ test('creates a one-frame timeline from the existing raster document without sha
   assert.equal(source.layers[0].pixels[0], 10);
 });
 
+test('keeps the serialized timeline contract compatible with the DOM-free Headless adapter', () => {
+  const source = documentFixture();
+  const timeline = PixelForgeAnimation.fromDocument(source, { fps: 18 });
+  timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(91));
+  timeline.addFrame({ duplicate: true, durationMs: 125 });
+  timeline.setLayerPixels(1, 'color', new Uint8ClampedArray(16).fill(37));
+
+  // The Headless animation adapter consumes this same versioned model shape.
+  // The project envelope adds loop metadata; it is intentionally not model state.
+  const serialized = { ...timeline.toJSON(), loop: false };
+  assert.deepEqual(Object.keys(serialized).sort(), [
+    'activeFrameIndex', 'format', 'fps', 'frames', 'height', 'layerIds', 'loop', 'version', 'width',
+  ]);
+  assert.equal(serialized.format, 'pixelforge-animation');
+  assert.equal(serialized.version, 1);
+  assert.equal(serialized.loop, false);
+  assert.deepEqual(serialized.layerIds, ['ink', 'color']);
+  assert.equal(serialized.frames.length, 2);
+  assert.deepEqual(serialized.frames[0].cels.map(cel => cel.layerId), ['ink', 'color']);
+  assert.equal(Buffer.from(serialized.frames[0].cels[0].pixels, 'base64').length, 16);
+  assert.equal(Buffer.from(serialized.frames[1].cels[1].pixels, 'base64')[0], 37);
+
+  const restored = PixelForgeAnimation.fromJSON(serialized);
+  assert.equal(restored.fps, 18);
+  assert.equal(restored.activeFrameIndex, 1);
+  assert.equal(restored.getFrame(1).durationMs, 125);
+  assert.equal(restored.getLayerPixels(0, 'ink')[0], 91);
+  assert.equal(restored.getLayerPixels(1, 'color')[0], 37);
+});
+
 test('adds blank and duplicated frames with independent cels', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture());
   timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(77));
@@ -156,6 +186,21 @@ test('composites animation cels using the shared raster layer visibility and opa
   assert.throws(() => timeline.compositeFrame(0, [{ id: 'ink' }]), /match the animation layer stack/);
 });
 
+test('renders memory-bounded animation thumbnails without allocating full-resolution frame composites', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  const ink = new Uint8ClampedArray(16);
+  ink.set([255, 0, 0, 255], 0);
+  timeline.setLayerPixels(0, 'ink', ink);
+  const thumbnail = timeline.compositeThumbnail(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: false, opacity: 1 },
+  ], 16);
+  assert.equal(thumbnail.width, 2);
+  assert.equal(thumbnail.height, 2);
+  assert.deepEqual([...thumbnail.pixels.slice(0, 4)], [255, 0, 0, 255]);
+  assert.throws(() => timeline.compositeThumbnail(0, null, 4), /8 to 256/);
+});
+
 test('round-trips timeline metadata and RGBA cels through a validated JSON format', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 8 });
   timeline.setLayerPixels(0, 'color', new Uint8ClampedArray(16).fill(201));
@@ -277,6 +322,51 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'the combined project envelope must be preflighted before building the serialized save body');
   assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
     'large saves should consult upload status before resending chunks');
+  const serverSource = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  assert.ok(serverSource.includes("'.mjs': 'application/javascript; charset=utf-8'") &&
+    serverSource.includes("ext === '.mjs'"), 'server must serve and revalidate imported .mjs browser modules with a JavaScript MIME type');
+  const editorSource = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/editor.js'), 'utf8');
+  const editorStyles = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/styles.css'), 'utf8');
+  const declaredButtons = [...editorHtml.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
+  const unreferencedButtons = declaredButtons.filter(id => !editorSource.includes('#' + id));
+  assert.deepEqual(unreferencedButtons, [], 'every static PixelForge button must be referenced by the editor controller');
+  assert.ok(editorSource.includes("closest('[data-selection-move]')") && editorSource.includes("closest('button[data-transform]')"),
+    'delegated selection and transform controls must remain wired');
+  assert.ok(editorSource.includes("setInspectorPanel('properties')") && editorSource.includes("setInspectorPanel('layers')") &&
+    editorSource.includes("setInspectorPanel('ai')") && editorSource.includes("setInspectorPanel('files')"),
+    'all inspector screens must have working navigation handlers');
+  assert.ok(editorStyles.includes('@media(max-width:760px)') && editorStyles.includes('.animation-panel') &&
+    editorStyles.includes('.inspector[data-panel="files"]'), 'editor and timeline screens must retain responsive mobile layouts');
+  assert.ok(editorSource.includes('const thumbScale = Math.min(48 / preview.width, 48 / preview.height)') &&
+    editorSource.includes('Math.floor((48 - thumbWidth) / 2)'), 'timeline thumbnails must preserve canvas aspect ratio');
+
+  assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
+    editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
+    'the raster editor must expose the animation timeline controls');
+  assert.ok(editorSource.includes('function renderAuthenticationRequired()') &&
+    editorSource.includes("error?.status === 401 || error?.code === 'not_authenticated'"),
+    'PixelForge must render its CodeLab sign-in screen when the shared session API rejects an anonymous visitor');
+  const addFrameHandler = editorSource.slice(editorSource.indexOf("$('#animation-add-frame').addEventListener"), editorSource.indexOf("$('#animation-duplicate-frame').addEventListener"));
+  assert.ok(addFrameHandler.includes('const timelineWasActive = Boolean(animation)') &&
+    addFrameHandler.includes("if (!timelineWasActive)") && addFrameHandler.includes("status('Animation timeline started'"),
+    'the first timeline click must start a single-frame timeline instead of silently adding a second blank frame');
+  assert.ok(editorSource.includes('function buildProjectSnapshot') && editorSource.includes('snapshot.animation'),
+    'animation data must travel with the normal project save/export lifecycle');
+  assert.ok(editorSource.includes('snapshot.animation = { ...animation.toJSON(), loop: animationLoop }'),
+    'the project envelope must preserve the loop flag expected by Headless');
+  assert.ok(editorSource.includes('function switchAnimationFrame') && editorSource.includes('doc.replaceLayerPixelsBatch'),
+    'frame switching must reuse the existing raster document and drawing tools');
+  assert.ok(editorSource.includes('function canGrowAnimationLayer') && editorSource.includes('Cannot restore that layer'),
+    'layer operations and undo/redo must respect the combined animation memory budget');
+  const cropDisabledAt = editorSource.indexOf("$('#crop-preview').disabled = enabled");
+  const enabledDeclaredAt = editorSource.indexOf('const enabled = Boolean(animation)', editorSource.indexOf('function renderAnimationTimeline'));
+  assert.ok(enabledDeclaredAt >= 0 && cropDisabledAt > enabledDeclaredAt,
+    'animation UI state must be initialized before crop controls read it');
+  assert.ok(editorSource.includes("$('#crop-preview').disabled = enabled"),
+    'canvas crop must not silently desynchronize all animation cels');
+  assert.ok(editorSource.includes('function drawOnionSkinOverlay') && editorSource.includes('startAnimationPlayback'),
+    'the editor must wire onion-skin preview and playback');
+  assert.ok(animation.includes('compositeThumbnail('), 'timeline thumbnails must use bounded-size compositing');
   assert.ok(server.includes('validatePixelForgeAnimation(project)'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
 });

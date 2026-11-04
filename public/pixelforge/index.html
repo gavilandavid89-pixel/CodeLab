@@ -53,6 +53,28 @@
       <div class="stage-bottom-left"><span class="stage-indicator"></span><span id="status" data-kind="success" role="status" aria-live="polite">Starting editor…</span></div>
       <div class="stage-bottom-right"><button id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-label">300%</span><button id="zoom-in" aria-label="Zoom in">＋</button></div>
     </div>
+    <section class="animation-panel" aria-label="Animation timeline">
+      <div class="animation-toolbar">
+        <div class="animation-title"><span class="section-icon">▥</span><strong>Timeline</strong><span id="animation-frame-count" class="tiny-tag">Not started</span></div>
+        <div class="animation-actions">
+          <button id="animation-play" type="button" title="Play animation" aria-label="Play animation" disabled>▶</button>
+          <button id="animation-stop" type="button" title="Stop playback" aria-label="Stop playback" disabled>■</button>
+          <button id="animation-add-frame" type="button" title="Add blank frame" disabled>＋ Frame</button>
+          <button id="animation-duplicate-frame" type="button" title="Duplicate active frame" disabled>Duplicate</button>
+          <button id="animation-delete-frame" type="button" title="Delete active frame" disabled>Delete</button>
+          <button id="animation-frame-left" type="button" title="Move frame left" disabled>←</button>
+          <button id="animation-frame-right" type="button" title="Move frame right" disabled>→</button>
+          <label class="animation-number">FPS <input id="animation-fps" type="number" min="1" max="60" value="12" disabled></label>
+          <label class="animation-number">Duration <input id="animation-duration" type="number" min="1" max="10000" step="1" value="83" disabled><span>ms</span></label>
+          <label class="animation-check"><input id="animation-loop" type="checkbox" checked disabled> Loop</label>
+          <label class="animation-check"><input id="animation-onion" type="checkbox" disabled> Onion skin</label>
+          <button id="animation-export-sheet" type="button" title="Export animation frames as a sprite sheet" disabled>Export sheet</button>
+        </div>
+      </div>
+      <div id="animation-frames" class="animation-frames" role="list" aria-label="Animation frames">
+        <p class="animation-empty">Create a frame to start animating. Every frame uses your existing raster layers and drawing tools.</p>
+      </div>
+    </section>
     <footer class="bottom-bar"><span><span class="bottom-dot"></span> CodeLab account workspace</span><span>Document pixels stay independent of the interface</span><span>PixelForge <span class="footer-version">v0.1 · early build</span></span></footer>
   </section>
   <aside class="inspector" aria-label="Tool options and layers">

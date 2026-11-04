@@ -6,6 +6,7 @@ import { createSpriteSheetLayout } from './asset-export.js';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
+import { PixelForgeAnimation } from './animation.mjs';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -13,6 +14,8 @@ const workArea = $('#work-area');
 const previewCanvas = document.createElement('canvas'), previewCtx = previewCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
+let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true;
+let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1 };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
 let color = $('#color').value, backgroundColor = '#242632', recentColors = [], brushSize = Number($('#brush-size').value);
@@ -268,6 +271,7 @@ function render() {
     ctx.fillStyle = '#20232d';
     ctx.fillRect(panX - 1, panY - 1, doc.width * zoom + 2, doc.height * zoom + 2);
     ctx.drawImage(previewCanvas, panX, panY, doc.width * zoom, doc.height * zoom);
+    drawOnionSkinOverlay();
     if (transformPreview && transformPreview.docWidth === doc.width && transformPreview.docHeight === doc.height) {
       ctx.save(); ctx.globalAlpha = .78; ctx.imageSmoothingEnabled = false;
       ctx.drawImage(transformPreviewCanvas, panX, panY, doc.width * zoom, doc.height * zoom); ctx.restore();
@@ -521,7 +525,7 @@ function scheduleAutosave() {
     // successful save when two edits happen close together.
     const operation = autosaveInFlight.catch(() => {}).then(async () => {
       if (doc !== savingDoc) return;
-      const version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
+      const version = savingDoc.saveVersion, snapshot = buildProjectSnapshot(savingDoc);
       const saved = await saveProject(snapshot);
       if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
       savingDoc.dirty = savingDoc.saveVersion !== version;
@@ -551,7 +555,7 @@ async function flushAutosave({ force = false } = {}) {
       await autosaveInFlight;
       if (!savingDoc.dirty && !pending && !force) return;
       while (doc === savingDoc) {
-        const version = savingDoc.saveVersion, snapshot = savingDoc.toJSON();
+        const version = savingDoc.saveVersion, snapshot = buildProjectSnapshot(savingDoc);
         const saved = await saveProject(snapshot);
         if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
         if (savingDoc.saveVersion === version) { savingDoc.dirty = false; break; }
@@ -566,7 +570,213 @@ async function flushAutosave({ force = false } = {}) {
   try { await flushPromise; }
   finally { flushPromise = null; }
 }
-function changed() { clearTransformPreview(); clearCropPreview(); syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave(); }
+function animationFrameId(index) { return animation?.getFrame(index)?.id ?? null; }
+function saveAnimationFrameHistory(frameId) {
+  if (!frameId) return;
+  animationFrameHistory.set(frameId, { history: [...doc.history], future: [...doc.future], historyBytes: doc.historyBytes });
+}
+function syncAnimationLayerStack(copyFromByNewId = new Map()) {
+  if (!animation) return;
+  const currentIds = doc.layers.map(layer => layer.id);
+  const currentSet = new Set(currentIds);
+  for (const oldId of animation.layerIds) {
+    if (currentSet.has(oldId)) continue;
+    const frames = [];
+    for (let index = 0; index < animation.frameCount; index++) {
+      frames.push({ frameId: animationFrameId(index), pixels: animation.getLayerPixels(index, oldId) });
+    }
+    animationOrphanCels.set(oldId, frames);
+    animation.removeLayer(oldId);
+  }
+  const existing = new Set(animation.layerIds);
+  for (const layer of doc.layers) {
+    if (existing.has(layer.id)) continue;
+    const sourceId = copyFromByNewId.get(layer.id);
+    animation.addLayer(layer.id, { copyFromLayerId: sourceId || null });
+    const orphan = animationOrphanCels.get(layer.id);
+    if (orphan) {
+      for (const item of orphan) {
+        const index = Array.from({ length: animation.frameCount }, (_, i) => i).find(i => animationFrameId(i) === item.frameId);
+        if (index !== undefined) animation.setLayerPixels(index, layer.id, item.pixels);
+      }
+      animationOrphanCels.delete(layer.id);
+    }
+    existing.add(layer.id);
+  }
+  animation.reorderLayers(currentIds);
+}
+function markAnimationChanged() { doc.revision++; doc.saveVersion++; doc.dirty = true; }
+function canGrowAnimationLayer() {
+  return !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
+}
+function captureAnimationFrame() {
+  if (!animation) return;
+  syncAnimationLayerStack();
+  const index = animation.activeFrameIndex;
+  for (const layer of doc.layers) animation.setLayerPixels(index, layer.id, layer.pixels);
+}
+function applyAnimationFramePixels(index) {
+  if (!animation) return;
+  const frameId = animationFrameId(index);
+  const previousRevision = doc.revision, previousSaveVersion = doc.saveVersion;
+  const replacements = doc.layers.map(layer => ({ layerId: layer.id, pixels: animation.getLayerPixels(index, layer.id) }));
+  const locks = doc.layers.map(layer => [layer, layer.locked]);
+  try {
+    for (const [layer] of locks) layer.locked = false;
+    doc.replaceLayerPixelsBatch(replacements);
+  } finally {
+    for (const [layer, locked] of locks) layer.locked = locked;
+  }
+  const history = animationFrameHistory.get(frameId);
+  doc.history = history ? [...history.history] : [];
+  doc.future = history ? [...history.future] : [];
+  doc.historyBytes = history?.historyBytes ?? 0;
+  if (doc.revision === previousRevision) doc.revision++;
+  if (doc.saveVersion === previousSaveVersion) doc.saveVersion++;
+  doc.dirty = true;
+  clearSelectionState();
+  renderLayers();
+  renderAnimationTimeline();
+  render();
+  updateTitle();
+  syncAIWorkspaceFromUser();
+}
+function switchAnimationFrame(index, { autosave = true } = {}) {
+  if (!animation || index === animation.activeFrameIndex) return false;
+  settleActiveInput();
+  const previousId = animationFrameId(animation.activeFrameIndex);
+  captureAnimationFrame();
+  saveAnimationFrameHistory(previousId);
+  animation.setActiveFrame(index);
+  applyAnimationFramePixels(index);
+  if (autosave) scheduleAutosave();
+  return true;
+}
+function ensureAnimation() {
+  if (!animation) {
+    if (cropPreview || transformPreview) throw new Error('Finish or cancel the active preview before starting an animation timeline.');
+    animation = PixelForgeAnimation.fromDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
+    animationFrameHistory.set(animationFrameId(0), { history: [...doc.history], future: [...doc.future], historyBytes: doc.historyBytes });
+    renderAnimationTimeline();
+  }
+  return animation;
+}
+function buildProjectSnapshot(targetDoc = doc) {
+  if (targetDoc === doc && animation) captureAnimationFrame();
+  const snapshot = targetDoc.toJSON();
+  if (targetDoc === doc && animation) { snapshot.animation = { ...animation.toJSON(), loop: animationLoop }; }
+  return snapshot;
+}
+function drawOnionSkinOverlay() {
+  if (!animation || !$('#animation-onion')?.checked) return;
+  const neighbors = animation.getOnionSkinFrames({ previous: 1, next: 1 });
+  if (!neighbors.length) return;
+  const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  const surface = document.createElement('canvas'); surface.width = doc.width; surface.height = doc.height;
+  const surfaceContext = surface.getContext('2d');
+  if (!surfaceContext) return;
+  for (const neighbor of neighbors) {
+    const pixels = animation.compositeFrame(neighbor.index, layerSettings);
+    surfaceContext.clearRect(0, 0, doc.width, doc.height);
+    surfaceContext.putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+    surfaceContext.globalCompositeOperation = 'source-atop';
+    surfaceContext.fillStyle = neighbor.direction === 'previous' ? 'rgba(90,150,255,.58)' : 'rgba(255,100,150,.58)';
+    surfaceContext.fillRect(0, 0, doc.width, doc.height);
+    surfaceContext.globalCompositeOperation = 'source-over';
+    ctx.save(); ctx.globalAlpha = neighbor.opacity * .55;
+    ctx.drawImage(surface, panX, panY, doc.width * zoom, doc.height * zoom);
+    ctx.restore();
+  }
+}
+function renderAnimationTimeline() {
+  const host = $('#animation-frames');
+  if (!host) return;
+  const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-loop','animation-onion','animation-export-sheet'];
+  const enabled = Boolean(animation);
+  $('#crop-preview').disabled = enabled;
+  $('#crop-preview').title = enabled ? 'Canvas crop is temporarily unavailable while a multi-frame timeline is active' : 'Preview crop for the current canvas';
+  for (const id of controls) { const node = $('#' + id); if (node) node.disabled = !enabled; }
+  $('#animation-play').disabled = !enabled || animation.frameCount < 2 || animationPlayback.playing;
+  $('#animation-stop').disabled = !enabled || !animationPlayback.playing;
+  $('#animation-add-frame').disabled = enabled && animation.frameCount >= 240;
+  $('#animation-delete-frame').disabled = !enabled || animation.frameCount <= 1;
+  $('#animation-frame-left').disabled = !enabled || animation.activeFrameIndex <= 0;
+  $('#animation-frame-right').disabled = !enabled || animation.activeFrameIndex >= animation.frameCount - 1;
+  $('#animation-frame-count').textContent = enabled ? `${animation.frameCount} frame${animation.frameCount === 1 ? '' : 's'}` : 'Not started';
+  $('#animation-add-frame').textContent = enabled ? '＋ Frame' : 'Start timeline';
+  $('#animation-add-frame').title = enabled ? 'Add blank frame' : 'Start animation timeline';
+  if (!enabled) {
+    host.replaceChildren();
+    const empty = document.createElement('p'); empty.className = 'animation-empty';
+    empty.textContent = 'Create a frame to start animating. Every frame uses your existing raster layers and drawing tools.';
+    host.append(empty);
+    return;
+  }
+  $('#animation-fps').value = String(animation.fps);
+  $('#animation-duration').value = String(animation.activeFrame.durationMs);
+  $('#animation-loop').checked = animationLoop;
+  host.replaceChildren();
+  for (let index = 0; index < animation.frameCount; index++) {
+    const frame = animation.getFrame(index);
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'animation-frame'; button.setAttribute('role','listitem');
+    button.setAttribute('aria-pressed', String(index === animation.activeFrameIndex));
+    button.setAttribute('aria-label', `Frame ${index + 1}, ${frame.durationMs} milliseconds`);
+    button.title = `Select frame ${index + 1}`;
+    const thumb = document.createElement('canvas'); thumb.width = 48; thumb.height = 48;
+    const tctx = thumb.getContext('2d');
+    const preview = animation.compositeThumbnail(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })), 48);
+    const thumbPixels = document.createElement('canvas'); thumbPixels.width = preview.width; thumbPixels.height = preview.height;
+    thumbPixels.getContext('2d').putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
+    const thumbScale = Math.min(48 / preview.width, 48 / preview.height);
+    const thumbWidth = Math.max(1, Math.round(preview.width * thumbScale));
+    const thumbHeight = Math.max(1, Math.round(preview.height * thumbScale));
+    tctx.imageSmoothingEnabled = false;
+    tctx.drawImage(thumbPixels, Math.floor((48 - thumbWidth) / 2), Math.floor((48 - thumbHeight) / 2), thumbWidth, thumbHeight);
+    const label = document.createElement('small'); label.textContent = String(index + 1);
+    const duration = document.createElement('span'); duration.className = 'frame-duration'; duration.textContent = frame.durationMs + 'ms';
+    button.append(thumb, label, duration);
+    button.addEventListener('click', () => { try { switchAnimationFrame(index); } catch (error) { status(error.message, 'error'); } });
+    host.append(button);
+  }
+}
+function stopAnimationPlayback({ save = true } = {}) {
+  if (!animationPlayback.playing) return;
+  animationPlayback.playing = false;
+  if (animationPlayback.raf) cancelAnimationFrame(animationPlayback.raf);
+  animationPlayback.raf = 0;
+  $('#animation-play').disabled = !animation;
+  $('#animation-stop').disabled = true;
+  renderAnimationTimeline();
+  if (save) { captureAnimationFrame(); scheduleAutosave(); }
+  status('Animation playback stopped', 'neutral');
+}
+function startAnimationPlayback() {
+  if (!ensureAnimation() || animationPlayback.playing) return;
+  if (animation.frameCount < 2) { status('Add at least two frames to play an animation', 'neutral'); return; }
+  settleActiveInput(); captureAnimationFrame();
+  animationPlayback.playing = true; animationPlayback.startedAt = performance.now(); animationPlayback.lastIndex = animation.activeFrameIndex;
+  $('#animation-play').disabled = true; $('#animation-stop').disabled = false;
+  const tick = now => {
+    if (!animationPlayback.playing || !animation) return;
+    const elapsed = now - animationPlayback.startedAt;
+    const index = animation.frameIndexAtTime(elapsed, { loop: $('#animation-loop').checked });
+    if (index !== animationPlayback.lastIndex) {
+      switchAnimationFrame(index, { autosave: false });
+      animationPlayback.lastIndex = index;
+    }
+    const finished = !$('#animation-loop').checked && elapsed >= animation.totalDurationMs;
+    if (finished) { stopAnimationPlayback(); return; }
+    animationPlayback.raf = requestAnimationFrame(tick);
+  };
+  animationPlayback.raf = requestAnimationFrame(tick);
+  status('Playing animation', 'success');
+}
+function changed(copyFromByNewId = new Map()) {
+  clearTransformPreview(); clearCropPreview();
+  if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
+  syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave();
+}
 function startStrokeAt(point, id) {
   if (!point?.inside || activeStroke) return;
   try {
@@ -1368,6 +1578,9 @@ brushScrub.addEventListener('keydown', event => {
 
 function undoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
+  if (animation && doc.history.at(-1)?.type === 'layer-delete' && !canGrowAnimationLayer()) {
+    status('Cannot restore that layer: it would exceed the active animation memory budget.', 'warning'); return false;
+  }
   if (!doc.undo()) return false;
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
@@ -1375,6 +1588,9 @@ function undoDocument() {
 }
 function redoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
+  if (animation && doc.future.at(-1)?.type === 'layer-add' && !canGrowAnimationLayer()) {
+    status('Cannot redo that layer: it would exceed the active animation memory budget.', 'warning'); return false;
+  }
   if (!doc.redo()) return false;
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
@@ -1396,11 +1612,110 @@ const viewportCenter = () => ({ x: canvas.clientWidth / 2, y: canvas.clientHeigh
 $('#zoom-in').addEventListener('click', () => zoomAt(viewportCenter(), zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => zoomAt(viewportCenter(), zoom / 1.25));
 $('#add-layer').addEventListener('click', () => {
-  try { doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
+  try { if (!canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
+});
+$('#animation-add-frame').addEventListener('click', () => {
+  try {
+    const timelineWasActive = Boolean(animation);
+    ensureAnimation();
+    if (!timelineWasActive) {
+      status('Animation timeline started', 'success');
+      return;
+    }
+    const currentId = animationFrameId(animation.activeFrameIndex);
+    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+    animation.addFrame({ duplicate: false });
+    animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
+    applyAnimationFramePixels(animation.activeFrameIndex);
+    scheduleAutosave();
+    status('Blank animation frame added', 'success');
+  } catch (error) { status(error.message, 'error'); }
+});
+$('#animation-duplicate-frame').addEventListener('click', () => {
+  try {
+    ensureAnimation();
+    const currentId = animationFrameId(animation.activeFrameIndex);
+    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+    animation.duplicateFrame();
+    animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
+    doc.history = []; doc.future = []; doc.historyBytes = 0;
+    doc.revision++; doc.saveVersion++; doc.dirty = true;
+    renderAnimationTimeline(); render(); updateTitle(); scheduleAutosave();
+    status('Animation frame duplicated', 'success');
+  } catch (error) { status(error.message, 'error'); }
+});
+$('#animation-delete-frame').addEventListener('click', () => {
+  try {
+    if (!animation || animation.frameCount <= 1) return;
+    const currentId = animationFrameId(animation.activeFrameIndex);
+    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+    animation.deleteFrame(animation.activeFrameIndex);
+    animationFrameHistory.delete(currentId);
+    applyAnimationFramePixels(animation.activeFrameIndex);
+    scheduleAutosave();
+    status('Animation frame deleted', 'success');
+  } catch (error) { status(error.message, 'error'); }
+});
+$('#animation-frame-left').addEventListener('click', () => {
+  try {
+    if (!animation || animation.activeFrameIndex <= 0) return;
+    captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
+    animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex - 1);
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
+  } catch (error) { status(error.message, 'error'); }
+});
+$('#animation-frame-right').addEventListener('click', () => {
+  try {
+    if (!animation || animation.activeFrameIndex >= animation.frameCount - 1) return;
+    captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
+    animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex + 1);
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
+  } catch (error) { status(error.message, 'error'); }
+});
+$('#animation-play').addEventListener('click', startAnimationPlayback);
+$('#animation-stop').addEventListener('click', () => stopAnimationPlayback());
+$('#animation-fps').addEventListener('change', event => {
+  try {
+    ensureAnimation(); animation.setFps(Number(event.target.value));
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave(); status('Animation FPS updated', 'success');
+  } catch (error) { status(error.message, 'error'); renderAnimationTimeline(); }
+});
+$('#animation-duration').addEventListener('change', event => {
+  try {
+    ensureAnimation(); animation.setFrameDuration(animation.activeFrameIndex, Number(event.target.value));
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
+  } catch (error) { status(error.message, 'error'); renderAnimationTimeline(); }
+});
+$('#animation-loop').addEventListener('change', event => {
+  animationLoop = event.target.checked;
+  if (animation) { markAnimationChanged(); scheduleAutosave(); }
+});
+$('#animation-onion').addEventListener('change', () => render());
+$('#animation-export-sheet').addEventListener('click', () => {
+  try {
+    if (!animation) return;
+    captureAnimationFrame();
+    const layout = createSpriteSheetLayout(animation.frameCount, doc.width, doc.height, {
+      columns: Math.ceil(Math.sqrt(animation.frameCount)), padding: 1
+    });
+    const sheet = document.createElement('canvas'); sheet.width = layout.width; sheet.height = layout.height;
+    const context = sheet.getContext('2d', { alpha: true });
+    if (!context) throw new Error('Could not create the animation sprite sheet surface.');
+    const frames = layout.frames.map((frame, index) => {
+      const pixels = animation.compositeFrame(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })));
+      context.putImageData(new ImageData(pixels, doc.width, doc.height), frame.x, frame.y);
+      return { ...frame, frame: index, durationMs: animation.getFrame(index).durationMs };
+    });
+    sheet.toBlob(blob => {
+      if (blob) { downloadBlob(blob, safeName(doc.name) + '-animation.png'); downloadBlob(new Blob([JSON.stringify({ width: layout.width, height: layout.height, fps: animation.fps, loop: animationLoop, frames }, null, 2)], { type: 'application/json' }), safeName(doc.name) + '-animation.json'); status('Animation sprite sheet and manifest exported', 'success'); }
+      else status('Animation sprite sheet export failed', 'error');
+    }, 'image/png');
+  } catch (error) { status('Animation export failed: ' + error.message, 'error'); }
 });
 $('#projects-button').addEventListener('click', async () => {
   try {
+    stopAnimationPlayback();
     await flushAutosave();
     await renderProjects();
     $('#projects-dialog').showModal();
@@ -1427,8 +1742,9 @@ async function renderProjects() {
         await flushAutosave();
         const saved = await loadProjectById(project.id);
         if (!saved) throw new Error('That saved project no longer exists.');
-        doc = RasterDocument.fromJSON(saved); clearSelectionState(); resetAIWorkspaceForDocument();
-        $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers();
+        stopAnimationPlayback({ save: false });
+        doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+        $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
       } catch (error) { status(`Could not open project: ${error.message}`, 'error'); }
     });
@@ -1472,14 +1788,15 @@ $('#new-template').addEventListener('change', event => {
     $('#new-name').value = template.name;
   }
 });
-$('#new-document').addEventListener('click', () => $('#new-dialog').showModal());
+$('#new-document').addEventListener('click', () => { stopAnimationPlayback(); $('#new-dialog').showModal(); });
 $('#cancel-new').addEventListener('click', () => $('#new-dialog').close());
 $('#create-new').addEventListener('click', async () => {
   const width = Number($('#new-width').value), height = Number($('#new-height').value);
   try {
     validateDimensions(width, height); await flushAutosave();
     const template = assetTemplates[$('#new-template').value] ?? assetTemplates.custom;
-    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); clearSelectionState();
+    stopAnimationPlayback({ save: false });
+    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); animation = null; animationLoop = true; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
     const firstLayer = doc.activeLayerId;
     if (template.layers[0] && template.layers[0] !== doc.activeLayer.name) doc.renameLayer(firstLayer, template.layers[0]);
     for (const layerName of template.layers.slice(1)) doc.addLayer(layerName);
@@ -1498,7 +1815,7 @@ $('#save').addEventListener('click', async () => {
 $('#export-project').addEventListener('click', () => {
   try {
     settleActiveInput();
-    const snapshot = doc.toJSON(), filename = `${safeName(doc.name)}.pforge`;
+    const snapshot = buildProjectSnapshot(), filename = `${safeName(doc.name)}.pforge`;
     downloadBlob(new Blob([JSON.stringify(snapshot)], { type: 'application/json' }), filename);
     status('Project exported', 'success');
   } catch (error) { status(`Project export failed: ${error.message}`, 'error'); }
@@ -1544,7 +1861,17 @@ $('#import-file').addEventListener('change', async event => {
     if (file.size > 100 * 1024 * 1024) throw new RangeError('This file is larger than the 100 MiB import safety limit.');
     let importedDoc;
     if (file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
-      importedDoc = RasterDocument.fromJSON(JSON.parse(await file.text()), { newIdentity: true });
+      const parsed = JSON.parse(await file.text());
+      importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: true });
+      importedDoc.animationLoop = parsed.animation?.loop !== false;
+      if (parsed.animation) {
+        const layerIdMap = new Map(parsed.layers.map((layer, index) => [layer.id, importedDoc.layers[index].id]));
+        const remapped = { ...parsed.animation,
+          layerIds: parsed.animation.layerIds.map(id => layerIdMap.get(id)),
+          frames: parsed.animation.frames.map(frame => ({ ...frame, cels: frame.cels.map(cel => ({ ...cel, layerId: layerIdMap.get(cel.layerId) })) }))
+        };
+        importedDoc.animationData = remapped;
+      }
     } else {
       const expectedImage = await preflightImageFile(file);
       const bitmap = await createImageBitmap(file);
@@ -1560,10 +1887,12 @@ $('#import-file').addEventListener('change', async event => {
       } finally { bitmap.close?.(); }
     }
     await flushAutosave();
-    const savedImport = await saveProject(importedDoc.toJSON());
+    const importSnapshot = importedDoc.toJSON(); if (importedDoc.animationData) importSnapshot.animation = importedDoc.animationData;
+    const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
-    doc = importedDoc; clearSelectionState(); resetAIWorkspaceForDocument();
-    fitCanvas(); updateTitle(); renderLayers(); status('Import complete and saved to your CodeLab account', 'success');
+    stopAnimationPlayback({ save: false });
+    doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 });
@@ -1617,6 +1946,7 @@ function renderLayers() {
     $('#delete-layer').disabled = !doc.activeLayer || doc.layers.length <= 1;
   }
   updateDrawHoldUI();
+  renderAnimationTimeline();
 }
 $('#layer-opacity')?.addEventListener('input', event => {
   $('#layer-opacity-value').textContent = `${event.target.value}%`;
@@ -1638,7 +1968,7 @@ $('#rename-layer')?.addEventListener('click', () => {
   } catch (error) { status(error.message, 'error'); }
 });
 $('#duplicate-layer')?.addEventListener('click', () => {
-  try { doc.duplicateLayer(doc.activeLayer.id); changed(); renderLayers(); status('Layer duplicated', 'success'); }
+  try { if (!canGrowAnimationLayer()) throw new RangeError('Duplicating this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const sourceId = doc.activeLayer.id; const duplicate = doc.duplicateLayer(sourceId); changed(new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#delete-layer')?.addEventListener('click', () => {
@@ -1744,11 +2074,14 @@ window.addEventListener('blur', () => {
   if (panning) { panning = false; panStart = null; canvas.classList.remove('is-panning'); }
   render();
 });
+function renderAuthenticationRequired() {
+  document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101116;color:#f3f4f6;font:16px system-ui,sans-serif"><section style="max-width:440px;text-align:center;background:#191b24;border:1px solid #343744;border-radius:18px;padding:28px"><div style="font-size:34px;margin-bottom:12px">◈</div><h1 style="margin:0 0 10px;font-size:24px">Inicia sesión en CodeLab</h1><p style="color:#b5b8c5;line-height:1.6">PixelForge usa la misma cuenta de CodeLab. Inicia sesión y vuelve a abrir el estudio para guardar tus dibujos en tu cuenta y acceder a ellos desde otros dispositivos.</p><a href="/" style="display:inline-block;margin-top:14px;padding:12px 18px;border-radius:10px;background:#d8a65d;color:#171922;text-decoration:none;font-weight:700">Ir a CodeLab e iniciar sesión</a></section></main>`;
+}
 async function boot() {
   try {
     const auth = await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
-      document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101116;color:#f3f4f6;font:16px system-ui,sans-serif"><section style="max-width:440px;text-align:center;background:#191b24;border:1px solid #343744;border-radius:18px;padding:28px"><div style="font-size:34px;margin-bottom:12px">◈</div><h1 style="margin:0 0 10px;font-size:24px">Inicia sesión en CodeLab</h1><p style="color:#b5b8c5;line-height:1.6">PixelForge usa la misma cuenta de CodeLab. Inicia sesión y vuelve a abrir el estudio para guardar tus dibujos en tu cuenta y acceder a ellos desde otros dispositivos.</p><a href="/" style="display:inline-block;margin-top:14px;padding:12px 18px;border-radius:10px;background:#d8a65d;color:#171922;text-decoration:none;font-weight:700">Ir a CodeLab e iniciar sesión</a></section></main>`;
+      renderAuthenticationRequired();
       return;
     }
     // Reuse the provider settings configured in CodeLab's AI settings area.
@@ -1770,10 +2103,14 @@ async function boot() {
     renderUserPalette();
     resizeCanvas();
     const saved = await loadMostRecentProject();
-    if (saved) { doc = RasterDocument.fromJSON(saved); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
+    if (saved) { doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
     else status('Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
-    fitCanvas(); updateTitle(); renderLayers();
+    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
   } catch (error) {
+    if (error?.status === 401 || error?.code === 'not_authenticated') {
+      renderAuthenticationRequired();
+      return;
+    }
     status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
     const statusNode = $('#status');
     if (statusNode) statusNode.title = 'Comprueba tu sesión de CodeLab y vuelve a cargar.';

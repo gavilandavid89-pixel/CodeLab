@@ -1140,6 +1140,7 @@ function httpsRequest(urlStr, options, body) {
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -1205,7 +1206,7 @@ function serveStatic(req, res, urlPath) {
       };
       // HTML references stable asset URLs; force revalidation so deployments cannot leave
       // users running stale application logic for a full day after a release.
-      if (ext === '.html' || ext === '.js' || ext === '.css') {
+      if (ext === '.html' || ext === '.js' || ext === '.mjs' || ext === '.css') {
         headers['Cache-Control'] = 'no-cache';
       }
       res.writeHead(200, headers);
