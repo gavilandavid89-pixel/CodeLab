@@ -9,6 +9,9 @@ on:
       - ".github/workflows/pixelforge-animation-core.yml"
       - "server.js"
       - "public/pixelforge/src/core.js"
+      - "public/pixelforge/src/persistence.js"
+      - "pixelforge-upload-store.js"
+      - "tests/pixelforge-integration.test.js"
   pull_request:
     branches: ["fix/pixelforge-mobile-files-panel", "feat/pixelforge-animation-core"]
     paths:
@@ -28,8 +31,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Validate animation module syntax
-        run: node --check public/pixelforge/src/animation.mjs
+      - name: Validate animation and persistence module syntax
+        run: |
+          node --check public/pixelforge/src/animation.mjs
+          node --input-type=module --check < public/pixelforge/src/persistence.js
+          node --check pixelforge-upload-store.js
+          node --check server.js
+          node --check tests/pixelforge-integration.test.js
       - name: Test frame timeline model
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Guard original editor feature parity
