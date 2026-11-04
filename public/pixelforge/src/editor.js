@@ -1873,7 +1873,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
     button.textContent = previousLabel;
   }
 });
-$('#animation-export-sheet').addEventListener('click', () => {
+$('#animation-export-sheet').addEventListener('click', async () => {
   try {
     if (!animation) return;
     captureAnimationFrame();
@@ -1888,10 +1888,14 @@ $('#animation-export-sheet').addEventListener('click', () => {
       context.putImageData(new ImageData(pixels, doc.width, doc.height), frame.x, frame.y);
       return { ...frame, frame: index, durationMs: animation.getFrame(index).durationMs };
     });
-    sheet.toBlob(blob => {
-      if (blob) { downloadBlob(blob, safeName(doc.name) + '-animation.png'); downloadBlob(new Blob([JSON.stringify({ width: layout.width, height: layout.height, fps: animation.fps, loop: animationLoop, frames }, null, 2)], { type: 'application/json' }), safeName(doc.name) + '-animation.json'); status('Animation sprite sheet and manifest exported', 'success'); }
-      else status('Animation sprite sheet export failed', 'error');
-    }, 'image/png');
+    const png = await new Promise((resolve, reject) => sheet.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
+    const manifest = { format: 'pixelforge-animation-sprite-sheet', version: 1, width: layout.width, height: layout.height, fps: animation.fps, loop: animationLoop, frames };
+    const archive = await createZipBlob([
+      { name: safeName(doc.name) + '-animation.png', data: png },
+      { name: 'animation-manifest.json', data: JSON.stringify(manifest, null, 2) },
+    ]);
+    downloadBlob(archive, safeName(doc.name) + '-animation-sheet.zip');
+    status('Animation sprite sheet and timing manifest exported in one ZIP', 'success');
   } catch (error) { status('Animation export failed: ' + error.message, 'error'); }
 });
 $('#projects-button').addEventListener('click', async () => {
@@ -2028,9 +2032,12 @@ $('#export-sprite-sheet').addEventListener('click', async () => {
     });
     const manifest = { format: 'pixelforge-sprite-sheet', version: 1, document: doc.name, sheet: { width: layout.width, height: layout.height, columns: layout.columns, rows: layout.rows, padding: layout.padding }, frameSize: { width: doc.width, height: doc.height }, pivot: 'center', frames };
     const png = await new Promise((resolve, reject) => sheet.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
-    downloadBlob(png, `${safeName(doc.name)}-spritesheet.png`);
-    downloadBlob(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }), `${safeName(doc.name)}-spritesheet.json`);
-    status(`Sprite sheet exported: ${frames.length} frames, ${layout.width} × ${layout.height}`, 'success');
+    const archive = await createZipBlob([
+      { name: safeName(doc.name) + '-spritesheet.png', data: png },
+      { name: 'spritesheet-manifest.json', data: JSON.stringify(manifest, null, 2) },
+    ]);
+    downloadBlob(archive, safeName(doc.name) + '-spritesheet.zip');
+    status(`Sprite sheet exported as one ZIP: ${frames.length} layers, ${layout.width} × ${layout.height}`, 'success');
   } catch (error) { status(`Sprite sheet export failed: ${error.message}`, 'error'); }
 });
 $('#export-png').addEventListener('click', () => {
