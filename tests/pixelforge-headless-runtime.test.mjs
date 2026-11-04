@@ -690,7 +690,7 @@ test('Headless region reads stay read-only during proposals and enforce strict b
   runtime.createProposal('Draw a small line');
   assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 4, height: 4 }).ok, true);
   assert.equal(runtime.hasPendingProposal, true);
-  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 14, y: 14, width: 4, height: 4 }).ok, false);
+  assert.equal(runtime.execute({ name: 'canvas.get_region', x: 62, y: 62, width: 4, height: 4 }).ok, false);
   assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 32, height: 32 }).ok, true);
   assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 33, height: 1 }).ok, false);
   assert.equal(runtime.execute({ name: 'canvas.get_region', x: 0, y: 0, width: 1, height: 33 }).ok, false);
