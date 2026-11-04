@@ -340,6 +340,9 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
     editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
     'the raster editor must expose the animation timeline controls');
+  assert.ok(editorSource.includes('function renderAuthenticationRequired()') &&
+    editorSource.includes("error?.status === 401 || error?.code === 'not_authenticated'"),
+    'PixelForge must render its CodeLab sign-in screen when the shared session API rejects an anonymous visitor');
   assert.ok(editorSource.includes('function buildProjectSnapshot') && editorSource.includes('snapshot.animation'),
     'animation data must travel with the normal project save/export lifecycle');
   assert.ok(editorSource.includes('snapshot.animation = { ...animation.toJSON(), loop: animationLoop }'),
