@@ -42,7 +42,7 @@ async function readJson(response, label) {
 
 function diffPreviewDataUrl(runtime) {
   const diff = runtime.getDiff();
-  if (!diff.changedPixels || typeof document === 'undefined' || typeof ImageData === 'undefined') return null;
+  if (!diff.rasterChangedPixels || typeof document === 'undefined' || typeof ImageData === 'undefined') return null;
   const canvas = document.createElement('canvas');
   canvas.width = diff.width;
   canvas.height = diff.height;
@@ -93,7 +93,7 @@ export async function preparePixelForgeProposal({ projectId, actions, summary, f
     proposal,
     results: batch.results,
     inspection: runtime.inspect(),
-    diff: { changedPixels: runtime.getDiff().changedPixels, bounds: runtime.getDiff().bounds, previewDataUrl: diffPreviewDataUrl(runtime) },
+    diff: { ...runtime.getDiff(), previewDataUrl: diffPreviewDataUrl(runtime) },
     expiresInMs: SESSION_TTL_MS,
   };
 }
