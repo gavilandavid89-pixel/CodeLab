@@ -484,7 +484,8 @@ function validatePixelForgeAnimation(project) {
           typeof cel.layerId !== 'string' || !animation.layerIds.includes(cel.layerId) || celLayerIds.has(cel.layerId) ||
           typeof cel.pixels !== 'string' || cel.pixels.length !== expectedBase64Length ||
           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(cel.pixels) ||
-          (expectedPadding && (!cel.pixels.endsWith(expectedPadding) || cel.pixels.slice(0, -expectedPadding.length).includes('=')))) {
+          (expectedPadding && (!cel.pixels.endsWith(expectedPadding) || cel.pixels.slice(0, -expectedPadding.length).includes('='))) ||
+          (!expectedPadding && cel.pixels.endsWith('='))) {
         return 'invalid_pixelforge_animation';
       }
       celLayerIds.add(cel.layerId);
