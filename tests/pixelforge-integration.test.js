@@ -248,6 +248,9 @@ async function main() {
     body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
   });
   assert.equal(goodChunk.status, 200, 'a verified chunk should be accepted');
+  const uploadStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
+  assert.equal(uploadStatus.status, 200, 'owners should be able to inspect upload progress');
+  assert.deepEqual((await uploadStatus.json()).receivedChunks, [0], 'upload status should report only chunks already persisted');
   const duplicateChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
     method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
     body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
@@ -265,6 +268,8 @@ async function main() {
   assert.equal(repeatedCommit.status, 200, 'retrying a completed commit must return its saved receipt');
   assert.deepEqual((await (await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { headers: authHeaders })).json()).project, chunkFixture,
     'the committed chunked project must round-trip without altering its JSON payload');
+  const committedStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
+  assert.equal((await committedStatus.json()).committed, true, 'status should expose a durable receipt after commit');
   const cancelledUploadId = 'b'.repeat(32);
   const cancelBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
     method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -307,6 +312,24 @@ async function main() {
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
+  const ownerUploadId = 'd'.repeat(32);
+  const ownerUpload = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ uploadId: ownerUploadId, projectId: 'private-staged-project', expectedServerRevision: 0, totalBytes: 4, totalChunks: 1 })
+  });
+  assert.equal(ownerUpload.status, 201);
+  assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { headers: otherHeaders })).status, 404,
+    'another account must not inspect a staged upload');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId + '/0', {
+    method: 'PUT', headers: { ...otherHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: Buffer.from('test').toString('base64'), sha256: crypto.createHash('sha256').update('test').digest('hex') })
+  })).status, 404, 'another account must not upload chunks into a staged project');
+  const deniedCancel = await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { method: 'DELETE', headers: otherHeaders });
+  assert.equal(deniedCancel.status, 200);
+  assert.equal((await deniedCancel.json()).cancelled, false, 'another account must not cancel a staged upload');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { headers: authHeaders })).status, 200,
+    'a denied cross-account cancellation must leave the owner upload intact');
+  await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { method: 'DELETE', headers: authHeaders });
   const otherList = await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders });
   assert.deepEqual((await otherList.json()).projects, [], 'a different CodeLab account must not see another account\'s PixelForge projects');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: otherHeaders })).status, 404, 'a different account must not open another account\'s project');
