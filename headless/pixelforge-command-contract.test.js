@@ -53,3 +53,9 @@ test('PixelForge animation export writes a downloadable artifact instead of a ma
   assert.match(catalog, /pixelforge_headless_export_animation/);
   assert.match(catalog, /Actions run URL/);
 });
+
+test('PixelForge animation export artifacts have a dedicated 14-day retention policy', () => {
+  assert.match(bridge, /artifactName: 'pixelforge-animation-'/);
+  assert.match(bridgeWorkflow, /name: pixelforge-animation-\$\{\{ github\.run_id \}\}/);
+  assert.match(bridgeWorkflow, /retention-days: 14/);
+});
