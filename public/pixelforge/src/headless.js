@@ -98,6 +98,9 @@ function diffAnimationTimelines(before, after) {
   const beforeFrames = new Map(before.frames.map((frame, index) => [frame.id, { frame, index }]));
   const afterFrames = new Map(after.frames.map((frame, index) => [frame.id, { frame, index }]));
   const frameIds = [...after.frames.map(frame => frame.id), ...before.frames.map(frame => frame.id).filter(id => !afterFrames.has(id))];
+  const beforeSharedOrder = before.frames.map(frame => frame.id).filter(id => afterFrames.has(id));
+  const afterSharedOrder = after.frames.map(frame => frame.id).filter(id => beforeFrames.has(id));
+  const orderChanged = beforeSharedOrder.some((id, index) => afterSharedOrder[index] !== id);
   const frames = [];
   let changedCelCount = 0, changedPixels = 0;
   for (const id of frameIds) {
@@ -120,7 +123,7 @@ function diffAnimationTimelines(before, after) {
       });
       changedPixels += pixelDiff.changedPixels;
     }
-    const reordered = Boolean(previousEntry && nextEntry && previousEntry.index !== nextEntry.index);
+    const reordered = Boolean(previousEntry && nextEntry && beforeSharedOrder.indexOf(id) !== afterSharedOrder.indexOf(id));
     const durationChanged = Boolean(previous && next && previous.durationMs !== next.durationMs);
     const frameMetadataChanged = Boolean(previous && next && durationChanged);
     if (cels.length || reordered || frameMetadataChanged || !previousEntry || !nextEntry) {
@@ -147,7 +150,7 @@ function diffAnimationTimelines(before, after) {
     changedFrameCount: frames.length,
     changedCelCount,
     changedPixels,
-    reordered: before.frames.some((frame, index) => after.frames[index]?.id !== frame.id) || before.frames.length !== after.frames.length,
+    reordered: orderChanged,
     settingsChanged,
     frames,
   };
