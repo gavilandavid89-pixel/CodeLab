@@ -5,7 +5,6 @@ export const AI_ACTION_CONTRACT = Object.freeze([
   { name: 'document.get_summary', description: 'Read document dimensions and layer metadata.', parameters: {} },
   { name: 'canvas.get_reference', description: 'Read exact document-pixel origin, axes, bounds, landmarks, grid and active layer before drawing.', parameters: { gridStep: 'integer 1–256?' } },
   { name: 'canvas.get_pixel', description: 'Sample one pixel.', parameters: { x: 'integer', y: 'integer', merged: 'boolean?' } },
-  { name: 'canvas.get_region', description: 'Read an exact RGBA pixel patch (maximum 128 × 128) for visual inspection.', parameters: { x: 'integer', y: 'integer', width: 'integer', height: 'integer', merged: 'boolean?', layerId: 'string?' } },
   { name: 'canvas.draw_line', description: 'Draw a raster line on the active sandbox layer.', parameters: { x0: 'integer', y0: 'integer', x1: 'integer', y1: 'integer', color: '#RRGGBB', size: 'integer 1–128?' } },
   { name: 'canvas.fill', description: 'Fill a connected or global color region.', parameters: { x: 'integer', y: 'integer', color: '#RRGGBB', tolerance: 'integer 0–255?', contiguous: 'boolean?' } },
   { name: 'canvas.clear_region', description: 'Clear a bounded rectangle.', parameters: { x: 'integer', y: 'integer', width: 'integer', height: 'integer' } },
@@ -20,7 +19,7 @@ export const AI_ACTION_CONTRACT = Object.freeze([
 const SYSTEM_PROMPT = [
   'You are an editing planner for a raster art editor. Return only a JSON object with exactly this shape: {"summary":"short explanation","actions":[{"name":"allowlisted.action","...":"arguments"}]}.',
   'Do not return Markdown, scripts, shell commands, URLs, or arbitrary code.',
-  'Only use the allowlisted actions and their documented parameters. Coordinates are integer document pixels; the canvas origin is top-left. Use canvasReference bounds, landmarks and grid. When editing existing artwork, inspect the target area with canvas.get_region before drawing; use canvas.get_pixel for exact color samples when needed.',
+  'Only use the allowlisted actions and their documented parameters. Coordinates are integer document pixels; the canvas origin is top-left. Use canvasReference bounds and landmarks, and sample existing colors when matching artwork.',
   'Prefer small, precise, undoable changes. Do not invent layers or dimensions. If the request cannot be performed with these actions, return {"summary":"Cannot safely perform this request with the available tools.","actions":[]}.',
   'Project/document deletion, project/content export, upload and publishing are forbidden. The original document is read-only; all edits are applied to an isolated sandbox.',
   'Available actions: ' + JSON.stringify(AI_ACTION_CONTRACT),
