@@ -148,14 +148,23 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
 
 test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', () => {
   const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
-  const timeline = new PixelForgeAnimation({ width: 16, height: 16, layerIds, fps: 24 });
+  const timeline = new PixelForgeAnimation({ width: 32, height: 32, layerIds, fps: 24 });
   for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
   assert.equal(timeline.frameCount, 240);
   assert.equal(timeline.layerIds.length, 64);
-  assert.equal(timeline.memoryBytes, 16 * 16 * 4 * 64 * 240);
+  assert.equal(timeline.memoryBytes, 32 * 32 * 4 * 64 * 240);
   assert.ok(timeline.memoryBytes < MAX_ANIMATION_BYTES);
 
-  const edited = new Uint8ClampedArray(16 * 16 * 4);
+  const coldStart = performance.now();
+  for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 48);
+  const coldRenderMs = performance.now() - coldStart;
+  assert.ok(coldRenderMs < 10000, 'the complete 240-frame / 64-layer preview pass must finish within 10 seconds');
+  const warmStart = performance.now();
+  for (let index = 0; index < timeline.frameCount; index++) timeline.compositeThumbnail(index, null, 48);
+  const warmRenderMs = performance.now() - warmStart;
+  assert.ok(warmRenderMs < 1000, 'cached timeline refreshes must stay below one second');
+
+  const edited = new Uint8ClampedArray(32 * 32 * 4);
   edited.set([12, 34, 56, 255], 0);
   timeline.setLayerPixels(137, 'layer-63', edited);
   assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [12, 34, 56, 255]);
