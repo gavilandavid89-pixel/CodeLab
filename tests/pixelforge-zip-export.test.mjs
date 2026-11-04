@@ -10,7 +10,7 @@ test('computes the standard CRC-32 checksum', () => {
 });
 
 test('creates a valid ZIP with UTF-8 names, exact payloads and central directory offsets', () => {
-  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
   const archive = createZip([
     { name: 'project/animación.pforge', data: '{"frames":12}' },
     { name: 'frames/frame-001.png', data: new Uint8Array([137, 80, 78, 71]) },
@@ -26,7 +26,7 @@ test('creates a valid ZIP with UTF-8 names, exact payloads and central directory
   assert.equal(readU32(archive, secondOffset), 0x04034b50);
   const centralOffset = readU32(archive, archive.length - 22 + 16);
   assert.equal(readU32(archive, centralOffset), 0x02014b50);
-  assert.equal(encoder.decode(archive.slice(centralOffset + 46, centralOffset + 46 + readU16(archive, centralOffset + 28))), 'project/animación.pforge');
+  assert.equal(decoder.decode(archive.slice(centralOffset + 46, centralOffset + 46 + readU16(archive, centralOffset + 28))), 'project/animación.pforge');
 });
 
 test('rejects unsafe, duplicate, invalid and oversized ZIP entry definitions', () => {
