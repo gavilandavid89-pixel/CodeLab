@@ -24,6 +24,7 @@ jobs:
       - name: Validate runtime module syntax
         run: |
           node --experimental-default-type=module --check public/pixelforge/src/headless.js
+          node --experimental-default-type=module --check public/pixelforge/src/animation.js
           node --experimental-default-type=module --check public/pixelforge/src/ai-tools.js
           node --experimental-default-type=module --check public/pixelforge/src/workspaces.js
       - name: Run headless runtime contract tests
