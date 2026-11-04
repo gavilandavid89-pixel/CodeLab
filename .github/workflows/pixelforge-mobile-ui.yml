@@ -1,0 +1,53 @@
+name: PixelForge mobile UI
+
+on:
+  push:
+    branches: ["fix/**", "feat/**"]
+    paths:
+      - "public/pixelforge/**"
+      - "tests/pixelforge-mobile-ui.test.js"
+      - ".github/workflows/pixelforge-mobile-ui.yml"
+  pull_request:
+    branches: ["feat/codelab-pixelforge-studio-entry-clean"]
+    paths:
+      - "public/pixelforge/**"
+      - "tests/pixelforge-mobile-ui.test.js"
+      - ".github/workflows/pixelforge-mobile-ui.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install CodeLab dependencies
+        run: npm install --no-save --package-lock=false
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
+      - name: Check editor module syntax and static UI contracts
+        run: |
+          node --check public/pixelforge/src/editor.js
+          node tests/pixelforge-mobile-ui.test.js
+      - name: Exercise mobile and desktop layouts in Chromium
+        shell: bash
+        run: |
+          export PORT=3188
+          export CODELAB_E2E_BASE_URL="http://127.0.0.1:3188"
+          export CODELAB_DATA_DIR="$RUNNER_TEMP/pixelforge-mobile-ui-data"
+          export CODELAB_WORKSPACE_SECRET="test-only-pixelforge-mobile-ui-secret"
+          node server.js > "$RUNNER_TEMP/pixelforge-mobile-ui.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab E2E server log ====="; cat "$RUNNER_TEMP/pixelforge-mobile-ui.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
+          node tests/pixelforge-mobile-browser.test.js
