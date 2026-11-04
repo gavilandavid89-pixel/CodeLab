@@ -594,12 +594,12 @@ async function main() {
       'active layer opacity should persist its numeric value');
 
     const activeLayerRow = accountPage.locator('.layer-row').first();
-    await activeLayerRow.locator('.layer-visibility').click();
+    await activeLayerRow.locator('.layer-visibility:not(.layer-lock)').click();
     await waitForRasterSave();
     toolProject = await readSavedArtwork();
     assert.equal(toolProject.layers.find(layer => layer.id === duplicatedLayerId)?.visible, false,
       'layer visibility toggle should persist hidden state');
-    await activeLayerRow.locator('.layer-visibility').click();
+    await activeLayerRow.locator('.layer-visibility:not(.layer-lock)').click();
     await waitForRasterSave();
 
     await activeLayerRow.locator('.layer-lock').click();
