@@ -5,6 +5,8 @@ const { StringDecoder } = require('node:string_decoder');
 
 const CHUNK_BYTES = 6 * 1024 * 1024;
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_ACTIVE_UPLOADS_PER_ACCOUNT = 2;
+const MAX_STAGED_UPLOAD_BYTES = 256 * 1024 * 1024;
 
 class PixelForgeUploadError extends Error {
   constructor(code, status = 400, extra = {}) {
@@ -53,6 +55,16 @@ async function beginUpload(pool, workspaceId, body, maxProjectBytes, maxAccountB
       return row.committed
         ? { status: 200, committed: true, receipt: row.receipt }
         : { status: 200, uploadId: body.uploadId, chunkSize: CHUNK_BYTES, totalChunks: body.totalChunks };
+    }
+    const staged = await client.query(
+      'SELECT COUNT(*)::int AS count, COALESCE(SUM(total_bytes),0)::bigint AS bytes FROM codelab_pixelforge_project_uploads WHERE workspace_id = $1 AND committed = FALSE',
+      [workspaceId]
+    );
+    if (Number(staged.rows[0].count) >= MAX_ACTIVE_UPLOADS_PER_ACCOUNT ||
+        Number(staged.rows[0].bytes) + body.totalBytes > MAX_STAGED_UPLOAD_BYTES) {
+      throw new PixelForgeUploadError('pixelforge_upload_quota_exceeded', 429, {
+        maxActiveUploads: MAX_ACTIVE_UPLOADS_PER_ACCOUNT, maxStagedBytes: MAX_STAGED_UPLOAD_BYTES
+      });
     }
     const existing = await client.query(
       "SELECT server_revision, project->>'serverRevision' AS legacy_revision FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2",
@@ -170,12 +182,22 @@ async function assembleUpload(pool, workspaceId, uploadId) {
 }
 
 async function markCommitted(pool, uploadId, receipt) {
-  const now = Date.now();
-  await pool.query(
-    'UPDATE codelab_pixelforge_project_uploads SET committed = TRUE, receipt = $2::jsonb, expires_at = $3 WHERE upload_id = $1',
-    [uploadId, JSON.stringify(receipt), now + UPLOAD_TTL_MS]
-  );
-  await pool.query('DELETE FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1', [uploadId]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const now = Date.now();
+    await client.query(
+      'UPDATE codelab_pixelforge_project_uploads SET committed = TRUE, receipt = $2::jsonb, expires_at = $3 WHERE upload_id = $1',
+      [uploadId, JSON.stringify(receipt), now + UPLOAD_TTL_MS]
+    );
+    await client.query('DELETE FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1', [uploadId]);
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = { CHUNK_BYTES, UPLOAD_TTL_MS, PixelForgeUploadError, ensureSchema, beginUpload, putChunk, assembleUpload, markCommitted };
