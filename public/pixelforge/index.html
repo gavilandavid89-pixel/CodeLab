@@ -68,7 +68,7 @@
           <label class="animation-number">Duration <input id="animation-duration" type="number" min="1" max="10000" step="1" value="83" disabled><span>ms</span></label>
           <label class="animation-check"><input id="animation-loop" type="checkbox" checked disabled> Loop</label>
           <label class="animation-check"><input id="animation-onion" type="checkbox" disabled> Onion skin</label>
-          <button id="animation-export-sheet" type="button" title="Export animation frames as a sprite sheet" disabled>Export sheet</button>
+          <button id="animation-export-sheet" type="button" title="Export animation sprite sheet and manifest as one ZIP" disabled>Export sheet</button>
           <button id="animation-export-zip" type="button" title="Export project, ordered PNG frames and manifest in one ZIP" disabled>Export ZIP</button>
         </div>
       </div>
@@ -169,7 +169,7 @@
       <div class="section-heading"><span class="section-icon">⇧</span><h2>Import & project</h2></div>
       <label class="file-button" for="import-file"><span>＋</span> Import image, project or ZIP</label><input id="import-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.pforge,.json,.zip,application/zip" hidden>
       <button class="file-button" id="export-project"><span>⇩</span> Export project ZIP</button>
-      <button class="file-button" id="export-sprite-sheet"><span>▦</span> Export layer sprite sheet</button>
+      <button class="file-button" id="export-sprite-sheet"><span>▦</span> Export layer sprite sheet ZIP</button>
       <p class="small-note">Export ZIP bundles the editable project, transparent PNG frames in playback order and a timing manifest into one file, avoiding dozens of separate gallery downloads. Sprite sheets remain available separately. Projects autosave to your CodeLab account.</p>
     </section>
   </aside>
