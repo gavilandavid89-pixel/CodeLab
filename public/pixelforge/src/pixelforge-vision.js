@@ -58,8 +58,8 @@ export function preparePixelForgeVisionRequest({
 } = {}) {
   projectId = assertProjectId(projectId);
   const grant = consent && typeof consent === 'object' ? consentTokens.get(consent) : null;
+  if (consent && typeof consent === 'object') consentTokens.delete(consent);
   if (!grant || grant.projectId !== projectId || grant.expiresAt <= Date.now()) {
-    if (grant) consentTokens.delete(consent);
     const error = new Error('Explicit, current consent for this PixelForge project is required before sending artwork to vision.');
     error.code = 'pixelforge_vision_consent_required';
     throw error;
