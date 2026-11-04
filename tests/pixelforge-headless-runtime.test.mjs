@@ -277,18 +277,20 @@ test('headless region copy and paste preserve masked pixels inside the proposal 
   assert.equal(runtime.execute({ name: 'canvas.paste_region', x: 5, y: 5 }).ok, false);
   const batch = runtime.executeBatch([
     { name: 'canvas.draw_line', x0: 1, y0: 1, x1: 3, y1: 1, color: '#D02040' },
+    { name: 'selection.create_rect', x: 1, y: 1, width: 2, height: 1 },
     { name: 'canvas.copy_region', x: 1, y: 1, width: 3, height: 1 },
+    { name: 'selection.clear' },
     { name: 'canvas.paste_region', x: 5, y: 5 },
   ]);
   assert.equal(batch.ok, true);
-  assert.equal(batch.results[1].result.selectedPixels, 3);
-  assert.equal(batch.results[2].result.changedPixels, 3);
+  assert.equal(batch.results[2].result.selectedPixels, 2);
+  assert.equal(batch.results[4].result.changedPixels, 2);
   assert.equal(runtime.document.sampleColorAt(5, 5), null, 'source document remains isolated before approval');
-  runtime.createProposal('Copy the three-pixel stroke to a second location');
+  runtime.createProposal('Copy the selected two-pixel stroke to a second location');
   assert.equal(runtime.acceptProposal().status, 'applied');
   assert.equal(runtime.document.sampleColorAt(5, 5), '#D02040');
   assert.equal(runtime.document.sampleColorAt(6, 5), '#D02040');
-  assert.equal(runtime.document.sampleColorAt(7, 5), '#D02040');
+  assert.equal(runtime.document.sampleColorAt(7, 5), null, 'unselected copied pixels must remain transparent');
 });
 
 test('headless region transforms expose scale, skew and interpolation controls from the raster engine', () => {
