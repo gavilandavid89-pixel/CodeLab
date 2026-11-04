@@ -290,7 +290,7 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'large saves should consult upload status before resending chunks');
   const editorSource = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/editor.js'), 'utf8');
   const editorStyles = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/styles.css'), 'utf8');
-  const declaredButtons = [...editorHtml.matchAll(/<button\\b[^>]*\\bid="([^"]+)"/g)].map(match => match[1]);
+  const declaredButtons = [...editorHtml.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
   const unreferencedButtons = declaredButtons.filter(id => !editorSource.includes('#' + id));
   assert.deepEqual(unreferencedButtons, [], 'every static PixelForge button must be referenced by the editor controller');
   assert.ok(editorSource.includes("closest('[data-selection-move]')") && editorSource.includes("closest('[data-transform]')"),
@@ -310,6 +310,10 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'frame switching must reuse the existing raster document and drawing tools');
   assert.ok(editorSource.includes('function canGrowAnimationLayer') && editorSource.includes('Cannot restore that layer'),
     'layer operations and undo/redo must respect the combined animation memory budget');
+  const cropDisabledAt = editorSource.indexOf("$('#crop-preview').disabled = enabled");
+  const enabledDeclaredAt = editorSource.indexOf('const enabled = Boolean(animation)', editorSource.indexOf('function renderAnimationTimeline'));
+  assert.ok(enabledDeclaredAt >= 0 && cropDisabledAt > enabledDeclaredAt,
+    'animation UI state must be initialized before crop controls read it');
   assert.ok(editorSource.includes("$('#crop-preview').disabled = enabled"),
     'canvas crop must not silently desynchronize all animation cels');
   assert.ok(editorSource.includes('function drawOnionSkinOverlay') && editorSource.includes('startAnimationPlayback'),
