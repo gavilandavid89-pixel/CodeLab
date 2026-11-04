@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
@@ -204,6 +205,70 @@ async function main() {
   }
   await fetch(base + '/api/pixelforge/projects/' + animationProject.id, { method: 'DELETE', headers: authHeaders });
   assert.ok(Number.isInteger(animationRevision) && animationRevision === 1, 'the animation project should receive a server revision token');
+
+  // The upload protocol must be resumable, integrity checked, and idempotent.
+  const chunkFixture = { ...makePixelProject('chunk-api-contract', 'Chunk API contract'), serverRevision: 1 };
+  const chunkSerialized = JSON.stringify(chunkFixture);
+  const chunkBytes = Buffer.from(chunkSerialized, 'utf8');
+  const uploadId = 'a'.repeat(32);
+  const uploadBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId, projectId: chunkFixture.id, expectedServerRevision: 0,
+      totalBytes: chunkBytes.length, totalChunks: 1
+    })
+  });
+  assert.equal(uploadBegin.status, 201, 'authenticated project chunk uploads should be initialized');
+  const incompleteCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(incompleteCommit.status, 409, 'commit must not publish a project while chunks are missing');
+  assert.equal((await incompleteCommit.json()).error, 'pixelforge_upload_incomplete');
+  const chunkHash = crypto.createHash('sha256').update(chunkBytes).digest('hex');
+  const badChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: '0'.repeat(64) })
+  });
+  assert.equal(badChunk.status, 400, 'a chunk with a mismatched SHA-256 must be rejected');
+  assert.equal((await badChunk.json()).error, 'pixelforge_chunk_integrity_failed');
+  const goodChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
+  });
+  assert.equal(goodChunk.status, 200, 'a verified chunk should be accepted');
+  const duplicateChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
+  });
+  assert.equal(duplicateChunk.status, 200, 'retrying the same verified chunk must be idempotent');
+  const chunkCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(chunkCommit.status, 201, 'complete verified uploads should atomically publish the project');
+  const chunkReceipt = (await chunkCommit.json()).project;
+  assert.equal(chunkReceipt.serverRevision, 1);
+  const repeatedCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(repeatedCommit.status, 200, 'retrying a completed commit must return its saved receipt');
+  assert.deepEqual((await (await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { headers: authHeaders })).json()).project, chunkFixture,
+    'the committed chunked project must round-trip without altering its JSON payload');
+  const cancelledUploadId = 'b'.repeat(32);
+  const cancelBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ uploadId: cancelledUploadId, projectId: 'cancelled-chunk-project', expectedServerRevision: 0, totalBytes: 4, totalChunks: 1 })
+  });
+  assert.equal(cancelBegin.status, 201);
+  const cancelled = await fetch(base + '/api/pixelforge/projects/uploads/' + cancelledUploadId, {
+    method: 'DELETE', headers: authHeaders
+  });
+  assert.equal(cancelled.status, 200, 'abandoned uploads should be cancellable to release staged quota');
+  const cancelledChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + cancelledUploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: Buffer.from('test').toString('base64'), sha256: crypto.createHash('sha256').update('test').digest('hex') })
+  });
+  assert.equal(cancelledChunk.status, 404, 'cancelled uploads must no longer accept chunks');
+  await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { method: 'DELETE', headers: authHeaders });
 
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
