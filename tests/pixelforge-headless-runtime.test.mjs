@@ -492,4 +492,7 @@ test('headless brush and line actions reproduce the editor 2/4/8-way symmetry mo
   });
   assert.equal(eightWay.ok, true);
   assert.equal(eightWay.result.symmetryMode, 8);
+  for (const [x, y] of [[1, 5], [10, 1], [14, 10], [5, 14], [1, 10], [10, 14], [14, 5], [5, 1]]) {
+    assert.equal(runtime.sandbox.sampleColorAt(x, y), '#008877', `8-way symmetry missed (${x}, ${y})`);
+  }
 });
