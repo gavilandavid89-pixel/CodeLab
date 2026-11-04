@@ -9,6 +9,8 @@ const bridge = fs.readFileSync(path.join(root, '.github/scripts/codelab-bridge.m
 const tools = fs.readFileSync(path.join(root, 'public/pixelforge/src/ai-tools.js'), 'utf8');
 
 test('PixelForge Headless inspection is admin-scoped, allowlisted and read-only', () => {
+  assert.match(bridge, /'pixelforge_headless_list_projects'/);
+  assert.match(bridge, /api\/pixelforge\/projects/);
   assert.match(bridge, /'pixelforge_headless_inspect'/);
   const projectActionsStart = bridge.indexOf('const projectActions = [');
   const projectActionsEnd = bridge.indexOf('];', projectActionsStart);
