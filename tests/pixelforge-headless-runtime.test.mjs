@@ -1,0 +1,561 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
+import { frameAtAnimationTime, exportAnimationSpriteSheet } from '../public/pixelforge/src/animation.js';
+
+function projectFixture() {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Headless fixture' });
+  return runtime.toJSON();
+}
+
+test('headless runtime opens a persisted PixelForge project without changing its identity', () => {
+  const fixture = projectFixture();
+  fixture.serverRevision = 7;
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const state = runtime.inspect();
+  assert.equal(state.project.id, fixture.id);
+  assert.equal(state.project.serverRevision, 7);
+  assert.equal(state.project.width, 16);
+  assert.equal(state.project.layerCount, 1);
+  assert.equal(state.sandbox.hasChanges, false);
+});
+
+test('headless batch edits an isolated sandbox and commits only after proposal acceptance', () => {
+  const fixture = projectFixture();
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const before = runtime.toJSON();
+  const batch = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 1, y0: 2, x1: 10, y1: 2, color: '#FF3300', size: 1 },
+    { name: 'canvas.fill', x: 1, y: 2, color: '#00AA44', tolerance: 0, contiguous: true },
+  ]);
+  assert.equal(batch.ok, true);
+  assert.equal(runtime.hasPendingChanges, true);
+  assert.deepEqual(runtime.document.toJSON(), before, 'source document must remain untouched before review');
+  assert.throws(() => runtime.toJSON(), /Unreviewed sandbox changes/);
+  const proposal = runtime.createProposal('Draw a line and fill the connected area');
+  assert.ok(proposal.id);
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.hasPendingChanges, false);
+  const saved = runtime.toJSON();
+  assert.equal(saved.id, fixture.id);
+  assert.ok(saved.revision > fixture.revision);
+  assert.ok(saved.layers[0].pixels !== fixture.layers[0].pixels);
+});
+
+test('headless batch stops at first invalid action and never creates a proposal implicitly', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const result = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 0, y0: 0, x1: 3, y1: 0, color: '#112233' },
+    { name: 'canvas.get_pixel', x: 99, y: 99 },
+    { name: 'history.undo' },
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.failedIndex, 1);
+  assert.equal(result.results.length, 2);
+  assert.equal(runtime.hasPendingChanges, true);
+  assert.equal(runtime.hasPendingProposal, false);
+});
+
+test('headless proposal rejects a stale source revision', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 5, y1: 1, color: '#123456' }).ok, true);
+  runtime.createProposal('Stale proposal');
+  runtime.document.setLayerOpacity(runtime.document.activeLayerId, 0.5);
+  const result = runtime.acceptProposal();
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, 'stale-base');
+});
+
+test('headless structural layer changes are reviewed and committed as one undoable source transaction', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'layer.add', layerName: 'Ink' },
+  ]);
+  assert.equal(batch.ok, true);
+  assert.equal(runtime.inspect().sandbox.layerCount, 2);
+  runtime.createProposal('Add an ink layer');
+  const accepted = runtime.acceptProposal();
+  assert.equal(accepted.status, 'applied');
+  assert.equal(runtime.document.layers.length, 2);
+  assert.equal(runtime.document.layers[1].name, 'Ink');
+  assert.equal(runtime.document.undo(), true);
+  assert.equal(runtime.document.layers.length, 1);
+  assert.equal(runtime.document.redo(), true);
+  assert.equal(runtime.document.layers.length, 2);
+});
+
+test('headless layer selection advances the sandbox revision and is proposal-visible', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const originalLayerId = runtime.document.activeLayerId;
+  const sandboxOriginalLayerId = runtime.sandbox.layers[0].id;
+  const added = runtime.execute({ name: 'layer.add', layerName: 'Color' });
+  assert.equal(added.ok, true);
+  const layerId = added.result.layerId;
+  const selected = runtime.execute({ name: 'layer.select', layerId: sandboxOriginalLayerId });
+  assert.equal(selected.ok, true);
+  assert.equal(runtime.hasPendingChanges, true);
+  runtime.createProposal('Add Color layer and select the original layer');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.document.activeLayerId, originalLayerId);
+  assert.ok(runtime.document.layers.some(layer => layer.id === layerId));
+});
+
+test('headless brush actions validate points and keep edits in the sandbox', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const result = runtime.execute({
+    name: 'canvas.draw_stroke',
+    points: [{ x: 2, y: 2 }, { x: 3, y: 3 }, { x: 4, y: 4 }],
+    color: '#CC2288', size: 3, opacity: 0.75, shape: 'circle', hardness: 0.6,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(runtime.hasPendingChanges, true);
+  assert.equal(runtime.document.revision, 0);
+});
+
+test('animation-only edits require proposal acceptance and persist as project timeline metadata', () => {
+  const fixture = projectFixture();
+  fixture.serverRevision = 12;
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const added = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Idle 1', durationMs: 100 });
+  assert.equal(added.ok, true);
+  assert.equal(runtime.inspect().animation.frameCount, 1);
+  assert.equal(runtime.inspect().animation.hasChanges, true);
+  assert.throws(() => runtime.toJSON(), /Unreviewed sandbox changes/);
+  runtime.createProposal('Create the first idle animation frame');
+  const accepted = runtime.acceptProposal();
+  assert.equal(accepted.status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.serverRevision, 12);
+  assert.equal(saved.animation.format, 'pixelforge-animation');
+  assert.equal(saved.animation.frames[0].name, 'Idle 1');
+  assert.equal(saved.animation.frames[0].durationMs, 100);
+  assert.equal(runtime.document.revision, fixture.revision + 1);
+});
+
+test('animation timeline supports duplication, timing, ordering and safe deletion', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const first = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'A' });
+  assert.equal(first.ok, true);
+  const second = runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
+  assert.equal(second.ok, true);
+  assert.equal(runtime.execute({ name: 'animation.set_fps', fps: 24 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 250 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.set_loop', loop: false }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.reorder', from: 1, to: 0 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.delete', index: 1 }).ok, true);
+  const summary = runtime.execute({ name: 'animation.get_summary' });
+  assert.equal(summary.ok, true);
+  assert.equal(summary.result.frameCount, 1);
+  assert.equal(summary.result.fps, 24);
+  assert.equal(summary.result.loop, false);
+  assert.equal(summary.result.totalDurationMs, 250);
+});
+
+test('animation timeline rejects invalid frame dimensions and timing values', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', durationMs: 0 }).ok, false);
+  assert.equal(runtime.execute({ name: 'animation.set_fps', fps: 240 }).ok, false);
+  assert.equal(runtime.hasPendingChanges, false);
+});
+
+test('animation composite frames capture sandbox pixels and frame-time lookup respects timing and looping', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 7, y1: 3, color: '#EE2211' },
+    { name: 'animation.frame.capture_composite', frameName: 'Walk 1', durationMs: 80 },
+    { name: 'canvas.draw_line', x0: 2, y0: 4, x1: 7, y1: 4, color: '#22AA44' },
+    { name: 'animation.frame.capture_composite', frameName: 'Walk 2', durationMs: 120 },
+  ]);
+  assert.equal(batch.ok, true);
+  runtime.createProposal('Create two walking frames');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.animation.frames.length, 2);
+  const firstPixels = Buffer.from(saved.animation.frames[0].cels[0].pixels, 'base64');
+  const secondPixels = Buffer.from(saved.animation.frames[1].cels[0].pixels, 'base64');
+  const containsColor = (pixels, rgba) => {
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      if (rgba.every((channel, index) => pixels[offset + index] === channel)) return true;
+    }
+    return false;
+  };
+  assert.equal(containsColor(firstPixels, [238, 34, 17, 255]), true, 'first cel must preserve the first raster edit');
+  assert.equal(containsColor(secondPixels, [238, 34, 17, 255]), true, 'second composite cel must preserve prior edits');
+  assert.equal(containsColor(secondPixels, [34, 170, 68, 255]), true, 'second composite cel must include its new raster edit');
+  const timeline = saved.animation;
+  assert.equal(frameAtAnimationTime(timeline, 0).index, 0);
+  assert.equal(frameAtAnimationTime(timeline, 79).index, 0);
+  assert.equal(frameAtAnimationTime(timeline, 80).index, 1);
+  assert.equal(frameAtAnimationTime(timeline, 200).index, 0);
+  timeline.loop = false;
+  assert.equal(frameAtAnimationTime(timeline, 10000).index, 1);
+});
+
+test('Headless remaps existing animation cel identities across load, proposal acceptance, and sandbox refresh', () => {
+  const fixture = projectFixture();
+  const sourceLayerId = fixture.layers[0].id;
+  const originalPixels = Buffer.alloc(fixture.width * fixture.height * 4);
+  originalPixels.set([12, 34, 56, 255], 0);
+  fixture.animation = {
+    format: 'pixelforge-animation', version: 1,
+    width: fixture.width, height: fixture.height,
+    layerIds: [sourceLayerId], fps: 12, loop: true, activeFrameIndex: 0,
+    frames: [{
+      id: 'persisted-frame-1', durationMs: 100,
+      cels: [{ layerId: sourceLayerId, pixels: originalPixels.toString('base64') }],
+    }],
+  };
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const sandboxLayerId = runtime.sandbox.layers[0].id;
+  assert.notEqual(sandboxLayerId, sourceLayerId, 'sandbox layer identity must be isolated from the persisted project');
+  const initialCel = runtime.execute({ name: 'animation.frame.get_cel', layerId: sandboxLayerId });
+  assert.equal(initialCel.ok, true);
+  assert.deepEqual(Buffer.from(initialCel.result.pixels, 'base64'), originalPixels);
+
+  const changedPixels = Buffer.from(originalPixels);
+  changedPixels.set([200, 150, 100, 255], 4);
+  assert.equal(runtime.execute({
+    name: 'animation.frame.set_cel', layerId: sandboxLayerId, pixels: changedPixels.toString('base64'),
+  }).ok, true);
+  runtime.createProposal('Edit a persisted animation cel');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+
+  const saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.equal(saved.animation.layerIds[0], sourceLayerId);
+  assert.equal(saved.animation.frames[0].cels[0].layerId, sourceLayerId);
+  assert.deepEqual(Buffer.from(saved.animation.frames[0].cels[0].pixels, 'base64'), changedPixels);
+
+  const refreshedSandboxLayerId = runtime.sandbox.layers[0].id;
+  assert.notEqual(refreshedSandboxLayerId, sourceLayerId);
+  const reloadedCel = runtime.execute({ name: 'animation.frame.get_cel', layerId: refreshedSandboxLayerId });
+  assert.equal(reloadedCel.ok, true);
+  assert.deepEqual(Buffer.from(reloadedCel.result.pixels, 'base64'), changedPixels);
+});
+
+test('Headless keeps independent animation cels aligned with layer add, reorder, and delete operations', () => {
+  const fixture = projectFixture();
+  const sourceBaseLayerId = fixture.layers[0].id;
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const baseLayerId = runtime.sandbox.layers[0].id;
+  const addedLayer = runtime.execute({ name: 'layer.add', layerName: 'Ink' });
+  assert.equal(addedLayer.ok, true);
+  const inkLayerId = addedLayer.result.layerId;
+  const first = runtime.executeBatch([
+    { name: 'layer.select', layerId: inkLayerId },
+    { name: 'canvas.draw_line', x0: 2, y0: 2, x1: 6, y1: 2, color: '#EE2211' },
+    { name: 'animation.frame.add_from_layer', layerId: inkLayerId, frameName: 'Pose A' },
+    { name: 'layer.select', layerId: baseLayerId },
+    { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 6, y1: 3, color: '#22AA44' },
+    { name: 'animation.frame.add_from_layer', layerId: baseLayerId, frameName: 'Pose B' },
+  ]);
+  assert.equal(first.ok, true, JSON.stringify(first));
+  runtime.createProposal('Create two independent multi-layer animation poses');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  let saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, [sourceBaseLayerId, inkLayerId], JSON.stringify({ sourceBaseLayerId, baseLayerId, inkLayerId, savedLayerIds: saved.layers.map(layer => layer.id) }));
+  const cel = (frame, layerId) => frame.cels.find(item => item.layerId === layerId);
+  const firstBase = Buffer.from(cel(saved.animation.frames[0], sourceBaseLayerId).pixels, 'base64');
+  const firstInk = Buffer.from(cel(saved.animation.frames[0], inkLayerId).pixels, 'base64');
+  const secondBase = Buffer.from(cel(saved.animation.frames[1], sourceBaseLayerId).pixels, 'base64');
+  const secondInk = Buffer.from(cel(saved.animation.frames[1], inkLayerId).pixels, 'base64');
+  const pixel = (bytes, x, y) => [...bytes.subarray((y * saved.width + x) * 4, (y * saved.width + x) * 4 + 4)];
+  assert.deepEqual(pixel(firstBase, 2, 3), [0, 0, 0, 0]);
+  assert.deepEqual(pixel(firstInk, 2, 2), [238, 34, 17, 255]);
+  assert.deepEqual(pixel(secondBase, 2, 3), [34, 170, 68, 255]);
+  assert.deepEqual(pixel(secondInk, 2, 2), [238, 34, 17, 255]);
+
+  const shadow = runtime.execute({ name: 'layer.add', layerName: 'Shadow' });
+  assert.equal(shadow.ok, true);
+  const shadowId = shadow.result.layerId;
+  assert.deepEqual(runtime.inspect().animation.layerCount, 3);
+  const refreshedInkLayerId = runtime.sandbox.layers.find(layer => layer.name === 'Ink').id;
+  assert.equal(runtime.execute({ name: 'layer.move', layerId: refreshedInkLayerId, targetIndex: 0 }).ok, true);
+  assert.deepEqual(runtime.inspect().animation.layerIds, runtime.sandbox.layers.map(layer => layer.id));
+  runtime.createProposal('Add and reorder a synchronized animation layer');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.equal(saved.animation.frames[0].cels.find(item => item.layerId === shadowId).pixels.length, 1368);
+  const refreshedBaseLayerId = runtime.sandbox.layers.find(layer => layer.name === fixture.layers[0].name).id;
+  const deleteResult = runtime.execute({ name: 'layer.delete', layerId: refreshedBaseLayerId });
+  assert.equal(deleteResult.ok, true, JSON.stringify({ refreshedBaseLayerId, fixtureLayerName: fixture.layers[0].name, sandboxLayers: runtime.sandbox.layers.map(layer => ({ id: layer.id, name: layer.name })), deleteResult }));
+  runtime.createProposal('Delete a layer and its animation cels together');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  saved = runtime.toJSON();
+  assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
+  assert.ok(saved.animation.frames.every(frame => frame.cels.length === saved.layers.length));
+});
+
+test('Headless blocks dimension-changing crop while multi-layer animation frames exist', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer' }).ok, true);
+  const result = runtime.execute({ name: 'canvas.crop', x: 0, y: 0, width: 8, height: 8 });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'animation_dimension_change_requires_frame_transform');
+  assert.equal(runtime.sandbox.width, 16);
+  assert.equal(runtime.sandbox.height, 16);
+});
+
+test('headless shapes, selections, crop and rename compose into one accepted document change', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'document.rename', newName: 'Sprite study' },
+    { name: 'selection.create_rect', x: 1, y: 1, width: 3, height: 3 },
+    { name: 'canvas.fill', x: 1, y: 1, color: '#22AA44' },
+    { name: 'selection.clear' },
+    { name: 'canvas.draw_shape', shape: 'ellipse', x: 4, y: 4, width: 4, height: 4, color: '#EE2211', size: 1 },
+    { name: 'canvas.crop', x: 0, y: 0, width: 10, height: 10 },
+  ]);
+  assert.equal(batch.ok, true);
+  runtime.createProposal('Create a sprite study with selected fill and ellipse');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.name, 'Sprite study');
+  assert.equal(saved.width, 10);
+  assert.equal(saved.height, 10);
+  const pixels = Buffer.from(saved.layers[0].pixels, 'base64');
+  assert.deepEqual([...pixels.subarray((1 * 10 + 1) * 4, (1 * 10 + 1) * 4 + 4)], [34, 170, 68, 255]);
+  assert.ok(pixels.some((value, index) => index % 4 === 0 && value === 238), 'ellipse outline should be persisted');
+});
+
+test('animation sprite-sheet export returns a PNG blob and frame manifest', async () => {
+  const fixture = projectFixture();
+  const layerId = fixture.layers[0].id;
+  const timeline = {
+    format: 'pixelforge-animation', version: 1, width: fixture.width, height: fixture.height,
+    layerIds: [layerId], fps: 12, loop: true, activeFrameIndex: 0,
+    frames: [
+      { id: 'frame-a', name: 'A', durationMs: 100, cels: [{ layerId, pixels: fixture.layers[0].pixels }] },
+      { id: 'frame-b', name: 'B', durationMs: 120, cels: [{ layerId, pixels: fixture.layers[0].pixels }] },
+    ],
+  };
+  const originalDocument = globalThis.document;
+  const originalImageData = globalThis.ImageData;
+  const writes = [];
+  globalThis.ImageData = class TestImageData {
+    constructor(data, width, height) { this.data = data; this.width = width; this.height = height; }
+  };
+  globalThis.document = {
+    createElement() {
+      return {
+        width: 0, height: 0,
+        getContext() {
+          return {
+            clearRect() {},
+            putImageData(image, x, y) { writes.push({ width: image.width, height: image.height, x, y }); },
+          };
+        },
+        toBlob(callback) { callback(new Blob(['png-test-data'], { type: 'image/png' })); },
+      };
+    },
+  };
+  try {
+    const exported = await exportAnimationSpriteSheet(timeline, 16, 16, { columns: 2, padding: 1 });
+    assert.equal(exported.blob.type, 'image/png');
+    assert.equal(exported.manifest.frameCount, 2);
+    assert.equal(exported.manifest.sheet.columns, 2);
+    assert.deepEqual(writes.map(item => [item.x, item.y]), [[1, 1], [18, 1]]);
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument;
+    if (originalImageData === undefined) delete globalThis.ImageData; else globalThis.ImageData = originalImageData;
+  }
+});
+
+test('headless fill exposes the editor checker pattern and validates dither scale', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const filled = runtime.execute({
+    name: 'canvas.fill', x: 0, y: 0, color: '#112233',
+    secondaryColor: '#AABBCC', pattern: 'checker', scale: 1, contiguous: false,
+  });
+  assert.equal(filled.ok, true);
+  assert.equal(filled.result.pattern, 'checker');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 0, y: 0 }).result.color, '#112233');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 1, y: 0 }).result.color, '#AABBCC');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 0, y: 1 }).result.color, '#AABBCC');
+  assert.equal(runtime.execute({ name: 'canvas.get_pixel', x: 1, y: 1 }).result.color, '#112233');
+  assert.equal(runtime.execute({
+    name: 'canvas.fill', x: 0, y: 0, color: '#112233',
+    pattern: 'checker', scale: 17,
+  }).ok, false);
+});
+
+test('headless region copy and paste preserve masked pixels inside the proposal sandbox', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'canvas.paste_region', x: 5, y: 5 }).ok, false);
+  const batch = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 1, y0: 1, x1: 3, y1: 1, color: '#D02040' },
+    { name: 'selection.create_rect', x: 1, y: 1, width: 2, height: 1 },
+    { name: 'canvas.copy_region', x: 1, y: 1, width: 3, height: 1 },
+    { name: 'selection.clear' },
+    { name: 'canvas.paste_region', x: 5, y: 5 },
+  ]);
+  assert.equal(batch.ok, true);
+  assert.equal(batch.results[2].result.selectedPixels, 2);
+  assert.equal(batch.results[3].result.cleared, true);
+  assert.equal(batch.results[4].result.changedPixels, 2);
+  assert.equal(runtime.document.sampleColorAt(5, 5), null, 'source document remains isolated before approval');
+  runtime.createProposal('Copy the selected two-pixel stroke to a second location');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.document.sampleColorAt(5, 5), '#D02040');
+  assert.equal(runtime.document.sampleColorAt(6, 5), '#D02040');
+  assert.equal(runtime.document.sampleColorAt(7, 5), null, 'unselected copied pixels must remain transparent');
+});
+
+test('headless region transforms expose scale, skew and interpolation controls from the raster engine', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const drawn = runtime.execute({
+    name: 'canvas.draw_shape', shape: 'rectangle',
+    x: 3, y: 3, width: 4, height: 4, color: '#3366CC',
+  });
+  assert.equal(drawn.ok, true);
+  const transformed = runtime.execute({
+    name: 'canvas.transform_region',
+    x: 3, y: 3, width: 4, height: 4,
+    dx: 1, dy: 0, rotate: 0, scaleX: 1.5, scaleY: 1.25,
+    skewX: 0.25, skewY: 0, interpolation: 'bilinear',
+  });
+  assert.equal(transformed.ok, true);
+  assert.equal(transformed.result.selectedPixels > 0, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.transform_region',
+    x: 3, y: 3, width: 4, height: 4, interpolation: 'lanczos',
+  }).ok, false);
+});
+
+test('headless transform preview reports bounds without changing the sandbox revision', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const preview = runtime.execute({
+    name: 'canvas.preview_transform_region',
+    x: 2, y: 3, width: 5, height: 4,
+    dx: 1, dy: 2, rotate: 90, scaleX: 1.5, scaleY: 1,
+    skewX: 0.25, interpolation: 'bilinear',
+  });
+  assert.equal(preview.ok, true);
+  assert.equal(preview.result.selectedPixels, 30);
+  assert.ok(preview.result.bounds);
+  assert.equal(preview.result.options.scaleX, 1.5);
+  assert.equal(preview.result.options.interpolation, 'bilinear');
+  assert.equal(runtime.hasPendingChanges, false);
+  assert.equal(runtime.document.revision, 0);
+
+  const pending = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(pending.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 3, y1: 1, color: '#112233',
+  }).ok, true);
+  pending.createProposal('Keep a draft pending while checking transform bounds');
+  const pendingPreview = pending.execute({
+    name: 'canvas.preview_transform_region', x: 0, y: 0, width: 4, height: 4,
+  });
+  assert.equal(pendingPreview.ok, true, 'read-only transform preview should be allowed while a proposal is pending');
+  assert.equal(pending.hasPendingProposal, true);
+});
+
+test('animation timeline has isolated undo and redo history before proposal acceptance', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false);
+  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Pose A' });
+  runtime.execute({ name: 'animation.frame.set_duration', index: 0, durationMs: 250 });
+  assert.equal(runtime.inspect().animation.frames[0].durationMs, 250);
+
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frames[0].durationMs, 83);
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frameCount, 0);
+  assert.equal(runtime.hasPendingChanges, false, 'undoing back to the committed timeline clears dirty state');
+
+  assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frameCount, 1);
+  assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, true);
+  assert.equal(runtime.inspect().animation.frames[0].durationMs, 250);
+  runtime.createProposal('Create Pose A with a 250 ms duration');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.toJSON().animation.frames[0].durationMs, 250);
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false, 'accepted timeline clears its temporary undo stack');
+});
+
+test('animation undo history is bounded to 100 steps', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  for (let index = 0; index < 105; index++) {
+    const result = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Frame ' + index });
+    assert.equal(result.ok, true);
+  }
+  assert.equal(runtime.inspect().animation.frameCount, 105);
+  for (let index = 0; index < 100; index++) {
+    assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, true);
+  }
+  assert.equal(runtime.inspect().animation.frameCount, 5);
+  assert.equal(runtime.execute({ name: 'animation.undo' }).result.changed, false);
+});
+
+test('animation undo history also respects the 16 MiB serialized snapshot budget', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 512, height: 512 });
+  for (let index = 0; index < 8; index++) {
+    assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Large ' + index }).ok, true);
+  }
+  assert.equal(runtime.inspect().animation.frameCount, 8);
+  let undoCount = 0;
+  while (runtime.execute({ name: 'animation.undo' }).result.changed) undoCount++;
+  assert.ok(undoCount >= 1);
+  assert.ok(undoCount < 8, 'large timeline snapshots must be evicted once the byte budget is reached');
+});
+
+test('accepting a raster-only proposal clears stale animation undo and redo snapshots', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Temporary pose' });
+  runtime.execute({ name: 'animation.undo' });
+  assert.equal(runtime.hasPendingChanges, false);
+  runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 4, y1: 1, color: '#223344' });
+  runtime.createProposal('Draw a raster line without changing the saved timeline');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, false);
+  assert.equal(runtime.inspect().animation.frameCount, 0);
+});
+
+test('sprite sheet export returns a PNG Blob and frame manifest with deterministic positions', async () => {
+  const previousDocument = globalThis.document;
+  const previousImageData = globalThis.ImageData;
+  const placements = [];
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({
+      clearRect: () => {},
+      putImageData: (imageData, x, y) => placements.push({
+        width: imageData.width, height: imageData.height, x, y,
+        bytes: imageData.data.length,
+      }),
+    }),
+    toBlob: callback => callback(new Blob(['png-bytes'], { type: 'image/png' })),
+  };
+  globalThis.document = { createElement: name => {
+    assert.equal(name, 'canvas');
+    return canvas;
+  } };
+  globalThis.ImageData = class FakeImageData {
+    constructor(data, width, height) { this.data = data; this.width = width; this.height = height; }
+  };
+  try {
+    const timeline = {
+      format: 'pixelforge-animation', version: 1, width: 1, height: 1,
+      layerIds: ['layer-1'], fps: 12, loop: true, activeFrameIndex: 0,
+      frames: [
+        { id: 'frame-a', name: 'A', durationMs: 83, cels: [{ layerId: 'layer-1', pixels: 'AAAAAA==' }] },
+        { id: 'frame-b', name: 'B', durationMs: 120, cels: [{ layerId: 'layer-1', pixels: '/////w==' }] },
+      ],
+    };
+    const exported = await exportAnimationSpriteSheet(timeline, 1, 1, { columns: 2, padding: 1 });
+    assert.equal(exported.blob.type, 'image/png');
+    assert.equal(exported.manifest.frameCount, 2);
+    assert.deepEqual(exported.manifest.sheet, { width: 5, height: 3, columns: 2, rows: 1, padding: 1 });
+    assert.deepEqual(placements, [
+      { width: 1, height: 1, x: 1, y: 1, bytes: 4 },
+      { width: 1, height: 1, x: 3, y: 1, bytes: 4 },
+    ]);
+    assert.equal(exported.manifest.frames[1].durationMs, 120);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousImageData === undefined) delete globalThis.ImageData;
+    else globalThis.ImageData = previousImageData;
+  }
+});
