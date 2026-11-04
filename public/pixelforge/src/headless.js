@@ -108,6 +108,16 @@ export class HeadlessEditorRuntime {
         } };
       }
     }
+    if (action?.name === 'canvas.crop' && this.#sandboxAnimation.frames.length) {
+      return {
+        ok: false,
+        action: action.name,
+        error: {
+          code: 'animation_dimension_change_requires_frame_transform',
+          message: 'Cropping an animated project requires applying the same crop to every frame cel. This operation is blocked rather than leaving frame dimensions inconsistent.',
+        },
+      };
+    }
     const commandResult = this.#commands.execute(action);
     if (commandResult.ok) {
       const before = JSON.stringify(this.#sandboxAnimation);
