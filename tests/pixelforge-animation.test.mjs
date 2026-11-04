@@ -56,6 +56,9 @@ test('reorders and deletes frames while keeping the active frame attached to its
   timeline.deleteFrame(0);
   assert.equal(timeline.activeFrameIndex, 0);
   assert.equal(timeline.activeFrame.id, firstId);
+  assert.equal(timeline.frameCount, 2);
+  timeline.deleteFrame(0);
+  assert.equal(timeline.frameCount, 1);
   assert.throws(() => timeline.deleteFrame(0), /at least one frame/);
 });
 
