@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
+import { exportAnimationSpriteSheet } from '../public/pixelforge/src/animation.js';
 import { frameAtAnimationTime, exportAnimationSpriteSheet } from '../public/pixelforge/src/animation.js';
 
 function projectFixture() {
@@ -402,4 +403,51 @@ test('accepting a raster-only proposal clears stale animation undo and redo snap
   assert.equal(runtime.acceptProposal().status, 'applied');
   assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, false);
   assert.equal(runtime.inspect().animation.frameCount, 0);
+});
+
+test('sprite sheet export returns a PNG Blob and frame manifest with deterministic positions', async () => {
+  const previousDocument = globalThis.document;
+  const previousImageData = globalThis.ImageData;
+  const placements = [];
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({
+      clearRect: () => {},
+      putImageData: (imageData, x, y) => placements.push({
+        width: imageData.width, height: imageData.height, x, y,
+        bytes: imageData.data.length,
+      }),
+    }),
+    toBlob: callback => callback(new Blob(['png-bytes'], { type: 'image/png' })),
+  };
+  globalThis.document = { createElement: name => {
+    assert.equal(name, 'canvas');
+    return canvas;
+  } };
+  globalThis.ImageData = class FakeImageData {
+    constructor(data, width, height) { this.data = data; this.width = width; this.height = height; }
+  };
+  try {
+    const timeline = {
+      format: 'pixelforge-animation', version: 1, fps: 12, loop: true,
+      frames: [
+        { id: 'frame-a', name: 'A', durationMs: 83, pixels: 'AAAAAA==' },
+        { id: 'frame-b', name: 'B', durationMs: 120, pixels: '/////w==' },
+      ],
+    };
+    const exported = await exportAnimationSpriteSheet(timeline, 1, 1, { columns: 2, padding: 1 });
+    assert.equal(exported.blob.type, 'image/png');
+    assert.equal(exported.manifest.frameCount, 2);
+    assert.deepEqual(exported.manifest.sheet, { width: 5, height: 3, columns: 2, rows: 1, padding: 1 });
+    assert.deepEqual(placements, [
+      { width: 1, height: 1, x: 1, y: 1, bytes: 4 },
+      { width: 1, height: 1, x: 3, y: 1, bytes: 4 },
+    ]);
+    assert.equal(exported.manifest.frames[1].durationMs, 120);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousImageData === undefined) delete globalThis.ImageData;
+    else globalThis.ImageData = previousImageData;
+  }
 });
