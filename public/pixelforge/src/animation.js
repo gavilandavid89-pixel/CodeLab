@@ -79,7 +79,7 @@ export function validateAnimationTimeline(value, width, height, documentLayers =
   if (value.width !== undefined && value.width !== width) throw new RangeError('Animation width does not match the project.');
   if (value.height !== undefined && value.height !== height) throw new RangeError('Animation height does not match the project.');
   if (!Number.isInteger(value.fps) || value.fps < 1 || value.fps > 60 ||
-      typeof (value.loop ?? true) !== 'boolean) {
+      typeof (value.loop ?? true) !== 'boolean' {
     throw new TypeError('Animation FPS or loop setting is invalid.');
   }
   if (!Array.isArray(value.frames) || value.frames.length > MAX_ANIMATION_FRAMES) {
@@ -241,17 +241,6 @@ export function applyAnimationAction(timeline, document, action) {
       result = { frameId: model.getFrame(index).id, width: model.width, height: model.height, pixels: encodeBase64(model.compositeFrame(index, settings)) };
       break;
     }
-    case 'animation.layer.add': {
-      const layerId = action.layerId;
-      result = { layerCount: model.addLayer(layerId, { copyFromLayerId: action.copyFromLayerId ?? null }), layerId };
-      break;
-    }
-    case 'animation.layer.remove':
-      result = { layerCount: model.removeLayer(action.layerId), layerId: action.layerId };
-      break;
-    case 'animation.layer.reorder':
-      result = { changed: model.reorderLayers(action.layerIds), layerIds: model.layerIds };
-      break;
     default:
       throw new Error('Unsupported animation action: ' + action.name);
   }
