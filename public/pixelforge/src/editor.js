@@ -605,6 +605,7 @@ function syncAnimationLayerStack(copyFromByNewId = new Map()) {
   }
   animation.reorderLayers(currentIds);
 }
+function markAnimationChanged() { doc.revision++; doc.saveVersion++; doc.dirty = true; }
 function captureAnimationFrame() {
   if (!animation) return;
   syncAnimationLayerStack();
@@ -1639,7 +1640,7 @@ $('#animation-frame-left').addEventListener('click', () => {
     if (!animation || animation.activeFrameIndex <= 0) return;
     captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
     animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex - 1);
-    renderAnimationTimeline(); scheduleAutosave();
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); }
 });
 $('#animation-frame-right').addEventListener('click', () => {
@@ -1647,7 +1648,7 @@ $('#animation-frame-right').addEventListener('click', () => {
     if (!animation || animation.activeFrameIndex >= animation.frameCount - 1) return;
     captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
     animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex + 1);
-    renderAnimationTimeline(); scheduleAutosave();
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); }
 });
 $('#animation-play').addEventListener('click', startAnimationPlayback);
@@ -1655,18 +1656,18 @@ $('#animation-stop').addEventListener('click', () => stopAnimationPlayback());
 $('#animation-fps').addEventListener('change', event => {
   try {
     ensureAnimation(); animation.setFps(Number(event.target.value));
-    renderAnimationTimeline(); scheduleAutosave(); status('Animation FPS updated', 'success');
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave(); status('Animation FPS updated', 'success');
   } catch (error) { status(error.message, 'error'); renderAnimationTimeline(); }
 });
 $('#animation-duration').addEventListener('change', event => {
   try {
     ensureAnimation(); animation.setFrameDuration(animation.activeFrameIndex, Number(event.target.value));
-    renderAnimationTimeline(); scheduleAutosave();
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); renderAnimationTimeline(); }
 });
 $('#animation-loop').addEventListener('change', event => {
   animationLoop = event.target.checked;
-  if (animation) scheduleAutosave();
+  if (animation) { markAnimationChanged(); scheduleAutosave(); }
 });
 $('#animation-onion').addEventListener('change', () => render());
 $('#animation-export-sheet').addEventListener('click', () => {
