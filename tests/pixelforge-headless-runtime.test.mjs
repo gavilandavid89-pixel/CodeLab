@@ -765,16 +765,22 @@ test('Headless proposal diff reports animation timing, FPS, loop and active-fram
   assert.equal(initial.ok, true);
   runtime.createProposal('Initialize animation timeline');
   assert.equal(runtime.acceptProposal().status, 'applied');
-  runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
+  const duplicated = runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
+  assert.equal(duplicated.ok, true, JSON.stringify(duplicated));
   // FPS normalizes all frame durations, so apply the explicit per-frame timing
   // after changing FPS to verify that the diff retains the intended 240 ms.
-  runtime.execute({ name: 'animation.set_fps', fps: 24 });
-  runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
-  runtime.execute({ name: 'animation.set_loop', loop: false });
-  runtime.execute({ name: 'animation.frame.set_active', index: 1 });
+  const fps = runtime.execute({ name: 'animation.set_fps', fps: 24 });
+  assert.equal(fps.ok, true, JSON.stringify(fps));
+  const timing = runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
+  assert.equal(timing.ok, true, JSON.stringify(timing));
+  assert.equal(timing.result.durationMs, 240, JSON.stringify(timing));
+  const loop = runtime.execute({ name: 'animation.set_loop', loop: false });
+  assert.equal(loop.ok, true, JSON.stringify(loop));
+  const active = runtime.execute({ name: 'animation.frame.set_active', index: 1 });
+  assert.equal(active.ok, true, JSON.stringify(active));
   const diff = runtime.getDiff();
   assert.deepEqual(diff.animation.settingsChanged.sort(), ['activeFrameIndex', 'fps', 'loop']);
-  assert.ok(diff.animation.frames.some(frame => frame.durationChanged && frame.durationMs === 240));
+  assert.ok(diff.animation.frames.some(frame => frame.durationChanged && frame.durationMs === 240), JSON.stringify(diff.animation));
 });
 
 test('Headless inspection publishes its supported actions and safety limits', () => {
