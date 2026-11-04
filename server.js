@@ -2617,7 +2617,7 @@ seedAdminAccountIfConfigured().then(async () => {
     let bridgeStopping = false;
     const launchBridgeWorker = () => {
       if (bridgeStopping || bridgeWorker) return;
-      bridgeWorker = spawn(process.execPath, ['--experimental-default-type=module', workerPath], {
+      bridgeWorker = spawn(process.execPath, [workerPath], {
         cwd: __dirname,
         env: process.env,
         stdio: ['ignore', 'inherit', 'inherit']
