@@ -44,6 +44,7 @@ async function main() {
   assert.match(page, /src="\.\/src\/editor\.js"/, 'PixelForge should load its editor module');
   assert.ok(page.indexOf('src="/studio-core.js"') < page.indexOf('src="./src/editor.js"'), 'PixelForge must load the same shared runtime before its editor');
   assert.match(page, /href="\/"[^>]*CodeLab dashboard|href="\/" title="Back to CodeLab dashboard"/, 'PixelForge should provide a return path to CodeLab');
+  assert.match(page, /class="brand" href="\/" aria-label="Back to CodeLab dashboard"/, 'the PixelForge brand should provide the primary CodeLab return path');
 
   for (const path of [
     '/pixelforge/styles.css',
@@ -66,6 +67,8 @@ async function main() {
   assert.match(pixelForgeHtml, /id="files-tab"/, 'the Files panel must be reachable from the inspector tabs');
   const pixelForgeStyles = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'styles.css'), 'utf8');
   assert.match(pixelForgeStyles, /\.inspector\[data-panel="files"\] \.files-section\{display:block/, 'mobile Files panel must explicitly reveal import/export controls');
+  assert.match(pixelForgeStyles, /\.top-actions>a\.quiet-button\[href="\/"\]\{display:none\}/, 'mobile header should not duplicate the CodeLab return action');
+  assert.match(pixelForgeStyles, /max-height:560px/, 'short landscape screens should receive a compact editor layout');
   assert.match(pixelForgeHtml, /Projects autosave to your CodeLab account/,
     'the studio should describe account-backed persistence, not local-only autosave');
   assert.doesNotMatch(pixelForgeHtml, /Projects autosave locally/,
