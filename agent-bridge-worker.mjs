@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module';
-import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash, createHmac } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import fs from 'node:fs';
+import path from 'node:path';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
 
 const require = createRequire(import.meta.url);
@@ -284,6 +286,195 @@ async function approveProposal(command) {
     diff: savedProposal.diff,
   };
 }
+
+function workspaceTokenFor(id) {
+  let secret = String(process.env.CODELAB_WORKSPACE_SECRET || '').trim();
+  if (!secret) {
+    const dataDir = process.env.CODELAB_DATA_DIR || path.join(process.cwd(), 'data');
+    try { secret = fs.readFileSync(path.join(dataDir, '.workspace-secret'), 'utf8').trim(); } catch {}
+  }
+  if (!secret) throw new Error('CodeLab workspace signing secret is unavailable to the native bridge.');
+  return createHmac('sha256', secret).update(String(id)).digest('hex');
+}
+async function workspaceApi(method, body = null) {
+  const token = workspaceTokenFor(workspaceId);
+  const base = 'http://127.0.0.1:' + String(process.env.PORT || 3000);
+  const response = await fetch(base + (method === 'POST' ? '/api/workspace/init' : '/api/workspace/' + encodeURIComponent(workspaceId)), {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-workspace-token': token,
+    },
+    ...(body === null ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(15000),
+  });
+  let data;
+  try { data = await response.json(); } catch { data = {}; }
+  if (!response.ok) {
+    const error = new Error('CodeLab workspace API returned HTTP ' + response.status + ': ' + (data.detail || data.error || 'unknown_error'));
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+async function loadAdminWorkspace() {
+  const initialized = await workspaceApi('POST', { id: workspaceId });
+  if (!initialized || initialized.workspaceId !== workspaceId || !initialized.state || !Array.isArray(initialized.state.projects)) {
+    throw new Error('CodeLab workspace initialization returned an invalid state.');
+  }
+  return initialized.state;
+}
+async function mutateAdminWorkspace(transform) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await loadAdminWorkspace();
+    const nextProjects = await transform(current.projects);
+    if (nextProjects === null) return { state: current, unchanged: true };
+    const saved = await workspaceApi('PUT', { projects: nextProjects, baseRevision: current.revision });
+    return { state: { ...current, revision: saved.revision, projects: nextProjects }, unchanged: false };
+  }
+  throw new Error('Workspace revision conflict persisted after three safe retries.');
+}
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+function exportColor(value, fallback) {
+  return typeof value === 'string' && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) ? value : fallback;
+}
+function exportDesignToHtml(project) {
+  const design = project.design || {};
+  const elements = Array.isArray(design.elements) ? design.elements : [];
+  if (!elements.length) throw new Error('The design has no elements to convert.');
+  const width = Math.max(320, Math.min(2400, Number(design.canvasWidth || design.width) || 1280));
+  const height = Math.max(240, Math.min(4000, Number(design.canvasHeight || design.height) || 800));
+  const background = exportColor(design.background, '#ffffff');
+  const autoLayout = design.layoutMode === 'auto';
+  const direction = design.layoutDirection === 'column' ? 'column' : 'row';
+  const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
+  const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+  const markup = elements.map((element, index) => {
+    const id = 'design-layer-' + index;
+    const type = String(element.type || 'text');
+    const tag = type === 'heading' ? 'h1' : type === 'button' ? 'button' : 'div';
+    const text = escapeHtml(element.text || (type === 'image' ? 'Añade una imagen' : ''));
+    const color = exportColor(element.color, '#111827');
+    const fill = exportColor(element.background, 'transparent');
+    const x = Math.max(0, Math.min(10000, Number(element.x) || 0));
+    const y = Math.max(0, Math.min(10000, Number(element.y) || 0));
+    const w = Math.max(20, Math.min(2400, Number(element.width) || (type === 'button' ? 180 : 320)));
+    const h = Math.max(20, Math.min(1200, Number(element.height) || (type === 'heading' ? 72 : 56)));
+    const font = Math.max(8, Math.min(120, Number(element.fontSize) || 16));
+    const radius = Math.max(0, Math.min(300, Number(element.radius) || 0));
+    const align = ['left','center','right'].includes(element.textAlign) ? element.textAlign : 'left';
+    const position = autoLayout
+      ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;'
+      : 'position:absolute;left:' + x + 'px;top:' + y + 'px;';
+    const style = position + 'width:' + w + 'px;height:' + h + 'px;min-width:20px;min-height:20px;display:flex;align-items:center;box-sizing:border-box;padding:8px;color:' + color + ';background:' + fill + ';font-size:' + font + 'px;font-weight:' + Math.max(100,Math.min(900,Number(element.weight)||400)) + ';text-align:' + align + ';border-radius:' + (type === 'ellipse' ? '50%' : radius + 'px') + ';';
+    if (type === 'button') return '<button id="' + id + '" type="button" data-codelab-demo style="' + style + 'justify-content:center;cursor:pointer;border:0;">' + (text || 'Probar interacción') + '</button>';
+    if (type === 'rectangle' || type === 'ellipse') return '<div id="' + id + '" aria-hidden="true" style="' + style + '"></div>';
+    if (type === 'image') return '<div id="' + id + '" role="img" aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + '">Imagen pendiente</div>';
+    return '<' + tag + ' id="' + id + '" style="' + style + '">' + text + '</' + tag + '>';
+  }).join('');
+  const frameStyle = autoLayout
+    ? 'position:relative;width:100%;max-width:' + width + 'px;min-height:' + height + 'px;display:flex;flex-direction:' + direction + ';flex-wrap:' + (direction === 'row' ? 'wrap' : 'nowrap') + ';gap:' + gap + 'px;padding:' + padding + 'px;align-items:flex-start;background:' + background + ';margin:0 auto;'
+    : 'position:relative;width:' + width + 'px;height:' + height + 'px;min-height:' + height + 'px;background:' + background + ';transform-origin:top left;margin:0 auto;';
+  const mobile = autoLayout
+    ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}'
+    : '';
+  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeHtml(project.name) + '</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}.demo-status{position:fixed;left:16px;bottom:16px;padding:8px 12px;border-radius:8px;background:#0f172a;color:#fff;font:14px system-ui;z-index:10}' + mobile + '</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame' + (autoLayout ? ' auto-layout' : '') + '" style="' + frameStyle + '">' + markup + '</main></div><p class="demo-status" id="demoStatus" role="status" aria-live="polite">Diseño convertido · listo</p><script>(function(){var f=document.getElementById("designFrame"),v=f.parentNode,w=' + width + ',h=' + height + ';function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";v.style.height="auto";return;}var s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();document.querySelectorAll("[data-codelab-demo]").forEach(function(b){b.addEventListener("click",function(){document.getElementById("demoStatus").textContent="Interacción funcionando ✓";});});})();<\/script></body></html>';
+}
+function createCodeLabProjectPayload(command, payload) {
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  if (!name || name.length > 200) throw new Error('Project name must contain 1–200 characters.');
+  const projectId = 'proj_native_' + String(command.command_id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 60);
+  const now = new Date().toISOString();
+  const elements = [
+    { id: 'hero-title', type: 'heading', text: 'Diseña. Construye. Publica.', x: 72, y: 72, width: 700, height: 88, fontSize: 48, weight: 800, color: '#f8fafc', background: 'transparent' },
+    { id: 'hero-copy', type: 'text', text: 'Una interfaz creada en CodeLab y convertida en una web funcional.', x: 76, y: 180, width: 680, height: 72, fontSize: 21, color: '#cbd5e1', background: 'transparent' },
+    { id: 'hero-cta', type: 'button', text: 'Probar interacción', x: 76, y: 290, width: 220, height: 58, fontSize: 17, weight: 700, color: '#ffffff', background: '#7c3aed', radius: 14 }
+  ];
+  return {
+    id: projectId, name, type: 'design', updatedAt: now,
+    code: { html: '', css: '', js: '' },
+    hasWebSpace: true, hasDesignSpace: true,
+    design: { elements, frame: 'desktop', background: '#0b1220', grid: true, gridSize: 8, snapToGrid: true, canvasWidth: 1280, canvasHeight: 720, layoutMode: 'absolute' },
+    nativeProof: { createdBy: 'codelab-native-bridge', commandId: command.command_id, createdAt: now }
+  };
+}
+async function createCodeLabProject(command) {
+  const project = createCodeLabProjectPayload(command, command.payload || {});
+  const result = await mutateAdminWorkspace(projects => {
+    const existing = projects.find(item => item && item.id === project.id);
+    if (existing) return null;
+    return [project, ...projects];
+  });
+  const saved = result.state.projects.find(item => item && item.id === project.id);
+  if (!saved) throw new Error('Created CodeLab project could not be confirmed in workspace state.');
+  return {
+    projectId: project.id, name: project.name, workspaceId,
+    revision: result.state.revision, persisted: !result.unchanged,
+    designElements: Array.isArray(saved.design?.elements) ? saved.design.elements.length : 0,
+    designUrl: '/?projectId=' + encodeURIComponent(project.id),
+  };
+}
+async function convertCodeLabProjectToWeb(command) {
+  const projectId = command.payload?.project_id;
+  if (typeof projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
+    throw new Error('A valid CodeLab project_id is required.');
+  }
+  let conversion = null;
+  const result = await mutateAdminWorkspace(projects => {
+    const index = projects.findIndex(item => item && item.id === projectId);
+    if (index < 0) throw new Error('CodeLab project not found in ADMIN workspace.');
+    const project = { ...projects[index] };
+    if (!project.design || !Array.isArray(project.design.elements) || !project.design.elements.length) {
+      throw new Error('The CodeLab project has no design elements to convert.');
+    }
+    const html = exportDesignToHtml(project);
+    project.code = { html, css: '', js: '' };
+    project.type = 'web';
+    project.hasWebSpace = true;
+    project.hasDesignSpace = true;
+    project.updatedAt = new Date().toISOString();
+    conversion = { htmlBytes: Buffer.byteLength(html, 'utf8'), elementCount: project.design.elements.length };
+    const next = projects.slice();
+    next[index] = project;
+    return next;
+  });
+  const saved = result.state.projects.find(item => item && item.id === projectId);
+  if (!saved || !saved.code?.html || !saved.hasDesignSpace || !saved.hasWebSpace) {
+    throw new Error('Converted CodeLab project did not pass post-save verification.');
+  }
+  return {
+    projectId, workspaceId, revision: result.state.revision,
+    persisted: !result.unchanged, type: saved.type,
+    designElements: conversion?.elementCount || saved.design.elements.length,
+    htmlBytes: conversion?.htmlBytes || Buffer.byteLength(saved.code.html, 'utf8'),
+    checks: {
+      htmlDocument: /<!doctype html>/i.test(saved.code.html),
+      responsiveViewport: /name="viewport"/i.test(saved.code.html),
+      interactionHandler: /Interacción funcionando/.test(saved.code.html),
+      originalDesignPreserved: saved.design.elements.length > 0,
+    },
+  };
+}
+async function inspectCodeLabProject(command) {
+  const projectId = command.payload?.project_id;
+  if (typeof projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
+    throw new Error('A valid CodeLab project_id is required.');
+  }
+  const state = await loadAdminWorkspace();
+  const project = state.projects.find(item => item && item.id === projectId);
+  if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
+  return {
+    projectId, name: project.name, type: project.type,
+    revision: state.revision, designElements: project.design?.elements?.length || 0,
+    hasDesignSpace: !!project.hasDesignSpace, hasWebSpace: !!project.hasWebSpace,
+    htmlBytes: Buffer.byteLength(project.code?.html || '', 'utf8'),
+    hasInteractiveDemo: /data-codelab-demo/.test(project.code?.html || ''),
+    updatedAt: project.updatedAt,
+  };
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   if (new Date(command.expires_at).getTime() < Date.now()) {
@@ -292,6 +483,15 @@ async function processCommand(command) {
   }
   const payload = command.payload || {};
   switch (command.action) {
+    case 'codelab_project_create':
+      await finish(command.command_id, 'succeeded', await createCodeLabProject(command));
+      return;
+    case 'codelab_project_convert_to_web':
+      await finish(command.command_id, 'succeeded', await convertCodeLabProjectToWeb(command));
+      return;
+    case 'codelab_project_inspect':
+      await finish(command.command_id, 'succeeded', await inspectCodeLabProject(command));
+      return;
     case 'status':
       await finish(command.command_id, 'succeeded', {
         status: 'online', protocol: 'codelab-native-headless/v1',
