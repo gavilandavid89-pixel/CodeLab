@@ -435,6 +435,17 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       updateOauthDemoBanner();
       maybeOfferLocalImport();
+      // Complete a PixelForge sign-in round-trip only after CodeLab has confirmed
+      // the real server session and loaded that account's workspace.
+      if (currentUser && currentUser.real) {
+        let returnTo = '';
+        try { returnTo = localStorage.getItem('codelab.postLoginRedirect') || ''; } catch (_) {}
+        if (/^\/pixelforge\/(?:index\.html)?(?:[?#].*)?$/.test(returnTo)) {
+          try { localStorage.removeItem('codelab.postLoginRedirect'); } catch (_) {}
+          window.location.replace(returnTo);
+          return;
+        }
+      }
       // Initial-password rotation is temporarily optional; do not block the workspace UI.
     })
     .finally(() => {
