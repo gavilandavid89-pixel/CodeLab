@@ -293,9 +293,9 @@ Example drawing and layer edit:
 
 Supported action families include:
 - Document/canvas inspection and pixel sampling.
-- Configurable brush strokes, line drawing, fill, clear, gradient, flip, outline, color replacement and region transforms.
+- Configurable brush strokes, line drawing, rectangle/ellipse outlines, fill, clear, crop, gradient, flip, outline, color replacement and region transforms.
 - Layer add/select/move/rename/opacity/visibility/lock/duplicate/delete.
-- Rectangular, elliptical and lasso selections, selection expansion/contraction/inversion, undo and redo.
+- Rectangular, elliptical and lasso selections, selection combination/translation, expansion/contraction/inversion, undo and redo.
 - Animation timeline frame creation from a layer or full composite, duplicate/delete/reorder, per-frame duration, FPS and looping. The runtime also provides deterministic frame-time lookup and a PNG sprite-sheet export helper; the mailbox command does not yet return/download the exported binary.
 
 The raster editor source is never mutated while actions are being planned. The bridge accepts the isolated proposal and saves the resulting project through the authenticated `/api/pixelforge/projects/:id` API. The server-issued `serverRevision` remains authoritative; HTTP 409 conflicts are returned and never silently retried. The bridge preflights the complete serialized project against the 24 MiB persistence budget before making the save request.
