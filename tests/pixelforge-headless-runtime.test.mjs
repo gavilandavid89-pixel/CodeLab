@@ -269,7 +269,8 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
   assert.equal(shadow.ok, true);
   const shadowId = shadow.result.layerId;
   assert.deepEqual(runtime.inspect().animation.layerCount, 3);
-  assert.equal(runtime.execute({ name: 'layer.move', layerId: inkLayerId, targetIndex: 0 }).ok, true);
+  const refreshedInkLayerId = runtime.sandbox.layers.find(layer => layer.name === 'Ink').id;
+  assert.equal(runtime.execute({ name: 'layer.move', layerId: refreshedInkLayerId, targetIndex: 0 }).ok, true);
   assert.deepEqual(runtime.inspect().animation.layerIds, runtime.sandbox.layers.map(layer => layer.id));
   runtime.createProposal('Add and reorder a synchronized animation layer');
   assert.equal(runtime.acceptProposal().status, 'applied');
