@@ -45,6 +45,8 @@ jobs:
         run: node --test headless/pixelforge-command-contract.test.js headless/image-transfer-finalize.test.js headless/transfer-store.test.js headless/code-chunks.test.js headless/design-engine.test.js headless/design-accessibility.test.js headless/design-export-parity.test.js headless/design-templates-responsive.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
       - name: Test PixelForge Headless project factory
         run: node --experimental-default-type=module --test headless/pixelforge-project-factory.test.mjs
+      - name: Test PixelForge portable project import
+        run: node --test headless/pixelforge-project-import.test.mjs
       - name: Check headless assistant bridge contracts
         run: node tests/assistant-tools-contract.test.js
       - name: Verify one complete project journey through Chromium

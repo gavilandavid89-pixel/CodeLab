@@ -60,6 +60,21 @@ test('PixelForge animation export writes a downloadable artifact instead of a ma
   assert.match(catalog, /Actions run URL/);
 });
 
+test('PixelForge portable project import is allowlisted, admin-scoped, approved, chunked, and readback-verified', () => {
+  assert.ok(bridge.includes("'pixelforge_headless_import_project'"));
+  const projectStart = bridge.indexOf('const projectActions = [');
+  const projectEnd = bridge.indexOf('];', projectStart);
+  assert.ok(bridge.slice(projectStart, projectEnd).includes("'pixelforge_headless_import_project'"));
+  assert.ok(bridge.includes('PixelForge project creation/deletion/import requires approval'));
+  assert.ok(bridge.includes('preparePixelForgeProjectImport'));
+  assert.ok(bridge.includes("'/api/pixelforge/projects/uploads'"));
+  assert.ok(bridge.includes("'/commit'"));
+  assert.ok(bridge.includes('createHash(\'sha256\')'));
+  assert.ok(bridge.includes('readbackVerified: true'));
+  assert.ok(bridge.includes('semanticDigest: digest'));
+  assert.ok(bridge.includes('relativePath.startsWith(\'..\')'));
+});
+
 test('PixelForge project management lists, creates, and deletes only through explicit admin commands', () => {
   for (const action of ['pixelforge_headless_list_projects', 'pixelforge_headless_create_project', 'pixelforge_headless_delete_project']) {
     assert.ok(bridge.includes("'" + action + "'"), action + ' must be allowlisted');
@@ -71,7 +86,7 @@ test('PixelForge project management lists, creates, and deletes only through exp
   assert.ok(projectActionBlock.includes("'pixelforge_headless_list_projects'"));
   assert.ok(projectActionBlock.includes("'pixelforge_headless_create_project'"));
   assert.ok(projectActionBlock.includes("'pixelforge_headless_delete_project'"));
-  assert.ok(bridge.includes('PixelForge project creation/deletion requires approval'));
+  assert.ok(bridge.includes('PixelForge project creation/deletion/import requires approval'));
   assert.ok(bridge.includes('readbackVerified: true'));
   assert.ok(bridge.includes('64 * 1024 * 1024'));
 });
