@@ -185,6 +185,11 @@ async function request(path, options = {}) {
 
 export async function saveProject(project) {
   const estimatedBytes = estimateProjectSaveBytes(project);
+  if (estimatedBytes > MAX_PROJECT_BYTES) {
+    const error = new RangeError('El proyecto supera el límite total de 96 MiB para guardado.');
+    error.code = 'pixelforge_project_too_large';
+    throw error;
+  }
   const result = estimatedBytes > DIRECT_SAVE_BYTES
     ? { project: await saveProjectChunked(project) }
     : await request(API, { method: 'PUT', body: JSON.stringify({ project }) });
