@@ -25,7 +25,7 @@ test('reads a PixelForge ZIP package without inflating the complete archive into
   const parsed = await parsePixelForgeVideoPackage(zip);
   assert.equal(parsed.manifest.frameCount, 1);
   assert.equal(parsed.manifest.totalDurationMs, 83.333);
-  assert.equal(parsed.frames[0].blob.type, 'application/octet-stream');
+  assert.equal(parsed.frames[0].blob.size, 24);
   assert.ok(parsed.project instanceof Blob);
 });
 
