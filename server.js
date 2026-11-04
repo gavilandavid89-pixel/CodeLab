@@ -1,5 +1,5 @@
 /**
- * CodeLab XD Studio Pro v2.6.6
+ * CodeLab XD Studio Pro v2.6.7
  * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
  */
 const http = require('http');
@@ -46,7 +46,7 @@ const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   : 60000;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 120;
-const APP_VERSION = '2.6.6';
+const APP_VERSION = '2.6.7';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const configuredSessionCleanupInterval = Number.parseInt(process.env.CODELAB_SESSION_CLEANUP_INTERVAL_MS || '', 10);
 const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInterval) && configuredSessionCleanupInterval > 0
@@ -787,67 +787,56 @@ function validateProjects(projects) {
   return null;
 }
 
-function readState(id) {
-  const file = workspaceFile(id);
-  if (!fs.existsSync(file)) return emptyState();
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  // Do not silently replace malformed persisted fields with empty defaults: that
-  // can make a broken workspace look valid and later overwrite recoverable data.
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('workspace_state_invalid');
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, 'projects') && !Array.isArray(parsed.projects)) {
-    throw new Error('workspace_projects_invalid');
-  }
-  // Persisted JSON can be syntactically valid while containing project records
-  // the editor cannot safely consume. Reuse the same validator as writes so
-  // GET/init never leaks malformed state back to the client or masks it as empty.
-  if (Array.isArray(parsed.projects)) {
-    const projectError = validateProjects(parsed.projects);
-    if (projectError) throw new Error('workspace_projects_invalid:' + projectError);
-  }
-  if (parsed.revision != null && (!Number.isInteger(parsed.revision) || parsed.revision < 0)) {
-    throw new Error('workspace_revision_invalid');
-  }
-  if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') {
-    throw new Error('workspace_updated_at_invalid');
-  }
-  if (parsed.owner != null && (
-      typeof parsed.owner !== 'object' ||
-      Array.isArray(parsed.owner) ||
-      typeof parsed.owner.id !== 'string' ||
-      !parsed.owner.id ||
-      (parsed.owner.provider !== 'github' && parsed.owner.provider !== 'google' && parsed.owner.provider !== 'local')
-    )) {
-    throw new Error('workspace_owner_invalid');
-  }
-  return {
-    version: 5,
-    revision: Number.isInteger(parsed.revision) ? parsed.revision : 0,
-    updatedAt: parsed.updatedAt || new Date().toISOString(),
-    projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-    owner: parsed.owner || null
-  };
+function normalizeWorkspaceState(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('workspace_state_invalid');
+  if (Object.prototype.hasOwnProperty.call(parsed, 'projects') && !Array.isArray(parsed.projects)) throw new Error('workspace_projects_invalid');
+  if (Array.isArray(parsed.projects)) { const projectError = validateProjects(parsed.projects); if (projectError) throw new Error('workspace_projects_invalid:' + projectError); }
+  if (parsed.revision != null && (!Number.isInteger(parsed.revision) || parsed.revision < 0)) throw new Error('workspace_revision_invalid');
+  if (parsed.updatedAt != null && typeof parsed.updatedAt !== 'string') throw new Error('workspace_updated_at_invalid');
+  if (parsed.owner != null && (typeof parsed.owner !== 'object' || Array.isArray(parsed.owner) || typeof parsed.owner.id !== 'string' || !parsed.owner.id || !['github','google','local'].includes(parsed.owner.provider))) throw new Error('workspace_owner_invalid');
+  return { version: 5, revision: Number.isInteger(parsed.revision) ? parsed.revision : 0, updatedAt: parsed.updatedAt || new Date().toISOString(), projects: Array.isArray(parsed.projects) ? parsed.projects : [], owner: parsed.owner || null };
 }
-
-function writeState(id, state) {
-  const file = workspaceFile(id);
-  const tmp = file + '.tmp.' + process.pid + '.' + Date.now();
-  const payload = {
-    version: 5,
-    revision: state.revision,
-    updatedAt: state.updatedAt,
-    projects: state.projects,
-    owner: state.owner || null
-  };
-  try {
-    fs.writeFileSync(tmp, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(tmp, file);
-  } catch (error) {
-    // A failed atomic replace must not leave orphaned workspace temp files behind.
-    try { fs.unlinkSync(tmp); } catch (_) {}
-    throw error;
+async function workspaceExists(id) {
+  if (accountPool) { const result = await accountPool.query('SELECT 1 FROM codelab_workspace_states WHERE workspace_id=$1 LIMIT 1', [id]); if (result.rowCount) return true; }
+  return fs.existsSync(workspaceFile(id));
+}
+async function readState(id) {
+  if (accountPool) {
+    const stored = await accountPool.query('SELECT state, revision, owner, updated_at FROM codelab_workspace_states WHERE workspace_id=$1', [id]);
+    if (stored.rowCount) {
+      const row = stored.rows[0], parsed = row.state && typeof row.state === 'object' ? row.state : {};
+      return normalizeWorkspaceState({ ...parsed, revision: Number(row.revision), owner: row.owner || parsed.owner || null, updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : parsed.updatedAt });
+    }
   }
+  const file = workspaceFile(id); let parsed = emptyState();
+  if (fs.existsSync(file)) { try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { throw new Error('workspace_state_invalid'); } }
+  const normalized = normalizeWorkspaceState(parsed);
+  if (accountPool) {
+    const inserted = await accountPool.query(
+      'INSERT INTO codelab_workspace_states (workspace_id, revision, state, owner, updated_at) VALUES ($1,$2,$3::jsonb,$4::jsonb,$5) ON CONFLICT (workspace_id) DO NOTHING RETURNING workspace_id',
+      [id, normalized.revision, JSON.stringify(normalized), JSON.stringify(normalized.owner), normalized.updatedAt]
+    );
+    if (!inserted.rowCount) return readState(id);
+  }
+  return normalized;
+}
+async function writeState(id, state, expectedRevision = null) {
+  const payload = { version: 5, revision: state.revision, updatedAt: state.updatedAt, projects: state.projects, owner: state.owner || null };
+  const serialized = JSON.stringify(payload);
+  if (accountPool) {
+    if (expectedRevision == null) {
+      await accountPool.query('INSERT INTO codelab_workspace_states (workspace_id, revision, state, owner, updated_at) VALUES ($1,$2,$3::jsonb,$4::jsonb,$5) ON CONFLICT (workspace_id) DO NOTHING',
+        [id, payload.revision, serialized, JSON.stringify(payload.owner), payload.updatedAt]);
+      return;
+    }
+    const updated = await accountPool.query('UPDATE codelab_workspace_states SET revision=$2,state=$3::jsonb,owner=$4::jsonb,updated_at=$5 WHERE workspace_id=$1 AND revision=$6 RETURNING workspace_id',
+      [id, payload.revision, serialized, JSON.stringify(payload.owner), payload.updatedAt, expectedRevision]);
+    if (!updated.rowCount) { const error = new Error('workspace_revision_conflict'); error.code = 'WORKSPACE_REVISION_CONFLICT'; throw error; }
+    return;
+  }
+  const file = workspaceFile(id), tmp = file + '.tmp.' + process.pid + '.' + Date.now();
+  try { fs.writeFileSync(tmp, serialized, { encoding: 'utf8', mode: 0o600 }); fs.renameSync(tmp, file); }
+  catch (error) { try { fs.unlinkSync(tmp); } catch (_) {} throw error; }
 }
 
 // --- Cookies & sessions ---
@@ -1341,37 +1330,31 @@ async function handleGoogleCallback(code, redirectUri) {
   };
 }
 
-function ensureUserWorkspace(user) {
+async function ensureUserWorkspace(user) {
   if (!user || (user.provider !== 'github' && user.provider !== 'google' && user.provider !== 'local') ||
       user.id == null || !String(user.id).trim()) {
     throw new Error('workspace_owner_invalid');
   }
   const owner = { provider: user.provider, id: String(user.id) };
   const id = userWorkspaceId(owner);
-  const file = workspaceFile(id);
-  if (!fs.existsSync(file)) {
-    writeState(id, emptyState(owner));
-    return id;
-  }
-
-  // Never treat unreadable or malformed account state as an empty workspace:
-  // OAuth must fail closed rather than creating a session over corrupt data.
-  const state = readState(id);
+  if (!(await workspaceExists(id))) { await writeState(id, emptyState(owner), null); return id; }
+  // Never treat unreadable or malformed account state as an empty workspace.
+  const state = await readState(id);
   if (!state.owner) {
     state.owner = owner;
-    writeState(id, state);
+    await writeState(id, state, state.revision);
   } else if (state.owner.provider !== owner.provider || state.owner.id !== owner.id) {
     throw new Error('workspace_owner_mismatch');
   }
   return id;
 }
 
-function enforceSessionWorkspaceOwner(id, state, user) {
+async function enforceSessionWorkspaceOwner(id, state, user) {
   if (!user || userWorkspaceId(user) !== id) return state;
   const expected = { provider: user.provider, id: String(user.id) };
   if (!state.owner) {
     state.owner = expected;
-    writeState(id, state);
+    await writeState(id, state, state.revision);
   } else if (state.owner.provider !== expected.provider || state.owner.id !== expected.id) {
     throw new Error('workspace_owner_mismatch');
   }
@@ -1783,7 +1766,7 @@ const server = http.createServer(async (req, res) => {
           avatar: null,
           role: account.role
         };
-        ensureUserWorkspace(user);
+        await ensureUserWorkspace(user);
         const session = createSession(user);
         setSessionCookie(res, session.id, req);
         return sendJson(res, 200, { ok: true, user, workspaceId: userWorkspaceId(user), mustChangePassword: !!account.mustChangePassword });
@@ -2101,7 +2084,7 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const user = await handleGithubCallback(code);
-          ensureUserWorkspace(user);
+          await ensureUserWorkspace(user);
           const session = createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
@@ -2147,7 +2130,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
           const user = await handleGoogleCallback(code, redirectUri);
-          ensureUserWorkspace(user);
+          await ensureUserWorkspace(user);
           const session = createSession(user);
           const secure = isSecureRequest(req) ? '; Secure' : '';
           const cookie =
@@ -2166,9 +2149,9 @@ const server = http.createServer(async (req, res) => {
         const id = safeId(designSystemMatch[1]);
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
-        if (!fs.existsSync(workspaceFile(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+        if (!(await workspaceExists(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
         try {
-          enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          await enforceSessionWorkspaceOwner(id, await readState(id), getSessionUser(req));
         } catch (error) {
           console.error('workspace_corrupt', id, error.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
@@ -2485,14 +2468,11 @@ const server = http.createServer(async (req, res) => {
         if (sessionUser) {
           // Logged-in users always use their bound workspace (portable across devices)
           id = userWorkspaceId(sessionUser);
-          if (!fs.existsSync(workspaceFile(id))) {
-            writeState(id, emptyState({ provider: sessionUser.provider, id: sessionUser.id }));
-          }
+          if (!(await workspaceExists(id))) await writeState(id, emptyState({ provider: sessionUser.provider, id: sessionUser.id }), null);
         } else {
           const requested = safeId(body && body.id);
           id = requested || 'ws_' + crypto.randomUUID();
-          const file = workspaceFile(id);
-          if (fs.existsSync(file)) {
+          if (await workspaceExists(id)) {
             // Existing workspaces still require their token; never overwrite or
             // rebind an existing deterministic OAuth workspace anonymously.
             if (!isAuthorized(req, id)) {
@@ -2505,13 +2485,13 @@ const server = http.createServer(async (req, res) => {
             if (requested && /^ws_(github|google)_/i.test(requested)) {
               return sendJson(res, 400, { error: 'reserved_workspace_id' });
             }
-            writeState(id, emptyState());
+            await writeState(id, emptyState(), null);
           }
         }
         let state;
         try {
-          state = readState(id);
-          state = enforceSessionWorkspaceOwner(id, state, sessionUser);
+          state = await readState(id);
+          state = await enforceSessionWorkspaceOwner(id, state, sessionUser);
         } catch (error) {
           console.error('workspace_corrupt', id, error.message);
           return sendJson(res, 500, { error: 'workspace_corrupt' });
@@ -2531,7 +2511,7 @@ const server = http.createServer(async (req, res) => {
         if (!id) return sendJson(res, 400, { error: 'workspace_id_required' });
         if (!isAuthorized(req, id)) return sendJson(res, 401, { error: 'workspace_unauthorized' });
         try {
-          const state = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          const state = await enforceSessionWorkspaceOwner(id, await readState(id), getSessionUser(req));
           return sendJson(res, 200, state);
         } catch (e) {
           console.error('workspace_corrupt', id, e.message);
@@ -2552,7 +2532,7 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
         }
         try {
-          const current = enforceSessionWorkspaceOwner(id, readState(id), getSessionUser(req));
+          const current = await enforceSessionWorkspaceOwner(id, await readState(id), getSessionUser(req));
           if (body.baseRevision !== current.revision) {
             return sendJson(res, 409, {
               error: 'revision_conflict',
@@ -2567,13 +2547,17 @@ const server = http.createServer(async (req, res) => {
             projects: body.projects,
             owner: current.owner
           };
-          writeState(id, next);
+          await writeState(id, next, current.revision);
           return sendJson(res, 200, {
             ok: true,
             revision: next.revision,
             updatedAt: next.updatedAt
           });
         } catch (e) {
+          if (e && e.code === 'WORKSPACE_REVISION_CONFLICT') {
+            const latest = await readState(id);
+            return sendJson(res, 409, { error: 'revision_conflict', revision: latest.revision, updatedAt: latest.updatedAt, projects: latest.projects });
+          }
           console.error('workspace_write_failed', id, e.message);
           return sendJson(res, 500, { error: 'workspace_write_failed' });
         }
@@ -2601,6 +2585,7 @@ try {
 }
 
 seedAdminAccountIfConfigured().then(async () => {
+  if (accountPool) await accountPool.query('SELECT 1 FROM codelab_workspace_states LIMIT 0');
   try {
     await ensurePixelForgeTable();
   } catch (error) {
@@ -2648,7 +2633,7 @@ seedAdminAccountIfConfigured().then(async () => {
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
-    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; en hosting con disco efímero los workspaces y sesiones pueden perderse tras un redeploy/reinicio.');
+    console.warn('WARNING: CODELAB_DATA_DIR no está configurado; las sesiones locales y el secreto de respaldo usan disco efímero. Los proyectos del workspace se guardan en PostgreSQL.');
   }
   if (!process.env.CODELAB_WORKSPACE_SECRET) {
     console.warn('WARNING: CODELAB_WORKSPACE_SECRET no está fijado; si se regenera el secreto, los tokens de workspace existentes dejarán de ser válidos.');
