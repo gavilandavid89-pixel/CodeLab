@@ -560,6 +560,47 @@ async function main() {
       return [...bytes.subarray(offset, offset + 4)];
     }
 
+    // Exercise the actual timeline controls in Chromium and verify that the
+    // multi-layer animation survives the authenticated PostgreSQL save path.
+    await accountPage.locator('#animation-add-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '1 frame');
+    await accountPage.locator('#animation-duplicate-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '2 frames');
+    await accountPage.locator('#animation-fps').fill('24');
+    await accountPage.locator('#animation-fps').press('Tab');
+    await accountPage.locator('#animation-duration').fill('250');
+    await accountPage.locator('#animation-duration').press('Tab');
+    await accountPage.locator('#animation-play').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-stop')?.disabled === false);
+    await accountPage.waitForTimeout(60);
+    await accountPage.locator('#animation-stop').click();
+    await accountPage.locator('#animation-loop').uncheck();
+    await accountPage.locator('#animation-onion').check();
+    await accountPage.locator('#animation-add-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '3 frames');
+    await accountPage.locator('#animation-frame-left').click();
+    await accountPage.locator('#animation-frame-right').click();
+    await accountPage.locator('#animation-delete-frame').click();
+    await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '2 frames');
+    const pngDownloadPromise = accountPage.waitForEvent('download');
+    const manifestDownloadPromise = accountPage.waitForEvent('download');
+    await accountPage.locator('#animation-export-sheet').click();
+    const [spriteSheetDownload, animationManifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
+    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\\.png$/);
+    assert.match(animationManifestDownload.suggestedFilename(), /-animation\\.json$/);
+    await waitForRasterSave();
+    const savedAnimationProject = await readSavedArtwork();
+    assert.equal(savedAnimationProject.animation.frames.length, 2, 'timeline add/duplicate/delete actions should persist the expected frame count');
+    assert.equal(savedAnimationProject.animation.fps, 24, 'FPS control should persist its new value');
+    assert.equal(savedAnimationProject.animation.loop, false, 'loop control should persist its unchecked state');
+    assert.equal(savedAnimationProject.animation.frames[1].durationMs, 250, 'per-frame duration control should persist its new value');
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#animation-frame-count').innerText(), '2 frames',
+      'the timeline should be restored after reloading the saved account project');
+    assert.equal(await accountPage.locator('#animation-loop').isChecked(), false,
+      'the saved loop setting should be restored after reload');
+
     await setForegroundColor('#ff0000');
     await accountPage.locator('#brush-tool').click();
     await clickPixel(2, 2);
