@@ -2181,7 +2181,8 @@ const server = http.createServer(async (req, res) => {
       const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
       const pixelForgeUploadChunk = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/(\d+)$/) && req.method === 'PUT';
       const pixelForgeUploadCommit = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/commit$/) && req.method === 'POST';
-      if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit) {
+      const pixelForgeUploadCancel = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) && req.method === 'DELETE';
+      if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit || pixelForgeUploadCancel) {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
         if (!accountPool || !pixelForgeTableReady) {
@@ -2196,6 +2197,10 @@ const server = http.createServer(async (req, res) => {
               PIXELFORGE_MAX_PROJECT_BYTES, PIXELFORGE_MAX_ACCOUNT_BYTES, MAX_PROJECTS
             );
             return sendJson(res, result.status, result);
+          }
+          if (pixelForgeUploadCancel) {
+            const result = await pixelForgeUploads.cancelUpload(accountPool, workspaceId, pixelForgeUploadCancel[1]);
+            return sendJson(res, 200, { ok: true, ...result });
           }
           if (pixelForgeUploadChunk) {
             const body = await readBody(req, PIXELFORGE_MAX_CHUNK_BODY_BYTES);
