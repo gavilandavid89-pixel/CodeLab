@@ -79,7 +79,7 @@ export function validateAnimationTimeline(value, width, height, documentLayers =
   if (value.width !== undefined && value.width !== width) throw new RangeError('Animation width does not match the project.');
   if (value.height !== undefined && value.height !== height) throw new RangeError('Animation height does not match the project.');
   if (!Number.isInteger(value.fps) || value.fps < 1 || value.fps > 60 ||
-      typeof (value.loop ?? true) !== 'boolean' {
+      typeof (value.loop ?? true) !== 'boolean') {
     throw new TypeError('Animation FPS or loop setting is invalid.');
   }
   if (!Array.isArray(value.frames) || value.frames.length > MAX_ANIMATION_FRAMES) {
