@@ -231,6 +231,7 @@ function startPlayback() {
   else { playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback(); }
 }
 function recorderMime() {
+  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return '';
   const choice = $('#vc-format').value;
   const candidates = choice === 'mp4' ? ['video/mp4'] :
     choice === 'webm-vp9' ? ['video/webm;codecs=vp9'] :
