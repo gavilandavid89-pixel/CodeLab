@@ -81,6 +81,118 @@ async function main() {
       assert.equal(await page.locator('.inspector-section').first().evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Properties panel should be reachable');
 
+      if (viewport.label === 'desktop') {
+        // Exercise the real editor, not just the timeline's static markup.
+        const projectName = 'PixelForge animation E2E ' + Date.now();
+        await page.locator('#new-document').click();
+        await page.locator('#new-name').fill(projectName);
+        await page.locator('#new-width').fill('32');
+        await page.locator('#new-height').fill('32');
+        await page.locator('#create-new').click();
+        await page.waitForFunction(name => document.querySelector('#document-name')?.textContent === name, projectName);
+        const saveResponse = async () => {
+          const responsePromise = page.waitForResponse(response =>
+            response.url().includes('/api/pixelforge/projects') &&
+            response.request().method() === 'PUT' && response.ok(), { timeout: 10000 });
+          await page.locator('#save').click();
+          await responsePromise;
+        };
+        await saveResponse();
+
+        // First click creates the timeline around the current raster document.
+        await page.locator('#animation-add-frame').click();
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 1,
+          'starting the timeline must preserve the current artwork as frame 1');
+
+        const canvasBox = await page.locator('#canvas').boundingBox();
+        assert.ok(canvasBox && canvasBox.width > 0 && canvasBox.height > 0, 'the raster canvas must be visible');
+        const drawAtCenter = async color => {
+          await page.locator('#color').evaluate((node, value) => {
+            node.value = value;
+            node.dispatchEvent(new Event('input', { bubbles: true }));
+          }, color);
+          await page.locator('#canvas').click({
+            position: { x: Math.floor(canvasBox.width / 2), y: Math.floor(canvasBox.height / 2) }
+          });
+        };
+        await drawAtCenter('#ff3030');
+
+        // A blank frame must not inherit frame 1's pixels.
+        await page.locator('#animation-add-frame').click();
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
+          'adding a frame must create a second timeline item');
+        await drawAtCenter('#3080ff');
+
+        // Switching back and forth must restore the independent raster cel.
+        await page.locator('#animation-frames .animation-frame').nth(0).click();
+        await page.locator('#animation-frames .animation-frame').nth(1).click();
+        await page.locator('#animation-fps').evaluate(node => {
+          node.value = '24'; node.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        await page.locator('#animation-duration').evaluate(node => {
+          node.value = '120'; node.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        await page.locator('#animation-loop').uncheck();
+        await page.locator('#animation-onion').check();
+        await page.waitForTimeout(80);
+        await page.locator('#animation-onion').uncheck();
+
+        // Playback must start and stop through the visible controls.
+        await page.locator('#animation-play').click();
+        await page.waitForFunction(() => !document.querySelector('#animation-stop')?.disabled,
+          null, { timeout: 3000 });
+        await page.locator('#animation-stop').click();
+        await page.waitForFunction(() => document.querySelector('#animation-stop')?.disabled);
+
+        // Both outputs are generated from the actual frame cels.
+        const pngDownloadPromise = page.waitForEvent('download');
+        const manifestDownloadPromise = page.waitForEvent('download');
+        await page.locator('#animation-export-sheet').click();
+        const [pngDownload, manifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
+        assert.match(pngDownload.suggestedFilename(), /-animation\.png$/);
+        assert.match(manifestDownload.suggestedFilename(), /-animation\.json$/);
+
+        await saveResponse();
+        const projectListResponse = await page.request.get(base + '/api/pixelforge/projects');
+        assert.equal(projectListResponse.status(), 200, 'saved projects must remain available through the account API');
+        const projectList = await projectListResponse.json();
+        const savedSummary = projectList.projects.find(item => item.name === projectName);
+        assert.ok(savedSummary, 'the animation project must appear in the CodeLab account project list');
+        const projectResponse = await page.request.get(base + '/api/pixelforge/projects/' + encodeURIComponent(savedSummary.id));
+        assert.equal(projectResponse.status(), 200, 'the saved animation project must be readable through the account API');
+        const savedBody = await projectResponse.json();
+        const savedProject = savedBody.project;
+        assert.equal(savedProject.animation?.frames?.length, 2, 'both animation frames must persist');
+        assert.equal(savedProject.animation?.fps, 24, 'the selected FPS must persist');
+        assert.equal(savedProject.animation?.loop, false, 'the loop setting must persist');
+        assert.equal(savedProject.animation?.frames?.[1]?.durationMs, 120, 'the active frame duration must persist');
+        const framePixels = savedProject.animation.frames.map(frame => {
+          const cel = frame.cels.find(item => item.layerId === savedProject.layers[0].id);
+          assert.ok(cel && typeof cel.pixels === 'string', 'each frame must persist one cel for the raster layer');
+          return Buffer.from(cel.pixels, 'base64');
+        });
+        assert.ok(framePixels[0].some(value => value !== 0), 'drawing on frame 1 must change its persisted pixels');
+        assert.ok(framePixels[1].some(value => value !== 0), 'drawing on frame 2 must change its persisted pixels');
+        assert.notDeepEqual(framePixels[0], framePixels[1], 'frame 1 and frame 2 must retain independent pixel buffers');
+
+        // A fresh editor session must reconstruct the timeline from the account-backed project.
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForFunction(() => {
+          const status = document.querySelector('#status')?.textContent || '';
+          return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
+        }, null, { timeout: 15000 });
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
+          'reopening the saved project must restore both timeline frames');
+        assert.equal(await page.locator('#animation-fps').inputValue(), '24',
+          'reopening the saved project must restore its FPS');
+        assert.equal(await page.locator('#animation-duration').inputValue(), '120',
+          'reopening the saved project must restore the active frame duration');
+        assert.equal(await page.locator('#animation-loop').isChecked(), false,
+          'reopening the saved project must restore its loop setting');
+        await page.locator('#animation-frames .animation-frame').nth(0).click();
+        await page.locator('#animation-frames .animation-frame').nth(1).click();
+      }
+
       if (viewport.width <= 420) {
         const headerOverflow = await page.locator('.topbar').evaluate(node => node.scrollWidth > node.clientWidth + 1);
         assert.equal(headerOverflow, false, viewport.label + ': topbar must fit without horizontal overflow');
