@@ -570,32 +570,41 @@ async function deletePixelForgeProjectFromDatabase(workspaceId, projectId) {
   }
 }
 
-async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes) {
+async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes, options = {}) {
   const client = await accountPool.connect();
   try {
     await client.query('BEGIN');
-    // A database advisory lock makes per-account quotas safe across server instances,
-    // not only within this Node.js process.
+    // A database advisory lock makes per-account quotas safe across server instances.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
     const usage = await client.query(
       'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size), 0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id <> $2',
       [workspaceId, project.id]
     );
     const existing = await client.query(
-      'SELECT project FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+      'SELECT project, server_revision, content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
       [workspaceId, project.id]
     );
     const count = Number(usage.rows[0].count);
     const bytes = Number(usage.rows[0].bytes);
     const storedProject = existing.rowCount ? existing.rows[0].project : null;
-    const currentServerRevision = storedProject && Number.isInteger(storedProject.serverRevision) ? storedProject.serverRevision : 0;
-    const expectedServerRevision = Number.isInteger(project.serverRevision) ? project.serverRevision : 0;
+    const currentServerRevision = existing.rowCount
+      ? Number(existing.rows[0].server_revision || (storedProject && storedProject.serverRevision) || 0) : 0;
+    const expectedServerRevision = Number.isInteger(options.expectedServerRevision)
+      ? options.expectedServerRevision
+      : (Number.isInteger(project.serverRevision) ? project.serverRevision : 0);
     if (existing.rowCount && expectedServerRevision !== currentServerRevision) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_revision_conflict', status: 409, revision: currentServerRevision };
     }
-    const storedDocument = { ...project, serverRevision: currentServerRevision + 1 };
-    const storedDocumentBytes = Buffer.byteLength(JSON.stringify(storedDocument), 'utf8');
+    const preassignedRevision = options.preassignedServerRevision === true;
+    const storedDocument = preassignedRevision ? project : { ...project, serverRevision: currentServerRevision + 1 };
+    if (preassignedRevision && storedDocument.serverRevision !== currentServerRevision + 1) {
+      await client.query('ROLLBACK');
+      return { error: 'pixelforge_revision_conflict', status: 409, revision: currentServerRevision };
+    }
+    const serializedDocument = typeof options.serializedDocument === 'string'
+      ? options.serializedDocument : JSON.stringify(storedDocument);
+    const storedDocumentBytes = Buffer.byteLength(serializedDocument, 'utf8');
     if (storedDocumentBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
@@ -609,12 +618,15 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
       return { error: 'pixelforge_account_storage_limit', status: 413, maxBytes: PIXELFORGE_MAX_ACCOUNT_BYTES };
     }
     const now = Date.now();
+    const contentSha256 = options.contentSha256 ||
+      crypto.createHash('sha256').update(serializedDocument).digest('hex');
     await client.query(
-      'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size',
-      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(storedDocument), storedDocumentBytes]
+      'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,$9,$10) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size, server_revision=EXCLUDED.server_revision, content_sha256=EXCLUDED.content_sha256',
+      [workspaceId, project.id, project.name.trim(), project.width, project.height, now,
+        serializedDocument, storedDocumentBytes, storedDocument.serverRevision, contentSha256]
     );
     await client.query('COMMIT');
-    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision };
+    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision, contentSha256 };
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     throw error;
