@@ -300,6 +300,8 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'all inspector screens must have working navigation handlers');
   assert.ok(editorStyles.includes('@media(max-width:760px)') && editorStyles.includes('.animation-panel') &&
     editorStyles.includes('.inspector[data-panel="files"]'), 'editor and timeline screens must retain responsive mobile layouts');
+  assert.ok(editorSource.includes('const thumbScale = Math.min(48 / preview.width, 48 / preview.height)') &&
+    editorSource.includes('Math.floor((48 - thumbWidth) / 2)'), 'timeline thumbnails must preserve canvas aspect ratio');
 
   assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
     editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
