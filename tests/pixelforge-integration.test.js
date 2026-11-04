@@ -770,6 +770,11 @@ async function main() {
         pixels: Buffer.alloc(layerBytes).toString('base64')
       });
     }
+    const largeUploadIp = '198.51.100.77';
+    const largeUploadHeaders = { ...authHeaders, 'x-forwarded-for': largeUploadIp };
+    await accountPage.route('**/api/pixelforge/**', route => route.continue({
+      headers: { ...route.request().headers(), 'x-forwarded-for': largeUploadIp }
+    }));
     const largeFixturePath = path.join(dataDir, 'pixelforge-large-import-fixture.pforge');
     fs.writeFileSync(largeFixturePath, JSON.stringify(largeFixture));
     assert.ok(fs.statSync(largeFixturePath).size > 24 * 1024 * 1024,
@@ -781,15 +786,15 @@ async function main() {
         null, { timeout: 60000 });
     } catch (error) {
       const importStatus = await accountPage.locator('#status').innerText();
-      const listedProjects = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+      const listedProjects = await (await fetch(base + '/api/pixelforge/projects', { headers: largeUploadHeaders })).json();
       throw new Error('Large chunked import did not complete; status=' + importStatus +
         '; listedProjects=' + JSON.stringify(listedProjects.projects?.map(project => project.name)) +
         '; cause=' + error.message);
     }
-    const largeMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+    const largeMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: largeUploadHeaders })).json())
       .projects.find(project => project.name === 'Large chunked artwork (imported)');
     assert.ok(largeMetadata, 'large chunked import must be durably listed in the account');
-    const largeStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: authHeaders })).json()).project;
+    const largeStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: largeUploadHeaders })).json()).project;
     assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
     assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
     failChunkOnce = true;
@@ -799,7 +804,7 @@ async function main() {
     await accountPage.locator('#save').click();
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
       null, { timeout: 60000 });
-    const resumedStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: authHeaders })).json()).project;
+    const resumedStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: largeUploadHeaders })).json()).project;
     assert.equal(resumedStored.layers.length, 4, 'retry after a dropped chunk must persist the complete edited document');
     assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
     fs.rmSync(largeFixturePath, { force: true });
@@ -807,20 +812,21 @@ async function main() {
     // Free the deliberately huge fixture before testing the independent project-count
     // limit; otherwise the account byte quota can reject a small project first.
     const deleteLargeFixture = await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, {
-      method: 'DELETE', headers: authHeaders
+      method: 'DELETE', headers: largeUploadHeaders
     });
     assert.equal(deleteLargeFixture.status, 200, 'large upload fixture should be removed before the separate project-count limit test');
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
-    const status = await (await fetch(base + '/api/ai/status')).json();
+    const capHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.78' };
+    const status = await (await fetch(base + '/api/ai/status', { headers: capHeaders })).json();
     const maxProjects = status.maxProjects;
-    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
+    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: capHeaders })).json()).projects;
     assert.ok(existingProjects.length < maxProjects, 'the test account should have room to exercise the project cap');
     for (let index = existingProjects.length; index < maxProjects; index++) {
       const response = await fetch(base + '/api/pixelforge/projects', {
         method: 'PUT',
-        headers: { ...authHeaders, 'content-type': 'application/json' },
+        headers: { ...capHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ project: makePixelProject('limit-project-' + index, 'Limit project ' + index) })
       });
       const responseBody = await response.text();
@@ -830,7 +836,7 @@ async function main() {
     }
     const overflow = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
-      headers: { ...authHeaders, 'content-type': 'application/json' },
+      headers: { ...capHeaders, 'content-type': 'application/json' },
       body: JSON.stringify({ project: makePixelProject('limit-project-overflow', 'Overflow project') })
     });
     assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
