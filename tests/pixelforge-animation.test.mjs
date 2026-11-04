@@ -207,11 +207,35 @@ test('preflights base64 expansion against the persisted animation JSON budget', 
   assert.throws(() => estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 2, frameCount: 1 }), /64 MiB/);
 });
 
+test('decodes multi-megabyte animation cels without regex stack overflow', () => {
+  const expectedBytes = 1200 * 1200 * 4;
+  const pixels = Buffer.alloc(expectedBytes, 0x5a).toString('base64');
+  const timeline = PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 1200, height: 1200,
+    layerIds: ['large-layer'], fps: 12, activeFrameIndex: 0,
+    frames: [{
+      id: 'large-frame', durationMs: 83.333,
+      cels: [{ layerId: 'large-layer', pixels }]
+    }]
+  });
+  const decoded = timeline.getLayerPixels(0, 'large-layer');
+  assert.equal(decoded.length, expectedBytes);
+  assert.equal(decoded[0], 0x5a);
+  assert.equal(decoded[decoded.length - 1], 0x5a);
+});
+
 test('keeps high-resolution animation budgets aligned with PixelForge API limits', () => {
   const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
   const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
   const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
   assert.ok(animation.includes('MAX_ANIMATION_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(animation.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(core.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(!server.includes('(?:[A-Za-z0-9+/]{4})*'), 'server validation must not use recursive repeated-group Base64 regex');
+  assert.ok(!animation.includes('(?:[A-Za-z0-9+/]{4})*'), 'animation decoding must not use recursive repeated-group Base64 regex');
+  assert.ok(!core.includes('(?:[A-Za-z0-9+/]{4})*'), 'raster decoding must not use recursive repeated-group Base64 regex');
+  assert.ok(core.includes('value.length > MAX_PROJECT_JSON_BYTES'));
   assert.ok(animation.includes('MAX_ANIMATION_JSON_BYTES = 96 * 1024 * 1024'));
   assert.ok(animation.includes('ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024'));
   assert.ok(animation.includes('width > 4096 || height > 4096'));
