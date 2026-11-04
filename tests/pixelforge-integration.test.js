@@ -643,8 +643,10 @@ async function main() {
       'global checker fill should use background color on the alternating cell');
     await accountPage.locator('#fill-mode').selectOption('contiguous');
     await accountPage.locator('#fill-pattern').selectOption('solid');
+    await accountPage.locator('#layers-tab').click();
     await accountPage.locator('.layer-row').nth(1).locator('.layer-select').click();
     await waitForRasterSave();
+    await accountPage.locator('#properties-tab').click();
 
     // Symmetry mode 2 mirrors a brush stroke across the vertical document axis.
     await setForegroundColor('#00ff00');
