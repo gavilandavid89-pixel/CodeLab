@@ -182,4 +182,39 @@ export function capturePixelForgeArtworkDataUrl({ rasterDocument, canvasFactory 
   return dataUrl;
 }
 
+
+/**
+ * End-to-end local preparation helper for the editor host. It asks for
+ * consent first, captures only the runtime raster composite, then prepares
+ * provider parts. It still performs no provider/network call.
+ */
+export async function preparePixelForgeVisionFromRuntime({
+  projectId,
+  runtime,
+  confirm,
+  canvasFactory,
+  project = {},
+  selection = null,
+  viewport = null,
+  animation = null,
+} = {}) {
+  if (!runtime || !runtime.sandbox || typeof runtime.sandbox.composite !== 'function') {
+    throw new TypeError('A PixelForge Headless runtime with a raster sandbox is required.');
+  }
+  const consent = await requestPixelForgeVisionConsent({ projectId, confirm });
+  if (!consent) return null;
+  try {
+    const artworkImage = capturePixelForgeArtworkDataUrl({
+      rasterDocument: runtime.sandbox,
+      canvasFactory,
+    });
+    return preparePixelForgeVisionRequest({
+      consent, projectId, artworkImage, project, selection, viewport, animation,
+    });
+  } catch (error) {
+    consentTokens.delete(consent);
+    throw error;
+  }
+}
+
 export const PIXELFORGE_VISION_CONSENT_TTL_MS = CONSENT_TTL_MS;
