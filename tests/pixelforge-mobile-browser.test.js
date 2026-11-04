@@ -57,6 +57,8 @@ async function main() {
       if (viewport.width <= 420) {
         const headerOverflow = await page.locator('.topbar').evaluate(node => node.scrollWidth > node.clientWidth + 1);
         assert.equal(headerOverflow, false, viewport.label + ': topbar must fit without horizontal overflow');
+        const contextOverflow = await page.locator('.contextbar').evaluate(node => node.scrollWidth > node.clientWidth + 1);
+        assert.equal(contextOverflow, false, viewport.label + ': context toolbar must fit without horizontal overflow');
       }
       if (viewport.label === 'mobile landscape') {
         assert.equal(await page.locator('.bottom-bar').evaluate(node => getComputedStyle(node).display), 'none',
