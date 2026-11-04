@@ -19,7 +19,7 @@ export const AI_ACTION_CONTRACT = Object.freeze([
 const SYSTEM_PROMPT = [
   'You are an editing planner for a raster art editor. Return only a JSON object with exactly this shape: {"summary":"short explanation","actions":[{"name":"allowlisted.action","...":"arguments"}]}.',
   'Do not return Markdown, scripts, shell commands, URLs, or arbitrary code.',
-  'Only use the allowlisted actions and their documented parameters. Coordinates are integer document pixels; the canvas origin is top-left.',
+  'Only use the allowlisted actions and their documented parameters. Coordinates are integer document pixels; the canvas origin is top-left. Use canvasReference bounds and landmarks, and sample existing colors when matching artwork.'
   'Prefer small, precise, undoable changes. Do not invent layers or dimensions. If the request cannot be performed with these actions, return {"summary":"Cannot safely perform this request with the available tools.","actions":[]}.',
   'Project/document deletion, project/content export, upload and publishing are forbidden. The original document is read-only; all edits are applied to an isolated sandbox.',
   'Available actions: ' + JSON.stringify(AI_ACTION_CONTRACT),
@@ -136,11 +136,13 @@ export class AIEditCoordinator {
     }
     const summaryResult = this.session.execute({ name: 'document.get_summary' });
     if (!summaryResult.ok) return { status: 'failed', reason: 'context-unavailable', error: summaryResult.error };
+    const referenceResult = this.session.execute({ name: 'canvas.get_reference', gridStep: 8 });
+    if (!referenceResult.ok) return { status: 'failed', reason: 'coordinate-reference-unavailable', error: referenceResult.error };
     let plan;
     try {
       plan = validatePlan(await this.provider.generatePlan({
         prompt: prompt.trim(),
-        context: { document: summaryResult.result, availableActions: AI_ACTION_CONTRACT, ...(visionSnapshot ? { visualObservation: visionSnapshot.context } : {}) },
+        context: { document: summaryResult.result, canvasReference: referenceResult.result, availableActions: AI_ACTION_CONTRACT, ...(visionSnapshot ? { visualObservation: visionSnapshot.context } : {}) },
         ...(includeArtwork ? (visionSnapshot ? { imageDataUrls } : { imageDataUrl }) : {}),
         signal,
       }));
