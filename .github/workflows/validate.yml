@@ -39,6 +39,7 @@ jobs:
           node --check public/pixelforge/src/showcase-animation.mjs
           node --check public/pixelforge/src/video-composer-core.mjs
           node --input-type=module --check < public/pixelforge/video-composer.js
+          node --check tests/pixelforge-video-composer.e2e.test.mjs
           node --input-type=module --check < public/pixelforge/src/editor.js
           node --check tests/pixelforge-headless-vision.test.mjs
           node --check tests/assistant-tools-contract.test.js
@@ -85,6 +86,7 @@ jobs:
           node tests/capture-browser.test.js
           node tests/design-tools-browser.test.js
           node tests/component-library-browser.test.js
+          node --experimental-default-type=module tests/pixelforge-video-composer.e2e.test.mjs
       - name: Chained full-system E2E in the real app
         shell: bash
         run: |
