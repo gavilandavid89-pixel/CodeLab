@@ -296,8 +296,8 @@ Supported action families include:
 - Configurable brush strokes, line drawing, fill, clear, gradient, flip, outline, color replacement and region transforms.
 - Layer add/select/move/rename/opacity/visibility/lock/duplicate/delete.
 - Rectangular, elliptical and lasso selections, selection expansion/contraction/inversion, undo and redo.
-- Animation timeline frame creation from a layer, duplicate/delete/reorder, per-frame duration, FPS and looping.
+- Animation timeline frame creation from a layer or full composite, duplicate/delete/reorder, per-frame duration, FPS and looping. The runtime also provides deterministic frame-time lookup and a PNG sprite-sheet export helper; the mailbox command does not yet return/download the exported binary.
 
 The raster editor source is never mutated while actions are being planned. The bridge accepts the isolated proposal and saves the resulting project through the authenticated `/api/pixelforge/projects/:id` API. The server-issued `serverRevision` remains authoritative; HTTP 409 conflicts are returned and never silently retried. The bridge preflights the complete serialized project against the 24 MiB persistence budget before making the save request.
 
-Animation frames are stored as validated per-frame RGBA cels in the PixelForge project document. This initial timeline model enables structured animation authoring and frame timing; playback UI, onion-skin controls, sprite-sheet/GIF export, and full editor parity are tracked as subsequent work and are not claimed complete by this command.
+Animation frames are stored as validated per-frame RGBA cels in the PixelForge project document. This initial timeline model enables structured animation authoring, deterministic playback-time selection, and a browser PNG sprite-sheet export helper. Playback UI, onion-skin controls, mailbox delivery of exported files, GIF export, and full editor parity remain subsequent work and are not claimed complete by this command.
