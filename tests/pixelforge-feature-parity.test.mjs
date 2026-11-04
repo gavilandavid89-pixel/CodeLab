@@ -24,10 +24,14 @@ const existingFeatureControls = [
 test('keeps every original drawing tool available and wired to the existing editor', () => {
   for (const id of originalDrawingTools) {
     assert.match(html, new RegExp('id="' + id + '"'), id + ' must remain in the editor toolbar');
-    assert.match(editor, new RegExp("\\$\\(['\"]#" + id + "['\"]\\)\\.addEventListener"), id + ' must retain its editor event handler');
+    const selector = new RegExp("\\$\\(['\"]#" + id + "['\"]\\)");
+    assert.match(editor, selector, id + ' must remain connected to the editor');
+    const variable = editor.match(new RegExp('\\b(?:const|let)\\s+(\\w+)\\s*=\\s*\\$\\([\'"]#' + id + '[\'"]\\)'));
+    const hasDirectHandler = editor.includes("$('#" + id + "').addEventListener");
+    const hasVariableHandler = variable && editor.includes(variable[1] + '.addEventListener');
+    assert.ok(hasDirectHandler || hasVariableHandler, id + ' must retain its editor event handler');
   }
 });
-
 test('preserves the original editing, layer, selection, import, export, and AI controls', () => {
   for (const id of existingFeatureControls) {
     assert.match(html, new RegExp('id="' + id + '"'), id + ' must remain in the editor UI');
