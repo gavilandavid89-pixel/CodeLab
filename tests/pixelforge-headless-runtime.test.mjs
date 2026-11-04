@@ -85,15 +85,17 @@ test('headless structural layer changes are reviewed and committed as one undoab
 
 test('headless layer selection advances the sandbox revision and is proposal-visible', () => {
   const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const originalLayerId = runtime.document.activeLayerId;
   const added = runtime.execute({ name: 'layer.add', layerName: 'Color' });
   assert.equal(added.ok, true);
   const layerId = added.result.layerId;
-  const selected = runtime.execute({ name: 'layer.select', layerId });
+  const selected = runtime.execute({ name: 'layer.select', layerId: originalLayerId });
   assert.equal(selected.ok, true);
   assert.equal(runtime.hasPendingChanges, true);
-  runtime.createProposal('Add and select Color layer');
+  runtime.createProposal('Add Color layer and select the original layer');
   assert.equal(runtime.acceptProposal().status, 'applied');
-  assert.equal(runtime.document.activeLayerId, layerId);
+  assert.equal(runtime.document.activeLayerId, originalLayerId);
+  assert.ok(runtime.document.layers.some(layer => layer.id === layerId));
 });
 
 test('headless brush actions validate points and keep edits in the sandbox', () => {
