@@ -4,7 +4,42 @@ import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
 
 const MAX_ANIMATION_HISTORY_STEPS = 100;
+
 const MAX_ANIMATION_HISTORY_BYTES = 16 * 1024 * 1024;
+
+export const HEADLESS_CAPABILITIES = Object.freeze({
+  protocol: 'pixelforge-headless/v1',
+  maxBatchActions: 500,
+  maxLayers: 64,
+  maxFrames: 240,
+  maxCanvasDimension: 4096,
+  maxRawRasterBytes: 64 * 1024 * 1024,
+  maxRawAnimationBytes: 64 * 1024 * 1024,
+  maxProjectJsonBytes: 96 * 1024 * 1024,
+  proposalApprovalRequired: true,
+  authenticatedPersistence: true,
+  rasterActions: Object.freeze([
+    'document.get_summary', 'document.rename', 'canvas.get_reference', 'canvas.get_pixel',
+    'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
+    'layer.rename', 'layer.set_opacity', 'layer.set_visibility', 'layer.set_locked',
+    'layer.duplicate', 'layer.delete', 'canvas.fill', 'canvas.clear_region',
+    'canvas.copy_region', 'canvas.paste_region', 'canvas.crop', 'canvas.draw_shape',
+    'canvas.fill_gradient', 'canvas.flip_region', 'canvas.create_outline',
+    'canvas.replace_color', 'canvas.preview_transform_region', 'canvas.transform_region',
+    'selection.clear', 'selection.create_rect', 'selection.create_ellipse',
+    'selection.create_lasso', 'selection.create_magic', 'selection.modify',
+    'selection.combine', 'selection.translate', 'history.undo', 'history.redo',
+  ]),
+  animationActions: Object.freeze([
+    'animation.get_summary', 'animation.undo', 'animation.redo',
+    'animation.frame.add_from_layer', 'animation.frame.capture_composite',
+    'animation.frame.capture_document', 'animation.frame.duplicate',
+    'animation.frame.delete', 'animation.frame.reorder', 'animation.frame.set_duration',
+    'animation.frame.set_active', 'animation.set_fps', 'animation.set_loop',
+    'animation.frame.get_cel', 'animation.frame.set_cel',
+    'animation.frame.get_onion_skin', 'animation.frame.get_composite',
+  ]),
+});
 
 function remapAnimationLayerIds(timeline, targetLayerIds) {
   if (!Array.isArray(targetLayerIds) || targetLayerIds.length !== timeline.layerIds.length) {
@@ -86,24 +121,34 @@ function diffAnimationTimelines(before, after) {
       changedPixels += pixelDiff.changedPixels;
     }
     const reordered = Boolean(previousEntry && nextEntry && previousEntry.index !== nextEntry.index);
-    if (cels.length || reordered || !previousEntry || !nextEntry) {
+    const durationChanged = Boolean(previous && next && previous.durationMs !== next.durationMs);
+    const frameMetadataChanged = Boolean(previous && next && durationChanged);
+    if (cels.length || reordered || frameMetadataChanged || !previousEntry || !nextEntry) {
       changedCelCount += cels.length;
       frames.push({
         id,
         name: next?.name ?? previous?.name ?? null,
         index: nextEntry?.index ?? previousEntry?.index ?? null,
         previousIndex: previousEntry?.index ?? null,
-        change: !previousEntry ? 'added' : !nextEntry ? 'removed' : reordered && !cels.length ? 'reordered' : 'updated',
+        change: !previousEntry ? 'added' : !nextEntry ? 'removed' : reordered && !cels.length && !frameMetadataChanged ? 'reordered' : frameMetadataChanged && !cels.length ? 'timing-updated' : 'updated',
         reordered,
+        durationChanged,
+        previousDurationMs: previous?.durationMs ?? null,
+        durationMs: next?.durationMs ?? null,
         cels,
       });
     }
   }
+  const settingsChanged = [];
+  if (before.fps !== after.fps) settingsChanged.push('fps');
+  if (before.loop !== after.loop) settingsChanged.push('loop');
+  if (before.activeFrameIndex !== after.activeFrameIndex) settingsChanged.push('activeFrameIndex');
   return {
     changedFrameCount: frames.length,
     changedCelCount,
     changedPixels,
     reordered: before.frames.some((frame, index) => after.frames[index]?.id !== frame.id) || before.frames.length !== after.frames.length,
+    settingsChanged,
     frames,
   };
 }
@@ -276,6 +321,7 @@ export class HeadlessEditorRuntime {
       },
       proposal: this.#workspace.proposalSummary,
       animation: { ...summarizeAnimationTimeline(this.#sandboxAnimation), hasChanges: this.#animationDirty },
+      capabilities: HEADLESS_CAPABILITIES,
     };
   }
 
