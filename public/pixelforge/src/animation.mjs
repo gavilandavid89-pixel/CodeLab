@@ -412,17 +412,36 @@ export class PixelForgeAnimation {
     if (data.frames.length * data.layerIds.length * byteLength > MAX_ANIMATION_BYTES) {
       throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
     }
-    const frames = data.frames.map(frame => {
-      if (!frame || !Array.isArray(frame.cels)) throw new TypeError('Animation frame cels are invalid.');
-      return {
-        id: frame.id,
-        durationMs: frame.durationMs,
-        cels: frame.cels.map(cel => {
-          if (!cel || typeof cel.layerId !== 'string') throw new TypeError('Animation cel layer ID is invalid.');
-          return { layerId: cel.layerId, pixels: decodeBase64(cel.pixels, byteLength) };
-        }),
-      };
-    });
+    if (!Number.isInteger(data.activeFrameIndex) || data.activeFrameIndex < 0 || data.activeFrameIndex >= data.frames.length) {
+      throw new RangeError('Active animation frame index is outside the timeline.');
+    }
+    const frameIds = new Set();
+    const layerIdSet = new Set(data.layerIds);
+    for (const frame of data.frames) {
+      if (!frame || typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180 || frameIds.has(frame.id)) {
+        throw new TypeError('Animation frame IDs must be valid and unique.');
+      }
+      frameIds.add(frame.id);
+      assertDuration(frame.durationMs);
+      if (!Array.isArray(frame.cels) || frame.cels.length !== data.layerIds.length) {
+        throw new TypeError('Every animation frame must contain exactly one cel for each raster layer.');
+      }
+      const celLayerIds = new Set();
+      for (const cel of frame.cels) {
+        if (!cel || typeof cel.layerId !== 'string' || !layerIdSet.has(cel.layerId) || celLayerIds.has(cel.layerId)) {
+          throw new TypeError('Animation cel layer IDs must be valid, unique, and match the layer stack.');
+        }
+        celLayerIds.add(cel.layerId);
+      }
+    }
+    const frames = data.frames.map(frame => ({
+      id: frame.id,
+      durationMs: frame.durationMs,
+      cels: frame.cels.map(cel => ({
+        layerId: cel.layerId,
+        pixels: decodeBase64(cel.pixels, byteLength),
+      })),
+    }));
     return new PixelForgeAnimation({
       width: data.width,
       height: data.height,
