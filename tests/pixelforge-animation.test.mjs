@@ -129,6 +129,31 @@ test('uses 60 FPS timing and rejects oversized allocations before decoding cels'
   }), /64 MiB/);
 });
 
+test('composites animation cels using the shared raster layer visibility and opacity rules', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  const red = new Uint8ClampedArray(16);
+  const blue = new Uint8ClampedArray(16);
+  for (let offset = 0; offset < 16; offset += 4) {
+    red.set([255, 0, 0, 255], offset);
+    blue.set([0, 0, 255, 128], offset);
+  }
+  timeline.setLayerPixels(0, 'ink', red);
+  timeline.setLayerPixels(0, 'color', blue);
+  const merged = timeline.compositeFrame(0);
+  assert.deepEqual([...merged.slice(0, 4)], [127, 0, 128, 255]);
+  const translucent = timeline.compositeFrame(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: true, opacity: 0.5 },
+  ]);
+  assert.deepEqual([...translucent.slice(0, 4)], [191, 0, 64, 255]);
+  const hidden = timeline.compositeFrame(0, [
+    { id: 'ink', visible: true, opacity: 1 },
+    { id: 'color', visible: false, opacity: 1 },
+  ]);
+  assert.deepEqual([...hidden.slice(0, 4)], [255, 0, 0, 255]);
+  assert.throws(() => timeline.compositeFrame(0, [{ id: 'ink' }]), /match the animation layer stack/);
+});
+
 test('round-trips timeline metadata and RGBA cels through a validated JSON format', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 8 });
   timeline.setLayerPixels(0, 'color', new Uint8ClampedArray(16).fill(201));
