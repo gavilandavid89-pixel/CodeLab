@@ -108,6 +108,7 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
   if (approved !== true) throw new Error('Explicit approved:true is required to persist a PixelForge proposal.');
   const session = sessions.get(sessionId);
   if (!session) throw new Error('The PixelForge proposal session is missing or expired.');
+  let projectBytes = 0;
   if (!session.pendingSaveProject) {
     const accepted = session.runtime.acceptProposal();
     if (accepted.status !== 'applied') {
@@ -115,7 +116,7 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
       return { status: 'rejected', projectId: session.projectId, result: accepted };
     }
     const project = session.runtime.toJSON();
-    const projectBytes = new TextEncoder().encode(JSON.stringify(project)).byteLength;
+    projectBytes = new TextEncoder().encode(JSON.stringify(project)).byteLength;
     if (projectBytes > MAX_PERSISTED_PROJECT_BYTES) {
       sessions.delete(sessionId);
       const error = new RangeError('The proposed PixelForge project is ' + projectBytes + ' bytes; the account persistence limit is ' + MAX_PERSISTED_PROJECT_BYTES + ' bytes. Reduce layers or animation frames before retrying.');
@@ -129,6 +130,7 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
   }
 
   const project = session.pendingSaveProject;
+  projectBytes = new TextEncoder().encode(JSON.stringify(project)).byteLength;
   let response;
   try {
     let saved;
