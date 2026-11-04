@@ -582,18 +582,18 @@ async function main() {
     await accountPage.locator('#animation-frame-right').click();
     await accountPage.locator('#animation-delete-frame').click();
     await accountPage.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent === '2 frames');
-    const pngDownloadPromise = accountPage.waitForEvent('download');
-    const manifestDownloadPromise = accountPage.waitForEvent('download');
-    await accountPage.locator('#animation-export-sheet').click();
-    const [spriteSheetDownload, animationManifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
-    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\\.png$/);
-    assert.match(animationManifestDownload.suggestedFilename(), /-animation\\.json$/);
     await waitForRasterSave();
     const savedAnimationProject = await readSavedArtwork();
     assert.equal(savedAnimationProject.animation.frames.length, 2, 'timeline add/duplicate/delete actions should persist the expected frame count');
     assert.equal(savedAnimationProject.animation.fps, 24, 'FPS control should persist its new value');
     assert.equal(savedAnimationProject.animation.loop, false, 'loop control should persist its unchecked state');
     assert.equal(savedAnimationProject.animation.frames[1].durationMs, 250, 'per-frame duration control should persist its new value');
+    const pngDownloadPromise = accountPage.waitForEvent('download');
+    const manifestDownloadPromise = accountPage.waitForEvent('download');
+    await accountPage.locator('#animation-export-sheet').click();
+    const [spriteSheetDownload, animationManifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
+    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\\.png$/);
+    assert.match(animationManifestDownload.suggestedFilename(), /-animation\\.json$/);
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#animation-frame-count').innerText(), '2 frames',
