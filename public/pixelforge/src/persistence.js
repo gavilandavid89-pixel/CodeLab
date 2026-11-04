@@ -6,6 +6,29 @@ const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const UPLOAD_CHUNK_BYTES = 6 * 1024 * 1024;
 const pendingUploads = new Map();
 
+function estimateProjectSaveBytes(project) {
+  let base64Bytes = 0;
+  const layers = Array.isArray(project.layers) ? project.layers.map(layer => {
+    if (typeof layer?.pixels === 'string') base64Bytes += layer.pixels.length;
+    return { ...layer, pixels: '' };
+  }) : project.layers;
+  let animation = project.animation;
+  if (animation && Array.isArray(animation.frames)) {
+    animation = {
+      ...animation,
+      frames: animation.frames.map(frame => ({
+        ...frame,
+        cels: Array.isArray(frame.cels) ? frame.cels.map(cel => {
+          if (typeof cel?.pixels === 'string') base64Bytes += cel.pixels.length;
+          return { ...cel, pixels: '' };
+        }) : frame.cels
+      }))
+    };
+  }
+  const metadata = JSON.stringify({ project: { ...project, layers, ...(animation ? { animation } : {}) } });
+  return new Blob([metadata]).size + base64Bytes;
+}
+
 function encodeBase64(bytes) {
   let binary = '';
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
@@ -146,10 +169,10 @@ async function request(path, options = {}) {
 }
 
 export async function saveProject(project) {
-  const directBody = JSON.stringify({ project });
-  const result = new Blob([directBody]).size > DIRECT_SAVE_BYTES
+  const estimatedBytes = estimateProjectSaveBytes(project);
+  const result = estimatedBytes > DIRECT_SAVE_BYTES
     ? { project: await saveProjectChunked(project) }
-    : await request(API, { method: 'PUT', body: directBody });
+    : await request(API, { method: 'PUT', body: JSON.stringify({ project }) });
   if (result.project && Number.isInteger(result.project.serverRevision)) project.serverRevision = result.project.serverRevision;
   return result.project;
 }
