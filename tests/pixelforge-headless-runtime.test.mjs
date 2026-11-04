@@ -635,3 +635,35 @@ test('selection.clear is a real mutation and cannot bypass a pending proposal', 
   assert.equal(blocked.error.code, 'proposal_pending');
   assert.equal(runtime.hasPendingProposal, true);
 });
+
+test('canvas reference exposes stable pixel coordinates, landmarks, grid and layer identity without mutating the project', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 12, name: 'Coordinate fixture' });
+  const result = runtime.execute({ name: 'canvas.get_reference', gridStep: 4 });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.result.coordinateSystem, {
+    unit: 'pixel', origin: 'top-left', xAxis: 'right', yAxis: 'down',
+    integerCoordinates: 'pixel indices; (0,0) is the top-left pixel',
+    bounds: { minX: 0, minY: 0, maxX: 15, maxY: 11, width: 16, height: 12 },
+  });
+  assert.deepEqual(result.result.landmarks.topLeft, { x: 0, y: 0 });
+  assert.deepEqual(result.result.landmarks.topRight, { x: 15, y: 0 });
+  assert.deepEqual(result.result.landmarks.bottomLeft, { x: 0, y: 11 });
+  assert.deepEqual(result.result.landmarks.bottomRight, { x: 15, y: 11 });
+  assert.deepEqual(result.result.landmarks.center, { x: 8, y: 6 });
+  assert.deepEqual(result.result.grid.xLines, [0, 4, 8, 12, 15]);
+  assert.deepEqual(result.result.grid.yLines, [0, 4, 8, 11]);
+  assert.equal(result.result.activeLayer.id, runtime.document.activeLayerId);
+  assert.equal(runtime.hasPendingChanges, false);
+  assert.equal(runtime.toJSON().revision, 0);
+});
+
+test('canvas coordinate reference remains readable while a drawing proposal awaits approval', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 16 });
+  const edit = runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 5, y1: 1, color: '#FF0000' });
+  assert.equal(edit.ok, true);
+  runtime.createProposal('Draw a reference line');
+  const reference = runtime.execute({ name: 'canvas.get_reference', gridStep: 8 });
+  assert.equal(reference.ok, true);
+  assert.deepEqual(reference.result.landmarks.center, { x: 8, y: 8 });
+  assert.equal(runtime.hasPendingProposal, true);
+});
