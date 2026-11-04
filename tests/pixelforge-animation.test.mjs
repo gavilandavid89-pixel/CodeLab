@@ -93,6 +93,36 @@ test('returns bounded onion-skin neighbors without crossing timeline edges', () 
   assert.throws(() => timeline.getOnionSkinFrames({ previous: 4 }), /from 0 to 3/);
 });
 
+test('keeps animation cels synchronized with layer add, duplicate, delete, and reorder operations', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(33));
+  timeline.addFrame({ duplicate: true });
+  timeline.addLayer('shadow');
+  assert.deepEqual(timeline.layerIds, ['ink', 'color', 'shadow']);
+  assert.equal(timeline.getLayerPixels(0, 'shadow')[0], 0);
+  timeline.addLayer('ink-copy', { copyFromLayerId: 'ink' });
+  assert.equal(timeline.getLayerPixels(1, 'ink-copy')[0], 33);
+  assert.equal(timeline.removeLayer('color'), 3);
+  assert.deepEqual(timeline.layerIds, ['ink', 'shadow', 'ink-copy']);
+  assert.equal(timeline.reorderLayers(['ink-copy', 'ink', 'shadow']), true);
+  assert.deepEqual(timeline.layerIds, ['ink-copy', 'ink', 'shadow']);
+  assert.equal(timeline.getLayerPixels(0, 'ink')[0], 33);
+  assert.throws(() => timeline.removeLayer('ink'), /at least one raster layer/);
+});
+
+test('uses 60 FPS timing and rejects oversized allocations before decoding cels', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  assert.equal(timeline.setFps(60), 17);
+  assert.equal(timeline.activeFrame.durationMs, 17);
+  const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
+  assert.throws(() => new PixelForgeAnimation({ width: 2048, height: 2048, layerIds }), /64 MiB/);
+  assert.throws(() => PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 2048, height: 2048,
+    layerIds, fps: 12, activeFrameIndex: 0,
+    frames: [{ id: 'oversized', durationMs: 100, cels: [] }],
+  }), /64 MiB/);
+});
+
 test('round-trips timeline metadata and RGBA cels through a validated JSON format', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 8 });
   timeline.setLayerPixels(0, 'color', new Uint8ClampedArray(16).fill(201));
