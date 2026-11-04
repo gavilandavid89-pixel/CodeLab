@@ -2184,10 +2184,14 @@ const server = http.createServer(async (req, res) => {
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
       // Large PixelForge projects use authenticated, idempotent PostgreSQL chunks.
       const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
-      const pixelForgeUploadChunk = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/(\d+)$/) && req.method === 'PUT';
-      const pixelForgeUploadCommit = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/commit$/) && req.method === 'POST';
-      const pixelForgeUploadStatus = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) && req.method === 'GET';
-      const pixelForgeUploadCancel = pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) && req.method === 'DELETE';
+      const pixelForgeUploadChunk = req.method === 'PUT'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/(\d+)$/) : null;
+      const pixelForgeUploadCommit = req.method === 'POST'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/commit$/) : null;
+      const pixelForgeUploadStatus = req.method === 'GET'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) : null;
+      const pixelForgeUploadCancel = req.method === 'DELETE'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) : null;
       if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit || pixelForgeUploadStatus || pixelForgeUploadCancel) {
         const user = getSessionUser(req);
         if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
