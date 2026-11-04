@@ -36,3 +36,15 @@ test('rejects unsafe, duplicate, invalid and oversized ZIP entry definitions', (
   assert.throws(() => createZip([{ name: 'same.txt', data: 'a' }, { name: 'same.txt', data: 'b' }]), /unique/);
   assert.throws(() => createZip([{ name: 'bad.txt', data: {} }]), /must be text/);
 });
+
+test('creates ZIP Blob payloads incrementally without changing archive format', async () => {
+  const blob = await (await import('../public/pixelforge/src/zip-export.js')).createZipBlob([
+    { name: 'manifest.json', data: new Blob(['{"frames":12}'], { type: 'application/json' }) },
+    { name: 'frame-001.png', data: new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' }) },
+  ]);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  assert.equal(blob.type, 'application/zip');
+  assert.equal(readU32(bytes, 0), 0x04034b50);
+  assert.equal(readU32(bytes, bytes.length - 22), 0x06054b50);
+  assert.equal(readU16(bytes, bytes.length - 22 + 8), 2);
+});
