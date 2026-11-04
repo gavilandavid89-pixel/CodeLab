@@ -1443,10 +1443,11 @@ try {
     const apiRequest = async (url, method, body) => page.evaluate(async ({ url, method, body }) => {
       const response = await fetch(url, { method, credentials: 'same-origin', headers: { accept: 'application/json', 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error('PixelForge import API ' + method + ' ' + url + ' failed (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      if (!response.ok) { const error = new Error('PixelForge import API ' + method + ' ' + url + ' failed (HTTP ' + response.status + '): ' + (data.error || 'unknown error')); error.code = data.error || 'pixelforge_import_api_error'; error.status = response.status; throw error; }
       return data;
     }, { url, method, body });
     let uploadStarted = false;
+    let committed = false;
     try {
       const begin = await apiRequest('/api/pixelforge/projects/uploads', 'POST', { uploadId, projectId: prepared.project.id, expectedServerRevision: 0, totalBytes: prepared.bytes, totalChunks });
       uploadStarted = true;
@@ -1456,7 +1457,13 @@ try {
         const payload = { chunk: chunk.toString('base64'), sha256: createHash('sha256').update(chunk).digest('hex') };
         await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/' + index, 'PUT', payload);
       }
-      await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/commit', 'POST', {});
+      try {
+        await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/commit', 'POST', {});
+      } catch (error) {
+        if (error.code !== 'pixelforge_upload_committed') throw error;
+        await apiRequest('/api/pixelforge/projects/uploads/' + uploadId + '/commit', 'POST', {});
+      }
+      committed = true;
       const read = await apiRequest('/api/pixelforge/projects/' + encodeURIComponent(prepared.project.id), 'GET');
       if (!read.project || read.project.id !== prepared.project.id || read.project.layers.length !== prepared.layerCount ||
           (read.project.animation?.frames?.length ?? 0) !== prepared.frameCount ||
@@ -1465,7 +1472,8 @@ try {
       }
       result = { status: 'imported', sourcePath: relativePath, projectId: read.project.id, name: read.project.name, width: read.project.width, height: read.project.height, layerCount: read.project.layers.length, frameCount: read.project.animation?.frames?.length ?? 0, loop: read.project.animation?.loop ?? null, bytes: prepared.bytes, serverRevision: read.project.serverRevision, readbackVerified: true };
     } catch (error) {
-      if (uploadStarted) await apiRequest('/api/pixelforge/projects/uploads/' + uploadId, 'DELETE').catch(() => {});
+      if (uploadStarted && !committed) await apiRequest('/api/pixelforge/projects/uploads/' + uploadId, 'DELETE').catch(() => {});
+      if (committed) throw new Error('PixelForge import was committed but readback verification failed; inspect project ID ' + prepared.project.id + '. ' + error.message);
       throw error;
     }
   } else if (command.action === 'pixelforge_headless_list_projects') {
