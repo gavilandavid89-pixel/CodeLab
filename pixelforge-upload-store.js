@@ -235,11 +235,29 @@ async function assembleUpload(pool, workspaceId, uploadId) {
 }
 async function cancelUpload(pool, workspaceId, uploadId) {
   if (!/^[a-f0-9]{32}$/.test(uploadId || '')) throw new PixelForgeUploadError('invalid_pixelforge_upload', 400);
-  const result = await pool.query(
-    'DELETE FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2 AND committed = FALSE',
-    [uploadId, workspaceId]
-  );
-  return { cancelled: result.rowCount > 0 };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const upload = await client.query(
+      'SELECT committed FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2 FOR UPDATE',
+      [uploadId, workspaceId]
+    );
+    if (!upload.rowCount || upload.rows[0].committed) {
+      await client.query('COMMIT');
+      return { cancelled: false };
+    }
+    const result = await client.query(
+      'DELETE FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2 AND committed = FALSE',
+      [uploadId, workspaceId]
+    );
+    await client.query('COMMIT');
+    return { cancelled: result.rowCount > 0 };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function markCommitted(pool, uploadId, receipt) {
