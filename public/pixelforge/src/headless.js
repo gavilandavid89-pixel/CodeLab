@@ -68,6 +68,16 @@ export class HeadlessEditorRuntime {
     this.#animationFuture = [];
   }
 
+  #committedAnimationForSandbox() {
+    const sandboxIds = this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds);
+    const mapped = remapAnimationLayerIds(this.#animation, sandboxIds);
+    return synchronizeAnimationLayers(mapped, this.#workspace.sandbox);
+  }
+
+  #animationDiffersFromCommitted() {
+    return JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#committedAnimationForSandbox());
+  }
+
   #resetWorkspace() {
     this.#workspace = new AIWorkspace(this.#document);
     this.#commands = new AICommandSession(this.#workspace);
@@ -95,7 +105,7 @@ export class HeadlessEditorRuntime {
           this.#animationHistoryBytes -= previous.bytes;
           this.#pushAnimationHistory(this.#animationFuture, this.#sandboxAnimation);
           this.#sandboxAnimation = synchronizeAnimationLayers(previous.snapshot, this.#workspace.sandbox);
-          this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
+          this.#animationDirty = this.#animationDiffersFromCommitted();
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
         if (action.name === 'animation.redo') {
@@ -139,8 +149,8 @@ export class HeadlessEditorRuntime {
       const before = JSON.stringify(this.#sandboxAnimation);
       const synchronized = synchronizeAnimationLayers(this.#sandboxAnimation, this.#workspace.sandbox);
       if (JSON.stringify(synchronized) !== before) {
-        if (synchronized.frames.length || this.#hasAnimation) this.#animationDirty = true;
         this.#sandboxAnimation = synchronized;
+        this.#animationDirty = this.#animationDiffersFromCommitted();
       }
     }
     return commandResult;
