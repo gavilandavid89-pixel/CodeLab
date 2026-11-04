@@ -73,7 +73,8 @@ async function saveProjectChunked(project) {
   } catch (error) {
     // Keep the upload ID after transient failures. Re-sending identical chunks is idempotent.
     if (error.code === 'pixelforge_chunk_conflict' || error.code === 'pixelforge_upload_expired' ||
-        error.code === 'pixelforge_upload_not_found' || error.code === 'pixelforge_upload_committed') {
+        error.code === 'pixelforge_upload_not_found' || error.code === 'pixelforge_upload_committed' ||
+        error.code === 'pixelforge_revision_conflict' || error.code === 'pixelforge_upload_manifest_mismatch') {
       pendingUploads.delete(project.id);
     }
     throw error;
