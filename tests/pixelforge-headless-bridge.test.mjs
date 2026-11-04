@@ -163,3 +163,23 @@ test('authenticated bridge returns read-only inspection batches without creating
   assert.equal(inspected.sessionId, undefined);
   assert.equal(writes, 0, 'read-only inspection must not write to the project API');
 });
+
+
+test('authenticated bridge reports animation-only cel changes in its proposal diff', async () => {
+  const source = makeProject();
+  const prepared = await preparePixelForgeProposal({
+    projectId: source.id,
+    summary: 'Create an animation frame',
+    actions: [{ name: 'animation.frame.add_from_layer', frameName: 'Pose 1' }],
+    fetcher: async (_url, options = {}) => {
+      if (options.method === 'GET') return jsonResponse({ project: source });
+      throw new Error('Animation proposal preparation must not persist.');
+    },
+  });
+  assert.equal(prepared.status, 'proposal');
+  assert.equal(prepared.diff.rasterChangedPixels, 0);
+  assert.equal(prepared.diff.animation.changedFrameCount, 1);
+  assert.equal(prepared.diff.animation.changedCelCount, 1);
+  assert.equal(prepared.diff.previewDataUrl, null, 'raster preview must not pretend to visualize an animation-only change');
+  assert.equal(discardPixelForgeProposal({ sessionId: prepared.sessionId }).discarded, true);
+});
