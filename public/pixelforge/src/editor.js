@@ -9,6 +9,7 @@ import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
+import { createOrbitalShowcase } from './showcase-animation.mjs';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -2294,9 +2295,28 @@ async function boot() {
     userPalette = loadUserPalette();
     renderUserPalette();
     resizeCanvas();
-    const saved = await loadMostRecentProject();
-    if (saved) { doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
-    else status('Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('createDemo') === 'orbital-12') {
+      const showcase = createOrbitalShowcase();
+      doc = showcase.doc;
+      animation = showcase.animation;
+      animationLoop = showcase.loop;
+      const snapshot = doc.toJSON();
+      snapshot.animation = { ...animation.toJSON(), loop: animationLoop };
+      const savedDemo = await saveProject(snapshot);
+      if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
+      doc.dirty = false;
+      animationFrameHistory.clear();
+      animationOrphanCels.clear();
+      clearSelectionState();
+      resetAIWorkspaceForDocument();
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+      status('Demo Orbital guardada en tu cuenta · 12 fotogramas a 12 FPS', 'success');
+    } else {
+      const saved = await loadMostRecentProject();
+      if (saved) { doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
+      else status('Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
+    }
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
   } catch (error) {
     if (error?.status === 401 || error?.code === 'not_authenticated') {
