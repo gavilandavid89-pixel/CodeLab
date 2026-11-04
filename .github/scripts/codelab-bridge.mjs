@@ -1428,36 +1428,20 @@ try {
     });
   } else if (command.action === 'pixelforge_headless_create_project') {
     stage = 'pixelforge_headless_create_project';
-    result = await page.evaluate(async ({ width, height, name, layerNames }) => {
-      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
-      const runtime = new HeadlessEditorRuntime({ width, height, name });
-      const firstLayerId = runtime.sandbox.activeLayerId;
-      if (layerNames[0] !== runtime.sandbox.activeLayer.name) {
-        const renamed = runtime.execute({ name: 'layer.rename', layerId: firstLayerId, newName: layerNames[0] });
-        if (!renamed.ok) throw new Error(renamed.error?.message || 'Could not name the first PixelForge layer.');
-      }
-      for (const layerName of layerNames.slice(1)) {
-        const added = runtime.execute({ name: 'layer.add', layerName });
-        if (!added.ok) throw new Error(added.error?.message || 'Could not add a PixelForge starter layer.');
-      }
-      if (runtime.hasPendingChanges) {
-        runtime.createProposal('Create a new PixelForge project');
-        const accepted = runtime.acceptProposal();
-        if (accepted.status !== 'applied') throw new Error('PixelForge starter project proposal could not be accepted.');
-      }
-      const project = runtime.toJSON();
+    result = await page.evaluate(async ({ template, width, height, name, layerNames }) => {
+      const { createPixelForgeProject } = await import('/pixelforge/src/project-factory.js');
+      const created = createPixelForgeProject({ template, width, height, name, layerNames });
+      const project = created.project;
       const savedResponse = await fetch('/api/pixelforge/projects', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ project }) });
       const saved = await savedResponse.json().catch(() => ({}));
       if (!savedResponse.ok || !saved.project || saved.project.id !== project.id) throw new Error('PixelForge project creation failed (HTTP ' + savedResponse.status + '): ' + (saved.error || 'server readback missing'));
       const readResponse = await fetch('/api/pixelforge/projects/' + encodeURIComponent(project.id), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
       const read = await readResponse.json().catch(() => ({}));
-      if (!readResponse.ok || !read.project || read.project.id !== project.id || read.project.layers.length !== layerNames.length) throw new Error('PixelForge project creation readback verification failed.');
+      if (!readResponse.ok || !read.project || read.project.id !== project.id || read.project.layers.length !== created.readback.layerCount) throw new Error('PixelForge project creation readback verification failed.');
       return { status: 'created', projectId: project.id, name: read.project.name, width: read.project.width, height: read.project.height, layerCount: read.project.layers.length, serverRevision: read.project.serverRevision, readbackVerified: true };
     }, {
-      width: command.args.width ?? ({ custom:128, character:64, icon:32, tile:32, ui:128, background:256, effect:64 }[command.args.template ?? 'custom']),
-      height: command.args.height ?? ({ custom:128, character:64, icon:32, tile:32, ui:64, background:144, effect:64 }[command.args.template ?? 'custom']),
-      name: command.args.name ?? ({ custom:'Untitled artwork', character:'Character sprite', icon:'Game icon', tile:'Environment tile', ui:'UI element', background:'Background scene', effect:'VFX sprite' }[command.args.template ?? 'custom']),
-      layerNames: command.args.layer_names ?? ({ custom:['Layer 1'], character:['Sketch','Lineart','Color','Shading'], icon:['Base','Details','Highlights'], tile:['Base','Details','Edges'], ui:['Base','Border','Details'], background:['Far','Middle','Foreground'], effect:['Core','Glow','Particles'] }[command.args.template ?? 'custom']),
+      template: command.args.template, width: command.args.width, height: command.args.height,
+      name: command.args.name, layerNames: command.args.layer_names,
     });
   } else if (command.action === 'pixelforge_headless_delete_project') {
     stage = 'pixelforge_headless_delete_project';
