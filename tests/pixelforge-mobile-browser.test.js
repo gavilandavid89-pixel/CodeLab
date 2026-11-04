@@ -90,8 +90,14 @@ async function main() {
         await page.locator('#new-height').fill('32');
         await page.locator('#create-new').click();
         await page.waitForFunction(name => document.querySelector('#document-name')?.textContent === name, projectName);
-        await page.locator('#save').click();
-        await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'));
+        const saveResponse = async () => {
+          const responsePromise = page.waitForResponse(response =>
+            response.url().includes('/api/pixelforge/projects') &&
+            response.request().method() === 'PUT' && response.status() === 200, { timeout: 10000 });
+          await page.locator('#save').click();
+          await responsePromise;
+        };
+        await saveResponse();
 
         // First click creates the timeline around the current raster document.
         await page.locator('#animation-add-frame').click();
@@ -146,8 +152,7 @@ async function main() {
         assert.match(pngDownload.suggestedFilename(), /-animation\.png$/);
         assert.match(manifestDownload.suggestedFilename(), /-animation\.json$/);
 
-        await page.locator('#save').click();
-        await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'));
+        await saveResponse();
         const projectListResponse = await page.request.get(base + '/api/pixelforge/projects');
         assert.equal(projectListResponse.status(), 200, 'saved projects must remain available through the account API');
         const projectList = await projectListResponse.json();
