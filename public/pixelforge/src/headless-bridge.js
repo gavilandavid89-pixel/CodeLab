@@ -32,7 +32,7 @@ async function readJson(response, label) {
 
 function diffPreviewDataUrl(runtime) {
   const diff = runtime.getDiff();
-  if (!diff.changedPixels) return null;
+  if (!diff.changedPixels || typeof document === 'undefined' || typeof ImageData === 'undefined') return null;
   const canvas = document.createElement('canvas');
   canvas.width = diff.width;
   canvas.height = diff.height;
