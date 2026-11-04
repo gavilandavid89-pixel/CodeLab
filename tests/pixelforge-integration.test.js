@@ -775,9 +775,17 @@ async function main() {
     assert.ok(fs.statSync(largeFixturePath).size > 24 * 1024 * 1024,
       'the large fixture must exercise chunked rather than single-request persistence');
     await accountPage.locator('#import-file').setInputFiles(largeFixturePath);
-    await accountPage.waitForFunction(() =>
-      document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'),
-      null, { timeout: 60000 });
+    try {
+      await accountPage.waitForFunction(() =>
+        document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'),
+        null, { timeout: 60000 });
+    } catch (error) {
+      const importStatus = await accountPage.locator('#status').innerText();
+      const listedProjects = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+      throw new Error('Large chunked import did not complete; status=' + importStatus +
+        '; listedProjects=' + JSON.stringify(listedProjects.projects?.map(project => project.name)) +
+        '; cause=' + error.message);
+    }
     const largeMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
       .projects.find(project => project.name === 'Large chunked artwork (imported)');
     assert.ok(largeMetadata, 'large chunked import must be durably listed in the account');
@@ -809,7 +817,10 @@ async function main() {
         headers: { ...authHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ project: makePixelProject('limit-project-' + index, 'Limit project ' + index) })
       });
-      assert.ok(response.status === 200 || response.status === 201, 'projects below the account limit should save');
+      const responseBody = await response.text();
+      assert.ok(response.status === 200 || response.status === 201,
+        'projects below the account limit should save; index=' + index + '; maxProjects=' + maxProjects +
+        '; existing=' + existingProjects.length + '; status=' + response.status + '; body=' + responseBody.slice(0, 500));
     }
     const overflow = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
