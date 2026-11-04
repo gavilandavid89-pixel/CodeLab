@@ -31,7 +31,7 @@ const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxPro
   : 50;
 // PixelForge has a dedicated high-resolution asset budget. Keep these limits
 // scoped to its project API; do not inflate unrelated CodeLab request bodies.
-// The request envelope exceeds the stored-project cap to allow JSON metadata.
+// Keep individual JSON requests bounded; larger project payloads are uploaded as 6 MiB chunks.
 const PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024;
 const PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024;
 const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
