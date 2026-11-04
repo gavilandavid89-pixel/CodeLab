@@ -1,7 +1,7 @@
 export const MAX_DIMENSION = 4096;
 export const MAX_PIXELS = 16_777_216;
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
-export const MAX_PROJECT_JSON_BYTES = 112 * 1024 * 1024;
+export const MAX_PROJECT_JSON_BYTES = 96 * 1024 * 1024;
 const PROJECT_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024;
 
 export function estimateRasterProjectJSONBytes(layers) {
@@ -953,7 +953,7 @@ export class RasterDocument {
   }
   toJSON() {
     if (estimateRasterProjectJSONBytes(this.layers) > MAX_PROJECT_JSON_BYTES) {
-      throw new RangeError('Project JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
+      throw new RangeError('Project JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
     return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
       layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })) };
