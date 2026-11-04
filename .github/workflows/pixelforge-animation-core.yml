@@ -29,3 +29,5 @@ jobs:
         run: node --check public/pixelforge/src/animation.mjs
       - name: Test frame timeline model
         run: node --test tests/pixelforge-animation.test.mjs
+      - name: Guard original editor feature parity
+        run: node --test tests/pixelforge-feature-parity.test.mjs
