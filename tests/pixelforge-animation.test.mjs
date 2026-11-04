@@ -310,6 +310,8 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('async function getUploadStatus'));
   const persistence = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/persistence.js'), 'utf8');
   const uploadStore = fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8');
+  assert.ok(uploadStore.includes("const { StringDecoder } = require('node:string_decoder')") && uploadStore.includes("new StringDecoder('utf8')"),
+    'chunk assembly must import and use Node StringDecoder for UTF-8 sequences split across chunks');
   assert.ok((uploadStore.match(/FOR UPDATE/g) || []).length >= 2,
     'chunk writes and assembly must lock the upload manifest against commit/cleanup races');
   assert.ok(uploadStore.includes("await client.query('BEGIN')") && uploadStore.includes("await client.query('COMMIT')"),
