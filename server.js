@@ -12,6 +12,7 @@ const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
+const pixelForgeUploads = require('./pixelforge-upload-store.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -31,7 +32,8 @@ const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxPro
 // PixelForge has a dedicated high-resolution asset budget. Keep these limits
 // scoped to its project API; do not inflate unrelated CodeLab request bodies.
 // The request envelope exceeds the stored-project cap to allow JSON metadata.
-const PIXELFORGE_MAX_BODY_BYTES = 144 * 1024 * 1024;
+const PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024;
+const PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024;
 const PIXELFORGE_MAX_PROJECT_BYTES = 128 * 1024 * 1024;
 // Keep the server-side raster allocation ceiling identical to the editor's
 // MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
