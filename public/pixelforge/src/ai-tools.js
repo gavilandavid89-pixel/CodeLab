@@ -1,5 +1,5 @@
 import { AIWorkspace } from './workspaces.js';
-import { createSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
+import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -31,6 +31,42 @@ function rectangle(doc, x, y, width, height) {
 
 function plainResult(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function symmetryPoints(doc, point, mode) {
+  if (mode === 0) return [point];
+  const cx = (doc.width - 1) / 2, cy = (doc.height - 1) / 2;
+  const dx = point.x - cx, dy = point.y - cy;
+  let offsets;
+  if (mode === 2) offsets = [[dx, dy], [-dx, dy]];
+  else if (mode === 4) offsets = [[dx, dy], [-dx, dy], [dx, -dy], [-dx, -dy]];
+  else offsets = [
+    [dx, dy], [-dy, dx], [-dx, -dy], [dy, -dx],
+    [-dx, dy], [-dy, -dx], [dx, -dy], [dy, dx],
+  ];
+  return offsets.map(([ox, oy]) => {
+    const x = Math.round(cx + ox), y = Math.round(cy + oy);
+    return x < 0 || y < 0 || x >= doc.width || y >= doc.height ? null : { x, y };
+  });
+}
+
+function strokeToWithSymmetry(doc, stroke, x, y, mode) {
+  if (mode === 0) {
+    doc.strokeTo(stroke, x, y);
+    return;
+  }
+  const points = symmetryPoints(doc, { x, y }, mode);
+  const previous = stroke.symmetryLastPoints ?? [];
+  const next = [];
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    if (!point) { next[index] = null; continue; }
+    stroke.last = previous[index] ?? null;
+    doc.strokeTo(stroke, point.x, point.y);
+    next[index] = stroke.last;
+  }
+  stroke.symmetryLastPoints = next;
+  stroke.last = next[0] ?? null;
 }
 
 /**
@@ -90,11 +126,13 @@ export class AICommandSession {
           const size = action.size ?? 1;
           integer(size, 'size');
           if (size < 1 || size > 128) throw new RangeError('Brush size must be between 1 and 128 pixels.');
+          const symmetryMode = action.symmetryMode ?? 0;
+          if (![0, 2, 4, 8].includes(symmetryMode)) throw new RangeError('symmetryMode must be 0, 2, 4, or 8.');
           const stroke = doc.beginStroke({ color: paintColor, size });
           try {
-            doc.strokeTo(stroke, x0, y0);
-            doc.strokeTo(stroke, x1, y1);
-            result = { changed: doc.endStroke(stroke), bounds: { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0) + 1, height: Math.abs(y1 - y0) + 1 } };
+            strokeToWithSymmetry(doc, stroke, x0, y0, symmetryMode);
+            strokeToWithSymmetry(doc, stroke, x1, y1, symmetryMode);
+            result = { changed: doc.endStroke(stroke), symmetryMode, bounds: { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0) + 1, height: Math.abs(y1 - y0) + 1 } };
           } catch (error) {
             doc.endStroke(stroke, { commit: false });
             throw error;
@@ -109,11 +147,13 @@ export class AICommandSession {
           if (size < 1 || size > 128 || !Number.isFinite(opacity) || opacity < 0 || opacity > 1 ||
               !Number.isFinite(hardness) || hardness < 0 || hardness > 1) throw new RangeError('Brush size, opacity or hardness is outside the supported range.');
           const mode = action.mode ?? 'draw', shape = action.shape ?? 'square';
+          const symmetryMode = action.symmetryMode ?? 0;
           if (!['draw', 'erase'].includes(mode) || !['square', 'circle'].includes(shape)) throw new TypeError('Unsupported brush mode or shape.');
+          if (![0, 2, 4, 8].includes(symmetryMode)) throw new RangeError('symmetryMode must be 0, 2, 4, or 8.');
           const stroke = doc.beginStroke({ color: color(action.color), size, opacity, hardness, shape, mode });
           try {
-            for (const point of action.points) doc.strokeTo(stroke, point.x, point.y);
-            result = { changed: doc.endStroke(stroke), pointCount: action.points.length };
+            for (const point of action.points) strokeToWithSymmetry(doc, stroke, point.x, point.y, symmetryMode);
+            result = { changed: doc.endStroke(stroke), pointCount: action.points.length, symmetryMode };
           } catch (error) {
             doc.endStroke(stroke, { commit: false });
             throw error;
@@ -338,6 +378,21 @@ export class AICommandSession {
           const mask = createSelectionMask(doc.width, doc.height, selection);
           doc.setSelectionMask(mask);
           result = { x: action.x, y: action.y, width: action.width, height: action.height, selectedPixels: mask.reduce((sum, value) => sum + value, 0) };
+          break;
+        }
+        case 'selection.create_magic': {
+          coordinate(doc, action.x, action.y);
+          const tolerance = action.tolerance ?? 0;
+          integer(tolerance, 'tolerance');
+          if (tolerance < 0 || tolerance > 255) throw new RangeError('Color-selection tolerance must be between 0 and 255.');
+          const contiguous = action.contiguous ?? true;
+          if (typeof contiguous !== 'boolean') throw new TypeError('contiguous must be a boolean.');
+          const operation = action.operation ?? 'replace';
+          if (!['replace', 'add', 'subtract', 'intersect'].includes(operation)) throw new TypeError('Selection operation must be replace, add, subtract, or intersect.');
+          const nextMask = createColorSelectionMask(doc.width, doc.height, doc.activeLayer.pixels, action.x, action.y, { tolerance, contiguous });
+          const mask = combineSelectionMasks(doc.width, doc.height, doc.selectionMask, nextMask, operation);
+          doc.setSelectionMask(mask);
+          result = { operation, tolerance, contiguous, selectedPixels: mask.reduce((sum, value) => sum + value, 0) };
           break;
         }
         case 'selection.modify': {
