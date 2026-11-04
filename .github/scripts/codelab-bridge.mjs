@@ -1429,8 +1429,9 @@ try {
   } else if (command.action === 'pixelforge_headless_create_project') {
     stage = 'pixelforge_headless_create_project';
     result = await page.evaluate(async ({ template, width, height, name, layerNames }) => {
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
       const { createPixelForgeProject } = await import('/pixelforge/src/project-factory.js');
-      const created = createPixelForgeProject({ template, width, height, name, layerNames });
+      const created = createPixelForgeProject({ template, width, height, name, layerNames }, { HeadlessEditorRuntime });
       const project = created.project;
       const savedResponse = await fetch('/api/pixelforge/projects', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ project }) });
       const saved = await savedResponse.json().catch(() => ({}));
