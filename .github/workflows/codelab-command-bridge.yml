@@ -71,3 +71,15 @@ jobs:
             .codelab-artifacts/pixelforge-animation-manifest.json
           if-no-files-found: error
           retention-days: 14
+      - name: Upload PixelForge raster export artifacts
+        if: success() && hashFiles('.codelab-artifacts/pixelforge-*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelforge-raster-${{ github.run_id }}
+          path: |
+            .codelab-artifacts/pixelforge-composite.png
+            .codelab-artifacts/pixelforge-project.pforge
+            .codelab-artifacts/pixelforge-layer-spritesheet.png
+            .codelab-artifacts/pixelforge-layer-spritesheet.json
+          if-no-files-found: ignore
+          retention-days: 14

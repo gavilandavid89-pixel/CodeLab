@@ -21,7 +21,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -32,7 +32,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'design_capture_png', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
+  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers', 'design_capture_png', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -40,7 +40,7 @@ function parseCommand(raw) {
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
-  if (['pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation'].includes(command.action) &&
+  if (['pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error(command.action + ' requires a valid PixelForge args.project_id.');
   }
@@ -50,6 +50,17 @@ function parseCommand(raw) {
     }
     if (args.padding !== undefined && (!Number.isInteger(args.padding) || args.padding < 0 || args.padding > 64)) {
       throw new Error('PixelForge animation export padding must be an integer from 0 to 64.');
+    }
+  }
+  if (['pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers'].includes(command.action) && command.approval !== 'approved') {
+    throw new Error('PixelForge raster/project export requires approval: "approved".');
+  }
+  if (command.action === 'pixelforge_headless_export_layers') {
+    if (args.columns !== undefined && (!Number.isInteger(args.columns) || args.columns < 1 || args.columns > 240)) {
+      throw new Error('PixelForge layer export columns must be an integer from 1 to 240.');
+    }
+    if (args.padding !== undefined && (!Number.isInteger(args.padding) || args.padding < 0 || args.padding > 32)) {
+      throw new Error('PixelForge layer export padding must be an integer from 0 to 32.');
     }
   }
   if (command.action === 'pixelforge_headless_batch') {
@@ -1478,6 +1489,84 @@ try {
       artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID,
       projectPersisted: false,
     };
+  } else if (command.action === 'pixelforge_headless_export_png') {
+    stage = 'pixelforge_headless_export_png';
+    const downloadPromise = page.waitForEvent('download', { timeout: 30000 }).then(download => ({ download }), error => ({ error }));
+    const exportInfo = await page.evaluate(async projectId => {
+      const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.project) throw new Error('PixelForge PNG export could not read project (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
+      const runtime = HeadlessEditorRuntime.fromJSON(data.project);
+      const doc = runtime.document;
+      const canvas = document.createElement('canvas'); canvas.width = doc.width; canvas.height = doc.height;
+      const context = canvas.getContext('2d', { alpha: true });
+      if (!context) throw new Error('Could not create the PixelForge PNG export surface.');
+      context.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
+      const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
+      anchor.href = url; anchor.download = 'pixelforge-composite.png'; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      return { filename: anchor.download, width: doc.width, height: doc.height, revision: doc.revision };
+    }, command.args.project_id);
+    const downloaded = await downloadPromise;
+    if (downloaded.error) throw new Error('PixelForge PNG download did not start: ' + String(downloaded.error.message || downloaded.error));
+    await fs.mkdir('.codelab-artifacts', { recursive: true });
+    const filePath = '.codelab-artifacts/pixelforge-composite.png'; await downloaded.download.saveAs(filePath);
+    result = { status: 'exported', projectId: command.args.project_id, width: exportInfo.width, height: exportInfo.height, revision: exportInfo.revision, file: filePath, artifactName: 'pixelforge-raster-' + process.env.GITHUB_RUN_ID, artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID, projectPersisted: false };
+  } else if (command.action === 'pixelforge_headless_export_project') {
+    stage = 'pixelforge_headless_export_project';
+    const downloadPromise = page.waitForEvent('download', { timeout: 30000 }).then(download => ({ download }), error => ({ error }));
+    const exportInfo = await page.evaluate(async projectId => {
+      const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.project) throw new Error('PixelForge project export could not read project (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
+      const runtime = HeadlessEditorRuntime.fromJSON(data.project); const project = runtime.toJSON();
+      const json = JSON.stringify(project); const bytes = new TextEncoder().encode(json).byteLength;
+      if (bytes > 96 * 1024 * 1024) throw new RangeError('PixelForge portable project exceeds the 96 MiB export limit.');
+      const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'pixelforge-project.pforge';
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      return { filename: anchor.download, bytes, revision: project.revision, width: project.width, height: project.height, layerCount: project.layers.length, frameCount: project.animation?.frames?.length ?? 0 };
+    }, command.args.project_id);
+    const downloaded = await downloadPromise;
+    if (downloaded.error) throw new Error('PixelForge project download did not start: ' + String(downloaded.error.message || downloaded.error));
+    await fs.mkdir('.codelab-artifacts', { recursive: true });
+    const filePath = '.codelab-artifacts/pixelforge-project.pforge'; await downloaded.download.saveAs(filePath);
+    result = { status: 'exported', projectId: command.args.project_id, ...exportInfo, file: filePath, artifactName: 'pixelforge-raster-' + process.env.GITHUB_RUN_ID, artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID, projectPersisted: false };
+  } else if (command.action === 'pixelforge_headless_export_layers') {
+    stage = 'pixelforge_headless_export_layers';
+    const pngPromise = page.waitForEvent('download', { timeout: 30000 }).then(download => ({ download }), error => ({ error }));
+    const manifestPromise = page.waitForEvent('download', { timeout: 30000 }).then(download => ({ download }), error => ({ error }));
+    const exportInfo = await page.evaluate(async ({ projectId, columns, padding }) => {
+      const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.project) throw new Error('PixelForge layer export could not read project (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
+      const { createSpriteSheetLayout } = await import('/pixelforge/src/asset-export.js');
+      const runtime = HeadlessEditorRuntime.fromJSON(data.project); const doc = runtime.document;
+      const options = {}; if (columns !== undefined) options.columns = columns; if (padding !== undefined) options.padding = padding;
+      const layout = createSpriteSheetLayout(doc.layers.length, doc.width, doc.height, options);
+      const sheet = document.createElement('canvas'); sheet.width = layout.width; sheet.height = layout.height;
+      const context = sheet.getContext('2d', { alpha: true }); if (!context) throw new Error('Could not create the PixelForge layer sprite sheet surface.');
+      context.clearRect(0, 0, sheet.width, sheet.height);
+      const frames = layout.frames.map((frame, index) => {
+        const layer = doc.layers[index]; context.putImageData(new ImageData(new Uint8ClampedArray(layer.pixels), doc.width, doc.height), frame.x, frame.y);
+        return { ...frame, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked };
+      });
+      const manifest = { format: 'pixelforge-sprite-sheet', version: 1, document: doc.name, frameCount: frames.length, sheet: { width: layout.width, height: layout.height, columns: layout.columns, rows: layout.rows, padding: layout.padding }, frameSize: { width: doc.width, height: doc.height }, pivot: 'center', frames };
+      const png = await new Promise((resolve, reject) => sheet.toBlob(value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
+      const pngUrl = URL.createObjectURL(png); const pngAnchor = document.createElement('a'); pngAnchor.href = pngUrl; pngAnchor.download = 'pixelforge-layer-spritesheet.png'; document.body.appendChild(pngAnchor); pngAnchor.click(); pngAnchor.remove();
+      const jsonUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }));
+      const jsonAnchor = document.createElement('a'); jsonAnchor.href = jsonUrl; jsonAnchor.download = 'pixelforge-layer-spritesheet.json'; document.body.appendChild(jsonAnchor); jsonAnchor.click(); jsonAnchor.remove();
+      return { manifest, pngFilename: pngAnchor.download, manifestFilename: jsonAnchor.download, revision: doc.revision };
+    }, { projectId: command.args.project_id, columns: command.args.columns, padding: command.args.padding });
+    const [pngDownload, manifestDownload] = await Promise.all([pngPromise, manifestPromise]);
+    if (pngDownload.error || manifestDownload.error) throw new Error('PixelForge layer sprite sheet files did not both download successfully.');
+    await fs.mkdir('.codelab-artifacts', { recursive: true });
+    const pngPath = '.codelab-artifacts/pixelforge-layer-spritesheet.png'; const manifestPath = '.codelab-artifacts/pixelforge-layer-spritesheet.json';
+    await Promise.all([pngDownload.download.saveAs(pngPath), manifestDownload.download.saveAs(manifestPath)]);
+    result = { status: 'exported', projectId: command.args.project_id, revision: exportInfo.revision, frameCount: exportInfo.manifest.frameCount, sheet: exportInfo.manifest.sheet, files: { spriteSheet: pngPath, manifest: manifestPath }, artifactName: 'pixelforge-raster-' + process.env.GITHUB_RUN_ID, artifactRunUrl: 'https://github.com/' + repo + '/actions/runs/' + process.env.GITHUB_RUN_ID, projectPersisted: false };
   } else if (command.action === 'headless_batch') {
     stage = 'headless_batch';
     result = await page.evaluate(async ({ baseRevision, operationId, operations }) => {

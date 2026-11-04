@@ -60,6 +60,24 @@ test('PixelForge animation export writes a downloadable artifact instead of a ma
   assert.match(catalog, /Actions run URL/);
 });
 
+test('PixelForge raster exports are explicit, bounded, and require approval', () => {
+  const projectStart = bridge.indexOf('const projectActions = [');
+  const projectEnd = bridge.indexOf('];', projectStart);
+  assert.ok(projectStart >= 0 && projectEnd > projectStart, 'project action allowlist must exist');
+  const projectActionBlock = bridge.slice(projectStart, projectEnd);
+  for (const action of ['pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers']) {
+    assert.ok(bridge.includes("'" + action + "'"), action + ' must be allowlisted');
+    assert.ok(projectActionBlock.includes("'" + action + "'"), action + ' must require an admin project session');
+  }
+  assert.ok(bridge.includes("PixelForge raster/project export requires approval: \"approved\"."));
+  assert.ok(bridge.includes('createSpriteSheetLayout'));
+  assert.ok(bridge.includes('96 * 1024 * 1024'));
+  assert.ok(bridge.includes('pixelforge-composite.png'));
+  assert.ok(bridge.includes('pixelforge-project.pforge'));
+  assert.ok(bridge.includes('pixelforge-layer-spritesheet.json'));
+  assert.ok(bridge.includes('frameCount: frames.length'));
+});
+
 test('PixelForge animation export artifacts have a dedicated 14-day retention policy', () => {
   assert.match(bridge, /artifactName: 'pixelforge-animation-'/);
   assert.match(bridgeWorkflow, /name: pixelforge-animation-\$\{\{ github\.run_id \}\}/);
