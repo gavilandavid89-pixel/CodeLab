@@ -829,6 +829,9 @@ test('Headless inspection publishes its supported actions and safety limits', ()
   assert.equal(capabilities.maxBatchActions, 500);
   assert.equal(capabilities.maxLayers, 64);
   assert.equal(capabilities.maxFrames, 240);
+  assert.equal(capabilities.maxRegionWidth, 128);
+  assert.equal(capabilities.maxRegionHeight, 128);
+  assert.equal(capabilities.maxRegionPixels, 16384);
   assert.equal(capabilities.proposalApprovalRequired, true);
   assert.ok(capabilities.rasterActions.includes('canvas.get_reference'));
   assert.ok(capabilities.rasterActions.includes('canvas.draw_stroke'));
