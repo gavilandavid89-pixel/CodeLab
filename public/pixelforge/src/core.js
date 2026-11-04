@@ -1145,11 +1145,23 @@ function bytesToBase64(bytes) {
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
 }
+function hasBase64CharactersAndPadding(value, expectedPadding = '') {
+  if (typeof value !== 'string') return false;
+  if (expectedPadding && !value.endsWith(expectedPadding)) return false;
+  const payloadEnd = value.length - expectedPadding.length;
+  for (let index = 0; index < payloadEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  return true;
+}
 function base64ToBytes(value, expectedLength) {
   if (!Number.isInteger(expectedLength) || expectedLength < 0) throw new RangeError('Invalid expected pixel-buffer length.');
   const expectedEncodedLength = Math.ceil(expectedLength / 3) * 4;
-  if (typeof value !== 'string' || value.length !== expectedEncodedLength || value.length > 24_000_000 ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+  const expectedPadding = expectedLength % 3 === 1 ? '==' : expectedLength % 3 === 2 ? '=' : '';
+  if (typeof value !== 'string' || value.length !== expectedEncodedLength || value.length > MAX_PROJECT_JSON_BYTES ||
+      !hasBase64CharactersAndPadding(value, expectedPadding)) {
     throw new TypeError('Invalid or oversized layer data.');
   }
   let binary;
