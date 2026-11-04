@@ -2299,7 +2299,7 @@ const server = http.createServer(async (req, res) => {
           }));
         } catch (error) {
           if ((error.status || 500) >= 500) console.error('PixelForge chunk upload failed:', error.message);
-          const failureStatus = error.status || (error.code === 'PAYLOAD_TOO_LARGE' ? 413 : error instanceof SyntaxError ? 400 : 503);
+          const failureStatus = error.status || (error.code === 'PAYLOAD_TOO_LARGE' ? 413 : ['INVALID_JSON', 'REQUEST_ABORTED'].includes(error.code) ? 400 : 503);
           return sendJson(res, failureStatus, {
             error: error.code || 'pixelforge_upload_failed',
             ...(Number.isInteger(error.maxBytes) ? { maxBytes: error.maxBytes } : {}),
