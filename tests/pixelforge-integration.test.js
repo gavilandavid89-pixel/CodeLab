@@ -218,7 +218,9 @@ async function main() {
   await fetch(base + '/api/pixelforge/projects/' + animationProject.id, { method: 'DELETE', headers: authHeaders });
   assert.ok(Number.isInteger(animationRevision) && animationRevision === 1, 'the animation project should receive a server revision token');
 
-  // The upload protocol must be resumable, integrity checked, and idempotent.
+    // Chunk transport is intentionally PostgreSQL-backed; local file-mode E2E skips these routes.
+  if (process.env.DATABASE_URL) {
+// The upload protocol must be resumable, integrity checked, and idempotent.
   const chunkFixture = { ...makePixelProject('chunk-api-contract', 'Chunk API contract', 1200, 1200), serverRevision: 1 };
   const chunkSerialized = JSON.stringify(chunkFixture);
   const chunkBytes = Buffer.from(chunkSerialized, 'utf8');
@@ -304,6 +306,7 @@ async function main() {
   });
   assert.equal(cancelledChunk.status, 404, 'cancelled uploads must no longer accept chunks');
   await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { method: 'DELETE', headers: authHeaders });
+  }
 
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
@@ -330,6 +333,7 @@ async function main() {
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
+  if (process.env.DATABASE_URL) {
   const ownerUploadId = 'd'.repeat(32);
   const ownerUpload = await fetch(base + '/api/pixelforge/projects/uploads', {
     method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -348,6 +352,7 @@ async function main() {
   assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { headers: authHeaders })).status, 200,
     'a denied cross-account cancellation must leave the owner upload intact');
   await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { method: 'DELETE', headers: authHeaders });
+  }
   const otherList = await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders });
   assert.deepEqual((await otherList.json()).projects, [], 'a different CodeLab account must not see another account\'s PixelForge projects');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: otherHeaders })).status, 404, 'a different account must not open another account\'s project');
