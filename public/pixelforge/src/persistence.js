@@ -5,6 +5,21 @@ const DIRECT_SAVE_BYTES = 24 * 1024 * 1024;
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const UPLOAD_CHUNK_BYTES = 6 * 1024 * 1024;
 const pendingUploads = new Map();
+const DISCARD_UPLOAD_CODES = new Set([
+  'pixelforge_upload_incomplete', 'pixelforge_upload_expired', 'pixelforge_upload_not_found',
+  'pixelforge_upload_conflict', 'pixelforge_upload_manifest_mismatch', 'pixelforge_chunk_conflict',
+  'pixelforge_chunk_integrity_failed', 'pixelforge_upload_size_mismatch', 'invalid_pixelforge_upload',
+  'invalid_pixelforge_chunk', 'invalid_pixelforge_upload_encoding', 'invalid_pixelforge_project',
+  'invalid_pixelforge_animation', 'pixelforge_revision_conflict', 'pixelforge_project_limit',
+  'pixelforge_account_storage_limit', 'pixelforge_project_too_large'
+]);
+const RESTART_UPLOAD_CODES = new Set([
+  'pixelforge_upload_incomplete', 'pixelforge_upload_expired', 'pixelforge_upload_not_found',
+  'pixelforge_upload_conflict', 'pixelforge_upload_manifest_mismatch', 'pixelforge_chunk_conflict',
+  'pixelforge_chunk_integrity_failed', 'pixelforge_upload_size_mismatch', 'invalid_pixelforge_upload',
+  'invalid_pixelforge_chunk', 'invalid_pixelforge_upload_encoding', 'invalid_pixelforge_project',
+  'invalid_pixelforge_animation', 'pixelforge_project_too_large'
+]);
 
 function estimateProjectSaveBytes(project) {
   let base64Bytes = 0;
@@ -68,11 +83,11 @@ async function saveProjectChunked(project) {
         project.serverRevision = previous.project.serverRevision;
       }
     } catch (error) {
-      if (['pixelforge_upload_incomplete', 'pixelforge_upload_expired', 'pixelforge_upload_not_found'].includes(error.code)) {
-        await request(API + '/uploads/' + pending.uploadId, { method: 'DELETE' }).catch(() => {});
-      } else {
-        throw error;
-      }
+      if (!DISCARD_UPLOAD_CODES.has(error.code)) throw error;
+      await request(API + '/uploads/' + pending.uploadId, { method: 'DELETE' }).catch(() => {});
+      pendingUploads.delete(project.id);
+      if (!RESTART_UPLOAD_CODES.has(error.code)) throw error;
+      return saveProjectChunked(project);
     }
     pendingUploads.delete(project.id);
     return saveProjectChunked(project);
@@ -142,8 +157,7 @@ async function saveProjectChunked(project) {
         }
       } catch (_) {}
     }
-    if (['pixelforge_chunk_conflict', 'pixelforge_upload_expired', 'pixelforge_upload_not_found',
-      'pixelforge_revision_conflict', 'pixelforge_upload_manifest_mismatch'].includes(error.code)) {
+    if (DISCARD_UPLOAD_CODES.has(error.code)) {
       await request(API + '/uploads/' + pending.uploadId, { method: 'DELETE' }).catch(() => {});
       pendingUploads.delete(project.id);
     }
