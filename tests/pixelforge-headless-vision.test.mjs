@@ -34,6 +34,7 @@ test('requires explicit project-scoped consent before preparing provider image p
   assert.equal(request.imageParts[0].type, 'image_url');
   assert.equal(request.context.project.name, 'Sketch');
   assert.equal(request.context.project.ownerEmail, undefined);
+  assert.equal(request.context.project.projectId, undefined, 'internal project ID must stay out of provider metadata');
   assert.equal(request.consentConsumed, true);
 });
 
