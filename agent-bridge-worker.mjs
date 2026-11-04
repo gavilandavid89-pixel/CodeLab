@@ -480,6 +480,23 @@ async function inspectCodeLabProject(command) {
   };
 }
 
+function resolveProjectFrame(project, frameIndex) {
+  if (frameIndex == null) return project;
+  const frames = project?.animation?.frames;
+  if (!Array.isArray(frames) || !Number.isInteger(frameIndex) || frameIndex < 0 || frameIndex >= frames.length) {
+    throw new Error('Requested animation frame does not exist.');
+  }
+  const frame = frames[frameIndex];
+  const cels = Array.isArray(frame.cels) ? frame.cels : [];
+  return {
+    ...project,
+    layers: project.layers.map(layer => {
+      const cel = cels.find(item => item.layerId === layer.id);
+      return cel && typeof cel.pixels === 'string' ? { ...layer, pixels: cel.pixels } : layer;
+    }),
+  };
+}
+
 function renderProjectSvg(project) {
   const width = Number(project?.width), height = Number(project?.height);
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > 1048576) throw new Error('Project dimensions are invalid for image export.');
@@ -563,12 +580,15 @@ async function processCommand(command) {
     case 'pixelforge_export_image': {
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id);
-      const rendered = renderProjectSvg(loaded.project);
+      const frameIndex = payload.frame_index == null ? (loaded.project.animation?.activeFrameIndex ?? null) : payload.frame_index;
+      const frameProject = resolveProjectFrame(loaded.project, frameIndex);
+      const rendered = renderProjectSvg(frameProject);
       await finish(command.command_id, 'succeeded', {
         projectId: payload.project_id,
         serverRevision: loaded.serverRevision,
         width: rendered.width,
         height: rendered.height,
+        frameIndex,
         image: {
           mimeType: 'image/svg+xml',
           fileName: String(loaded.project.name || 'pixelforge-artwork').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 80) + '.svg',
