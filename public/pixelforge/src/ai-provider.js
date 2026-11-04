@@ -5,6 +5,7 @@ export const AI_ACTION_CONTRACT = Object.freeze([
   { name: 'document.get_summary', description: 'Read document dimensions and layer metadata.', parameters: {} },
   { name: 'canvas.get_reference', description: 'Read exact document-pixel origin, axes, bounds, landmarks, grid and active layer before drawing.', parameters: { gridStep: 'integer 1–256?' } },
   { name: 'canvas.get_pixel', description: 'Sample one pixel.', parameters: { x: 'integer', y: 'integer', merged: 'boolean?' } },
+  { name: 'canvas.get_region', description: 'Read an exact RGBA pixel patch (maximum 128 × 128) for visual inspection.', parameters: { x: 'integer', y: 'integer', width: 'integer', height: 'integer', merged: 'boolean?', layerId: 'string?' } },
   { name: 'canvas.draw_line', description: 'Draw a raster line on the active sandbox layer.', parameters: { x0: 'integer', y0: 'integer', x1: 'integer', y1: 'integer', color: '#RRGGBB', size: 'integer 1–128?' } },
   { name: 'canvas.fill', description: 'Fill a connected or global color region.', parameters: { x: 'integer', y: 'integer', color: '#RRGGBB', tolerance: 'integer 0–255?', contiguous: 'boolean?' } },
   { name: 'canvas.clear_region', description: 'Clear a bounded rectangle.', parameters: { x: 'integer', y: 'integer', width: 'integer', height: 'integer' } },
