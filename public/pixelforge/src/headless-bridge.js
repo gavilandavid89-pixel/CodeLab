@@ -93,7 +93,7 @@ export async function preparePixelForgeProposal({ projectId, actions, summary, f
     proposal,
     results: batch.results,
     inspection: runtime.inspect(),
-    diff: { changedPixels: runtime.getDiff().changedPixels, previewDataUrl: diffPreviewDataUrl(runtime) },
+    diff: { changedPixels: runtime.getDiff().changedPixels, bounds: runtime.getDiff().bounds, previewDataUrl: diffPreviewDataUrl(runtime) },
     expiresInMs: SESSION_TTL_MS,
   };
 }
