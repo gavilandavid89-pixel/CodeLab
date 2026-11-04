@@ -1597,12 +1597,6 @@ $('#add-layer').addEventListener('click', () => {
   try { doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
-function commitAnimationStructureChange() {
-  if (!animation) return;
-  captureAnimationFrame();
-  animationLoop = $('#animation-loop').checked;
-  renderAnimationTimeline();
-}
 $('#animation-add-frame').addEventListener('click', () => {
   try {
     ensureAnimation();
@@ -1698,6 +1692,7 @@ $('#animation-export-sheet').addEventListener('click', () => {
 });
 $('#projects-button').addEventListener('click', async () => {
   try {
+    stopAnimationPlayback();
     await flushAutosave();
     await renderProjects();
     $('#projects-dialog').showModal();
@@ -1770,7 +1765,7 @@ $('#new-template').addEventListener('change', event => {
     $('#new-name').value = template.name;
   }
 });
-$('#new-document').addEventListener('click', () => $('#new-dialog').showModal());
+$('#new-document').addEventListener('click', () => { stopAnimationPlayback(); $('#new-dialog').showModal(); });
 $('#cancel-new').addEventListener('click', () => $('#new-dialog').close());
 $('#create-new').addEventListener('click', async () => {
   const width = Number($('#new-width').value), height = Number($('#new-height').value);
@@ -1845,6 +1840,7 @@ $('#import-file').addEventListener('change', async event => {
     if (file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
       const parsed = JSON.parse(await file.text());
       importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: true });
+      importedDoc.animationLoop = parsed.animation?.loop !== false;
       if (parsed.animation) {
         const layerIdMap = new Map(parsed.layers.map((layer, index) => [layer.id, importedDoc.layers[index].id]));
         const remapped = { ...parsed.animation,
@@ -1872,7 +1868,7 @@ $('#import-file').addEventListener('change', async event => {
     const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
-    doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = true; delete importedDoc.animationData; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+    doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
