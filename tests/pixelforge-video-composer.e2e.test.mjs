@@ -56,7 +56,7 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   const manifest = {
     format: 'pixelforge-video-package', version: 1, width: 32, height: 32,
     fps: 12, loop: true, frameCount: 1, projectFile: 'project/orbital.pforge',
-    frames: [{ index: 0, id: 'frame-1', file: 'frames/frame-0001.png', durationMs: 83.333, startMs: 0 }],
+    frames: [{ index: 0, id: 'frame-1', file: 'frames/frame-0001.png', durationMs: 250, startMs: 0 }],
   };
   const zip = await createZipBlob([
     { name: 'manifest.json', data: JSON.stringify(manifest) },
@@ -77,6 +77,14 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   assert.equal(await page.locator('#vc-export').isDisabled(), !encoderStatus.startsWith('Disponible'),
     'export must be enabled only when the browser can capture and encode video');
   assert.equal(await page.locator('#vc-preview').isVisible(), true);
+  if (!(await page.locator('#vc-export').isDisabled())) {
+    const videoDownloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    await page.locator('#vc-export').click();
+    const videoDownload = await videoDownloadPromise;
+    assert.match(videoDownload.suggestedFilename(), /\\.(webm|mp4)$/);
+    const videoPath = await videoDownload.path();
+    assert.ok(fs.statSync(videoPath).size > 0, 'the browser encoder must produce a non-empty local video file');
+  }
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await mobile.goto('http://127.0.0.1:' + address.port + '/video-composer.html');
