@@ -502,7 +502,7 @@ export class PixelForgeAnimation {
       throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
     }
     if (this.estimatedJSONBytes > MAX_ANIMATION_JSON_BYTES) {
-      throw new RangeError('Animation JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
+      throw new RangeError('Animation JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
   }
 }
