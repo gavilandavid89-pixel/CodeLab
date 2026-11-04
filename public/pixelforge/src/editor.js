@@ -691,11 +691,12 @@ function renderAnimationTimeline() {
   for (const id of controls) { const node = $('#' + id); if (node) node.disabled = !enabled; }
   $('#animation-play').disabled = !enabled || animation.frameCount < 2 || animationPlayback.playing;
   $('#animation-stop').disabled = !enabled || !animationPlayback.playing;
-  $('#animation-add-frame').disabled = !enabled || animation.frameCount >= 240;
+  $('#animation-add-frame').disabled = enabled && animation.frameCount >= 240;
   $('#animation-delete-frame').disabled = !enabled || animation.frameCount <= 1;
   $('#animation-frame-left').disabled = !enabled || animation.activeFrameIndex <= 0;
   $('#animation-frame-right').disabled = !enabled || animation.activeFrameIndex >= animation.frameCount - 1;
   $('#animation-frame-count').textContent = enabled ? `${animation.frameCount} frame${animation.frameCount === 1 ? '' : 's'}` : 'Not started';
+  $('#animation-add-frame').textContent = enabled ? '＋ Frame' : 'Start timeline';
   if (!enabled) {
     host.replaceChildren();
     const empty = document.createElement('p'); empty.className = 'animation-empty';
@@ -714,10 +715,12 @@ function renderAnimationTimeline() {
     button.setAttribute('aria-pressed', String(index === animation.activeFrameIndex));
     button.setAttribute('aria-label', `Frame ${index + 1}, ${frame.durationMs} milliseconds`);
     button.title = `Select frame ${index + 1}`;
-    const thumb = document.createElement('canvas'); thumb.width = doc.width; thumb.height = doc.height;
+    const thumb = document.createElement('canvas'); thumb.width = 48; thumb.height = 48;
     const tctx = thumb.getContext('2d');
-    const pixels = animation.compositeFrame(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })));
-    tctx.putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+    const preview = animation.compositeThumbnail(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })), 48);
+    const thumbPixels = document.createElement('canvas'); thumbPixels.width = preview.width; thumbPixels.height = preview.height;
+    thumbPixels.getContext('2d').putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
+    tctx.imageSmoothingEnabled = false; tctx.drawImage(thumbPixels, 0, 0, 48, 48);
     const label = document.createElement('small'); label.textContent = String(index + 1);
     const duration = document.createElement('span'); duration.className = 'frame-duration'; duration.textContent = frame.durationMs + 'ms';
     button.append(thumb, label, duration);
@@ -732,6 +735,7 @@ function stopAnimationPlayback({ save = true } = {}) {
   animationPlayback.raf = 0;
   $('#animation-play').disabled = !animation;
   $('#animation-stop').disabled = true;
+  renderAnimationTimeline();
   if (save) { captureAnimationFrame(); scheduleAutosave(); }
   status('Animation playback stopped', 'neutral');
 }
@@ -756,9 +760,9 @@ function startAnimationPlayback() {
   animationPlayback.raf = requestAnimationFrame(tick);
   status('Playing animation', 'success');
 }
-function changed() {
+function changed(copyFromByNewId = new Map()) {
   clearTransformPreview(); clearCropPreview();
-  if (animation) { syncAnimationLayerStack(); captureAnimationFrame(); renderAnimationTimeline(); }
+  if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
   syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave();
 }
 function startStrokeAt(point, id) {
@@ -1945,7 +1949,7 @@ $('#rename-layer')?.addEventListener('click', () => {
   } catch (error) { status(error.message, 'error'); }
 });
 $('#duplicate-layer')?.addEventListener('click', () => {
-  try { doc.duplicateLayer(doc.activeLayer.id); changed(); renderLayers(); status('Layer duplicated', 'success'); }
+  try { const sourceId = doc.activeLayer.id; const duplicate = doc.duplicateLayer(sourceId); changed(new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#delete-layer')?.addEventListener('click', () => {
