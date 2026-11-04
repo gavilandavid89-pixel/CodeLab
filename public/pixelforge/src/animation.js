@@ -126,6 +126,7 @@ export function summarizeAnimationTimeline(timeline) {
     loop: timeline.loop !== false,
     frameCount: timeline.frames.length,
     layerCount: timeline.layerIds.length,
+    layerIds: [...timeline.layerIds],
     activeFrameIndex: timeline.frames.length ? timeline.activeFrameIndex : null,
     memoryBytes: timeline.frames.length * timeline.layerIds.length * timeline.width * timeline.height * 4,
     totalDurationMs: timeline.frames.reduce((sum, frame) => sum + frame.durationMs, 0),
