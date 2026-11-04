@@ -279,9 +279,16 @@ export class AICommandSession {
         case 'canvas.transform_region': {
           rectangle(doc, action.x, action.y, action.width, action.height);
           const dx = action.dx ?? 0, dy = action.dy ?? 0, rotate = action.rotate ?? 0;
+          const scaleX = action.scaleX ?? 1, scaleY = action.scaleY ?? 1;
+          const skewX = action.skewX ?? 0, skewY = action.skewY ?? 0;
+          const interpolation = action.interpolation ?? 'nearest';
           integer(dx, 'dx'); integer(dy, 'dy'); integer(rotate, 'rotate');
           if (![0, 90, 180, 270].includes(rotate)) throw new RangeError('rotate must be 0, 90, 180, or 270 degrees.');
-          const transformed = doc.transformRect(action.x, action.y, action.width, action.height, { dx, dy, rotate });
+          if (![scaleX, scaleY, skewX, skewY].every(Number.isFinite)) throw new TypeError('scaleX, scaleY, skewX and skewY must be finite numbers.');
+          if (!['nearest', 'bilinear'].includes(interpolation)) throw new TypeError('interpolation must be nearest or bilinear.');
+          const transformed = doc.transformRect(action.x, action.y, action.width, action.height, {
+            dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation,
+          });
           result = { changedPixels: transformed.changedPixels, selectedPixels: transformed.selectedPixels, bounds: transformed.bounds };
           break;
         }
