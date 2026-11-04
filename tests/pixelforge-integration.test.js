@@ -19,6 +19,8 @@ function makePixelProject(id, name, width = 2, height = 2) {
 }
 
 async function main() {
+  const health = await (await fetch(base + '/api/health')).json();
+  const usesPostgres = health.persistence === 'postgresql';
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
@@ -799,6 +801,7 @@ async function main() {
     assert.ok(importDocAssignmentAt >= 0 && importAnimationRestoreAt > importDocAssignmentAt && importWorkspaceRebindAt > importAnimationRestoreAt,
       'importing a document must restore its animation, clear stale selection state, and rebind the AI workspace');
 
+    if (usesPostgres) {
     // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
     // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
     const largeFixture = makePixelProject('chunked-import-fixture', 'Large chunked artwork', 2048, 1024);
@@ -812,9 +815,18 @@ async function main() {
     }
     const largeUploadIp = '198.51.100.77';
     const largeUploadHeaders = { ...authHeaders, 'x-forwarded-for': largeUploadIp };
-    await accountPage.route('**/api/pixelforge/**', route => route.continue({
-      headers: { ...route.request().headers(), 'x-forwarded-for': largeUploadIp }
-    }));
+    await accountPage.route('**/api/pixelforge/**', async route => {
+      const requestPath = new URL(route.request().url()).pathname;
+      if (failChunkOnce && route.request().method() === 'PUT' &&
+          /\\/uploads\\/[a-f0-9]{32}\\/2$/.test(requestPath)) {
+        failChunkOnce = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'simulated_chunk_interruption' }) });
+        return;
+      }
+      await route.continue({
+        headers: { ...route.request().headers(), 'x-forwarded-for': largeUploadIp }
+      });
+    });
     const largeFixturePath = path.join(dataDir, 'pixelforge-large-import-fixture.pforge');
     fs.writeFileSync(largeFixturePath, JSON.stringify(largeFixture));
     assert.ok(fs.statSync(largeFixturePath).size > 24 * 1024 * 1024,
@@ -848,13 +860,18 @@ async function main() {
     assert.equal(resumedStored.layers.length, 4, 'retry after a dropped chunk must persist the complete edited document');
     assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
     fs.rmSync(largeFixturePath, { force: true });
-    fs.rmSync(importFixturePath, { force: true });
     // Free the deliberately huge fixture before testing the independent project-count
     // limit; otherwise the account byte quota can reject a small project first.
     const deleteLargeFixture = await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, {
       method: 'DELETE', headers: largeUploadHeaders
     });
     assert.equal(deleteLargeFixture.status, 200, 'large upload fixture should be removed before the separate project-count limit test');
+    } else {
+      // Chunk staging is PostgreSQL-backed; file-backed development mode intentionally
+      // exercises normal saves/imports only. The dedicated PostgreSQL job owns this path.
+      fs.rmSync(importFixturePath, { force: true });
+      console.log('Skipped PostgreSQL-only chunked upload/resume checks in file-backed mode.');
+    }
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
