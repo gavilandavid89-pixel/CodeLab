@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bridge = fs.readFileSync(path.join(root, '.github/scripts/codelab-bridge.mjs'), 'utf8');
 const tools = fs.readFileSync(path.join(root, 'public/pixelforge/src/ai-tools.js'), 'utf8');
+const provider = fs.readFileSync(path.join(root, 'public/pixelforge/src/ai-provider.js'), 'utf8');
 
 test('PixelForge Headless inspection is admin-scoped, allowlisted and read-only', () => {
   assert.match(bridge, /'pixelforge_headless_list_projects'/);
@@ -33,6 +34,7 @@ test('PixelForge drawing and animation batches require explicit approval and per
   assert.match(bridge, /preparePixelForgeProposal\(\{ projectId, actions, summary \}\)/);
   assert.match(bridge, /acceptPixelForgeProposal\(\{ sessionId: prepared\.sessionId, approved: true \}\)/);
   assert.match(bridge, /serverRevision: accepted\.serverRevision/);
+  assert.match(bridge, /animation: prepared\.diff\?\.animation \?\? null/);
 });
 
 test('AI coordinate references expose pixel origin, axes, canvas landmarks, grid and layer identity', () => {
