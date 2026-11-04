@@ -127,85 +127,110 @@ async function putChunk(pool, workspaceId, uploadId, index, body) {
       !body || typeof body.chunk !== 'string' || !/^[a-f0-9]{64}$/i.test(body.sha256 || '')) {
     throw new PixelForgeUploadError('invalid_pixelforge_chunk', 400);
   }
-  const result = await pool.query(
-    'SELECT total_bytes,total_chunks,expires_at,committed FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2',
-    [uploadId, workspaceId]
-  );
-  if (!result.rowCount || Number(result.rows[0].expires_at) <= Date.now()) {
-    throw new PixelForgeUploadError('pixelforge_upload_not_found', 404);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Serialize chunk writes against commit/cleanup for this upload. Without the
+    // row lock, a late retry could insert a chunk after markCommitted deleted them.
+    const result = await client.query(
+      'SELECT total_bytes,total_chunks,expires_at,committed FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2 FOR UPDATE',
+      [uploadId, workspaceId]
+    );
+    if (!result.rowCount || Number(result.rows[0].expires_at) <= Date.now()) {
+      throw new PixelForgeUploadError('pixelforge_upload_not_found', 404);
+    }
+    const upload = result.rows[0];
+    if (upload.committed) throw new PixelForgeUploadError('pixelforge_upload_committed', 409);
+    if (index < 0 || index >= Number(upload.total_chunks)) throw new PixelForgeUploadError('invalid_pixelforge_chunk', 400);
+    const bytes = Buffer.from(body.chunk, 'base64');
+    if (!bytes.length || bytes.toString('base64') !== body.chunk || bytes.length > CHUNK_BYTES) {
+      throw new PixelForgeUploadError('invalid_pixelforge_chunk', 400);
+    }
+    const expectedLength = index === Number(upload.total_chunks) - 1
+      ? Number(upload.total_bytes) - CHUNK_BYTES * (Number(upload.total_chunks) - 1)
+      : CHUNK_BYTES;
+    const actualHash = sha256(bytes);
+    if (bytes.length !== expectedLength || actualHash !== body.sha256.toLowerCase()) {
+      throw new PixelForgeUploadError('pixelforge_chunk_integrity_failed', 400);
+    }
+    await client.query(
+      'INSERT INTO codelab_pixelforge_project_upload_chunks (upload_id,chunk_index,chunk_data,chunk_sha256) VALUES ($1,$2,$3,$4) ON CONFLICT (upload_id,chunk_index) DO NOTHING',
+      [uploadId, index, bytes, actualHash]
+    );
+    const stored = await client.query(
+      'SELECT chunk_sha256,octet_length(chunk_data) AS bytes FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1 AND chunk_index = $2',
+      [uploadId, index]
+    );
+    if (!stored.rowCount || stored.rows[0].chunk_sha256 !== actualHash || Number(stored.rows[0].bytes) !== bytes.length) {
+      throw new PixelForgeUploadError('pixelforge_chunk_conflict', 409);
+    }
+    const count = await client.query('SELECT COUNT(*)::int AS received FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1', [uploadId]);
+    await client.query('COMMIT');
+    return { uploadId, receivedChunks: Number(count.rows[0].received), totalChunks: Number(upload.total_chunks) };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
   }
-  const upload = result.rows[0];
-  if (upload.committed) throw new PixelForgeUploadError('pixelforge_upload_committed', 409);
-  if (index < 0 || index >= Number(upload.total_chunks)) throw new PixelForgeUploadError('invalid_pixelforge_chunk', 400);
-  const bytes = Buffer.from(body.chunk, 'base64');
-  if (!bytes.length || bytes.toString('base64') !== body.chunk || bytes.length > CHUNK_BYTES) {
-    throw new PixelForgeUploadError('invalid_pixelforge_chunk', 400);
-  }
-  const expectedLength = index === Number(upload.total_chunks) - 1
-    ? Number(upload.total_bytes) - CHUNK_BYTES * (Number(upload.total_chunks) - 1)
-    : CHUNK_BYTES;
-  const actualHash = sha256(bytes);
-  if (bytes.length !== expectedLength || actualHash !== body.sha256.toLowerCase()) {
-    throw new PixelForgeUploadError('pixelforge_chunk_integrity_failed', 400);
-  }
-  await pool.query(
-    'INSERT INTO codelab_pixelforge_project_upload_chunks (upload_id,chunk_index,chunk_data,chunk_sha256) VALUES ($1,$2,$3,$4) ON CONFLICT (upload_id,chunk_index) DO NOTHING',
-    [uploadId, index, bytes, actualHash]
-  );
-  const stored = await pool.query(
-    'SELECT chunk_sha256,octet_length(chunk_data) AS bytes FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1 AND chunk_index = $2',
-    [uploadId, index]
-  );
-  if (!stored.rowCount || stored.rows[0].chunk_sha256 !== actualHash || Number(stored.rows[0].bytes) !== bytes.length) {
-    throw new PixelForgeUploadError('pixelforge_chunk_conflict', 409);
-  }
-  const count = await pool.query('SELECT COUNT(*)::int AS received FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1', [uploadId]);
-  return { uploadId, receivedChunks: Number(count.rows[0].received), totalChunks: Number(upload.total_chunks) };
 }
 
 async function assembleUpload(pool, workspaceId, uploadId) {
-  const uploadResult = await pool.query(
-    'SELECT * FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2',
-    [uploadId, workspaceId]
-  );
-  if (!uploadResult.rowCount) throw new PixelForgeUploadError('pixelforge_upload_not_found', 404);
-  const upload = uploadResult.rows[0];
-  if (Number(upload.expires_at) <= Date.now()) throw new PixelForgeUploadError('pixelforge_upload_expired', 410);
-  if (upload.committed) return { committed: true, receipt: upload.receipt, upload };
-  const count = await pool.query(
-    'SELECT COUNT(*)::int AS count, COALESCE(SUM(octet_length(chunk_data)),0)::bigint AS bytes FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1',
-    [uploadId]
-  );
-  if (Number(count.rows[0].count) !== Number(upload.total_chunks) ||
-      Number(count.rows[0].bytes) !== Number(upload.total_bytes)) {
-    throw new PixelForgeUploadError('pixelforge_upload_incomplete', 409, {
-      receivedChunks: Number(count.rows[0].count), totalChunks: Number(upload.total_chunks)
-    });
-  }
-  const digest = crypto.createHash('sha256');
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let serialized = '';
-  for (let index = 0; index < Number(upload.total_chunks); index++) {
-    const result = await pool.query(
-      'SELECT chunk_data,chunk_sha256 FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1 AND chunk_index = $2',
-      [uploadId, index]
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Hold the upload manifest stable while checking completeness and reading
+    // the ordered chunks. putChunk uses the same row lock.
+    const uploadResult = await client.query(
+      'SELECT * FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2 FOR UPDATE',
+      [uploadId, workspaceId]
     );
-    if (!result.rowCount) throw new PixelForgeUploadError('pixelforge_upload_incomplete', 409);
-    const bytes = result.rows[0].chunk_data;
-    const actualHash = sha256(bytes);
-    if (actualHash !== result.rows[0].chunk_sha256) throw new PixelForgeUploadError('pixelforge_chunk_integrity_failed', 400);
-    digest.update(bytes);
-    try { serialized += decoder.decode(bytes, { stream: true }); }
-    catch (_) { throw new PixelForgeUploadError('invalid_pixelforge_upload_encoding', 400); }
+    if (!uploadResult.rowCount) throw new PixelForgeUploadError('pixelforge_upload_not_found', 404);
+    const upload = uploadResult.rows[0];
+    if (Number(upload.expires_at) <= Date.now()) throw new PixelForgeUploadError('pixelforge_upload_expired', 410);
+    if (upload.committed) {
+      await client.query('COMMIT');
+      return { committed: true, receipt: upload.receipt, upload };
+    }
+    const count = await client.query(
+      'SELECT COUNT(*)::int AS count, COALESCE(SUM(octet_length(chunk_data)),0)::bigint AS bytes FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1',
+      [uploadId]
+    );
+    if (Number(count.rows[0].count) !== Number(upload.total_chunks) ||
+        Number(count.rows[0].bytes) !== Number(upload.total_bytes)) {
+      throw new PixelForgeUploadError('pixelforge_upload_incomplete', 409, {
+        receivedChunks: Number(count.rows[0].count), totalChunks: Number(upload.total_chunks)
+      });
+    }
+    const digest = crypto.createHash('sha256');
+    const decoder = new StringDecoder('utf8');
+    let serialized = '';
+    for (let index = 0; index < Number(upload.total_chunks); index++) {
+      const result = await client.query(
+        'SELECT chunk_data,chunk_sha256 FROM codelab_pixelforge_project_upload_chunks WHERE upload_id = $1 AND chunk_index = $2',
+        [uploadId, index]
+      );
+      if (!result.rowCount) throw new PixelForgeUploadError('pixelforge_upload_incomplete', 409);
+      const bytes = result.rows[0].chunk_data;
+      const actualHash = sha256(bytes);
+      if (actualHash !== result.rows[0].chunk_sha256) throw new PixelForgeUploadError('pixelforge_chunk_integrity_failed', 400);
+      digest.update(bytes);
+      serialized += decoder.write(bytes);
+    }
+    serialized += decoder.end();
+    if (Buffer.byteLength(serialized, 'utf8') !== Number(upload.total_bytes)) {
+      throw new PixelForgeUploadError('pixelforge_upload_size_mismatch', 400);
+    }
+    const contentSha256 = digest.digest('hex');
+    await client.query('COMMIT');
+    return { committed: false, upload, serialized, contentSha256 };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
   }
-  try { serialized += decoder.decode(); }
-  catch (_) { throw new PixelForgeUploadError('invalid_pixelforge_upload_encoding', 400); }
-  if (Buffer.byteLength(serialized, 'utf8') !== Number(upload.total_bytes)) {
-    throw new PixelForgeUploadError('pixelforge_upload_size_mismatch', 400);
-  }
-  return { committed: false, upload, serialized, contentSha256: digest.digest('hex') };
 }
-
 async function cancelUpload(pool, workspaceId, uploadId) {
   if (!/^[a-f0-9]{32}$/.test(uploadId || '')) throw new PixelForgeUploadError('invalid_pixelforge_upload', 400);
   const result = await pool.query(
