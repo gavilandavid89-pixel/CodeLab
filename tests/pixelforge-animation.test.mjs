@@ -121,12 +121,12 @@ test('uses 60 FPS timing and rejects oversized allocations before decoding cels'
   timeline.setFrameDuration(0, 16.5);
   assert.equal(timeline.activeFrame.durationMs, 16.5);
   const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
-  assert.throws(() => new PixelForgeAnimation({ width: 2048, height: 2048, layerIds }), /64 MiB/);
+  assert.throws(() => new PixelForgeAnimation({ width: 4096, height: 4096, layerIds }), /256 MiB/);
   assert.throws(() => PixelForgeAnimation.fromJSON({
-    format: 'pixelforge-animation', version: 1, width: 2048, height: 2048,
+    format: 'pixelforge-animation', version: 1, width: 4096, height: 4096,
     layerIds, fps: 12, activeFrameIndex: 0,
     frames: [{ id: 'oversized', durationMs: 100, cels: [] }],
-  }), /64 MiB/);
+  }), /256 MiB/);
 });
 
 test('composites animation cels using the shared raster layer visibility and opacity rules', () => {
