@@ -29,7 +29,7 @@ function assertLayerIds(layerIds) {
 }
 
 function assertDuration(durationMs) {
-  if (!Number.isInteger(durationMs) || durationMs < MIN_FRAME_DURATION_MS ||
+  if (!Number.isFinite(durationMs) || durationMs < MIN_FRAME_DURATION_MS ||
       durationMs > MAX_FRAME_DURATION_MS) {
     throw new RangeError(`Frame duration must be between ${MIN_FRAME_DURATION_MS} and ${MAX_FRAME_DURATION_MS} ms.`);
   }
@@ -298,7 +298,7 @@ export class PixelForgeAnimation {
 
   setFps(fps) {
     assertFps(fps);
-    const durationMs = Math.max(MIN_FRAME_DURATION_MS, Math.min(MAX_FRAME_DURATION_MS, Math.round(1000 / fps)));
+    const durationMs = Math.max(MIN_FRAME_DURATION_MS, Math.min(MAX_FRAME_DURATION_MS, 1000 / fps));
     this.#fps = fps;
     for (const frame of this.#frames) frame.durationMs = durationMs;
     return durationMs;
