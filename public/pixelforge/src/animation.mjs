@@ -6,7 +6,7 @@
  * for every frame; the timeline never introduces a second drawing surface.
  */
 export const MAX_ANIMATION_FRAMES = 240;
-export const MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
+export const MAX_ANIMATION_BYTES = 256 * 1024 * 1024;
 export const MIN_FRAME_DURATION_MS = 1;
 export const MAX_FRAME_DURATION_MS = 10_000;
 export const MIN_ANIMATION_FPS = 1;
@@ -14,8 +14,8 @@ export const MAX_ANIMATION_FPS = 60;
 
 function assertDimensions(width, height) {
   if (!Number.isInteger(width) || !Number.isInteger(height) ||
-      width < 1 || height < 1 || width > 2048 || height > 2048 ||
-      width * height > 4_194_304) {
+      width < 1 || height < 1 || width > 4096 || height > 4096 ||
+      width * height > 16_777_216) {
     throw new RangeError('Animation dimensions exceed PixelForge canvas limits.');
   }
 }
@@ -111,7 +111,7 @@ export class PixelForgeAnimation {
     }
     const estimatedBytes = (frames === null ? 1 : frames.length) * this.#layerIds.length * byteLength;
     if (estimatedBytes > MAX_ANIMATION_BYTES) {
-      throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+      throw new RangeError('Animation exceeds PixelForge’s 256 MiB animation-memory budget.');
     }
     if (frames === null) {
       this.#frames = [{
@@ -211,7 +211,7 @@ export class PixelForgeAnimation {
     this.#frameAt(afterIndex);
     const nextFrameCount = this.#frames.length + 1;
     if (nextFrameCount * this.#layerIds.length * this.#width * this.#height * 4 > MAX_ANIMATION_BYTES) {
-      throw new RangeError('Adding this frame would exceed PixelForge’s 64 MiB animation-memory budget.');
+      throw new RangeError('Adding this frame would exceed PixelForge’s 256 MiB animation-memory budget.');
     }
     const source = this.#frames[afterIndex];
     const nextDuration = durationMs ?? source.durationMs;
@@ -258,7 +258,7 @@ export class PixelForgeAnimation {
     if (this.#layerIds.length >= 64) throw new RangeError('Animation supports up to 64 raster layers.');
     const byteLength = this.#width * this.#height * 4;
     if ((this.#frames.length * (this.#layerIds.length + 1) * byteLength) > MAX_ANIMATION_BYTES) {
-      throw new RangeError('Adding this layer would exceed PixelForge’s 64 MiB animation-memory budget.');
+      throw new RangeError('Adding this layer would exceed PixelForge’s 256 MiB animation-memory budget.');
     }
     if (copyFromLayerId !== null && !this.#layerIds.includes(copyFromLayerId)) {
       throw new Error('Source animation layer ID does not exist.');
