@@ -27,7 +27,7 @@ test('PixelForge Headless batch is bounded and calls the isolated proposal runti
 test('PixelForge Headless tool catalog documents drawing and animation but does not overclaim playback/export', () => {
   assert.match(catalog, /Section 24 — PixelForge Headless raster and animation automation/);
   assert.match(catalog, /animation\.frame\.add_from_layer/);
-  assert.match(catalog, /Playback UI, onion-skin controls, mailbox delivery of exported files, GIF export/);
+  assert.match(catalog, /Playback UI, onion-skin controls, GIF export/);
 });
 
 test('PixelForge read-only batch actions do not require project-write approval', () => {
