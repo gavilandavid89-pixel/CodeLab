@@ -2138,7 +2138,7 @@ const server = http.createServer(async (req, res) => {
               typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
               typeof project.name !== 'string' || !project.name.trim() || project.name.length > 180 ||
               !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
-              project.width < 1 || project.height < 1 || project.width > 2048 || project.height > 2048 ||
+              project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096 || project.width * project.height > 16_777_216 ||
               !Number.isInteger(project.revision) || project.revision < 0 ||
               !Number.isInteger(project.saveVersion) || project.saveVersion < 0 ||
               (project.serverRevision !== undefined && (!Number.isInteger(project.serverRevision) || project.serverRevision < 0)) ||
