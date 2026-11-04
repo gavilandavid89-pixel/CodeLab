@@ -511,6 +511,18 @@ async function main() {
     const importedProject = (await (await fetch(base + '/api/pixelforge/projects/' + importedMetadata.id, { headers: authHeaders })).json()).project;
     assert.deepEqual([...Buffer.from(importedProject.layers[0].pixels, 'base64').subarray((1 * 3 + 2) * 4, (1 * 3 + 2) * 4 + 4)],
       [17, 34, 51, 255], 'imported raster pixels should survive account-backed persistence');
+    const importedRevisionBeforeEdit = importedProject.serverRevision;
+    assert.ok(Number.isInteger(importedRevisionBeforeEdit) && importedRevisionBeforeEdit > 0,
+      'the imported live document must retain the server-issued revision token');
+    await accountPage.locator('#save').click();
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
+      null, { timeout: 15000 });
+    const importedAfterSave = (await (await fetch(base + '/api/pixelforge/projects/' + importedMetadata.id, { headers: authHeaders })).json()).project;
+    assert.equal(importedAfterSave.serverRevision, importedRevisionBeforeEdit + 1,
+      'the first explicit save after import must advance the server revision instead of conflicting with its own import');
+    const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
+    assert.match(editorSource, /doc = importedDoc; clearSelectionState\(\); resetAIWorkspaceForDocument\(\);/,
+      'importing a document must rebind the AI workspace to the newly active raster document');
     fs.rmSync(importFixturePath, { force: true });
     await accountContext.close();
 
