@@ -221,7 +221,18 @@ async function main() {
     // Chunk transport is intentionally PostgreSQL-backed; local file-mode E2E skips these routes.
   if (process.env.DATABASE_URL) {
 // The upload protocol must be resumable, integrity checked, and idempotent.
-  const chunkFixture = { ...makePixelProject('chunk-api-contract', 'Chunk API contract', 1200, 1200), serverRevision: 1 };
+  const baseChunkFixture = makePixelProject('chunk-api-contract', 'Chunk API contract', 1200, 1200);
+  const { layers: chunkLayers, ...chunkMetadata } = baseChunkFixture;
+  const chunkSize = 6 * 1024 * 1024;
+  const transferPrefix = JSON.stringify({ ...chunkMetadata, serverRevision: 1, transferMarker: '' }).slice(0, -2);
+  const transferPrefixBytes = Buffer.byteLength(transferPrefix, 'utf8');
+  const transferMarkerPadding = chunkSize - transferPrefixBytes - 1;
+  assert.ok(transferMarkerPadding > 0, 'the UTF-8 boundary fixture must fit before the first chunk boundary');
+  const chunkFixture = {
+    ...chunkMetadata, serverRevision: 1,
+    transferMarker: 'x'.repeat(transferMarkerPadding) + '💡',
+    layers: chunkLayers
+  };
   const chunkSerialized = JSON.stringify(chunkFixture);
   const chunkBytes = Buffer.from(chunkSerialized, 'utf8');
   const malformedUploadManifest = await fetch(base + '/api/pixelforge/projects/uploads', {
@@ -230,9 +241,8 @@ async function main() {
   assert.equal(malformedUploadManifest.status, 400, 'malformed upload JSON should be a client error, not a server outage');
   assert.equal((await malformedUploadManifest.json()).error, 'INVALID_JSON');
   const uploadId = 'a'.repeat(32);
-  const chunkSize = 6 * 1024 * 1024;
   const totalChunks = Math.ceil(chunkBytes.length / chunkSize);
-  assert.equal(totalChunks, 2, 'the integration fixture must exercise a multi-chunk transfer');
+  assert.equal(totalChunks, 3, 'the integration fixture must exercise multiple chunks and a split UTF-8 character');
   const uploadBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
     method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -246,10 +256,9 @@ async function main() {
   });
   assert.equal(incompleteCommit.status, 409, 'commit must not publish a project while chunks are missing');
   assert.equal((await incompleteCommit.json()).error, 'pixelforge_upload_incomplete');
-  const firstChunk = chunkBytes.subarray(0, chunkSize);
-  const secondChunk = chunkBytes.subarray(chunkSize);
+  const chunks = Array.from({ length: totalChunks }, (_, index) => chunkBytes.subarray(index * chunkSize, (index + 1) * chunkSize));
+  const firstChunk = chunks[0];
   const firstChunkHash = crypto.createHash('sha256').update(firstChunk).digest('hex');
-  const secondChunkHash = crypto.createHash('sha256').update(secondChunk).digest('hex');
   const badChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
     method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
     body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: '0'.repeat(64) })
@@ -269,13 +278,17 @@ async function main() {
     body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: firstChunkHash })
   });
   assert.equal(duplicateChunk.status, 200, 'retrying the same verified chunk must be idempotent');
-  const secondChunkUpload = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/1', {
-    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ chunk: secondChunk.toString('base64'), sha256: secondChunkHash })
-  });
-  assert.equal(secondChunkUpload.status, 200, 'the final partial chunk should be accepted with its exact byte length');
+  for (let index = 1; index < chunks.length; index++) {
+    const bytes = chunks[index];
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+    const uploaded = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/' + index, {
+      method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ chunk: bytes.toString('base64'), sha256: hash })
+    });
+    assert.equal(uploaded.status, 200, 'each remaining chunk should be accepted with its exact byte length');
+  }
   const completeStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
-  assert.deepEqual((await completeStatus.json()).receivedChunks, [0, 1], 'status should report the complete chunk manifest');
+  assert.deepEqual((await completeStatus.json()).receivedChunks, [0, 1, 2], 'status should report the complete chunk manifest');
   const chunkCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
     method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
   });
@@ -305,6 +318,24 @@ async function main() {
     body: JSON.stringify({ chunk: Buffer.from('test').toString('base64'), sha256: crypto.createHash('sha256').update('test').digest('hex') })
   });
   assert.equal(cancelledChunk.status, 404, 'cancelled uploads must no longer accept chunks');
+  const invalidUtf8Id = 'e'.repeat(32);
+  const invalidUtf8Bytes = Buffer.from([0xc3, 0x28, 0x7b, 0x7d]);
+  const invalidUtf8Begin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ uploadId: invalidUtf8Id, projectId: 'invalid-utf8-project', expectedServerRevision: 0, totalBytes: invalidUtf8Bytes.length, totalChunks: 1 })
+  });
+  assert.equal(invalidUtf8Begin.status, 201);
+  const invalidUtf8Chunk = await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: invalidUtf8Bytes.toString('base64'), sha256: crypto.createHash('sha256').update(invalidUtf8Bytes).digest('hex') })
+  });
+  assert.equal(invalidUtf8Chunk.status, 200);
+  const invalidUtf8Commit = await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(invalidUtf8Commit.status, 400, 'invalid UTF-8 must be rejected before JSON parsing or persistence');
+  assert.equal((await invalidUtf8Commit.json()).error, 'invalid_pixelforge_upload_encoding');
+  await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id, { method: 'DELETE', headers: authHeaders });
   await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { method: 'DELETE', headers: authHeaders });
   }
 
