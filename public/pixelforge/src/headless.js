@@ -114,7 +114,7 @@ export class HeadlessEditorRuntime {
           this.#animationHistoryBytes -= next.bytes;
           this.#pushAnimationHistory(this.#animationHistory, this.#sandboxAnimation);
           this.#sandboxAnimation = synchronizeAnimationLayers(next.snapshot, this.#workspace.sandbox);
-          this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
+          this.#animationDirty = this.#animationDiffersFromCommitted();
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
         const before = JSON.parse(JSON.stringify(this.#sandboxAnimation));
@@ -125,7 +125,7 @@ export class HeadlessEditorRuntime {
           this.#pushAnimationHistory(this.#animationHistory, before);
         }
         this.#sandboxAnimation = outcome.timeline;
-        this.#animationDirty = JSON.stringify(this.#sandboxAnimation) !== JSON.stringify(this.#animation);
+        this.#animationDirty = this.#animationDiffersFromCommitted();
         return { ok: true, action: action.name, result: { ...outcome.result, changed } };
       } catch (error) {
         return { ok: false, action: action.name, error: {
