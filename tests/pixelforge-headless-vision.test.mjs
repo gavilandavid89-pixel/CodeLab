@@ -1,0 +1,227 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  requestPixelForgeVisionConsent,
+  preparePixelForgeVisionRequest,
+  capturePixelForgeArtworkDataUrl,
+  preparePixelForgeVisionFromRuntime,
+  PIXELFORGE_VISION_CONSENT_TTL_MS,
+} from '../public/pixelforge/src/pixelforge-vision.js';
+
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/n7sAAAAASUVORK5CYII=';
+function pngHeader(width, height) {
+  const bytes = Buffer.alloc(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return 'data:image/png;base64,' + bytes.toString('base64');
+}
+
+test('requires a user-facing confirmation callback and refuses declined consent', async () => {
+  await assert.rejects(() => requestPixelForgeVisionConsent({ projectId: 'project-1' }), /confirmation callback/);
+  assert.equal(await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => false }), null);
+  assert.equal(await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => undefined }), null);
+});
+
+test('requires explicit project-scoped consent before preparing provider image parts', async () => {
+  const args = { projectId: 'project-1', artworkImage: PNG };
+  assert.throws(() => preparePixelForgeVisionRequest(args), error => error.code === 'pixelforge_vision_consent_required');
+  let prompt;
+  const consent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1',
+    confirm: async value => { prompt = value; return true; },
+  });
+  assert.equal(prompt.scope, 'pixel-forge-artwork-snapshot');
+  assert.equal(prompt.projectId, 'project-1');
+  const request = preparePixelForgeVisionRequest({
+    ...args,
+    consent,
+    project: { name: 'Sketch', width: 32, height: 32, revision: 4, ownerEmail: 'private@example.test' },
+  });
+  assert.equal(request.projectId, 'project-1');
+  assert.equal(request.imageCount, 1);
+  assert.equal(request.imageParts[0].type, 'image_url');
+  assert.equal(request.context.project.name, 'Sketch');
+  assert.equal(request.context.project.ownerEmail, undefined);
+  assert.equal(request.context.project.projectId, undefined, 'internal project ID must stay out of provider metadata');
+  assert.equal(request.consentConsumed, true);
+});
+
+test('consent is one-use and cannot be replayed or transferred to another project', async () => {
+  const consent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  assert.throws(() => preparePixelForgeVisionRequest({ consent, projectId: 'project-2', artworkImage: PNG }), error => error.code === 'pixelforge_vision_consent_required');
+  assert.throws(() => preparePixelForgeVisionRequest({ consent, projectId: 'project-1', artworkImage: PNG }), error => error.code === 'pixelforge_vision_consent_required');
+});
+
+test('includes only validated animation frames and bounded semantic metadata', async () => {
+  const consent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  const request = preparePixelForgeVisionRequest({
+    consent,
+    projectId: 'project-1',
+    artworkImage: PNG,
+    selection: { x: 1, y: 2, width: 3, height: 4, selectedPixels: 12, secret: 'omit' },
+    viewport: { zoom: 2, panX: 4, panY: 5, accessToken: 'omit' },
+    animation: { fps: 12, loop: true, selectedFrame: 0, frames: [{ index: 0, durationMs: 83, name: 'first', image: PNG }] },
+  });
+  assert.equal(request.imageCount, 2);
+  assert.equal(request.imageParts.length, 2);
+  assert.equal(request.context.selection.secret, undefined);
+  assert.equal(request.context.viewport.accessToken, undefined);
+  assert.equal(request.context.animation.frames[0].durationMs, 83);
+});
+
+test('rejects invalid image payloads and malformed animation metadata', async () => {
+  const consent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  assert.throws(() => preparePixelForgeVisionRequest({ consent, projectId: 'project-1', artworkImage: 'data:image/jpeg;base64,AAAA' }), /PNG data URL/);
+  const nextConsent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: nextConsent, projectId: 'project-1', artworkImage: PNG,
+    animation: { frames: 'not-an-array' },
+  }), /frames must be an array/);
+  assert.equal(PIXELFORGE_VISION_CONSENT_TTL_MS, 300000);
+});
+
+test('rejects forged and expired consent tokens', async () => {
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: {}, projectId: 'project-1', artworkImage: PNG,
+  }), error => error.code === 'pixelforge_vision_consent_required');
+
+  const consent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1', confirm: async () => true,
+  });
+  const originalNow = Date.now;
+  try {
+    Date.now = () => originalNow() + PIXELFORGE_VISION_CONSENT_TTL_MS + 1;
+    assert.throws(() => preparePixelForgeVisionRequest({
+      consent, projectId: 'project-1', artworkImage: PNG,
+    }), error => error.code === 'pixelforge_vision_consent_required');
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test('enforces the existing vision snapshot image-count and per-image byte limits', async () => {
+  const consent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1', confirm: async () => true,
+  });
+  const tooManyFrames = Array.from({ length: 24 }, (_, index) => ({
+    index, durationMs: 80, image: PNG,
+  }));
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent, projectId: 'project-1', artworkImage: PNG,
+    animation: { frames: tooManyFrames },
+  }), /between 1 and 23 animation frames per snapshot/);
+
+  const nextConsent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1', confirm: async () => true,
+  });
+  const oversized = 'data:image/png;base64,' + 'A'.repeat(8 * 1024 * 1024);
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: nextConsent, projectId: 'project-1', artworkImage: oversized,
+  }), /no larger than 8 MiB/);
+});
+
+test('checks PNG signature and decoded dimensions instead of trusting the data URL MIME label', async () => {
+  const consent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  const invalidSignature = Buffer.from(pngHeader(1, 1).slice('data:image/png;base64,'.length), 'base64');
+  invalidSignature[0] = 0;
+  const mislabeled = 'data:image/png;base64,' + invalidSignature.toString('base64');
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent, projectId: 'project-1', artworkImage: mislabeled,
+  }), /PNG signature/);
+
+  const nextConsent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: nextConsent, projectId: 'project-1', artworkImage: pngHeader(8193, 1),
+  }), /dimensions exceed/);
+});
+
+test('captures only the raster composite through an injected canvas without reading editor UI', () => {
+  const pixels = new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]);
+  let written = null, canvasSize = null;
+  const dataUrl = capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 2, height: 1, composite: () => pixels },
+    canvasFactory: () => ({
+      width: 0, height: 0,
+      getContext(type, options) {
+        assert.equal(type, '2d');
+        assert.equal(options.alpha, true);
+        return {
+          createImageData(width, height) {
+            return { width, height, data: new Uint8ClampedArray(width * height * 4) };
+          },
+          putImageData(imageData, x, y) {
+            written = [...imageData.data];
+            canvasSize = [imageData.width, imageData.height, x, y];
+          },
+        };
+      },
+      toDataURL(type) {
+        assert.equal(type, 'image/png');
+        return PNG;
+      },
+    }),
+  });
+  assert.equal(dataUrl, PNG);
+  assert.deepEqual(written, [...pixels]);
+  assert.deepEqual(canvasSize, [2, 1, 0, 0]);
+});
+
+test('rejects invalid raster dimensions, pixel lengths and missing canvas capability', () => {
+  assert.throws(() => capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 0, height: 1, composite: () => new Uint8Array(0) },
+    canvasFactory: () => ({}),
+  }), /canvas limits/);
+  assert.throws(() => capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 2, height: 2, composite: () => new Uint8Array(4) },
+    canvasFactory: () => ({}),
+  }), /pixel length/);
+  assert.throws(() => capturePixelForgeArtworkDataUrl({
+    rasterDocument: { width: 1, height: 1, composite: () => new Uint8Array(4) },
+  }), /canvas factory/);
+});
+
+test('runtime preparation asks for consent before capturing sandbox pixels', async () => {
+  const runtime = {
+    sandbox: { width: 1, height: 1, composite: () => new Uint8ClampedArray([0, 0, 0, 0]) },
+  };
+  let captures = 0;
+  const canvasFactory = () => {
+    captures++;
+    return {
+      width: 0, height: 0,
+      getContext: () => ({
+        createImageData: () => ({ data: new Uint8ClampedArray(4) }),
+        putImageData: () => {},
+      }),
+      toDataURL: () => PNG,
+    };
+  };
+  const declined = await preparePixelForgeVisionFromRuntime({
+    projectId: 'project-1', runtime, confirm: async () => false, canvasFactory,
+  });
+  assert.equal(declined, null);
+  assert.equal(captures, 0, 'declining consent must prevent artwork capture');
+
+  const prepared = await preparePixelForgeVisionFromRuntime({
+    projectId: 'project-1', runtime, confirm: async () => true, canvasFactory,
+    project: { name: 'Draft', width: 1, height: 1, accountId: 'private' },
+  });
+  assert.equal(captures, 1);
+  assert.equal(prepared.imageCount, 1);
+  assert.equal(prepared.context.project.name, 'Draft');
+  assert.equal(prepared.context.project.accountId, undefined);
+});
+
+test('runtime vision preparation rejects missing runtime before prompting or capturing', async () => {
+  let prompted = false, captured = false;
+  await assert.rejects(() => preparePixelForgeVisionFromRuntime({
+    projectId: 'project-1',
+    runtime: null,
+    confirm: async () => { prompted = true; return true; },
+    canvasFactory: () => { captured = true; return null; },
+  }), /Headless runtime with a raster sandbox/);
+  assert.equal(prompted, false);
+  assert.equal(captured, false);
+});
