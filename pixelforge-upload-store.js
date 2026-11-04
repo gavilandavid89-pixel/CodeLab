@@ -19,7 +19,8 @@ function sha256(value) {
 }
 
 async function ensureSchema(pool) {
-  await pool.query("ALTER TABLE codelab_pixelforge_projects ADD COLUMN IF NOT EXISTS content_sha256 TEXT");
+  await pool.query("ALTER TABLE codelab_pixelforge_projects ADD COLUMN IF NOT EXISTS server_revision BIGINT NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS content_sha256 TEXT");
+  await pool.query("UPDATE codelab_pixelforge_projects SET server_revision = COALESCE(NULLIF(project->>'serverRevision', '')::bigint, 0) WHERE server_revision = 0 AND project ? 'serverRevision'");
   await pool.query("CREATE TABLE IF NOT EXISTS codelab_pixelforge_project_uploads (upload_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL, expected_server_revision BIGINT NOT NULL, total_bytes BIGINT NOT NULL, total_chunks INTEGER NOT NULL, created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, committed BOOLEAN NOT NULL DEFAULT FALSE, receipt JSONB)");
   await pool.query("CREATE INDEX IF NOT EXISTS codelab_pixelforge_upload_expiry_idx ON codelab_pixelforge_project_uploads (expires_at)");
   await pool.query("CREATE TABLE IF NOT EXISTS codelab_pixelforge_project_upload_chunks (upload_id TEXT NOT NULL REFERENCES codelab_pixelforge_project_uploads(upload_id) ON DELETE CASCADE, chunk_index INTEGER NOT NULL, chunk_data BYTEA NOT NULL, chunk_sha256 TEXT NOT NULL, PRIMARY KEY (upload_id, chunk_index))");
