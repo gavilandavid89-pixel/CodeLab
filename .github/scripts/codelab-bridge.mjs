@@ -1523,7 +1523,7 @@ try {
       const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
       const runtime = HeadlessEditorRuntime.fromJSON(data.project); const project = runtime.toJSON();
       const json = JSON.stringify(project); const bytes = new TextEncoder().encode(json).byteLength;
-      if (bytes > 24 * 1024 * 1024) throw new RangeError('PixelForge portable project exceeds the 24 MiB export limit.');
+      if (bytes > 96 * 1024 * 1024) throw new RangeError('PixelForge portable project exceeds the 96 MiB export limit.');
       const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'pixelforge-project.pforge';
       document.body.appendChild(anchor); anchor.click(); anchor.remove();
