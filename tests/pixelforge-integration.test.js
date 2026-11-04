@@ -266,7 +266,7 @@ async function main() {
   assert.deepEqual((await uploadStatus.json()).receivedChunks, [0], 'upload status should report only chunks already persisted');
   const duplicateChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
     method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ chunk: chunkBytes.toString('base64'), sha256: chunkHash })
+    body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: firstChunkHash })
   });
   assert.equal(duplicateChunk.status, 200, 'retrying the same verified chunk must be idempotent');
   const secondChunkUpload = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/1', {
