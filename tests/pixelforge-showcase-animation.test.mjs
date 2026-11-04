@@ -27,8 +27,10 @@ test('builds a complete 12-frame orbital animation with independent raster layer
   const firstFlame = animation.getLayerPixels(0, doc.layers[2].id);
   const thirdFlame = animation.getLayerPixels(2, doc.layers[2].id);
   assert.notDeepEqual(firstFlame, thirdFlame, 'thruster cel should animate independently');
-  firstShip[0] = 0;
-  assert.notEqual(animation.getLayerPixels(0, doc.layers[3].id)[0], 0,
+  const probe = firstShip.findIndex(value => value !== 0);
+  const original = firstShip[probe];
+  firstShip[probe] = original ^ 0xff;
+  assert.equal(animation.getLayerPixels(0, doc.layers[3].id)[probe], original,
     'returned cel data must be isolated from the saved animation');
 });
 
