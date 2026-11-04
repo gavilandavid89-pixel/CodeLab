@@ -1,7 +1,7 @@
 import { RasterDocument } from './core.js';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
-import { applyAnimationAction, createAnimationTimeline, summarizeAnimationTimeline, validateAnimationTimeline } from './animation.js';
+import { applyAnimationAction, summarizeAnimationTimeline, validateAnimationTimeline } from './animation.js';
 
 /**
  * DOM-free, provider-independent PixelForge automation runtime.
@@ -90,7 +90,7 @@ export class HeadlessEditorRuntime {
         layerCount: sandbox.layers.length, hasChanges: this.#workspace.hasSandboxChanges,
       },
       proposal: this.#workspace.proposalSummary,
-      animation: summarizeAnimationTimeline(this.#sandboxAnimation),
+      animation: { ...summarizeAnimationTimeline(this.#sandboxAnimation), hasChanges: this.#animationDirty },
     };
   }
 
@@ -124,16 +124,18 @@ export class HeadlessEditorRuntime {
   }
 
   discardProposal() {
+    const hadAnimationChanges = this.#animationDirty;
     const discarded = this.#workspace.discardProposal();
-    if (discarded) this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
-    return discarded;
+    return discarded || hadAnimationChanges;
   }
   discardSandboxChanges() {
+    const hadAnimationChanges = this.#animationDirty;
     const discarded = this.#workspace.discardSandboxChanges();
-    if (discarded || this.#animationDirty) this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
+    this.#sandboxAnimation = JSON.parse(JSON.stringify(this.#animation));
     this.#animationDirty = false;
-    return discarded || true;
+    return discarded || hadAnimationChanges;
   }
   syncFromSource(options) {
     const result = this.#workspace.syncFromUser(options);
