@@ -559,3 +559,48 @@ test('sprite sheet export returns a PNG Blob and frame manifest with determinist
     else globalThis.ImageData = previousImageData;
   }
 });
+
+test('headless magic selection matches the editor active-layer tolerance and combination modes', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const batch = runtime.executeBatch([
+    { name: 'canvas.draw_line', x0: 2, y0: 3, x1: 5, y1: 3, color: '#3366CC' },
+    { name: 'selection.create_magic', x: 3, y: 3, tolerance: 0, contiguous: true },
+  ]);
+  assert.equal(batch.ok, true);
+  assert.equal(batch.results[1].result.selectedPixels, 4);
+  assert.equal(runtime.sandbox.selectionMask.reduce((sum, value) => sum + value, 0), 4);
+  const added = runtime.execute({ name: 'selection.create_magic', x: 0, y: 0, tolerance: 0, contiguous: false, operation: 'add' });
+  assert.equal(added.ok, true);
+  assert.equal(added.result.selectedPixels, 256);
+  assert.equal(runtime.execute({ name: 'selection.create_magic', x: 0, y: 0, tolerance: 256 }).ok, false);
+});
+
+test('headless brush and line actions reproduce the editor 2/4/8-way symmetry modes', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const result = runtime.execute({ name: 'canvas.draw_stroke', points: [{ x: 2, y: 3 }, { x: 3, y: 3 }], color: '#AA2244', symmetryMode: 4 });
+  assert.equal(result.ok, true);
+  assert.equal(result.result.symmetryMode, 4);
+  assert.equal(runtime.sandbox.sampleColorAt(2, 3), '#AA2244');
+  assert.equal(runtime.sandbox.sampleColorAt(13, 3), '#AA2244');
+  assert.equal(runtime.sandbox.sampleColorAt(2, 12), '#AA2244');
+  assert.equal(runtime.sandbox.sampleColorAt(13, 12), '#AA2244');
+  assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 2, y1: 1, color: '#112233', symmetryMode: 3 }).ok, false);
+  const eightWay = runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 5, x1: 2, y1: 5, color: '#008877', symmetryMode: 8 });
+  assert.equal(eightWay.ok, true);
+  assert.equal(eightWay.result.symmetryMode, 8);
+  for (const [x, y] of [[1, 5], [10, 1], [14, 10], [5, 14], [1, 10], [10, 14], [14, 5], [5, 1]]) assert.equal(runtime.sandbox.sampleColorAt(x, y), '#008877', '8-way symmetry missed (' + x + ', ' + y + ')');
+});
+
+test('selection.clear is a real mutation and cannot bypass a pending proposal', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'selection.create_rect', x: 2, y: 2, width: 4, height: 3 }).ok, true);
+  assert.deepEqual(runtime.execute({ name: 'selection.clear' }).result, { cleared: true });
+  assert.deepEqual(runtime.execute({ name: 'selection.clear' }).result, { cleared: false });
+  assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 5, y1: 1, color: '#123456' }).ok, true);
+  assert.equal(runtime.execute({ name: 'selection.create_rect', x: 3, y: 3, width: 2, height: 2 }).ok, true);
+  runtime.createProposal('Keep the raster edit and selection pending');
+  const blocked = runtime.execute({ name: 'selection.clear' });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.error.code, 'proposal_pending');
+  assert.equal(runtime.hasPendingProposal, true);
+});
