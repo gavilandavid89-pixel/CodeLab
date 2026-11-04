@@ -607,8 +607,8 @@ async function main() {
     const manifestDownloadPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#animation-export-sheet').click();
     const [spriteSheetDownload, animationManifestDownload] = await Promise.all([pngDownloadPromise, manifestDownloadPromise]);
-    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\\.png$/);
-    assert.match(animationManifestDownload.suggestedFilename(), /-animation\\.json$/);
+    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\.png$/);
+    assert.match(animationManifestDownload.suggestedFilename(), /-animation\.json$/);
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     assert.equal(await accountPage.locator('#animation-frame-count').innerText(), '2 frames',
