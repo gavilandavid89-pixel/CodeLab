@@ -704,6 +704,7 @@ function renderAnimationTimeline() {
   $('#animation-frame-right').disabled = !enabled || animation.activeFrameIndex >= animation.frameCount - 1;
   $('#animation-frame-count').textContent = enabled ? `${animation.frameCount} frame${animation.frameCount === 1 ? '' : 's'}` : 'Not started';
   $('#animation-add-frame').textContent = enabled ? '＋ Frame' : 'Start timeline';
+  $('#animation-add-frame').title = enabled ? 'Add blank frame' : 'Start animation timeline';
   if (!enabled) {
     host.replaceChildren();
     const empty = document.createElement('p'); empty.className = 'animation-empty';
@@ -1616,7 +1617,12 @@ $('#add-layer').addEventListener('click', () => {
 });
 $('#animation-add-frame').addEventListener('click', () => {
   try {
+    const timelineWasActive = Boolean(animation);
     ensureAnimation();
+    if (!timelineWasActive) {
+      status('Animation timeline started', 'success');
+      return;
+    }
     const currentId = animationFrameId(animation.activeFrameIndex);
     captureAnimationFrame(); saveAnimationFrameHistory(currentId);
     animation.addFrame({ duplicate: false });
