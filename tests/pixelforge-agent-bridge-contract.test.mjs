@@ -16,6 +16,11 @@ test('PixelForge Headless inspection is admin-scoped, allowlisted and read-only'
   const projectActionsEnd = bridge.indexOf('];', projectActionsStart);
   assert.ok(projectActionsStart >= 0 && projectActionsEnd > projectActionsStart);
   assert.match(bridge.slice(projectActionsStart, projectActionsEnd), /'pixelforge_headless_inspect'/);
+  assert.match(bridge.slice(projectActionsStart, projectActionsEnd), /'pixelforge_headless_list_projects'/);
+  const legacyProjectIdGuardStart = bridge.indexOf("if (['project_rename'");
+  const legacyProjectIdGuardEnd = bridge.indexOf("if (['branch_merge'", legacyProjectIdGuardStart);
+  assert.doesNotMatch(bridge.slice(legacyProjectIdGuardStart, legacyProjectIdGuardEnd), /pixelforge_headless_/,
+    'PixelForge IDs must use their own validator rather than the CodeLab proj_ ID rule');
   assert.match(bridge, /api\/pixelforge\/projects\//);
   assert.match(bridge, /HeadlessEditorRuntime\.fromJSON\(payload\.project\)/);
   assert.match(bridge, /name: 'canvas\.get_reference'/);
