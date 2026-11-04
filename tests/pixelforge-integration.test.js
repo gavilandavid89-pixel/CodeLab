@@ -4,6 +4,13 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 
+
+async function readZipDownload(download) {
+  const { readStoredZip } = await import('../public/pixelforge/src/video-composer-core.mjs');
+  const archivePath = await download.path();
+  return readStoredZip(new Blob([fs.readFileSync(archivePath)]));
+}
+
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 
 function makePixelProject(id, name, width = 2, height = 2) {
@@ -604,26 +611,15 @@ async function main() {
     assert.equal(savedAnimationProject.animation.fps, 24, 'FPS control should persist its new value');
     assert.equal(savedAnimationProject.animation.loop, false, 'loop control should persist its unchecked state');
     assert.equal(savedAnimationProject.animation.frames[1].durationMs, 250, 'per-frame duration control should persist its new value');
-    const animationDownloadsPromise = new Promise((resolve, reject) => {
-      const downloads = [];
-      const onDownload = download => {
-        downloads.push(download);
-        if (downloads.length === 2) {
-          clearTimeout(timeout);
-          accountPage.off('download', onDownload);
-          resolve(downloads);
-        }
-      };
-      const timeout = setTimeout(() => {
-        accountPage.off('download', onDownload);
-        reject(new Error('PixelForge animation export did not emit both PNG and JSON downloads'));
-      }, 10000);
-      accountPage.on('download', onDownload);
-    });
+    const animationSheetDownloadPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#animation-export-sheet').click();
-    const [spriteSheetDownload, animationManifestDownload] = await animationDownloadsPromise;
-    assert.match(spriteSheetDownload.suggestedFilename(), /-animation\.png$/);
-    assert.match(animationManifestDownload.suggestedFilename(), /-animation\.json$/);
+    const animationSheetDownload = await animationSheetDownloadPromise;
+    assert.match(animationSheetDownload.suggestedFilename(), /-animation-sheet\\.zip$/);
+    const animationSheetEntries = await readZipDownload(animationSheetDownload);
+    assert.ok(animationSheetEntries.has('animation-manifest.json'));
+    assert.ok([...animationSheetEntries.keys()].some(name => name.endsWith('-animation.png')));
+    const animationSheetManifest = JSON.parse(await animationSheetEntries.get('animation-manifest.json').blob.text());
+    assert.equal(animationSheetManifest.frames.length, 2, 'the ZIP manifest should include both animation frames');
 
     const compositePngPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#export-png').click();
@@ -633,34 +629,22 @@ async function main() {
     const projectBackupPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#export-project').click();
     const projectBackupDownload = await projectBackupPromise;
-    assert.match(projectBackupDownload.suggestedFilename(), /\.pforge$/);
-    const projectBackupPath = await projectBackupDownload.path();
-    const exportedProject = JSON.parse(fs.readFileSync(projectBackupPath, 'utf8'));
-    assert.equal(exportedProject.animation.frames.length, 2, 'portable .pforge export must include the complete animation timeline');
-    assert.equal(exportedProject.animation.loop, false, 'portable .pforge export must preserve the loop setting');
+    assert.match(projectBackupDownload.suggestedFilename(), /-animation\\.zip$/);
+    const projectBackupEntries = await readZipDownload(projectBackupDownload);
+    const projectBackupEntry = [...projectBackupEntries.values()].find(entry => entry.name.endsWith('.pforge'));
+    assert.ok(projectBackupEntry, 'the project ZIP must contain an editable .pforge source file');
+    const exportedProject = JSON.parse(await projectBackupEntry.blob.text());
+    assert.equal(exportedProject.animation.frames.length, 2, 'portable ZIP export must include the complete animation timeline');
+    assert.equal(exportedProject.animation.loop, false, 'portable ZIP export must preserve the loop setting');
 
-    const layerSheetDownloadsPromise = new Promise((resolve, reject) => {
-      const downloads = [];
-      const onDownload = download => {
-        downloads.push(download);
-        if (downloads.length === 2) {
-          clearTimeout(timeout);
-          accountPage.off('download', onDownload);
-          resolve(downloads);
-        }
-      };
-      const timeout = setTimeout(() => {
-        accountPage.off('download', onDownload);
-        reject(new Error('Layer sprite-sheet export did not emit both PNG and JSON manifest'));
-      }, 10000);
-      accountPage.on('download', onDownload);
-    });
+    const layerSheetDownloadPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#export-sprite-sheet').click();
-    const [layerSheetDownload, layerManifestDownload] = await layerSheetDownloadsPromise;
-    assert.match(layerSheetDownload.suggestedFilename(), /-spritesheet\.png$/);
-    assert.match(layerManifestDownload.suggestedFilename(), /-spritesheet\.json$/);
-    const layerManifestPath = await layerManifestDownload.path();
-    const layerManifest = JSON.parse(fs.readFileSync(layerManifestPath, 'utf8'));
+    const layerSheetDownload = await layerSheetDownloadPromise;
+    assert.match(layerSheetDownload.suggestedFilename(), /-spritesheet\\.zip$/);
+    const layerSheetEntries = await readZipDownload(layerSheetDownload);
+    const layerManifestEntry = layerSheetEntries.get('spritesheet-manifest.json');
+    assert.ok(layerManifestEntry, 'layer sprite-sheet ZIP must include its JSON manifest');
+    const layerManifest = JSON.parse(await layerManifestEntry.blob.text());
     assert.equal(layerManifest.format, 'pixelforge-sprite-sheet');
     assert.equal(layerManifest.frames.length, 1, 'layer sprite sheet should include the current raster layer');
 
