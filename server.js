@@ -494,7 +494,7 @@ function validatePixelForgeAnimation(project) {
   return null;
 }
 
-function validatePixelForgeProjectPayload(project) {
+function validatePixelForgeProjectPayload(project, serializedInput = null) {
   if (!project || typeof project !== 'object' || Array.isArray(project) ||
       project.format !== 'pixelforge-project' || project.version !== 1 ||
       typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
@@ -531,7 +531,7 @@ function validatePixelForgeProjectPayload(project) {
   if (animationError) {
     return { error: animationError, status: animationError === 'pixelforge_project_too_large' ? 413 : 400 };
   }
-  const serialized = JSON.stringify(project);
+  const serialized = typeof serializedInput === 'string' ? serializedInput : JSON.stringify(project);
   const projectBytes = Buffer.byteLength(serialized, 'utf8');
   if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
     return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
@@ -2211,7 +2211,7 @@ const server = http.createServer(async (req, res) => {
             let project;
             try { project = JSON.parse(assembled.serialized); }
             catch (_) { return sendJson(res, 400, { error: 'invalid_pixelforge_project' }); }
-            const validation = validatePixelForgeProjectPayload(project);
+            const validation = validatePixelForgeProjectPayload(project, assembled.serialized);
             if (validation.error) {
               return sendJson(res, validation.status, {
                 error: validation.error,
