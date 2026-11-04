@@ -133,3 +133,29 @@ test('authenticated bridge reconciles a lost save response by exact server readb
   assert.equal(saved.serverRevision, 7);
   assert.equal(putCount, 1);
 });
+
+test('authenticated bridge returns read-only inspection batches without creating a save proposal', async () => {
+  const source = makeProject();
+  let writes = 0;
+  const fetcher = async (_url, options = {}) => {
+    if (options.method === 'GET') return jsonResponse({ project: source });
+    writes++;
+    return jsonResponse({ project: { id: source.id, serverRevision: 5 } });
+  };
+  const inspected = await preparePixelForgeProposal({
+    projectId: source.id,
+    summary: 'Inspect pixels and preview transform bounds',
+    actions: [
+      { name: 'document.get_summary' },
+      { name: 'canvas.get_pixel', x: 0, y: 0 },
+      { name: 'canvas.preview_transform_region', x: 1, y: 1, width: 4, height: 4, rotate: 90 },
+    ],
+    fetcher,
+  });
+  assert.equal(inspected.status, 'inspected');
+  assert.equal(inspected.projectId, source.id);
+  assert.equal(inspected.results.length, 3);
+  assert.equal(inspected.diff.changedPixels, 0);
+  assert.equal(inspected.sessionId, undefined);
+  assert.equal(writes, 0, 'read-only inspection must not write to the project API');
+});
