@@ -28,10 +28,16 @@ async function main() {
       await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: base }]);
       const page = await context.newPage();
       const pageErrors = [];
+      const pendingRequests = new Map();
       page.on('pageerror', error => pageErrors.push(error.message));
+      page.on('request', request => pendingRequests.set(request.url(), request.method()));
+      page.on('requestfinished', request => pendingRequests.delete(request.url()));
+      page.on('requestfailed', request => pendingRequests.delete(request.url()));
       await page.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
       const authResponse = await page.request.get(base + '/api/auth/status');
       const authStatus = await authResponse.json();
+      const projectListResponse = await page.request.get(base + '/api/pixelforge/projects', { timeout: 5000 });
+      const projectListBody = await projectListResponse.text();
       assert.ok(authStatus.user, viewport.label + ': the test session must be accepted by /api/auth/status; got ' + JSON.stringify(authStatus));
       try {
         await page.waitForFunction(() => {
@@ -45,7 +51,9 @@ async function main() {
           canvasCount: document.querySelectorAll('#canvas').length
         }));
         throw new Error(viewport.label + ': PixelForge boot did not reach ready state; diagnostics=' +
-          JSON.stringify({ authUser: authStatus.user, diagnostics, pageErrors }) + '; cause=' + error.message);
+          JSON.stringify({ authUser: authStatus.user, projectListStatus: projectListResponse.status(),
+            projectListBody: projectListBody.slice(0, 500), diagnostics, pageErrors,
+            pendingRequests: [...pendingRequests.entries()] }) + '; cause=' + error.message);
       }
 
       assert.equal(await page.locator('#files-tab').isVisible(), true, viewport.label + ': Files tab should be visible');
