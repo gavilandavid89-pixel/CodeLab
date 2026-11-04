@@ -99,6 +99,9 @@ async function saveProjectChunked(project) {
       project.serverRevision = begin.receipt.project.serverRevision;
       return begin.receipt.project;
     }
+    if (begin.chunkSize !== UPLOAD_CHUNK_BYTES || begin.totalChunks !== totalChunks) {
+      throw new Error('El servidor devolvió una configuración de bloques incompatible.');
+    }
     for (let index = 0; index < totalChunks; index++) {
       const bytes = new Uint8Array(await blob.slice(index * UPLOAD_CHUNK_BYTES, (index + 1) * UPLOAD_CHUNK_BYTES).arrayBuffer());
       const hash = toHex(await crypto.subtle.digest('SHA-256', bytes));
