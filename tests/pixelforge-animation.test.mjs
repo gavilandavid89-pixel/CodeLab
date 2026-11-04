@@ -289,6 +289,18 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
     'large saves should consult upload status before resending chunks');
   const editorSource = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/editor.js'), 'utf8');
+  const editorStyles = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/styles.css'), 'utf8');
+  const declaredButtons = [...editorHtml.matchAll(/<button\\b[^>]*\\bid="([^"]+)"/g)].map(match => match[1]);
+  const unreferencedButtons = declaredButtons.filter(id => !editorSource.includes('#' + id));
+  assert.deepEqual(unreferencedButtons, [], 'every static PixelForge button must be referenced by the editor controller');
+  assert.ok(editorSource.includes("closest('[data-selection-move]')") && editorSource.includes("closest('[data-transform]')"),
+    'delegated selection and transform controls must remain wired');
+  assert.ok(editorSource.includes("setInspectorPanel('properties')") && editorSource.includes("setInspectorPanel('layers')") &&
+    editorSource.includes("setInspectorPanel('ai')") && editorSource.includes("setInspectorPanel('files')"),
+    'all inspector screens must have working navigation handlers');
+  assert.ok(editorStyles.includes('@media(max-width:760px)') && editorStyles.includes('.animation-panel') &&
+    editorStyles.includes('.inspector[data-panel="files"]'), 'editor and timeline screens must retain responsive mobile layouts');
+
   assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
     editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
     'the raster editor must expose the animation timeline controls');
