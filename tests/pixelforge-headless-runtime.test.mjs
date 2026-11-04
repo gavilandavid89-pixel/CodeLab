@@ -138,8 +138,8 @@ test('animation timeline supports duplication, timing, ordering and safe deletio
   assert.equal(first.ok, true);
   const second = runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
   assert.equal(second.ok, true);
-  assert.equal(runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 250 }).ok, true);
   assert.equal(runtime.execute({ name: 'animation.set_fps', fps: 24 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 250 }).ok, true);
   assert.equal(runtime.execute({ name: 'animation.set_loop', loop: false }).ok, true);
   assert.equal(runtime.execute({ name: 'animation.frame.reorder', from: 1, to: 0 }).ok, true);
   assert.equal(runtime.execute({ name: 'animation.frame.delete', index: 1 }).ok, true);
@@ -171,8 +171,8 @@ test('animation composite frames capture sandbox pixels and frame-time lookup re
   assert.equal(runtime.acceptProposal().status, 'applied');
   const saved = runtime.toJSON();
   assert.equal(saved.animation.frames.length, 2);
-  const firstPixels = Buffer.from(saved.animation.frames[0].pixels, 'base64');
-  const secondPixels = Buffer.from(saved.animation.frames[1].pixels, 'base64');
+  const firstPixels = Buffer.from(saved.animation.frames[0].cels[0].pixels, 'base64');
+  const secondPixels = Buffer.from(saved.animation.frames[1].cels[0].pixels, 'base64');
   const containsColor = (pixels, rgba) => {
     for (let offset = 0; offset < pixels.length; offset += 4) {
       if (rgba.every((channel, index) => pixels[offset + index] === channel)) return true;
@@ -215,11 +215,13 @@ test('headless shapes, selections, crop and rename compose into one accepted doc
 
 test('animation sprite-sheet export returns a PNG blob and frame manifest', async () => {
   const fixture = projectFixture();
+  const layerId = fixture.layers[0].id;
   const timeline = {
-    format: 'pixelforge-animation', version: 1, fps: 12, loop: true,
+    format: 'pixelforge-animation', version: 1, width: fixture.width, height: fixture.height,
+    layerIds: [layerId], fps: 12, loop: true, activeFrameIndex: 0,
     frames: [
-      { id: 'frame-a', name: 'A', durationMs: 100, pixels: fixture.layers[0].pixels },
-      { id: 'frame-b', name: 'B', durationMs: 120, pixels: fixture.layers[0].pixels },
+      { id: 'frame-a', name: 'A', durationMs: 100, cels: [{ layerId, pixels: fixture.layers[0].pixels }] },
+      { id: 'frame-b', name: 'B', durationMs: 120, cels: [{ layerId, pixels: fixture.layers[0].pixels }] },
     ],
   };
   const originalDocument = globalThis.document;
@@ -428,10 +430,11 @@ test('sprite sheet export returns a PNG Blob and frame manifest with determinist
   };
   try {
     const timeline = {
-      format: 'pixelforge-animation', version: 1, fps: 12, loop: true,
+      format: 'pixelforge-animation', version: 1, width: 1, height: 1,
+      layerIds: ['layer-1'], fps: 12, loop: true, activeFrameIndex: 0,
       frames: [
-        { id: 'frame-a', name: 'A', durationMs: 83, pixels: 'AAAAAA==' },
-        { id: 'frame-b', name: 'B', durationMs: 120, pixels: '/////w==' },
+        { id: 'frame-a', name: 'A', durationMs: 83, cels: [{ layerId: 'layer-1', pixels: 'AAAAAA==' }] },
+        { id: 'frame-b', name: 'B', durationMs: 120, cels: [{ layerId: 'layer-1', pixels: '/////w==' }] },
       ],
     };
     const exported = await exportAnimationSpriteSheet(timeline, 1, 1, { columns: 2, padding: 1 });
