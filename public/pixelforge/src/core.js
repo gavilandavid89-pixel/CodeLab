@@ -229,6 +229,10 @@ function entryBytes(entry) {
   if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength, 0), 64);
   if (entry.type === 'layer-add') return (entry.addedLayer?.pixels.byteLength ?? 0) + 128;
   if (entry.type === 'layer-delete') return (entry.removedLayer?.pixels.byteLength ?? 0) + 128;
+  if (entry.type === 'document-state') {
+    const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0), 0);
+    return bytes(entry.before) + bytes(entry.after) + 512;
+  }
   return 128;
 }
 
@@ -687,10 +691,75 @@ export class RasterDocument {
     this.width = snapshot.width; this.height = snapshot.height;
     this.layers = snapshot.layers.map(cloneLayer);
     this.activeLayerId = snapshot.activeLayerId;
+    if (typeof snapshot.name === 'string') this.name = snapshot.name;
     this.selectionMask = null;
     this.compositeCache = new Uint8ClampedArray(this.width * this.height * 4);
     this.compositeDirtyTiles = new Set();
     this.#markAllCompositeDirty();
+  }
+  replaceDocumentState(snapshot) {
+    // Validate and fully decode before touching the live document. This is the
+    // atomic commit boundary used by Headless proposal approval.
+    const candidate = RasterDocument.fromJSON(snapshot);
+    if (candidate.id !== this.id) throw new Error('Replacement document identity does not match the current project.');
+    if (candidate.serverRevision !== this.serverRevision) throw new Error('Replacement document server revision is stale.');
+
+    const before = {
+      width: this.width, height: this.height, name: this.name,
+      activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer),
+    };
+    const after = {
+      width: candidate.width, height: candidate.height, name: candidate.name,
+      activeLayerId: candidate.activeLayerId, layers: candidate.layers.map(cloneLayer),
+    };
+    const beforeById = new Map(before.layers.map(layer => [layer.id, layer]));
+    const afterById = new Map(after.layers.map(layer => [layer.id, layer]));
+    let changedPixels = 0, changedLayers = 0;
+    const countVisiblePixels = pixels => {
+      let count = 0;
+      for (let offset = 0; offset < pixels.length; offset += 4) {
+        if (pixels[offset] || pixels[offset + 1] || pixels[offset + 2] || pixels[offset + 3]) count++;
+      }
+      return count;
+    };
+    for (let index = 0; index < after.layers.length; index++) {
+      const layer = after.layers[index], previous = beforeById.get(layer.id);
+      if (!previous) {
+        changedLayers++;
+        changedPixels += countVisiblePixels(layer.pixels);
+        continue;
+      }
+      let layerChanged = before.layers[index]?.id !== layer.id || previous.name !== layer.name ||
+        previous.visible !== layer.visible || previous.opacity !== layer.opacity || previous.locked !== layer.locked;
+      if (before.width !== after.width || before.height !== after.height) {
+        changedPixels += countVisiblePixels(previous.pixels) + countVisiblePixels(layer.pixels);
+        layerChanged = true;
+      } else {
+        for (let offset = 0; offset < layer.pixels.length; offset += 4) {
+          if (previous.pixels[offset] !== layer.pixels[offset] || previous.pixels[offset + 1] !== layer.pixels[offset + 1] ||
+              previous.pixels[offset + 2] !== layer.pixels[offset + 2] || previous.pixels[offset + 3] !== layer.pixels[offset + 3]) {
+            changedPixels++;
+            layerChanged = true;
+          }
+        }
+      }
+      if (layerChanged) changedLayers++;
+    }
+    for (const layer of before.layers) {
+      if (!afterById.has(layer.id)) {
+        changedLayers++;
+        changedPixels += countVisiblePixels(layer.pixels);
+      }
+    }
+    const structuralChanges = before.width !== after.width || before.height !== after.height ||
+      before.layers.length !== after.layers.length || before.layers.some((layer, index) => after.layers[index]?.id !== layer.id);
+    const stateChanged = changedLayers > 0 || changedPixels > 0 || before.name !== after.name ||
+      before.activeLayerId !== after.activeLayerId;
+    if (!stateChanged) return { changedPixels: 0, changedLayers: 0, structuralChanges: false };
+
+    this.#restoreDocument(after);
+    this.#record({ type: 'document-state', before, after });
+    return { changedPixels, changedLayers, structuralChanges };
   }
   replaceLayerPixelsBatch(replacements) {
     if (!Array.isArray(replacements) || replacements.length < 1 || replacements.length > 64) {
@@ -1079,7 +1148,9 @@ export class RasterDocument {
     }
   }
   #applyEntry(entry, forward) {
-    if (entry.type === 'document-crop') {
+    if (entry.type === 'document-state') {
+      this.#restoreDocument(forward ? entry.after : entry.before);
+    } else if (entry.type === 'document-crop') {
       if (forward) this.#cropTo(entry.x, entry.y, entry.width, entry.height);
       else this.#restoreDocument(entry.before);
     } else if (entry.type === 'pixels-batch') {
