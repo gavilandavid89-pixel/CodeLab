@@ -291,12 +291,20 @@ async function main() {
       }));
     });
     let holdFirstProjectSave = true;
+    let failChunkOnce = false;
     let notifyFirstProjectSaveStarted;
     const firstProjectSaveStarted = new Promise(resolve => { notifyFirstProjectSaveStarted = resolve; });
     await accountContext.route('**/*', async route => {
       const headers = { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' };
+      const requestPath = new URL(route.request().url()).pathname;
+      if (failChunkOnce && route.request().method() === 'PUT' &&
+          /\/uploads\/[a-f0-9]{32}\/2$/.test(requestPath)) {
+        failChunkOnce = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'simulated_chunk_interruption' }) });
+        return;
+      }
       if (holdFirstProjectSave && route.request().method() === 'PUT' &&
-          new URL(route.request().url()).pathname === '/api/pixelforge/projects') {
+          requestPath === '/api/pixelforge/projects') {
         holdFirstProjectSave = false;
         notifyFirstProjectSaveStarted();
         const response = await route.fetch({ headers });
@@ -523,6 +531,43 @@ async function main() {
     const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
     assert.match(editorSource, /doc = importedDoc; clearSelectionState\(\); resetAIWorkspaceForDocument\(\);/,
       'importing a document must rebind the AI workspace to the newly active raster document');
+
+    // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
+    // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
+    const largeFixture = makePixelProject('chunked-import-fixture', 'Large chunked artwork', 2048, 1024);
+    const layerBytes = 2048 * 1024 * 4;
+    largeFixture.layers[0].pixels = Buffer.alloc(layerBytes).toString('base64');
+    for (let index = 2; index <= 3; index++) {
+      largeFixture.layers.push({
+        id: 'layer-chunked-' + index, name: 'Layer ' + index, visible: true, opacity: 1, locked: false,
+        pixels: Buffer.alloc(layerBytes).toString('base64')
+      });
+    }
+    const largeFixturePath = path.join(dataDir, 'pixelforge-large-import-fixture.pforge');
+    fs.writeFileSync(largeFixturePath, JSON.stringify(largeFixture));
+    assert.ok(fs.statSync(largeFixturePath).size > 24 * 1024 * 1024,
+      'the large fixture must exercise chunked rather than single-request persistence');
+    await accountPage.locator('#import-file').setInputFiles(largeFixturePath);
+    await accountPage.waitForFunction(() =>
+      document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'),
+      null, { timeout: 60000 });
+    const largeMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+      .projects.find(project => project.name === 'Large chunked artwork (imported)');
+    assert.ok(largeMetadata, 'large chunked import must be durably listed in the account');
+    const largeStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: authHeaders })).json()).project;
+    assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
+    assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
+    failChunkOnce = true;
+    await accountPage.locator('#add-layer').click();
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Autosave unavailable'),
+      null, { timeout: 60000 });
+    await accountPage.locator('#save').click();
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
+      null, { timeout: 60000 });
+    const resumedStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: authHeaders })).json()).project;
+    assert.equal(resumedStored.layers.length, 4, 'retry after a dropped chunk must persist the complete edited document');
+    assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
+    fs.rmSync(largeFixturePath, { force: true });
     fs.rmSync(importFixturePath, { force: true });
     await accountContext.close();
 
