@@ -841,7 +841,7 @@ async function main() {
     });
     assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
     assert.equal((await overflow.json()).error, 'pixelforge_project_limit');
-    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: capHeaders })).json();
     assert.equal(afterLimit.projects.length, maxProjects, 'hitting the cap must preserve all existing projects');
     assert.ok(afterLimit.projects.some(project => project.name === 'Browser account artwork'), 'existing project records must remain available');
   } finally {
