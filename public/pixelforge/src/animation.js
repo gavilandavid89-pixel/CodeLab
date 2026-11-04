@@ -12,7 +12,7 @@ export function createAnimationTimeline({ fps = 12, loop = true } = {}) {
 }
 
 export function validateAnimationTimeline(value, width, height) {
-  if (value == null) return createAnimationTimeline();
+  if (value == null) return { format: 'pixelforge-animation', version: 1, fps: 12, loop: true, frames: [] };
   assert(value && typeof value === 'object' && !Array.isArray(value), 'Animation timeline must be an object.');
   assert(value.format === 'pixelforge-animation' && value.version === 1, 'Unsupported PixelForge animation format.');
   assert(Array.isArray(value.frames) && value.frames.length <= MAX_FRAMES, 'Animation must contain at most ' + MAX_FRAMES + ' frames.', RangeError);
