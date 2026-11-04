@@ -1,5 +1,3 @@
-import { HeadlessEditorRuntime } from './headless.js';
-
 export const PIXELFORGE_STARTER_TEMPLATES = Object.freeze({
   custom: Object.freeze({ width: 128, height: 128, name: 'Untitled artwork', layers: Object.freeze(['Layer 1']) }),
   character: Object.freeze({ width: 64, height: 64, name: 'Character sprite', layers: Object.freeze(['Sketch', 'Lineart', 'Color', 'Shading']) }),
@@ -41,7 +39,8 @@ export function normalizePixelForgeProjectOptions(options = {}) {
 }
 
 /** Create a new, unpersisted PixelForge project through the same Headless runtime used for edits. */
-export function createPixelForgeProject(options = {}) {
+export function createPixelForgeProject(options = {}, { HeadlessEditorRuntime } = {}) {
+  if (typeof HeadlessEditorRuntime !== 'function') throw new TypeError('A HeadlessEditorRuntime constructor is required.');
   const normalized = normalizePixelForgeProjectOptions(options);
   const runtime = new HeadlessEditorRuntime({
     width: normalized.width,
