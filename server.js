@@ -8,6 +8,7 @@ const dns = require('dns').promises;
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
@@ -2609,6 +2610,41 @@ seedAdminAccountIfConfigured().then(async () => {
     console.error('PixelForge database initialization failed; studio API will return 503:', error.message);
   }
   server.listen(PORT, () => {
+  if (DATABASE_URL && process.env.CODELAB_AGENT_BRIDGE_ENABLED !== '0') {
+    const workerPath = path.join(__dirname, 'agent-bridge-worker.mjs');
+    let bridgeWorker = null;
+    let bridgeRestartTimer = null;
+    let bridgeStopping = false;
+    const launchBridgeWorker = () => {
+      if (bridgeStopping || bridgeWorker) return;
+      bridgeWorker = spawn(process.execPath, ['--experimental-default-type=module', workerPath], {
+        cwd: __dirname,
+        env: process.env,
+        stdio: ['ignore', 'inherit', 'inherit']
+      });
+      bridgeWorker.on('error', error => {
+        console.error('[CodeLab Native Bridge] worker launch failed:', error.message);
+      });
+      bridgeWorker.on('exit', (code, signal) => {
+        bridgeWorker = null;
+        if (bridgeStopping) return;
+        console.error('[CodeLab Native Bridge] worker exited:', { code, signal });
+        bridgeRestartTimer = setTimeout(launchBridgeWorker, 5000);
+        if (bridgeRestartTimer.unref) bridgeRestartTimer.unref();
+      });
+    };
+    launchBridgeWorker();
+    process.on('SIGTERM', () => {
+      bridgeStopping = true;
+      if (bridgeRestartTimer) clearTimeout(bridgeRestartTimer);
+      if (bridgeWorker) bridgeWorker.kill('SIGTERM');
+    });
+    process.on('SIGINT', () => {
+      bridgeStopping = true;
+      if (bridgeRestartTimer) clearTimeout(bridgeRestartTimer);
+      if (bridgeWorker) bridgeWorker.kill('SIGINT');
+    });
+  }
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
