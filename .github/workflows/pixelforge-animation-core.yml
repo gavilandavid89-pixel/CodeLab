@@ -2,15 +2,13 @@ name: PixelForge animation core
 
 on:
   push:
-    branches: ["feat/pixelforge-animation-core", "feat/pixelforge-hq-capacity"]
+    branches: ["feat/pixelforge-animation-core", "feat/pixelforge-hq-capacity", "integration/**"]
     paths:
       - "public/pixelforge/src/animation.mjs"
       - "tests/pixelforge-animation.test.mjs"
       - "tests/pixelforge-zip-export.test.mjs"
       - "public/pixelforge/src/zip-export.js"
       - "public/pixelforge/src/editor.js"
-      - "public/pixelforge/src/showcase-animation.mjs"
-      - "tests/pixelforge-showcase-animation.test.mjs"
       - "public/pixelforge/src/showcase-animation.mjs"
       - "tests/pixelforge-showcase-animation.test.mjs"
       - "public/pixelforge/index.html"
@@ -21,16 +19,8 @@ on:
       - "pixelforge-upload-store.js"
       - "tests/pixelforge-integration.test.js"
   pull_request:
-    branches: ["fix/pixelforge-mobile-files-panel", "feat/pixelforge-animation-core"]
+    branches: ["main", "fix/pixelforge-mobile-files-panel", "feat/pixelforge-animation-core"]
     paths:
-      - "public/pixelforge/src/animation.mjs"
-      - "tests/pixelforge-animation.test.mjs"
-      - "tests/pixelforge-zip-export.test.mjs"
-      - "public/pixelforge/src/zip-export.js"
-      - "public/pixelforge/src/editor.js"
-      - "public/pixelforge/index.html"
-      - ".github/workflows/pixelforge-animation-core.yml"
-      - "public/pixelforge/src/core.js"
 
 permissions:
   contents: read
