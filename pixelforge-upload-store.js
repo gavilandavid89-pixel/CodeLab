@@ -181,6 +181,15 @@ async function assembleUpload(pool, workspaceId, uploadId) {
   return { committed: false, upload, serialized, contentSha256: digest.digest('hex') };
 }
 
+async function cancelUpload(pool, workspaceId, uploadId) {
+  if (!/^[a-f0-9]{32}$/.test(uploadId || '')) throw new PixelForgeUploadError('invalid_pixelforge_upload', 400);
+  const result = await pool.query(
+    'DELETE FROM codelab_pixelforge_project_uploads WHERE upload_id = $1 AND workspace_id = $2 AND committed = FALSE',
+    [uploadId, workspaceId]
+  );
+  return { cancelled: result.rowCount > 0 };
+}
+
 async function markCommitted(pool, uploadId, receipt) {
   const client = await pool.connect();
   try {
@@ -200,4 +209,4 @@ async function markCommitted(pool, uploadId, receipt) {
   }
 }
 
-module.exports = { CHUNK_BYTES, UPLOAD_TTL_MS, PixelForgeUploadError, ensureSchema, beginUpload, putChunk, assembleUpload, markCommitted };
+module.exports = { CHUNK_BYTES, UPLOAD_TTL_MS, PixelForgeUploadError, ensureSchema, beginUpload, putChunk, assembleUpload, cancelUpload, markCommitted };
