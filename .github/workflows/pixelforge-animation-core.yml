@@ -8,12 +8,14 @@ on:
       - "tests/pixelforge-animation.test.mjs"
       - ".github/workflows/pixelforge-animation-core.yml"
       - "server.js"
+      - "server.js"
   pull_request:
     branches: ["fix/pixelforge-mobile-files-panel", "feat/pixelforge-animation-core"]
     paths:
       - "public/pixelforge/src/animation.mjs"
       - "tests/pixelforge-animation.test.mjs"
       - ".github/workflows/pixelforge-animation-core.yml"
+      - "server.js"
 
 permissions:
   contents: read
