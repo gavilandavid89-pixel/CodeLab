@@ -47,6 +47,18 @@ export class AIWorkspace {
   }
 
   get sandbox() { return this.#sandbox; }
+
+  mapSandboxLayerIdsToSource(layerIds) {
+    if (!Array.isArray(layerIds)) throw new TypeError('Layer IDs must be an array.');
+    const bindings = new Map(this.#layerBindings.map(binding => [binding.sandboxId, binding.sourceId]));
+    return layerIds.map(id => bindings.get(id) ?? id);
+  }
+
+  mapSourceLayerIdsToSandbox(layerIds) {
+    if (!Array.isArray(layerIds)) throw new TypeError('Layer IDs must be an array.');
+    const bindings = new Map(this.#layerBindings.map(binding => [binding.sourceId, binding.sandboxId]));
+    return layerIds.map(id => bindings.get(id) ?? id);
+  }
   get baseRevision() { return this.#baseRevision; }
   get sourceRevision() { return this.#source.revision; }
   get hasProposal() { return this.#proposal !== null; }
