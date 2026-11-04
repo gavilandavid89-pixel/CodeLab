@@ -176,7 +176,15 @@ export class AICommandSession {
           if (tolerance < 0 || tolerance > 255) throw new RangeError('Tolerance must be between 0 and 255.');
           const contiguous = action.contiguous ?? true;
           if (typeof contiguous !== 'boolean') throw new TypeError('contiguous must be a boolean.');
-          result = { changedPixels: doc.fillAt(action.x, action.y, { color: color(action.color), tolerance, contiguous }) };
+          const pattern = action.pattern ?? 'solid';
+          if (!['solid', 'checker'].includes(pattern)) throw new TypeError('pattern must be solid or checker.');
+          const secondaryColor = color(action.secondaryColor ?? '#FFFFFF', 'secondaryColor');
+          const scale = action.scale ?? 1;
+          integer(scale, 'scale');
+          if (scale < 1 || scale > 16) throw new RangeError('Dither scale must be between 1 and 16.');
+          result = { changedPixels: doc.fillAt(action.x, action.y, {
+            color: color(action.color), tolerance, contiguous, pattern, secondaryColor, scale,
+          }), pattern, scale };
           break;
         }
         case 'canvas.clear_region':
