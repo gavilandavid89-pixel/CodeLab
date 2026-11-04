@@ -141,8 +141,10 @@ async function main() {
   const savedPayload = await saved.json();
   fixture.serverRevision = savedPayload.project.serverRevision;
   assert.equal(fixture.serverRevision, 1, 'the server should issue the first durable revision token');
-  assert.deepEqual(savedPayload.project.animation, fixture.animation,
-    'the authenticated persistence API must retain multi-frame, per-layer animation cels');
+  const initialReadback = await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: authHeaders });
+  assert.equal(initialReadback.status, 200, 'the newly saved animation project should be readable immediately');
+  assert.deepEqual((await initialReadback.json()).project.animation, fixture.animation,
+    'the authenticated persistence API must retain multi-frame, per-layer animation cels on readback');
   const staleWrite = await fetch(base + '/api/pixelforge/projects', {
     method: 'PUT',
     headers: { ...authHeaders, 'content-type': 'application/json' },
