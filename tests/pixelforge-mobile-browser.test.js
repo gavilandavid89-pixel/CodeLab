@@ -117,15 +117,21 @@ async function main() {
         };
         await drawAtCenter('#ff3030');
 
-        // A blank frame must not inherit frame 1's pixels.
+        // Add a second raster layer inside the active timeline. Editing it must
+        // not overwrite the original layer's cel in this same frame.
+        await page.locator('#layers-tab').click();
+        await page.locator('#add-layer').click();
+        await drawAtCenter('#00cc88');
+
+        // A blank frame must not inherit either layer's pixels from frame 1.
         await page.locator('#animation-add-frame').click();
-        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 3,
-          'adding a frame must create a second timeline item');
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
+          'adding a frame must create exactly one additional timeline item');
         await drawAtCenter('#3080ff');
 
-        // Switching back and forth must restore the independent raster cel.
+        // Switching back and forth must restore independent cels per layer.
         await page.locator('#animation-frames .animation-frame').nth(0).click();
-        await page.locator('#animation-frames .animation-frame').nth(2).click();
+        await page.locator('#animation-frames .animation-frame').nth(1).click();
         await page.locator('#animation-fps').evaluate(node => {
           node.value = '24'; node.dispatchEvent(new Event('change', { bubbles: true }));
         });
@@ -167,14 +173,23 @@ async function main() {
         assert.equal(savedProject.animation?.fps, 24, 'the selected FPS must persist');
         assert.equal(savedProject.animation?.loop, false, 'the loop setting must persist');
         assert.equal(savedProject.animation?.frames?.[1]?.durationMs, 120, 'the active frame duration must persist');
-        const framePixels = savedProject.animation.frames.map(frame => {
-          const cel = frame.cels.find(item => item.layerId === savedProject.layers[0].id);
-          assert.ok(cel && typeof cel.pixels === 'string', 'each frame must persist one cel for the raster layer');
+        assert.equal(savedProject.animation.layerIds.length, 2, 'the timeline must preserve both raster layers');
+        assert.ok(savedProject.animation.frames.every(frame => frame.cels.length === savedProject.layers.length),
+          'every frame must persist an independent cel for every raster layer');
+        const pixelsFor = (frame, layer) => {
+          const cel = frame.cels.find(item => item.layerId === layer.id);
+          assert.ok(cel && typeof cel.pixels === 'string', 'each frame/layer pair must persist its own cel');
           return Buffer.from(cel.pixels, 'base64');
-        });
-        assert.ok(framePixels[0].some(value => value !== 0), 'drawing on frame 1 must change its persisted pixels');
-        assert.ok(framePixels[1].some(value => value !== 0), 'drawing on frame 2 must change its persisted pixels');
-        assert.notDeepEqual(framePixels[0], framePixels[1], 'frame 1 and frame 2 must retain independent pixel buffers');
+        };
+        const baseFirst = pixelsFor(savedProject.animation.frames[0], savedProject.layers[0]);
+        const baseSecond = pixelsFor(savedProject.animation.frames[1], savedProject.layers[0]);
+        const overlayFirst = pixelsFor(savedProject.animation.frames[0], savedProject.layers[1]);
+        const overlaySecond = pixelsFor(savedProject.animation.frames[1], savedProject.layers[1]);
+        assert.ok(baseFirst.some(value => value !== 0), 'drawing on the base layer must persist in frame 1');
+        assert.equal(baseSecond.some(value => value !== 0), false, 'drawing on the overlay must not modify the base layer in frame 2');
+        assert.ok(overlayFirst.some(value => value !== 0), 'drawing on the overlay must persist in frame 1');
+        assert.ok(overlaySecond.some(value => value !== 0), 'drawing on the overlay must persist in frame 2');
+        assert.notDeepEqual(overlayFirst, overlaySecond, 'the same layer must retain independent pixel buffers across frames');
 
         // Cross-mode proof: the Headless runtime opens the exact project just created by the visual editor.
         const headlessResult = await page.evaluate(async projectId => {
@@ -203,8 +218,8 @@ async function main() {
             acceptedStatus: accepted.status,
             serverRevision: afterApproval.project.serverRevision,
             animation: afterApproval.project.animation,
-            rasterPixels: afterApproval.project.layers[0].pixels,
-            headlessFramePixels: afterApproval.project.animation.frames[2].cels[0].pixels
+            rasterPixels: afterApproval.project.layers.find(layer => layer.id === beforeApproval.project.layers[1].id).pixels,
+            headlessFramePixels: afterApproval.project.animation.frames[2].cels.find(cel => cel.layerId === beforeApproval.project.layers[1].id).pixels
           };
         }, savedSummary.id);
         assert.equal(headlessResult.proposalStatus, 'proposal', 'Headless must produce a reviewable proposal from the visual project');
@@ -214,7 +229,7 @@ async function main() {
         assert.equal(headlessResult.animation.fps, 18, 'Headless animation timing changes must persist');
         assert.equal(headlessResult.animation.loop, false, 'Headless loop changes must persist');
         assert.equal(headlessResult.animation.frames[2].durationMs, 150, 'Headless frame duration must persist');
-        const savedRaster = Buffer.from(savedProject.layers[0].pixels, 'base64');
+        const savedRaster = Buffer.from(savedProject.layers[1].pixels, 'base64');
         const headlessRaster = Buffer.from(headlessResult.rasterPixels, 'base64');
         assert.notDeepEqual(headlessRaster, savedRaster, 'Headless drawing must change the same raster layer saved by the visual editor');
         const headlessFramePixels = Buffer.from(headlessResult.headlessFramePixels, 'base64');
@@ -234,8 +249,8 @@ async function main() {
           const status = document.querySelector('#status')?.textContent || '';
           return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
         }, null, { timeout: 15000 });
-        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
-          'reopening the saved project must restore both timeline frames');
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 3,
+          'reopening the saved project must restore both visual frames and the Headless-added third frame');
         assert.equal(await page.locator('#animation-fps').inputValue(), '18',
           'reopening the saved project must restore its FPS');
         assert.equal(await page.locator('#animation-duration').inputValue(), '150',
@@ -243,7 +258,7 @@ async function main() {
         assert.equal(await page.locator('#animation-loop').isChecked(), false,
           'reopening the saved project must restore its loop setting');
         await page.locator('#animation-frames .animation-frame').nth(0).click();
-        await page.locator('#animation-frames .animation-frame').nth(1).click();
+        await page.locator('#animation-frames .animation-frame').nth(2).click();
       }
 
       if (viewport.width <= 420) {
