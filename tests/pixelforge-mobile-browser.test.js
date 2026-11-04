@@ -203,7 +203,8 @@ async function main() {
             acceptedStatus: accepted.status,
             serverRevision: afterApproval.project.serverRevision,
             animation: afterApproval.project.animation,
-            rasterPixels: afterApproval.project.layers[0].pixels
+            rasterPixels: afterApproval.project.layers[0].pixels,
+            headlessFramePixels: afterApproval.project.animation.frames[2].cels[0].pixels
           };
         }, savedSummary.id);
         assert.equal(headlessResult.proposalStatus, 'proposal', 'Headless must produce a reviewable proposal from the visual project');
