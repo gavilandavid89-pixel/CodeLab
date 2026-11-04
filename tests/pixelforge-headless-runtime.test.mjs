@@ -110,3 +110,49 @@ test('headless brush actions validate points and keep edits in the sandbox', () 
   assert.equal(runtime.hasPendingChanges, true);
   assert.equal(runtime.document.revision, 0);
 });
+
+test('animation-only edits require proposal acceptance and persist as project timeline metadata', () => {
+  const fixture = projectFixture();
+  fixture.serverRevision = 12;
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const added = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Idle 1', durationMs: 100 });
+  assert.equal(added.ok, true);
+  assert.equal(runtime.inspect().animation.frameCount, 1);
+  assert.equal(runtime.inspect().animation.hasChanges, true);
+  assert.throws(() => runtime.toJSON(), /Unreviewed sandbox changes/);
+  runtime.createProposal('Create the first idle animation frame');
+  const accepted = runtime.acceptProposal();
+  assert.equal(accepted.status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.serverRevision, 12);
+  assert.equal(saved.animation.format, 'pixelforge-animation');
+  assert.equal(saved.animation.frames[0].name, 'Idle 1');
+  assert.equal(saved.animation.frames[0].durationMs, 100);
+  assert.equal(runtime.document.revision, fixture.revision + 1);
+});
+
+test('animation timeline supports duplication, timing, ordering and safe deletion', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const first = runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'A' });
+  assert.equal(first.ok, true);
+  const second = runtime.execute({ name: 'animation.frame.duplicate', index: 0 });
+  assert.equal(second.ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 250 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.set_fps', fps: 24 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.set_loop', loop: false }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.reorder', from: 1, to: 0 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.delete', index: 1 }).ok, true);
+  const summary = runtime.execute({ name: 'animation.get_summary' });
+  assert.equal(summary.ok, true);
+  assert.equal(summary.result.frameCount, 1);
+  assert.equal(summary.result.fps, 24);
+  assert.equal(summary.result.loop, false);
+  assert.equal(summary.result.totalDurationMs, 250);
+});
+
+test('animation timeline rejects invalid frame dimensions and timing values', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', durationMs: 0 }).ok, false);
+  assert.equal(runtime.execute({ name: 'animation.set_fps', fps: 240 }).ok, false);
+  assert.equal(runtime.hasPendingChanges, false);
+});
