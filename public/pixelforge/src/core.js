@@ -209,6 +209,10 @@ function clonePixels(pixels) { return new Uint8ClampedArray(pixels); }
 function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels) }; }
 const TILE_SIZE = 64;
 function entryBytes(entry) {
+  if (entry.type === 'document-state') {
+    const size = state => state.layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 0);
+    return size(entry.before) + size(entry.after) + 512;
+  }
   if (entry.type === 'pixels') return entry.tiles.reduce((sum, tile) => sum + tile.before.byteLength + tile.after.byteLength, 64);
   if (entry.type === 'document-crop') return entry.before.layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 256);
   if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength, 0), 64);
@@ -677,6 +681,48 @@ export class RasterDocument {
     this.compositeDirtyTiles = new Set();
     this.#markAllCompositeDirty();
   }
+  #captureDocumentState() {
+    return {
+      width: this.width, height: this.height, name: this.name,
+      activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer)
+    };
+  }
+  #applyDocumentState(snapshot) {
+    this.width = snapshot.width;
+    this.height = snapshot.height;
+    this.name = snapshot.name;
+    this.layers = snapshot.layers.map(cloneLayer);
+    this.activeLayerId = snapshot.activeLayerId;
+    this.selectionMask = null;
+    this.compositeCache = new Uint8ClampedArray(this.width * this.height * 4);
+    this.compositeDirtyTiles = new Set();
+    this.#markAllCompositeDirty();
+  }
+  replaceDocumentState(project) {
+    const validated = RasterDocument.fromJSON(project);
+    if (validated.width * validated.height * 4 * validated.layers.length > MAX_DOCUMENT_BYTES) {
+      throw new RangeError('The proposed document exceeds the 64 MiB pixel-memory budget.');
+    }
+    const before = this.#captureDocumentState();
+    const after = {
+      width: validated.width, height: validated.height, name: validated.name,
+      activeLayerId: validated.activeLayerId, layers: validated.layers.map(cloneLayer)
+    };
+    const unchanged = before.width === after.width && before.height === after.height &&
+      before.name === after.name && before.activeLayerId === after.activeLayerId &&
+      before.layers.length === after.layers.length &&
+      before.layers.every((layer, index) => {
+        const next = after.layers[index];
+        return layer.id === next.id && layer.name === next.name && layer.visible === next.visible &&
+          layer.opacity === next.opacity && layer.locked === next.locked &&
+          layer.pixels.every((value, pixel) => value === next.pixels[pixel]);
+      });
+    if (unchanged) return { changed: false, changedLayers: 0, changedPixels: 0 };
+    this.#applyDocumentState(after);
+    this.#record({ type: 'document-state', before, after });
+    const changedLayers = Math.max(before.layers.length, after.layers.length);
+    return { changed: true, changedLayers, changedPixels: 0 };
+  }
   replaceLayerPixelsBatch(replacements) {
     if (!Array.isArray(replacements) || replacements.length < 1 || replacements.length > 64) {
       throw new TypeError('Pixel replacement must contain between 1 and 64 layers.');
@@ -1059,7 +1105,9 @@ export class RasterDocument {
     }
   }
   #applyEntry(entry, forward) {
-    if (entry.type === 'document-crop') {
+    if (entry.type === 'document-state') {
+      this.#applyDocumentState(forward ? entry.after : entry.before);
+    } else if (entry.type === 'document-crop') {
       if (forward) this.#cropTo(entry.x, entry.y, entry.width, entry.height);
       else this.#restoreDocument(entry.before);
     } else if (entry.type === 'pixels-batch') {
