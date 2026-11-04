@@ -2221,8 +2221,10 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 200, result);
           }
           if (pixelForgeUploadCancel) {
-            const result = await pixelForgeUploads.cancelUpload(accountPool, workspaceId, pixelForgeUploadCancel[1]);
-            return sendJson(res, 200, { ok: true, ...result });
+            return await withPixelForgeAccountLock(workspaceId, () => withPixelForgeUploadCommitLock(async () => {
+              const result = await pixelForgeUploads.cancelUpload(accountPool, workspaceId, pixelForgeUploadCancel[1]);
+              return sendJson(res, 200, { ok: true, ...result });
+            }));
           }
           if (pixelForgeUploadChunk) {
             const body = await readBody(req, PIXELFORGE_MAX_CHUNK_BODY_BYTES);
