@@ -173,6 +173,7 @@ async function request(path, options = {}) {
       pixelforge_upload_conflict: 'Ya existe otra carga con ese identificador. Vuelve a guardar el proyecto.',
       pixelforge_upload_manifest_mismatch: 'La carga no coincide con el proyecto que se intentó guardar.',
       pixelforge_chunk_integrity_failed: 'Un bloque del proyecto no superó la verificación de integridad.',
+      invalid_pixelforge_upload_encoding: 'La carga contiene texto dañado. Vuelve a guardar el proyecto para generar bloques válidos.',
       pixelforge_chunk_conflict: 'Un bloque repetido no coincide con el que ya se había recibido.',
       pixelforge_upload_quota_exceeded: 'Hay demasiadas cargas grandes en curso para esta cuenta. Espera a que termine una y vuelve a guardar.',
       pixelforge_storage_unavailable: 'No se pudo acceder al almacenamiento de tu cuenta.',
