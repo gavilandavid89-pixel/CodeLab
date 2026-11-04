@@ -234,6 +234,11 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(server.includes('pixelForgeUploads.getUploadStatus'));
   assert.ok(server.includes('pixelForgeUploadStatus'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('async function getUploadStatus'));
+  const persistence = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/persistence.js'), 'utf8');
+  assert.ok(persistence.indexOf('if (estimatedBytes > MAX_PROJECT_BYTES)') < persistence.indexOf('JSON.stringify({ project })'),
+    'the combined project envelope must be preflighted before building the serialized save body');
+  assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
+    'large saves should consult upload status before resending chunks');
   assert.ok(server.includes('validatePixelForgeAnimation(project)'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
 });
