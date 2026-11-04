@@ -21,7 +21,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers']);
+  const allowed = new Set(['headless_batch', 'headless_query', 'headless_design_system', 'design_capture_png', 'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'headless_ai_generate', 'project_convert_design_to_web', 'project_export_html', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers', 'pixelforge_headless_list_projects', 'pixelforge_headless_create_project', 'pixelforge_headless_delete_project']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -32,7 +32,7 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers', 'design_capture_png', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
+  const projectActions = ['headless_design_system', 'headless_query', 'headless_ai_generate', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers', 'pixelforge_headless_list_projects', 'pixelforge_headless_create_project', 'pixelforge_headless_delete_project', 'design_capture_png', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'project_code_transfer', 'design_image_transfer', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_capture_png', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'headless_batch'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
@@ -40,7 +40,7 @@ function parseCommand(raw) {
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
-  if (['pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers'].includes(command.action) &&
+  if (['pixelforge_headless_inspect', 'pixelforge_headless_batch', 'pixelforge_headless_export_animation', 'pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers', 'pixelforge_headless_delete_project'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error(command.action + ' requires a valid PixelForge args.project_id.');
   }
@@ -51,6 +51,29 @@ function parseCommand(raw) {
     if (args.padding !== undefined && (!Number.isInteger(args.padding) || args.padding < 0 || args.padding > 64)) {
       throw new Error('PixelForge animation export padding must be an integer from 0 to 64.');
     }
+  }
+  if (['pixelforge_headless_create_project', 'pixelforge_headless_delete_project'].includes(command.action) && command.approval !== 'approved') {
+    throw new Error('PixelForge project creation/deletion requires approval: "approved".');
+  }
+  if (command.action === 'pixelforge_headless_create_project') {
+    const templates = {
+      custom: { width: 128, height: 128, name: 'Untitled artwork', layers: ['Layer 1'] },
+      character: { width: 64, height: 64, name: 'Character sprite', layers: ['Sketch', 'Lineart', 'Color', 'Shading'] },
+      icon: { width: 32, height: 32, name: 'Game icon', layers: ['Base', 'Details', 'Highlights'] },
+      tile: { width: 32, height: 32, name: 'Environment tile', layers: ['Base', 'Details', 'Edges'] },
+      ui: { width: 128, height: 64, name: 'UI element', layers: ['Base', 'Border', 'Details'] },
+      background: { width: 256, height: 144, name: 'Background scene', layers: ['Far', 'Middle', 'Foreground'] },
+      effect: { width: 64, height: 64, name: 'VFX sprite', layers: ['Core', 'Glow', 'Particles'] },
+    };
+    const template = args.template ?? 'custom';
+    if (!Object.prototype.hasOwnProperty.call(templates, template)) throw new Error('Unsupported PixelForge starter template.');
+    const defaults = templates[template];
+    const width = args.width ?? defaults.width, height = args.height ?? defaults.height;
+    if (!Number.isInteger(width) || width < 1 || width > 2048 || !Number.isInteger(height) || height < 1 || height > 2048) throw new Error('PixelForge canvas dimensions must be from 1 to 2048 pixels.');
+    const layers = args.layer_names ?? defaults.layers;
+    if (!Array.isArray(layers) || layers.length < 1 || layers.length > 64 || layers.some(name => typeof name !== 'string' || !name.trim() || name.length > 180) || new Set(layers).size !== layers.length) throw new Error('PixelForge layer_names must contain 1 to 64 unique valid layer names.');
+    if (width * height * 4 * layers.length > 64 * 1024 * 1024) throw new Error('PixelForge new project exceeds the 64 MiB layer-memory budget.');
+    if (args.name !== undefined && (typeof args.name !== 'string' || !args.name.trim() || args.name.length > 180)) throw new Error('PixelForge project name must contain 1 to 180 characters.');
   }
   if (['pixelforge_headless_export_png', 'pixelforge_headless_export_project', 'pixelforge_headless_export_layers'].includes(command.action) && command.approval !== 'approved') {
     throw new Error('PixelForge raster/project export requires approval: "approved".');
@@ -1395,6 +1418,43 @@ try {
         workspaceRevision: after.revision, workspaceRefreshed
       };
     }, { projectId: command.args.project_id, operation: command.args.operation });
+  } else if (command.action === 'pixelforge_headless_list_projects') {
+    stage = 'pixelforge_headless_list_projects';
+    result = await page.evaluate(async () => {
+      const response = await fetch('/api/pixelforge/projects', { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.projects)) throw new Error('PixelForge project list failed (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      return { status: 'listed', count: data.projects.length, projects: data.projects };
+    });
+  } else if (command.action === 'pixelforge_headless_create_project') {
+    stage = 'pixelforge_headless_create_project';
+    result = await page.evaluate(async ({ template, width, height, name, layerNames }) => {
+      const { RasterDocument } = await import('/pixelforge/src/core.js');
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
+      const { createPixelForgeProject } = await import('/pixelforge/src/project-factory.js');
+      const created = createPixelForgeProject({ template, width, height, name, layerNames }, { RasterDocument, HeadlessEditorRuntime });
+      const project = created.project;
+      const savedResponse = await fetch('/api/pixelforge/projects', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ project }) });
+      const saved = await savedResponse.json().catch(() => ({}));
+      if (!savedResponse.ok || !saved.project || saved.project.id !== project.id) throw new Error('PixelForge project creation failed (HTTP ' + savedResponse.status + '): ' + (saved.error || 'server readback missing'));
+      const readResponse = await fetch('/api/pixelforge/projects/' + encodeURIComponent(project.id), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const read = await readResponse.json().catch(() => ({}));
+      if (!readResponse.ok || !read.project || read.project.id !== project.id || read.project.layers.length !== created.readback.layerCount) throw new Error('PixelForge project creation readback verification failed.');
+      return { status: 'created', projectId: project.id, name: read.project.name, width: read.project.width, height: read.project.height, layerCount: read.project.layers.length, serverRevision: read.project.serverRevision, readbackVerified: true };
+    }, {
+      template: command.args.template, width: command.args.width, height: command.args.height,
+      name: command.args.name, layerNames: command.args.layer_names,
+    });
+  } else if (command.action === 'pixelforge_headless_delete_project') {
+    stage = 'pixelforge_headless_delete_project';
+    result = await page.evaluate(async projectId => {
+      const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { method: 'DELETE', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) throw new Error('PixelForge project deletion failed (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+      const readback = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+      if (readback.status !== 404) throw new Error('PixelForge project deletion readback failed.');
+      return { status: 'deleted', projectId, readbackVerified: true };
+    }, command.args.project_id);
   } else if (command.action === 'pixelforge_headless_inspect') {
     stage = 'pixelforge_headless_inspect';
     result = await page.evaluate(async projectId => {
