@@ -234,7 +234,9 @@ test('Headless remaps existing animation cel identities across load, proposal ac
 });
 
 test('Headless keeps independent animation cels aligned with layer add, reorder, and delete operations', () => {
-  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  const fixture = projectFixture();
+  const sourceBaseLayerId = fixture.layers[0].id;
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
   const baseLayerId = runtime.sandbox.layers[0].id;
   const addedLayer = runtime.execute({ name: 'layer.add', layerName: 'Ink' });
   assert.equal(addedLayer.ok, true);
@@ -251,11 +253,11 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
   runtime.createProposal('Create two independent multi-layer animation poses');
   assert.equal(runtime.acceptProposal().status, 'applied');
   let saved = runtime.toJSON();
-  assert.deepEqual(saved.animation.layerIds, [baseLayerId, inkLayerId]);
+  assert.deepEqual(saved.animation.layerIds, [sourceBaseLayerId, inkLayerId]);
   const cel = (frame, layerId) => frame.cels.find(item => item.layerId === layerId);
-  const firstBase = Buffer.from(cel(saved.animation.frames[0], baseLayerId).pixels, 'base64');
+  const firstBase = Buffer.from(cel(saved.animation.frames[0], sourceBaseLayerId).pixels, 'base64');
   const firstInk = Buffer.from(cel(saved.animation.frames[0], inkLayerId).pixels, 'base64');
-  const secondBase = Buffer.from(cel(saved.animation.frames[1], baseLayerId).pixels, 'base64');
+  const secondBase = Buffer.from(cel(saved.animation.frames[1], sourceBaseLayerId).pixels, 'base64');
   const secondInk = Buffer.from(cel(saved.animation.frames[1], inkLayerId).pixels, 'base64');
   const pixel = (bytes, x, y) => [...bytes.subarray((y * saved.width + x) * 4, (y * saved.width + x) * 4 + 4)];
   assert.deepEqual(pixel(firstBase, 2, 3), [0, 0, 0, 0]);
@@ -274,7 +276,8 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
   saved = runtime.toJSON();
   assert.deepEqual(saved.animation.layerIds, saved.layers.map(layer => layer.id));
   assert.equal(saved.animation.frames[0].cels.find(item => item.layerId === shadowId).pixels.length, 1368);
-  assert.equal(runtime.execute({ name: 'layer.delete', layerId: baseLayerId }).ok, true);
+  const refreshedBaseLayerId = runtime.sandbox.layers.find(layer => layer.name === fixture.layers[0].name).id;
+  assert.equal(runtime.execute({ name: 'layer.delete', layerId: refreshedBaseLayerId }).ok, true);
   runtime.createProposal('Delete a layer and its animation cels together');
   assert.equal(runtime.acceptProposal().status, 'applied');
   saved = runtime.toJSON();
