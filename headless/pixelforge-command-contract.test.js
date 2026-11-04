@@ -12,7 +12,7 @@ test('PixelForge Headless commands are allowlisted and require the authenticated
   assert.match(bridge, /'pixelforge_headless_inspect', 'pixelforge_headless_batch'/);
   assert.match(bridge, /'pixelforge_headless_inspect', 'pixelforge_headless_batch',/);
   assert.match(bridge, /Project and branch tools require use_admin_session: true/);
-  assert.match(bridge, /pixelforge_headless_batch requires approval: "approved"/);
+  assert.match(bridge, /PixelForge Headless edits require approval: "approved"/);
 });
 
 test('PixelForge Headless batch is bounded and calls the isolated proposal runtime', () => {
