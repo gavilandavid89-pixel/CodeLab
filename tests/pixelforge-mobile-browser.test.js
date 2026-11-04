@@ -170,7 +170,7 @@ async function main() {
         const animationZipPromise = page.waitForEvent('download');
         await page.locator('#animation-export-sheet').click();
         const animationZipDownload = await animationZipPromise;
-        assert.match(animationZipDownload.suggestedFilename(), /-animation-sheet\\.zip$/);
+        assert.match(animationZipDownload.suggestedFilename(), /-animation-sheet\.zip$/);
         const animationZipEntries = await readZipDownload(animationZipDownload);
         assert.ok(animationZipEntries.has('animation-manifest.json'));
 
