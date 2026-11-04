@@ -55,6 +55,8 @@ function setEnabled(enabled) {
 }
 function resetComposer() {
   stopPlayback();
+  ui.progress.hidden = true;
+  ui.export.textContent = '⇩ Exportar vídeo';
   packageData = null;
   currentIndex = 0;
   currentBitmap?.close?.();
