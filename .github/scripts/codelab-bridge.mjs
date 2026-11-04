@@ -1614,7 +1614,7 @@ try {
         const layer = doc.layers[index]; context.putImageData(new ImageData(new Uint8ClampedArray(layer.pixels), doc.width, doc.height), frame.x, frame.y);
         return { ...frame, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked };
       });
-      const manifest = { format: 'pixelforge-sprite-sheet', version: 1, document: doc.name, sheet: { width: layout.width, height: layout.height, columns: layout.columns, rows: layout.rows, padding: layout.padding }, frameSize: { width: doc.width, height: doc.height }, pivot: 'center', frames };
+      const manifest = { format: 'pixelforge-sprite-sheet', version: 1, document: doc.name, frameCount: frames.length, sheet: { width: layout.width, height: layout.height, columns: layout.columns, rows: layout.rows, padding: layout.padding }, frameSize: { width: doc.width, height: doc.height }, pivot: 'center', frames };
       const png = await new Promise((resolve, reject) => sheet.toBlob(value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
       const pngUrl = URL.createObjectURL(png); const pngAnchor = document.createElement('a'); pngAnchor.href = pngUrl; pngAnchor.download = 'pixelforge-layer-spritesheet.png'; document.body.appendChild(pngAnchor); pngAnchor.click(); pngAnchor.remove();
       const jsonUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }));
