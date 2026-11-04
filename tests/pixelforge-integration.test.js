@@ -692,7 +692,7 @@ async function main() {
     assert.match(await accountPage.locator('#status').innerText(), /Selected/,
       'freehand lasso should close a polygon and create a selection mask');
     await accountPage.locator('#selection-outline-move [data-selection-move="1,0"]').click();
-    assert.match(await accountPage.locator('#status').innerText(), /Transformed selection/,
+    assert.match(await accountPage.locator('#status').innerText(), /Selection outline moved/,
       'selection-outline controls should move the mask without changing artwork pixels');
 
     // View controls should update their UI state without modifying saved artwork.
