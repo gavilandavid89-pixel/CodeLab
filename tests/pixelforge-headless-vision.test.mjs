@@ -122,7 +122,9 @@ test('enforces the existing vision snapshot image-count and per-image byte limit
 
 test('checks PNG signature and decoded dimensions instead of trusting the data URL MIME label', async () => {
   const consent = await requestPixelForgeVisionConsent({ projectId: 'project-1', confirm: async () => true });
-  const mislabeled = 'data:image/png;base64,' + Buffer.from('not a png').toString('base64');
+  const invalidSignature = Buffer.from(pngHeader(1, 1).slice('data:image/png;base64,'.length), 'base64');
+  invalidSignature[0] = 0;
+  const mislabeled = 'data:image/png;base64,' + invalidSignature.toString('base64');
   assert.throws(() => preparePixelForgeVisionRequest({
     consent, projectId: 'project-1', artworkImage: mislabeled,
   }), /PNG signature/);
