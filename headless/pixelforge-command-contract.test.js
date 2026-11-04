@@ -28,3 +28,10 @@ test('PixelForge Headless tool catalog documents drawing and animation but does 
   assert.match(catalog, /animation\.frame\.add_from_layer/);
   assert.match(catalog, /Playback UI, onion-skin controls, mailbox delivery of exported files, GIF export/);
 });
+
+test('PixelForge read-only batch actions do not require project-write approval', () => {
+  assert.match(bridge, /readOnlyPixelForgeActions = new Set/);
+  assert.match(bridge, /'document\.get_summary', 'canvas\.get_pixel', 'canvas\.preview_transform_region'/);
+  assert.match(bridge, /hasProjectMutation && command\.approval !== 'approved'/);
+  assert.match(catalog, /status: "inspected"/);
+});
