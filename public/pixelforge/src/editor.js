@@ -8,6 +8,7 @@ import { AICommandSession } from './ai-tools.js';
 import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
+import { createZipBlob } from './zip-export.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -718,7 +719,7 @@ function drawOnionSkinOverlay() {
 function renderAnimationTimeline() {
   const host = $('#animation-frames');
   if (!host) return;
-  const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-loop','animation-onion','animation-export-sheet'];
+  const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-loop','animation-onion','animation-export-sheet','animation-export-zip'];
   const enabled = Boolean(animation);
   $('#crop-preview').disabled = enabled;
   $('#crop-preview').title = enabled ? 'Canvas crop is temporarily unavailable while a multi-frame timeline is active' : 'Preview crop for the current canvas';
@@ -1785,6 +1786,92 @@ $('#animation-loop').addEventListener('change', event => {
   if (animation) { markAnimationChanged(); scheduleAutosave(); }
 });
 $('#animation-onion').addEventListener('change', () => render());
+$('#animation-export-zip').addEventListener('click', async () => {
+  const button = $('#animation-export-zip');
+  if (button.disabled) return;
+  button.disabled = true;
+  const previousLabel = button.textContent;
+  button.textContent = 'Preparing…';
+  try {
+    settleActiveInput();
+    stopAnimationPlayback();
+    const snapshot = buildProjectSnapshot();
+    const baseName = safeName(doc.name);
+    const entries = [
+      { name: 'project/' + baseName + '.pforge', data: new Blob([JSON.stringify(snapshot)], { type: 'application/json' }) },
+    ];
+    const manifest = {
+      format: 'pixelforge-video-package',
+      version: 1,
+      projectFile: 'project/' + baseName + '.pforge',
+      width: doc.width,
+      height: doc.height,
+      fps: animation?.fps ?? 1,
+      loop: animationLoop,
+      frameCount: animation?.frameCount ?? 1,
+      frames: [],
+      audio: [],
+      notes: 'PNG frames are transparent composites. Import the .pforge project to retain independent editable layers and cels.',
+    };
+    if (animation?.frameCount) {
+      const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+      const frameCanvas = document.createElement('canvas');
+      frameCanvas.width = doc.width;
+      frameCanvas.height = doc.height;
+      const frameContext = frameCanvas.getContext('2d', { alpha: true });
+      if (!frameContext) throw new Error('Could not create the frame export surface.');
+      for (let index = 0; index < animation.frameCount; index++) {
+        const frame = animation.getFrame(index);
+        const pixels = animation.compositeFrame(index, layerSettings);
+        frameContext.putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+        const png = await new Promise((resolve, reject) => frameCanvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data for frame ' + (index + 1) + '.')),
+          'image/png'
+        ));
+        const filename = 'frames/frame-' + String(index + 1).padStart(4, '0') + '.png';
+        entries.push({ name: filename, data: png });
+        manifest.frames.push({
+          index,
+          id: frame.id,
+          file: filename,
+          durationMs: frame.durationMs,
+          startMs: manifest.frames.reduce((sum, item) => sum + item.durationMs, 0),
+        });
+        frameContext.clearRect(0, 0, doc.width, doc.height);
+        if (index % 4 === 3) await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    } else {
+      const frameCanvas = document.createElement('canvas');
+      frameCanvas.width = doc.width;
+      frameCanvas.height = doc.height;
+      const frameContext = frameCanvas.getContext('2d', { alpha: true });
+      if (!frameContext) throw new Error('Could not create the preview export surface.');
+      frameContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+      const preview = await new Promise((resolve, reject) => frameCanvas.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('PNG preview encoder returned no data.')), 'image/png'
+      ));
+      entries.push({ name: 'frames/frame-0001.png', data: preview });
+      manifest.frames.push({ index: 0, file: 'frames/frame-0001.png', durationMs: 1000, startMs: 0 });
+    }
+    entries.push({ name: 'manifest.json', data: JSON.stringify(manifest, null, 2) });
+    entries.push({
+      name: 'README.txt',
+      data: 'PIXELFORGE VIDEO PACKAGE\\n\\n' +
+        'frames/: transparent PNG frames in playback order\\n' +
+        'manifest.json: frame durations, FPS, dimensions and playback settings\\n' +
+        'project/: editable PixelForge project with independent layers and cels\\n\\n' +
+        'Use the PNG sequence + manifest in a video editor, or open the .pforge file in PixelForge to keep editing.\\n',
+    });
+    const archive = await createZipBlob(entries);
+    downloadBlob(archive, baseName + (animation ? '-animation' : '-project') + '.zip');
+    status('ZIP package exported: ' + manifest.frameCount + ' frame(s), ' + entries.length + ' files', 'success');
+  } catch (error) {
+    status('ZIP export failed: ' + error.message, 'error');
+  } finally {
+    button.disabled = !animation;
+    button.textContent = previousLabel;
+  }
+});
 $('#animation-export-sheet').addEventListener('click', () => {
   try {
     if (!animation) return;
@@ -1905,12 +1992,24 @@ $('#save').addEventListener('click', async () => {
   try { await flushAutosave({ force: true }); status('Saved to your CodeLab account', 'success'); }
   catch (error) { status(`Save failed: ${error.message}`, 'error'); }
 });
-$('#export-project').addEventListener('click', () => {
+$('#export-project').addEventListener('click', async () => {
   try {
     settleActiveInput();
-    const snapshot = buildProjectSnapshot(), filename = `${safeName(doc.name)}.pforge`;
-    downloadBlob(new Blob([JSON.stringify(snapshot)], { type: 'application/json' }), filename);
-    status('Project exported', 'success');
+    if (animation) { await $('#animation-export-zip').click(); return; }
+    const snapshot = buildProjectSnapshot(), filename = `${safeName(doc.name)}-project.zip`;
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = doc.width; previewCanvas.height = doc.height;
+    const previewContext = previewCanvas.getContext('2d', { alpha: true });
+    if (!previewContext) throw new Error('Could not create the project preview surface.');
+    previewContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+    const preview = await new Promise((resolve, reject) => previewCanvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG preview encoder returned no data.')), 'image/png'));
+    const archive = await createZipBlob([
+      { name: 'project/' + safeName(doc.name) + '.pforge', data: new Blob([JSON.stringify(snapshot)], { type: 'application/json' }) },
+      { name: 'preview.png', data: preview },
+      { name: 'README.txt', data: 'PIXELFORGE PROJECT PACKAGE\\n\\nOpen the .pforge file in PixelForge to continue editing.\\n' },
+    ]);
+    downloadBlob(archive, filename);
+    status('Editable project ZIP exported', 'success');
   } catch (error) { status(`Project export failed: ${error.message}`, 'error'); }
 });
 $('#export-sprite-sheet').addEventListener('click', async () => {
