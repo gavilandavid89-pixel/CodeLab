@@ -18,7 +18,7 @@ function parseCommand(raw) {
   const command = JSON.parse(cleaned);
   if (command.protocol !== 'codelab-agent-bridge/v1') throw new Error('Unsupported protocol.');
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
-  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html']);
+  const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
@@ -29,11 +29,11 @@ function parseCommand(raw) {
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
   const args = command.args && typeof command.args === 'object' && !Array.isArray(command.args) ? command.args : {};
   if (args.self_test !== undefined && typeof args.self_test !== 'boolean') throw new Error('args.self_test must be a boolean.');
-  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'];
+  const projectActions = ['project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'project_convert_design_to_web', 'project_export_html'];
   if (projectActions.includes(command.action) && command.use_admin_session !== true) {
     throw new Error('Project and branch tools require use_admin_session: true.');
   }
-  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html'].includes(command.action) &&
+  if (['project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_export', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'project_convert_design_to_web', 'project_export_html', 'pixelforge_headless_inspect', 'pixelforge_headless_batch'].includes(command.action) &&
       (typeof args.project_id !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(args.project_id))) {
     throw new Error('This project action requires a valid args.project_id.');
   }
@@ -48,6 +48,14 @@ function parseCommand(raw) {
   if (command.action === 'project_export_html' && args.max_chars !== undefined &&
       (!Number.isInteger(args.max_chars) || args.max_chars < 1000 || args.max_chars > 7000)) {
     throw new Error('project_export_html max_chars must be an integer from 1000 to 7000.');
+  }
+  if (command.action === 'pixelforge_headless_inspect' || command.action === 'pixelforge_headless_batch') {
+    if (typeof args.project_id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.project_id)) throw new Error(command.action + ' requires a valid PixelForge args.project_id.');
+  }
+  if (command.action === 'pixelforge_headless_batch') {
+    if (command.approval !== 'approved') throw new Error('PixelForge drawing and animation changes require approval: "approved".');
+    if (!Array.isArray(args.actions) || args.actions.length < 1 || args.actions.length > 500) throw new Error('PixelForge batch requires 1–500 structured actions.');
+    if (typeof args.summary !== 'string' || !args.summary.trim() || args.summary.length > 500) throw new Error('PixelForge batch requires a short summary.');
   }
   if (command.action === 'ai_generate') {
     if (command.approval !== 'approved') throw new Error('AI generation changes project code and may consume API quota; approval: "approved" is required.');
@@ -1071,6 +1079,36 @@ try {
         truncated: html.length > limit, format: 'text/html'
       };
     }, { componentId: command.args.component_id, maxChars: command.args.max_chars });
+  } else if (command.action === 'pixelforge_headless_inspect') {
+    stage = 'pixelforge_headless_inspect';
+    result = await page.evaluate(async projectId => {
+      const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { credentials: 'same-origin', headers: { accept: 'application/json' } });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.project) throw new Error('PixelForge project read failed (HTTP ' + response.status + '): ' + (payload.error || 'project not found'));
+      const { HeadlessEditorRuntime } = await import('/pixelforge/src/headless.js');
+      const runtime = HeadlessEditorRuntime.fromJSON(payload.project);
+      const reference = runtime.execute({ name: 'canvas.get_reference', gridStep: 8 });
+      if (!reference.ok) throw new Error(reference.error?.message || 'Could not read PixelForge canvas coordinates.');
+      return { status: 'inspected', inspection: runtime.inspect(), coordinateReference: reference.result };
+    }, command.args.project_id);
+  } else if (command.action === 'pixelforge_headless_batch') {
+    stage = 'pixelforge_headless_batch';
+    result = await page.evaluate(async ({ projectId, actions, summary }) => {
+      const { preparePixelForgeProposal, acceptPixelForgeProposal } = await import('/pixelforge/src/headless-bridge.js');
+      const prepared = await preparePixelForgeProposal({ projectId, actions, summary });
+      if (prepared.status === 'rejected') throw new Error('PixelForge action ' + prepared.failedIndex + ' rejected: ' + (prepared.error?.message || 'invalid structured action'));
+      if (prepared.status === 'inspected') return { ...prepared, saved: false, note: 'Read-only actions completed; no project write was needed.' };
+      const accepted = await acceptPixelForgeProposal({ sessionId: prepared.sessionId, approved: true });
+      return {
+        status: accepted.status,
+        projectId: accepted.projectId,
+        serverRevision: accepted.serverRevision,
+        result: accepted.result,
+        inspection: accepted.inspection,
+        proposal: { summary: prepared.proposal?.summary || summary, changedPixels: prepared.diff?.changedPixels ?? null },
+        approved: true,
+      };
+    }, { projectId: command.args.project_id, actions: command.args.actions, summary: command.args.summary });
   } else if (command.action === 'component_insert') {
     stage = 'component_insert';
     result = await page.evaluate(async ({ projectId, componentId }) => {
