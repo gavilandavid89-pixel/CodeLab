@@ -1469,13 +1469,27 @@ try {
           throw firstCommitError;
         }
       }
-      const read = await apiRequest('/api/pixelforge/projects/' + encodeURIComponent(prepared.project.id), 'GET');
-      if (!read.project || read.project.id !== prepared.project.id || read.project.layers.length !== prepared.layerCount ||
-          (read.project.animation?.frames?.length ?? 0) !== prepared.frameCount ||
-          (prepared.project.animation ? read.project.animation?.loop !== prepared.project.animation.loop : Boolean(read.project.animation))) {
-        throw new Error('PixelForge import readback verification failed: project, layers, frames or loop differ from the uploaded snapshot.');
+      const read = await page.evaluate(async projectId => {
+        const response = await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId), { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.project) throw new Error('PixelForge import readback failed (HTTP ' + response.status + '): ' + (data.error || 'unknown error'));
+        const project = data.project;
+        const snapshot = [
+          project.name, project.width, project.height, project.activeLayerId,
+          project.layers.map(layer => [layer.id, layer.name, layer.visible, layer.opacity, layer.locked, layer.pixels]),
+          project.animation ? [project.animation.width, project.animation.height, project.animation.fps, project.animation.loop, project.animation.activeFrameIndex, project.animation.layerIds,
+            project.animation.frames.map(frame => [frame.id, frame.name, frame.durationMs, frame.cels.map(cel => [cel.layerId, cel.pixels])])] : null,
+        ];
+        const digestBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(snapshot)));
+        const digest = Array.from(new Uint8Array(digestBytes), value => value.toString(16).padStart(2, '0')).join('');
+        return { id: project.id, name: project.name, width: project.width, height: project.height, activeLayerId: project.activeLayerId,
+          layerCount: project.layers.length, frameCount: project.animation?.frames?.length ?? 0, loop: project.animation?.loop ?? null,
+          serverRevision: project.serverRevision, semanticDigest: digest };
+      }, prepared.project.id);
+      if (read.id !== prepared.project.id || read.layerCount !== prepared.layerCount || read.frameCount !== prepared.frameCount || read.semanticDigest !== prepared.semanticDigest) {
+        throw new Error('PixelForge import readback verification failed: IDs, layers, pixel buffers, animation cels, frame timing or loop differ from the uploaded snapshot.');
       }
-      result = { status: 'imported', sourcePath: relativePath, projectId: read.project.id, name: read.project.name, width: read.project.width, height: read.project.height, layerCount: read.project.layers.length, frameCount: read.project.animation?.frames?.length ?? 0, loop: read.project.animation?.loop ?? null, bytes: prepared.bytes, serverRevision: read.project.serverRevision, readbackVerified: true };
+      result = { status: 'imported', sourcePath: relativePath, projectId: read.id, name: read.name, width: read.width, height: read.height, layerCount: read.layerCount, frameCount: read.frameCount, loop: read.loop, bytes: prepared.bytes, serverRevision: read.serverRevision, semanticDigest: read.semanticDigest, readbackVerified: true };
     } catch (error) {
       if (uploadStarted && !committed) await apiRequest('/api/pixelforge/projects/uploads/' + uploadId, 'DELETE').catch(() => {});
       if (committed) throw new Error('PixelForge import was committed but readback verification failed; inspect project ID ' + prepared.project.id + '. ' + error.message);
