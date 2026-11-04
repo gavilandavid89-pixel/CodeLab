@@ -156,6 +156,18 @@ test('composites animation cels using the shared raster layer visibility and opa
   assert.throws(() => timeline.compositeFrame(0, [{ id: 'ink' }]), /match the animation layer stack/);
 });
 
+test('renders memory-bounded animation thumbnails without allocating full-resolution frame composites', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture());
+  const ink = new Uint8ClampedArray(16);
+  ink.set([255, 0, 0, 255], 0);
+  timeline.setLayerPixels(0, 'ink', ink);
+  const thumbnail = timeline.compositeThumbnail(0, null, 16);
+  assert.equal(thumbnail.width, 2);
+  assert.equal(thumbnail.height, 2);
+  assert.deepEqual([...thumbnail.pixels.slice(0, 4)], [255, 0, 0, 255]);
+  assert.throws(() => timeline.compositeThumbnail(0, null, 4), /8 to 256/);
+});
+
 test('round-trips timeline metadata and RGBA cels through a validated JSON format', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 8 });
   timeline.setLayerPixels(0, 'color', new Uint8ClampedArray(16).fill(201));
@@ -273,6 +285,17 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'the combined project envelope must be preflighted before building the serialized save body');
   assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
     'large saves should consult upload status before resending chunks');
+  const editorSource = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/editor.js'), 'utf8');
+  assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
+    editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
+    'the raster editor must expose the animation timeline controls');
+  assert.ok(editorSource.includes('function buildProjectSnapshot') && editorSource.includes('snapshot.animation'),
+    'animation data must travel with the normal project save/export lifecycle');
+  assert.ok(editorSource.includes('function switchAnimationFrame') && editorSource.includes('doc.replaceLayerPixelsBatch'),
+    'frame switching must reuse the existing raster document and drawing tools');
+  assert.ok(editorSource.includes('function drawOnionSkinOverlay') && editorSource.includes('startAnimationPlayback'),
+    'the editor must wire onion-skin preview and playback');
+  assert.ok(animation.includes('compositeThumbnail('), 'timeline thumbnails must use bounded-size compositing');
   assert.ok(server.includes('validatePixelForgeAnimation(project)'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
 });
