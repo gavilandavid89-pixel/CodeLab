@@ -29,7 +29,7 @@
 .saved-project-delete:hover:not(:disabled){background:#512b36}
 .saved-project-delete:disabled{opacity:.4;cursor:not-allowed}
 .project-empty{padding:15px;border:1px dashed #3a3d4b;border-radius:8px;color:#9298aa;font-size:11px;line-height:1.6}
-@media(max-width:760px){.projects-button{padding:4px 6px;font-size:9px}.context-right{gap:6px}}
+@media(max-width:760px){.projects-button{padding:4px 6px;font-size:9px}.context-right{gap:6px}.context-right #video-composer-link{padding:4px 6px;font-size:8px}}
 @media(max-width:760px){
   .context-right #reference-guides-toggle,.context-right #grid-toggle{min-width:26px;padding:4px 6px;font-size:0}
   .context-right #reference-guides-toggle::before{content:"⌖";font-size:13px}
