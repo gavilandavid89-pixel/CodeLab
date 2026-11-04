@@ -14,6 +14,7 @@ let playing = false;
 let playbackTimer = 0;
 let activeImport = 0;
 let exportBusy = false;
+let cancelRequested = false;
 
 function formatTime(ms) {
   const value = Math.max(0, Number(ms) || 0);
@@ -56,6 +57,7 @@ function setEnabled(enabled) {
 function resetComposer() {
   stopPlayback();
   ui.progress.hidden = true;
+  $('#vc-cancel-export').hidden = true;
   ui.export.textContent = '⇩ Exportar vídeo';
   packageData = null;
   currentIndex = 0;
@@ -260,6 +262,9 @@ async function exportVideo() {
     return;
   }
   exportBusy = true;
+  cancelRequested = false;
+  $('#vc-cancel-export').hidden = false;
+  $('#vc-cancel-export').disabled = false;
   stopPlayback();
   refreshFormatSupport();
   ui.export.textContent = 'Preparando vídeo…';
@@ -307,6 +312,7 @@ async function exportVideo() {
     recorder.start();
     for (let repeat = 0; repeat < repeatCount; repeat++) {
       for (let index = 0; index < packageData.frames.length; index++) {
+        if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
         const frame = packageData.frames[index];
         const bitmap = await createImageBitmap(frame.blob);
         context.clearRect(0, 0, width, height);
@@ -314,6 +320,7 @@ async function exportVideo() {
         context.drawImage(bitmap, 0, 0, width, height);
         bitmap.close?.();
         await delay(frame.durationMs);
+        if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
         elapsed += frame.durationMs;
         setProgress(elapsed / total, 'Renderizando vuelta ' + (repeat + 1) + ' de ' + repeatCount);
       }
@@ -337,10 +344,13 @@ async function exportVideo() {
   } catch (error) {
     if (recorder.state !== 'inactive') recorder.stop();
     await stopped.catch(() => {});
-    setStatus('La exportación falló: ' + error.message, 'error');
+    if (error.name === 'AbortError') setStatus('Exportación cancelada. Puedes ajustar la salida e intentarlo de nuevo.', 'info');
+    else setStatus('La exportación falló: ' + error.message, 'error');
   } finally {
     stream.getTracks().forEach(track => track.stop());
     exportBusy = false;
+    $('#vc-cancel-export').hidden = true;
+    $('#vc-cancel-export').disabled = false;
     ui.export.textContent = '⇩ Exportar vídeo';
     refreshFormatSupport();
   }
@@ -378,5 +388,11 @@ $('#vc-format').addEventListener('change', refreshFormatSupport);
 $('#vc-loop-export').addEventListener('change', refreshExportSummary);
 $('#vc-export').addEventListener('click', exportVideo);
 $('#vc-export-top').addEventListener('click', exportVideo);
+$('#vc-cancel-export').addEventListener('click', () => {
+  if (!exportBusy) return;
+  cancelRequested = true;
+  $('#vc-cancel-export').disabled = true;
+  $('#vc-progress-label').textContent = 'Cancelando exportación…';
+});
 resetComposer();
 refreshFormatSupport();
