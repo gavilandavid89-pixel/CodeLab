@@ -12,6 +12,7 @@ const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
+const pixelForgeUploads = require('./pixelforge-upload-store.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -28,11 +29,16 @@ const configuredMaxProjects = Number.parseInt(process.env.CODELAB_MAX_PROJECTS |
 const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxProjects > 0
   ? Math.min(500, configuredMaxProjects)
   : 50;
-// PixelForge stores base64-encoded raster projects, so its JSON payload needs a
-// separate bounded allowance without raising limits for every other API route.
+// PixelForge has a dedicated high-resolution asset budget. Keep these limits
+// scoped to its project API; do not inflate unrelated CodeLab request bodies.
+// Keep individual JSON requests bounded; larger project payloads are uploaded as 6 MiB chunks.
 const PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024;
-const PIXELFORGE_MAX_PROJECT_BYTES = 24 * 1024 * 1024;
-const PIXELFORGE_MAX_ACCOUNT_BYTES = 128 * 1024 * 1024;
+const PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024;
+const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
+// Keep the server-side raster allocation ceiling identical to the editor's
+// MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
+const PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024;
+const PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
@@ -435,6 +441,117 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+const PIXELFORGE_MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
+
+function hasBase64CharactersAndPadding(value, expectedPadding = '') {
+  if (typeof value !== 'string') return false;
+  if (expectedPadding && !value.endsWith(expectedPadding)) return false;
+  const payloadEnd = value.length - expectedPadding.length;
+  for (let index = 0; index < payloadEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  return true;
+}
+
+function validatePixelForgeAnimation(project) {
+  if (!Object.prototype.hasOwnProperty.call(project, 'animation')) return null;
+  const animation = project.animation;
+  if (!animation || typeof animation !== 'object' || Array.isArray(animation) ||
+      animation.format !== 'pixelforge-animation' || animation.version !== 1 ||
+      animation.width !== project.width || animation.height !== project.height ||
+      !Number.isInteger(animation.fps) || animation.fps < 1 || animation.fps > 60 ||
+      !Number.isInteger(animation.activeFrameIndex) ||
+      !Array.isArray(animation.layerIds) || animation.layerIds.length !== project.layers.length ||
+      !Array.isArray(animation.frames) || animation.frames.length < 1 || animation.frames.length > 240) {
+    return 'invalid_pixelforge_animation';
+  }
+
+  const projectLayerIds = project.layers.map(layer => layer.id);
+  if (animation.layerIds.some((id, index) => typeof id !== 'string' || id !== projectLayerIds[index]) ||
+      new Set(animation.layerIds).size !== animation.layerIds.length ||
+      animation.activeFrameIndex < 0 || animation.activeFrameIndex >= animation.frames.length) {
+    return 'invalid_pixelforge_animation';
+  }
+
+  const celBytes = project.width * project.height * 4;
+  if (celBytes * animation.layerIds.length * animation.frames.length > PIXELFORGE_MAX_ANIMATION_BYTES) {
+    return 'pixelforge_project_too_large';
+  }
+  const expectedBase64Length = Math.ceil(celBytes / 3) * 4;
+  const expectedPadding = celBytes % 3 === 1 ? '==' : celBytes % 3 === 2 ? '=' : '';
+  const frameIds = new Set();
+  for (const frame of animation.frames) {
+    if (!frame || typeof frame !== 'object' || Array.isArray(frame) ||
+        typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180 || frameIds.has(frame.id) ||
+        !Number.isFinite(frame.durationMs) || frame.durationMs < 1 || frame.durationMs > 10000 ||
+        !Array.isArray(frame.cels) || frame.cels.length !== animation.layerIds.length) {
+      return 'invalid_pixelforge_animation';
+    }
+    frameIds.add(frame.id);
+    const celLayerIds = new Set();
+    for (const cel of frame.cels) {
+      if (!cel || typeof cel !== 'object' || Array.isArray(cel) ||
+          typeof cel.layerId !== 'string' || !animation.layerIds.includes(cel.layerId) || celLayerIds.has(cel.layerId) ||
+          typeof cel.pixels !== 'string' || cel.pixels.length !== expectedBase64Length ||
+          !hasBase64CharactersAndPadding(cel.pixels, expectedPadding)) {
+        return 'invalid_pixelforge_animation';
+      }
+      celLayerIds.add(cel.layerId);
+    }
+    if (celLayerIds.size !== animation.layerIds.length) return 'invalid_pixelforge_animation';
+  }
+  return null;
+}
+
+function validatePixelForgeProjectPayload(project, serializedInput = null) {
+  if (!project || typeof project !== 'object' || Array.isArray(project) ||
+      project.format !== 'pixelforge-project' || project.version !== 1 ||
+      typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
+      typeof project.name !== 'string' || !project.name.trim() || project.name.length > 180 ||
+      !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
+      project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096 ||
+      project.width * project.height > 16_777_216 ||
+      !Number.isInteger(project.revision) || project.revision < 0 ||
+      !Number.isInteger(project.saveVersion) || project.saveVersion < 0 ||
+      (project.serverRevision !== undefined && (!Number.isInteger(project.serverRevision) || project.serverRevision < 0)) ||
+      !Array.isArray(project.layers) || project.layers.length < 1 || project.layers.length > 64 ||
+      typeof project.activeLayerId !== 'string') {
+    return { error: 'invalid_pixelforge_project', status: 400 };
+  }
+  if (project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES) {
+    return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
+  }
+  const pixelBytes = project.width * project.height * 4;
+  const expectedPixelBase64Length = Math.ceil(pixelBytes / 3) * 4;
+  const expectedPixelPadding = pixelBytes % 3 === 1 ? '==' : pixelBytes % 3 === 2 ? '=' : '';
+  const layerIds = new Set();
+  for (const layer of project.layers) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer) ||
+        typeof layer.id !== 'string' || !layer.id || layer.id.length > 180 || layerIds.has(layer.id) ||
+        typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 180 ||
+        typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
+        !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
+        typeof layer.pixels !== 'string' || layer.pixels.length !== expectedPixelBase64Length ||
+        !hasBase64CharactersAndPadding(layer.pixels, expectedPixelPadding)) {
+      return { error: 'invalid_pixelforge_project', status: 400 };
+    }
+    layerIds.add(layer.id);
+  }
+  if (!layerIds.has(project.activeLayerId)) return { error: 'invalid_pixelforge_project', status: 400 };
+  const animationError = validatePixelForgeAnimation(project);
+  if (animationError) {
+    return { error: animationError, status: animationError === 'pixelforge_project_too_large' ? 413 : 400 };
+  }
+  const serialized = typeof serializedInput === 'string' ? serializedInput : JSON.stringify(project);
+  const projectBytes = Buffer.byteLength(serialized, 'utf8');
+  if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
+    return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
+  }
+  return { serialized, projectBytes };
+}
+
 function decodePixelForgeProjectId(value) {
   try {
     const decoded = decodeURIComponent(value);
@@ -467,6 +584,7 @@ async function ensurePixelForgeTable() {
     CREATE INDEX IF NOT EXISTS codelab_pixelforge_recent_idx
     ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
   `);
+  await pixelForgeUploads.ensureSchema(accountPool);
   pixelForgeTableReady = true;
 }
 
@@ -510,32 +628,41 @@ async function deletePixelForgeProjectFromDatabase(workspaceId, projectId) {
   }
 }
 
-async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes) {
+async function savePixelForgeProjectToDatabase(workspaceId, project, projectBytes, options = {}) {
   const client = await accountPool.connect();
   try {
     await client.query('BEGIN');
-    // A database advisory lock makes per-account quotas safe across server instances,
-    // not only within this Node.js process.
+    // A database advisory lock makes per-account quotas safe across server instances.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
     const usage = await client.query(
       'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size), 0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id <> $2',
       [workspaceId, project.id]
     );
     const existing = await client.query(
-      'SELECT project FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+      'SELECT project, server_revision, content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
       [workspaceId, project.id]
     );
     const count = Number(usage.rows[0].count);
     const bytes = Number(usage.rows[0].bytes);
     const storedProject = existing.rowCount ? existing.rows[0].project : null;
-    const currentServerRevision = storedProject && Number.isInteger(storedProject.serverRevision) ? storedProject.serverRevision : 0;
-    const expectedServerRevision = Number.isInteger(project.serverRevision) ? project.serverRevision : 0;
+    const currentServerRevision = existing.rowCount
+      ? Number(existing.rows[0].server_revision || (storedProject && storedProject.serverRevision) || 0) : 0;
+    const expectedServerRevision = Number.isInteger(options.expectedServerRevision)
+      ? options.expectedServerRevision
+      : (Number.isInteger(project.serverRevision) ? project.serverRevision : 0);
     if (existing.rowCount && expectedServerRevision !== currentServerRevision) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_revision_conflict', status: 409, revision: currentServerRevision };
     }
-    const storedDocument = { ...project, serverRevision: currentServerRevision + 1 };
-    const storedDocumentBytes = Buffer.byteLength(JSON.stringify(storedDocument), 'utf8');
+    const preassignedRevision = options.preassignedServerRevision === true;
+    const storedDocument = preassignedRevision ? project : { ...project, serverRevision: currentServerRevision + 1 };
+    if (preassignedRevision && storedDocument.serverRevision !== currentServerRevision + 1) {
+      await client.query('ROLLBACK');
+      return { error: 'pixelforge_revision_conflict', status: 409, revision: currentServerRevision };
+    }
+    const serializedDocument = typeof options.serializedDocument === 'string'
+      ? options.serializedDocument : JSON.stringify(storedDocument);
+    const storedDocumentBytes = Buffer.byteLength(serializedDocument, 'utf8');
     if (storedDocumentBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
       await client.query('ROLLBACK');
       return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
@@ -549,12 +676,15 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
       return { error: 'pixelforge_account_storage_limit', status: 413, maxBytes: PIXELFORGE_MAX_ACCOUNT_BYTES };
     }
     const now = Date.now();
+    const contentSha256 = options.contentSha256 ||
+      crypto.createHash('sha256').update(serializedDocument).digest('hex');
     await client.query(
-      'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size',
-      [workspaceId, project.id, project.name.trim(), project.width, project.height, now, JSON.stringify(storedDocument), storedDocumentBytes]
+      'INSERT INTO codelab_pixelforge_projects (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,$9,$10) ON CONFLICT (workspace_id, project_id) DO UPDATE SET name=EXCLUDED.name, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=EXCLUDED.updated_at, last_opened_at=EXCLUDED.last_opened_at, project=EXCLUDED.project, byte_size=EXCLUDED.byte_size, server_revision=EXCLUDED.server_revision, content_sha256=EXCLUDED.content_sha256',
+      [workspaceId, project.id, project.name.trim(), project.width, project.height, now,
+        serializedDocument, storedDocumentBytes, storedDocument.serverRevision, contentSha256]
     );
     await client.query('COMMIT');
-    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision };
+    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision, contentSha256 };
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     throw error;
@@ -577,6 +707,13 @@ async function withPixelForgeAccountLock(workspaceId, operation) {
     release();
     if (pixelForgeAccountQueues.get(workspaceId) === tail) pixelForgeAccountQueues.delete(workspaceId);
   }
+}
+
+let pixelForgeUploadCommitQueue = Promise.resolve();
+function withPixelForgeUploadCommitLock(operation) {
+  const next = pixelForgeUploadCommitQueue.then(operation, operation);
+  pixelForgeUploadCommitQueue = next.catch(() => {});
+  return next;
 }
 
 const MAX_DESIGN_ELEMENTS = 500;
@@ -913,7 +1050,7 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
         chunks.length = 0;
         // Keep the request stream alive long enough to return a real HTTP 413
         // instead of resetting the socket before the caller can send JSON.
-        fail(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE' }));
+        fail(Object.assign(new Error('payload_too_large'), { code: 'PAYLOAD_TOO_LARGE', status: 413 }));
         return;
       }
       chunks.push(chunk);
@@ -930,11 +1067,11 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
         settled = true;
         resolve(parsed);
       } catch (_) {
-        fail(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON' }));
+        fail(Object.assign(new Error('invalid_json'), { code: 'INVALID_JSON', status: 400 }));
       }
     });
     req.on('aborted', () => {
-      fail(Object.assign(new Error('request_aborted'), { code: 'REQUEST_ABORTED' }));
+      fail(Object.assign(new Error('request_aborted'), { code: 'REQUEST_ABORTED', status: 400 }));
     });
     req.on('error', error => fail(error));
   });
@@ -2053,6 +2190,141 @@ const server = http.createServer(async (req, res) => {
       }
 
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
+      // Large PixelForge projects use authenticated, idempotent PostgreSQL chunks.
+      const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
+      const pixelForgeUploadChunk = req.method === 'PUT'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/(\d+)$/) : null;
+      const pixelForgeUploadCommit = req.method === 'POST'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})\/commit$/) : null;
+      const pixelForgeUploadStatus = req.method === 'GET'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) : null;
+      const pixelForgeUploadCancel = req.method === 'DELETE'
+        ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) : null;
+      if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit || pixelForgeUploadStatus || pixelForgeUploadCancel) {
+        const user = getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) {
+          return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        }
+        const workspaceId = userWorkspaceId(user);
+        try {
+          if (pixelForgeUploadBegin) {
+            const body = await readBody(req, 1024 * 1024);
+            const result = await pixelForgeUploads.beginUpload(
+              accountPool, workspaceId, body,
+              PIXELFORGE_MAX_PROJECT_BYTES, PIXELFORGE_MAX_ACCOUNT_BYTES, MAX_PROJECTS
+            );
+            return sendJson(res, result.status, result);
+          }
+          if (pixelForgeUploadStatus) {
+            const result = await pixelForgeUploads.getUploadStatus(accountPool, workspaceId, pixelForgeUploadStatus[1]);
+            return sendJson(res, 200, result);
+          }
+          if (pixelForgeUploadCancel) {
+            return await withPixelForgeAccountLock(workspaceId, () => withPixelForgeUploadCommitLock(async () => {
+              const result = await pixelForgeUploads.cancelUpload(accountPool, workspaceId, pixelForgeUploadCancel[1]);
+              return sendJson(res, 200, { ok: true, ...result });
+            }));
+          }
+          if (pixelForgeUploadChunk) {
+            const body = await readBody(req, PIXELFORGE_MAX_CHUNK_BODY_BYTES);
+            const result = await pixelForgeUploads.putChunk(
+              accountPool, workspaceId, pixelForgeUploadChunk[1], Number(pixelForgeUploadChunk[2]), body
+            );
+            return sendJson(res, 200, result);
+          }
+          return await withPixelForgeAccountLock(workspaceId, () => withPixelForgeUploadCommitLock(async () => {
+            const uploadId = pixelForgeUploadCommit[1];
+            const assembled = await pixelForgeUploads.assembleUpload(accountPool, workspaceId, uploadId);
+            if (assembled.committed) return sendJson(res, 200, assembled.receipt);
+            let project;
+            try { project = JSON.parse(assembled.serialized); }
+            catch (_) { return sendJson(res, 400, { error: 'invalid_pixelforge_project' }); }
+            const validation = validatePixelForgeProjectPayload(project, assembled.serialized);
+            if (validation.error) {
+              return sendJson(res, validation.status, {
+                error: validation.error,
+                ...(validation.maxBytes ? { maxBytes: validation.maxBytes } : {})
+              });
+            }
+            const upload = assembled.upload;
+            const expectedRevision = Number(upload.expected_server_revision);
+            if (project.id !== upload.project_id || project.serverRevision !== expectedRevision + 1 ||
+                validation.projectBytes !== Number(upload.total_bytes)) {
+              return sendJson(res, 400, { error: 'pixelforge_upload_manifest_mismatch' });
+            }
+            const current = await accountPool.query(
+              'SELECT name,width,height,updated_at,server_revision,content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+              [workspaceId, upload.project_id]
+            );
+            const currentRevision = current.rowCount ? Number(current.rows[0].server_revision || 0) : 0;
+            if (current.rowCount && currentRevision === expectedRevision + 1 &&
+                current.rows[0].content_sha256 === assembled.contentSha256) {
+              const row = current.rows[0];
+              const receipt = { ok: true, project: {
+                id: upload.project_id, name: row.name, width: row.width, height: row.height,
+                updatedAt: Number(row.updated_at), serverRevision: currentRevision
+              } };
+              await pixelForgeUploads.markCommitted(accountPool, uploadId, receipt);
+              return sendJson(res, 200, receipt);
+            }
+            if (currentRevision !== expectedRevision) {
+              return sendJson(res, 409, { error: 'pixelforge_revision_conflict', revision: currentRevision });
+            }
+            const saved = await savePixelForgeProjectToDatabase(
+              workspaceId, project, validation.projectBytes,
+              {
+                expectedServerRevision: expectedRevision,
+                preassignedServerRevision: true,
+                serializedDocument: assembled.serialized,
+                contentSha256: assembled.contentSha256
+              }
+            );
+            if (saved.error) {
+              if (saved.error === 'pixelforge_revision_conflict') {
+                const recovered = await accountPool.query(
+                  'SELECT name,width,height,updated_at,server_revision,content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+                  [workspaceId, upload.project_id]
+                );
+                if (recovered.rowCount && Number(recovered.rows[0].server_revision) === expectedRevision + 1 &&
+                    recovered.rows[0].content_sha256 === assembled.contentSha256) {
+                  const row = recovered.rows[0];
+                  const receipt = { ok: true, project: {
+                    id: upload.project_id, name: row.name, width: row.width, height: row.height,
+                    updatedAt: Number(row.updated_at), serverRevision: Number(row.server_revision)
+                  } };
+                  await pixelForgeUploads.markCommitted(accountPool, uploadId, receipt);
+                  return sendJson(res, 200, receipt);
+                }
+              }
+              return sendJson(res, saved.status, {
+                error: saved.error,
+                ...(saved.maxProjects ? { maxProjects: saved.maxProjects } : {}),
+                ...(saved.maxBytes ? { maxBytes: saved.maxBytes } : {}),
+                ...(Number.isInteger(saved.revision) ? { revision: saved.revision } : {})
+              });
+            }
+            const receipt = { ok: true, project: {
+              id: project.id, name: project.name.trim(), width: project.width, height: project.height,
+              updatedAt: saved.now, serverRevision: saved.serverRevision
+            } };
+            await pixelForgeUploads.markCommitted(accountPool, uploadId, receipt);
+            return sendJson(res, saved.status, receipt);
+          }));
+        } catch (error) {
+          if ((error.status || 500) >= 500) console.error('PixelForge chunk upload failed:', error.message);
+          const failureStatus = error.status || (error.code === 'PAYLOAD_TOO_LARGE' ? 413 : ['INVALID_JSON', 'REQUEST_ABORTED'].includes(error.code) ? 400 : 503);
+          return sendJson(res, failureStatus, {
+            error: error.code || 'pixelforge_upload_failed',
+            ...(Number.isInteger(error.maxBytes) ? { maxBytes: error.maxBytes } : {}),
+            ...(Number.isInteger(error.maxProjects) ? { maxProjects: error.maxProjects } : {}),
+            ...(Number.isInteger(error.revision) ? { revision: error.revision } : {}),
+            ...(Number.isInteger(error.receivedChunks) ? { receivedChunks: error.receivedChunks } : {}),
+            ...(Number.isInteger(error.totalChunks) ? { totalChunks: error.totalChunks } : {})
+          });
+        }
+      }
+
       const pixelForgeCollection = pathname === '/api/pixelforge/projects';
       const pixelForgeItemPath = pathname.startsWith('/api/pixelforge/projects/') ? pathname.slice('/api/pixelforge/projects/'.length) : '';
       const pixelForgeItem = pixelForgeItemPath && !pixelForgeItemPath.includes('/') ? [pathname, pixelForgeItemPath] : null;
@@ -2129,42 +2401,14 @@ const server = http.createServer(async (req, res) => {
         if (req.method === 'PUT') {
           const body = await readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES));
           const project = body && body.project;
-          if (!project || typeof project !== 'object' || Array.isArray(project) ||
-              project.format !== 'pixelforge-project' || project.version !== 1 ||
-              typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
-              typeof project.name !== 'string' || !project.name.trim() || project.name.length > 180 ||
-              !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
-              project.width < 1 || project.height < 1 || project.width > 2048 || project.height > 2048 ||
-              !Number.isInteger(project.revision) || project.revision < 0 ||
-              !Number.isInteger(project.saveVersion) || project.saveVersion < 0 ||
-              (project.serverRevision !== undefined && (!Number.isInteger(project.serverRevision) || project.serverRevision < 0)) ||
-              !Array.isArray(project.layers) || project.layers.length < 1 || project.layers.length > 64 ||
-              typeof project.activeLayerId !== 'string') {
-            return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
+          const validation = validatePixelForgeProjectPayload(project);
+          if (validation.error) {
+            return sendJson(res, validation.status, {
+              error: validation.error,
+              ...(validation.maxBytes ? { maxBytes: validation.maxBytes } : {})
+            });
           }
-          if (project.width * project.height * 4 * project.layers.length > 64 * 1024 * 1024) {
-            return sendJson(res, 413, { error: 'pixelforge_project_too_large', maxBytes: PIXELFORGE_MAX_PROJECT_BYTES });
-          }
-          const expectedPixelBase64Length = Math.ceil(project.width * project.height * 4 / 3) * 4;
-          const layerIds = new Set();
-          for (const layer of project.layers) {
-            if (!layer || typeof layer !== 'object' || Array.isArray(layer) ||
-                typeof layer.id !== 'string' || !layer.id || layer.id.length > 180 || layerIds.has(layer.id) ||
-                typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 180 ||
-                typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
-                !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
-                typeof layer.pixels !== 'string' || layer.pixels.length !== expectedPixelBase64Length ||
-                !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(layer.pixels)) {
-              return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
-            }
-            layerIds.add(layer.id);
-          }
-          if (!layerIds.has(project.activeLayerId)) return sendJson(res, 400, { error: 'invalid_pixelforge_project' });
-          const serialized = JSON.stringify(project);
-          const projectBytes = Buffer.byteLength(serialized, 'utf8');
-          if (projectBytes > PIXELFORGE_MAX_PROJECT_BYTES) {
-            return sendJson(res, 413, { error: 'pixelforge_project_too_large', maxBytes: PIXELFORGE_MAX_PROJECT_BYTES });
-          }
+          const { serialized, projectBytes } = validation;
           if (accountPool) {
             try {
               const result = await savePixelForgeProjectToDatabase(workspaceId, project, projectBytes);

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
@@ -168,6 +169,292 @@ async function main() {
   });
   assert.equal(invalidServerRevision.status, 400, 'server revision tokens must be non-negative integers');
   assert.equal((await invalidServerRevision.json()).error, 'invalid_pixelforge_project');
+  const invalidRasterPaddingProject = { ...fixture, id: 'invalid-raster-padding', layers: fixture.layers.map(layer => ({
+    ...layer, pixels: layer.pixels.slice(0, -2) + 'AA'
+  })) };
+  const invalidRasterPadding = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT',
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: invalidRasterPaddingProject })
+  });
+  assert.equal(invalidRasterPadding.status, 400, 'raster Base64 with noncanonical padding must be rejected');
+  assert.equal((await invalidRasterPadding.json()).error, 'invalid_pixelforge_project');
+
+  // The server is the authoritative animation validator; browser-side checks are not a trust boundary.
+  const animationProject = makePixelProject('animation-validation', 'Animation validation artwork');
+  const animationLayerId = animationProject.layers[0].id;
+  animationProject.animation = {
+    format: 'pixelforge-animation', version: 1, width: 2, height: 2,
+    layerIds: [animationLayerId], fps: 12, activeFrameIndex: 0,
+    frames: [{ id: 'frame-1', durationMs: 83.333, cels: [{ layerId: animationLayerId, pixels: Buffer.alloc(16).toString('base64') }] }]
+  };
+  const animationSaved = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: animationProject })
+  });
+  assert.equal(animationSaved.status, 201, 'a structurally valid multi-layer timeline should pass server validation');
+  const animationRevision = (await animationSaved.json()).project.serverRevision;
+  const animationLoaded = await fetch(base + '/api/pixelforge/projects/' + animationProject.id, { headers: authHeaders });
+  assert.deepEqual((await animationLoaded.json()).project.animation, animationProject.animation,
+    'animation metadata and cel pixels should round-trip through durable project storage');
+  const invalidAnimationCases = [
+    { ...animationProject, id: 'animation-invalid-fps', animation: { ...animationProject.animation, fps: 0 } },
+    { ...animationProject, id: 'animation-invalid-dimensions', animation: { ...animationProject.animation, width: 3 } },
+    { ...animationProject, id: 'animation-invalid-layer-map', animation: { ...animationProject.animation, layerIds: ['unknown-layer'] } },
+    { ...animationProject, id: 'animation-missing-cel', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], cels: [] }] } },
+    { ...animationProject, id: 'animation-invalid-duration', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], durationMs: 10001 }] } },
+    { ...animationProject, id: 'animation-invalid-padding', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], cels: [{ ...animationProject.animation.frames[0].cels[0], pixels: animationProject.animation.frames[0].cels[0].pixels.slice(0, -2) + 'AA' }] }] } },
+    { ...animationProject, id: 'animation-too-many-frames', animation: { ...animationProject.animation, frames: Array.from({ length: 241 }, (_, index) => ({ id: 'frame-' + index, durationMs: 83, cels: [] })) } }
+  ];
+  for (const invalidProject of invalidAnimationCases) {
+    const response = await fetch(base + '/api/pixelforge/projects', {
+      method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ project: invalidProject })
+    });
+    assert.equal(response.status, 400, invalidProject.id + ' must be rejected by the server');
+    assert.equal((await response.json()).error, 'invalid_pixelforge_animation',
+      invalidProject.id + ' should return the stable animation validation error');
+  }
+  await fetch(base + '/api/pixelforge/projects/' + animationProject.id, { method: 'DELETE', headers: authHeaders });
+  assert.ok(Number.isInteger(animationRevision) && animationRevision === 1, 'the animation project should receive a server revision token');
+
+    // Chunk transport is intentionally PostgreSQL-backed; local file-mode E2E skips these routes.
+  if (process.env.DATABASE_URL) {
+// The upload protocol must be resumable, integrity checked, and idempotent.
+  const baseChunkFixture = makePixelProject('chunk-api-contract', 'Chunk API contract', 1200, 1200);
+  const { layers: chunkLayers, ...chunkMetadata } = baseChunkFixture;
+  const chunkSize = 6 * 1024 * 1024;
+  const transferPrefix = JSON.stringify({ ...chunkMetadata, serverRevision: 1, transferMarker: '' }).slice(0, -2);
+  const transferPrefixBytes = Buffer.byteLength(transferPrefix, 'utf8');
+  const transferMarkerPadding = chunkSize - transferPrefixBytes - 1;
+  assert.ok(transferMarkerPadding > 0, 'the UTF-8 boundary fixture must fit before the first chunk boundary');
+  const chunkFixture = {
+    ...chunkMetadata, serverRevision: 1,
+    transferMarker: 'x'.repeat(transferMarkerPadding) + '💡',
+    layers: chunkLayers
+  };
+  const chunkSerialized = JSON.stringify(chunkFixture);
+  const chunkBytes = Buffer.from(chunkSerialized, 'utf8');
+  const malformedUploadManifest = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{'
+  });
+  assert.equal(malformedUploadManifest.status, 400, 'malformed upload JSON should be a client error, not a server outage');
+  assert.equal((await malformedUploadManifest.json()).error, 'INVALID_JSON');
+  const overLimitBytes = 96 * 1024 * 1024 + 1;
+  const overLimitManifest = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: 'f'.repeat(32), projectId: 'over-limit-project', expectedServerRevision: 0,
+      totalBytes: overLimitBytes, totalChunks: Math.ceil(overLimitBytes / (6 * 1024 * 1024))
+    })
+  });
+  assert.equal(overLimitManifest.status, 413, 'the upload manifest must reject projects above the 96 MiB envelope');
+  assert.equal((await overLimitManifest.json()).error, 'pixelforge_project_too_large');
+  const uploadId = 'a'.repeat(32);
+  const totalChunks = Math.ceil(chunkBytes.length / chunkSize);
+  assert.equal(totalChunks, 3, 'the integration fixture must exercise multiple chunks and a split UTF-8 character');
+  const uploadBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId, projectId: chunkFixture.id, expectedServerRevision: 0,
+      totalBytes: chunkBytes.length, totalChunks
+    })
+  });
+  assert.equal(uploadBegin.status, 201, 'authenticated project chunk uploads should be initialized');
+  const incompleteCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(incompleteCommit.status, 409, 'commit must not publish a project while chunks are missing');
+  assert.equal((await incompleteCommit.json()).error, 'pixelforge_upload_incomplete');
+  const chunks = Array.from({ length: totalChunks }, (_, index) => chunkBytes.subarray(index * chunkSize, (index + 1) * chunkSize));
+  const firstChunk = chunks[0];
+  const firstChunkHash = crypto.createHash('sha256').update(firstChunk).digest('hex');
+  const badChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: '0'.repeat(64) })
+  });
+  assert.equal(badChunk.status, 400, 'a chunk with a mismatched SHA-256 must be rejected');
+  assert.equal((await badChunk.json()).error, 'pixelforge_chunk_integrity_failed');
+  const goodChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: firstChunkHash })
+  });
+  assert.equal(goodChunk.status, 200, 'a verified chunk should be accepted');
+  const uploadStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
+  assert.equal(uploadStatus.status, 200, 'owners should be able to inspect upload progress');
+  assert.deepEqual((await uploadStatus.json()).receivedChunks, [0], 'upload status should report only chunks already persisted');
+  const duplicateChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: firstChunk.toString('base64'), sha256: firstChunkHash })
+  });
+  assert.equal(duplicateChunk.status, 200, 'retrying the same verified chunk must be idempotent');
+  for (let index = 1; index < chunks.length; index++) {
+    const bytes = chunks[index];
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+    const uploaded = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/' + index, {
+      method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ chunk: bytes.toString('base64'), sha256: hash })
+    });
+    assert.equal(uploaded.status, 200, 'each remaining chunk should be accepted with its exact byte length');
+  }
+  const completeStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
+  assert.deepEqual((await completeStatus.json()).receivedChunks, [0, 1, 2], 'status should report the complete chunk manifest');
+  const chunkCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(chunkCommit.status, 201, 'complete verified uploads should atomically publish the project');
+  const chunkReceipt = (await chunkCommit.json()).project;
+  assert.equal(chunkReceipt.serverRevision, 1);
+  const repeatedCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(repeatedCommit.status, 200, 'retrying a completed commit must return its saved receipt');
+  assert.deepEqual((await (await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { headers: authHeaders })).json()).project, chunkFixture,
+    'the committed chunked project must round-trip without altering its JSON payload');
+
+  // Exercise the actual high-resolution ceiling: one full 4096×4096 RGBA layer.
+  const full4kHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.82' };
+  const full4kFixture = makePixelProject('full-4k-capacity', 'Full 4K capacity', 1, 1);
+  full4kFixture.width = 4096;
+  full4kFixture.height = 4096;
+  full4kFixture.serverRevision = 1;
+  full4kFixture.layers[0].pixels = Buffer.alloc(64 * 1024 * 1024, 0x5a).toString('base64');
+  const full4kBytes = Buffer.from(JSON.stringify(full4kFixture), 'utf8');
+  assert.ok(full4kBytes.length > 80 * 1024 * 1024 && full4kBytes.length < 96 * 1024 * 1024,
+    'a single 4K RGBA layer should fit inside the complete project envelope');
+  const full4kUploadId = 'f'.repeat(32);
+  const full4kTotalChunks = Math.ceil(full4kBytes.length / chunkSize);
+  assert.equal(full4kTotalChunks, 15, 'the full 4K layer should use fifteen bounded chunks');
+  const full4kBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...full4kHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: full4kUploadId, projectId: full4kFixture.id, expectedServerRevision: 0,
+      totalBytes: full4kBytes.length, totalChunks: full4kTotalChunks
+    })
+  });
+  assert.equal(full4kBegin.status, 201, 'the API should accept a project containing one full 4K RGBA layer');
+  for (let index = 0; index < full4kTotalChunks; index++) {
+    const bytes = full4kBytes.subarray(index * chunkSize, (index + 1) * chunkSize);
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+    const uploaded = await fetch(base + '/api/pixelforge/projects/uploads/' + full4kUploadId + '/' + index, {
+      method: 'PUT', headers: { ...full4kHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ chunk: bytes.toString('base64'), sha256: hash })
+    });
+    assert.equal(uploaded.status, 200, 'full 4K upload chunk ' + index + ' should be accepted');
+  }
+  const full4kCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + full4kUploadId + '/commit', {
+    method: 'POST', headers: { ...full4kHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(full4kCommit.status, 201, 'the complete 4K project should commit to PostgreSQL');
+  assert.equal((await full4kCommit.json()).project.serverRevision, 1);
+  const full4kListed = await (await fetch(base + '/api/pixelforge/projects', { headers: full4kHeaders })).json();
+  const full4kMetadata = full4kListed.projects.find(project => project.id === full4kFixture.id);
+  assert.ok(full4kMetadata && full4kMetadata.width === 4096 && full4kMetadata.height === 4096,
+    'the complete 4K project must be durably listed with its original dimensions');
+  await fetch(base + '/api/pixelforge/projects/' + full4kFixture.id, { method: 'DELETE', headers: full4kHeaders });
+  const committedStatus = await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { headers: authHeaders });
+  assert.equal((await committedStatus.json()).committed, true, 'status should expose a durable receipt after commit');
+  const cancelledUploadId = 'b'.repeat(32);
+  const cancelBegin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ uploadId: cancelledUploadId, projectId: 'cancelled-chunk-project', expectedServerRevision: 0, totalBytes: 4, totalChunks: 1 })
+  });
+  assert.equal(cancelBegin.status, 201);
+  const cancelled = await fetch(base + '/api/pixelforge/projects/uploads/' + cancelledUploadId, {
+    method: 'DELETE', headers: authHeaders
+  });
+  assert.equal(cancelled.status, 200, 'abandoned uploads should be cancellable to release staged quota');
+  const cancelledChunk = await fetch(base + '/api/pixelforge/projects/uploads/' + cancelledUploadId + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: Buffer.from('test').toString('base64'), sha256: crypto.createHash('sha256').update('test').digest('hex') })
+  });
+  assert.equal(cancelledChunk.status, 404, 'cancelled uploads must no longer accept chunks');
+  const invalidUtf8Id = 'e'.repeat(32);
+  const invalidUtf8Bytes = Buffer.from([0xc3, 0x28, 0x7b, 0x7d]);
+  const invalidUtf8Begin = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ uploadId: invalidUtf8Id, projectId: 'invalid-utf8-project', expectedServerRevision: 0, totalBytes: invalidUtf8Bytes.length, totalChunks: 1 })
+  });
+  assert.equal(invalidUtf8Begin.status, 201);
+  const invalidUtf8Chunk = await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id + '/0', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: invalidUtf8Bytes.toString('base64'), sha256: crypto.createHash('sha256').update(invalidUtf8Bytes).digest('hex') })
+  });
+  assert.equal(invalidUtf8Chunk.status, 200);
+  const invalidUtf8Commit = await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id + '/commit', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(invalidUtf8Commit.status, 400, 'invalid UTF-8 must be rejected before JSON parsing or persistence');
+  assert.equal((await invalidUtf8Commit.json()).error, 'invalid_pixelforge_upload_encoding');
+  await fetch(base + '/api/pixelforge/projects/uploads/' + invalidUtf8Id, { method: 'DELETE', headers: authHeaders });
+
+  // Staging quota must cap concurrent sessions and release reservations on cancellation.
+  const quotaHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.84' };
+  const quotaUploadIds = ['9'.repeat(32), '8'.repeat(32), '7'.repeat(32)];
+  for (let index = 0; index < 2; index++) {
+    const started = await fetch(base + '/api/pixelforge/projects/uploads', {
+      method: 'POST', headers: { ...quotaHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        uploadId: quotaUploadIds[index], projectId: 'staging-project-' + index,
+        expectedServerRevision: 0, totalBytes: 1, totalChunks: 1
+      })
+    });
+    assert.equal(started.status, 201, 'the first two active upload sessions should be reserved');
+  }
+  const overQuotaStart = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...quotaHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: quotaUploadIds[2], projectId: 'staging-project-overflow',
+      expectedServerRevision: 0, totalBytes: 1, totalChunks: 1
+    })
+  });
+  assert.equal(overQuotaStart.status, 429, 'a third active upload session must be rejected by the staging quota');
+  assert.equal((await overQuotaStart.json()).error, 'pixelforge_upload_quota_exceeded');
+  for (const uploadId of quotaUploadIds.slice(0, 2)) {
+    await fetch(base + '/api/pixelforge/projects/uploads/' + uploadId, { method: 'DELETE', headers: quotaHeaders });
+  }
+
+  // Two chunked writers may start from the same revision, but only one may publish.
+  const casHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.83' };
+  const casWinner = { ...makePixelProject('chunk-cas-project', 'Chunk CAS winner'), serverRevision: 1 };
+  const casLoser = { ...casWinner, name: 'Chunk CAS stale loser' };
+  const casWinnerBytes = Buffer.from(JSON.stringify(casWinner), 'utf8');
+  const casLoserBytes = Buffer.from(JSON.stringify(casLoser), 'utf8');
+  const casUploadIds = ['1'.repeat(32), '2'.repeat(32)];
+  const casPayloads = [casWinnerBytes, casLoserBytes];
+  for (let index = 0; index < 2; index++) {
+    const bytes = casPayloads[index];
+    const started = await fetch(base + '/api/pixelforge/projects/uploads', {
+      method: 'POST', headers: { ...casHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        uploadId: casUploadIds[index], projectId: casWinner.id, expectedServerRevision: 0,
+        totalBytes: bytes.length, totalChunks: 1
+      })
+    });
+    assert.equal(started.status, 201, 'divergent sessions should be able to stage against the same starting revision');
+    const uploaded = await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[index] + '/0', {
+      method: 'PUT', headers: { ...casHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ chunk: bytes.toString('base64'), sha256: crypto.createHash('sha256').update(bytes).digest('hex') })
+    });
+    assert.equal(uploaded.status, 200);
+  }
+  const casWinnerCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[0] + '/commit', {
+    method: 'POST', headers: { ...casHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(casWinnerCommit.status, 201);
+  const casLoserCommit = await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[1] + '/commit', {
+    method: 'POST', headers: { ...casHeaders, 'content-type': 'application/json' }, body: '{}'
+  });
+  assert.equal(casLoserCommit.status, 409, 'a stale chunked writer must not overwrite a newer project revision');
+  assert.equal((await casLoserCommit.json()).error, 'pixelforge_revision_conflict');
+  const casStored = (await (await fetch(base + '/api/pixelforge/projects/' + casWinner.id, { headers: casHeaders })).json()).project;
+  assert.equal(casStored.name, casWinner.name, 'the winning revision must remain unchanged after a stale commit');
+  assert.equal(casStored.serverRevision, 1);
+  await fetch(base + '/api/pixelforge/projects/uploads/' + casUploadIds[1], { method: 'DELETE', headers: casHeaders });
+  await fetch(base + '/api/pixelforge/projects/' + casWinner.id, { method: 'DELETE', headers: casHeaders });
+  await fetch(base + '/api/pixelforge/projects/' + chunkFixture.id, { method: 'DELETE', headers: authHeaders });
+  }
+
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
 
@@ -193,6 +480,26 @@ async function main() {
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
+  if (process.env.DATABASE_URL) {
+  const ownerUploadId = 'd'.repeat(32);
+  const ownerUpload = await fetch(base + '/api/pixelforge/projects/uploads', {
+    method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ uploadId: ownerUploadId, projectId: 'private-staged-project', expectedServerRevision: 0, totalBytes: 4, totalChunks: 1 })
+  });
+  assert.equal(ownerUpload.status, 201);
+  assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { headers: otherHeaders })).status, 404,
+    'another account must not inspect a staged upload');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId + '/0', {
+    method: 'PUT', headers: { ...otherHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ chunk: Buffer.from('test').toString('base64'), sha256: crypto.createHash('sha256').update('test').digest('hex') })
+  })).status, 404, 'another account must not upload chunks into a staged project');
+  const deniedCancel = await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { method: 'DELETE', headers: otherHeaders });
+  assert.equal(deniedCancel.status, 200);
+  assert.equal((await deniedCancel.json()).cancelled, false, 'another account must not cancel a staged upload');
+  assert.equal((await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { headers: authHeaders })).status, 200,
+    'a denied cross-account cancellation must leave the owner upload intact');
+  await fetch(base + '/api/pixelforge/projects/uploads/' + ownerUploadId, { method: 'DELETE', headers: authHeaders });
+  }
   const otherList = await fetch(base + '/api/pixelforge/projects', { headers: otherHeaders });
   assert.deepEqual((await otherList.json()).projects, [], 'a different CodeLab account must not see another account\'s PixelForge projects');
   assert.equal((await fetch(base + '/api/pixelforge/projects/' + fixture.id, { headers: otherHeaders })).status, 404, 'a different account must not open another account\'s project');
@@ -254,12 +561,20 @@ async function main() {
       }));
     });
     let holdFirstProjectSave = true;
+    let failChunkOnce = false;
     let notifyFirstProjectSaveStarted;
     const firstProjectSaveStarted = new Promise(resolve => { notifyFirstProjectSaveStarted = resolve; });
     await accountContext.route('**/*', async route => {
       const headers = { ...route.request().headers(), 'x-forwarded-for': '198.51.100.81' };
+      const requestPath = new URL(route.request().url()).pathname;
+      if (failChunkOnce && route.request().method() === 'PUT' &&
+          /\/uploads\/[a-f0-9]{32}\/2$/.test(requestPath)) {
+        failChunkOnce = false;
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'simulated_chunk_interruption' }) });
+        return;
+      }
       if (holdFirstProjectSave && route.request().method() === 'PUT' &&
-          new URL(route.request().url()).pathname === '/api/pixelforge/projects') {
+          requestPath === '/api/pixelforge/projects') {
         holdFirstProjectSave = false;
         notifyFirstProjectSaveStarted();
         const response = await route.fetch({ headers });
@@ -474,30 +789,85 @@ async function main() {
     const importedProject = (await (await fetch(base + '/api/pixelforge/projects/' + importedMetadata.id, { headers: authHeaders })).json()).project;
     assert.deepEqual([...Buffer.from(importedProject.layers[0].pixels, 'base64').subarray((1 * 3 + 2) * 4, (1 * 3 + 2) * 4 + 4)],
       [17, 34, 51, 255], 'imported raster pixels should survive account-backed persistence');
+    const importedRevisionBeforeEdit = importedProject.serverRevision;
+    assert.ok(Number.isInteger(importedRevisionBeforeEdit) && importedRevisionBeforeEdit > 0,
+      'the imported live document must retain the server-issued revision token');
+    await accountPage.locator('#save').click();
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
+      null, { timeout: 15000 });
+    const importedAfterSave = (await (await fetch(base + '/api/pixelforge/projects/' + importedMetadata.id, { headers: authHeaders })).json()).project;
+    assert.equal(importedAfterSave.serverRevision, importedRevisionBeforeEdit + 1,
+      'the first explicit save after import must advance the server revision instead of conflicting with its own import');
+    const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
+    assert.match(editorSource, /doc = importedDoc; clearSelectionState\(\); resetAIWorkspaceForDocument\(\);/,
+      'importing a document must rebind the AI workspace to the newly active raster document');
+
+    // Large resumable transfers require the PostgreSQL-backed chunk routes.
+    if (process.env.DATABASE_URL) {
+      // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
+      // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
+      const largeFixture = makePixelProject('chunked-import-fixture', 'Large chunked artwork', 2048, 1024);
+      const layerBytes = 2048 * 1024 * 4;
+      largeFixture.layers[0].pixels = Buffer.alloc(layerBytes).toString('base64');
+      for (let index = 2; index <= 3; index++) {
+        largeFixture.layers.push({
+          id: 'layer-chunked-' + index, name: 'Layer ' + index, visible: true, opacity: 1, locked: false,
+          pixels: Buffer.alloc(layerBytes).toString('base64')
+        });
+      }
+      const largeFixturePath = path.join(dataDir, 'pixelforge-large-import-fixture.pforge');
+      fs.writeFileSync(largeFixturePath, JSON.stringify(largeFixture));
+      assert.ok(fs.statSync(largeFixturePath).size > 24 * 1024 * 1024,
+        'the large fixture must exercise chunked rather than single-request persistence');
+      await accountPage.locator('#import-file').setInputFiles(largeFixturePath);
+      await accountPage.waitForFunction(() =>
+        document.querySelector('#status')?.textContent.includes('Import complete and saved to your CodeLab account'),
+        null, { timeout: 60000 });
+      const largeMetadata = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json())
+        .projects.find(project => project.name === 'Large chunked artwork (imported)');
+      assert.ok(largeMetadata, 'large chunked import must be durably listed in the account');
+      const largeStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: authHeaders })).json()).project;
+      assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
+      assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
+      failChunkOnce = true;
+      await accountPage.locator('#add-layer').click();
+      await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Autosave unavailable'),
+        null, { timeout: 60000 });
+      await accountPage.locator('#save').click();
+      await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
+        null, { timeout: 60000 });
+      const resumedStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: authHeaders })).json()).project;
+      assert.equal(resumedStored.layers.length, 4, 'retry after a dropped chunk must persist the complete edited document');
+      assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
+      fs.rmSync(largeFixturePath, { force: true });
+    }
     fs.rmSync(importFixturePath, { force: true });
     await accountContext.close();
 
     // Reaching the per-account project cap must never silently evict an older project.
     const status = await (await fetch(base + '/api/ai/status')).json();
     const maxProjects = status.maxProjects;
-    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
+    const limitHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.81' };
+    const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: limitHeaders })).json()).projects;
     assert.ok(existingProjects.length < maxProjects, 'the test account should have room to exercise the project cap');
     for (let index = existingProjects.length; index < maxProjects; index++) {
       const response = await fetch(base + '/api/pixelforge/projects', {
         method: 'PUT',
-        headers: { ...authHeaders, 'content-type': 'application/json' },
+        headers: { ...limitHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ project: makePixelProject('limit-project-' + index, 'Limit project ' + index) })
       });
-      assert.ok(response.status === 200 || response.status === 201, 'projects below the account limit should save');
+      const responseBody = await response.json();
+      assert.ok(response.status === 200 || response.status === 201,
+        'projects below the account limit should save (got ' + response.status + ': ' + JSON.stringify(responseBody) + ')');
     }
     const overflow = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
-      headers: { ...authHeaders, 'content-type': 'application/json' },
+      headers: { ...limitHeaders, 'content-type': 'application/json' },
       body: JSON.stringify({ project: makePixelProject('limit-project-overflow', 'Overflow project') })
     });
     assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
     assert.equal((await overflow.json()).error, 'pixelforge_project_limit');
-    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+    const afterLimit = await (await fetch(base + '/api/pixelforge/projects', { headers: limitHeaders })).json();
     assert.equal(afterLimit.projects.length, maxProjects, 'hitting the cap must preserve all existing projects');
     assert.ok(afterLimit.projects.some(project => project.name === 'Browser account artwork'), 'existing project records must remain available');
   } finally {

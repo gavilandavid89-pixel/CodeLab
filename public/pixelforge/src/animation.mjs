@@ -7,6 +7,25 @@
  */
 export const MAX_ANIMATION_FRAMES = 240;
 export const MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
+export const MAX_ANIMATION_JSON_BYTES = 96 * 1024 * 1024;
+const ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024;
+
+// Conservative preflight for the current base64 JSON representation. The
+// reserve covers timeline metadata. This is a component-only estimate: a project
+// containing raster layers as well as a timeline must preflight the combined 96 MiB envelope.
+export function estimateAnimationJSONBytes({ width, height, layerCount, frameCount }) {
+  assertDimensions(width, height);
+  if (!Number.isInteger(layerCount) || layerCount < 1 || layerCount > 64 ||
+      !Number.isInteger(frameCount) || frameCount < 1 || frameCount > MAX_ANIMATION_FRAMES) {
+    throw new RangeError('Animation layer/frame counts are outside the supported limits.');
+  }
+  const rawBytes = width * height * 4 * layerCount * frameCount;
+  if (rawBytes > MAX_ANIMATION_BYTES) {
+    throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+  }
+  const base64Bytes = Math.ceil(rawBytes / 3) * 4;
+  return base64Bytes + ANIMATION_JSON_METADATA_RESERVE_BYTES;
+}
 export const MIN_FRAME_DURATION_MS = 1;
 export const MAX_FRAME_DURATION_MS = 10_000;
 export const MIN_ANIMATION_FPS = 1;
@@ -14,8 +33,8 @@ export const MAX_ANIMATION_FPS = 60;
 
 function assertDimensions(width, height) {
   if (!Number.isInteger(width) || !Number.isInteger(height) ||
-      width < 1 || height < 1 || width > 2048 || height > 2048 ||
-      width * height > 4_194_304) {
+      width < 1 || height < 1 || width > 4096 || height > 4096 ||
+      width * height > 16_777_216) {
     throw new RangeError('Animation dimensions exceed PixelForge canvas limits.');
   }
 }
@@ -57,10 +76,23 @@ function encodeBase64(bytes) {
   return btoa(binary);
 }
 
+function hasBase64CharactersAndPadding(value, expectedPadding = '') {
+  if (typeof value !== 'string') return false;
+  if (expectedPadding && !value.endsWith(expectedPadding)) return false;
+  const payloadEnd = value.length - expectedPadding.length;
+  for (let index = 0; index < payloadEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  return true;
+}
+
 function decodeBase64(value, expectedBytes) {
   const expectedChars = Math.ceil(expectedBytes / 3) * 4;
+  const expectedPadding = expectedBytes % 3 === 1 ? '==' : expectedBytes % 3 === 2 ? '=' : '';
   if (typeof value !== 'string' || value.length !== expectedChars ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      !hasBase64CharactersAndPadding(value, expectedPadding)) {
     throw new TypeError('Animation cel contains invalid or oversized base64 data.');
   }
   let binary;
@@ -177,6 +209,9 @@ export class PixelForgeAnimation {
   get layerIds() { return [...this.#layerIds]; }
   get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
   get memoryBytes() { return this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4; }
+  get estimatedJSONBytes() {
+    return estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
+  }
 
   getFrame(index) {
     const frame = this.#frameAt(index);
@@ -378,6 +413,9 @@ export class PixelForgeAnimation {
   }
 
   toJSON() {
+    if (this.estimatedJSONBytes > MAX_ANIMATION_JSON_BYTES) {
+      throw new RangeError('Animation JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
+    }
     return {
       format: 'pixelforge-animation',
       version: 1,
@@ -462,6 +500,9 @@ export class PixelForgeAnimation {
   #assertMemoryBudget() {
     if (this.memoryBytes > MAX_ANIMATION_BYTES) {
       throw new RangeError('Animation exceeds PixelForge’s 64 MiB animation-memory budget.');
+    }
+    if (this.estimatedJSONBytes > MAX_ANIMATION_JSON_BYTES) {
+      throw new RangeError('Animation JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
   }
 }

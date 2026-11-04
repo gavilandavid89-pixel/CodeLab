@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PixelForgeAnimation, MAX_ANIMATION_FRAMES } from '../public/pixelforge/src/animation.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { PixelForgeAnimation, MAX_ANIMATION_FRAMES, MAX_ANIMATION_BYTES, MAX_ANIMATION_JSON_BYTES, estimateAnimationJSONBytes } from '../public/pixelforge/src/animation.mjs';
 
 function documentFixture() {
   return {
@@ -121,9 +123,9 @@ test('uses 60 FPS timing and rejects oversized allocations before decoding cels'
   timeline.setFrameDuration(0, 16.5);
   assert.equal(timeline.activeFrame.durationMs, 16.5);
   const layerIds = Array.from({ length: 64 }, (_, index) => 'layer-' + index);
-  assert.throws(() => new PixelForgeAnimation({ width: 2048, height: 2048, layerIds }), /64 MiB/);
+  assert.throws(() => new PixelForgeAnimation({ width: 4096, height: 4096, layerIds }), /64 MiB/);
   assert.throws(() => PixelForgeAnimation.fromJSON({
-    format: 'pixelforge-animation', version: 1, width: 2048, height: 2048,
+    format: 'pixelforge-animation', version: 1, width: 4096, height: 4096,
     layerIds, fps: 12, activeFrameIndex: 0,
     frames: [{ id: 'oversized', durationMs: 100, cels: [] }],
   }), /64 MiB/);
@@ -191,4 +193,90 @@ test('enforces the maximum frame count', () => {
   for (let index = 1; index < MAX_ANIMATION_FRAMES; index++) timeline.addFrame({ duplicate: false });
   assert.equal(timeline.frameCount, MAX_ANIMATION_FRAMES);
   assert.throws(() => timeline.addFrame(), /up to 240/);
+});
+
+
+test('preflights base64 expansion against the persisted animation JSON budget', () => {
+  const estimate = estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 1, frameCount: 1 });
+  const rawBytes = 4096 * 4096 * 4;
+  const base64Bytes = Math.ceil(rawBytes / 3) * 4;
+  assert.equal(rawBytes, MAX_ANIMATION_BYTES);
+  assert.equal(estimate, base64Bytes + 8 * 1024 * 1024);
+  assert.ok(estimate < MAX_ANIMATION_JSON_BYTES);
+  assert.ok(estimate < 96 * 1024 * 1024);
+  assert.throws(() => estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 2, frameCount: 1 }), /64 MiB/);
+});
+
+test('decodes multi-megabyte animation cels without regex stack overflow', () => {
+  const expectedBytes = 1200 * 1200 * 4;
+  const pixels = Buffer.alloc(expectedBytes, 0x5a).toString('base64');
+  const timeline = PixelForgeAnimation.fromJSON({
+    format: 'pixelforge-animation', version: 1, width: 1200, height: 1200,
+    layerIds: ['large-layer'], fps: 12, activeFrameIndex: 0,
+    frames: [{
+      id: 'large-frame', durationMs: 83.333,
+      cels: [{ layerId: 'large-layer', pixels }]
+    }]
+  });
+  const decoded = timeline.getLayerPixels(0, 'large-layer');
+  assert.equal(decoded.length, expectedBytes);
+  assert.equal(decoded[0], 0x5a);
+  assert.equal(decoded[decoded.length - 1], 0x5a);
+});
+
+test('keeps high-resolution animation budgets aligned with PixelForge API limits', () => {
+  const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
+  const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
+  const editorHtml = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/index.html'), 'utf8');
+  assert.ok(animation.includes('MAX_ANIMATION_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(animation.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(core.includes('function hasBase64CharactersAndPadding'));
+  assert.ok(!server.includes('(?:[A-Za-z0-9+/]{4})*'), 'server validation must not use recursive repeated-group Base64 regex');
+  assert.ok(!animation.includes('(?:[A-Za-z0-9+/]{4})*'), 'animation decoding must not use recursive repeated-group Base64 regex');
+  assert.ok(!core.includes('(?:[A-Za-z0-9+/]{4})*'), 'raster decoding must not use recursive repeated-group Base64 regex');
+  assert.ok(core.includes('value.length > MAX_PROJECT_JSON_BYTES'));
+  assert.ok(animation.includes('MAX_ANIMATION_JSON_BYTES = 96 * 1024 * 1024'));
+  assert.ok(animation.includes('96 MiB safe serialization budget'));
+  assert.ok(!animation.includes('112 MiB safe serialization budget'));
+  assert.ok(editorHtml.includes('max="4096"'));
+  assert.ok(editorHtml.includes('16,777,216 pixels'));
+  assert.ok(animation.includes('ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024'));
+  assert.ok(animation.includes('width > 4096 || height > 4096'));
+  assert.ok(core.includes('MAX_DIMENSION = 4096'));
+  assert.ok(core.includes('MAX_PIXELS = 16_777_216'));
+  assert.ok(core.includes('MAX_DOCUMENT_BYTES = 64 * 1024 * 1024'));
+  assert.ok(core.includes('MAX_PROJECT_JSON_BYTES = 96 * 1024 * 1024'));
+  assert.ok(core.includes('estimateRasterProjectJSONBytes(this.layers)'));
+  assert.ok(server.includes('PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024'));
+  assert.ok(server.includes('project.width > 4096 || project.height > 4096'));
+  assert.ok(server.includes('project.width * project.height > 16_777_216'));
+  assert.ok(server.includes('project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES'));
+  assert.ok(core.includes('this.maxHistoryBytes = 256 * 1024 * 1024')); // history is a separate RAM-only budget
+  assert.ok(server.includes('PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024'));
+  assert.ok(server.includes('PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024'));
+  assert.ok(server.includes('readBody(req, Math.max(MAX_BODY_BYTES, PIXELFORGE_MAX_BODY_BYTES)'));
+  assert.ok(server.includes('pixelForgeUploads.assembleUpload'));
+  assert.ok(server.includes('pixelForgeUploads.getUploadStatus'));
+  assert.ok(server.includes('pixelForgeUploadStatus'));
+  assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('async function getUploadStatus'));
+  const persistence = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/persistence.js'), 'utf8');
+  const uploadStore = fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8');
+  assert.ok(uploadStore.includes("const { TextDecoder } = require('node:util')") &&
+    uploadStore.includes("new TextDecoder('utf-8', { fatal: true })") &&
+    uploadStore.includes("decoder.decode(bytes, { stream: true })") && uploadStore.includes("decoder.decode()"),
+    'chunk assembly must use a fatal streaming TextDecoder across UTF-8 chunk boundaries');
+  assert.ok((uploadStore.match(/FOR UPDATE/g) || []).length >= 2,
+    'chunk writes and assembly must lock the upload manifest against commit/cleanup races');
+  assert.ok(uploadStore.includes("await client.query('BEGIN')") && uploadStore.includes("await client.query('COMMIT')"),
+    'chunk writes and assembly must use transactions');
+  assert.ok(persistence.indexOf('if (estimatedBytes > MAX_PROJECT_BYTES)') < persistence.indexOf('JSON.stringify({ project })'),
+    'the combined project envelope must be preflighted before building the serialized save body');
+  assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
+    'large saves should consult upload status before resending chunks');
+  assert.ok(server.includes('validatePixelForgeAnimation(project)'));
+  assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
 });
