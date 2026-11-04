@@ -771,7 +771,8 @@ test('Headless proposal diff reports animation timing, FPS, loop and active-fram
   // after changing FPS to verify that the diff retains the intended 240 ms.
   const fps = runtime.execute({ name: 'animation.set_fps', fps: 24 });
   assert.equal(fps.ok, true, JSON.stringify(fps));
-  const timing = runtime.execute({ name: 'animation.frame.set_duration', index: 1, durationMs: 240 });
+  // Update an existing frame: a newly inserted frame is correctly classified as added.
+  const timing = runtime.execute({ name: 'animation.frame.set_duration', index: 0, durationMs: 240 });
   assert.equal(timing.ok, true, JSON.stringify(timing));
   assert.equal(timing.result.durationMs, 240, JSON.stringify(timing));
   const loop = runtime.execute({ name: 'animation.set_loop', loop: false });
