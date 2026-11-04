@@ -161,7 +161,8 @@ export function createOrbitalShowcase() {
     animation.setLayerPixels(frameIndex, engineLayer.id, enginePixels);
     animation.setLayerPixels(frameIndex, shipLayer.id, shipPixels);
   }
-  animation.setFps(12);\n  animation.setActiveFrame(0);
+  animation.setFps(12);
+  animation.setActiveFrame(0);
   doc.setActiveLayer(shipLayer.id);
   doc.revision = 1;
   doc.saveVersion = 1;
