@@ -427,8 +427,23 @@ async function main() {
     const context = await browser.newContext();
     await context.route('**/*', route => route.continue({ headers: { ...route.request().headers(), 'x-forwarded-for': '198.51.100.78' } }));
     const page = await context.newPage();
+    const anonymousPageErrors = [];
+    page.on('pageerror', error => anonymousPageErrors.push(error.message));
+    const anonymousAuthResponse = await page.request.get(base + '/api/auth/status');
+    const anonymousAuth = await anonymousAuthResponse.json();
+    assert.equal(anonymousAuth.user, null, 'the anonymous browser context must not inherit an account session');
     await page.goto(base + '/pixelforge/index.html', { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => document.body.innerText.includes('Inicia sesión en CodeLab'));
+    try {
+      await page.waitForFunction(() => document.body.innerText.includes('Inicia sesión en CodeLab'), null, { timeout: 10000 });
+    } catch (error) {
+      const diagnostics = await page.evaluate(() => ({
+        bodyText: document.body.innerText.slice(0, 1200),
+        status: document.querySelector('#status')?.textContent || null,
+        sharedRuntimeAvailable: Boolean(window.CodeLabStudioCore)
+      }));
+      throw new Error('Anonymous PixelForge sign-in gate did not render; diagnostics=' +
+        JSON.stringify({ auth: anonymousAuth, diagnostics, pageErrors: anonymousPageErrors }) + '; cause=' + error.message);
+    }
     assert.match(await page.locator('body').innerText(), /Ir a CodeLab e iniciar sesión/, 'anonymous visitors should be directed to CodeLab authentication');
     assert.equal(await page.locator('#canvas').count(), 0, 'editor must not initialize before account authentication');
     await context.close();
