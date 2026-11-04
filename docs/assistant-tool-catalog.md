@@ -246,3 +246,58 @@ Example bridge arguments:
 ```
 
 This query returns context JSON, not a PNG binary. Deterministic SVG export and isolated browser rendering remain separate steps; full PNG/context parity is not claimed until that end-to-end path is exercised.
+
+
+## Section 24 — PixelForge Headless raster and animation automation
+
+The PixelForge Headless bridge adds two commands against the signed-in CodeLab account:
+
+- `pixelforge_headless_inspect` reads an existing PixelForge project and returns canvas dimensions, stable layer IDs/order, visibility/opacity/lock state, local/server revisions, and animation timeline summary.
+- `pixelforge_headless_batch` executes 1–500 allowlisted raster/layer/selection/animation actions in an isolated PixelForge sandbox, creates a proposal, and persists it only when the command includes `approval: "approved"`.
+
+Both commands require `use_admin_session: true` and an exact `args.project_id`. A mutating command also requires `approval: "approved"`, a short `args.summary`, and `args.actions`.
+
+Example read:
+
+```json
+{
+  "protocol": "codelab-agent-bridge/v1",
+  "command_id": "pixelinspect_001",
+  "action": "pixelforge_headless_inspect",
+  "use_admin_session": true,
+  "args": { "project_id": "EXACT_PIXELFORGE_PROJECT_ID" },
+  "expires_at": "2026-11-04T04:00:00Z"
+}
+```
+
+Example drawing and layer edit:
+
+```json
+{
+  "protocol": "codelab-agent-bridge/v1",
+  "command_id": "pixelbatch_001",
+  "action": "pixelforge_headless_batch",
+  "use_admin_session": true,
+  "approval": "approved",
+  "args": {
+    "project_id": "EXACT_PIXELFORGE_PROJECT_ID",
+    "summary": "Draw the character outline and add an ink layer",
+    "actions": [
+      { "name": "layer.add", "layerName": "Ink" },
+      { "name": "canvas.draw_stroke", "points": [{"x":8,"y":8},{"x":9,"y":7},{"x":10,"y":7}], "color": "#20202A", "size": 2, "shape": "circle" }
+    ]
+  },
+  "expires_at": "2026-11-04T04:00:00Z"
+}
+```
+
+Supported action families include:
+- Document/canvas inspection and pixel sampling.
+- Configurable brush strokes, line drawing, fill, clear, gradient, flip, outline, color replacement and region transforms.
+- Layer add/select/move/rename/opacity/visibility/lock/duplicate/delete.
+- Rectangular, elliptical and lasso selections, selection expansion/contraction/inversion, undo and redo.
+- Animation timeline frame creation from a layer, duplicate/delete/reorder, per-frame duration, FPS and looping.
+
+The raster editor source is never mutated while actions are being planned. The bridge accepts the isolated proposal and saves the resulting project through the authenticated `/api/pixelforge/projects/:id` API. The server-issued `serverRevision` remains authoritative; HTTP 409 conflicts are returned and never silently retried. The bridge preflights the complete serialized project against the 24 MiB persistence budget before making the save request.
+
+Animation frames are stored as validated per-frame RGBA cels in the PixelForge project document. This initial timeline model enables structured animation authoring and frame timing; playback UI, onion-skin controls, sprite-sheet/GIF export, and full editor parity are tracked as subsequent work and are not claimed complete by this command.
