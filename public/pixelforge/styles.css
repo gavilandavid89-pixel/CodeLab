@@ -152,6 +152,8 @@
   .inspector[data-panel="properties"] .layer-section,.inspector[data-panel="properties"] .files-section,.inspector[data-panel="properties"] .ai-workspace-section{display:none}
   .inspector[data-panel="layers"] .inspector-section:not(.layer-section),.inspector[data-panel="ai"] .inspector-section:not(.ai-workspace-section){display:none}
   .inspector[data-panel="layers"] .files-section{display:none}
+  .inspector[data-panel="files"] .inspector-section:not(.files-section){display:none}
+  .inspector[data-panel="files"] .files-section{display:block;grid-column:1/-1;max-height:40vh;overflow-y:auto;overscroll-behavior:contain}
   .ai-preview-frame{max-height:180px;min-height:90px}
   #ai-preview-canvas{max-height:160px}
 }
