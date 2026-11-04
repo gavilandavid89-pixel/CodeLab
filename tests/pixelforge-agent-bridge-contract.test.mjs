@@ -27,6 +27,13 @@ test('PixelForge Headless inspection is admin-scoped, allowlisted and read-only'
   assert.match(bridge, /name: 'canvas\.get_reference'/);
 });
 
+test('PixelForge bridge preserves valid JSON within GitHub comment limits instead of slicing JSON mid-payload', () => {
+  assert.match(bridge, /Buffer\.byteLength\(serializedReport, 'utf8'\) <= 55000/);
+  assert.match(bridge, /resultTruncated: true/);
+  assert.match(bridge, /boundedReport/);
+  assert.doesNotMatch(bridge, /JSON\.stringify\([\s\S]{0,900}\.slice\(0, 9000\)/);
+});
+
 test('PixelForge drawing and animation batches require explicit approval and persist through the authenticated proposal bridge', () => {
   assert.match(bridge, /'pixelforge_headless_batch'/);
   assert.match(bridge, /command\.approval !== 'approved'/);
