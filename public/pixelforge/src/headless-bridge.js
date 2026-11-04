@@ -2,6 +2,7 @@ import { HeadlessEditorRuntime } from './headless.js';
 
 const sessions = new Map();
 const SESSION_TTL_MS = 10 * 60 * 1000;
+const MAX_PERSISTED_PROJECT_BYTES = 24 * 1024 * 1024;
 
 function assertProjectId(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) {
@@ -95,6 +96,15 @@ export async function acceptPixelForgeProposal({ sessionId, approved = false } =
     return { status: 'rejected', projectId: session.projectId, result: accepted };
   }
   const project = session.runtime.toJSON();
+  const projectBytes = new TextEncoder().encode(JSON.stringify(project)).byteLength;
+  if (projectBytes > MAX_PERSISTED_PROJECT_BYTES) {
+    sessions.delete(sessionId);
+    const error = new RangeError('The proposed PixelForge project is ' + projectBytes + ' bytes; the account persistence limit is ' + MAX_PERSISTED_PROJECT_BYTES + ' bytes. Reduce layers or animation frames before retrying.');
+    error.code = 'pixelforge_project_too_large';
+    error.maxBytes = MAX_PERSISTED_PROJECT_BYTES;
+    error.projectBytes = projectBytes;
+    throw error;
+  }
   let response;
   try {
     response = await session.fetcher('/api/pixelforge/projects/' + encodeURIComponent(session.projectId), {
