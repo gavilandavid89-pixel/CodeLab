@@ -199,6 +199,7 @@ test('enforces the maximum frame count', () => {
 test('keeps high-resolution animation budgets aligned with PixelForge API limits', () => {
   const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
   const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
+  const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
   assert.match(animation, /MAX_ANIMATION_BYTES = 256 \* 1024 \* 1024/);
   assert.match(animation, /width > 4096 \|\| height > 4096/);
   assert.match(server, /PIXELFORGE_MAX_BODY_BYTES = 80 \* 1024 \* 1024/);
