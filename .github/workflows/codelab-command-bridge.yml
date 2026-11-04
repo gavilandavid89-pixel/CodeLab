@@ -60,3 +60,14 @@ jobs:
             .codelab-artifacts/design-capture.json
           if-no-files-found: ignore
           retention-days: 1
+
+      - name: Upload PixelForge animation export
+        if: success() && hashFiles('.codelab-artifacts/pixelforge-animation-spritesheet.png') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelforge-animation-${{ github.run_id }}
+          path: |
+            .codelab-artifacts/pixelforge-animation-spritesheet.png
+            .codelab-artifacts/pixelforge-animation-manifest.json
+          if-no-files-found: error
+          retention-days: 14

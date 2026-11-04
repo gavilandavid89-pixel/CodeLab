@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - 'headless/**'
+      - '.github/scripts/codelab-bridge.mjs'
+      - 'docs/assistant-tool-catalog.md'
       - '.github/workflows/headless-design-engine.yml'
   workflow_dispatch:
 
@@ -34,9 +36,11 @@ jobs:
           node --check headless/transfer-store.js
           node --check headless/image-transfer-finalize.js
           node --check headless/code-chunks.js
+          node --check headless/pixelforge-command-contract.test.js
+          node --check .github/scripts/codelab-bridge.mjs
           node --check server.js
       - name: Run isolated headless engine and workspace runtime tests
-        run: node --test headless/image-transfer-finalize.test.js headless/transfer-store.test.js headless/code-chunks.test.js headless/design-engine.test.js headless/design-accessibility.test.js headless/design-export-parity.test.js headless/design-templates-responsive.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
+        run: node --test headless/pixelforge-command-contract.test.js headless/image-transfer-finalize.test.js headless/transfer-store.test.js headless/code-chunks.test.js headless/design-engine.test.js headless/design-accessibility.test.js headless/design-export-parity.test.js headless/design-templates-responsive.test.js headless/workspace-runtime.test.js headless/integration-contract.test.js
       - name: Check headless assistant bridge contracts
         run: node tests/assistant-tools-contract.test.js
       - name: Verify one complete project journey through Chromium
