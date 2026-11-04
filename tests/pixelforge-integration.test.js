@@ -360,6 +360,21 @@ async function main() {
       const offset = (y * project.width + x) * 4;
       return [...bytes.subarray(offset, offset + 4)];
     }
+    function mergedHexAt(project, x, y) {
+      let red = 0, green = 0, blue = 0, alpha = 0;
+      project.layers.forEach((layer, index) => {
+        if (layer.visible === false || layer.opacity <= 0) return;
+        const [r, g, b, a] = rgbaAt(project, x, y, index);
+        const sourceAlpha = a / 255 * layer.opacity, remaining = 1 - sourceAlpha;
+        red = r * sourceAlpha + red * remaining;
+        green = g * sourceAlpha + green * remaining;
+        blue = b * sourceAlpha + blue * remaining;
+        alpha = sourceAlpha + alpha * remaining;
+      });
+      if (!alpha) return null;
+      return '#' + [red / alpha, green / alpha, blue / alpha]
+        .map(value => Math.round(value).toString(16).padStart(2, '0')).join('');
+    }
 
     await setForegroundColor('#ff0000');
     await accountPage.locator('#brush-tool').click();
@@ -426,10 +441,13 @@ async function main() {
 
 
     // Additional UI-level coverage for tools beyond pencil, eraser, fill, line and gradient.
+    const eyedropperFixture = await readSavedArtwork();
+    const expectedSample = mergedHexAt(eyedropperFixture, 1, 1);
+    assert.ok(expectedSample, 'eyedropper fixture pixel should be visible in the merged artwork');
     await accountPage.locator('#eyedropper-tool').click();
     await clickPixel(1, 1);
-    assert.equal((await accountPage.locator('#color').inputValue()).toLowerCase(), '#2255ee',
-      'eyedropper should sample the visible line color into the foreground control');
+    assert.equal((await accountPage.locator('#color').inputValue()).toLowerCase(), expectedSample,
+      'eyedropper should sample the exact merged pixel color into the foreground control');
 
     await setForegroundColor('#ff8800');
     await accountPage.locator('#rectangle-tool').click();
