@@ -70,3 +70,43 @@ test('rejects invalid image payloads and malformed animation metadata', async ()
   }), /frames must be an array/);
   assert.equal(PIXELFORGE_VISION_CONSENT_TTL_MS, 300000);
 });
+
+test('rejects forged and expired consent tokens', async () => {
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: {}, projectId: 'project-1', artworkImage: PNG,
+  }), error => error.code === 'pixelforge_vision_consent_required');
+
+  const consent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1', confirm: async () => true,
+  });
+  const originalNow = Date.now;
+  try {
+    Date.now = () => originalNow() + PIXELFORGE_VISION_CONSENT_TTL_MS + 1;
+    assert.throws(() => preparePixelForgeVisionRequest({
+      consent, projectId: 'project-1', artworkImage: PNG,
+    }), error => error.code === 'pixelforge_vision_consent_required');
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test('enforces the existing vision snapshot image-count and per-image byte limits', async () => {
+  const consent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1', confirm: async () => true,
+  });
+  const tooManyFrames = Array.from({ length: 24 }, (_, index) => ({
+    index, durationMs: 80, image: PNG,
+  }));
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent, projectId: 'project-1', artworkImage: PNG,
+    animation: { frames: tooManyFrames },
+  }), /between 1 and 23 visible frames/);
+
+  const nextConsent = await requestPixelForgeVisionConsent({
+    projectId: 'project-1', confirm: async () => true,
+  });
+  const oversized = 'data:image/png;base64,' + 'A'.repeat(8 * 1024 * 1024);
+  assert.throws(() => preparePixelForgeVisionRequest({
+    consent: nextConsent, projectId: 'project-1', artworkImage: oversized,
+  }), /no larger than 8 MiB/);
+});
