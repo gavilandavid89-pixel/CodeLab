@@ -1,6 +1,21 @@
 export const MAX_DIMENSION = 4096;
 export const MAX_PIXELS = 16_777_216;
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
+export const MAX_PROJECT_JSON_BYTES = 112 * 1024 * 1024;
+const PROJECT_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024;
+
+export function estimateRasterProjectJSONBytes(layers) {
+  if (!Array.isArray(layers) || layers.length < 1 || layers.length > 64 ||
+      layers.some(layer => !(layer?.pixels instanceof Uint8Array) && !(layer?.pixels instanceof Uint8ClampedArray))) {
+    throw new TypeError('Project layers must contain valid raster pixel buffers.');
+  }
+  const rawBytes = layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 0);
+  if (rawBytes > MAX_DOCUMENT_BYTES) {
+    throw new RangeError('Project exceeds the 64 MiB total pixel-memory budget.');
+  }
+  const encodedBytes = layers.reduce((sum, layer) => sum + Math.ceil(layer.pixels.byteLength / 3) * 4, 0);
+  return encodedBytes + PROJECT_JSON_METADATA_RESERVE_BYTES;
+}
 
 export function validateDimensions(width, height) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) throw new RangeError('Canvas dimensions must be positive integers.');
@@ -937,6 +952,9 @@ export class RasterDocument {
     return true;
   }
   toJSON() {
+    if (estimateRasterProjectJSONBytes(this.layers) > MAX_PROJECT_JSON_BYTES) {
+      throw new RangeError('Project JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
+    }
     return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
       layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })) };
   }
@@ -945,6 +963,8 @@ export class RasterDocument {
     validateDimensions(data.width, data.height);
     if (data.layers.length < 1 || data.layers.length > 64) throw new RangeError('Project layer count is outside the supported limit.');
     if (data.width * data.height * 4 * data.layers.length > MAX_DOCUMENT_BYTES) throw new RangeError('Project exceeds the 64 MiB total pixel-memory budget.');
+    const encodedProjectBytes = data.layers.reduce((sum, layer) => sum + (typeof layer?.pixels === 'string' ? layer.pixels.length : 0), PROJECT_JSON_METADATA_RESERVE_BYTES);
+    if (encodedProjectBytes > MAX_PROJECT_JSON_BYTES) throw new RangeError('Project JSON exceeds PixelForge’s 112 MiB safe serialization budget.');
     const projectName = typeof data.name === 'string' ? data.name.trim().slice(0, 180) : '';
     const doc = new RasterDocument(data.width, data.height, projectName || 'Imported project');
     if (newIdentity) doc.name = `${doc.name.slice(0, 169)} (imported)`;
