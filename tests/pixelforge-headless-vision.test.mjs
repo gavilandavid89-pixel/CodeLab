@@ -110,7 +110,7 @@ test('enforces the existing vision snapshot image-count and per-image byte limit
   assert.throws(() => preparePixelForgeVisionRequest({
     consent, projectId: 'project-1', artworkImage: PNG,
     animation: { frames: tooManyFrames },
-  }), /between 1 and 23 visible frames/);
+  }), /between 1 and 23 animation frames per snapshot/);
 
   const nextConsent = await requestPixelForgeVisionConsent({
     projectId: 'project-1', confirm: async () => true,
