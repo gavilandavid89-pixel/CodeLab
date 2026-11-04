@@ -341,7 +341,12 @@ function parseOAuthState(state) {
 // Rotate through large session directories so entries after the first batch
 // are also eventually checked, while keeping each cleanup pass bounded.
 let sessionCleanupCursor = 0;
-function cleanupExpiredSessions() {
+async function cleanupExpiredSessions() {
+  if (accountPool && authSessionTableReady) {
+    try { await accountPool.query('DELETE FROM codelab_auth_sessions WHERE expires_at <= NOW()'); }
+    catch (error) { console.warn('CodeLab session cleanup failed:', error.message); }
+    return;
+  }
   try {
     const allSessionFiles = fs.readdirSync(SESSIONS_DIR).filter(file => file.endsWith('.json'));
     let files = allSessionFiles;
@@ -361,17 +366,9 @@ function cleanupExpiredSessions() {
         const sessionFile = path.join(SESSIONS_DIR, file);
         const raw = fs.readFileSync(sessionFile, 'utf8');
         let session;
-        try {
-          session = JSON.parse(raw);
-        } catch (_) {
-          // A malformed session can never authenticate; remove it rather than
-          // retaining an orphan file forever after every cleanup pass.
-          fs.unlinkSync(sessionFile);
-          continue;
-        }
-        if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) {
-          fs.unlinkSync(sessionFile);
-        }
+        try { session = JSON.parse(raw); }
+        catch (_) { fs.unlinkSync(sessionFile); continue; }
+        if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt < now) fs.unlinkSync(sessionFile);
       } catch (_) {}
     }
   } catch (_) {}
@@ -567,9 +564,7 @@ let authSessionTableReady = false;
 
 async function ensureAuthSessionTable() {
   if (!accountPool) return;
-  await accountPool.query(`
-    CREATE TABLE IF NOT EXISTS codelab_auth_sessions (
-      session_id VARCHAR(48) PRIMARY KEY CHECK (session_id ~ '^[a-f0-9]{48}
+  await accountPool.query("CREATE TABLE IF NOT EXISTS codelab_auth_sessions (session_id VARCHAR(48) PRIMARY KEY CHECK (session_id ~ '^[a-f0-9]{48}
 async function ensurePixelForgeTable() {
   if (!accountPool) return;
   await accountPool.query(`
@@ -2613,6 +2608,7 @@ seedAdminAccountIfConfigured().then(async () => {
     await accountPool.query('SELECT 1 FROM codelab_workspace_states LIMIT 0');
     await ensureAuthSessionTable();
     await migrateLegacySessionsToDatabase();
+    await cleanupExpiredSessions();
   }
   try {
     await ensurePixelForgeTable();
@@ -2691,13 +2687,7 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
-),
-      user_data JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL,
-      expires_at TIMESTAMPTZ NOT NULL,
-      CHECK (jsonb_typeof(user_data) = 'object')
-    )
-  `);
+), user_data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, CHECK (jsonb_typeof(user_data) = 'object'))");
   await accountPool.query('CREATE INDEX IF NOT EXISTS codelab_auth_sessions_expiry_idx ON codelab_auth_sessions (expires_at)');
   authSessionTableReady = true;
 }
@@ -2710,18 +2700,11 @@ async function migrateLegacySessionsToDatabase() {
   for (const file of files) {
     try {
       const session = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, file), 'utf8'));
-      if (!session || session.id !== file.slice(0, 48) || !Number.isFinite(session.createdAt) ||
-          !Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now() || !isValidSessionUser(session.user)) continue;
-      await accountPool.query(
-        'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, to_timestamp($3 / 1000.0), to_timestamp($4 / 1000.0)) ON CONFLICT (session_id) DO NOTHING',
-        [session.id, JSON.stringify(session.user), session.createdAt, session.expiresAt]
-      );
-    } catch (error) {
-      console.warn('Legacy CodeLab session migration skipped:', error.message);
-    }
+      if (!session || session.id !== file.slice(0, 48) || !Number.isFinite(session.createdAt) || !Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now() || !isValidSessionUser(session.user)) continue;
+      await accountPool.query('INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, to_timestamp($3 / 1000.0), to_timestamp($4 / 1000.0)) ON CONFLICT (session_id) DO NOTHING', [session.id, JSON.stringify(session.user), session.createdAt, session.expiresAt]);
+    } catch (error) { console.warn('Legacy CodeLab session migration skipped:', error.message); }
   }
 }
-
 let pixelForgeTableReady = false;
 
 async function ensurePixelForgeTable() {
