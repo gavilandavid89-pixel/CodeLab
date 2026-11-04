@@ -2256,12 +2256,30 @@ const server = http.createServer(async (req, res) => {
                 contentSha256: assembled.contentSha256
               }
             );
-            if (saved.error) return sendJson(res, saved.status, {
-              error: saved.error,
-              ...(saved.maxProjects ? { maxProjects: saved.maxProjects } : {}),
-              ...(saved.maxBytes ? { maxBytes: saved.maxBytes } : {}),
-              ...(Number.isInteger(saved.revision) ? { revision: saved.revision } : {})
-            });
+            if (saved.error) {
+              if (saved.error === 'pixelforge_revision_conflict') {
+                const recovered = await accountPool.query(
+                  'SELECT name,width,height,updated_at,server_revision,content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+                  [workspaceId, upload.project_id]
+                );
+                if (recovered.rowCount && Number(recovered.rows[0].server_revision) === expectedRevision + 1 &&
+                    recovered.rows[0].content_sha256 === assembled.contentSha256) {
+                  const row = recovered.rows[0];
+                  const receipt = { ok: true, project: {
+                    id: upload.project_id, name: row.name, width: row.width, height: row.height,
+                    updatedAt: Number(row.updated_at), serverRevision: Number(row.server_revision)
+                  } };
+                  await pixelForgeUploads.markCommitted(accountPool, uploadId, receipt);
+                  return sendJson(res, 200, receipt);
+                }
+              }
+              return sendJson(res, saved.status, {
+                error: saved.error,
+                ...(saved.maxProjects ? { maxProjects: saved.maxProjects } : {}),
+                ...(saved.maxBytes ? { maxBytes: saved.maxBytes } : {}),
+                ...(Number.isInteger(saved.revision) ? { revision: saved.revision } : {})
+              });
+            }
             const receipt = { ok: true, project: {
               id: project.id, name: project.name.trim(), width: project.width, height: project.height,
               updatedAt: saved.now, serverRevision: saved.serverRevision
