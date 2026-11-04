@@ -17,6 +17,7 @@ async function request(path, options = {}) {
       pixelforge_project_limit: 'Tu cuenta alcanzó el máximo de proyectos PixelForge. Elimina uno antes de crear otro.',
       pixelforge_revision_conflict: 'Este proyecto cambió en otra sesión. Vuelve a abrir la versión más reciente antes de guardar para no sobrescribir cambios.',
       invalid_pixelforge_project: 'El proyecto contiene datos no válidos.',
+      invalid_pixelforge_animation: 'La animación contiene fotogramas o capas no válidos para este documento.',
       pixelforge_storage_unavailable: 'No se pudo acceder al almacenamiento de tu cuenta.',
       pixelforge_database_unavailable: 'El almacenamiento de PixelForge no está disponible en CodeLab. Inténtalo más tarde o contacta al administrador.'
     };
