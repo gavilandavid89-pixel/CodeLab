@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { StringDecoder } = require('node:string_decoder');
 
 const CHUNK_BYTES = 6 * 1024 * 1024;
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
@@ -147,6 +148,7 @@ async function assembleUpload(pool, workspaceId, uploadId) {
     });
   }
   const digest = crypto.createHash('sha256');
+  const decoder = new StringDecoder('utf8');
   let serialized = '';
   for (let index = 0; index < Number(upload.total_chunks); index++) {
     const result = await pool.query(
@@ -158,8 +160,9 @@ async function assembleUpload(pool, workspaceId, uploadId) {
     const actualHash = sha256(bytes);
     if (actualHash !== result.rows[0].chunk_sha256) throw new PixelForgeUploadError('pixelforge_chunk_integrity_failed', 400);
     digest.update(bytes);
-    serialized += bytes.toString('utf8');
+    serialized += decoder.write(bytes);
   }
+  serialized += decoder.end();
   if (Buffer.byteLength(serialized, 'utf8') !== Number(upload.total_bytes)) {
     throw new PixelForgeUploadError('pixelforge_upload_size_mismatch', 400);
   }
