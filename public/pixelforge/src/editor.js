@@ -2337,6 +2337,21 @@ async function boot() {
       clearSelectionState();
       resetAIWorkspaceForDocument();
       window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    } else if (params.get('projectId')) {
+      const projectId = params.get('projectId');
+      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
+        throw new Error('El enlace contiene un ID de proyecto PixelForge no válido.');
+      }
+      const snapshot = await loadProjectById(projectId);
+      if (!snapshot) throw new Error('No se encontró ese proyecto en tu cuenta CodeLab.');
+      doc = RasterDocument.fromJSON(snapshot);
+      animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
+      animationLoop = snapshot.animation?.loop !== false;
+      animationFrameHistory.clear();
+      animationOrphanCels.clear();
+      clearSelectionState();
+      resetAIWorkspaceForDocument();
+      status('Proyecto abierto desde su enlace · guardado en tu cuenta CodeLab', 'success');
     } else {
       const saved = await loadMostRecentProject();
       if (saved) { doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
