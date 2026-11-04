@@ -52,3 +52,12 @@ Run the focused tests with:
 node --test tests/pixelforge-animation.test.mjs
 node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs
 ```
+
+## Agent drawing and coordinate reference
+
+- The CodeLab agent bridge exposes `pixelforge_headless_list_projects`, `pixelforge_headless_inspect`, and `pixelforge_headless_batch`. These use the authenticated PixelForge project API and the same Headless runtime as the editor.
+- `pixelforge_headless_inspect` returns project/layer/timeline metadata plus `canvas.get_reference`: pixel origin at the top-left, positive X to the right, positive Y downward, inclusive pixel bounds, corners, center, quarter landmarks, and a configurable grid.
+- `canvas.get_reference` is read-only and remains available while a proposal is pending. Use `canvas.get_pixel` to sample exact RGBA colors at known coordinates before drawing.
+- Drawing commands use document pixel coordinates, not CSS pixels or screen coordinates. The bridge requires explicit `approval: "approved"` before a batch can be persisted.
+- The visual editor has an optional Guides overlay with center/quarter crosshairs and corner coordinate labels, plus a live X/Y pixel readout under the pointer. These are view-only and never alter saved pixels or exports.
+- Use a reference-first workflow: inspect dimensions and landmarks, sample important pixels, draw in a small batch, inspect the changed bounds, then approve the proposal. Keep strokes and shapes within `0..width-1` and `0..height-1`.
