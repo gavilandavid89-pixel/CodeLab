@@ -1,5 +1,5 @@
 import { AIWorkspace } from './workspaces.js';
-import { createSelectionMask, modifySelectionMask } from './core.js';
+import { createSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -71,6 +71,9 @@ export class AICommandSession {
               locked: layer.locked, opacity: layer.opacity,
             })),
           };
+          break;
+        case 'document.rename':
+          result = { renamed: doc.renameDocument(action.newName), name: doc.name };
           break;
         case 'canvas.get_pixel': {
           coordinate(doc, action.x, action.y);
@@ -180,6 +183,46 @@ export class AICommandSession {
           rectangle(doc, action.x, action.y, action.width, action.height);
           result = { changedPixels: doc.clearRect(action.x, action.y, action.width, action.height) };
           break;
+        case 'canvas.crop':
+          rectangle(doc, action.x, action.y, action.width, action.height);
+          result = { changed: doc.cropCanvas(action.x, action.y, action.width, action.height), width: action.width, height: action.height };
+          break;
+        case 'canvas.draw_shape': {
+          const shape = action.shape;
+          rectangle(doc, action.x, action.y, action.width, action.height);
+          if (!['rectangle', 'ellipse'].includes(shape)) throw new TypeError('shape must be rectangle or ellipse.');
+          const size = action.size ?? 1;
+          integer(size, 'size');
+          if (size < 1 || size > 128) throw new RangeError('Shape stroke size must be between 1 and 128 pixels.');
+          let points;
+          if (shape === 'rectangle') {
+            points = [
+              { x: action.x, y: action.y },
+              { x: action.x + action.width - 1, y: action.y },
+              { x: action.x + action.width - 1, y: action.y + action.height - 1 },
+              { x: action.x, y: action.y + action.height - 1 },
+              { x: action.x, y: action.y },
+            ];
+          } else {
+            const cx = action.x + (action.width - 1) / 2, cy = action.y + (action.height - 1) / 2;
+            const rx = Math.max(0.5, (action.width - 1) / 2), ry = Math.max(0.5, (action.height - 1) / 2);
+            const count = Math.min(4096, Math.max(24, Math.ceil(2 * Math.PI * Math.max(rx, ry) * 1.5)));
+            points = Array.from({ length: count + 1 }, (_, index) => {
+              const angle = index / count * Math.PI * 2;
+              return { x: Math.max(action.x, Math.min(action.x + action.width - 1, Math.round(cx + rx * Math.cos(angle)))),
+                y: Math.max(action.y, Math.min(action.y + action.height - 1, Math.round(cy + ry * Math.sin(angle)))) };
+            });
+          }
+          const stroke = doc.beginStroke({ color: color(action.color), size });
+          try {
+            for (const point of points) doc.strokeTo(stroke, point.x, point.y);
+            result = { changed: doc.endStroke(stroke), shape, pointCount: points.length };
+          } catch (error) {
+            doc.endStroke(stroke, { commit: false });
+            throw error;
+          }
+          break;
+        }
         case 'canvas.fill_gradient': {
           coordinate(doc, action.x0, action.y0); coordinate(doc, action.x1, action.y1);
           const opacity = action.opacity ?? 1;
@@ -246,6 +289,22 @@ export class AICommandSession {
           const mask = modifySelectionMask(doc.width, doc.height, current, operation, action.radius ?? 1);
           doc.setSelectionMask(mask);
           result = { operation, selectedPixels: mask.reduce((sum, value) => sum + value, 0) };
+          break;
+        }
+        case 'selection.combine': {
+          const operation = action.operation ?? 'replace';
+          const nextMask = action.selection === null ? null : createSelectionMask(doc.width, doc.height, action.selection);
+          const mask = combineSelectionMasks(doc.width, doc.height, doc.selectionMask, nextMask, operation);
+          doc.setSelectionMask(mask);
+          result = { operation, selectedPixels: mask ? mask.reduce((sum, value) => sum + value, 0) : 0 };
+          break;
+        }
+        case 'selection.translate': {
+          if (!doc.selectionMask) throw new Error('There is no active selection to translate.');
+          const dx = integer(action.dx, 'dx'), dy = integer(action.dy, 'dy');
+          const mask = translateSelectionMask(doc.width, doc.height, doc.selectionMask, dx, dy);
+          doc.setSelectionMask(mask);
+          result = { dx, dy, selectedPixels: mask.reduce((sum, value) => sum + value, 0) };
           break;
         }
         case 'history.undo':
