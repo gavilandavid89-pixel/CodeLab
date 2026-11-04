@@ -29,6 +29,36 @@ test('creates a one-frame timeline from the existing raster document without sha
   assert.equal(source.layers[0].pixels[0], 10);
 });
 
+test('keeps the serialized timeline contract compatible with the DOM-free Headless adapter', () => {
+  const source = documentFixture();
+  const timeline = PixelForgeAnimation.fromDocument(source, { fps: 18 });
+  timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(91));
+  timeline.addFrame({ duplicate: true, durationMs: 125 });
+  timeline.setLayerPixels(1, 'color', new Uint8ClampedArray(16).fill(37));
+
+  // The Headless animation adapter consumes this same versioned model shape.
+  // The project envelope adds loop metadata; it is intentionally not model state.
+  const serialized = { ...timeline.toJSON(), loop: false };
+  assert.deepEqual(Object.keys(serialized).sort(), [
+    'activeFrameIndex', 'format', 'fps', 'frames', 'height', 'layerIds', 'loop', 'version', 'width',
+  ]);
+  assert.equal(serialized.format, 'pixelforge-animation');
+  assert.equal(serialized.version, 1);
+  assert.equal(serialized.loop, false);
+  assert.deepEqual(serialized.layerIds, ['ink', 'color']);
+  assert.equal(serialized.frames.length, 2);
+  assert.deepEqual(serialized.frames[0].cels.map(cel => cel.layerId), ['ink', 'color']);
+  assert.equal(Buffer.from(serialized.frames[0].cels[0].pixels, 'base64').length, 16);
+  assert.equal(Buffer.from(serialized.frames[1].cels[1].pixels, 'base64')[0], 37);
+
+  const restored = PixelForgeAnimation.fromJSON(serialized);
+  assert.equal(restored.fps, 18);
+  assert.equal(restored.activeFrameIndex, 1);
+  assert.equal(restored.getFrame(1).durationMs, 125);
+  assert.equal(restored.getLayerPixels(0, 'ink')[0], 91);
+  assert.equal(restored.getLayerPixels(1, 'color')[0], 37);
+});
+
 test('adds blank and duplicated frames with independent cels', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture());
   timeline.setLayerPixels(0, 'ink', new Uint8ClampedArray(16).fill(77));
@@ -308,6 +338,8 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'the raster editor must expose the animation timeline controls');
   assert.ok(editorSource.includes('function buildProjectSnapshot') && editorSource.includes('snapshot.animation'),
     'animation data must travel with the normal project save/export lifecycle');
+  assert.ok(editorSource.includes('snapshot.animation = { ...animation.toJSON(), loop: animationLoop }'),
+    'the project envelope must preserve the loop flag expected by Headless');
   assert.ok(editorSource.includes('function switchAnimationFrame') && editorSource.includes('doc.replaceLayerPixelsBatch'),
     'frame switching must reuse the existing raster document and drawing tools');
   assert.ok(editorSource.includes('function canGrowAnimationLayer') && editorSource.includes('Cannot restore that layer'),
