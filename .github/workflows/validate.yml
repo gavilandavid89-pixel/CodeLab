@@ -38,6 +38,7 @@ jobs:
           node --experimental-default-type=module --check public/pixelforge/src/zip-export.js
           node --check public/pixelforge/src/showcase-animation.mjs
           node --check public/pixelforge/src/video-composer-core.mjs
+          node --input-type=module --check < public/pixelforge/video-composer.js
           node --input-type=module --check < public/pixelforge/src/editor.js
           node --check tests/pixelforge-headless-vision.test.mjs
           node --check tests/assistant-tools-contract.test.js
