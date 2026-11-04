@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
-import { exportAnimationSpriteSheet } from '../public/pixelforge/src/animation.js';
 import { frameAtAnimationTime, exportAnimationSpriteSheet } from '../public/pixelforge/src/animation.js';
 
 function projectFixture() {
