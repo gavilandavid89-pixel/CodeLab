@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
-import { frameAtAnimationTime } from '../public/pixelforge/src/animation.js';
+import { frameAtAnimationTime, exportAnimationSpriteSheet } from '../public/pixelforge/src/animation.js';
 
 function projectFixture() {
   const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Headless fixture' });
@@ -211,4 +211,45 @@ test('headless shapes, selections, crop and rename compose into one accepted doc
   const pixels = Buffer.from(saved.layers[0].pixels, 'base64');
   assert.deepEqual([...pixels.subarray((1 * 10 + 1) * 4, (1 * 10 + 1) * 4 + 4)], [34, 170, 68, 255]);
   assert.ok(pixels.some((value, index) => index % 4 === 0 && value === 238), 'ellipse outline should be persisted');
+});
+
+test('animation sprite-sheet export returns a PNG blob and frame manifest', async () => {
+  const fixture = projectFixture();
+  const timeline = {
+    format: 'pixelforge-animation', version: 1, fps: 12, loop: true,
+    frames: [
+      { id: 'frame-a', name: 'A', durationMs: 100, pixels: fixture.layers[0].pixels },
+      { id: 'frame-b', name: 'B', durationMs: 120, pixels: fixture.layers[0].pixels },
+    ],
+  };
+  const originalDocument = globalThis.document;
+  const originalImageData = globalThis.ImageData;
+  const writes = [];
+  globalThis.ImageData = class TestImageData {
+    constructor(data, width, height) { this.data = data; this.width = width; this.height = height; }
+  };
+  globalThis.document = {
+    createElement() {
+      return {
+        width: 0, height: 0,
+        getContext() {
+          return {
+            clearRect() {},
+            putImageData(image, x, y) { writes.push({ width: image.width, height: image.height, x, y }); },
+          };
+        },
+        toBlob(callback) { callback(new Blob(['png-test-data'], { type: 'image/png' })); },
+      };
+    },
+  };
+  try {
+    const exported = await exportAnimationSpriteSheet(timeline, 12, 12, { columns: 2, padding: 1 });
+    assert.equal(exported.blob.type, 'image/png');
+    assert.equal(exported.manifest.frameCount, 2);
+    assert.equal(exported.manifest.sheet.columns, 2);
+    assert.deepEqual(writes.map(item => [item.x, item.y]), [[1, 1], [14, 1]]);
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument;
+    if (originalImageData === undefined) delete globalThis.ImageData; else globalThis.ImageData = originalImageData;
+  }
 });
