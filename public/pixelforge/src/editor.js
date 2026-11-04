@@ -692,9 +692,9 @@ function renderAnimationTimeline() {
   const host = $('#animation-frames');
   if (!host) return;
   const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-loop','animation-onion','animation-export-sheet'];
+  const enabled = Boolean(animation);
   $('#crop-preview').disabled = enabled;
   $('#crop-preview').title = enabled ? 'Canvas crop is temporarily unavailable while a multi-frame timeline is active' : 'Preview crop for the current canvas';
-  const enabled = Boolean(animation);
   for (const id of controls) { const node = $('#' + id); if (node) node.disabled = !enabled; }
   $('#animation-play').disabled = !enabled || animation.frameCount < 2 || animationPlayback.playing;
   $('#animation-stop').disabled = !enabled || !animationPlayback.playing;
@@ -727,7 +727,11 @@ function renderAnimationTimeline() {
     const preview = animation.compositeThumbnail(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })), 48);
     const thumbPixels = document.createElement('canvas'); thumbPixels.width = preview.width; thumbPixels.height = preview.height;
     thumbPixels.getContext('2d').putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
-    tctx.imageSmoothingEnabled = false; tctx.drawImage(thumbPixels, 0, 0, 48, 48);
+    const thumbScale = Math.min(48 / preview.width, 48 / preview.height);
+    const thumbWidth = Math.max(1, Math.round(preview.width * thumbScale));
+    const thumbHeight = Math.max(1, Math.round(preview.height * thumbScale));
+    tctx.imageSmoothingEnabled = false;
+    tctx.drawImage(thumbPixels, Math.floor((48 - thumbWidth) / 2), Math.floor((48 - thumbHeight) / 2), thumbWidth, thumbHeight);
     const label = document.createElement('small'); label.textContent = String(index + 1);
     const duration = document.createElement('span'); duration.className = 'frame-duration'; duration.textContent = frame.durationMs + 'ms';
     button.append(thumb, label, duration);
