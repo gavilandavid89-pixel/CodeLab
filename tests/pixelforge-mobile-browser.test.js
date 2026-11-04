@@ -119,13 +119,13 @@ async function main() {
 
         // A blank frame must not inherit frame 1's pixels.
         await page.locator('#animation-add-frame').click();
-        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
+        assert.equal(await page.locator('#animation-frames .animation-frame').count(), 3,
           'adding a frame must create a second timeline item');
         await drawAtCenter('#3080ff');
 
         // Switching back and forth must restore the independent raster cel.
         await page.locator('#animation-frames .animation-frame').nth(0).click();
-        await page.locator('#animation-frames .animation-frame').nth(1).click();
+        await page.locator('#animation-frames .animation-frame').nth(2).click();
         await page.locator('#animation-fps').evaluate(node => {
           node.value = '24'; node.dispatchEvent(new Event('change', { bubbles: true }));
         });
@@ -176,6 +176,46 @@ async function main() {
         assert.ok(framePixels[1].some(value => value !== 0), 'drawing on frame 2 must change its persisted pixels');
         assert.notDeepEqual(framePixels[0], framePixels[1], 'frame 1 and frame 2 must retain independent pixel buffers');
 
+        // Cross-mode proof: the Headless runtime opens the exact project just created by the visual editor.
+        const headlessResult = await page.evaluate(async projectId => {
+          const bridge = await import('/pixelforge/src/headless-bridge.js');
+          const proposal = await bridge.preparePixelForgeProposal({
+            projectId,
+            summary: 'Headless adds a raster mark and a third animation frame',
+            actions: [
+              { name: 'canvas.draw_line', x0: 2, y0: 2, x1: 8, y1: 2, color: '#16C784', size: 2 },
+              { name: 'animation.frame.duplicate', index: 1 },
+              { name: 'animation.frame.set_active', index: 2 },
+              { name: 'animation.frame.set_duration', index: 2, durationMs: 150 },
+              { name: 'animation.set_fps', fps: 18 },
+              { name: 'animation.set_loop', loop: false }
+            ]
+          });
+          if (proposal.status !== 'proposal') throw new Error('Headless did not create an isolated review proposal: ' + JSON.stringify(proposal));
+          const beforeApproval = await (await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId))).json();
+          if (beforeApproval.project.animation.frames.length !== 2) throw new Error('Headless wrote before explicit approval.');
+          const accepted = await bridge.acceptPixelForgeProposal({ sessionId: proposal.sessionId, approved: true });
+          if (accepted.status !== 'saved') throw new Error('Headless approval did not persist: ' + JSON.stringify(accepted));
+          const afterApproval = await (await fetch('/api/pixelforge/projects/' + encodeURIComponent(projectId))).json();
+          return {
+            proposalStatus: proposal.status,
+            changedPixels: proposal.diff.changedPixels,
+            acceptedStatus: accepted.status,
+            serverRevision: afterApproval.project.serverRevision,
+            animation: afterApproval.project.animation,
+            rasterPixels: afterApproval.project.layers[0].pixels
+          };
+        }, savedSummary.id);
+        assert.equal(headlessResult.proposalStatus, 'proposal', 'Headless must produce a reviewable proposal from the visual project');
+        assert.ok(headlessResult.changedPixels > 0, 'Headless raster drawing must produce a visible pixel diff');
+        assert.equal(headlessResult.acceptedStatus, 'saved', 'explicit approval must persist the Headless proposal');
+        assert.equal(headlessResult.animation.frames.length, 3, 'Headless must add a third frame to the visual editor timeline');
+        assert.equal(headlessResult.animation.fps, 18, 'Headless animation timing changes must persist');
+        assert.equal(headlessResult.animation.loop, false, 'Headless loop changes must persist');
+        assert.equal(headlessResult.animation.frames[2].durationMs, 150, 'Headless frame duration must persist');
+        assert.ok(Buffer.from(headlessResult.rasterPixels, 'base64').some(value => value !== 0),
+          'Headless raster edits must be present in the saved visual project');
+
         // A fresh editor session must reconstruct the timeline from the account-backed project.
         await page.reload({ waitUntil: 'networkidle' });
         await page.waitForFunction(() => {
@@ -184,9 +224,9 @@ async function main() {
         }, null, { timeout: 15000 });
         assert.equal(await page.locator('#animation-frames .animation-frame').count(), 2,
           'reopening the saved project must restore both timeline frames');
-        assert.equal(await page.locator('#animation-fps').inputValue(), '24',
+        assert.equal(await page.locator('#animation-fps').inputValue(), '18',
           'reopening the saved project must restore its FPS');
-        assert.equal(await page.locator('#animation-duration').inputValue(), '120',
+        assert.equal(await page.locator('#animation-duration').inputValue(), '150',
           'reopening the saved project must restore the active frame duration');
         assert.equal(await page.locator('#animation-loop').isChecked(), false,
           'reopening the saved project must restore its loop setting');
