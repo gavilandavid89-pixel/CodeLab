@@ -21,6 +21,93 @@ function remapAnimationLayerIds(timeline, targetLayerIds) {
   };
 }
 
+
+function decodeCelPixels(value) {
+  if (typeof value !== 'string') return null;
+  const binary = atob(value);
+  const pixels = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) pixels[index] = binary.charCodeAt(index);
+  return pixels;
+}
+
+function compareCelPixels(before, after, width, height) {
+  const previous = decodeCelPixels(before);
+  const next = decodeCelPixels(after);
+  const length = width * height * 4;
+  if ((previous && previous.length !== length) || (next && next.length !== length)) {
+    throw new RangeError('Animation cel dimensions do not match the project canvas.');
+  }
+  let changedPixels = 0, minX = width, minY = height, maxX = -1, maxY = -1;
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    const offset = pixel * 4;
+    let changed = false;
+    for (let channel = 0; channel < 4; channel++) {
+      if ((previous?.[offset + channel] ?? 0) !== (next?.[offset + channel] ?? 0)) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) continue;
+    const x = pixel % width, y = Math.floor(pixel / width);
+    changedPixels++;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  return {
+    changedPixels,
+    bounds: maxX < 0 ? null : { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 },
+  };
+}
+
+function diffAnimationTimelines(before, after) {
+  const beforeFrames = new Map(before.frames.map((frame, index) => [frame.id, { frame, index }]));
+  const afterFrames = new Map(after.frames.map((frame, index) => [frame.id, { frame, index }]));
+  const frameIds = [...after.frames.map(frame => frame.id), ...before.frames.map(frame => frame.id).filter(id => !afterFrames.has(id))];
+  const frames = [];
+  let changedCelCount = 0, changedPixels = 0;
+  for (const id of frameIds) {
+    const previousEntry = beforeFrames.get(id), nextEntry = afterFrames.get(id);
+    const previous = previousEntry?.frame, next = nextEntry?.frame;
+    const layerIds = [...(next?.cels.map(cel => cel.layerId) ?? []), ...(previous?.cels.map(cel => cel.layerId) ?? []).filter(layerId => !next?.cels.some(cel => cel.layerId === layerId))];
+    const cels = [];
+    for (const layerId of layerIds) {
+      const previousCel = previous?.cels.find(cel => cel.layerId === layerId);
+      const nextCel = next?.cels.find(cel => cel.layerId === layerId);
+      const previousPixels = previousCel?.pixels ?? null;
+      const nextPixels = nextCel?.pixels ?? null;
+      if (previousPixels === nextPixels && Boolean(previousCel) === Boolean(nextCel)) continue;
+      const pixelDiff = compareCelPixels(previousPixels, nextPixels, after.width, after.height);
+      cels.push({
+        layerId,
+        change: !previousCel ? 'added' : !nextCel ? 'removed' : 'updated',
+        changedPixels: pixelDiff.changedPixels,
+        bounds: pixelDiff.bounds,
+      });
+      changedPixels += pixelDiff.changedPixels;
+    }
+    const reordered = Boolean(previousEntry && nextEntry && previousEntry.index !== nextEntry.index);
+    if (cels.length || reordered || !previousEntry || !nextEntry) {
+      changedCelCount += cels.length;
+      frames.push({
+        id,
+        name: next?.name ?? previous?.name ?? null,
+        index: nextEntry?.index ?? previousEntry?.index ?? null,
+        previousIndex: previousEntry?.index ?? null,
+        change: !previousEntry ? 'added' : !nextEntry ? 'removed' : reordered && !cels.length ? 'reordered' : 'updated',
+        reordered,
+        cels,
+      });
+    }
+  }
+  return {
+    changedFrameCount: frames.length,
+    changedCelCount,
+    changedPixels,
+    reordered: before.frames.some((frame, index) => after.frames[index]?.id !== frame.id) || before.frames.length !== after.frames.length,
+    frames,
+  };
+}
+
 /**
  * DOM-free, provider-independent PixelForge automation runtime.
  * Mutations stay in an isolated sandbox until an explicit proposal is accepted.
@@ -198,8 +285,19 @@ export class HeadlessEditorRuntime {
   }
 
   getDiff() {
-    const diff = this.#workspace.getVisualDiff();
-    return { width: diff.width, height: diff.height, changedPixels: diff.changedPixels, bounds: diff.bounds, pixels: diff.pixels };
+    const raster = this.#workspace.getVisualDiff();
+    const committedAnimation = this.#committedAnimationForSandbox();
+    const animation = diffAnimationTimelines(committedAnimation, this.#sandboxAnimation);
+    return {
+      width: raster.width,
+      height: raster.height,
+      changedPixels: raster.changedPixels + animation.changedPixels,
+      rasterChangedPixels: raster.changedPixels,
+      animationChangedPixels: animation.changedPixels,
+      bounds: raster.bounds,
+      pixels: raster.pixels,
+      animation,
+    };
   }
 
   acceptProposal() {
