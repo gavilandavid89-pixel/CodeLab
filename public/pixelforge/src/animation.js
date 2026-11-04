@@ -36,8 +36,16 @@ function modelFromTimeline(timeline) {
   const { loop, ...serialized } = timeline;
   return PixelForgeAnimation.fromJSON(serialized);
 }
-function serializeModel(model, loop = true) {
-  return { ...model.toJSON(), loop: loop !== false };
+function serializeModel(model, loop = true, names = new Map()) {
+  const serialized = model.toJSON();
+  return {
+    ...serialized,
+    loop: loop !== false,
+    frames: serialized.frames.map((frame, index) => ({
+      ...frame,
+      name: names.get(frame.id) || 'Frame ' + (index + 1),
+    })),
+  };
 }
 function assertDocumentMatches(timeline, document) {
   if (timeline.width !== document.width || timeline.height !== document.height) {
@@ -97,13 +105,19 @@ export function validateAnimationTimeline(value, width, height, documentLayers =
   if (!value.frames.length) {
     return emptyTimeline(width, height, value.layerIds, value.fps, value.loop !== false);
   }
+  for (const frame of value.frames) {
+    if (frame.name !== undefined && (typeof frame.name !== 'string' || frame.name.length > 120)) {
+      throw new TypeError('Animation frame name is invalid.');
+    }
+  }
   const model = PixelForgeAnimation.fromJSON({
     format: FORMAT, version: VERSION, width, height,
     layerIds: value.layerIds, fps: value.fps,
     activeFrameIndex: value.activeFrameIndex ?? 0,
     frames: value.frames,
   });
-  return serializeModel(model, value.loop !== false);
+  const names = new Map(value.frames.map((frame, index) => [frame.id, frame.name || 'Frame ' + (index + 1)]));
+  return serializeModel(model, value.loop !== false, names);
 }
 
 export function summarizeAnimationTimeline(timeline) {
@@ -130,6 +144,7 @@ export function synchronizeAnimationLayers(timeline, document) {
     next.height = document.height;
     return next;
   }
+  const names = new Map(next.frames.map((frame, index) => [frame.id, frame.name || 'Frame ' + (index + 1)]));
   const model = modelFromTimeline(next);
   const desired = new Set(currentIds);
   for (const id of [...model.layerIds]) if (!desired.has(id)) model.removeLayer(id);
@@ -137,7 +152,7 @@ export function synchronizeAnimationLayers(timeline, document) {
     if (!model.layerIds.includes(layer.id)) model.addLayer(layer.id);
   }
   model.reorderLayers(currentIds);
-  return serializeModel(model, next.loop);
+  return serializeModel(model, next.loop, names);
 }
 
 export function applyAnimationAction(timeline, document, action) {
@@ -148,9 +163,28 @@ export function applyAnimationAction(timeline, document, action) {
     return { timeline, result: summarizeAnimationTimeline(timeline), changed: false };
   }
   const next = clone(timeline);
+  let loop = next.loop !== false;
+  if (!next.frames.length && action.name === 'animation.set_loop') {
+    if (typeof action.loop !== 'boolean') throw new TypeError('loop must be a boolean.');
+    const updated = { ...next, loop: action.loop };
+    return { timeline: updated, result: { loop: action.loop }, changed: updated.loop !== timeline.loop };
+  }
+  if (!next.frames.length && action.name === 'animation.set_fps') {
+    if (!Number.isInteger(action.fps) || action.fps < 1 || action.fps > 60) {
+      throw new RangeError('Animation FPS must be from 1 to 60.');
+    }
+    const updated = { ...next, fps: action.fps };
+    return { timeline: updated, result: { fps: action.fps }, changed: updated.fps !== timeline.fps };
+  }
+  const createsInitialFrame = action.name === 'animation.frame.add_from_layer' ||
+    action.name === 'animation.frame.capture_composite' ||
+    action.name === 'animation.frame.capture_document';
+  if (!next.frames.length && !createsInitialFrame) {
+    throw new RangeError('Create the first animation frame before editing the timeline.');
+  }
   let model = createModel(next, document);
   let result;
-  let loop = next.loop !== false;
+  const names = new Map(next.frames.map((frame, index) => [frame.id, frame.name || 'Frame ' + (index + 1)]));
 
   switch (action.name) {
     case 'animation.frame.add_from_layer':
@@ -169,6 +203,10 @@ export function applyAnimationAction(timeline, document, action) {
         });
       }
       const targetIndex = frame.index;
+      if (action.durationMs !== undefined) model.setFrameDuration(targetIndex, action.durationMs);
+      const frameName = typeof action.frameName === 'string' && action.frameName.trim()
+        ? action.frameName.trim().slice(0, 120) : 'Frame ' + (targetIndex + 1);
+      names.set(frame.id, frameName);
       if (action.name === 'animation.frame.capture_document' ||
           action.name === 'animation.frame.capture_composite') {
         for (const layer of document.layers) model.setLayerPixels(targetIndex, layer.id, layer.pixels);
@@ -182,13 +220,17 @@ export function applyAnimationAction(timeline, document, action) {
     case 'animation.frame.duplicate': {
       const index = action.index ?? model.activeFrameIndex;
       validateFrameIndex(index, model.frameCount);
+      const sourceName = names.get(model.getFrame(index).id) || 'Frame ' + (index + 1);
       const frame = model.duplicateFrame(index);
+      names.set(frame.id, (sourceName + ' copy').slice(0, 120));
       result = { frameId: frame.id, index: frame.index };
       break;
     }
     case 'animation.frame.delete': {
       const index = action.index ?? model.activeFrameIndex;
       validateFrameIndex(index, model.frameCount);
+      const removed = model.getFrame(index);
+      names.delete(removed.id);
       result = { ...model.deleteFrame(index), frameCount: model.frameCount };
       break;
     }
@@ -245,7 +287,7 @@ export function applyAnimationAction(timeline, document, action) {
       throw new Error('Unsupported animation action: ' + action.name);
   }
 
-  const updated = serializeModel(model, loop);
+  const updated = serializeModel(model, loop, names);
   return { timeline: validateAnimationTimeline(updated, document.width, document.height, document.layers), result, changed: JSON.stringify(next) !== JSON.stringify(updated) };
 }
 
@@ -259,7 +301,7 @@ export function frameAtAnimationTime(timeline, timeMs) {
 export async function exportAnimationSpriteSheet(timeline, width, height, { columns = Math.ceil(Math.sqrt(timeline.frames.length)), padding = 1, layers = null } = {}) {
   const validated = validateAnimationTimeline(timeline, width, height);
   if (!validated.frames.length) throw new RangeError('Cannot export an empty animation timeline.');
-  if (!Number.isInteger(columns) || columns < 1 || columns > validated.frames.length) {
+  if (!Number.isInteger(columns) || columns < 1 || columns > MAX_ANIMATION_FRAMES) {
     throw new RangeError('Sprite sheet columns must be within the frame count.');
   }
   if (!Number.isInteger(padding) || padding < 0 || padding > 64) {
