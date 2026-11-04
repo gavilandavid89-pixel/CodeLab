@@ -322,6 +322,9 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
     'the combined project envelope must be preflighted before building the serialized save body');
   assert.ok(persistence.includes("request(API + '/uploads/' + pending.uploadId)"),
     'large saves should consult upload status before resending chunks');
+  const serverSource = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  assert.ok(serverSource.includes("'.mjs': 'application/javascript; charset=utf-8'") &&
+    serverSource.includes("ext === '.mjs'"), 'server must serve and revalidate imported .mjs browser modules with a JavaScript MIME type');
   const editorSource = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/editor.js'), 'utf8');
   const editorStyles = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/styles.css'), 'utf8');
   const declaredButtons = [...editorHtml.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
