@@ -265,6 +265,17 @@ export class RasterDocument {
     this.selectionMask = new Uint8Array(mask);
   }
   get activeLayer() { return this.layers.find(layer => layer.id === this.activeLayerId) ?? this.layers[0]; }
+  renameDocument(name) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 180) {
+      throw new TypeError('Document name must contain 1–180 characters.');
+    }
+    const after = name.trim();
+    if (this.name === after) return false;
+    const before = this.name;
+    this.name = after;
+    this.#record({ type: 'document-rename', before, after });
+    return true;
+  }
   addLayer(name = `Layer ${this.layers.length + 1}`) {
     if (typeof name !== 'string' || !name.trim() || name.length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
     name = name.trim();
@@ -1148,7 +1159,9 @@ export class RasterDocument {
     }
   }
   #applyEntry(entry, forward) {
-    if (entry.type === 'document-state') {
+    if (entry.type === 'document-rename') {
+      this.name = forward ? entry.after : entry.before;
+    } else if (entry.type === 'document-state') {
       this.#restoreDocument(forward ? entry.after : entry.before);
     } else if (entry.type === 'document-crop') {
       if (forward) this.#cropTo(entry.x, entry.y, entry.width, entry.height);
