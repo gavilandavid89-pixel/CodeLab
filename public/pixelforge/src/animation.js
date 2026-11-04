@@ -6,6 +6,13 @@ const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function assert(condition, message, Type = TypeError) { if (!condition) throw new Type(message); }
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+  }
+  return btoa(binary);
+}
 
 export function createAnimationTimeline({ fps = 12, loop = true } = {}) {
   return validateAnimationTimeline({ format: 'pixelforge-animation', version: 1, fps, loop, frames: [] });
@@ -73,6 +80,18 @@ export function applyAnimationAction(timeline, document, action) {
       };
       next.frames.push(frame);
       result = { frameId: frame.id, index: next.frames.length - 1, name: frame.name, durationMs: frame.durationMs };
+      break;
+    }
+    case 'animation.frame.capture_composite': {
+      if (next.frames.length >= MAX_FRAMES) throw new RangeError('Animation reached the ' + MAX_FRAMES + ' frame limit.');
+      const frame = {
+        id: crypto.randomUUID(),
+        name: typeof action.frameName === 'string' && action.frameName.trim() ? action.frameName.trim().slice(0, 120) : 'Frame ' + (next.frames.length + 1),
+        durationMs: action.durationMs ?? Math.round(1000 / next.fps),
+        pixels: bytesToBase64(document.composite()),
+      };
+      next.frames.push(frame);
+      result = { frameId: frame.id, index: next.frames.length - 1, name: frame.name, durationMs: frame.durationMs, source: 'composite' };
       break;
     }
     case 'animation.frame.duplicate': {
