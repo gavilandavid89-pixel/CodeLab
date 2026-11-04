@@ -71,7 +71,7 @@ function parseCommand(raw) {
     const width = args.width ?? defaults.width, height = args.height ?? defaults.height;
     if (!Number.isInteger(width) || width < 1 || width > 2048 || !Number.isInteger(height) || height < 1 || height > 2048) throw new Error('PixelForge canvas dimensions must be from 1 to 2048 pixels.');
     const layers = args.layer_names ?? defaults.layers;
-    if (!Array.isArray(layers) || layers.length < 1 || layers.length > 64 || layers.some(name => typeof name !== 'string' || !name.trim() || name.length > 180)) throw new Error('PixelForge layer_names must contain 1 to 64 valid layer names.');
+    if (!Array.isArray(layers) || layers.length < 1 || layers.length > 64 || layers.some(name => typeof name !== 'string' || !name.trim() || name.length > 180) || new Set(layers).size !== layers.length) throw new Error('PixelForge layer_names must contain 1 to 64 unique valid layer names.');
     if (width * height * 4 * layers.length > 64 * 1024 * 1024) throw new Error('PixelForge new project exceeds the 64 MiB layer-memory budget.');
     if (args.name !== undefined && (typeof args.name !== 'string' || !args.name.trim() || args.name.length > 180)) throw new Error('PixelForge project name must contain 1 to 180 characters.');
   }
