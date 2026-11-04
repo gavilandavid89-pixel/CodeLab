@@ -17,42 +17,65 @@ function toHex(buffer) {
   return Array.from(new Uint8Array(buffer), value => value.toString(16).padStart(2, '0')).join('');
 }
 async function saveProjectChunked(project) {
-  const expectedServerRevision = Number.isInteger(project.serverRevision) ? project.serverRevision : 0;
-  const uploadProject = { ...project, serverRevision: expectedServerRevision + 1 };
-  const serialized = JSON.stringify(uploadProject);
-  const blob = new Blob([serialized], { type: 'application/json' });
+  if (!globalThis.crypto?.subtle || typeof crypto.randomUUID !== 'function') {
+    throw new Error('Este navegador no permite transferencias seguras por bloques. Actualiza el navegador para guardar proyectos grandes.');
+  }
+  let pending = pendingUploads.get(project.id);
+  let expectedServerRevision = Number.isInteger(project.serverRevision) ? project.serverRevision : 0;
+  let uploadProject = { ...project, serverRevision: expectedServerRevision + 1 };
+  let serialized = JSON.stringify(uploadProject);
+  let blob = new Blob([serialized], { type: 'application/json' });
   if (blob.size > MAX_PROJECT_BYTES) {
     const error = new RangeError('El proyecto supera el límite total de 96 MiB para guardado.');
     error.code = 'pixelforge_project_too_large';
     throw error;
   }
-  if (!globalThis.crypto?.subtle || typeof crypto.randomUUID !== 'function') {
-    throw new Error('Este navegador no permite transferencias seguras por bloques. Actualiza el navegador para guardar proyectos grandes.');
-  }
-  const signature = [project.id, project.saveVersion, project.revision, expectedServerRevision, blob.size,
+  let signature = [project.id, project.saveVersion, project.revision, expectedServerRevision, blob.size,
     project.name, project.width, project.height].join(':');
-  let pending = pendingUploads.get(project.id);
-  if (!pending || pending.signature !== signature) {
+
+  // If the document changed while an earlier upload was pending, first resolve
+  // whether that older snapshot actually committed. Otherwise cancel its staging
+  // rows before starting the new snapshot, avoiding quota leaks and stale CAS tokens.
+  if (pending && pending.signature !== signature) {
+    try {
+      const previous = await request(API + '/uploads/' + pending.uploadId + '/commit', {
+        method: 'POST', body: '{}'
+      });
+      if (previous.project && Number.isInteger(previous.project.serverRevision)) {
+        project.serverRevision = previous.project.serverRevision;
+      }
+    } catch (error) {
+      if (['pixelforge_upload_incomplete', 'pixelforge_upload_expired', 'pixelforge_upload_not_found'].includes(error.code)) {
+        await request(API + '/uploads/' + pending.uploadId, { method: 'DELETE' }).catch(() => {});
+      } else {
+        throw error;
+      }
+    }
+    pendingUploads.delete(project.id);
+    return saveProjectChunked(project);
+  }
+
+  if (!pending) {
     pending = { signature, uploadId: crypto.randomUUID().replace(/-/g, '') };
     pendingUploads.set(project.id, pending);
   }
   const totalChunks = Math.ceil(blob.size / UPLOAD_CHUNK_BYTES);
-  const begin = await request(API + '/uploads', {
-    method: 'POST',
-    body: JSON.stringify({
-      uploadId: pending.uploadId,
-      projectId: project.id,
-      expectedServerRevision,
-      totalBytes: blob.size,
-      totalChunks
-    })
-  });
-  if (begin.committed && begin.receipt?.project) {
-    pendingUploads.delete(project.id);
-    project.serverRevision = begin.receipt.project.serverRevision;
-    return begin.receipt.project;
-  }
   try {
+    const begin = await request(API + '/uploads', {
+      method: 'POST',
+      body: JSON.stringify({
+        uploadId: pending.uploadId,
+        projectId: project.id,
+        expectedServerRevision,
+        totalBytes: blob.size,
+        totalChunks
+      })
+    });
+    if (begin.committed && begin.receipt?.project) {
+      pendingUploads.delete(project.id);
+      project.serverRevision = begin.receipt.project.serverRevision;
+      return begin.receipt.project;
+    }
     for (let index = 0; index < totalChunks; index++) {
       const bytes = new Uint8Array(await blob.slice(index * UPLOAD_CHUNK_BYTES, (index + 1) * UPLOAD_CHUNK_BYTES).arrayBuffer());
       const hash = toHex(await crypto.subtle.digest('SHA-256', bytes));
@@ -71,12 +94,22 @@ async function saveProjectChunked(project) {
     }
     return result.project;
   } catch (error) {
-    // Keep the upload ID after transient failures. Re-sending identical chunks is idempotent.
-    if (error.code === 'pixelforge_chunk_conflict' || error.code === 'pixelforge_upload_expired' ||
-        error.code === 'pixelforge_upload_not_found' || error.code === 'pixelforge_upload_committed' ||
-        error.code === 'pixelforge_revision_conflict' || error.code === 'pixelforge_upload_manifest_mismatch') {
+    if (error.code === 'pixelforge_upload_committed') {
+      try {
+        const committed = await request(API + '/uploads/' + pending.uploadId + '/commit', { method: 'POST', body: '{}' });
+        if (committed.project && Number.isInteger(committed.project.serverRevision)) {
+          project.serverRevision = committed.project.serverRevision;
+          pendingUploads.delete(project.id);
+          return committed.project;
+        }
+      } catch (_) {}
+    }
+    if (['pixelforge_chunk_conflict', 'pixelforge_upload_expired', 'pixelforge_upload_not_found',
+      'pixelforge_revision_conflict', 'pixelforge_upload_manifest_mismatch'].includes(error.code)) {
+      await request(API + '/uploads/' + pending.uploadId, { method: 'DELETE' }).catch(() => {});
       pendingUploads.delete(project.id);
     }
+    // Unknown/network failures keep the upload ID so the next save can retry the same chunks.
     throw error;
   }
 }
