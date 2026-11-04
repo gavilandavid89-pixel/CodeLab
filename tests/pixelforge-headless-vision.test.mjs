@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVisionSnapshot, toProviderImageParts } from '../public/pixelforge/src/headless-vision.js';
+import { RasterDocument } from '../public/pixelforge/src/core.js';
+import { AIWorkspace } from '../public/pixelforge/src/workspaces.js';
+import { AICommandSession } from '../public/pixelforge/src/ai-tools.js';
+import { AIEditCoordinator } from '../public/pixelforge/src/ai-provider.js';
 
 const png = 'data:image/png;base64,iVBORw0KGgo=';
 
@@ -43,4 +47,36 @@ test('vision snapshots reject malformed or oversized image payloads and metadata
   assert.throws(() => createVisionSnapshot({ mode: 'artwork', artworkImage: 'data:image/jpeg;base64,AAAA' }), /PNG data URL/);
   assert.throws(() => createVisionSnapshot({ mode: 'artwork', artworkImage: png, project: [] }), /project must be an object/);
   assert.throws(() => toProviderImageParts(null), /Expected a vision snapshot/);
+});
+
+
+test('AI edit coordinator forwards consented vision snapshots and semantic context to the provider', async () => {
+  const document = new RasterDocument(8, 8, 'Vision pipeline fixture');
+  const workspace = new AIWorkspace(document);
+  const session = new AICommandSession(workspace);
+  let providerRequest = null;
+  const coordinator = new AIEditCoordinator({
+    workspace,
+    session,
+    provider: {
+      async generatePlan(request) {
+        providerRequest = request;
+        return {
+          summary: 'Draw one pixel row',
+          actions: [{ name: 'canvas.draw_line', x0: 1, y0: 2, x1: 4, y1: 2, color: '#FF0000' }],
+        };
+      },
+    },
+  });
+  const snapshot = createVisionSnapshot({
+    mode: 'artwork',
+    artworkImage: png,
+    project: { width: 8, height: 8, layerCount: 1 },
+    animation: { fps: 12, loop: true, selectedFrame: 0, frames: [{ index: 0, durationMs: 100, image: png }] },
+  });
+  const result = await coordinator.requestEdit('Draw a red line', { includeArtwork: true, visionSnapshot: snapshot });
+  assert.equal(result.status, 'proposal');
+  assert.equal(providerRequest.imageDataUrls.length, 2);
+  assert.equal(providerRequest.context.visualObservation.animation.selectedFrame, 0);
+  assert.equal(providerRequest.context.visualObservation.project.width, 8);
 });
