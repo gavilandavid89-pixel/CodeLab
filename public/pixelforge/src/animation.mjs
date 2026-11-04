@@ -335,6 +335,48 @@ export class PixelForgeAnimation {
     return result;
   }
 
+  compositeFrame(frameIndex, layerSettings = null) {
+    const frame = this.#frameAt(frameIndex);
+    let settings = new Map();
+    if (layerSettings !== null) {
+      if (!Array.isArray(layerSettings) || layerSettings.length !== this.#layerIds.length) {
+        throw new TypeError('Composite layer settings must match the animation layer stack.');
+      }
+      for (const layer of layerSettings) {
+        if (!layer || !this.#layerIds.includes(layer.id) || settings.has(layer.id) ||
+            (layer.visible !== undefined && typeof layer.visible !== 'boolean') ||
+            (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1))) {
+          throw new TypeError('Composite layer settings contain invalid layer metadata.');
+        }
+        settings.set(layer.id, { visible: layer.visible !== false, opacity: layer.opacity ?? 1 });
+      }
+      if (settings.size !== this.#layerIds.length) throw new TypeError('Composite layer settings are missing a raster layer.');
+    }
+    const output = new Uint8ClampedArray(this.#width * this.#height * 4);
+    for (let offset = 0; offset < output.length; offset += 4) {
+      let red = 0, green = 0, blue = 0, alpha = 0;
+      for (const layerId of this.#layerIds) {
+        const settingsForLayer = settings.get(layerId) ?? { visible: true, opacity: 1 };
+        if (!settingsForLayer.visible || settingsForLayer.opacity <= 0) continue;
+        const source = frame.cels.get(layerId), sourceAlpha = source[offset + 3];
+        if (sourceAlpha === 0) continue;
+        const sa = sourceAlpha / 255 * settingsForLayer.opacity;
+        const remaining = 1 - sa;
+        red = source[offset] * sa + red * remaining;
+        green = source[offset + 1] * sa + green * remaining;
+        blue = source[offset + 2] * sa + blue * remaining;
+        alpha = sa + alpha * remaining;
+      }
+      if (alpha > 0) {
+        output[offset] = Math.round(red / alpha);
+        output[offset + 1] = Math.round(green / alpha);
+        output[offset + 2] = Math.round(blue / alpha);
+        output[offset + 3] = Math.round(alpha * 255);
+      }
+    }
+    return output;
+  }
+
   toJSON() {
     return {
       format: 'pixelforge-animation',
