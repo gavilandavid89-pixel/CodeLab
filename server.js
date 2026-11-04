@@ -443,6 +443,18 @@ function userWorkspaceId(user) {
 
 const PIXELFORGE_MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
 
+function hasBase64CharactersAndPadding(value, expectedPadding = '') {
+  if (typeof value !== 'string') return false;
+  if (expectedPadding && !value.endsWith(expectedPadding)) return false;
+  const payloadEnd = value.length - expectedPadding.length;
+  for (let index = 0; index < payloadEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  return true;
+}
+
 function validatePixelForgeAnimation(project) {
   if (!Object.prototype.hasOwnProperty.call(project, 'animation')) return null;
   const animation = project.animation;
@@ -483,9 +495,7 @@ function validatePixelForgeAnimation(project) {
       if (!cel || typeof cel !== 'object' || Array.isArray(cel) ||
           typeof cel.layerId !== 'string' || !animation.layerIds.includes(cel.layerId) || celLayerIds.has(cel.layerId) ||
           typeof cel.pixels !== 'string' || cel.pixels.length !== expectedBase64Length ||
-          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(cel.pixels) ||
-          (expectedPadding && (!cel.pixels.endsWith(expectedPadding) || cel.pixels.slice(0, -expectedPadding.length).includes('='))) ||
-          (!expectedPadding && cel.pixels.endsWith('='))) {
+          !hasBase64CharactersAndPadding(cel.pixels, expectedPadding)) {
         return 'invalid_pixelforge_animation';
       }
       celLayerIds.add(cel.layerId);
@@ -524,9 +534,7 @@ function validatePixelForgeProjectPayload(project, serializedInput = null) {
         typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
         !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
         typeof layer.pixels !== 'string' || layer.pixels.length !== expectedPixelBase64Length ||
-        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(layer.pixels) ||
-        (expectedPixelPadding && (!layer.pixels.endsWith(expectedPixelPadding) || layer.pixels.slice(0, -expectedPixelPadding.length).includes('='))) ||
-        (!expectedPixelPadding && layer.pixels.endsWith('='))) {
+        !hasBase64CharactersAndPadding(layer.pixels, expectedPixelPadding)) {
       return { error: 'invalid_pixelforge_project', status: 400 };
     }
     layerIds.add(layer.id);
