@@ -493,3 +493,24 @@ test('headless brush and line actions reproduce the editor 2/4/8-way symmetry mo
   assert.equal(eightWay.ok, true);
   assert.equal(eightWay.result.symmetryMode, 8);
 });
+
+test('selection.clear is a real mutation and cannot bypass a pending proposal', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  assert.equal(runtime.execute({
+    name: 'selection.create_rect', x: 2, y: 2, width: 4, height: 3,
+  }).ok, true);
+  assert.deepEqual(runtime.execute({ name: 'selection.clear' }).result, { cleared: true });
+  assert.deepEqual(runtime.execute({ name: 'selection.clear' }).result, { cleared: false });
+
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 5, y1: 1, color: '#123456',
+  }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'selection.create_rect', x: 3, y: 3, width: 2, height: 2,
+  }).ok, true);
+  runtime.createProposal('Keep the raster edit and selection pending');
+  const blocked = runtime.execute({ name: 'selection.clear' });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.error.code, 'proposal_pending');
+  assert.equal(runtime.hasPendingProposal, true);
+});
