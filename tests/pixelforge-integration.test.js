@@ -203,6 +203,7 @@ async function main() {
     { ...animationProject, id: 'animation-invalid-layer-map', animation: { ...animationProject.animation, layerIds: ['unknown-layer'] } },
     { ...animationProject, id: 'animation-missing-cel', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], cels: [] }] } },
     { ...animationProject, id: 'animation-invalid-duration', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], durationMs: 10001 }] } },
+    { ...animationProject, id: 'animation-invalid-padding', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], cels: [{ ...animationProject.animation.frames[0].cels[0], pixels: animationProject.animation.frames[0].cels[0].pixels.slice(0, -2) + 'AA' }] }] } },
     { ...animationProject, id: 'animation-too-many-frames', animation: { ...animationProject.animation, frames: Array.from({ length: 241 }, (_, index) => ({ id: 'frame-' + index, durationMs: 83, cels: [] })) } }
   ];
   for (const invalidProject of invalidAnimationCases) {
