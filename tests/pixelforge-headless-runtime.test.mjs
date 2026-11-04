@@ -388,3 +388,15 @@ test('animation undo history also respects the 16 MiB serialized snapshot budget
   assert.ok(undoCount >= 1);
   assert.ok(undoCount < 8, 'large timeline snapshots must be evicted once the byte budget is reached');
 });
+
+test('accepting a raster-only proposal clears stale animation undo and redo snapshots', () => {
+  const runtime = HeadlessEditorRuntime.fromJSON(projectFixture());
+  runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Temporary pose' });
+  runtime.execute({ name: 'animation.undo' });
+  assert.equal(runtime.hasPendingChanges, false);
+  runtime.execute({ name: 'canvas.draw_line', x0: 1, y0: 1, x1: 4, y1: 1, color: '#223344' });
+  runtime.createProposal('Draw a raster line without changing the saved timeline');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.equal(runtime.execute({ name: 'animation.redo' }).result.changed, false);
+  assert.equal(runtime.inspect().animation.frameCount, 0);
+});
