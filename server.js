@@ -696,6 +696,13 @@ async function withPixelForgeAccountLock(workspaceId, operation) {
   }
 }
 
+let pixelForgeUploadCommitQueue = Promise.resolve();
+function withPixelForgeUploadCommitLock(operation) {
+  const next = pixelForgeUploadCommitQueue.then(operation, operation);
+  pixelForgeUploadCommitQueue = next.catch(() => {});
+  return next;
+}
+
 const MAX_DESIGN_ELEMENTS = 500;
 
 function validateProjects(projects) {
