@@ -243,11 +243,11 @@ test('animation sprite-sheet export returns a PNG blob and frame manifest', asyn
     },
   };
   try {
-    const exported = await exportAnimationSpriteSheet(timeline, 12, 12, { columns: 2, padding: 1 });
+    const exported = await exportAnimationSpriteSheet(timeline, 16, 16, { columns: 2, padding: 1 });
     assert.equal(exported.blob.type, 'image/png');
     assert.equal(exported.manifest.frameCount, 2);
     assert.equal(exported.manifest.sheet.columns, 2);
-    assert.deepEqual(writes.map(item => [item.x, item.y]), [[1, 1], [14, 1]]);
+    assert.deepEqual(writes.map(item => [item.x, item.y]), [[1, 1], [18, 1]]);
   } finally {
     if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument;
     if (originalImageData === undefined) delete globalThis.ImageData; else globalThis.ImageData = originalImageData;
