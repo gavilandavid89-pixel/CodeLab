@@ -168,6 +168,43 @@ async function main() {
   });
   assert.equal(invalidServerRevision.status, 400, 'server revision tokens must be non-negative integers');
   assert.equal((await invalidServerRevision.json()).error, 'invalid_pixelforge_project');
+  // The server is the authoritative animation validator; browser-side checks are not a trust boundary.
+  const animationProject = makePixelProject('animation-validation', 'Animation validation artwork');
+  const animationLayerId = animationProject.layers[0].id;
+  animationProject.animation = {
+    format: 'pixelforge-animation', version: 1, width: 2, height: 2,
+    layerIds: [animationLayerId], fps: 12, activeFrameIndex: 0,
+    frames: [{ id: 'frame-1', durationMs: 83.333, cels: [{ layerId: animationLayerId, pixels: Buffer.alloc(16).toString('base64') }] }]
+  };
+  const animationSaved = await fetch(base + '/api/pixelforge/projects', {
+    method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ project: animationProject })
+  });
+  assert.equal(animationSaved.status, 201, 'a structurally valid multi-layer timeline should pass server validation');
+  const animationRevision = (await animationSaved.json()).project.serverRevision;
+  const animationLoaded = await fetch(base + '/api/pixelforge/projects/' + animationProject.id, { headers: authHeaders });
+  assert.deepEqual((await animationLoaded.json()).project.animation, animationProject.animation,
+    'animation metadata and cel pixels should round-trip through durable project storage');
+  const invalidAnimationCases = [
+    { ...animationProject, id: 'animation-invalid-fps', animation: { ...animationProject.animation, fps: 0 } },
+    { ...animationProject, id: 'animation-invalid-dimensions', animation: { ...animationProject.animation, width: 3 } },
+    { ...animationProject, id: 'animation-invalid-layer-map', animation: { ...animationProject.animation, layerIds: ['unknown-layer'] } },
+    { ...animationProject, id: 'animation-missing-cel', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], cels: [] }] } },
+    { ...animationProject, id: 'animation-invalid-duration', animation: { ...animationProject.animation, frames: [{ ...animationProject.animation.frames[0], durationMs: 10001 }] } },
+    { ...animationProject, id: 'animation-too-many-frames', animation: { ...animationProject.animation, frames: Array.from({ length: 241 }, (_, index) => ({ id: 'frame-' + index, durationMs: 83, cels: [] })) } }
+  ];
+  for (const invalidProject of invalidAnimationCases) {
+    const response = await fetch(base + '/api/pixelforge/projects', {
+      method: 'PUT', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ project: invalidProject })
+    });
+    assert.equal(response.status, 400, invalidProject.id + ' must be rejected by the server');
+    assert.equal((await response.json()).error, 'invalid_pixelforge_animation',
+      invalidProject.id + ' should return the stable animation validation error');
+  }
+  await fetch(base + '/api/pixelforge/projects/' + animationProject.id, { method: 'DELETE', headers: authHeaders });
+  assert.ok(Number.isInteger(animationRevision) && animationRevision === 1, 'the animation project should receive a server revision token');
+
   const listed = await fetch(base + '/api/pixelforge/projects', { headers: authHeaders });
   assert.equal((await listed.json()).projects[0].name, fixture.name, 'account list should expose saved project metadata');
 
