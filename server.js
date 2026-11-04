@@ -512,7 +512,9 @@ function validatePixelForgeProjectPayload(project, serializedInput = null) {
   if (project.width * project.height * 4 * project.layers.length > PIXELFORGE_MAX_RASTER_BYTES) {
     return { error: 'pixelforge_project_too_large', status: 413, maxBytes: PIXELFORGE_MAX_PROJECT_BYTES };
   }
-  const expectedPixelBase64Length = Math.ceil(project.width * project.height * 4 / 3) * 4;
+  const pixelBytes = project.width * project.height * 4;
+  const expectedPixelBase64Length = Math.ceil(pixelBytes / 3) * 4;
+  const expectedPixelPadding = pixelBytes % 3 === 1 ? '==' : pixelBytes % 3 === 2 ? '=' : '';
   const layerIds = new Set();
   for (const layer of project.layers) {
     if (!layer || typeof layer !== 'object' || Array.isArray(layer) ||
@@ -521,7 +523,9 @@ function validatePixelForgeProjectPayload(project, serializedInput = null) {
         typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
         !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
         typeof layer.pixels !== 'string' || layer.pixels.length !== expectedPixelBase64Length ||
-        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(layer.pixels)) {
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(layer.pixels) ||
+        (expectedPixelPadding && (!layer.pixels.endsWith(expectedPixelPadding) || layer.pixels.slice(0, -expectedPixelPadding.length).includes('='))) ||
+        (!expectedPixelPadding && layer.pixels.endsWith('='))) {
       return { error: 'invalid_pixelforge_project', status: 400 };
     }
     layerIds.add(layer.id);
