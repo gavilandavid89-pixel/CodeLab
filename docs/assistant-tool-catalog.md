@@ -250,12 +250,13 @@ This query returns context JSON, not a PNG binary. Deterministic SVG export and 
 
 ## Section 24 — PixelForge Headless raster and animation automation
 
-The PixelForge Headless bridge adds two commands against the signed-in CodeLab account:
+The PixelForge Headless bridge adds three commands against the signed-in CodeLab account:
 
 - `pixelforge_headless_inspect` reads an existing PixelForge project and returns canvas dimensions, stable layer IDs/order, visibility/opacity/lock state, local/server revisions, and animation timeline summary.
-- `pixelforge_headless_batch` executes 1–500 allowlisted raster/layer/selection/animation actions in an isolated PixelForge sandbox. Read-only batches (`document.get_summary`, `canvas.get_pixel`, `canvas.preview_transform_region`, `animation.get_summary`, or session-local `canvas.copy_region`) return `status: "inspected"` without creating a proposal or writing the project. Any batch containing a project-changing action requires `approval: "approved"`, creates a proposal, and persists through the authenticated API.
+- `pixelforge_headless_batch` executes 1–500 allowlisted raster/layer/selection/animation actions in an isolated PixelForge sandbox. Read-only batches (`document.get_summary`, `canvas.get_pixel`, `canvas.preview_transform_region`, `animation.get_summary`, session-local `canvas.copy_region`, or ephemeral `selection.clear`) return `status: "inspected"` without creating a proposal or writing the project. Any batch containing a project-changing action requires `approval: "approved"`, creates a proposal, and persists through the authenticated API.
+- `pixelforge_headless_export_animation` reads a saved project and exports its animation as a PNG sprite sheet plus JSON frame manifest. The files are uploaded as a GitHub Actions artifact named `codelab-ui-evidence-<run_id>`; the bridge result returns the artifact's Actions run URL. It does not modify or resave the PixelForge project and does not put image Base64 into the mailbox.
 
-Both commands require `use_admin_session: true` and an exact `args.project_id`. Every batch requires a short `args.summary` and `args.actions`; if any action changes project state, the command also requires `approval: "approved"`.
+All three commands require `use_admin_session: true` and an exact `args.project_id`. Every batch requires a short `args.summary` and `args.actions`; if any action changes project state, the command also requires `approval: "approved"`. Animation export is read-only; optional `args.columns` is 1–240 and `args.padding` is 0–64.
 
 Example read:
 
@@ -291,13 +292,31 @@ Example drawing and layer edit:
 }
 ```
 
+
+Example animation export (read-only; downloads a PNG sprite sheet and manifest artifact):
+
+```json
+{
+  "protocol": "codelab-agent-bridge/v1",
+  "command_id": "pixexport_001",
+  "action": "pixelforge_headless_export_animation",
+  "use_admin_session": true,
+  "args": {
+    "project_id": "EXACT_PIXELFORGE_PROJECT_ID",
+    "columns": 4,
+    "padding": 2
+  },
+  "expires_at": "2026-11-04T04:00:00Z"
+}
+```
+
 Supported action families include:
 - Document/canvas inspection and pixel sampling.
 - Configurable brush strokes, line drawing, rectangle/ellipse outlines, fill (solid or checker pattern with secondary color and dither scale), clear, region copy/paste, crop, gradient, flip, outline, color replacement and read-only transform previews plus region transforms with bounded scale/skew and nearest/bilinear interpolation.
 - Layer add/select/move/rename/opacity/visibility/lock/duplicate/delete.
 - Rectangular, elliptical and lasso selections, selection clear/combination/translation, expansion/contraction/inversion, undo and redo.
-- Animation timeline frame creation from a layer or full composite, duplicate/delete/reorder, per-frame duration, FPS, looping, and sandbox-local `animation.undo` / `animation.redo` before proposal acceptance. The runtime also provides deterministic frame-time lookup and a PNG sprite-sheet export helper; the mailbox command does not yet return/download the exported binary.
+- Animation timeline frame creation from a layer or full composite, duplicate/delete/reorder, per-frame duration, FPS, looping, and sandbox-local `animation.undo` / `animation.redo` before proposal acceptance. The runtime also provides deterministic frame-time lookup and a PNG sprite-sheet export helper; the export command downloads the PNG as a CI artifact rather than returning a large Base64 mailbox payload.
 
 Action names include `canvas.draw_line`, `canvas.draw_stroke`, `canvas.draw_shape`, `canvas.fill`, `canvas.copy_region`, `selection.clear`, `canvas.paste_region`, `canvas.fill_gradient`, `canvas.crop`, `canvas.preview_transform_region`, `canvas.transform_region`, `layer.add`, `layer.duplicate`, `layer.delete`, `selection.create_rect`, `selection.create_ellipse`, `selection.create_lasso`, `animation.frame.add_from_layer`, `animation.frame.capture_composite`, `animation.frame.duplicate`, `animation.frame.reorder`, `animation.frame.set_duration`, `animation.set_fps`, `animation.set_loop`, `animation.undo`, and `animation.redo` (plus the other actions listed above).\n\nThe raster editor source is never mutated while actions are being planned. The bridge accepts the isolated proposal and saves the resulting project through the authenticated `/api/pixelforge/projects/:id` API. The server-issued `serverRevision` remains authoritative; HTTP 409 conflicts are returned and never silently retried. The bridge preflights the complete serialized project against the 24 MiB persistence budget before making the save request.
 
-Animation frames in the current Headless runtime are validated full-canvas RGBA snapshots captured from an active layer or the composite; this is an initial raster-frame model, not yet the multi-layer-per-frame cel model from the separate PixelForge animation-core work. The runtime supports deterministic playback-time selection and a browser PNG sprite-sheet export helper. Playback UI, onion-skin controls, mailbox delivery of exported files, GIF export, and full editor parity remain subsequent work and are not claimed complete by this command. Multi-layer cel integration remains pending. `animation.undo` / `animation.redo` rewind unaccepted timeline edits in the Headless sandbox with a 100-step / 16 MiB serialized-snapshot budget; raster `history.undo` / `history.redo` does not rewind accepted animation timeline changes.
+Animation frames in the current Headless runtime are validated full-canvas RGBA snapshots captured from an active layer or the composite; this is an initial raster-frame model, not yet the multi-layer-per-frame cel model from the separate PixelForge animation-core work. The runtime supports deterministic playback-time selection and a browser PNG sprite-sheet export helper. Playback UI, onion-skin controls, GIF export, and full editor parity remain subsequent work and are not claimed complete by this command. Multi-layer cel integration remains pending. `animation.undo` / `animation.redo` rewind unaccepted timeline edits in the Headless sandbox with a 100-step / 16 MiB serialized-snapshot budget; raster `history.undo` / `history.redo` does not rewind accepted animation timeline changes.
