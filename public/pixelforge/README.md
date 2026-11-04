@@ -29,7 +29,7 @@ PixelForge is maintained directly in this CodeLab repository. No upstream reposi
 
 ### Local ZIP package export
 
-- Project and animation downloads use a single `.zip` file rather than triggering one browser download per frame. An animation package contains the editable `.pforge` project, transparent composite PNG frames in playback order, a `manifest.json` with per-frame durations/FPS/loop/dimensions, and a short README. No server-side render is required.
+- Project, animation sprite-sheet, layer sprite-sheet and frame-sequence downloads use a single `.zip` file rather than triggering multiple browser downloads. The editor can reopen the editable `.pforge` directly from its own ZIP package. An animation package contains the editable `.pforge` project, transparent composite PNG frames in playback order, a `manifest.json` with per-frame durations/FPS/loop/dimensions, and a short README. No server-side render is required.
 - ZIP entries are stored without recompression (PNG is already compressed). The browser builds the archive from Blob parts and computes each entry checksum sequentially, avoiding a second full-size archive copy in memory on mobile. The package can be opened in any ZIP utility; the `.pforge` remains the source of truth for editable independent layers/cels.
 
 ### Video Composer
