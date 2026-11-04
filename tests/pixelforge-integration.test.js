@@ -730,17 +730,20 @@ async function main() {
     const maxProjects = status.maxProjects;
     const existingProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
     assert.ok(existingProjects.length < maxProjects, 'the test account should have room to exercise the project cap');
+    const limitHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.81' };
     for (let index = existingProjects.length; index < maxProjects; index++) {
       const response = await fetch(base + '/api/pixelforge/projects', {
         method: 'PUT',
-        headers: { ...authHeaders, 'content-type': 'application/json' },
+        headers: { ...limitHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ project: makePixelProject('limit-project-' + index, 'Limit project ' + index) })
       });
-      assert.ok(response.status === 200 || response.status === 201, 'projects below the account limit should save');
+      const responseBody = await response.json();
+      assert.ok(response.status === 200 || response.status === 201,
+        'projects below the account limit should save (got ' + response.status + ': ' + JSON.stringify(responseBody) + ')');
     }
     const overflow = await fetch(base + '/api/pixelforge/projects', {
       method: 'PUT',
-      headers: { ...authHeaders, 'content-type': 'application/json' },
+      headers: { ...limitHeaders, 'content-type': 'application/json' },
       body: JSON.stringify({ project: makePixelProject('limit-project-overflow', 'Overflow project') })
     });
     assert.equal(overflow.status, 409, 'saving beyond the account project cap should return a conflict');
