@@ -144,3 +144,55 @@ export function applyAnimationAction(timeline, document, action) {
 }
 
 export const ANIMATION_LIMITS = Object.freeze({ maxFrames: MAX_FRAMES, maxDurationMs: MAX_DURATION_MS, maxFps: MAX_FPS, maxAnimationBytes: MAX_ANIMATION_BYTES });
+
+export function frameAtAnimationTime(timeline, timeMs) {
+  if (!Number.isFinite(timeMs) || timeMs < 0) throw new RangeError('Animation time must be a non-negative finite number.');
+  if (!timeline.frames.length) return null;
+  const total = timeline.frames.reduce((sum, frame) => sum + frame.durationMs, 0);
+  const time = timeline.loop ? timeMs % total : Math.min(timeMs, Math.max(0, total - 1));
+  let elapsed = 0;
+  for (let index = 0; index < timeline.frames.length; index++) {
+    elapsed += timeline.frames[index].durationMs;
+    if (time < elapsed) return { index, frame: timeline.frames[index], elapsedMs: time };
+  }
+  const index = timeline.frames.length - 1;
+  return { index, frame: timeline.frames[index], elapsedMs: time };
+}
+
+export async function exportAnimationSpriteSheet(timeline, width, height, { columns = Math.ceil(Math.sqrt(timeline.frames.length)), padding = 1 } = {}) {
+  validateAnimationTimeline(timeline, width, height);
+  if (!timeline.frames.length) throw new RangeError('Cannot export an empty animation timeline.');
+  if (!Number.isInteger(columns) || columns < 1 || columns > timeline.frames.length) throw new RangeError('Sprite sheet columns must be within the frame count.');
+  if (!Number.isInteger(padding) || padding < 0 || padding > 64) throw new RangeError('Sprite sheet padding must be from 0 to 64 pixels.');
+  if (typeof document === 'undefined' || typeof ImageData === 'undefined') throw new Error('Sprite sheet export requires a browser canvas.');
+  const rows = Math.ceil(timeline.frames.length / columns);
+  const sheet = document.createElement('canvas');
+  sheet.width = columns * width + (columns + 1) * padding;
+  sheet.height = rows * height + (rows + 1) * padding;
+  const context = sheet.getContext('2d', { alpha: true });
+  if (!context) throw new Error('Could not create the animation sprite sheet surface.');
+  context.clearRect(0, 0, sheet.width, sheet.height);
+  const frames = timeline.frames.map((frame, index) => {
+    const binary = atob(frame.pixels);
+    const pixels = new Uint8ClampedArray(binary.length);
+    for (let offset = 0; offset < binary.length; offset++) pixels[offset] = binary.charCodeAt(offset);
+    const x = padding + (index % columns) * (width + padding);
+    const y = padding + Math.floor(index / columns) * (height + padding);
+    context.putImageData(new ImageData(pixels, width, height), x, y);
+    return { index, id: frame.id, name: frame.name, durationMs: frame.durationMs, x, y, width, height };
+  });
+  const blob = await new Promise((resolve, reject) => sheet.toBlob(value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
+  return {
+    blob,
+    manifest: {
+      format: 'pixelforge-animation-sprite-sheet',
+      version: 1,
+      fps: timeline.fps,
+      loop: timeline.loop,
+      frameCount: frames.length,
+      sheet: { width: sheet.width, height: sheet.height, columns, rows, padding },
+      frameSize: { width, height },
+      frames,
+    },
+  };
+}
