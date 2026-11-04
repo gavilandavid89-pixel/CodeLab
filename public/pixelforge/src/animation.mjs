@@ -129,6 +129,7 @@ export class PixelForgeAnimation {
   #fps;
   #activeFrameIndex;
   #thumbnailCache = new Map();
+  #thumbnailCacheBytes = 0;
 
   constructor({ width, height, layerIds, fps = 12, frames = null, activeFrameIndex = 0 }) {
     assertDimensions(width, height);
@@ -287,8 +288,17 @@ export class PixelForgeAnimation {
         pixels[target + 3] = Math.round(alpha * 255);
       }
     }
-    this.#thumbnailCache.set(cacheKey, { width, height, pixels: new Uint8ClampedArray(pixels) });
-    while (this.#thumbnailCache.size > 480) this.#thumbnailCache.delete(this.#thumbnailCache.keys().next().value);
+    const cachedPixels = new Uint8ClampedArray(pixels);
+    this.#thumbnailCache.set(cacheKey, { width, height, pixels: cachedPixels });
+    this.#thumbnailCacheBytes += cachedPixels.byteLength;
+    // Bound memory as well as entry count: callers may request 256px previews,
+    // which are much larger than the editor's normal 48px timeline thumbnails.
+    while (this.#thumbnailCache.size > 480 || this.#thumbnailCacheBytes > 8 * 1024 * 1024) {
+      const oldestKey = this.#thumbnailCache.keys().next().value;
+      const oldest = this.#thumbnailCache.get(oldestKey);
+      this.#thumbnailCacheBytes -= oldest?.pixels.byteLength ?? 0;
+      this.#thumbnailCache.delete(oldestKey);
+    }
     return { width, height, pixels };
   }
 
@@ -297,7 +307,10 @@ export class PixelForgeAnimation {
     const frame = this.#frameAt(frameIndex);
     if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
     frame.cels.set(layerId, clonePixels(pixels, this.#width * this.#height * 4));
-    for (const key of this.#thumbnailCache.keys()) if (key.startsWith(frame.id + ':')) this.#thumbnailCache.delete(key);
+    for (const key of this.#thumbnailCache.keys()) if (key.startsWith(frame.id + ':')) {
+      this.#thumbnailCacheBytes -= this.#thumbnailCache.get(key)?.pixels.byteLength ?? 0;
+      this.#thumbnailCache.delete(key);
+    }
     this.#assertMemoryBudget();
     return true;
   }
@@ -337,7 +350,10 @@ export class PixelForgeAnimation {
     this.#frameAt(index);
     if (this.#frames.length === 1) throw new RangeError('An animation must keep at least one frame.');
     const [removed] = this.#frames.splice(index, 1);
-    for (const key of this.#thumbnailCache.keys()) if (key.startsWith(removed.id + ':')) this.#thumbnailCache.delete(key);
+    for (const key of this.#thumbnailCache.keys()) if (key.startsWith(removed.id + ':')) {
+      this.#thumbnailCacheBytes -= this.#thumbnailCache.get(key)?.pixels.byteLength ?? 0;
+      this.#thumbnailCache.delete(key);
+    }
     if (this.#activeFrameIndex > index) this.#activeFrameIndex--;
     else if (this.#activeFrameIndex === index) this.#activeFrameIndex = Math.min(index, this.#frames.length - 1);
     return Object.freeze({ id: removed.id, index });
@@ -370,6 +386,7 @@ export class PixelForgeAnimation {
     }
     this.#layerIds.push(layerId);
     this.#thumbnailCache.clear();
+    this.#thumbnailCacheBytes = 0;
     for (const frame of this.#frames) {
       const source = copyFromLayerId === null ? null : frame.cels.get(copyFromLayerId);
       frame.cels.set(layerId, source ? new Uint8ClampedArray(source) : new Uint8ClampedArray(byteLength));
