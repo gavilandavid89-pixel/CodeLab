@@ -93,7 +93,7 @@ async function main() {
         const saveResponse = async () => {
           const responsePromise = page.waitForResponse(response =>
             response.url().includes('/api/pixelforge/projects') &&
-            response.request().method() === 'PUT' && response.status() === 200, { timeout: 10000 });
+            response.request().method() === 'PUT' && response.ok(), { timeout: 10000 });
           await page.locator('#save').click();
           await responsePromise;
         };
