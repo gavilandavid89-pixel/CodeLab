@@ -293,7 +293,7 @@ Example drawing and layer edit:
 
 Supported action families include:
 - Document/canvas inspection and pixel sampling.
-- Configurable brush strokes, line drawing, rectangle/ellipse outlines, fill (solid or checker pattern with secondary color and dither scale), clear, region copy/paste, crop, gradient, flip, outline, color replacement and region transforms.
+- Configurable brush strokes, line drawing, rectangle/ellipse outlines, fill (solid or checker pattern with secondary color and dither scale), clear, region copy/paste, crop, gradient, flip, outline, color replacement and region transforms with bounded scale/skew and nearest/bilinear interpolation.
 - Layer add/select/move/rename/opacity/visibility/lock/duplicate/delete.
 - Rectangular, elliptical and lasso selections, selection combination/translation, expansion/contraction/inversion, undo and redo.
 - Animation timeline frame creation from a layer or full composite, duplicate/delete/reorder, per-frame duration, FPS and looping. The runtime also provides deterministic frame-time lookup and a PNG sprite-sheet export helper; the mailbox command does not yet return/download the exported binary.
