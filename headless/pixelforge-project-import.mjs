@@ -1,4 +1,4 @@
-import { randomUUID as nodeRandomUUID } from 'node:crypto';
+import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto';
 
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const MAX_RASTER_BYTES = 64 * 1024 * 1024;
@@ -133,6 +133,13 @@ export function preparePixelForgeProjectImport(input, { randomUUID = nodeRandomU
   if (serialized.length > MAX_PROJECT_BYTES) {
     throw new RangeError('PixelForge imported project exceeds the 96 MiB serialized limit.');
   }
+  const semanticSnapshot = [
+    imported.name, imported.width, imported.height, imported.activeLayerId,
+    imported.layers.map(layer => [layer.id, layer.name, layer.visible, layer.opacity, layer.locked, layer.pixels]),
+    imported.animation ? [imported.animation.width, imported.animation.height, imported.animation.fps, imported.animation.loop, imported.animation.activeFrameIndex, imported.animation.layerIds,
+      imported.animation.frames.map(frame => [frame.id, frame.name, frame.durationMs, frame.cels.map(cel => [cel.layerId, cel.pixels])])] : null,
+  ];
+  const semanticDigest = createHash('sha256').update(JSON.stringify(semanticSnapshot)).digest('hex');
   return {
     project: imported,
     serialized,
@@ -141,5 +148,6 @@ export function preparePixelForgeProjectImport(input, { randomUUID = nodeRandomU
     frameCount,
     rasterBytes,
     animationBytes,
+    semanticDigest,
   };
 }
