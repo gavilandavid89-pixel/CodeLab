@@ -41,6 +41,6 @@ test('project factory rejects invalid dimensions, duplicate layers, and expanded
   assert.throws(() => normalizePixelForgeProjectOptions({ width: 0 }), /dimensions/);
   assert.throws(() => normalizePixelForgeProjectOptions({ layerNames: ['Ink', 'Ink'] }), /unique valid names/);
   assert.throws(() => normalizePixelForgeProjectOptions({
-    width: 2048, height: 2048, layerNames: Array.from({ length: 2 }, (_, index) => 'Layer ' + index),
+    width: 2048, height: 2048, layerNames: Array.from({ length: 5 }, (_, index) => 'Layer ' + index),
   }), /64 MiB/);
 });
