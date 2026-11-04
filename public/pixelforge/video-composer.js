@@ -177,6 +177,7 @@ async function importPackage(file) {
     $('#vc-loop-export').checked = parsed.manifest.loop !== false;
     $('#vc-output-fps').value = String(parsed.manifest.fps);
     setEnabled(true);
+    refreshFormatSupport();
     await buildTimeline();
     if (requestId !== activeImport) return;
     await renderFrame(0);
