@@ -2,7 +2,7 @@ name: Headless PixelForge Runtime
 
 on:
   push:
-    branches: ["feat/headless-pixelforge-runtime", "feat/headless-pixelforge-multilayer-integration"]
+    branches: ["feat/headless-pixelforge-runtime", "feat/headless-pixelforge-multilayer-integration", "integration/**"]
   pull_request:
     branches: ["main", "feat/codelab-pixelforge-studio-entry-clean", "feat/headless-pixelforge-multilayer-integration"]
     paths:
