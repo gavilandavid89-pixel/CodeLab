@@ -73,6 +73,15 @@ export async function preparePixelForgeProposal({ projectId, actions, summary, f
   if (!batch.ok) {
     return { status: 'rejected', projectId, failedIndex: batch.failedIndex, results: batch.results, error: batch.error };
   }
+  if (!runtime.hasPendingChanges) {
+    return {
+      status: 'inspected',
+      projectId,
+      results: batch.results,
+      inspection: runtime.inspect(),
+      diff: { changedPixels: 0, previewDataUrl: null },
+    };
+  }
   const proposal = runtime.createProposal(summary);
   const sessionId = crypto.randomUUID();
   sessions.set(sessionId, { runtime, projectId, fetcher, expiresAt: Date.now() + SESSION_TTL_MS });
