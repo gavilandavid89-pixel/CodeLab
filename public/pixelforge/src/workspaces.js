@@ -138,38 +138,23 @@ export class AIWorkspace {
   acceptProposal() {
     const validation = this.validateProposalBase();
     if (!validation.valid) return { status: 'rejected', ...validation };
-    if (this.#source.width !== this.#sandbox.width || this.#source.height !== this.#sandbox.height) {
-      return { status: 'rejected', reason: 'dimension-mismatch' };
-    }
-    if (this.#sandbox.layers.length !== this.#layerBindings.length || this.#source.layers.length !== this.#layerBindings.length) {
-      return { status: 'rejected', reason: 'unsupported-layer-structure' };
-    }
-    for (let index = 0; index < this.#layerBindings.length; index++) {
-      const binding = this.#layerBindings[index];
-      const sourceLayer = this.#source.layers[index];
-      const sandboxLayer = this.#sandbox.layers[index];
-      const base = this.#baseLayerState[index];
-      if (!sourceLayer || sourceLayer.id !== binding.sourceId || sandboxLayer?.id !== binding.sandboxId ||
-          sourceLayer.name !== base.name || sourceLayer.visible !== base.visible ||
-          sourceLayer.opacity !== base.opacity || sourceLayer.locked !== base.locked ||
-          sandboxLayer.name !== base.name || sandboxLayer.visible !== base.visible ||
-          sandboxLayer.opacity !== base.opacity || sandboxLayer.locked !== base.locked) {
-        return { status: 'rejected', reason: 'unsupported-layer-structure' };
-      }
-    }
     try {
-      const replacements = this.#layerBindings.flatMap(binding => {
-        const sourceLayer = this.#source.layers.find(item => item.id === binding.sourceId);
-        const sandboxLayer = this.#sandbox.layers.find(item => item.id === binding.sandboxId);
-        if (sourceLayer.pixels.every((value, index) => value === sandboxLayer.pixels[index])) return [];
-        return [{ layerId: binding.sourceId, pixels: sandboxLayer.pixels }];
-      });
-      const result = replacements.length
-        ? this.#source.replaceLayerPixelsBatch(replacements)
-        : { changedPixels: 0, changedLayers: 0 };
+      // Sandbox layer IDs are intentionally distinct from source IDs. Rebind
+      // unchanged layers by their stable source mapping while retaining IDs for
+      // newly-created sandbox layers. The source applies the complete snapshot
+      // as one undoable transaction, including reorder/visibility/lock/opacity.
+      const snapshot = this.#sandbox.toJSON();
+      const sandboxToSource = new Map(this.#layerBindings.map(binding => [binding.sandboxId, binding.sourceId]));
+      for (const layer of snapshot.layers) {
+        layer.id = sandboxToSource.get(layer.id) ?? layer.id;
+      }
+      snapshot.activeLayerId = sandboxToSource.get(snapshot.activeLayerId) ?? snapshot.activeLayerId;
+      snapshot.id = this.#source.id;
+      snapshot.serverRevision = this.#source.serverRevision;
+      const result = this.#source.replaceDocumentState(snapshot);
       this.#proposal = null;
       this.#syncSandboxFromSource();
-      return { status: 'applied', changedPixels: result.changedPixels, changedLayers: result.changedLayers };
+      return { status: 'applied', changedPixels: result.changedPixels, changedLayers: result.changedLayers, structuralChanges: true };
     } catch (error) {
       return { status: 'rejected', reason: 'apply-failed', message: error instanceof Error ? error.message : 'Could not apply proposal.' };
     }
