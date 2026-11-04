@@ -147,6 +147,7 @@ test('authenticated bridge returns read-only inspection batches without creating
     summary: 'Inspect pixels and preview transform bounds',
     actions: [
       { name: 'document.get_summary' },
+      { name: 'canvas.get_reference', gridStep: 4 },
       { name: 'canvas.get_pixel', x: 0, y: 0 },
       { name: 'canvas.preview_transform_region', x: 1, y: 1, width: 4, height: 4, rotate: 90 },
     ],
@@ -154,7 +155,9 @@ test('authenticated bridge returns read-only inspection batches without creating
   });
   assert.equal(inspected.status, 'inspected');
   assert.equal(inspected.projectId, source.id);
-  assert.equal(inspected.results.length, 3);
+  assert.equal(inspected.results.length, 4);
+  assert.deepEqual(inspected.results[1].result.landmarks.topLeft, { x: 0, y: 0 });
+  assert.deepEqual(inspected.results[1].result.landmarks.bottomRight, { x: 11, y: 11 });
   assert.equal(inspected.diff.changedPixels, 0);
   assert.equal(inspected.sessionId, undefined);
   assert.equal(writes, 0, 'read-only inspection must not write to the project API');
