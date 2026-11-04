@@ -11,7 +11,7 @@ function u32(view, offset) { return view.getUint32(offset, true); }
 
 function safeName(name) {
   return typeof name === 'string' && name.length > 0 && !name.startsWith('/') &&
-    !name.includes('\\\\') && !name.split('/').some(part => part === '..' || part === '.');
+    !name.includes('\\') && !name.split('/').some(part => part === '..' || part === '.');
 }
 
 export async function readStoredZip(blob, { maxEntries = MAX_ENTRIES, maxTotalBytes = MAX_TOTAL_BYTES } = {}) {
