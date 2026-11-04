@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PixelForgeAnimation, MAX_ANIMATION_FRAMES } from '../public/pixelforge/src/animation.mjs';
+import { PixelForgeAnimation, MAX_ANIMATION_FRAMES, MAX_ANIMATION_BYTES, MAX_ANIMATION_JSON_BYTES, estimateAnimationJSONBytes } from '../public/pixelforge/src/animation.mjs';
 
 function documentFixture() {
   return {
@@ -196,11 +196,24 @@ test('enforces the maximum frame count', () => {
 });
 
 
+test('preflights base64 expansion against the persisted animation JSON budget', () => {
+  const estimate = estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 1, frameCount: 1 });
+  const rawBytes = 4096 * 4096 * 4;
+  const base64Bytes = Math.ceil(rawBytes / 3) * 4;
+  assert.equal(rawBytes, MAX_ANIMATION_BYTES);
+  assert.equal(estimate, base64Bytes + 8 * 1024 * 1024);
+  assert.ok(estimate < MAX_ANIMATION_JSON_BYTES);
+  assert.ok(estimate < 128 * 1024 * 1024);
+  assert.throws(() => estimateAnimationJSONBytes({ width: 4096, height: 4096, layerCount: 2, frameCount: 1 }), /64 MiB/);
+});
+
 test('keeps high-resolution animation budgets aligned with PixelForge API limits', () => {
   const server = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
   const animation = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/animation.mjs'), 'utf8');
   const core = fs.readFileSync(path.join(process.cwd(), 'public/pixelforge/src/core.js'), 'utf8');
   assert.ok(animation.includes('MAX_ANIMATION_BYTES = 64 * 1024 * 1024'));
+  assert.ok(animation.includes('MAX_ANIMATION_JSON_BYTES = 112 * 1024 * 1024'));
+  assert.ok(animation.includes('ANIMATION_JSON_METADATA_RESERVE_BYTES = 8 * 1024 * 1024'));
   assert.ok(animation.includes('width > 4096 || height > 4096'));
   assert.ok(core.includes('MAX_DIMENSION = 4096'));
   assert.ok(core.includes('MAX_PIXELS = 16_777_216'));
