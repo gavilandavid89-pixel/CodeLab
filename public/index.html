@@ -379,7 +379,11 @@
 
       <!-- Las acciones del espacio Web se renderizan dentro de su propio espacio. -->
 
-    <div id="copyAlertBanner" class="hidden bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 flex items-center justify-between text-xs text-amber-300 shrink-0">
+    <!-- CONTENEDOR PRINCIPAL STUDIO -->
+    <main id="mainSplit" class="flex-1 flex flex-col overflow-hidden relative">
+      <!-- ESPACIO WEB: interfaz independiente -->
+      <section id="webWorkspacePanel" class="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+<div id="copyAlertBanner" class="hidden bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 flex items-center justify-between text-xs text-amber-300 shrink-0">
       <div class="flex items-center gap-2">
         <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
         <span class="font-bold">⚠️ EDITANDO LA COPIA DEL PROYECTO</span>
@@ -395,10 +399,6 @@
       </div>
     </div>
 
-    <!-- CONTENEDOR PRINCIPAL STUDIO -->
-    <main id="mainSplit" class="flex-1 flex flex-col overflow-hidden relative">
-      <!-- ESPACIO WEB: interfaz independiente -->
-      <section id="webWorkspacePanel" class="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
         <div id="webWorkspaceToolbar" class="bg-slate-900 border-b border-slate-800 px-2 sm:px-3 py-2 shrink-0 flex items-center gap-2 overflow-x-auto">
           <div class="flex items-center gap-1.5 shrink-0">
             <span class="text-[10px] uppercase tracking-wider text-cyan-400 font-bold">Web</span>
@@ -544,7 +544,7 @@
           <label class="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Qué parte del editor capturar"><span>Vista</span><select id="designCaptureMode" aria-label="Vista de captura IA" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="project">Proyecto completo</option><option value="canvas">Solo lienzo</option><option value="editor">Editor completo</option></select></label>
           <label class="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Resolución de la captura IA"><span class="hidden sm:inline">Resolución</span><select id="designCaptureScale" aria-label="Resolución de captura IA" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></label>
           <button onclick="captureDesignForAI()" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold" title="Genera una captura y envíala al modelo de IA para revisión visual"><i class="fa-solid fa-camera mr-1"></i> Revisar con IA</button>
-          <button type="button" onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs font-semibold" title="Convertir este diseño en una página web editable"><i class="fa-solid fa-code mr-1"></i> Convertir a web</button>
+
           <div class="ml-auto flex items-center gap-2">
             <label class="text-[11px] text-slate-400" for="designFrameSize">Marco</label>
             <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
