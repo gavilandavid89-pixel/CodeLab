@@ -86,10 +86,10 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     assert.equal(keyboardViewport.detected, true, 'mobile visual viewport shrink should detect the virtual keyboard');
     assert.equal(keyboardViewport.bottomBarHidden, true, 'the mobile bottom bar must not cover the editor while the keyboard is open');
     assert.equal(keyboardViewport.shellHeight, '350px', 'the studio shell must follow the shrunken visual viewport');
-    await page.locator('#mobileTabPreview').evaluate(button => button.click());
+    await page.locator('#mobileTabPreview').tap();
     assert.ok(await page.locator('#studioView').evaluate(el => el.classList.contains('mobile-mode-preview')),
       'Preview bottom-tab should switch the mobile studio to preview mode');
-    await page.locator('#mobileTabCode').evaluate(button => button.click());
+    await page.locator('#mobileTabCode').tap();
     assert.ok(await page.locator('#studioView').evaluate(el => el.classList.contains('mobile-mode-code')),
       'Code bottom-tab should restore the mobile editor');
 
