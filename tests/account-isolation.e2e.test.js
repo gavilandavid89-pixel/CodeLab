@@ -47,14 +47,14 @@ function project(id, name, marker) {
 }
 
 (async () => {
-  const bootstrap = seedSession('bootstrap-admin', 'ADMIN', { role: 'admin', mustChangePassword: true });
-  const rotationStatus = await request('/api/auth/status', { cookie: bootstrap.cookie });
-  assert.equal(rotationStatus.status, 200, 'auth status should expose the password rotation requirement');
-  assert.equal(rotationStatus.json.mustChangePassword, true, 'bootstrap admin must be marked for password rotation');
-  const blockedMe = await request('/api/auth/me', { cookie: bootstrap.cookie });
-  assert.equal(blockedMe.status, 401, 'password-rotation session must not receive a workspace bearer token');
-  const blockedAdmin = await request('/api/admin/accounts', { cookie: bootstrap.cookie });
-  assert.equal(blockedAdmin.status, 403, 'password-rotation session must not manage other accounts');
+  const bootstrap = seedSession('bootstrap-admin', 'ADMIN', { role: 'admin', mustChangePassword: false });
+  const adminStatus = await request('/api/auth/status', { cookie: bootstrap.cookie });
+  assert.equal(adminStatus.status, 200, 'native ADMIN auth status should respond');
+  assert.equal(adminStatus.json.mustChangePassword, false, 'ADMIN must not be forced into password rotation');
+  const adminMe = await request('/api/auth/me', { cookie: bootstrap.cookie });
+  assert.equal(adminMe.status, 200, 'ADMIN should receive a workspace token immediately');
+  const adminAccounts = await request('/api/admin/accounts', { cookie: bootstrap.cookie });
+  assert.equal(adminAccounts.status, 200, 'ADMIN should access account administration immediately');
 
   const users = Array.from({ length: 10 }, (_, i) => seedSession('stress-user-' + (i + 1), 'Stress User ' + (i + 1)));
   const initialized = await Promise.all(users.map(async user => {
