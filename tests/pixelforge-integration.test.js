@@ -63,6 +63,12 @@ async function main() {
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
+  assert.equal(dashboardResponse.headers.get('x-content-type-options'), 'nosniff',
+    'static HTML must include MIME sniffing protection');
+  assert.equal(dashboardResponse.headers.get('x-frame-options'), 'SAMEORIGIN',
+    'static HTML must prevent cross-origin framing');
+  assert.equal(dashboardResponse.headers.get('referrer-policy'), 'strict-origin-when-cross-origin',
+    'static HTML must use a restrictive referrer policy');
   assert.doesNotMatch(dashboard, /openAuthModal|btnAuthGoogle|btnAuthGithub|Google|GitHub/,
     'dashboard must expose only native CodeLab account sign-in');
   const authStatus = await (await fetch(base + '/api/auth/status')).json();
