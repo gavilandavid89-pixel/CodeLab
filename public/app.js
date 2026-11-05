@@ -528,7 +528,7 @@ async function loadProjectsFromStorage() {
     const sameWorkspace = !!localWorkspaceMarker && localWorkspaceMarker === boot.workspaceId;
     const mayMergeLocal = sameWorkspace || !currentUser || !currentUser.real;
     if (currentUser && currentUser.real && localProjects.length && !sameWorkspace) {
-      // Never silently mix another browser workspace into an OAuth account.
+      // Never silently mix another browser workspace into a CodeLab account.
       // Keep it available for an explicit import after the account loads. Do
       // not overwrite a pending snapshot already preserved for this account.
       if (!(Array.isArray(pendingLocalImportProjects) && pendingLocalImportProjects.length)) {
@@ -1387,14 +1387,14 @@ async function editCurrentProjectName() {
   else showToast('Nombre actualizado localmente; sincronización pendiente.', 'warn');
 }
 
-// ---------- Auth (OAuth + demo fallback) ----------
+// ---------- Auth (CodeLab native accounts) ----------
 function handleAuthQueryParams() {
   try {
     const params = new URLSearchParams(window.location.search);
     const auth = params.get('auth');
     if (!auth) return;
     if (auth === 'ok') {
-      showToast('Sesión iniciada con ' + (params.get('provider') || 'OAuth') + '.');
+      showToast('Sesión iniciada en CodeLab.');
     } else if (auth === 'error') {
       showToast('No se pudo iniciar sesión (' + (params.get('reason') || 'error') + ').', 'error');
     }
