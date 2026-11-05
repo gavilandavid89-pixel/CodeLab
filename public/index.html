@@ -834,6 +834,8 @@
   </div>
 
 
+  </div><!-- close #welcomeDashboard before global dialogs -->
+
   <!-- MODAL CUENTA CODELAB -->
   <div id="authModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
     <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
@@ -851,6 +853,9 @@
         <p id="nativeLoginError" class="hidden text-xs text-red-300" role="alert"></p>
         <button type="submit" id="nativeLoginSubmit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition">Iniciar sesión</button>
       </form>
+    </div>
+  </div>
+
   <div id="changePasswordModal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[95] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">
     <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <h3 id="changePasswordTitle" class="text-base font-bold text-white">Cambia tu contraseña</h3>
