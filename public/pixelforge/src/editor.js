@@ -2282,37 +2282,45 @@ window.addEventListener('blur', () => {
   if (panning) { panning = false; panStart = null; canvas.classList.remove('is-panning'); }
   render();
 });
-function renderAuthenticationRequired() {
-  // Use CodeLab's own account flow. Preserve this editor URL so a successful
-  // sign-in returns directly to the same PixelForge document.
-  const returnTo = window.location.pathname + window.location.search + window.location.hash;
-  try { localStorage.setItem('codelab.postLoginRedirect', returnTo); } catch (_) {}
-  window.location.replace('/');
-}
 async function boot() {
   try {
-    const auth = await window.CodeLabStudioCore.getCodeLabSession();
+    const modeResponse = await fetch('/api/pixelforge/mode', {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+      cache: 'no-store'
+    });
+    if (!modeResponse.ok) throw new Error('No se pudo comprobar el modo de PixelForge.');
+    const pixelForgeMode = await modeResponse.json();
+    const guestMode = pixelForgeMode.guestMode === true;
+    const auth = guestMode
+      ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
+      : await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
-      renderAuthenticationRequired();
+      status('PixelForge está listo, pero esta instalación requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
       return;
     }
-    // Reuse the provider settings configured in CodeLab's AI settings area.
-    // The secret stays in browser memory and is never copied into PixelForge projects.
     const accountChip = $('#codelab-account-chip');
-    if (accountChip) accountChip.textContent = 'CodeLab · ' + (auth.user.name || auth.user.email || 'Cuenta');
-    const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
-    if (sharedAI.baseUrl) {
-      const base = sharedAI.baseUrl.replace(/\/+$/, '');
-      $('#ai-provider-endpoint').value = /\/chat\/completions$/i.test(base) ? base : base + '/chat/completions';
+    if (accountChip) accountChip.textContent = guestMode ? 'CodeLab · modo temporal' : 'CodeLab · ' + (auth.user.name || auth.user.email || 'Cuenta');
+    if (!guestMode) {
+      const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
+      if (sharedAI.baseUrl) {
+        const base = sharedAI.baseUrl.replace(/\\/+$/, '');
+        $('#ai-provider-endpoint').value = /\\/chat\\/completions$/i.test(base) ? base : base + '/chat/completions';
+      }
+      if (sharedAI.model) $('#ai-provider-model').value = sharedAI.model;
+      if (sharedAI.apiKey) $('#ai-provider-key').value = sharedAI.apiKey;
+      if (sharedAI.configured) {
+        $('#ai-connection-state').textContent = 'Configuración de IA de CodeLab detectada para ' + sharedAI.model + '. Pulsa «Use this provider» para activarla; la clave no se guarda en el proyecto.';
+      } else if (sharedAI.mode !== 'local') {
+        $('#ai-connection-state').textContent = 'Para reutilizar tu proveedor, configura modo API y tu clave en los Ajustes de IA de CodeLab.';
+      }
+    } else {
+      const aiState = $('#ai-connection-state');
+      if (aiState) aiState.textContent = 'Modo temporal: configura un proveedor desde el panel de PixelForge. Las cuentas están aisladas por ahora.';
     }
-    if (sharedAI.model) $('#ai-provider-model').value = sharedAI.model;
-    if (sharedAI.apiKey) $('#ai-provider-key').value = sharedAI.apiKey;
-    if (sharedAI.configured) {
-      $('#ai-connection-state').textContent = 'Configuración de IA de CodeLab detectada para ' + sharedAI.model + '. Pulsa «Use this provider» para activarla; la clave no se guarda en el proyecto.';
-    } else if (sharedAI.mode !== 'local') {
-      $('#ai-connection-state').textContent = 'Para reutilizar tu proveedor, configura modo API y tu clave en los Ajustes de IA de CodeLab.';
-    }
-    paletteStorageKey = 'pixelforge.palette.v1:' + encodeURIComponent(auth.user.provider) + ':' + encodeURIComponent(auth.user.id);
+    paletteStorageKey = guestMode
+      ? 'pixelforge.palette.v1:temporary-guest'
+      : 'pixelforge.palette.v1:' + encodeURIComponent(auth.user.provider) + ':' + encodeURIComponent(auth.user.id);
     userPalette = loadUserPalette();
     renderUserPalette();
     resizeCanvas();
@@ -2325,7 +2333,7 @@ async function boot() {
         doc = RasterDocument.fromJSON(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
-        status('Demo Orbital recuperada de tu cuenta · 12 fotogramas a 12 FPS', 'success');
+        status('Demo Orbital recuperada · 12 fotogramas a 12 FPS', 'success');
       } else {
         const showcase = createOrbitalShowcase();
         doc = showcase.doc;
@@ -2336,7 +2344,7 @@ async function boot() {
         const savedDemo = await saveProject(snapshot);
         if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
         doc.dirty = false;
-        status('Demo Orbital guardada en tu cuenta · 12 fotogramas a 12 FPS', 'success');
+        status('Demo Orbital guardada · 12 fotogramas a 12 FPS', 'success');
       }
       animationFrameHistory.clear();
       animationOrphanCels.clear();
@@ -2345,11 +2353,9 @@ async function boot() {
       window.history.replaceState(null, '', window.location.pathname + window.location.hash);
     } else if (params.get('projectId')) {
       const projectId = params.get('projectId');
-      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
-        throw new Error('El enlace contiene un ID de proyecto PixelForge no válido.');
-      }
+      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(projectId)) throw new Error('El enlace contiene un ID de proyecto PixelForge no válido.');
       const snapshot = await loadProjectById(projectId);
-      if (!snapshot) throw new Error('No se encontró ese proyecto en tu cuenta CodeLab.');
+      if (!snapshot) throw new Error('No se encontró ese proyecto PixelForge.');
       doc = RasterDocument.fromJSON(snapshot);
       animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
@@ -2357,21 +2363,29 @@ async function boot() {
       animationOrphanCels.clear();
       clearSelectionState();
       resetAIWorkspaceForDocument();
-      status('Proyecto abierto desde su enlace · guardado en tu cuenta CodeLab', 'success');
+      status('Proyecto abierto correctamente', 'success');
     } else {
       const saved = await loadMostRecentProject();
-      if (saved) { doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument(); status('Proyecto recuperado de tu cuenta CodeLab', 'success'); }
-      else status('Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
+      if (saved) {
+        doc = RasterDocument.fromJSON(saved);
+        animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
+        animationLoop = saved.animation?.loop !== false;
+        animationFrameHistory.clear();
+        animationOrphanCels.clear();
+        clearSelectionState();
+        resetAIWorkspaceForDocument();
+        status('Proyecto recuperado correctamente', 'success');
+      } else {
+        status(guestMode
+          ? 'PixelForge listo · espacio temporal compartido · sin inicio de sesión'
+          : 'Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
+      }
     }
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
   } catch (error) {
-    if (error?.status === 401 || error?.code === 'not_authenticated') {
-      renderAuthenticationRequired();
-      return;
-    }
     status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
     const statusNode = $('#status');
-    if (statusNode) statusNode.title = 'Comprueba tu sesión de CodeLab y vuelve a cargar.';
+    if (statusNode) statusNode.title = 'Comprueba la conexión con CodeLab y vuelve a cargar.';
   }
 }
 boot();
