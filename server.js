@@ -145,8 +145,8 @@ async function seedAdminAccountIfConfigured() {
   }
   const salt = crypto.randomBytes(16).toString('hex');
   await accountPool.query(
-    'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO NOTHING',
-    ['ADMIN','admin','admin',salt,passwordHash(ADMIN_BOOTSTRAP_PASSWORD,salt),true]
+    'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO UPDATE SET must_change_password = false WHERE codelab_accounts.role = \'admin\'',
+    ['ADMIN','admin','admin',salt,passwordHash(ADMIN_BOOTSTRAP_PASSWORD,salt),false]
   );
 }
 
