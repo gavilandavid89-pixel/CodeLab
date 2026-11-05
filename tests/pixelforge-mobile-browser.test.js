@@ -25,6 +25,40 @@ fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
 async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
+    // Direct PixelForge links must not leave an anonymous visitor inside a
+    // non-functional editor. Require the same CodeLab account session.
+    const anonymousContext = await browser.newContext({
+      viewport: { width: 360, height: 748 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2
+    });
+    const anonymousPage = await anonymousContext.newPage();
+    await anonymousPage.goto(base + '/pixelforge/index.html', { waitUntil: 'domcontentloaded' });
+    await anonymousPage.locator('#auth-required-screen').waitFor({ state: 'visible', timeout: 10000 });
+    assert.equal(await anonymousPage.locator('.app-shell').evaluate(node => node.hidden), true,
+      'anonymous PixelForge visitors must not see an interactive editor shell');
+    assert.equal(await anonymousPage.locator('#auth-required-link').getAttribute('href'), '/',
+      'PixelForge sign-in gate must return to CodeLab authentication');
+    await anonymousContext.close();
+
+    // Accounts with a pending first-password change also stay outside the editor.
+    const pendingSessionId = 'f'.repeat(48);
+    const pendingSessionPath = path.join(dataDir, 'sessions', pendingSessionId + '.json');
+    fs.writeFileSync(pendingSessionPath, JSON.stringify({
+      id: pendingSessionId,
+      user: { id: 'pending-password-user', provider: 'local', name: 'PENDING', role: 'user', mustChangePassword: true },
+      createdAt: Date.now(), expiresAt: Date.now() + 60 * 60 * 1000
+    }), { mode: 0o600 });
+    const pendingContext = await browser.newContext({
+      viewport: { width: 360, height: 748 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2
+    });
+    await pendingContext.addCookies([{ name: 'codelab_sid', value: pendingSessionId, url: base }]);
+    const pendingPage = await pendingContext.newPage();
+    await pendingPage.goto(base + '/pixelforge/index.html', { waitUntil: 'domcontentloaded' });
+    await pendingPage.locator('#auth-required-screen').waitFor({ state: 'visible', timeout: 10000 });
+    assert.match(await pendingPage.locator('#auth-required-message').textContent(), /contraseña inicial/i,
+      'PixelForge must direct accounts with pending password rotation back to CodeLab');
+    await pendingContext.close();
+    fs.unlinkSync(pendingSessionPath);
+
     for (const viewport of [
       { width: 390, height: 844, label: 'mobile portrait', mobile: true },
       { width: 320, height: 640, label: 'narrow mobile', mobile: true },
