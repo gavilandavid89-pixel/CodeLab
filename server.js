@@ -1895,7 +1895,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'GET' && pathname === '/api/auth/me') {
         const user = await getSessionUser(req);
-        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
         return sendJson(res, 200, {
           user,
           workspaceId: userWorkspaceId(user),
