@@ -149,28 +149,60 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     // Required target viewport: 720 × 1600 CSS px, excluding browser chrome.
     await page.locator('#designFrameSize').selectOption('mobile-k51s');
     const k51sFrame = await page.evaluate(() => ({
-      width: document.getElementById('designCanvas')?.getBoundingClientRect().width,
-      height: document.getElementById('designCanvas')?.getBoundingClientRect().height
+      width: document.getElementById('designCanvas')?.style.width,
+      height: document.getElementById('designCanvas')?.style.height,
+      zoom: Number(document.getElementById('designCanvas')?.style.zoom || 1)
     }));
-    assert.equal(Math.round(k51sFrame.width), 720, 'K51S portrait design frame must be 720px wide');
-    assert.equal(Math.round(k51sFrame.height), 1600, 'K51S portrait design frame must be 1600px high');
+    assert.equal(k51sFrame.width, '720px', 'K51S portrait design artboard must retain a 720 CSS-pixel source width');
+    assert.equal(k51sFrame.height, '1600px', 'K51S portrait design artboard must retain a 1600 CSS-pixel source height');
+    assert.ok(k51sFrame.zoom > 0 && k51sFrame.zoom <= 1, 'large K51S artboard should fit the available editor viewport without changing its source dimensions');
 
-    await page.setViewportSize({ width: 720, height: 1600 });
+    await page.locator('#designFrameSize').selectOption('mobile-k51s-landscape');
+    const k51sLandscapeFrame = await page.evaluate(() => ({
+      width: document.getElementById('designCanvas')?.style.width,
+      height: document.getElementById('designCanvas')?.style.height
+    }));
+    assert.equal(k51sLandscapeFrame.width, '1600px', 'K51S landscape artboard must retain a 1600 CSS-pixel source width');
+    assert.equal(k51sLandscapeFrame.height, '720px', 'K51S landscape artboard must retain a 720 CSS-pixel source height');
+
+    // Physical target is 720×1600 device pixels. A DPR-2 handset exposes about
+    // 360 CSS px; reserve 52 CSS px (104 physical px) for browser/system chrome.
+    await page.setViewportSize({ width: 360, height: 748 });
     await page.waitForFunction(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '720px',
+      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '360px',
       null, { timeout: 3000 });
     const targetViewport = await page.evaluate(() => ({
-      width: window.innerWidth,
-      documentWidth: document.documentElement.scrollWidth,
+      cssWidth: window.innerWidth,
+      cssHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+      physicalWidth: Math.round(window.innerWidth * window.devicePixelRatio),
+      visibleDocumentWidth: document.documentElement.scrollWidth,
       canvasVisible: !!document.querySelector('#designCanvas') &&
         document.querySelector('#designCanvas').getBoundingClientRect().width > 0,
       toolbarVisible: !!document.querySelector('#designStudioPanel .design-toolbar') &&
         getComputedStyle(document.querySelector('#designStudioPanel .design-toolbar')).display !== 'none'
     }));
-    assert.equal(targetViewport.width, 720, 'mobile target viewport must be exactly 720 CSS pixels wide');
-    assert.ok(targetViewport.documentWidth <= 720, 'the full interface must not create horizontal page overflow at 720×1600');
-    assert.equal(targetViewport.canvasVisible, true, 'design canvas must remain visible at 720×1600');
-    assert.equal(targetViewport.toolbarVisible, true, 'design toolbar must remain reachable at 720×1600');
+    assert.equal(targetViewport.physicalWidth, 720, 'K51S portrait emulation must represent 720 physical display pixels across');
+    assert.equal(targetViewport.devicePixelRatio, 2, 'K51S test must use DPR 2 rather than a 720px CSS viewport');
+    assert.ok(targetViewport.cssHeight < 800, 'usable web height must leave room for browser and Android system chrome');
+    assert.ok(targetViewport.visibleDocumentWidth <= 360, 'the full interface must not create horizontal overflow in the K51S CSS viewport');
+    assert.equal(targetViewport.canvasVisible, true, 'design canvas must remain visible in the K51S portrait CSS viewport');
+    assert.equal(targetViewport.toolbarVisible, true, 'design toolbar must remain reachable in the K51S portrait CSS viewport');
+
+    // Landscape rotates the same physical screen: 1600×720 device px -> 800×310 CSS px,
+    // leaving a reserved 50 CSS px for browser/system chrome.
+    await page.setViewportSize({ width: 800, height: 310 });
+    await page.waitForFunction(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '800px',
+      null, { timeout: 3000 });
+    const landscapeViewport = await page.evaluate(() => ({
+      physicalWidth: Math.round(window.innerWidth * window.devicePixelRatio),
+      cssHeight: window.innerHeight,
+      documentWidth: document.documentElement.scrollWidth
+    }));
+    assert.equal(landscapeViewport.physicalWidth, 1600, 'K51S landscape emulation must represent 1600 physical display pixels across');
+    assert.ok(landscapeViewport.cssHeight < 360, 'landscape web viewport must leave room for browser/system chrome');
+    assert.ok(landscapeViewport.documentWidth <= 800, 'landscape interface must not create horizontal page overflow');
 
 
     assert.deepEqual(failures, [], 'mobile UI journey should not throw uncaught JavaScript errors');
