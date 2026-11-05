@@ -557,7 +557,7 @@ async function capturePixelForgeInterface(payload = {}) {
   const width = Number.isInteger(payload.width) ? Math.max(640, Math.min(2560, payload.width)) : 1440;
   const height = Number.isInteger(payload.height) ? Math.max(480, Math.min(1800, payload.height)) : 1000;
   const zoom = Number.isFinite(payload.zoom) ? Math.max(1, Math.min(3, payload.zoom)) : 1;
-  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\\/$/, '');
+  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
   let browser;
   try {
     browser = await playwrightChromium.launch({
