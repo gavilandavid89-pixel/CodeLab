@@ -441,7 +441,8 @@ window.addEventListener('DOMContentLoaded', () => {
       // Complete a PixelForge sign-in round-trip only after CodeLab has confirmed
       // the real server session and loaded that account's workspace.
       if (resumePostLoginRedirect()) return;
-      // Initial-password rotation is temporarily optional; do not block the workspace UI.
+      // Accounts with a pending initial-password change are stopped above.
+      // The existing ADMIN is explicitly exempt from that policy.
     })
     .finally(() => {
       showBootLoading(false);
@@ -449,19 +450,36 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ---------- Mobile visual viewport / keyboard ergonomics ----------
+let lastVisualViewportWidth = 0;
+let lastVisualViewportHeight = 0;
 function syncMobileVisualViewport() {
   const vv = window.visualViewport;
   if (!vv) return;
-  const keyboardOpen = vv.height < window.innerHeight * 0.72 && (window.innerHeight - vv.height) > 120;
+  const viewportWidth = Math.round(vv.width);
+  const viewportHeight = Math.round(vv.height);
+  const layoutHeight = Math.max(
+    Number(window.innerHeight) || 0,
+    Number(document.documentElement.clientHeight) || 0,
+    Number(window.screen && window.screen.height) || 0
+  );
+  const hasTouchInput = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+    (Number(navigator.maxTouchPoints) || 0) > 0;
+  const keyboardOpen = hasTouchInput &&
+    (layoutHeight - viewportHeight) > Math.max(120, layoutHeight * 0.22);
   document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
-  document.documentElement.style.setProperty('--visual-viewport-height', Math.round(vv.height) + 'px');
-  Object.values(editors || {}).forEach(editor => {
-    try { editor.layout(); } catch (_) {}
-  });
+  document.documentElement.style.setProperty('--visual-viewport-height', viewportHeight + 'px');
+  document.documentElement.style.setProperty('--visual-viewport-offset-top', Math.round(vv.offsetTop || 0) + 'px');
+  if (Math.abs(viewportWidth - lastVisualViewportWidth) >= 1 ||
+      Math.abs(viewportHeight - lastVisualViewportHeight) >= 1) {
+    lastVisualViewportWidth = viewportWidth;
+    lastVisualViewportHeight = viewportHeight;
+    Object.values(editors || {}).forEach(editor => {
+      try { editor.layout(); } catch (_) {}
+    });
+  }
 }
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncMobileVisualViewport, { passive: true });
-  window.visualViewport.addEventListener('scroll', syncMobileVisualViewport, { passive: true });
 }
 window.addEventListener('resize', syncMobileVisualViewport, { passive: true });
 window.addEventListener('orientationchange', () => setTimeout(syncMobileVisualViewport, 120), { passive: true });
