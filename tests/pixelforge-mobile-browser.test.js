@@ -352,6 +352,11 @@ async function main() {
         assert.equal(headerOverflow, false, viewport.label + ': topbar must fit without horizontal overflow');
         const contextOverflow = await page.locator('.contextbar').evaluate(node => node.scrollWidth > node.clientWidth + 1);
         assert.equal(contextOverflow, false, viewport.label + ': context toolbar must fit without horizontal overflow');
+        const contextScroll = await page.locator('.context-right').evaluate(node => ({
+          overflow: node.scrollWidth > node.clientWidth + 1,
+          mode: getComputedStyle(node).overflowX
+        }));
+        assert.equal(contextScroll.mode, 'auto', viewport.label + ': context controls must remain horizontally reachable in a contained scroll row');
       }
       if (viewport.label === 'mobile landscape') {
         assert.equal(await page.locator('.bottom-bar').evaluate(node => getComputedStyle(node).display), 'none',
