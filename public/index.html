@@ -205,6 +205,44 @@
       #designCanvasScroll { padding: 10px !important; }
     }
 
+    /* Keyboard-aware mobile viewport: the virtual keyboard is not part of the app surface.
+       When it opens, reclaim the visual viewport and hide the fixed navigation bar so it
+       never covers the editor's active line/input. */ 
+    html.keyboard-open #studioView {
+      height: var(--visual-viewport-height) !important;
+      max-height: var(--visual-viewport-height) !important;
+    }
+    html.keyboard-open #mobileBottomBar { display: none !important; }
+    html.keyboard-open #studioView #editorPanel,
+    html.keyboard-open #studioView #previewPanel,
+    html.keyboard-open #studioView #designStudioPanel {
+      min-height: 0 !important;
+    }
+    @media (max-width: 767px) {
+      #mobileBottomBar button {
+        min-height: 44px;
+        min-width: 44px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #editorPanel .monaco-editor,
+      #editorPanel textarea {
+        touch-action: pan-x pan-y;
+      }
+      #designCanvasScroll {
+        -webkit-overflow-scrolling: touch;
+        scroll-padding: 12px;
+      }
+      #designStudioPanel .design-toolbar {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+      #designStudioPanel #designLayersPanel {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+    }
+
     /* Do not let the app compete with Android/browser chrome for the last pixels. */
     #studioView, #welcomeDashboard {
       min-height: 100dvh;
