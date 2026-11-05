@@ -304,8 +304,13 @@
   .inspector-tabs { height: 44px; min-height: 44px; gap: 6px; padding: 0 8px; }
   .inspector-tab { min-width: 44px; min-height: 44px; justify-content: center; }
   .inspector input, .inspector select, .inspector button { min-width: 44px; min-height: 44px; }
-  .animation-panel { max-height: 100px; padding: 4px 8px; gap: 4px; }
+  .animation-panel { max-height: 108px; padding: 4px 8px; gap: 4px; }
+  .animation-toolbar { min-height: 44px; flex-wrap: nowrap; overflow: hidden; }
+  .animation-title { display: none; }
+  .animation-actions { min-width: 0; width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: thin; }
+  .animation-actions button, .animation-number, .animation-check { flex: 0 0 auto; }
   .animation-actions button { min-height: 44px; }
+  .animation-number input { min-width: 44px; min-height: 44px; }
   .animation-frames { min-height: 44px; }
   .animation-frame { flex-basis: 48px; min-width: 48px; }
   .animation-frame canvas { width: 30px; height: 30px; }
