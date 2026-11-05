@@ -183,17 +183,6 @@
       <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <div id="authContainer" class="flex items-center gap-1.5">
           <button onclick="openNativeLoginModal()" id="btnNativeLogin" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-medium border border-cyan-600 transition" title="Iniciar sesión en CodeLab"><i class="fa-solid fa-user-lock" aria-hidden="true"></i><span>Cuenta</span></button>
-          <button onclick="openAuthModal('github')" id="btnAuthGithub" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition" title="Conectar GitHub" aria-label="Conectar GitHub">
-            <i class="fa-brands fa-github text-base" aria-hidden="true"></i>
-            <span class="hidden sm:inline">GitHub</span>
-            <span data-auth-label class="sm:hidden text-[10px] text-slate-400">Demo</span>
-          </button>
-          <button onclick="openAuthModal('google')" id="btnAuthGoogle" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition" title="Conectar Google" aria-label="Conectar Google">
-            <i class="fa-brands fa-google text-red-400 text-sm" aria-hidden="true"></i>
-            <span class="hidden sm:inline">Google</span>
-            <span data-auth-label class="sm:hidden text-[10px] text-slate-400">Demo</span>
-          </button>
-        </div>
         <div id="userProfileBadge" class="hidden flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-300 text-xs max-w-[140px] sm:max-w-none">
           <img id="userAvatar" src="https://ui-avatars.com/api/?name=Usuario&background=0891b2&color=fff" alt="" class="w-5 h-5 rounded-full shrink-0" width="20" height="20">
           <span id="userName" class="truncate hidden sm:inline">Usuario</span>
@@ -271,20 +260,6 @@
           <i class="fa-solid fa-plug text-cyan-400"></i> Conexiones
         </h3>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button type="button" onclick="openAuthModal('github')" class="text-left bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 transition group">
-            <div class="flex items-center justify-between mb-2">
-              <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-brands fa-github text-lg"></i> GitHub</span>
-              <span id="connGithubBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">No conectado</span>
-            </div>
-            <p class="text-[11px] text-slate-500 leading-snug">Inicia sesión con OAuth (Render) o perfil demo si no hay claves configuradas.</p>
-          </button>
-          <button type="button" onclick="openAuthModal('google')" class="text-left bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 transition">
-            <div class="flex items-center justify-between mb-2">
-              <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-brands fa-google text-red-400"></i> Google</span>
-              <span id="connGoogleBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">No conectado</span>
-            </div>
-            <p class="text-[11px] text-slate-500 leading-snug">Inicia sesión con Google OAuth o usa perfil demo local.</p>
-          </button>
           <button type="button" onclick="openAiSettingsModal()" class="text-left bg-slate-900 border border-slate-800 hover:border-purple-500/40 rounded-xl p-4 transition">
             <div class="flex items-center justify-between mb-2">
               <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-solid fa-robot text-purple-400"></i> Asistente IA</span>
@@ -744,30 +719,23 @@
   </div>
 
 
-  <!-- MODAL AUTH GITHUB / GOOGLE -->
+  <!-- MODAL CUENTA CODELAB -->
   <div id="authModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
     <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <div class="flex items-center justify-between">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i id="authModalIcon" class="fa-brands fa-github"></i>
+          <i id="authModalIcon" class="fa-solid fa-user-lock"></i>
           <span id="authModalTitle">Conectar cuenta</span>
         </h3>
         <button onclick="closeAuthModal()" class="touch-target text-slate-400 hover:text-white p-2"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <p id="authModalHint" class="text-xs text-slate-400 leading-relaxed">Inicia sesión con tu cuenta de CodeLab. También puedes usar un perfil demo local sin cuenta.</p>
+      <p id="authModalHint" class="text-xs text-slate-400 leading-relaxed">Inicia sesión con tu usuario y contraseña de CodeLab.</p>
       <form onsubmit="event.preventDefault(); loginNativeAccount();" class="space-y-3">
         <div><label for="authUsernameInput" class="text-[11px] text-slate-400 block mb-1">Usuario</label><input id="authUsernameInput" autocomplete="username" autocapitalize="none" spellcheck="false" type="text" maxlength="32" placeholder="ADMIN" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"></div>
         <div><label for="authPasswordInput" class="text-[11px] text-slate-400 block mb-1">Contraseña</label><input id="authPasswordInput" autocomplete="current-password" type="password" maxlength="1024" placeholder="Tu contraseña" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"></div>
         <p id="nativeLoginError" class="hidden text-xs text-red-300" role="alert"></p>
         <button type="submit" id="nativeLoginSubmit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition">Iniciar sesión</button>
       </form>
-      <div class="grid grid-cols-2 gap-2">
-        <button onclick="openAuthModal('github')" class="touch-target py-2 rounded-xl border border-slate-700 text-slate-300 text-xs">GitHub / demo</button>
-        <button onclick="openAuthModal('google')" class="touch-target py-2 rounded-xl border border-slate-700 text-slate-300 text-xs">Google / demo</button>
-      </div>
-    </div>
-  </div>
-
   <div id="changePasswordModal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[95] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">
     <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <h3 id="changePasswordTitle" class="text-base font-bold text-white">Cambia tu contraseña</h3>
