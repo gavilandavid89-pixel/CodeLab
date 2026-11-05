@@ -194,6 +194,14 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     assert.equal(k51sFrame.width, '720px', 'K51S portrait design artboard must retain a 720 CSS-pixel source width');
     assert.equal(k51sFrame.height, '1600px', 'K51S portrait design artboard must retain a 1600 CSS-pixel source height');
     assert.ok(k51sFrame.zoom > 0 && k51sFrame.zoom <= 1, 'large K51S artboard should fit the available editor viewport without changing its source dimensions');
+    const restoredK51sFrame = await page.evaluate(() => ({
+      width: getDesignCanvasWidth({ frame: 'mobile-k51s' }),
+      height: getDesignCanvasHeight({ frame: 'mobile-k51s' }),
+      landscapeWidth: getDesignCanvasWidth({ frame: 'mobile-k51s-landscape' }),
+      landscapeHeight: getDesignCanvasHeight({ frame: 'mobile-k51s-landscape' })
+    }));
+    assert.deepEqual(restoredK51sFrame, { width: 720, height: 1600, landscapeWidth: 1600, landscapeHeight: 720 },
+      'K51S artboard presets must recover their dimensions even if older imported project JSON omits explicit sizes');
 
     await page.locator('#designFrameSize').selectOption('mobile-k51s-landscape');
     const k51sLandscapeFrame = await page.evaluate(() => ({
