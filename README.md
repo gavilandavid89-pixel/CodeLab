@@ -31,7 +31,6 @@ Con `DATABASE_URL` configurada, cuentas, sesiones, workspaces y proyectos PixelF
 
 ## Seguridad
 
-- Sesiones propias de CodeLab con cookies HttpOnly y verificación de identidad en servidor  
 - Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)  
 - Workspace por cuenta: `ws_local_{id}`  
 - Acceso por token HMAC **o** sesión dueña del workspace  
@@ -68,7 +67,6 @@ node server.js
 - Cuentas nativas CodeLab con contraseña propia  
 - Workspaces ligados a la cuenta del usuario  
 - Cookie de sesión HttpOnly  
-- Cuentas CodeLab nativas  
 - Móvil, dashboard de conexiones, asistente IA local/API (v2.5)  
 
 
