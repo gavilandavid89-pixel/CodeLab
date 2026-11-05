@@ -560,6 +560,7 @@ async function capturePixelForgeInterface(payload = {}) {
   const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
   let browser;
   try {
+    chromium.setGraphicsMode = false;
     browser = await playwrightChromium.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
@@ -593,8 +594,8 @@ async function capturePixelForgeInterface(payload = {}) {
       animations: 'disabled'
     });
     const artworkScreenshot = await page.locator('#canvas').screenshot({ type: 'png', animations: 'disabled' });
-    if (screenshot.length > 8 * 1024 * 1024 || artworkScreenshot.length > 8 * 1024 * 1024) {
-      throw new Error('A capture exceeds the 8 MiB per-image limit; request a smaller viewport or lower zoom.');
+    if (screenshot.length > 5 * 1024 * 1024 || artworkScreenshot.length > 5 * 1024 * 1024) {
+      throw new Error('A capture exceeds the 5 MiB image limit; request a smaller viewport or lower zoom.');
     }
     const interfaceDataUrl = 'data:image/png;base64,' + screenshot.toString('base64');
     const artworkDataUrl = 'data:image/png;base64,' + artworkScreenshot.toString('base64');
