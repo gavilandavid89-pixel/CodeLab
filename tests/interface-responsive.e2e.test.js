@@ -67,6 +67,25 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       return !!hit && (hit === button || button.contains(hit));
     });
     assert.equal(mobileNavHit, true, 'mobile preview control must be the topmost hit target at its center');
+    const keyboardViewport = await page.evaluate(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(window, 'visualViewport');
+      Object.defineProperty(window, 'visualViewport', {
+        configurable: true,
+        value: { width: 390, height: 350, offsetTop: 0 }
+      });
+      syncMobileVisualViewport();
+      const result = {
+        detected: document.documentElement.classList.contains('keyboard-open'),
+        bottomBarHidden: getComputedStyle(document.getElementById('mobileBottomBar')).display === 'none',
+        shellHeight: getComputedStyle(document.getElementById('studioView')).height
+      };
+      if (descriptor) Object.defineProperty(window, 'visualViewport', descriptor);
+      syncMobileVisualViewport();
+      return result;
+    });
+    assert.equal(keyboardViewport.detected, true, 'mobile visual viewport shrink should detect the virtual keyboard');
+    assert.equal(keyboardViewport.bottomBarHidden, true, 'the mobile bottom bar must not cover the editor while the keyboard is open');
+    assert.equal(keyboardViewport.shellHeight, '350px', 'the studio shell must follow the shrunken visual viewport');
     await page.locator('#mobileTabPreview').evaluate(button => button.click());
     assert.ok(await page.locator('#studioView').evaluate(el => el.classList.contains('mobile-mode-preview')),
       'Preview bottom-tab should switch the mobile studio to preview mode');
