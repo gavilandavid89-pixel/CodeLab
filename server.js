@@ -1,6 +1,6 @@
 /**
  * CodeLab XD Studio Pro v2.6.7
- * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
+ * HTTP nativo + cuentas CodeLab + workspaces por usuario + rate limit
  */
 const http = require('http');
 const https = require('https');
@@ -314,29 +314,7 @@ setInterval(() => {
   }
 }, 60 * 1000).unref();
 
-// OAuth state (CSRF) — HMAC-signed, no shared memory needed (multi-instance safe)
-function createOAuthState(provider) {
-  const nonce = crypto.randomBytes(16).toString('hex');
-  const exp = Date.now() + 10 * 60 * 1000;
-  const payload = provider + '.' + exp + '.' + nonce;
-  const sig = crypto.createHmac('sha256', SERVER_SECRET).update(payload).digest('hex');
-  return payload + '.' + sig;
-}
-function parseOAuthState(state) {
-  if (!state || typeof state !== 'string') return null;
-  const parts = state.split('.');
-  if (parts.length !== 4) return null;
-  const [provider, expStr, nonce, sig] = parts;
-  if (provider !== 'github' && provider !== 'google') return null;
-  const exp = Number(expStr);
-  if (!Number.isFinite(exp) || Date.now() > exp) return null;
-  const payload = provider + '.' + expStr + '.' + nonce;
-  const expected = crypto.createHmac('sha256', SERVER_SECRET).update(payload).digest('hex');
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  return { provider };
-}
+// External OAuth was removed; native sessions use the CodeLab account table.
 
 // Rotate through large session directories so entries after the first batch
 // are also eventually checked, while keeping each cleanup pass bounded.
@@ -1716,14 +1694,13 @@ const server = http.createServer(async (req, res) => {
 
       // Health
       if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/health') {
-        const cfg = oauthConfigured();
         const body = {
           ok: true,
           version: APP_VERSION,
           persistence: accountPool ? 'postgresql' : 'server-file',
           maxBodyBytes: MAX_BODY_BYTES,
           maxProjects: MAX_PROJECTS,
-          oauth: { github: false, google: false },
+          auth: 'native',
           ai: aiConfigured()
         };
         if (req.method === 'HEAD') {
@@ -1842,10 +1819,9 @@ const server = http.createServer(async (req, res) => {
 
       // Auth status / me
       if (req.method === 'GET' && pathname === '/api/auth/status') {
-        const cfg = oauthConfigured();
         const user = await getSessionUser(req);
         return sendJson(res, 200, {
-          oauth: { github: false, google: false },
+          auth: 'native',
           demoFallback: false,
           authMode: 'native',
           user: user || null,
@@ -2570,9 +2546,7 @@ seedAdminAccountIfConfigured().then(async () => {
   if (!process.env.CODELAB_WORKSPACE_SECRET) {
     console.warn('WARNING: CODELAB_WORKSPACE_SECRET no está fijado; si se regenera el secreto, los tokens de workspace existentes dejarán de ser válidos.');
   }
-  const cfg = oauthConfigured();
-  console.log('OAuth GitHub:', cfg.github ? 'enabled' : 'disabled');
-  console.log('OAuth Google:', cfg.google ? 'enabled' : 'disabled');
+  console.log('Autenticación:', 'CodeLab nativa');
   console.log(
     'AI copiloto:',
     AI_API_KEY
