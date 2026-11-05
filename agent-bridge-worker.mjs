@@ -570,6 +570,8 @@ async function capturePixelForgeInterface(payload = {}) {
     const context = await browser.newContext({
       viewport: { width, height },
       deviceScaleFactor: 1,
+      isMobile: payload.mobile === true,
+      hasTouch: payload.mobile === true,
       colorScheme: 'dark',
       reducedMotion: 'reduce'
     });
