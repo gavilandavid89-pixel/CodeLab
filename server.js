@@ -970,7 +970,7 @@ function publicBaseUrl(req) {
   if (OAUTH_PUBLIC_URL) return OAUTH_PUBLIC_URL;
   // Use the request Host supplied by the front proxy, not X-Forwarded-Host:
   // the latter can be client-controlled on misconfigured proxy chains and must
-  // not be allowed to choose the OAuth callback origin.
+  // not be allowed to choose the application origin.
   const proto = isSecureRequest(req) ? 'https' : 'http';
   const host = req.headers.host || 'localhost:' + PORT;
   return proto + '://' + host;
@@ -1252,8 +1252,6 @@ function clientIp(req) {
   }
   return req.socket.remoteAddress || 'unknown';
 }
-
-function oauthConfigured() { return { github: false, google: false }; }
 
 async function ensureUserWorkspace(user) {
   if (!user || user.provider !== 'local' ||
