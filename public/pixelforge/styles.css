@@ -118,6 +118,34 @@
 
 .active-layer-controls{margin-top:12px;padding:10px;border:1px solid #303341;border-radius:8px;background:#1b1d26}.active-layer-controls .control-heading{margin-bottom:9px}.active-layer-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:10px}.active-layer-actions button{min-height:30px;padding:4px 5px;border:1px solid #363947;border-radius:6px;background:#22242e;color:#c4c8d7;font-size:9px}.active-layer-actions button:hover:not(:disabled){background:#302d42;border-color:#5c548b}.active-layer-actions button:disabled{opacity:.35;cursor:not-allowed}#layer-opacity:disabled{opacity:.35;cursor:not-allowed}
 
+@media(max-width:760px){
+  .stage-bottom-right button{
+    width:44px;
+    height:44px;
+    min-width:44px;
+    min-height:44px;
+    touch-action:manipulation;
+  }
+  .stage-bottom-right{
+    gap:3px;
+    padding:3px;
+  }
+  .stage-bottom-right #zoom-label{
+    min-width:48px;
+    min-height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+}
+@media(max-width:420px){
+  .stage-bottom-right button{
+    width:44px;
+    height:44px;
+    min-width:44px;
+    min-height:44px;
+  }
+}
 @media(max-width:760px){.inspector{scroll-padding-top:42px;scroll-padding-bottom:12px}.brush-scrub{scroll-margin-top:42px;scroll-margin-bottom:12px}}
 
 .color-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:11px;color:#9da3b5;font-size:9px}.color-actions button{padding:5px 8px;border:1px solid #383b49;border-radius:6px;background:#232530;color:#c5c9d7;font-size:9px}.color-actions button:hover{border-color:#7569b0;background:#2b2940}.color-actions span{display:flex;align-items:center;gap:7px}.color-actions i{width:17px;height:17px;border:1px solid #555a6a;border-radius:5px;background:#242632}.recent-colors-block{margin-top:14px}.recent-colors{display:flex;flex-wrap:wrap;gap:6px;min-height:22px}.recent-colors button{width:20px;height:20px;padding:0;border:1px solid #424655;border-radius:5px;background:var(--swatch);box-shadow:inset 0 0 0 1px #ffffff18}.recent-colors button:hover,.recent-colors button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
