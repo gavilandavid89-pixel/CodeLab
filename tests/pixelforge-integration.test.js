@@ -60,6 +60,21 @@ async function main() {
     assert.equal((await disabledProvider.json()).error, 'external_auth_disabled');
   }
   const usesPostgres = health.persistence === 'postgresql';
+  if (usesPostgres) {
+    // A stale session flag must not override the database's normalized ADMIN policy.
+    const adminSessionId = 'e'.repeat(48);
+    await seedTestSession(adminSessionId, {
+      id: 'admin', provider: 'local', name: 'ADMIN', role: 'admin', mustChangePassword: true
+    });
+    const adminHeaders = { cookie: 'codelab_sid=' + adminSessionId };
+    const adminStatusResponse = await fetch(base + '/api/auth/status', { headers: adminHeaders });
+    assert.equal(adminStatusResponse.status, 200, 'existing ADMIN session should remain usable');
+    const adminStatus = await adminStatusResponse.json();
+    assert.equal(adminStatus.mustChangePassword, false,
+      'database policy must override a stale mustChangePassword=true cached in the session');
+    const adminMe = await fetch(base + '/api/auth/me', { headers: adminHeaders });
+    assert.equal(adminMe.status, 200, 'ADMIN must access its workspace without forced password rotation');
+  }
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
