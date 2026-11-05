@@ -8,13 +8,13 @@ const DATA_DIR = process.env.CODELAB_DATA_DIR;
 const SECRET = process.env.CODELAB_WORKSPACE_SECRET || 'test-only-account-isolation-secret';
 assert.ok(DATA_DIR, 'CODELAB_DATA_DIR must point to an isolated test data directory');
 
-function seedSession(id, name) {
+function seedSession(id, name, extraUserFields = {}) {
   const sid = crypto.randomBytes(24).toString('hex');
   const sessionDir = path.join(DATA_DIR, 'sessions');
   fs.mkdirSync(sessionDir, { recursive: true });
   fs.writeFileSync(path.join(sessionDir, sid + '.json'), JSON.stringify({
     id: sid,
-    user: { id, provider: 'local', name, email: null, avatar: null },
+    user: { id, provider: 'local', name, email: null, avatar: null, ...extraUserFields },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
@@ -47,6 +47,15 @@ function project(id, name, marker) {
 }
 
 (async () => {
+  const bootstrap = seedSession('bootstrap-admin', 'ADMIN', { role: 'admin', mustChangePassword: true });
+  const rotationStatus = await request('/api/auth/status', { cookie: bootstrap.cookie });
+  assert.equal(rotationStatus.status, 200, 'auth status should expose the password rotation requirement');
+  assert.equal(rotationStatus.json.mustChangePassword, true, 'bootstrap admin must be marked for password rotation');
+  const blockedMe = await request('/api/auth/me', { cookie: bootstrap.cookie });
+  assert.equal(blockedMe.status, 401, 'password-rotation session must not receive a workspace bearer token');
+  const blockedAdmin = await request('/api/admin/accounts', { cookie: bootstrap.cookie });
+  assert.equal(blockedAdmin.status, 403, 'password-rotation session must not manage other accounts');
+
   const users = Array.from({ length: 10 }, (_, i) => seedSession('stress-user-' + (i + 1), 'Stress User ' + (i + 1)));
   const initialized = await Promise.all(users.map(async user => {
     const [status, me, init] = await Promise.all([
