@@ -163,6 +163,10 @@
 .wide-tool-action{width:100%;min-height:31px;padding:6px 9px;border:1px solid #403b60;border-radius:7px;background:#29263d;color:#d4ceff;font-size:9px}.wide-tool-action:hover{background:#36304e;border-color:#7569b0}
 @media(max-width:760px){.wide-tool-action{min-height:27px;font-size:8px;padding:4px 6px}}
 
+@media(max-width:760px){
+  .inspector-tabs{height:44px;min-height:44px}
+  .inspector-tab{min-height:44px}
+}
 @media(max-width:760px){.inspector{max-height:40vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.inspector-section{min-width:0}.inspector-section .control-block{min-width:0}.inspector-tabs{position:sticky;top:0;z-index:2;background:#181a22}}
 
 
