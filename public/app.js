@@ -468,7 +468,6 @@ function syncMobileVisualViewport() {
     (layoutHeight - viewportHeight) > Math.max(120, layoutHeight * 0.22);
   document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
   document.documentElement.style.setProperty('--visual-viewport-height', viewportHeight + 'px');
-  document.documentElement.style.setProperty('--visual-viewport-offset-top', Math.round(vv.offsetTop || 0) + 'px');
   if (Math.abs(viewportWidth - lastVisualViewportWidth) >= 1 ||
       Math.abs(viewportHeight - lastVisualViewportHeight) >= 1) {
     lastVisualViewportWidth = viewportWidth;
