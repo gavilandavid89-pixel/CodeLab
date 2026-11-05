@@ -403,11 +403,17 @@ window.addEventListener('DOMContentLoaded', () => {
   loadAuthFromServer()
     .catch(() => { currentUser = null; lsRemove(STORAGE_KEY_AUTH); updateAuthUI(); })
     .then(() => {
-      // Resolve account identity before loading provider credentials from local storage.
+      if (nativePasswordChangeRequired) {
+        openChangePasswordModal(true);
+        setSyncStatus('error', 'Cambia la contraseña inicial');
+        return false;
+      }
+      // Resolve account identity before loading account-scoped credentials from local storage.
       loadAiSettings();
       return Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]);
     })
-    .then(() => {
+    .then(canContinue => {
+      if (canContinue === false || nativePasswordChangeRequired) return;
       // Let optional workspace tools (e.g. design tokens) load their account-backed
       // settings only after auth has resolved the correct workspace credentials.
       window.codelabWorkspaceReady = true;
@@ -1537,6 +1543,11 @@ async function loginNativeAccount() {
     closeAuthModal();
     if (document.getElementById('authPasswordInput')) document.getElementById('authPasswordInput').value = '';
     await loadAuthFromServer();
+    if (nativePasswordChangeRequired) {
+      openChangePasswordModal(true);
+      showToast('Antes de continuar, cambia la contraseña inicial.', 'warn');
+      return;
+    }
     showToast('Sesión iniciada en CodeLab.');
     await refreshWorkspaceAfterNativeLogin();
   } catch (e) {
@@ -1550,7 +1561,7 @@ function openChangePasswordModal(required) {
   const modal = document.getElementById('changePasswordModal');
   const hint = document.getElementById('changePasswordHint');
   const error = document.getElementById('changePasswordError');
-  if (hint && !required) hint.textContent = 'Usa una contraseña única de al menos 16 caracteres.';
+  if (hint) hint.textContent = required ? 'Esta cuenta tiene una contraseña inicial. Debes cambiarla antes de acceder a tus proyectos.' : 'Usa una contraseña única de al menos 16 caracteres.';
   if (error) { error.textContent = ''; error.classList.add('hidden'); }
   if (modal) modal.classList.remove('hidden');
 }
