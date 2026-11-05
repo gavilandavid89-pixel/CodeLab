@@ -3928,7 +3928,7 @@ function importDesignImage(file) {
   reader.readAsDataURL(file);
 }
 function getDesignCanvasWidth(design) {
-  const fallback = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const fallback = ({ desktop: 1440, tablet: 768, mobile: 390, 'mobile-k51s': 720, 'mobile-k51s-landscape': 1600 })[design && design.frame] || 1440;
   const width = Number(design && design.canvasWidth);
   return Number.isInteger(width) && width >= 100 && width <= 4000 ? width : fallback;
 }
