@@ -79,8 +79,8 @@ async function main() {
         assert.equal(physical.dpr, 2, viewport.label + ': device pixel ratio should be 2');
         assert.equal(physical.width, viewport.width === 360 ? 720 : 1600,
           viewport.label + ': CSS viewport must map to the requested physical screen width');
-        assert.ok(physical.height < (viewport.width === 360 ? 1600 : 720),
-          viewport.label + ': usable page height must reserve physical pixels for browser/system chrome');
+        assert.equal(physical.height, viewport.width === 360 ? 1496 : 620,
+          viewport.label + ': usable page height must reserve the modeled browser/system chrome area');
       }
       const mobileTouchTargets = await page.locator('.inspector-tabs button:visible, .tool-button:visible, .stage-bottom-right button:visible').evaluateAll(nodes =>
         nodes.filter(node => {
