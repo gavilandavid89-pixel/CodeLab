@@ -606,6 +606,40 @@ async function capturePixelForgeInterface(payload = {}) {
       project: { title: await page.title(), url: baseUrl + '/pixelforge/index.html' },
       viewport: { width, height, zoom, fullPage: payload.full_page !== false, deviceScaleFactor: 1 }
     });
+
+    // Optional direct-to-Neon transfer. Presigned URLs are supplied per capture
+    // by the trusted command issuer; no S3 credentials or public bucket are needed.
+    const uploadTargets = payload.uploadTargets;
+    let storedImages = null;
+    if (uploadTargets !== undefined && uploadTargets !== null) {
+      const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
+      const uploadImage = async (target, bytes, role) => {
+        if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' || !target.objectKey) {
+          throw new Error('Invalid Neon capture upload target for ' + role + '.');
+        }
+        let targetUrl;
+        try { targetUrl = new URL(target.url); } catch { throw new Error('Invalid Neon presigned URL for ' + role + '.'); }
+        if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost) {
+          throw new Error('Neon capture upload URL host validation failed for ' + role + '.');
+        }
+        const uploaded = await fetch(targetUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/png' },
+          body: bytes,
+          signal: AbortSignal.timeout(30000)
+        });
+        if (!uploaded.ok) {
+          throw new Error('Neon capture upload failed for ' + role + ' (HTTP ' + uploaded.status + ').');
+        }
+        return { role, objectKey: target.objectKey, mimeType: 'image/png', sizeBytes: bytes.length, uploaded: true };
+      };
+      const [interfaceStored, artworkStored] = await Promise.all([
+        uploadImage(uploadTargets.interface, screenshot, 'interface'),
+        uploadImage(uploadTargets.artwork, artworkScreenshot, 'artwork')
+      ]);
+      storedImages = [interfaceStored, artworkStored];
+    }
+
     return {
       captureMethod: 'playwright-chromium-real-browser',
       visionProtocol: 'pixelforge-headless-vision/v1',
@@ -613,12 +647,15 @@ async function capturePixelForgeInterface(payload = {}) {
       title: await page.title(),
       viewport: { width, height, zoom, fullPage: payload.full_page !== false },
       visionContext: vision.context,
-      images: vision.images.map(item => ({
+      images: vision.images.map((item, index) => ({
         role: item.role,
         label: item.label,
         mimeType: 'image/png',
-        dataBase64: item.dataUrl.slice('data:image/png;base64,'.length)
+        ...(storedImages
+          ? { objectKey: storedImages[index]?.objectKey, sizeBytes: storedImages[index]?.sizeBytes, stored: true }
+          : { dataBase64: item.dataUrl.slice('data:image/png;base64,'.length) })
       })),
+      ...(storedImages ? { storage: { provider: 'neon-object-storage', bucket: 'codelab-captures', objects: storedImages } } : {}),
       pageErrors: consoleErrors
     };
   } finally {
