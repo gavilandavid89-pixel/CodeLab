@@ -159,6 +159,57 @@
       #studioView > header { padding-top: 4px !important; padding-bottom: 4px !important; }
       #studioView #currentProjectTitle { max-width: 24vw; }
     }
+  
+    /* LG K51S physical-mobile pass: 720x1600 portrait, ~1600x720 landscape.
+       Browser/system chrome reduces the usable dynamic height, so layout is driven
+       by dvh and by landscape height rather than assuming a desktop-width phone. */
+    @media (orientation: landscape) and (max-height: 720px) and (pointer: coarse) {
+      #studioView > header { padding: 4px 8px !important; min-height: 44px; }
+      #studioView > header > div:first-child { width: auto !important; flex-wrap: nowrap !important; }
+      #studioView #currentProjectTitle { max-width: 22vw; }
+      #studioView #statusBadge { max-width: 28vw; }
+      #studioView #mainSplit { min-height: 0; }
+      #editorPanel, #previewPanel, #designStudioPanel { min-height: 0 !important; }
+      #editorPanel { overflow: hidden !important; }
+      #designStudioPanel > .design-toolbar {
+        top: 8px; right: 8px; width: min(320px, 38vw);
+        max-height: min(58dvh, 360px);
+        padding: 8px !important;
+      }
+      #designStudioPanel #designLayersPanel {
+        left: 8px; bottom: 8px; width: min(300px, 36vw) !important;
+        height: min(30dvh, 190px); max-height: 190px;
+      }
+      #designStudioPanel #designCanvasScroll { padding: 8px !important; }
+      #designStudioPanel button { min-height: 40px; }
+      #mobileBottomBar { display: flex !important; height: 50px; }
+      #studioView { padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important; }
+    }
+
+    /* Portrait K51S: the 720px physical width is a real phone width, not desktop.
+       Keep editor/preview single-mode and give controls finger-sized hit areas. */
+    @media (orientation: portrait) and (max-width: 760px) and (pointer: coarse) {
+      #studioView > header { padding: 6px 8px !important; }
+      #studioView > header > div:first-child { width: 100% !important; }
+      #studioView #currentProjectTitle { max-width: 34vw; }
+      #studioView #statusBadge { max-width: 42vw; }
+      #designStudioPanel > .design-toolbar { max-height: min(44dvh, 400px); }
+      #designStudioPanel #designLayersPanel {
+        max-height: min(30dvh, 220px);
+      }
+      #designStudioPanel .design-toolbar button,
+      #designStudioPanel .design-toolbar a,
+      #mobileBottomBar button {
+        min-height: 44px !important;
+      }
+      #designCanvasScroll { padding: 10px !important; }
+    }
+
+    /* Do not let the app compete with Android/browser chrome for the last pixels. */
+    #studioView, #welcomeDashboard {
+      min-height: 100dvh;
+    }
+    
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-full flex flex-col font-sans overflow-hidden">
