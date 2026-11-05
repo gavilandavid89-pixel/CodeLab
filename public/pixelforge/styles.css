@@ -167,6 +167,10 @@
   .inspector-tabs{height:44px;min-height:44px;gap:6px;padding:0 8px}
   .inspector-tab{min-width:44px;min-height:44px;justify-content:center;flex:0 0 auto}
   .tool-button{width:44px;min-width:44px;min-height:44px}
+  .inspector button,.inspector select,.inspector input:not([type=range]){min-width:44px;min-height:44px}
+  .inspector .color-presets button,.inspector .recent-colors button{width:44px;height:44px}
+  .layer-visibility,.layer-select{min-width:44px;min-height:44px}
+  .inspector .wide-tool-action,.inspector .animation-actions button{min-height:44px}
 }
 @media(max-width:760px){.inspector{max-height:40vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.inspector-section{min-width:0}.inspector-section .control-block{min-width:0}.inspector-tabs{position:sticky;top:0;z-index:2;background:#181a22}}
 
