@@ -607,8 +607,11 @@ async function capturePixelForgeInterface(payload = {}) {
       viewport: { width, height, zoom, fullPage: payload.full_page !== false, deviceScaleFactor: 1 }
     });
 
-    // Optional direct-to-Neon transfer. Presigned URLs are supplied per capture
-    // by the trusted command issuer; no S3 credentials or public bucket are needed.
+    // Direct-to-Neon transfer is pinned to the public-read capture bucket.
+    // Presigned URLs are supplied per capture by the trusted command issuer.
+    // Private-bucket URLs are rejected so the bridge cannot silently keep using the old bucket.
+    const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
+    if (captureBucket !== 'codelab-captures-public') throw new Error('NEON_CAPTURE_BUCKET must be codelab-captures-public.');
     const uploadTargets = payload.uploadTargets;
     let storedImages = null;
     if (uploadTargets !== undefined && uploadTargets !== null) {
@@ -621,6 +624,10 @@ async function capturePixelForgeInterface(payload = {}) {
         try { targetUrl = new URL(target.url); } catch { throw new Error('Invalid Neon presigned URL for ' + role + '.'); }
         if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost) {
           throw new Error('Neon capture upload URL host validation failed for ' + role + '.');
+        }
+        const bucketSegment = decodeURIComponent(targetUrl.pathname.split('/').filter(Boolean)[0] || '');
+        if (bucketSegment !== captureBucket) {
+          throw new Error('Neon capture upload URL does not target the configured public bucket for ' + role + '.');
         }
         const uploaded = await fetch(targetUrl, {
           method: 'PUT',
@@ -655,7 +662,7 @@ async function capturePixelForgeInterface(payload = {}) {
           ? { objectKey: storedImages[index]?.objectKey, sizeBytes: storedImages[index]?.sizeBytes, stored: true }
           : { dataBase64: item.dataUrl.slice('data:image/png;base64,'.length) })
       })),
-      ...(storedImages ? { storage: { provider: 'neon-object-storage', bucket: 'codelab-captures', objects: storedImages } } : {}),
+      ...(storedImages ? { storage: { provider: 'neon-object-storage', bucket: captureBucket, access: 'public_read', objects: storedImages } } : {}),
       pageErrors: consoleErrors
     };
   } finally {
