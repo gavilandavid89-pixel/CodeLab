@@ -4643,9 +4643,9 @@ async function returnToSourceDesign() {
   showToast('Volviste al diseño original. La web generada se conserva como proyecto separado.');
 }
 
-async function switchProjectWorkspace(targetType) {
-  // One bridge button connects two independent workspaces. The project's
-  // type remains its origin/classification; the active workspace is runtime UI state.
+function switchProjectWorkspace(targetType) {
+  // One bridge button connects two independent workspaces. Switching is a UI
+  // operation and must never wait on a network round-trip.
   const project = projects.find(item => item.id === currentProjectId);
   const nextWorkspace = targetType === 'web' || targetType === 'design'
     ? targetType
@@ -4654,41 +4654,28 @@ async function switchProjectWorkspace(targetType) {
 
   creatingProjectInFlight = true;
   try {
-    if (activeProjectWorkspace === 'web') {
-      // If Monaco is still booting, the durable project.code is already the
-      // authoritative source. Do not block the workspace switch waiting for a
-      // UI editor that the user cannot have edited yet.
-      if (editorReadyProjectId === project.id) {
-        try {
-          const saved = await saveCurrentCodeToActiveProject(true);
-          const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
-          if (localSnapshotConfirmed !== true) {
-            showToast('No se pudo confirmar el guardado del espacio Web; no se cambió de espacio.', 'warn');
-            return;
-          }
-        } catch (_) {
-          showToast('No se pudo guardar el espacio Web; no se cambió de espacio.', 'error');
-          return;
-        }
-      } else {
-        const localSaved = saveLocalProjectsSnapshot();
-        if (!localSaved) {
-          showToast('No se pudo confirmar la copia local del espacio Web; no se cambió de espacio.', 'warn');
-          return;
+    // First make the current workspace durable in memory/local storage.
+    // Server persistence continues in the background so the button remains
+    // instant even when the API is slow or temporarily offline.
+    try {
+      if (activeProjectWorkspace === 'web' && editorReadyProjectId === project.id) {
+        const code = normalizeCode({
+          html: getEditorValue('html'),
+          css: getEditorValue('css'),
+          js: getEditorValue('js')
+        });
+        if (inCopyBranch) copyProjectCode = JSON.parse(JSON.stringify(code));
+        else {
+          project.code = code;
+          project.updatedAt = new Date().toISOString();
         }
       }
-    } else {
-      try {
-        const saved = await saveCurrentCodeToActiveProject(true);
-        const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
-        if (localSnapshotConfirmed !== true) {
-          showToast('No se pudo confirmar el guardado del espacio actual; no se cambió de espacio.', 'warn');
-          return;
-        }
-      } catch (_) {
-        showToast('No se pudo guardar el espacio actual; no se cambió de espacio.', 'error');
-        return;
-      }
+      saveLocalProjectsSnapshot();
+      Promise.resolve(saveProjectsToStorage()).catch(error => {
+        console.warn('Workspace background save failed:', error);
+      });
+    } catch (error) {
+      console.warn('Workspace local save failed:', error);
     }
 
     activeProjectWorkspace = nextWorkspace;
