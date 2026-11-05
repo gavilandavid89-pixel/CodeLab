@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeLab · Migración de capturas</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0b1220;color:#e5edf8}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}
+main{width:min(620px,100%);background:#111c2e;border:1px solid #273951;border-radius:18px;padding:28px;box-sizing:border-box}
+h1{font-size:22px;margin:0 0 8px}p{color:#a9bad0;line-height:1.5}
+button{background:#27c5d8;color:#06121c;border:0;border-radius:10px;padding:13px 18px;font-weight:700;font-size:15px;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.status{margin-top:18px;padding:14px;border-radius:10px;background:#0b1423;white-space:pre-wrap;line-height:1.5}
+small{color:#8fa4bd}
+</style>
+</head>
+<body><main>
+<h1>Migrar capturas a almacenamiento público</h1>
+<p>Esta acción copia las dos capturas originales desde el bucket privado al bucket público de CodeLab. Solo puede ejecutarla una sesión de administrador. Las copias privadas no se borran.</p>
+<button id="run">Transferir las 2 imágenes</button>
+<div class="status" id="status" role="status">Listo para iniciar.</div>
+<p><small>Destino: codelab-captures-public · Origen: codelab-captures</small></p>
+</main>
+<script>
+const button=document.getElementById('run'),status=document.getElementById('status');
+button.addEventListener('click',async()=>{
+ if(!confirm('¿Copiar interface.png y artwork.png al bucket público? Las copias privadas se conservarán.'))return;
+ button.disabled=true;status.textContent='Copiando imágenes…';
+ try{
+  const response=await fetch('/api/admin/storage-migration',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.message||data.error||'No se pudo completar la transferencia.');
+  status.textContent='Transferencia completada.\\n'+data.objects.map(x=>x.key+' · '+x.bytes+' bytes').join('\\n');
+ }catch(error){status.textContent='No se completó: '+error.message;}
+ finally{button.disabled=false;}
+});
+</script>
+</body></html>
