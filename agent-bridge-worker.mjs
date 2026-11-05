@@ -612,7 +612,16 @@ async function capturePixelForgeInterface(payload = {}) {
     // Private-bucket URLs are rejected so the bridge cannot silently keep using the old bucket.
     const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
     if (captureBucket !== 'codelab-captures-public') throw new Error('NEON_CAPTURE_BUCKET must be codelab-captures-public.');
-    const uploadTargets = payload.uploadTargets;
+    const uploadTargets = payload.uploadTargets || (payload.uploadToPublic === true ? {
+      interface: {
+        url: process.env.NEON_CAPTURE_INTERFACE_UPLOAD_URL,
+        objectKey: String(payload.interfaceObjectKey || 'pixelforge/captures/interface.png')
+      },
+      artwork: {
+        url: process.env.NEON_CAPTURE_ARTWORK_UPLOAD_URL,
+        objectKey: String(payload.artworkObjectKey || 'pixelforge/captures/artwork.png')
+      }
+    } : undefined);
     let storedImages = null;
     if (uploadTargets !== undefined && uploadTargets !== null) {
       const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
