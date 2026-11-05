@@ -6,6 +6,7 @@ import path from 'node:path';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
+import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -26,7 +27,7 @@ const POLL_MS = 700;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 let stopping = false;
 let workspaceId;
-const pixelForgeWorkspaceId = 'ws_pixelforge_guest';
+let pixelForgeWorkspaceId = 'ws_pixelforge_guest';
 
 function safeJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -591,20 +592,32 @@ async function capturePixelForgeInterface(payload = {}) {
       fullPage: payload.full_page !== false,
       animations: 'disabled'
     });
-    if (screenshot.length > 8 * 1024 * 1024) throw new Error('Interface screenshot exceeds the 8 MiB mailbox image limit; request a smaller viewport or lower zoom.');
+    const artworkScreenshot = await page.locator('#canvas').screenshot({ type: 'png', animations: 'disabled' });
+    if (screenshot.length > 8 * 1024 * 1024 || artworkScreenshot.length > 8 * 1024 * 1024) {
+      throw new Error('A capture exceeds the 8 MiB per-image limit; request a smaller viewport or lower zoom.');
+    }
+    const interfaceDataUrl = 'data:image/png;base64,' + screenshot.toString('base64');
+    const artworkDataUrl = 'data:image/png;base64,' + artworkScreenshot.toString('base64');
+    const vision = createVisionSnapshot({
+      mode: 'combined',
+      interfaceImage: interfaceDataUrl,
+      artworkImage: artworkDataUrl,
+      project: { title: await page.title(), url: baseUrl + '/pixelforge/index.html' },
+      viewport: { width, height, zoom, fullPage: payload.full_page !== false, deviceScaleFactor: 1 }
+    });
     return {
       captureMethod: 'playwright-chromium-real-browser',
+      visionProtocol: 'pixelforge-headless-vision/v1',
       url: baseUrl + '/pixelforge/index.html',
       title: await page.title(),
       viewport: { width, height, zoom, fullPage: payload.full_page !== false },
-      screenshot: {
+      visionContext: vision.context,
+      images: vision.images.map(item => ({
+        role: item.role,
+        label: item.label,
         mimeType: 'image/png',
-        fileName: 'PixelForge-interface.png',
-        width: Math.round(width * zoom),
-        height: Math.round(height * zoom),
-        bytes: screenshot.length,
-        dataBase64: screenshot.toString('base64')
-      },
+        dataBase64: item.dataUrl.slice('data:image/png;base64,'.length)
+      })),
       pageErrors: consoleErrors
     };
   } finally {
@@ -700,8 +713,12 @@ async function processCommand(command) {
 }
 async function main() {
   workspaceId = await resolveAdminWorkspace();
-  await migrateAdminPixelForgeProjectsToGuest();
-  console.log('[CodeLab Native Bridge] online for mailbox workspace', workspaceId, 'and PixelForge guest workspace', pixelForgeWorkspaceId);
+  if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
+    pixelForgeWorkspaceId = workspaceId;
+  } else {
+    await migrateAdminPixelForgeProjectsToGuest();
+  }
+  console.log('[CodeLab Native Bridge] online for mailbox workspace', workspaceId, 'and PixelForge workspace', pixelForgeWorkspaceId);
   while (!stopping) {
     try {
       const command = await claimCommand();
