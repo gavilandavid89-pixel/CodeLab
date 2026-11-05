@@ -873,7 +873,8 @@ async function createSession(user) {
       name: user.name || user.login || 'User',
       email: user.email || null,
       avatar: user.avatar || user.avatar_url || null,
-      role: user.role || 'user'
+      role: user.role || 'user',
+      mustChangePassword: !!user.mustChangePassword
     },
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS
@@ -937,10 +938,20 @@ async function destroySession(sid) {
   try { fs.unlinkSync(sessionPath(sid)); } catch (_) {}
 }
 
-async function getSessionUser(req) {
+async function sessionRequiresPasswordChange(user) {
+  if (!user || user.provider !== 'local') return false;
+  if (typeof user.mustChangePassword === 'boolean') return user.mustChangePassword;
+  if (!accountPool || !user.name) return false;
+  const result = await accountPool.query('SELECT must_change_password FROM codelab_accounts WHERE username = $1', [user.name]);
+  return !!(result.rows[0] && result.rows[0].must_change_password);
+}
+
+async function getSessionUser(req, options = {}) {
   const cookies = parseCookies(req);
   const session = await readSession(cookies[COOKIE_NAME]);
-  return session ? session.user : null;
+  if (!session) return null;
+  if (!options.allowPasswordChangeRequired && await sessionRequiresPasswordChange(session.user)) return null;
+  return session.user;
 }
 
 function setSessionCookie(res, sid, req) {
@@ -1739,7 +1750,8 @@ const server = http.createServer(async (req, res) => {
           name: account.username,
           email: null,
           avatar: null,
-          role: account.role
+          role: account.role,
+          mustChangePassword: !!account.mustChangePassword
         };
         await ensureUserWorkspace(user);
         const session = await createSession(user);
@@ -1748,7 +1760,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === 'POST' && pathname === '/api/auth/change-password') {
-        const user = await getSessionUser(req);
+        const user = await getSessionUser(req, { allowPasswordChangeRequired: true });
         if (!user || user.provider !== 'local') return sendJson(res, 401, { error: 'not_authenticated' });
         const body = await readBody(req);
         const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
@@ -1769,7 +1781,7 @@ const server = http.createServer(async (req, res) => {
         await writeLocalAccounts(accounts);
         const cookies = parseCookies(req);
         await destroySession(cookies[COOKIE_NAME]);
-        const session = await createSession({ ...user, id: account.id, role: account.role });
+        const session = await createSession({ ...user, id: account.id, role: account.role, mustChangePassword: false });
         setSessionCookie(res, session.id, req);
         return sendJson(res, 200, { ok: true, mustChangePassword: false });
       }
@@ -1817,14 +1829,14 @@ const server = http.createServer(async (req, res) => {
 
       // Auth status / me
       if (req.method === 'GET' && pathname === '/api/auth/status') {
-        const user = await getSessionUser(req);
+        const user = await getSessionUser(req, { allowPasswordChangeRequired: true });
         return sendJson(res, 200, {
           auth: 'native',
           demoFallback: false,
           authMode: 'native',
           user: user || null,
           workspaceId: user ? userWorkspaceId(user) : null,
-          mustChangePassword: !!(user && user.provider === 'local' && (await readLocalAccounts())[user.name]?.mustChangePassword)
+          mustChangePassword: await sessionRequiresPasswordChange(user)
         });
       }
 
