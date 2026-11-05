@@ -2282,6 +2282,15 @@ window.addEventListener('blur', () => {
   if (panning) { panning = false; panStart = null; canvas.classList.remove('is-panning'); }
   render();
 });
+function renderAuthenticationRequired(message = 'PixelForge necesita una sesión activa de CodeLab para abrir y guardar tus proyectos personales.') {
+  const shell = $('.app-shell');
+  const screen = $('#auth-required-screen');
+  const messageNode = $('#auth-required-message');
+  if (shell) shell.hidden = true;
+  if (messageNode) messageNode.textContent = message;
+  if (screen) screen.classList.remove('hidden');
+}
+
 async function boot() {
   try {
     const modeResponse = await fetch('/api/pixelforge/mode', {
@@ -2296,7 +2305,11 @@ async function boot() {
       ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
       : await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
-      status('PixelForge está listo, pero esta instalación requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
+      renderAuthenticationRequired();
+      return;
+    }
+    if (auth.mustChangePassword) {
+      renderAuthenticationRequired('Tu cuenta necesita completar el cambio de contraseña inicial en CodeLab antes de abrir PixelForge.');
       return;
     }
     const accountChip = $('#codelab-account-chip');
@@ -2383,6 +2396,10 @@ async function boot() {
     }
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
   } catch (error) {
+    if (error?.status === 401 || error?.code === 'not_authenticated') {
+      renderAuthenticationRequired();
+      return;
+    }
     status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
     const statusNode = $('#status');
     if (statusNode) statusNode.title = 'Comprueba la conexión con CodeLab y vuelve a cargar.';
