@@ -1277,6 +1277,14 @@ function openProject(id, workspaceOverride) {
   if (designStudioPanel) {
     designStudioPanel.classList.toggle('hidden', !isDesignProject);
     designStudioPanel.classList.toggle('flex', isDesignProject);
+    if (isDesignProject) {
+      // Re-entering Design must restore its own controls even if the user
+      // collapsed the tool drawer or inspector during a previous visit.
+      designStudioPanel.classList.remove('design-options-hidden', 'design-inspector-hidden');
+      toggleDesignOptions(true);
+      const inspectorButton = document.getElementById('toggleDesignInspector');
+      if (inspectorButton) inspectorButton.setAttribute('aria-expanded', 'true');
+    }
   }
   document.getElementById('mainSplit').classList.toggle('md:flex-row', !isDesignProject);
   document.getElementById('mainSplit').classList.toggle('flex-col', isDesignProject);
