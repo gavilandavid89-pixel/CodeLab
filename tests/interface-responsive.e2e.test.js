@@ -147,6 +147,14 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#designUndoBtn').click();
     await page.locator('#designRedoBtn').click();
     // Required target viewport: 720 × 1600 CSS px, excluding browser chrome.
+    await page.locator('#designFrameSize').selectOption('mobile-k51s');
+    const k51sFrame = await page.evaluate(() => ({
+      width: document.getElementById('designCanvas')?.getBoundingClientRect().width,
+      height: document.getElementById('designCanvas')?.getBoundingClientRect().height
+    }));
+    assert.equal(Math.round(k51sFrame.width), 720, 'K51S portrait design frame must be 720px wide');
+    assert.equal(Math.round(k51sFrame.height), 1600, 'K51S portrait design frame must be 1600px high');
+
     await page.setViewportSize({ width: 720, height: 1600 });
     await page.waitForFunction(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '720px',
