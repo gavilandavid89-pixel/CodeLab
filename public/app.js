@@ -4654,28 +4654,24 @@ function switchProjectWorkspace(targetType) {
 
   creatingProjectInFlight = true;
   try {
-    // First make the current workspace durable in memory/local storage.
-    // Server persistence continues in the background so the button remains
-    // instant even when the API is slow or temporarily offline.
+    // Persist the current workspace synchronously into the in-memory project
+    // model, then let server synchronization continue in the background.
+    // This also preserves copy-branch edits before the workspace state flips.
     try {
       if (activeProjectWorkspace === 'web' && editorReadyProjectId === project.id) {
-        const code = normalizeCode({
-          html: getEditorValue('html'),
-          css: getEditorValue('css'),
-          js: getEditorValue('js')
+        const savePromise = saveCurrentCodeToActiveProject(true);
+        Promise.resolve(savePromise).catch(error => {
+          console.warn('Workspace background save failed:', error);
         });
-        if (inCopyBranch) copyProjectCode = JSON.parse(JSON.stringify(code));
-        else {
-          project.code = code;
-          project.updatedAt = new Date().toISOString();
-        }
+      } else {
+        saveLocalProjectsSnapshot();
+        Promise.resolve(saveProjectsToStorage()).catch(error => {
+          console.warn('Workspace background save failed:', error);
+        });
       }
-      saveLocalProjectsSnapshot();
-      Promise.resolve(saveProjectsToStorage()).catch(error => {
-        console.warn('Workspace background save failed:', error);
-      });
     } catch (error) {
-      console.warn('Workspace local save failed:', error);
+      console.warn('Workspace save failed:', error);
+      saveLocalProjectsSnapshot();
     }
 
     activeProjectWorkspace = nextWorkspace;
@@ -4687,7 +4683,6 @@ function switchProjectWorkspace(targetType) {
     creatingProjectInFlight = false;
   }
 }
-
 async function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
   if (creatingProjectInFlight) {
