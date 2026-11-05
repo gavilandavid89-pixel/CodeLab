@@ -73,6 +73,23 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#mobileTabCode').evaluate(button => button.click());
     assert.ok(await page.locator('#studioView').evaluate(el => el.classList.contains('mobile-mode-code')),
       'Code bottom-tab should restore the mobile editor');
+
+    // K51S landscape is 800 CSS px wide at DPR 2, so it must remain mobile despite
+    // crossing the former 767px CSS breakpoint.
+    await page.setViewportSize({ width: 800, height: 310 });
+    await page.waitForFunction(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '800px',
+      null, { timeout: 3000 });
+    assert.equal(await bottomBar.isVisible(), true, 'K51S landscape must retain the mobile bottom navigation');
+    await page.locator('#mobileTabPreview').evaluate(button => button.click());
+    assert.equal(await page.locator('#previewPanel').evaluate(el => getComputedStyle(el).display !== 'none'), true,
+      'K51S landscape preview mode must show the preview');
+    assert.equal(await page.locator('#editorPanel').evaluate(el => getComputedStyle(el).display === 'none'), true,
+      'K51S landscape preview mode must hide the code editor');
+    await page.locator('#mobileTabCode').evaluate(button => button.click());
+    assert.equal(await page.locator('#editorPanel').evaluate(el => getComputedStyle(el).display !== 'none'), true,
+      'K51S landscape code mode must restore the editor');
+    await page.setViewportSize({ width: 390, height: 844 });
     await bottomBar.getByRole('button', { name: /Más/i }).evaluate(button => button.click());
     await page.locator('#mobileDropdown').waitFor({ state: 'visible' });
     await page.locator('#mobileDropdown').getByRole('button', { name: /Plantillas IA/i }).click();
@@ -100,6 +117,8 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design workspace must hide the web editor toolbar');
     assert.notEqual(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
       'design workspace should show its own toolbar/canvas');
+    assert.equal(await bottomBar.isVisible(), false,
+      'design projects must not show the web-only Code/Preview bottom navigation');
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designCanvas [data-design-id]').first().waitFor({ state: 'visible' });
     assert.equal(await page.locator('#designProperties').count(), 0,
@@ -200,6 +219,8 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       cssHeight: window.innerHeight,
       documentWidth: document.documentElement.scrollWidth
     }));
+    assert.equal(await bottomBar.isVisible(), false,
+      'the web-only mobile bottom bar must remain hidden for a design project in landscape');
     assert.equal(landscapeViewport.physicalWidth, 1600, 'K51S landscape emulation must represent 1600 physical display pixels across');
     assert.ok(landscapeViewport.cssHeight < 360, 'landscape web viewport must leave room for browser/system chrome');
     assert.ok(landscapeViewport.documentWidth <= 800, 'landscape interface must not create horizontal page overflow');
