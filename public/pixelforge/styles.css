@@ -289,7 +289,8 @@
 
 /* When the K51S is rotated, keep the primary canvas as the largest touch surface. */
 @media (orientation: landscape) and (max-height: 720px) and (pointer: coarse) {
-  .workspace { grid-template-columns: 56px minmax(0,1fr) 210px; }
+  .workspace { grid-template-columns: 60px minmax(0,1fr) 210px; }
+  .tool-rail { padding: 6px 8px; }
   .topbar { height: 48px; }
   .contextbar { height: 32px; }
   .bottom-bar { display: none; }
