@@ -20,36 +20,49 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     const page = await context.newPage();
     page.on('pageerror', error => failures.push(error.message));
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    const globalDialogNesting = await page.evaluate(() => {
+      const ids = ['authModal', 'changePasswordModal', 'adminAccountsModal', 'aiSettingsModal', 'designToolsModal', 'componentLibraryModal'];
+      return ids.filter(id => {
+        const node = document.getElementById(id);
+        if (!node) return true;
+        for (let parent = node.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+          if (['authModal', 'welcomeDashboard', 'studioView'].includes(parent.id)) return true;
+        }
+        return false;
+      });
+    });
+    assert.deepEqual(globalDialogNesting, [],
+      'global dialogs must not be trapped inside the hidden auth modal or app views');
     await page.waitForFunction(() =>
       document.getElementById('syncLoadingModal')?.classList.contains('hidden'), null, { timeout: 15000 });
 
     // The dashboard tools must open, switch tabs, and close on a phone-sized viewport.
-    await page.locator('#openDesignTools').click();
+    await page.locator('#openDesignTools').tap();
     await page.locator('#designToolsModal').waitFor({ state: 'visible' });
     for (const tab of ['palette', 'accessibility', 'tokens', 'audit']) {
-      await page.locator('#designToolsTab-' + tab).click();
+      await page.locator('#designToolsTab-' + tab).tap();
       assert.equal(await page.locator('#designToolsPanel-' + tab).isVisible(), true,
         'design tools tab should switch to ' + tab + ' on mobile');
     }
-    await page.locator('#closeDesignTools').click();
+    await page.locator('#closeDesignTools').tap();
     await page.locator('#designToolsModal').waitFor({ state: 'hidden' });
 
-    await page.locator('#openComponentLibrary').click();
+    await page.locator('#openComponentLibrary').tap();
     await page.locator('#componentLibraryModal').waitFor({ state: 'visible' });
     await page.locator('#componentLibrarySearch').fill('hero');
     await page.locator('#componentLibraryList').waitFor({ state: 'visible' });
     assert.ok(await page.locator('#componentLibraryList').locator('button').count() > 0,
       'component search should return selectable results');
     await page.locator('#componentLibraryCategory').selectOption('Secciones');
-    await page.locator('#closeComponentLibrary').click();
+    await page.locator('#closeComponentLibrary').tap();
     await page.locator('#componentLibraryModal').waitFor({ state: 'hidden' });
 
     // Exercise both creation branches through the visible form, not by calling internals.
-    await page.getByRole('button', { name: /Crear proyecto/i }).click();
+    await page.getByRole('button', { name: /Crear proyecto/i }).tap();
     await page.locator('#newProjectModal').waitFor({ state: 'visible' });
     await page.locator('#newProjectNameInput').fill(WEB_NAME);
     await page.locator('input[name="newProjectType"][value="web"]').check();
-    await page.locator('#newProjectModal button').filter({ hasText: 'Crear Proyecto' }).click();
+    await page.locator('#newProjectModal button').filter({ hasText: 'Crear Proyecto' }).tap();
     await page.locator('#studioView').waitFor({ state: 'visible', timeout: 15000 });
     await page.waitForFunction(name => document.getElementById('currentProjectTitle')?.textContent === name,
       WEB_NAME, { timeout: 10000 });
@@ -80,6 +93,7 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
         shellHeight: getComputedStyle(document.getElementById('studioView')).height
       };
       if (descriptor) Object.defineProperty(window, 'visualViewport', descriptor);
+      else delete window.visualViewport;
       syncMobileVisualViewport();
       return result;
     });
@@ -100,18 +114,18 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '800px',
       null, { timeout: 3000 });
     assert.equal(await bottomBar.isVisible(), true, 'K51S landscape must retain the mobile bottom navigation');
-    await page.locator('#mobileTabPreview').evaluate(button => button.click());
+    await page.locator('#mobileTabPreview').tap();
     assert.equal(await page.locator('#previewPanel').evaluate(el => getComputedStyle(el).display !== 'none'), true,
       'K51S landscape preview mode must show the preview');
     assert.equal(await page.locator('#editorPanel').evaluate(el => getComputedStyle(el).display === 'none'), true,
       'K51S landscape preview mode must hide the code editor');
-    await page.locator('#mobileTabCode').evaluate(button => button.click());
+    await page.locator('#mobileTabCode').tap();
     assert.equal(await page.locator('#editorPanel').evaluate(el => getComputedStyle(el).display !== 'none'), true,
       'K51S landscape code mode must restore the editor');
     await page.setViewportSize({ width: 390, height: 844 });
-    await bottomBar.getByRole('button', { name: /Más/i }).evaluate(button => button.click());
+    await bottomBar.getByRole('button', { name: /Más/i }).tap();
     await page.locator('#mobileDropdown').waitFor({ state: 'visible' });
-    await page.locator('#mobileDropdown').getByRole('button', { name: /Plantillas IA/i }).click();
+    await page.locator('#mobileDropdown').getByRole('button', { name: /Plantillas IA/i }).tap();
     await page.locator('#aiDrawer').waitFor({ state: 'visible' });
     await page.locator('#aiPromptInput').fill('Crea una tarjeta accesible');
     assert.equal(await page.locator('#aiPromptInput').inputValue(), 'Crea una tarjeta accesible');
