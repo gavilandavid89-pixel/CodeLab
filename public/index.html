@@ -133,12 +133,43 @@
     #designOptionsReopen { position: absolute; z-index: 45; top: 12px; right: 12px; }
     #designStudioPanel:not(.design-options-hidden) #designOptionsReopen { display: none; }
     @media (max-width: 767px) {
+      /* Phone-first layout: keep the canvas dominant and prevent tool panels from
+         stacking on top of each other. Both panels stay reachable, but consume
+         only bounded portions of the viewport. */
       #designStudioPanel { overflow: hidden !important; }
-      #designStudioPanel > .design-toolbar { padding: 10px !important; max-height: min(46dvh, 420px); }
-      #designStudioPanel #designCanvasScroll { padding: 12px !important; }
+      #designStudioPanel > .design-toolbar {
+        top: 8px !important;
+        right: 8px !important;
+        left: 8px !important;
+        width: auto !important;
+        max-height: min(30dvh, 280px) !important;
+        padding: 8px !important;
+        gap: 6px !important;
+        border-radius: 12px !important;
+      }
+      #designStudioPanel > .design-toolbar > * { min-width: 0; }
+      #designStudioPanel > .design-toolbar > .ml-auto {
+        width: 100%;
+        margin-left: 0 !important;
+      }
+      #designStudioPanel #designCanvasScroll {
+        padding: 10px !important;
+        padding-bottom: calc(10px + 56px + env(safe-area-inset-bottom)) !important;
+      }
       #designStudioPanel #designCanvasScroll > div:first-child { display: none; }
-      #designStudioPanel #designLayersPanel { left: 12px; right: auto; width: min(360px, calc(100vw - 24px)) !important; height: min(28dvh, 220px); max-height: 220px; }
-      #designStudioPanel .design-toolbar button { min-height: 36px; }
+      #designStudioPanel #designLayersPanel {
+        left: 8px !important;
+        right: 8px !important;
+        bottom: calc(56px + env(safe-area-inset-bottom) + 8px) !important;
+        width: auto !important;
+        height: min(22dvh, 190px) !important;
+        max-height: 190px !important;
+        border-radius: 12px !important;
+      }
+      #designStudioPanel .design-toolbar button {
+        min-height: 44px !important;
+        min-width: 44px !important;
+      }
     }
     @media (orientation: landscape) and (max-width: 900px) {
       #designStudioPanel > .design-toolbar { max-height: 48dvh; width: min(320px, 45vw); }
