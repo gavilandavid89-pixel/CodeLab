@@ -1822,10 +1822,10 @@ const server = http.createServer(async (req, res) => {
           salt,
           passwordHash: passwordHash(password, salt),
           createdAt: new Date().toISOString(),
-          mustChangePassword: false
+          mustChangePassword: true
         };
         await writeLocalAccounts(accounts);
-        return sendJson(res, 201, { ok: true, account: { username, role: 'user', createdAt: accounts[username].createdAt } });
+        return sendJson(res, 201, { ok: true, account: { username, role: 'user', createdAt: accounts[username].createdAt, mustChangePassword: true } });
       }
 
       // Auth status / me
