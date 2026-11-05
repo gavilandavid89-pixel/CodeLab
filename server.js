@@ -1740,6 +1740,10 @@ const server = http.createServer(async (req, res) => {
     return serveStatic(req, res, '/agent-space/index.html');
   }
 
+  if (pathname === '/admin/storage-migration' || pathname === '/admin/storage-migration/') {
+    return serveStatic(req, res, '/admin-storage-migration.html');
+  }
+
   if (pathname.startsWith('/api/')) {
     // Admin accounts are exempt from the app-wide API request cap. Keep the
     // exemption tied to a validated local admin session, never a client header
@@ -1754,6 +1758,55 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 429, { error: 'rate_limited', message: 'Demasiadas peticiones.' });
     }
     try {
+      // One-time, local-admin-only migration of the two CodeLab proof captures.
+      // Signed URLs stay server-side in Render environment variables and are never
+      // returned to the browser or written to logs.
+      if (req.method === 'POST' && pathname === '/api/admin/storage-migration') {
+        if (!isAdminSession) return sendJson(res, 403, { error: 'admin_required' });
+        const expectedHost = 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
+        const jobs = [
+          {
+            key: 'pixelforge/2026-11-05/first-proof/interface.png',
+            source: process.env.NEON_MIGRATE_INTERFACE_SOURCE_URL,
+            target: process.env.NEON_MIGRATE_INTERFACE_TARGET_URL
+          },
+          {
+            key: 'pixelforge/2026-11-05/first-proof/artwork.png',
+            source: process.env.NEON_MIGRATE_ARTWORK_SOURCE_URL,
+            target: process.env.NEON_MIGRATE_ARTWORK_TARGET_URL
+          }
+        ];
+        if (jobs.some(job => !job.source || !job.target)) {
+          return sendJson(res, 503, { error: 'migration_urls_not_configured', message: 'Faltan los enlaces temporales de transferencia.' });
+        }
+        const copied = await Promise.all(jobs.map(async job => {
+          const sourceUrl = new URL(job.source);
+          const targetUrl = new URL(job.target);
+          if (sourceUrl.protocol !== 'https:' || targetUrl.protocol !== 'https:' ||
+              sourceUrl.hostname !== expectedHost || targetUrl.hostname !== expectedHost ||
+              !sourceUrl.pathname.startsWith('/codelab-captures/') ||
+              !targetUrl.pathname.startsWith('/codelab-captures-public/')) {
+            throw new Error('capture_migration_url_validation_failed');
+          }
+          const download = await fetch(sourceUrl, { method: 'GET', signal: AbortSignal.timeout(30000) });
+          if (!download.ok) throw new Error('capture_source_download_failed_' + download.status);
+          const bytes = Buffer.from(await download.arrayBuffer());
+          const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+          if (bytes.length < 8 || !bytes.subarray(0, 8).equals(pngSignature)) {
+            throw new Error('capture_source_not_png');
+          }
+          const upload = await fetch(targetUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'image/png' },
+            body: bytes,
+            signal: AbortSignal.timeout(30000)
+          });
+          if (!upload.ok) throw new Error('capture_destination_upload_failed_' + upload.status);
+          return { key: job.key, bytes: bytes.length };
+        }));
+        return sendJson(res, 200, { ok: true, bucket: 'codelab-captures-public', objects: copied });
+      }
+
       // Health
       if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/health') {
         const cfg = oauthConfigured();
