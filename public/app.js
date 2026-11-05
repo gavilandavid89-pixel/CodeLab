@@ -41,6 +41,7 @@ let pendingAuthProvider = null;
 let oauthConfig = { github: false, google: false, demoFallback: true };
 let nativePasswordChangeRequired = false;
 let mobileStudioMode = 'code';
+let activeProjectWorkspace = 'web';
 let editors = {};
 let editorInitGeneration = 0;
 let editorReadyProjectId = null;
@@ -1189,7 +1190,7 @@ async function duplicateProjectFromDashboard(id, e) {
   else showToast('La copia está en memoria, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
-function openProject(id) {
+function openProject(id, workspaceOverride) {
   const proj = projects.find(p => p.id === id);
   if (!proj) {
     showToast('Proyecto no encontrado.', 'warn');
@@ -1236,16 +1237,23 @@ function openProject(id) {
   if (!proj.design || typeof proj.design !== 'object') {
     proj.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
   }
-  const workspaceSwitch = document.getElementById('workspaceSwitch');
-  if (workspaceSwitch) {
-    workspaceSwitch.classList.remove('hidden');
-    workspaceSwitch.classList.add('inline-flex');
-    const webButton = document.getElementById('switchToWebBtn');
-    const designButton = document.getElementById('switchToDesignBtn');
-    if (webButton) webButton.setAttribute('aria-pressed', proj.type === 'web' ? 'true' : 'false');
-    if (designButton) designButton.setAttribute('aria-pressed', proj.type === 'design' ? 'true' : 'false');
+  const workspaceSwitchBtn = document.getElementById('workspaceSwitchBtn');
+  const workspaceSwitchLabel = document.getElementById('workspaceSwitchLabel');
+  const workspaceSwitchIcon = document.getElementById('workspaceSwitchIcon');
+  if (workspaceSwitchBtn) {
+    workspaceSwitchBtn.classList.remove('hidden');
+    workspaceSwitchBtn.classList.add('inline-flex');
+    const nextWorkspace = isDesignProject ? 'web' : 'design';
+    workspaceSwitchBtn.setAttribute('aria-pressed', String(isDesignProject));
+    workspaceSwitchBtn.title = 'Cambiar al espacio ' + (nextWorkspace === 'design' ? 'Diseño' : 'Web');
+    if (workspaceSwitchLabel) workspaceSwitchLabel.textContent = nextWorkspace === 'design' ? 'Diseño' : 'Web';
+    if (workspaceSwitchIcon) workspaceSwitchIcon.className = nextWorkspace === 'design' ? 'fa-solid fa-pen-ruler' : 'fa-solid fa-code';
   }
-  const isDesignProject = proj.type === 'design';
+  const requestedWorkspace = workspaceOverride === 'design' || workspaceOverride === 'web'
+    ? workspaceOverride
+    : (proj.type === 'design' ? 'design' : 'web');
+  activeProjectWorkspace = requestedWorkspace;
+  const isDesignProject = activeProjectWorkspace === 'design';
   const editorPanel = document.getElementById('editorPanel');
   const splitDivider = document.getElementById('splitDivider');
   const previewPanel = document.getElementById('previewPanel');
@@ -1295,7 +1303,7 @@ async function returnToDashboard() {
     const activeProject = projects.find(project => project && project.id === currentProjectId);
     // Do not let a not-yet-initialized Monaco/fallback editor overwrite durable
     // generated HTML when the user leaves the project immediately after opening it.
-    if (activeProject && activeProject.type !== 'design' && editorReadyProjectId !== currentProjectId) {
+    if (activeProject && activeProjectWorkspace !== 'design' && editorReadyProjectId !== currentProjectId) {
       showToast('El editor aún está cargando; se conservó el código guardado.', 'warn');
     } else if (inCopyBranch) {
       await saveInCopyBranch();
@@ -1313,7 +1321,7 @@ async function returnToDashboard() {
 function saveCurrentCodeToActiveProject(immediate) {
   if (!currentProjectId) return Promise.resolve(false);
   const active = projects.find(p => p.id === currentProjectId);
-  if (active && active.type === 'design') {
+  if (active && activeProjectWorkspace === 'design') {
     active.updatedAt = new Date().toISOString();
     if (immediate) {
       if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
@@ -3312,7 +3320,7 @@ function normalizeDesignElementIdentifiers(elements) {
 }
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
-  if (!p || p.type !== 'design') return null;
+  if (!p || activeProjectWorkspace !== 'design') return null;
   if (!p.design || typeof p.design !== 'object' || Array.isArray(p.design)) {
     p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
   }
@@ -4636,14 +4644,17 @@ async function returnToSourceDesign() {
 }
 
 async function switchProjectWorkspace(targetType) {
-  if (!['web', 'design'].includes(targetType) || creatingProjectInFlight) return;
+  // One bridge button connects two independent workspaces. The project's
+  // type remains its origin/classification; the active workspace is runtime UI state.
   const project = projects.find(item => item.id === currentProjectId);
-  if (!project || project.type === targetType) return;
+  const nextWorkspace = targetType === 'web' || targetType === 'design'
+    ? targetType
+    : (activeProjectWorkspace === 'design' ? 'web' : 'design');
+  if (!project || nextWorkspace === activeProjectWorkspace || creatingProjectInFlight) return;
+
   creatingProjectInFlight = true;
   try {
-    // Monaco may load asynchronously after openProject() changes the project type.
-    // Never read an uninitialized/stale editor and overwrite the saved generated HTML.
-    if (project.type === 'web') {
+    if (activeProjectWorkspace === 'web') {
       const startedAt = Date.now();
       let editorReady = false;
       while (Date.now() - startedAt < 15000) {
@@ -4657,43 +4668,28 @@ async function switchProjectWorkspace(targetType) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       if (!editorReady) {
-        showToast('El editor Web todavía está cargando. No se cambió de espacio para proteger tu código.', 'warn');
+        showToast('El espacio Web todavía está cargando. No se cambió de espacio para proteger tu código.', 'warn');
         return;
       }
     }
+
     try {
       const saved = await saveCurrentCodeToActiveProject(true);
       const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
       if (localSnapshotConfirmed !== true) {
-        showToast('No se pudo confirmar el guardado local; no se cambió de editor.', 'warn');
+        showToast('No se pudo confirmar el guardado del espacio actual; no se cambió de espacio.', 'warn');
         return;
       }
     } catch (_) {
-      showToast('No se pudo guardar el espacio actual; no se cambió de editor.', 'error');
+      showToast('No se pudo guardar el espacio actual; no se cambió de espacio.', 'error');
       return;
     }
-    project.hasWebSpace = true;
-    project.hasDesignSpace = true;
-    if (!project.design || typeof project.design !== 'object') {
-      project.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
-    }
-    const previousType = project.type;
-    project.type = targetType;
-    project.updatedAt = new Date().toISOString();
-    const localSaved = saveLocalProjectsSnapshot();
-    let serverSaved = false;
-    try { serverSaved = await saveProjectsToStorage() === true; } catch (_) {}
-    if (!serverSaved && !localSaved) {
-      project.type = previousType;
-      showToast('No se pudo guardar el cambio de espacio; se mantuvo el editor actual.', 'error');
-      return;
-    }
-    openProject(project.id);
-    renderProjectsList();
-    showToast(targetType === 'design'
-      ? (serverSaved ? 'Espacio Diseño abierto y sincronizado.' : 'Espacio Diseño abierto localmente; sincronización pendiente.')
-      : (serverSaved ? 'Espacio Web abierto y sincronizado.' : 'Espacio Web abierto localmente; sincronización pendiente.'),
-      serverSaved ? 'info' : 'warn');
+
+    activeProjectWorkspace = nextWorkspace;
+    openProject(project.id, nextWorkspace);
+    showToast(nextWorkspace === 'design'
+      ? 'Espacio Diseño abierto. Las herramientas Web quedaron fuera de este espacio.'
+      : 'Espacio Web abierto. Las herramientas de Diseño quedaron fuera de este espacio.');
   } finally {
     creatingProjectInFlight = false;
   }
