@@ -37,8 +37,6 @@ let currentUser = null;
 let aiSettings = { mode: 'auto', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '' };
 let serverAi = { serverKey: false, model: 'gpt-4o-mini', baseUrl: null, hint: '' };
 let maxProjects = 50;
-let pendingAuthProvider = null;
-let oauthConfig = { github: false, google: false, demoFallback: true };
 let nativePasswordChangeRequired = false;
 let mobileStudioMode = 'code';
 let editors = {};
@@ -403,7 +401,7 @@ window.addEventListener('DOMContentLoaded', () => {
   showBootLoading(true, 'Iniciando CodeLab…', 'Conectando con el workspace y cargando proyectos.');
   handleAuthQueryParams();
   loadAuthFromServer()
-    .catch(() => loadAuthFromStorage())
+    .catch(() => { currentUser = null; lsRemove(STORAGE_KEY_AUTH); updateAuthUI(); })
     .then(() => {
       // Resolve account identity before loading provider credentials from local storage.
       loadAiSettings();
@@ -433,7 +431,6 @@ window.addEventListener('DOMContentLoaded', () => {
         pg._codelabBound = true;
         pg.addEventListener('click', onProjectsGridClick);
       }
-      updateOauthDemoBanner();
       maybeOfferLocalImport();
       // Complete a PixelForge sign-in round-trip only after CodeLab has confirmed
       // the real server session and loaded that account's workspace.
@@ -1413,11 +1410,6 @@ function handleAuthQueryParams() {
 async function loadAuthFromServer() {
   try {
     const data = await window.CodeLabStudioCore.getCodeLabSession();
-    oauthConfig = {
-      github: !!(data.oauth && data.oauth.github),
-      google: !!(data.oauth && data.oauth.google),
-      demoFallback: !!data.demoFallback
-    };
     nativePasswordChangeRequired = !!data.mustChangePassword;
     if (data.user) {
       currentUser = {
@@ -1436,30 +1428,17 @@ async function loadAuthFromServer() {
         lsSet(STORAGE_KEY_WORKSPACE, workspaceId);
       }
     } else {
-      // Keep local demo profile only if no real session
-      loadAuthFromStorage();
-      if (currentUser && currentUser.real) {
-        currentUser = null;
-        lsRemove(STORAGE_KEY_AUTH);
-      }
+      // No server session: clear cached identity; local project backups remain untouched.
+      currentUser = null;
+      lsRemove(STORAGE_KEY_AUTH);
     }
     updateAuthUI();
     return data;
   } catch (e) {
-    oauthConfig = { github: false, google: false, demoFallback: true };
-    loadAuthFromStorage();
+    currentUser = null;
+    lsRemove(STORAGE_KEY_AUTH);
     updateAuthUI();
     throw e;
-  }
-}
-
-function loadAuthFromStorage() {
-  const auth = lsGet(STORAGE_KEY_AUTH);
-  if (auth) {
-    try {
-      currentUser = JSON.parse(auth);
-      updateAuthUI();
-    } catch (e) {}
   }
 }
 
@@ -1529,7 +1508,7 @@ function openNativeLoginModal() {
   const hint = document.getElementById('authModalHint');
   if (title) title.textContent = 'Cuenta de CodeLab';
   if (icon) icon.className = 'fa-solid fa-user-lock text-cyan-400';
-  if (hint) hint.textContent = 'Inicia sesión con tu usuario y contraseña de CodeLab. No necesitas Google.';
+  if (hint) hint.textContent = 'Inicia sesión con tu usuario y contraseña de CodeLab.';
   const error = document.getElementById('nativeLoginError');
   if (error) { error.textContent = ''; error.classList.add('hidden'); }
   const user = document.getElementById('authUsernameInput');
@@ -1637,71 +1616,9 @@ async function refreshWorkspaceAfterNativeLogin() {
   resumePostLoginRedirect();
 }
 
-function openAuthModal(provider) {
-  provider = provider === 'google' ? 'google' : 'github';
-  // Real OAuth redirect when configured
-  if (provider === 'github' && oauthConfig.github) {
-    window.location.href = '/api/auth/github';
-    return;
-  }
-  if (provider === 'google' && oauthConfig.google) {
-    window.location.href = '/api/auth/google';
-    return;
-  }
-  // Demo fallback when OAuth env vars not set
-  pendingAuthProvider = provider;
-  const modal = document.getElementById('authModal');
-  const title = document.getElementById('authModalTitle');
-  const icon = document.getElementById('authModalIcon');
-  const input = document.getElementById('authUsernameInput');
-  const hint = document.getElementById('authModalHint');
-  if (title) title.textContent = provider === 'github' ? 'GitHub (modo demo)' : 'Google (modo demo)';
-  if (icon) {
-    icon.className = provider === 'github' ? 'fa-brands fa-github' : 'fa-brands fa-google text-red-400';
-  }
-  if (hint) {
-    hint.innerHTML =
-      'OAuth real no está configurado en este servidor. Usa un perfil <strong class="text-amber-300">demo local</strong> o configura las variables en Render (ver README).';
-  }
-  if (input) {
-    input.value = currentUser && currentUser.provider === provider ? currentUser.name : '';
-    input.placeholder = provider === 'github' ? 'usuario_github' : 'nombre';
-  }
-  if (modal) modal.classList.remove('hidden');
-  setTimeout(() => { if (input) input.focus(); }, 50);
-}
-
 function closeAuthModal() {
   const modal = document.getElementById('authModal');
   if (modal) modal.classList.add('hidden');
-  pendingAuthProvider = null;
-}
-
-function confirmAuthModal() {
-  const input = document.getElementById('authUsernameInput');
-  const name = (input && input.value.trim()) || '';
-  if (!name) {
-    showToast('Escribe un nombre de usuario.', 'warn');
-    return;
-  }
-  const provider = pendingAuthProvider || 'github';
-  currentUser = {
-    provider: provider,
-    name: name,
-    avatar:
-      provider === 'github'
-        ? 'https://github.com/identicons/' + encodeURIComponent(name) + '.png'
-        : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=0891b2&color=fff',
-    real: false
-  };
-  lsSet(STORAGE_KEY_AUTH, JSON.stringify(currentUser));
-  updateAuthUI();
-  closeAuthModal();
-  showToast('Perfil demo guardado. Configura OAuth en Render para login real.');
-}
-
-function connectAuth(provider) {
-  openAuthModal(provider);
 }
 
 async function logoutAuth() {
@@ -1756,81 +1673,19 @@ function updateAuthUI() {
   const container = document.getElementById('authContainer');
   const badge = document.getElementById('userProfileBadge');
   if (!container || !badge) return;
-  if (currentUser) {
+  if (currentUser && currentUser.real) {
     container.classList.add('hidden');
     badge.classList.remove('hidden');
-    const av = document.getElementById('userAvatar');
-    const un = document.getElementById('userName');
-    if (av) av.src = currentUser.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name || 'U'));
-    if (un) {
-      const tag = currentUser.real ? currentUser.provider : 'demo';
-      un.innerText = (currentUser.name || 'Usuario') + ' · ' + tag;
-    }
+    const avatar = document.getElementById('userAvatar');
+    const name = document.getElementById('userName');
+    if (avatar) avatar.src = currentUser.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name || 'U'));
+    if (name) name.innerText = (currentUser.name || 'Usuario') + ' · CodeLab';
   } else {
     container.classList.remove('hidden');
     badge.classList.add('hidden');
   }
-  const gh = document.getElementById('connGithubBadge');
-  const gg = document.getElementById('connGoogleBadge');
-  if (gh) {
-    const on = currentUser && currentUser.provider === 'github';
-    const oauthOn = oauthConfig.github;
-    gh.textContent = on ? currentUser.name : oauthOn ? 'OAuth listo' : 'Demo / config';
-    gh.className = on
-      ? 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-      : oauthOn
-        ? 'text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-        : 'text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
-  }
-  if (gg) {
-    const on = currentUser && currentUser.provider === 'google';
-    const oauthOn = oauthConfig.google;
-    gg.textContent = on ? currentUser.name : oauthOn ? 'OAuth listo' : 'Demo / config';
-    gg.className = on
-      ? 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-      : oauthOn
-        ? 'text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-        : 'text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
-  }
-  const btnGh = document.getElementById('btnAuthGithub');
-  const btnGg = document.getElementById('btnAuthGoogle');
-  if (btnGh) {
-    btnGh.title = oauthConfig.github ? 'Iniciar sesión con GitHub' : 'GitHub (demo — configura OAuth)';
-    btnGh.setAttribute('aria-label', btnGh.title);
-    const lab = btnGh.querySelector('[data-auth-label]');
-    if (lab) lab.textContent = oauthConfig.github ? 'Entrar' : 'Demo';
-  }
-  if (btnGg) {
-    btnGg.title = oauthConfig.google ? 'Iniciar sesión con Google' : 'Google (demo — configura OAuth)';
-    btnGg.setAttribute('aria-label', btnGg.title);
-    const lab = btnGg.querySelector('[data-auth-label]');
-    if (lab) lab.textContent = oauthConfig.google ? 'Entrar' : 'Demo';
-  }
-}
-
-
-function updateOauthDemoBanner() {
-  let bar = document.getElementById('oauthDemoBanner');
-  const show = !oauthConfig.github && !oauthConfig.google;
-  if (show) {
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = 'oauthDemoBanner';
-      bar.setAttribute('role', 'status');
-      bar.className =
-        'mx-4 sm:mx-6 mt-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200/90 flex items-start gap-2';
-      bar.innerHTML =
-        '<i class="fa-solid fa-circle-info mt-0.5 text-amber-400" aria-hidden="true"></i>' +
-        '<span>OAuth no configurado en este servidor: GitHub/Google usan <strong>perfil demo local</strong>. ' +
-        'En Render define <code class="font-mono text-amber-100">GITHUB_CLIENT_*</code> / <code class="font-mono text-amber-100">GOOGLE_CLIENT_*</code> para login real.</span>';
-      const main = document.querySelector('#welcomeDashboard main');
-      if (main && main.parentNode) main.parentNode.insertBefore(bar, main);
-    } else {
-      bar.classList.remove('hidden');
-    }
-  } else if (bar) {
-    bar.classList.add('hidden');
-  }
+  const adminButton = document.getElementById('adminAccountsButton');
+  if (adminButton) adminButton.classList.toggle('hidden', !(currentUser && currentUser.real && currentUser.role === 'admin'));
 }
 
 /** One-shot: if user just logged in via OAuth and server workspace is empty, import local projects. */
@@ -4787,7 +4642,7 @@ function setupNewProjectModalKeys() {
     authIn.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        confirmAuthModal();
+        loginNativeAccount();
       }
     });
   }
