@@ -289,11 +289,26 @@
 
 /* When the K51S is rotated, keep the primary canvas as the largest touch surface. */
 @media (orientation: landscape) and (max-height: 720px) and (pointer: coarse) {
+  .workspace { grid-template-columns: 56px minmax(0,1fr) 210px; }
+  .topbar { height: 48px; }
+  .contextbar { height: 32px; }
+  .bottom-bar { display: none; }
+  .work-area { min-height: 140px; }
   .stage-column { min-width: 0; }
   .canvas-hint { font-size: 8px; }
+  .stage-bottom-right button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
   .draw-hold { min-width: 100px; min-height: 44px; }
-  .inspector input, .inspector select, .inspector button { min-height: 38px; }
-  .layer-row { min-height: 40px; }
+  .tool-button { width: 44px; min-width: 44px; min-height: 44px; }
+  .inspector { max-height: 30vh; overflow-y: auto; }
+  .inspector-tabs { height: 44px; min-height: 44px; gap: 6px; padding: 0 8px; }
+  .inspector-tab { min-width: 44px; min-height: 44px; justify-content: center; }
+  .inspector input, .inspector select, .inspector button { min-width: 44px; min-height: 44px; }
+  .animation-panel { max-height: 100px; padding: 4px 8px; gap: 4px; }
+  .animation-actions button { min-height: 44px; }
+  .animation-frames { min-height: 44px; }
+  .animation-frame { flex-basis: 48px; min-width: 48px; }
+  .animation-frame canvas { width: 30px; height: 30px; }
+  .layer-row { min-height: 44px; }
 }
 
 /* Portrait at 720px CSS width: reserve vertical space for browser chrome and
