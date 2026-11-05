@@ -177,6 +177,34 @@
         min-height: 44px !important;
         min-width: 44px !important;
       }
+      /* Keep the canvas visible on phones: tools become a single horizontal,
+         touch-scrollable strip instead of a tall floating drawer. */
+      #designStudioPanel > .design-toolbar {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        max-height: 84px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        white-space: nowrap !important;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+      }
+      #designStudioPanel > .design-toolbar > * {
+        flex: 0 0 auto !important;
+        width: auto !important;
+      }
+      #designStudioPanel > .design-toolbar > div:first-child {
+        width: auto !important;
+        min-width: max-content !important;
+        padding-bottom: 0 !important;
+        border-bottom: 0 !important;
+      }
+      #designStudioPanel > .design-toolbar > .ml-auto {
+        width: auto !important;
+        margin-left: 0 !important;
+        flex-wrap: nowrap !important;
+      }
     }
     @media (orientation: landscape) and (max-width: 900px) {
       #designStudioPanel > .design-toolbar { max-height: 48dvh; width: min(320px, 45vw); }
