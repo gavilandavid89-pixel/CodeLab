@@ -214,3 +214,59 @@
 .animation-frame .frame-duration{position:absolute;right:4px;top:3px;font-size:8px;opacity:.75}
 @media(max-width:760px){.animation-panel{grid-column:2;grid-row:2;padding:8px 9px;max-height:150px;gap:6px}.animation-toolbar{align-items:flex-start}.animation-title{display:none}.animation-actions{justify-content:flex-start;gap:4px}.animation-actions button{min-height:29px;padding:4px 6px;font-size:9px}.animation-number,.animation-check{font-size:9px}.animation-number input{width:40px;min-height:27px}.animation-number input#animation-duration{width:48px}.animation-frames{min-height:62px}.animation-frame{flex-basis:58px;min-width:58px;padding:4px}.animation-frame canvas{width:36px;height:36px}}
 @media(max-width:420px){.animation-panel{padding:7px 6px}.animation-actions button{padding:3px 5px}.animation-check{gap:2px}.animation-frame{flex-basis:52px;min-width:52px}}
+
+
+
+/* LG K51S / narrow physical-mobile ergonomics.
+   The K51S panel is 720x1600 px, 20:9. The browser/system chrome consumes part
+   of that physical height, so the app must remain usable with a shorter dynamic viewport.
+   Landscape is handled by height, not width, because the CSS width becomes ~1600px. */
+@media (orientation: landscape) and (max-height: 720px) {
+  .topbar { height: 48px; padding: 0 10px; gap: 8px; }
+  .brand { min-width: 0; gap: 7px; font-size: 12px; }
+  .brand-mark { width: 23px; height: 23px; }
+  .brand small { font-size: 7px; }
+  .document-meta { display: none; }
+  .top-actions { gap: 3px; }
+  .quiet-button, .more-button { min-width: 30px; height: 30px; }
+  .secondary-button, .primary-button { height: 30px; padding: 0 8px; }
+  .workspace { grid-template-columns: 52px minmax(0,1fr) 250px; grid-template-rows: minmax(0,1fr) auto; }
+  .tool-rail { padding: 6px 4px; }
+  .tool-button { width: 44px; height: 43px; margin-bottom: 2px; }
+  .tool-glyph { font-size: 18px; }
+  .tool-button small { font-size: 8px; }
+  .contextbar { height: 34px; padding: 0 9px; }
+  .work-area { min-height: 0; }
+  .inspector { max-height: none; min-height: 0; overflow-y: auto; }
+  .inspector-tabs { height: 34px; padding: 0 10px; gap: 12px; }
+  .inspector-section { padding: 9px 10px; }
+  .inspector-section .section-heading { margin-bottom: 9px; }
+  .inspector-section .control-block { margin-bottom: 10px; }
+  .animation-panel { max-height: 118px; padding: 6px 9px 7px; gap: 5px; }
+  .animation-actions button { min-height: 27px; padding: 3px 6px; }
+  .animation-frames { min-height: 48px; }
+  .animation-frame { flex-basis: 48px; min-width: 48px; padding: 3px; }
+  .animation-frame canvas { width: 30px; height: 30px; }
+  .animation-frame small { font-size: 8px; }
+}
+
+/* When the K51S is rotated, keep the primary canvas as the largest touch surface. */
+@media (orientation: landscape) and (max-height: 720px) and (pointer: coarse) {
+  .stage-column { min-width: 0; }
+  .canvas-hint { font-size: 8px; }
+  .draw-hold { min-width: 100px; min-height: 44px; }
+  .inspector input, .inspector select, .inspector button { min-height: 38px; }
+  .layer-row { min-height: 40px; }
+}
+
+/* Portrait at 720px CSS width: reserve vertical space for browser chrome and
+   Android navigation by avoiding fixed-height assumptions. */
+@media (orientation: portrait) and (max-width: 760px) {
+  .workspace { grid-template-rows: minmax(260px, 1fr) auto; }
+  .work-area { min-height: 260px; }
+  .inspector { max-height: min(42dvh, 360px); }
+  .inspector-tabs { height: 38px; }
+  .inspector-tab { min-height: 38px; }
+  .tool-button { min-height: 44px; }
+  .contextbar { min-height: 38px; }
+}
