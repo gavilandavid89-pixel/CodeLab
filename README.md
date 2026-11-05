@@ -25,15 +25,15 @@ CodeLab usa exclusivamente su sistema de cuentas nativo: nombre de usuario y con
 | `CODELAB_DATA_DIR` | Directorio para respaldos y archivos auxiliares |
 | `PIXELFORGE_GUEST_MODE` | Debe ser `false` para aislar PixelForge por cuenta |
 
-### Persistent Disk
+### Persistencia y Persistent Disk
 
-Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, workspaces y sesiones se pierden al redeploy.
+Con `DATABASE_URL` configurada, cuentas, sesiones, workspaces y proyectos PixelForge se guardan en PostgreSQL. El disco persistente de Render (`/var/data` con `CODELAB_DATA_DIR=/var/data`) se reserva para respaldos y archivos auxiliares o para el modo sin PostgreSQL; no sustituye a la base de datos.
 
 ## Seguridad
 
-- OAuth con `state` anti-CSRF  
+- Sesiones propias de CodeLab con cookies HttpOnly y verificación de identidad en servidor  
 - Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)  
-- Workspace por usuario: `ws_{provider}_{id}`  
+- Workspace por cuenta: `ws_local_{id}`  
 - Acceso por token HMAC **o** sesión dueña del workspace  
 - Rate limit con saltos de proxy confiables configurables; se rechazan cadenas X-Forwarded-For malformadas para evitar desplazar la selección de IP confiable  
 - Validación de payload, límites de tamaño y path traversal bloqueado  
@@ -68,7 +68,7 @@ node server.js
 - Cuentas nativas CodeLab con contraseña propia  
 - Workspaces ligados a la cuenta del usuario  
 - Cookie de sesión HttpOnly  
-- Fallback demo si OAuth no está configurado  
+- Cuentas CodeLab nativas  
 - Móvil, dashboard de conexiones, asistente IA local/API (v2.5)  
 
 
@@ -90,7 +90,7 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Tokens ajustables para escala tipográfica, espaciado y radios de borde.
 - Aplicación directa del bloque de tokens al CSS del proyecto web abierto, reemplazando solo el bloque administrado y preservando el resto del CSS.
 - Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
-- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Con OAuth real configurado, los ajustes se recuperan en otros dispositivos con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
+- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Con una sesión CodeLab válida, los ajustes se recuperan en otros dispositivos con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
 
 Las pruebas automáticas cubren los cálculos de contraste, generación de tokens, exportaciones y una prueba de interacción en Chromium.
 
