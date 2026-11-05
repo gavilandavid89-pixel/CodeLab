@@ -1620,6 +1620,8 @@ async function refreshWorkspaceAfterNativeLogin() {
   projects = [];
   currentProjectId = null;
   lsRemove(STORAGE_KEY_WORKSPACE_TOKEN);
+  // Resolve API credentials only after the server has confirmed the active account.
+  loadAiSettings();
   await loadProjectsFromStorage();
   window.dispatchEvent(new Event('codelab-workspace-ready'));
   renderProjectsList();
