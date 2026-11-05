@@ -91,6 +91,16 @@ async function main() {
       if (viewport.mobile) {
         assert.equal(mobileTouchTargets, 0, viewport.label + ': visible primary editor controls should provide 44px touch targets');
       }
+      if (viewport.mobile) {
+        const animationTouchTargets = await page.locator('.animation-actions button:visible').evaluateAll(nodes =>
+          nodes.filter(node => {
+            const r = node.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
+          }).length
+        );
+        assert.equal(animationTouchTargets, 0,
+          viewport.label + ': visible animation actions should provide 44px touch targets');
+      }
       if (viewport.mobile) await page.locator('#files-tab').tap();
       else await page.locator('#files-tab').click();
       assert.equal(await page.locator('.files-section').evaluate(node => getComputedStyle(node).display !== 'none'), true,
