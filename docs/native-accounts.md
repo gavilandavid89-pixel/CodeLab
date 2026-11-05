@@ -1,7 +1,7 @@
 # CodeLab native account system
 
 ## Goal
-Replace mandatory Google/GitHub OAuth with CodeLab-managed username/password accounts. OAuth can remain optional, but it must not be required to sign in.
+Use CodeLab-managed username/password accounts exclusively. Google/Gmail and GitHub OAuth are disabled.
 
 ## Implemented in this change
 - `POST /api/auth/login`: username/password login; usernames are normalized to uppercase.
@@ -15,10 +15,10 @@ Replace mandatory Google/GitHub OAuth with CodeLab-managed username/password acc
 
 ## Deployment requirements
 1. Set a strong random `ADMIN_BOOTSTRAP_PASSWORD` secret in the CodeLab Render service environment before relying on native login. Do not put it in source control, issue bodies, logs, or documentation.
-2. Native account hashes now use Neon PostgreSQL via `DATABASE_URL`. The Render service is still on the Free plan and has no persistent disk in the inspected metadata: **workspace files and session files still live under `CODELAB_DATA_DIR` and may be lost on replacement/restart**. Accounts remain durable in Neon, but users may need to sign in again and unsaved/local workspace data is not yet migrated. Do not claim all user data is durable until workspace/session persistence is addressed.
+2. Native account hashes now use Neon PostgreSQL via `DATABASE_URL`. The Render service is still on the Free plan and has no persistent disk in the inspected metadata: **workspace/session persistence is implemented in PostgreSQL when `DATABASE_URL` is configured**. Accounts remain durable in Neon, but users may need to sign in again and unsaved/local workspace data is not yet migrated. Do not claim all user data is durable until workspace/session persistence is addressed.
 3. Keep `ADMIN` for the human owner. Any later automation should use a separate least-privilege service identity with revocable access; never share the administrator password or browser session with an agent.
 4. Public registration is intentionally not enabled in this initial slice. Account creation/invitations and admin account management must be added behind administrator authorization before general use.
-5. The native login, first-password-change, and basic administrator account-management screens are now wired in the feature branch. They still require a careful manual verification on a persistent deployment before this can be called fully ready.
+5. The native login, first-password-change, and administrator account-management screens are wired. Verify the full login and save flow on the deployed service before declaring it production-ready.
 
 ## Security notes
 - Never log or return passwords, salts, or password hashes.
