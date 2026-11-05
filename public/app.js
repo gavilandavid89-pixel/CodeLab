@@ -3780,9 +3780,17 @@ function exportDesignHtml() {
 function setDesignFrame(frame) {
   const p = activeDesignProject(); if (!p) return;
   recordDesignHistory();
-  p.design.frame = ['desktop','tablet','mobile'].includes(frame) ? frame : 'desktop';
-  delete p.design.canvasWidth;
-  delete p.design.canvasHeight;
+  p.design.frame = ['desktop','tablet','mobile','mobile-k51s','mobile-k51s-landscape'].includes(frame) ? frame : 'desktop';
+  if (frame === 'mobile-k51s') {
+    p.design.canvasWidth = 720;
+    p.design.canvasHeight = 1600;
+  } else if (frame === 'mobile-k51s-landscape') {
+    p.design.canvasWidth = 1600;
+    p.design.canvasHeight = 720;
+  } else {
+    delete p.design.canvasWidth;
+    delete p.design.canvasHeight;
+  }
   renderDesignWorkspace(); fitDesignToViewport(); saveProjectsToStorage();
 }
 function setDesignCanvasDimensions(widthValue, heightValue) {
