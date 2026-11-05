@@ -87,7 +87,7 @@
       #splitDivider { display: none !important; }
       #studioView { position: relative !important; z-index: 1 !important; padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
       #designStudioPanel button { min-height: 44px; min-width: 44px; }
-      #mobileBottomBar { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; pointer-events: auto !important; }
+      #mobileBottomBar:not(.hidden) { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; pointer-events: auto !important; }
       .hide-on-mobile { display: none !important; }
     }
     @media (min-width: 768px) {
@@ -182,8 +182,24 @@
       }
       #designStudioPanel #designCanvasScroll { padding: 8px !important; }
       #designStudioPanel button { min-height: 40px; }
-      #mobileBottomBar { display: flex !important; height: 50px; }
+      #mobileBottomBar:not(.hidden) { display: flex !important; height: 50px; }
       #studioView { padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important; }
+    }
+
+    /* K51S landscape is 800 CSS px wide at DPR 2. Keep the web editor in
+       phone mode even though its CSS width crosses the old 767px breakpoint. */
+    @media (orientation: landscape) and (max-height: 400px) and (max-width: 900px) and (pointer: coarse) {
+      #studioView.mobile-mode-code #previewPanel { display: none !important; }
+      #studioView.mobile-mode-code #editorPanel { display: flex !important; width: 100% !important; height: 100% !important; flex: 1 1 auto !important; }
+      #studioView.mobile-mode-preview #editorPanel { display: none !important; }
+      #studioView.mobile-mode-preview #previewPanel { display: flex !important; width: 100% !important; height: 100% !important; flex: 1 1 auto !important; }
+      #splitDivider { display: none !important; }
+      #mobileBottomBar:not(.hidden) { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; min-height: 50px; }
+      #mobileBottomBar button { min-width: 44px; min-height: 44px; }
+      #studioView { padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important; }
+      #studioView > header { flex-wrap: nowrap !important; }
+      #studioView > header > div:first-child { min-width: 0 !important; max-width: calc(100vw - 16px) !important; }
+      #designStudioPanel button, #designStudioPanel a { min-width: 44px !important; min-height: 44px !important; }
     }
 
     /* Portrait K51S: the 720px physical width is a real phone width, not desktop.
