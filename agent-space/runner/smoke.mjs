@@ -1,16 +1,39 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 const baseURL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const outDir = process.env.AGENT_SPACE_ARTIFACT_DIR || 'artifacts';
 await fs.mkdir(outDir, { recursive: true });
 
+const dataDir = process.env.CODELAB_DATA_DIR || path.join(process.cwd(), 'data');
+const sessionsDir = path.join(dataDir, 'sessions');
+const sessionId = randomBytes(24).toString('hex');
+const sessionPath = path.join(sessionsDir, sessionId + '.json');
+await fs.mkdir(sessionsDir, { recursive: true });
+await fs.writeFile(sessionPath, JSON.stringify({
+  id: sessionId,
+  user: {
+    id: 'agent-space-ci-admin',
+    provider: 'local',
+    name: 'AGENT_SPACE_CI',
+    email: null,
+    avatar: null,
+    role: 'admin',
+    mustChangePassword: false
+  },
+  createdAt: Date.now(),
+  expiresAt: Date.now() + 60 * 60 * 1000
+}), { mode: 0o600 });
+
 const browser = await chromium.launch({ headless: true });
 const errors = [];
 const consoleErrors = [];
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: baseURL }]);
+  const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {
     if (message.type() === 'error') consoleErrors.push(message.text());
@@ -74,4 +97,5 @@ try {
   throw error;
 } finally {
   await browser.close();
+  await fs.rm(sessionPath, { force: true });
 }
