@@ -671,6 +671,13 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
       return;
     case 'pixelforge_export_image': {
+      // Backward-compatible mailbox envelope: the primary DB CHECK constraint
+      // may not yet include pixelforge_capture_interface. Reuse this allowed action
+      // only when the explicit operation discriminator is present.
+      if (payload.operation === 'capture_interface') {
+        await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
+        return;
+      }
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id);
       const frameIndex = payload.frame_index == null ? (loaded.project.animation?.activeFrameIndex ?? null) : payload.frame_index;
