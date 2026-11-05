@@ -668,7 +668,14 @@ async function capturePixelForgeInterface(payload = {}) {
         label: item.label,
         mimeType: 'image/png',
         ...(storedImages
-          ? { objectKey: storedImages[index]?.objectKey, sizeBytes: storedImages[index]?.sizeBytes, stored: true }
+          ? {
+              objectKey: storedImages[index]?.objectKey,
+              sizeBytes: storedImages[index]?.sizeBytes,
+              stored: true,
+              ...(payload.returnImagesInline === true
+                ? { dataBase64: item.dataUrl.slice('data:image/png;base64,'.length) }
+                : {})
+            }
           : { dataBase64: item.dataUrl.slice('data:image/png;base64,'.length) })
       })),
       ...(storedImages ? { storage: { provider: 'neon-object-storage', bucket: captureBucket, access: 'public_read', objects: storedImages } } : {}),
