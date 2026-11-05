@@ -4,6 +4,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import fs from 'node:fs';
 import path from 'node:path';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
+import chromium from '@sparticuz/chromium';
+import { chromium as playwrightChromium } from 'playwright-core';
+import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -24,6 +27,7 @@ const POLL_MS = 700;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 let stopping = false;
 let workspaceId;
+let pixelForgeWorkspaceId = 'ws_pixelforge_guest';
 
 function safeJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -92,7 +96,7 @@ async function finish(commandId, status, result, proposal = null, token = null) 
 async function loadProject(projectId) {
   const result = await pool.query(
     'SELECT project, server_revision, content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2',
-    [workspaceId, projectId]
+    [pixelForgeWorkspaceId, projectId]
   );
   if (!result.rowCount) throw new Error('PixelForge project not found in the ADMIN workspace.');
   return {
@@ -117,10 +121,10 @@ async function createProject(payload) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [pixelForgeWorkspaceId]);
     const usage = await client.query(
       'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size),0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id=$1',
-      [workspaceId]
+      [pixelForgeWorkspaceId]
     );
     if (Number(usage.rows[0].count) >= MAX_PROJECTS) throw new Error('PixelForge project limit reached.');
     if (Number(usage.rows[0].bytes) + bytes > MAX_ACCOUNT_BYTES) throw new Error('PixelForge account storage limit reached.');
@@ -128,7 +132,7 @@ async function createProject(payload) {
     const sha = createHash('sha256').update(serialized).digest('hex');
     await client.query(
       'INSERT INTO codelab_pixelforge_projects (workspace_id,project_id,name,width,height,updated_at,last_opened_at,project,byte_size,server_revision,content_sha256) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,1,$9)',
-      [workspaceId, document.id, document.name, document.width, document.height, now, serialized, bytes, sha]
+      [pixelForgeWorkspaceId, document.id, document.name, document.width, document.height, now, serialized, bytes, sha]
     );
     await client.query('COMMIT');
     return {
@@ -146,9 +150,9 @@ async function createProject(payload) {
 async function listProjects() {
   const result = await pool.query(
     'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt", server_revision AS "serverRevision" FROM codelab_pixelforge_projects WHERE workspace_id=$1 ORDER BY last_opened_at DESC',
-    [workspaceId]
+    [pixelForgeWorkspaceId]
   );
-  return { workspaceId, count: result.rowCount, projects: result.rows };
+  return { workspaceId: pixelForgeWorkspaceId, count: result.rowCount, projects: result.rows };
 }
 function assertProjectId(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) {
@@ -202,17 +206,17 @@ async function saveApprovedProject(projectId, expectedRevision, document) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [workspaceId]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [pixelForgeWorkspaceId]);
     const current = await client.query(
       'SELECT server_revision FROM codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2 FOR UPDATE',
-      [workspaceId, projectId]
+      [pixelForgeWorkspaceId, projectId]
     );
     if (!current.rowCount || Number(current.rows[0].server_revision || 0) !== expectedRevision) {
       throw new Error('Revision conflict: saved project changed after the proposal was prepared.');
     }
     const usage = await client.query(
       'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size),0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id=$1',
-      [workspaceId]
+      [pixelForgeWorkspaceId]
     );
     const stored = { ...document, serverRevision: expectedRevision + 1 };
     const serialized = JSON.stringify(stored);
@@ -221,7 +225,7 @@ async function saveApprovedProject(projectId, expectedRevision, document) {
     if (Number(usage.rows[0].bytes) - 0 + bytes > MAX_ACCOUNT_BYTES) {
       const prior = await client.query(
         'SELECT byte_size FROM codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2',
-        [workspaceId, projectId]
+        [pixelForgeWorkspaceId, projectId]
       );
       if (Number(usage.rows[0].bytes) - Number(prior.rows[0].byte_size) + bytes > MAX_ACCOUNT_BYTES) {
         throw new Error('PixelForge account storage limit reached.');
@@ -231,7 +235,7 @@ async function saveApprovedProject(projectId, expectedRevision, document) {
     const now = Date.now();
     await client.query(
       'UPDATE codelab_pixelforge_projects SET name=$3,width=$4,height=$5,updated_at=$6,last_opened_at=$6,project=$7::jsonb,byte_size=$8,server_revision=$9,content_sha256=$10 WHERE workspace_id=$1 AND project_id=$2',
-      [workspaceId, projectId, stored.name, stored.width, stored.height, now, serialized, bytes, expectedRevision + 1, sha]
+      [pixelForgeWorkspaceId, projectId, stored.name, stored.width, stored.height, now, serialized, bytes, expectedRevision + 1, sha]
     );
     await client.query('COMMIT');
     return { serverRevision: expectedRevision + 1, contentSha256: sha, byteSize: bytes };
@@ -536,6 +540,92 @@ function renderProjectSvg(project) {
   return { svg, width, height };
 }
 
+async function migrateAdminPixelForgeProjectsToGuest() {
+  if (workspaceId === pixelForgeWorkspaceId) return;
+  const copied = await pool.query(
+    `INSERT INTO codelab_pixelforge_projects
+      (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256)
+     SELECT $1, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256
+       FROM codelab_pixelforge_projects WHERE workspace_id=$2
+     ON CONFLICT (workspace_id, project_id) DO NOTHING`,
+    [pixelForgeWorkspaceId, workspaceId]
+  );
+  console.log('[PixelForge] temporary guest workspace ready; copied projects:', copied.rowCount);
+}
+
+async function capturePixelForgeInterface(payload = {}) {
+  const width = Number.isInteger(payload.width) ? Math.max(640, Math.min(2560, payload.width)) : 1440;
+  const height = Number.isInteger(payload.height) ? Math.max(480, Math.min(1800, payload.height)) : 1000;
+  const zoom = Number.isFinite(payload.zoom) ? Math.max(1, Math.min(3, payload.zoom)) : 1;
+  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      defaultViewport: null
+    });
+    const context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+      colorScheme: 'dark',
+      reducedMotion: 'reduce'
+    });
+    const page = await context.newPage();
+    const consoleErrors = [];
+    page.on('pageerror', error => consoleErrors.push(String(error.message || error).slice(0, 300)));
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 20) consoleErrors.push(message.text().slice(0, 300));
+    });
+    const response = await page.goto(baseUrl + '/pixelforge/index.html?capture=1', {
+      waitUntil: 'domcontentloaded',
+      timeout: 45000
+    });
+    if (!response || !response.ok()) throw new Error('PixelForge page returned HTTP ' + (response?.status() || 'no response'));
+    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    await page.waitForTimeout(1600);
+    if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+    await page.waitForTimeout(250);
+    const screenshot = await page.screenshot({
+      type: 'png',
+      fullPage: payload.full_page !== false,
+      animations: 'disabled'
+    });
+    const artworkScreenshot = await page.locator('#canvas').screenshot({ type: 'png', animations: 'disabled' });
+    if (screenshot.length > 5 * 1024 * 1024 || artworkScreenshot.length > 5 * 1024 * 1024) {
+      throw new Error('A capture exceeds the 5 MiB image limit; request a smaller viewport or lower zoom.');
+    }
+    const interfaceDataUrl = 'data:image/png;base64,' + screenshot.toString('base64');
+    const artworkDataUrl = 'data:image/png;base64,' + artworkScreenshot.toString('base64');
+    const vision = createVisionSnapshot({
+      mode: 'combined',
+      interfaceImage: interfaceDataUrl,
+      artworkImage: artworkDataUrl,
+      project: { title: await page.title(), url: baseUrl + '/pixelforge/index.html' },
+      viewport: { width, height, zoom, fullPage: payload.full_page !== false, deviceScaleFactor: 1 }
+    });
+    return {
+      captureMethod: 'playwright-chromium-real-browser',
+      visionProtocol: 'pixelforge-headless-vision/v1',
+      url: baseUrl + '/pixelforge/index.html',
+      title: await page.title(),
+      viewport: { width, height, zoom, fullPage: payload.full_page !== false },
+      visionContext: vision.context,
+      images: vision.images.map(item => ({
+        role: item.role,
+        label: item.label,
+        mimeType: 'image/png',
+        dataBase64: item.dataUrl.slice('data:image/png;base64,'.length)
+      })),
+      pageErrors: consoleErrors
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   if (new Date(command.expires_at).getTime() < Date.now()) {
@@ -577,6 +667,9 @@ async function processCommand(command) {
       });
       return;
     }
+    case 'pixelforge_capture_interface':
+      await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
+      return;
     case 'pixelforge_export_image': {
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id);
@@ -621,7 +714,12 @@ async function processCommand(command) {
 }
 async function main() {
   workspaceId = await resolveAdminWorkspace();
-  console.log('[CodeLab Native Bridge] online for workspace', workspaceId);
+  if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
+    pixelForgeWorkspaceId = workspaceId;
+  } else {
+    await migrateAdminPixelForgeProjectsToGuest();
+  }
+  console.log('[CodeLab Native Bridge] online for mailbox workspace', workspaceId, 'and PixelForge workspace', pixelForgeWorkspaceId);
   while (!stopping) {
     try {
       const command = await claimCommand();
