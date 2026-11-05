@@ -331,8 +331,8 @@
   .layer-row { min-height: 44px; }
 }
 
-/* Portrait at 720px CSS width: reserve vertical space for browser chrome and
-   Android navigation by avoiding fixed-height assumptions. */
+/* K51S portrait at 360 CSS px (720 physical px at DPR 2): reserve vertical
+   space for browser chrome and Android navigation; avoid fixed-height assumptions. */
 @media (orientation: portrait) and (max-width: 760px) {
   .workspace { grid-template-rows: minmax(260px, 1fr) auto; }
   .work-area { min-height: 260px; }
