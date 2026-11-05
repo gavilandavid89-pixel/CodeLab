@@ -12,7 +12,7 @@ CodeLab usa exclusivamente su sistema de cuentas nativo: nombre de usuario y con
 - Las contraseñas se almacenan como hashes scrypt con salt individual.
 - El administrador puede crear cuentas desde **Administrar cuentas** después de iniciar sesión.
 - Las contraseñas nuevas deben tener al menos 16 caracteres.
-- `ADMIN_BOOTSTRAP_PASSWORD` crea la cuenta `ADMIN` únicamente si todavía no existe. No restablece la contraseña de una cuenta existente.
+- `ADMIN_BOOTSTRAP_PASSWORD` crea la cuenta `ADMIN` únicamente si todavía no existe. No restablece la contraseña de una cuenta existente; el primer acceso exige cambiarla antes de abrir proyectos.
 - `CODELAB_WORKSPACE_SECRET` debe ser una clave aleatoria persistente en Render; no debe cambiar entre despliegues.
 
 ### Variables principales en Render
