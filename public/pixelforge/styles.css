@@ -278,8 +278,9 @@
 /* LG K51S / narrow physical-mobile ergonomics.
    The K51S panel is 720x1600 px, 20:9. The browser/system chrome consumes part
    of that physical height, so the app must remain usable with a shorter dynamic viewport.
-   Landscape is handled by height, not width, because the CSS width becomes ~1600px. */
-@media (orientation: landscape) and (max-height: 720px) {
+   At DPR 2 the landscape CSS viewport is about 800px wide by 310px high; scope
+   these compact rules to touch devices so short desktop windows are unaffected. */
+@media (orientation: landscape) and (max-height: 720px) and (pointer: coarse) {
   .topbar { height: 48px; padding: 0 10px; gap: 8px; }
   .brand { min-width: 0; gap: 7px; font-size: 12px; }
   .brand-mark { width: 23px; height: 23px; }
