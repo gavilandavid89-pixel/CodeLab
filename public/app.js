@@ -448,6 +448,25 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// ---------- Mobile visual viewport / keyboard ergonomics ----------
+function syncMobileVisualViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const keyboardOpen = vv.height < window.innerHeight * 0.72 && (window.innerHeight - vv.height) > 120;
+  document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
+  document.documentElement.style.setProperty('--visual-viewport-height', Math.round(vv.height) + 'px');
+  Object.values(editors || {}).forEach(editor => {
+    try { editor.layout(); } catch (_) {}
+  });
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncMobileVisualViewport, { passive: true });
+  window.visualViewport.addEventListener('scroll', syncMobileVisualViewport, { passive: true });
+}
+window.addEventListener('resize', syncMobileVisualViewport, { passive: true });
+window.addEventListener('orientationchange', () => setTimeout(syncMobileVisualViewport, 120), { passive: true });
+setTimeout(syncMobileVisualViewport, 0);
+
 window.addEventListener('beforeunload', () => {
   if (autosaveTimer) {
     clearTimeout(autosaveTimer);
