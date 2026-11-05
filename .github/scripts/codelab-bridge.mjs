@@ -273,7 +273,14 @@ try {
   commandAction = command.action;
   stage = 'launch_browser';
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const requestedViewport = command.args && command.args.viewport;
+  const viewport = requestedViewport && Number.isInteger(requestedViewport.width) && Number.isInteger(requestedViewport.height)
+    ? {
+        width: Math.max(320, Math.min(1920, requestedViewport.width)),
+        height: Math.max(480, Math.min(1400, requestedViewport.height))
+      }
+    : { width: 1280, height: 900 };
+  const context = await browser.newContext({ viewport });
   page = await context.newPage();
   const browserDiagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], expectedBlockedRequests: [] };
   const intentionallyBlockedUrls = new Set();
