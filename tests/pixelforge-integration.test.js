@@ -27,6 +27,11 @@ function makePixelProject(id, name, width = 2, height = 2) {
 
 async function main() {
   const health = await (await fetch(base + '/api/health')).json();
+  for (const path of ['/api/auth/google', '/api/auth/google/callback', '/api/auth/github', '/api/auth/github/callback']) {
+    const disabledProvider = await fetch(base + path, { redirect: 'manual' });
+    assert.equal(disabledProvider.status, 410, path + ' must reject external identity providers');
+    assert.equal((await disabledProvider.json()).error, 'external_auth_disabled');
+  }
   const usesPostgres = health.persistence === 'postgresql';
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
@@ -94,7 +99,7 @@ async function main() {
   fs.mkdirSync(sessionsDir, { recursive: true });
   fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
     id: sessionId,
-    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' },
+    user: { id: 'pixelforge-integration-user', provider: 'local', name: 'PIXELFORGE_TEST', role: 'user' },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
@@ -355,7 +360,7 @@ async function main() {
   const sameAccountSessionId = 'c'.repeat(48);
   fs.writeFileSync(path.join(sessionsDir, sameAccountSessionId + '.json'), JSON.stringify({
     id: sameAccountSessionId,
-    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
+    user: { id: 'pixelforge-integration-user', provider: 'local', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
     createdAt: Date.now(), expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const sameAccountHeaders = { cookie: 'codelab_sid=' + sameAccountSessionId, 'x-forwarded-for': '198.51.100.82' };
@@ -458,9 +463,9 @@ async function main() {
 
     const accountContext = await browser.newContext();
     await accountContext.addInitScript(() => {
-      localStorage.setItem('pixelforge.palette.v1:github:pixelforge-integration-user', JSON.stringify(['#A1B2C3']));
+      localStorage.setItem('pixelforge.palette.v1:local:pixelforge-integration-user', JSON.stringify(['#A1B2C3']));
       localStorage.setItem('pixelforge.palette.v1', JSON.stringify(['#DEAD00']));
-      localStorage.setItem('codelab_xd_ai_settings_v1:github_pixelforge-integration-user', JSON.stringify({
+      localStorage.setItem('codelab_xd_ai_settings_v1:local_pixelforge-integration-user', JSON.stringify({
         mode: 'api',
         baseUrl: 'https://api.example.test/v1',
         model: 'test-model',
