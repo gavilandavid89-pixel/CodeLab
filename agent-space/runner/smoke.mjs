@@ -75,6 +75,23 @@ try {
   await page.locator('#clickElement').click();
   await app.locator('#designToolsModal').waitFor({ state: 'hidden', timeout: 10000 });
 
+  // Dashboard global dialogs must be siblings of the auth modal, not descendants
+  // hidden inside it. Verify the component library can open independently too.
+  await app.locator('#openComponentLibrary').click();
+  await app.locator('#componentLibraryModal').waitFor({ state: 'visible', timeout: 10000 });
+  const componentModalAncestors = await app.locator('#componentLibraryModal').evaluate(node => {
+    const ancestors = [];
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (parent.id) ancestors.push(parent.id);
+    }
+    return ancestors;
+  });
+  if (componentModalAncestors.includes('authModal')) {
+    throw new Error('Component Library must not be nested inside the hidden authentication modal');
+  }
+  await app.locator('#componentLibraryCloseFooter').click();
+  await app.locator('#componentLibraryModal').waitFor({ state: 'hidden', timeout: 10000 });
+
   const report = {
     ok: errors.length === 0,
     checkedAt: new Date().toISOString(),
@@ -82,7 +99,7 @@ try {
     pageTitle: await page.title(),
     appTitle: snapshot.title,
     visibleControls: snapshot.visibleControls,
-    interactions: ['same-origin iframe inspection', 'open design tools', 'switch tab through bridge', 'close modal through bridge'],
+    interactions: ['same-origin iframe inspection', 'open design tools', 'switch tab through bridge', 'close design tools', 'open and close component library'],
     pageErrors: errors,
     consoleErrors
   };
