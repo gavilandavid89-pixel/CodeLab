@@ -109,7 +109,7 @@ async function main() {
   });
   assert.equal(coreWorkspaceResponse.status, 200, 'PixelForge must use the same authenticated CodeLab workspace identity');
   const coreWorkspace = await coreWorkspaceResponse.json();
-  assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
+  assert.equal(coreWorkspace.workspaceId, 'ws_local_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
   assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
@@ -367,7 +367,7 @@ async function main() {
   const secondSessionId = 'b'.repeat(48);
   fs.writeFileSync(path.join(sessionsDir, secondSessionId + '.json'), JSON.stringify({
     id: secondSessionId,
-    user: { id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' },
+    user: { id: 'pixelforge-other-user', provider: 'local', name: 'PIXELFORGE_OTHER', role: 'user' },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
