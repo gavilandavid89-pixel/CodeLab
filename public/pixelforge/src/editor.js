@@ -2304,8 +2304,8 @@ async function boot() {
     if (!guestMode) {
       const sharedAI = await window.CodeLabStudioCore.getCodeLabAISettings(auth);
       if (sharedAI.baseUrl) {
-        const base = sharedAI.baseUrl.replace(/\\/+$/, '');
-        $('#ai-provider-endpoint').value = /\\/chat\\/completions$/i.test(base) ? base : base + '/chat/completions';
+        const base = sharedAI.baseUrl.replace(/\/+$/, '');
+        $('#ai-provider-endpoint').value = /\/chat\/completions$/i.test(base) ? base : base + '/chat/completions';
       }
       if (sharedAI.model) $('#ai-provider-model').value = sharedAI.model;
       if (sharedAI.apiKey) $('#ai-provider-key').value = sharedAI.apiKey;
