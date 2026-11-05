@@ -131,18 +131,32 @@ function safePasswordEqual(a, b) {
 }
 
 async function seedAdminAccountIfConfigured() {
+  if (!accountPool) {
+    if (ADMIN_BOOTSTRAP_PASSWORD) console.error('DATABASE_URL is required for native accounts; ADMIN bootstrap skipped.');
+    return;
+  }
+
+  // The existing owner ADMIN is never blocked by a stale first-login rotation
+  // flag, even when no bootstrap secret is configured. This changes only the
+  // policy flag; it never overwrites the stored password hash or salt.
+  try {
+    await accountPool.query(
+      "UPDATE codelab_accounts SET must_change_password = false WHERE username = 'ADMIN' AND role = 'admin'"
+    );
+  } catch (error) {
+    if (ADMIN_BOOTSTRAP_PASSWORD) throw error;
+    console.warn('ADMIN password policy could not be normalized:', error.message);
+  }
+
   if (!ADMIN_BOOTSTRAP_PASSWORD) {
-    console.log('ADMIN bootstrap skipped: ADMIN_BOOTSTRAP_PASSWORD not configured.');
+    console.log('ADMIN bootstrap skipped: ADMIN_BOOTSTRAP_PASSWORD not configured; existing ADMIN remains usable.');
     return;
   }
   if (ADMIN_BOOTSTRAP_PASSWORD.length < 16) {
     console.error('ADMIN_BOOTSTRAP_PASSWORD must contain at least 16 characters; ADMIN bootstrap skipped.');
     return;
   }
-  if (!accountPool) {
-    console.error('DATABASE_URL is required for native accounts; ADMIN bootstrap skipped.');
-    return;
-  }
+
   const salt = crypto.randomBytes(16).toString('hex');
   await accountPool.query(
     'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO UPDATE SET must_change_password = false WHERE codelab_accounts.role = \'admin\'',
@@ -940,10 +954,13 @@ async function destroySession(sid) {
 
 async function sessionRequiresPasswordChange(user) {
   if (!user || user.provider !== 'local') return false;
-  if (typeof user.mustChangePassword === 'boolean') return user.mustChangePassword;
-  if (!accountPool || !user.name) return false;
-  const result = await accountPool.query('SELECT must_change_password FROM codelab_accounts WHERE username = $1', [user.name]);
-  return !!(result.rows[0] && result.rows[0].must_change_password);
+  // PostgreSQL is authoritative when configured. Session JSON can outlive a
+  // password-policy change, so a cached boolean must never override the row.
+  if (accountPool && user.name) {
+    const result = await accountPool.query('SELECT must_change_password FROM codelab_accounts WHERE username = $1', [user.name]);
+    if (result.rowCount) return !!result.rows[0].must_change_password;
+  }
+  return !!user.mustChangePassword;
 }
 
 async function getSessionUser(req, options = {}) {
@@ -1614,8 +1631,6 @@ function parseAiJsonContent(content, fallbackCode) {
     'El modelo no devolvió JSON usable. Prueba AI_MODEL=openai/gpt-oss-20b o llama-3.3-70b-versatile.'
   );
 }
-
-seedAdminAccountIfConfigured();
 
 const server = http.createServer(async (req, res) => {
   const ip = clientIp(req);
