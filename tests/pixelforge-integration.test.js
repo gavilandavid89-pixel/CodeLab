@@ -36,6 +36,17 @@ async function main() {
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
+  assert.doesNotMatch(dashboard, /openAuthModal|btnAuthGoogle|btnAuthGithub|Google|GitHub/,
+    'dashboard must expose only native CodeLab account sign-in');
+  const authStatus = await (await fetch(base + '/api/auth/status')).json();
+  assert.equal(authStatus.authMode, 'native', 'server must advertise native-only authentication');
+  assert.equal(authStatus.demoFallback, false, 'demo identities must never be accepted');
+  const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const bridgeSource = fs.readFileSync(path.join(__dirname, '..', 'agent-bridge-worker.mjs'), 'utf8');
+  assert.match(serverSource, /PIXELFORGE_GUEST_MODE \\|\\| 'false'/,
+    'PixelForge guest access must be opt-in, not the default');
+  assert.match(bridgeSource, /PIXELFORGE_GUEST_MODE \\|\\| 'false'/,
+    'Native Bridge must default to account-scoped workspaces');
   assert.doesNotMatch(dashboard, /id="studioChooser"/, 'PixelForge should not appear as a separate top-level studio');
   const designPanelStart = dashboard.indexOf('id="designStudioPanel"');
   const pixelForgeEntry = dashboard.indexOf('id="openPixelForgeFromDesign"');
