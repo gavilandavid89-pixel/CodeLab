@@ -17,7 +17,7 @@ const sessionsDir = path.join(dataDir, 'sessions');
 fs.mkdirSync(sessionsDir, { recursive: true });
 fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
   id: sessionId,
-  user: { id: 'pixelforge-mobile-ui-user', provider: 'github', name: 'PIXELFORGE_MOBILE_TEST', role: 'user' },
+  user: { id: 'pixelforge-mobile-ui-user', provider: 'local', name: 'PIXELFORGE_MOBILE_TEST', role: 'user' },
   createdAt: Date.now(),
   expiresAt: Date.now() + 60 * 60 * 1000
 }), { mode: 0o600 });
@@ -26,12 +26,13 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
     for (const viewport of [
-      { width: 390, height: 844, label: 'mobile portrait' },
-      { width: 320, height: 640, label: 'narrow mobile' },
-      { width: 667, height: 375, label: 'mobile landscape' },
+      { width: 390, height: 844, label: 'mobile portrait', mobile: true },
+      { width: 320, height: 640, label: 'narrow mobile', mobile: true },
+      { width: 667, height: 375, label: 'mobile landscape', mobile: true },
+      { width: 720, height: 1600, label: '720x1600 mobile target', mobile: true },
       { width: 1280, height: 800, label: 'desktop' }
     ]) {
-      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, isMobile: !!viewport.mobile, hasTouch: !!viewport.mobile, deviceScaleFactor: viewport.mobile ? 1 : undefined });
       await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: base }]);
       const page = await context.newPage();
       const pageErrors = [];
