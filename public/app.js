@@ -4655,34 +4655,40 @@ async function switchProjectWorkspace(targetType) {
   creatingProjectInFlight = true;
   try {
     if (activeProjectWorkspace === 'web') {
-      const startedAt = Date.now();
-      let editorReady = false;
-      while (Date.now() - startedAt < 15000) {
-        const active = projects.find(item => item.id === project.id);
-        const code = normalizeCode(active && active.code);
-        if (active && getEditorValue('html') === code.html &&
-            getEditorValue('css') === code.css && getEditorValue('js') === code.js) {
-          editorReady = true;
-          break;
+      // If Monaco is still booting, the durable project.code is already the
+      // authoritative source. Do not block the workspace switch waiting for a
+      // UI editor that the user cannot have edited yet.
+      if (editorReadyProjectId === project.id) {
+        try {
+          const saved = await saveCurrentCodeToActiveProject(true);
+          const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
+          if (localSnapshotConfirmed !== true) {
+            showToast('No se pudo confirmar el guardado del espacio Web; no se cambió de espacio.', 'warn');
+            return;
+          }
+        } catch (_) {
+          showToast('No se pudo guardar el espacio Web; no se cambió de espacio.', 'error');
+          return;
         }
-        await new Promise(resolve => setTimeout(resolve, 50));
+      } else {
+        const localSaved = saveLocalProjectsSnapshot();
+        if (!localSaved) {
+          showToast('No se pudo confirmar la copia local del espacio Web; no se cambió de espacio.', 'warn');
+          return;
+        }
       }
-      if (!editorReady) {
-        showToast('El espacio Web todavía está cargando. No se cambió de espacio para proteger tu código.', 'warn');
+    } else {
+      try {
+        const saved = await saveCurrentCodeToActiveProject(true);
+        const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
+        if (localSnapshotConfirmed !== true) {
+          showToast('No se pudo confirmar el guardado del espacio actual; no se cambió de espacio.', 'warn');
+          return;
+        }
+      } catch (_) {
+        showToast('No se pudo guardar el espacio actual; no se cambió de espacio.', 'error');
         return;
       }
-    }
-
-    try {
-      const saved = await saveCurrentCodeToActiveProject(true);
-      const localSnapshotConfirmed = saved === false ? saveLocalProjectsSnapshot() : true;
-      if (localSnapshotConfirmed !== true) {
-        showToast('No se pudo confirmar el guardado del espacio actual; no se cambió de espacio.', 'warn');
-        return;
-      }
-    } catch (_) {
-      showToast('No se pudo guardar el espacio actual; no se cambió de espacio.', 'error');
-      return;
     }
 
     activeProjectWorkspace = nextWorkspace;
