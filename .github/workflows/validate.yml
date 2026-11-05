@@ -204,6 +204,7 @@ jobs:
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-pixelforge-postgres-data"
           export CODELAB_WORKSPACE_SECRET="test-only-pixelforge-postgres-secret"
+          export CODELAB_AGENT_BRIDGE_ENABLED=0
           # The application expects the shared workspace/account tables to exist.
           # Provision a clean, isolated schema for this disposable CI PostgreSQL service.
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
