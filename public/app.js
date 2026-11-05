@@ -3951,8 +3951,9 @@ function getDesignCanvasWidth(design) {
   return Number.isInteger(width) && width >= 100 && width <= 4000 ? width : fallback;
 }
 function getDesignCanvasHeight(design) {
+  const fallback = ({ 'mobile-k51s': 1600, 'mobile-k51s-landscape': 720 })[design && design.frame] || 0;
   const height = Number(design && design.canvasHeight);
-  return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
+  return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : fallback;
 }
 function getDesignElementDimension(el, axis, containerSize = 900) {
   const fallback = axis === 'width' ? 120 : 48;
