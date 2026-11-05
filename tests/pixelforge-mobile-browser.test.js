@@ -69,7 +69,17 @@ async function main() {
       }
 
       assert.equal(await page.locator('#files-tab').isVisible(), true, viewport.label + ': Files tab should be visible');
-      await page.locator('#files-tab').click();
+      const mobileTouchTargets = await page.locator('.inspector-tabs button:visible, .tool-button:visible, .stage-bottom-right button:visible').evaluateAll(nodes =>
+        nodes.filter(node => {
+          const r = node.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
+        }).length
+      );
+      if (viewport.mobile) {
+        assert.equal(mobileTouchTargets, 0, viewport.label + ': visible primary editor controls should provide 44px touch targets');
+      }
+      if (viewport.mobile) await page.locator('#files-tab').tap();
+      else await page.locator('#files-tab').click();
       assert.equal(await page.locator('.files-section').evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Files panel should be revealed');
       assert.equal(await page.locator('label[for="import-file"]').isVisible(), true,
@@ -79,13 +89,16 @@ async function main() {
       assert.equal(await page.locator('#export-sprite-sheet').isVisible(), true,
         viewport.label + ': sprite-sheet export should be visible');
 
-      await page.locator('#layers-tab').click();
+      if (viewport.mobile) await page.locator('#layers-tab').tap();
+      else await page.locator('#layers-tab').click();
       assert.equal(await page.locator('.layer-section').evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Layers panel should be reachable');
-      await page.locator('#ai-tab').click();
+      if (viewport.mobile) await page.locator('#ai-tab').tap();
+      else await page.locator('#ai-tab').click();
       assert.equal(await page.locator('#ai-workspace-panel').evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': AI workspace should be reachable');
-      await page.locator('#properties-tab').click();
+      if (viewport.mobile) await page.locator('#properties-tab').tap();
+      else await page.locator('#properties-tab').click();
       assert.equal(await page.locator('.inspector-section').first().evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Properties panel should be reachable');
 
