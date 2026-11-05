@@ -1237,6 +1237,11 @@ function openProject(id, workspaceOverride) {
   if (!proj.design || typeof proj.design !== 'object') {
     proj.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
   }
+  const requestedWorkspace = workspaceOverride === 'design' || workspaceOverride === 'web'
+    ? workspaceOverride
+    : (proj.type === 'design' ? 'design' : 'web');
+  activeProjectWorkspace = requestedWorkspace;
+  const isDesignProject = activeProjectWorkspace === 'design';
   const workspaceSwitchBtn = document.getElementById('workspaceSwitchBtn');
   const workspaceSwitchLabel = document.getElementById('workspaceSwitchLabel');
   const workspaceSwitchIcon = document.getElementById('workspaceSwitchIcon');
@@ -1249,11 +1254,6 @@ function openProject(id, workspaceOverride) {
     if (workspaceSwitchLabel) workspaceSwitchLabel.textContent = nextWorkspace === 'design' ? 'Diseño' : 'Web';
     if (workspaceSwitchIcon) workspaceSwitchIcon.className = nextWorkspace === 'design' ? 'fa-solid fa-pen-ruler' : 'fa-solid fa-code';
   }
-  const requestedWorkspace = workspaceOverride === 'design' || workspaceOverride === 'web'
-    ? workspaceOverride
-    : (proj.type === 'design' ? 'design' : 'web');
-  activeProjectWorkspace = requestedWorkspace;
-  const isDesignProject = activeProjectWorkspace === 'design';
   const editorPanel = document.getElementById('editorPanel');
   const splitDivider = document.getElementById('splitDivider');
   const previewPanel = document.getElementById('previewPanel');
