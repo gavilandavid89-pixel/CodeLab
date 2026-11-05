@@ -2282,12 +2282,13 @@ window.addEventListener('blur', () => {
   if (panning) { panning = false; panStart = null; canvas.classList.remove('is-panning'); }
   render();
 });
-function renderAuthenticationRequired(message = 'PixelForge necesita una sesión activa de CodeLab para abrir y guardar tus proyectos personales.') {
+function renderAuthenticationRequired(message) {
   const shell = $('.app-shell');
   const screen = $('#auth-required-screen');
   const messageNode = $('#auth-required-message');
   if (shell) shell.hidden = true;
-  if (messageNode) messageNode.textContent = message;
+  if (messageNode) messageNode.textContent = message ||
+    'PixelForge necesita una sesión activa de CodeLab para abrir y guardar tus proyectos personales.';
   if (screen) screen.classList.remove('hidden');
 }
 
