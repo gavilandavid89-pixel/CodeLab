@@ -173,17 +173,7 @@
   .inspector .wide-tool-action,.inspector .animation-actions button{min-height:44px}
 }
 
-@media(max-width:760px){
-  .animation-panel{max-height:108px;padding:4px 8px;gap:4px}
-  .animation-toolbar{min-height:44px;flex-wrap:nowrap;overflow:hidden}
-  .animation-title{display:none}
-  .animation-actions{min-width:0;width:100%;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
-  .animation-actions button{flex:0 0 auto;min-width:44px;min-height:44px;touch-action:manipulation}
-  .animation-number,.animation-check{flex:0 0 auto;min-height:44px}
-  .animation-number input{min-width:44px;min-height:44px}
-  .animation-check input{width:22px;height:22px}
-  .animation-frames{min-height:44px}
-}
+
 @media(max-width:760px){.inspector{max-height:40vh;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.inspector-section{min-width:0}.inspector-section .control-block{min-width:0}.inspector-tabs{position:sticky;top:0;z-index:2;background:#181a22}}
 
 
@@ -356,3 +346,16 @@
 .auth-required-card a{min-height:48px;display:flex;align-items:center;justify-content:center;padding:12px 18px;border:1px solid #b7aaff;border-radius:12px;background:linear-gradient(135deg,#b8adff,#9584ff);color:#171522;font-size:14px;font-weight:800;text-decoration:none}
 .auth-required-card a:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .auth-required-card .auth-required-footnote{margin:18px 0 0;font-size:11px}
+
+/* Final cascade: keep mobile timeline hit areas larger than the legacy compact rules above. */
+@media(max-width:760px){
+  .animation-panel{max-height:108px;padding:4px 8px;gap:4px}
+  .animation-toolbar{min-height:44px;flex-wrap:nowrap;overflow:hidden}
+  .animation-title{display:none}
+  .animation-actions{min-width:0;width:100%;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .animation-actions button{flex:0 0 auto;min-width:44px;min-height:44px;touch-action:manipulation}
+  .animation-number,.animation-check{flex:0 0 auto;min-height:44px}
+  .animation-number input{min-width:44px;min-height:44px}
+  .animation-check input{width:22px;height:22px}
+  .animation-frames{min-height:44px}
+}
