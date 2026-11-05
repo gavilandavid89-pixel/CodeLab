@@ -40,13 +40,16 @@ const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 // MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
 const PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024;
 const PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
+// Temporary isolated guest workspace for PixelForge. Set PIXELFORGE_GUEST_MODE=false to restore account-scoped access.
+const PIXELFORGE_GUEST_MODE = String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() !== 'false';
+const PIXELFORGE_GUEST_WORKSPACE_ID = 'ws_pixelforge_guest';
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
   ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
   : 60000;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_REQUESTS = 120;
-const APP_VERSION = '2.6.8';
+const APP_VERSION = '2.7.0';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const configuredSessionCleanupInterval = Number.parseInt(process.env.CODELAB_SESSION_CLEANUP_INTERVAL_MS || '', 10);
 const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInterval) && configuredSessionCleanupInterval > 0
@@ -1892,7 +1895,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'GET' && pathname === '/api/auth/me') {
         const user = await getSessionUser(req);
-        if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
         return sendJson(res, 200, {
           user,
           workspaceId: userWorkspaceId(user),
@@ -2211,6 +2214,14 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, settings: settings });
       }
 
+      if (req.method === 'GET' && pathname === '/api/pixelforge/mode') {
+        return sendJson(res, 200, {
+          guestMode: PIXELFORGE_GUEST_MODE,
+          workspace: PIXELFORGE_GUEST_MODE ? 'temporary-shared' : 'account',
+          accountsAvailableForPixelForge: !PIXELFORGE_GUEST_MODE
+        });
+      }
+
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
       // Large PixelForge projects use authenticated, idempotent PostgreSQL chunks.
       const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
@@ -2224,11 +2235,11 @@ const server = http.createServer(async (req, res) => {
         ? pathname.match(/^\/api\/pixelforge\/projects\/uploads\/([a-f0-9]{32})$/) : null;
       if (pixelForgeUploadBegin || pixelForgeUploadChunk || pixelForgeUploadCommit || pixelForgeUploadStatus || pixelForgeUploadCancel) {
         const user = await getSessionUser(req);
-        if (!user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
         if (!accountPool || !pixelForgeTableReady) {
           return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
         }
-        const workspaceId = userWorkspaceId(user);
+        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
         try {
           if (pixelForgeUploadBegin) {
             const body = await readBody(req, 1024 * 1024);
@@ -2350,7 +2361,7 @@ const server = http.createServer(async (req, res) => {
       const pixelForgeItem = pixelForgeItemPath && !pixelForgeItemPath.includes('/') ? [pathname, pixelForgeItemPath] : null;
       if ((pixelForgeCollection || pixelForgeItem) && ['GET', 'PUT', 'DELETE'].includes(req.method)) {
         const user = await getSessionUser(req);
-        if (!user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para guardar y abrir tus proyectos PixelForge.' });
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated', message: 'Inicia sesión en CodeLab para acceder a tus proyectos PixelForge.' });
         // Production must never silently downgrade the studio's durable database
         // contract to local sidecar files. File persistence is retained only for
         // isolated development/E2E environments without DATABASE_URL.
@@ -2359,7 +2370,7 @@ const server = http.createServer(async (req, res) => {
         if ((!accountPool && hostedProduction) || (accountPool && !pixelForgeTableReady)) {
           return sendJson(res, 503, { error: 'pixelforge_database_unavailable', message: 'El almacenamiento de PixelForge no está disponible. Contacta al administrador de CodeLab.' });
         }
-        const workspaceId = userWorkspaceId(user);
+        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
         return await withPixelForgeAccountLock(workspaceId, async () => {
         const file = workspaceFile(workspaceId) + '.pixelforge.json';
         if (accountPool && pixelForgeCollection && req.method === 'GET') {
