@@ -1,44 +1,29 @@
 # CodeLab XD Studio Pro v2.6.6
 
-Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
+Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y cuentas propias CodeLab.
 
 Cero dependencias npm — solo Node.js nativo.
 
-## Login OAuth (recomendado en Render)
+## Cuentas propias de CodeLab
 
-Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así puedes abrir la app desde cualquier dispositivo y recuperar tus proyectos.
+CodeLab usa exclusivamente su sistema de cuentas nativo: nombre de usuario y contraseña administrados por CodeLab. No hay inicio de sesión con Google, Gmail ni GitHub.
 
-### 1. GitHub
+- Las cuentas y sesiones se almacenan en PostgreSQL.
+- Las contraseñas se almacenan como hashes scrypt con salt individual.
+- El administrador puede crear cuentas desde **Administrar cuentas** después de iniciar sesión.
+- Las contraseñas nuevas deben tener al menos 16 caracteres.
+- `ADMIN_BOOTSTRAP_PASSWORD` crea la cuenta `ADMIN` únicamente si todavía no existe. No restablece la contraseña de una cuenta existente.
+- `CODELAB_WORKSPACE_SECRET` debe ser una clave aleatoria persistente en Render; no debe cambiar entre despliegues.
 
-1. GitHub → Settings → Developer settings → **OAuth Apps** → New OAuth App  
-2. Homepage URL: `https://TU-APP.onrender.com`  
-3. Authorization callback URL: `https://TU-APP.onrender.com/api/auth/github/callback`  
-4. Copia Client ID y Client Secret  
+### Variables principales en Render
 
-### 2. Google
-
-1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → OAuth 2.0 Client ID (Web)  
-2. Authorized redirect URI: `https://TU-APP.onrender.com/api/auth/google/callback`  
-3. Copia Client ID y Client Secret  
-
-### 3. Variables en Render
-
-| Variable | Descripción |
-|----------|-------------|
-| `GITHUB_CLIENT_ID` | Client ID de GitHub |
-| `GITHUB_CLIENT_SECRET` | Client Secret de GitHub |
-| `GOOGLE_CLIENT_ID` | Client ID de Google |
-| `GOOGLE_CLIENT_SECRET` | Client Secret de Google |
-| `OAUTH_PUBLIC_URL` | URL pública exacta, ej. `https://TU-APP.onrender.com` (recomendado) |
-| `CODELAB_DATA_DIR` | `/var/data` con Persistent Disk |
-| `CODELAB_WORKSPACE_SECRET` | Cadena aleatoria larga |
-| `CODELAB_TRUSTED_PROXY_HOPS` | Saltos de proxy inverso confiables que agregan X-Forwarded-For (default 1; ajusta a la cadena real del hosting) |
-| `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 10 MiB) |
-| `CODELAB_MAX_PROJECTS` | Máximo de proyectos por workspace (default 50) |
-| `CODELAB_UPSTREAM_TIMEOUT_MS` | Tiempo máximo de inactividad para llamadas HTTPS a proveedores (default 60000; entre 1000 y 300000 ms) |
-| `NODE_ENV` | `production` |
-
-Si no configuras OAuth, la UI ofrece **perfil demo local** (sin login real).
+| Variable | Uso |
+|---|---|
+| `CODELAB_WORKSPACE_SECRET` | Firma tokens de workspace; mantener estable |
+| `ADMIN_BOOTSTRAP_PASSWORD` | Contraseña inicial solo si falta la cuenta ADMIN |
+| `DATABASE_URL` | PostgreSQL para cuentas, sesiones y persistencia |
+| `CODELAB_DATA_DIR` | Directorio para respaldos y archivos auxiliares |
+| `PIXELFORGE_GUEST_MODE` | Debe ser `false` para aislar PixelForge por cuenta |
 
 ### Persistent Disk
 
@@ -67,7 +52,7 @@ El cliente llama a **`POST /api/ai/complete`** (proxy en el servidor). Así se e
 | `AI_RATE_MAX` | Max peticiones IA / minuto / IP (default 20) |
 
 Sin key en el servidor, el usuario puede pegar la suya en **Ajustes del copiloto** (modo API). Sin ninguna key, se usan plantillas locales.
-Las claves y preferencias del copiloto se guardan en el navegador bajo una clave separada por cuenta OAuth. Las claves heredadas de versiones anteriores que usaban un único espacio global no se reutilizan al entrar en una cuenta real, para evitar mezclar credenciales entre usuarios del mismo dispositivo.
+Las claves y preferencias del copiloto se guardan en el navegador bajo una clave separada por cuenta CodeLab. Las claves heredadas de versiones anteriores que usaban un único espacio global no se reutilizan al entrar en otra cuenta, para evitar mezclar credenciales entre usuarios del mismo dispositivo.
 
 Comprobar: `GET /api/ai/status` → `{ "serverKey": true, ... }`
 
@@ -80,7 +65,7 @@ node server.js
 
 ## Changelog v2.6.1.0
 
-- Login real GitHub y Google (OAuth 2.0)  
+- Cuentas nativas CodeLab con contraseña propia  
 - Workspaces ligados a la cuenta del usuario  
 - Cookie de sesión HttpOnly  
 - Fallback demo si OAuth no está configurado  
