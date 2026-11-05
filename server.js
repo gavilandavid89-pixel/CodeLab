@@ -40,8 +40,8 @@ const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 // MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
 const PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024;
 const PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
-// Temporary isolated guest workspace for PixelForge. Set PIXELFORGE_GUEST_MODE=false to restore account-scoped access.
-const PIXELFORGE_GUEST_MODE = String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() !== 'false';
+// Guest mode is opt-in only. Default to account-scoped access and fail closed.
+const PIXELFORGE_GUEST_MODE = String(process.env.PIXELFORGE_GUEST_MODE || 'false').toLowerCase() === 'true';
 const PIXELFORGE_GUEST_WORKSPACE_ID = 'ws_pixelforge_guest';
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
