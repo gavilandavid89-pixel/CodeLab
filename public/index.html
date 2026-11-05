@@ -220,6 +220,9 @@
       #studioView #mainSplit { min-height: 0; }
       #designStudioPanel { overflow: auto; }
       #mobileBottomBar { bottom: max(0px, env(safe-area-inset-bottom)) !important; }
+      /* The mobile bar uses display:flex !important; let the workspace's
+         hidden state win when Design is active. */
+      #mobileBottomBar.hidden { display: none !important; }
     }
     @media (orientation: landscape) and (max-width: 900px) {
       #studioView > header { padding-top: 4px !important; padding-bottom: 4px !important; }
