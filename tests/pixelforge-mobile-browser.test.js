@@ -29,10 +29,11 @@ async function main() {
       { width: 390, height: 844, label: 'mobile portrait', mobile: true },
       { width: 320, height: 640, label: 'narrow mobile', mobile: true },
       { width: 667, height: 375, label: 'mobile landscape', mobile: true },
-      { width: 720, height: 1600, label: '720x1600 mobile target', mobile: true },
+      { width: 360, height: 748, label: 'K51S portrait · 720x1600 physical at DPR 2', mobile: true, k51s: true },
+      { width: 800, height: 310, label: 'K51S landscape · 1600x720 physical at DPR 2', mobile: true, k51s: true },
       { width: 1280, height: 800, label: 'desktop' }
     ]) {
-      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, isMobile: !!viewport.mobile, hasTouch: !!viewport.mobile, deviceScaleFactor: viewport.mobile ? 1 : undefined });
+      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, isMobile: !!viewport.mobile, hasTouch: !!viewport.mobile, deviceScaleFactor: viewport.mobile ? 2 : undefined });
       await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: base }]);
       const page = await context.newPage();
       const pageErrors = [];
@@ -69,6 +70,18 @@ async function main() {
       }
 
       assert.equal(await page.locator('#files-tab').isVisible(), true, viewport.label + ': Files tab should be visible');
+      if (viewport.k51s) {
+        const physical = await page.evaluate(() => ({
+          width: Math.round(window.innerWidth * window.devicePixelRatio),
+          height: Math.round(window.innerHeight * window.devicePixelRatio),
+          dpr: window.devicePixelRatio
+        }));
+        assert.equal(physical.dpr, 2, viewport.label + ': device pixel ratio should be 2');
+        assert.equal(physical.width, viewport.width === 360 ? 720 : 1600,
+          viewport.label + ': CSS viewport must map to the requested physical screen width');
+        assert.ok(physical.height < (viewport.width === 360 ? 1600 : 720),
+          viewport.label + ': usable page height must reserve physical pixels for browser/system chrome');
+      }
       const mobileTouchTargets = await page.locator('.inspector-tabs button:visible, .tool-button:visible, .stage-bottom-right button:visible').evaluateAll(nodes =>
         nodes.filter(node => {
           const r = node.getBoundingClientRect();
