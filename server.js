@@ -1224,6 +1224,7 @@ function serveStatic(req, res, urlPath) {
       if (ext === '.html' || ext === '.js' || ext === '.mjs' || ext === '.css') {
         headers['Cache-Control'] = 'no-cache';
       }
+      setSecurityHeaders(res);
       res.writeHead(200, headers);
       // HEAD needs only metadata; GET streams the file so large static assets do not
       // have to be fully buffered in memory for every concurrent client.
