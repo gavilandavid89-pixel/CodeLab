@@ -5,7 +5,7 @@ Use CodeLab-managed username/password accounts exclusively. Google/Gmail and Git
 
 ## Implemented in this change
 - `POST /api/auth/login`: username/password login; usernames are normalized to uppercase.
-- `ADMIN_BOOTSTRAP_PASSWORD`: on first boot, if no local ADMIN exists, creates the `ADMIN` account when this secret is at least 16 characters. It is never overwritten if the account already exists.
+- `ADMIN_BOOTSTRAP_PASSWORD`: on first boot, if no local ADMIN exists, creates the `ADMIN` account when this secret is at least 16 characters. It never replaces an existing ADMIN password; on every DB-backed startup, the ADMIN first-login rotation flag is cleared without changing its hash or salt.
 - Passwords are stored as salted scrypt hashes, not plaintext.
 - Auth sessions use the existing HttpOnly, SameSite=Lax session cookie.
 - `POST /api/auth/change-password`: authenticated local users can change their password; minimum 16 characters. The existing bootstrap `ADMIN` is exempt from forced first-login rotation; regular accounts may be required to change an initial password.
