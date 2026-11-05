@@ -152,10 +152,6 @@ async function seedAdminAccountIfConfigured() {
 
 
 
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const OAUTH_PUBLIC_URL = (process.env.OAUTH_PUBLIC_URL || '').replace(/\/$/, ''); // e.g. https://app.onrender.com
 
 // AI copiloto (OpenAI-compatible). Optional server-side key avoids browser CORS.
@@ -884,7 +880,7 @@ function sessionPath(sid) {
 function isValidSessionUser(user) {
   return !!(user && typeof user === 'object' && !Array.isArray(user) &&
     typeof user.id === 'string' && user.id.length > 0 &&
-    ['github', 'google', 'local'].includes(user.provider));
+    user.provider === 'local');
 }
 
 async function createSession(user) {
@@ -1279,99 +1275,10 @@ function clientIp(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
-function oauthConfigured() {
-  return {
-    github: !!(GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET),
-    google: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET)
-  };
-}
-
-async function handleGithubCallback(code) {
-  const body = new URLSearchParams({
-    client_id: GITHUB_CLIENT_ID,
-    client_secret: GITHUB_CLIENT_SECRET,
-    code
-  }).toString();
-  const tokenRes = await httpsRequest('https://github.com/login/oauth/access_token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-      'User-Agent': 'CodeLab-XD-Studio',
-      'Content-Length': Buffer.byteLength(body)
-    }
-  }, body);
-  const tokenJson = JSON.parse(tokenRes.body || '{}');
-  if (!tokenJson.access_token) throw new Error('github_token_failed');
-  const userRes = await httpsRequest('https://api.github.com/user', {
-    method: 'GET',
-    headers: {
-      Authorization: 'Bearer ' + tokenJson.access_token,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'CodeLab-XD-Studio'
-    }
-  });
-  const user = JSON.parse(userRes.body || '{}');
-  if (!user.id) throw new Error('github_user_failed');
-  let email = user.email || null;
-  if (!email) {
-    try {
-      const emailsRes = await httpsRequest('https://api.github.com/user/emails', {
-        method: 'GET',
-        headers: {
-          Authorization: 'Bearer ' + tokenJson.access_token,
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'CodeLab-XD-Studio'
-        }
-      });
-      const emails = JSON.parse(emailsRes.body || '[]');
-      const primary = (emails || []).find(e => e.primary && e.verified) || (emails || [])[0];
-      if (primary) email = primary.email;
-    } catch (_) {}
-  }
-  return {
-    id: String(user.id),
-    provider: 'github',
-    name: user.login || user.name || 'github_user',
-    email,
-    avatar: user.avatar_url || null
-  };
-}
-
-async function handleGoogleCallback(code, redirectUri) {
-  const body = new URLSearchParams({
-    code,
-    client_id: GOOGLE_CLIENT_ID,
-    client_secret: GOOGLE_CLIENT_SECRET,
-    redirect_uri: redirectUri,
-    grant_type: 'authorization_code'
-  }).toString();
-  const tokenRes = await httpsRequest('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Content-Length': Buffer.byteLength(body)
-    }
-  }, body);
-  const tokenJson = JSON.parse(tokenRes.body || '{}');
-  if (!tokenJson.access_token) throw new Error('google_token_failed');
-  const userRes = await httpsRequest('https://www.googleapis.com/oauth2/v2/userinfo', {
-    method: 'GET',
-    headers: { Authorization: 'Bearer ' + tokenJson.access_token }
-  });
-  const user = JSON.parse(userRes.body || '{}');
-  if (!user.id) throw new Error('google_user_failed');
-  return {
-    id: String(user.id),
-    provider: 'google',
-    name: user.name || user.email || 'google_user',
-    email: user.email || null,
-    avatar: user.picture || null
-  };
-}
+function oauthConfigured() { return { github: false, google: false }; }
 
 async function ensureUserWorkspace(user) {
-  if (!user || (user.provider !== 'github' && user.provider !== 'google' && user.provider !== 'local') ||
+  if (!user || user.provider !== 'local' ||
       user.id == null || !String(user.id).trim()) {
     throw new Error('workspace_owner_invalid');
   }
@@ -1816,7 +1723,7 @@ const server = http.createServer(async (req, res) => {
           persistence: accountPool ? 'postgresql' : 'server-file',
           maxBodyBytes: MAX_BODY_BYTES,
           maxProjects: MAX_PROJECTS,
-          oauth: cfg,
+          oauth: { github: false, google: false },
           ai: aiConfigured()
         };
         if (req.method === 'HEAD') {
@@ -1938,8 +1845,9 @@ const server = http.createServer(async (req, res) => {
         const cfg = oauthConfigured();
         const user = await getSessionUser(req);
         return sendJson(res, 200, {
-          oauth: cfg,
-          demoFallback: !(cfg.github || cfg.google),
+          oauth: { github: false, google: false },
+          demoFallback: false,
+          authMode: 'native',
           user: user || null,
           workspaceId: user ? userWorkspaceId(user) : null,
           mustChangePassword: !!(user && user.provider === 'local' && (await readLocalAccounts())[user.name]?.mustChangePassword)
@@ -2148,92 +2056,10 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // GitHub OAuth start
-      if (req.method === 'GET' && pathname === '/api/auth/github') {
-        if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
-          return sendJson(res, 503, { error: 'github_not_configured' });
-        }
-        const state = createOAuthState('github');
-        const redirectUri = publicBaseUrl(req) + '/api/auth/github/callback';
-        const stateCookie = 'codelab_oauth_state_github=' + encodeURIComponent(state) +
-          '; Path=/api/auth/github/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
-        const url =
-          'https://github.com/login/oauth/authorize?client_id=' +
-          encodeURIComponent(GITHUB_CLIENT_ID) +
-          '&redirect_uri=' + encodeURIComponent(redirectUri) +
-          '&scope=' + encodeURIComponent('read:user user:email') +
-          '&state=' + encodeURIComponent(state);
-        return redirect(res, url, { 'Set-Cookie': stateCookie });
-      }
-
-      // GitHub callback
-      if (req.method === 'GET' && pathname === '/api/auth/github/callback') {
-        const code = searchParams.get('code');
-        const state = searchParams.get('state');
-        const cookies = parseCookies(req);
-        const st = parseOAuthState(state);
-        if (!code || !st || st.provider !== 'github' || !state || cookies.codelab_oauth_state_github !== state) {
-          return redirect(res, '/?auth=error&reason=invalid_state');
-        }
-        try {
-          const user = await handleGithubCallback(code);
-          await ensureUserWorkspace(user);
-          const session = await createSession(user);
-          const secure = isSecureRequest(req) ? '; Secure' : '';
-          const cookie =
-            COOKIE_NAME + '=' + encodeURIComponent(session.id) +
-            '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(SESSION_TTL_MS / 1000) + secure;
-          return redirectWithCookie(res, '/?auth=ok&provider=github', cookie);
-        } catch (e) {
-          console.error('GitHub OAuth error', e.message);
-          return redirect(res, '/?auth=error&reason=github');
-        }
-      }
-
-      // Google OAuth start
-      if (req.method === 'GET' && pathname === '/api/auth/google') {
-        if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-          return sendJson(res, 503, { error: 'google_not_configured' });
-        }
-        const state = createOAuthState('google');
-        const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
-        const stateCookie = 'codelab_oauth_state_google=' + encodeURIComponent(state) +
-          '; Path=/api/auth/google/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
-        const url =
-          'https://accounts.google.com/o/oauth2/v2/auth?client_id=' +
-          encodeURIComponent(GOOGLE_CLIENT_ID) +
-          '&redirect_uri=' + encodeURIComponent(redirectUri) +
-          '&response_type=code' +
-          '&scope=' + encodeURIComponent('openid email profile') +
-          '&state=' + encodeURIComponent(state) +
-          '&access_type=online' +
-          '&prompt=select_account';
-        return redirect(res, url, { 'Set-Cookie': stateCookie });
-      }
-
-      // Google callback
-      if (req.method === 'GET' && pathname === '/api/auth/google/callback') {
-        const code = searchParams.get('code');
-        const state = searchParams.get('state');
-        const cookies = parseCookies(req);
-        const st = parseOAuthState(state);
-        if (!code || !st || st.provider !== 'google' || !state || cookies.codelab_oauth_state_google !== state) {
-          return redirect(res, '/?auth=error&reason=invalid_state');
-        }
-        try {
-          const redirectUri = publicBaseUrl(req) + '/api/auth/google/callback';
-          const user = await handleGoogleCallback(code, redirectUri);
-          await ensureUserWorkspace(user);
-          const session = await createSession(user);
-          const secure = isSecureRequest(req) ? '; Secure' : '';
-          const cookie =
-            COOKIE_NAME + '=' + encodeURIComponent(session.id) +
-            '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(SESSION_TTL_MS / 1000) + secure;
-          return redirectWithCookie(res, '/?auth=ok&provider=google', cookie);
-        } catch (e) {
-          console.error('Google OAuth error', e.message);
-          return redirect(res, '/?auth=error&reason=google');
-        }
+      // External identity providers are disabled; CodeLab native accounts are the only sign-in method.
+      if (pathname === '/api/auth/github' || pathname === '/api/auth/github/callback' ||
+          pathname === '/api/auth/google' || pathname === '/api/auth/google/callback') {
+        return sendJson(res, 410, { error: 'external_auth_disabled', message: 'Inicia sesión con tu cuenta de CodeLab.' });
       }
 
       // Workspace-scoped design-system settings, kept separate from project payloads.
