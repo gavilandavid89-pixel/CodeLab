@@ -1254,13 +1254,19 @@ function openProject(id, workspaceOverride) {
     if (workspaceSwitchLabel) workspaceSwitchLabel.textContent = nextWorkspace === 'design' ? 'Diseño' : 'Web';
     if (workspaceSwitchIcon) workspaceSwitchIcon.className = nextWorkspace === 'design' ? 'fa-solid fa-pen-ruler' : 'fa-solid fa-code';
   }
+  const webWorkspacePanel = document.getElementById('webWorkspacePanel');
   const editorPanel = document.getElementById('editorPanel');
   const splitDivider = document.getElementById('splitDivider');
   const previewPanel = document.getElementById('previewPanel');
   const designStudioPanel = document.getElementById('designStudioPanel');
-  // Set explicit display states as well as utility classes. This prevents a
-  // conflicting flex utility or responsive rule from leaving both toolbars
-  // mounted/visible when switching between the Web and Design workspaces.
+  // The two workspaces are siblings, not stacked panels. Hide the entire
+  // Web shell (toolbar, branch banner, editor, preview and mobile actions)
+  // whenever Design is active; show it only in the Web workspace.
+  if (webWorkspacePanel) {
+    webWorkspacePanel.style.display = isDesignProject ? 'none' : '';
+    webWorkspacePanel.classList.toggle('hidden', isDesignProject);
+  }
+  // Keep the inner panel states explicit as a defensive fallback.
   if (editorPanel) editorPanel.style.display = isDesignProject ? 'none' : '';
   if (splitDivider) splitDivider.style.display = isDesignProject ? 'none' : '';
   if (previewPanel) previewPanel.style.display = isDesignProject ? 'none' : '';
