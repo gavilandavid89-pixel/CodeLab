@@ -8,16 +8,16 @@ Use CodeLab-managed username/password accounts exclusively. Google/Gmail and Git
 - `ADMIN_BOOTSTRAP_PASSWORD`: on first boot, if no local ADMIN exists, creates the `ADMIN` account when this secret is at least 16 characters. It is never overwritten if the account already exists.
 - Passwords are stored as salted scrypt hashes, not plaintext.
 - Auth sessions use the existing HttpOnly, SameSite=Lax session cookie.
-- `POST /api/auth/change-password`: authenticated local users can change their password; minimum 16 characters. Bootstrap ADMIN is marked to change its password on first login.
+- `POST /api/auth/change-password`: authenticated local users can change their password; minimum 16 characters. The existing bootstrap `ADMIN` is exempt from forced first-login rotation; regular accounts may be required to change an initial password.
 - `GET /api/admin/accounts` and `POST /api/admin/accounts`: admin-only account listing and creation of regular user accounts; password hashes are never returned.
 - Native login attempts are throttled per client IP and username.
 - Local account workspaces use a distinct `local` provider namespace.
 
 ## Deployment requirements
 1. Set a strong random `ADMIN_BOOTSTRAP_PASSWORD` secret in the CodeLab Render service environment before relying on native login. Do not put it in source control, issue bodies, logs, or documentation.
-2. Native account hashes now use Neon PostgreSQL via `DATABASE_URL`. The Render service is still on the Free plan and has no persistent disk in the inspected metadata: **workspace/session persistence is implemented in PostgreSQL when `DATABASE_URL` is configured**. Accounts remain durable in Neon, but users may need to sign in again and unsaved/local workspace data is not yet migrated. Do not claim all user data is durable until workspace/session persistence is addressed.
+2. With `DATABASE_URL`, account records, auth sessions, CodeLab workspace snapshots, and PixelForge project records are persisted in PostgreSQL. Browser-only drafts and local backups are not automatically migrated into the database; users should sync or explicitly import those before changing devices. Expired or revoked sessions still require a new login. Without `DATABASE_URL`, file-backed fallback data depends on the configured persistent disk.
 3. Keep `ADMIN` for the human owner. Any later automation should use a separate least-privilege service identity with revocable access; never share the administrator password or browser session with an agent.
-4. Public registration is intentionally not enabled in this initial slice. Account creation/invitations and admin account management must be added behind administrator authorization before general use.
+4. Public self-registration is intentionally disabled. The existing **Administrar cuentas** interface and its admin-only listing/creation routes are available to the administrator; invitations and self-service recovery remain separate future work.
 5. The native login, first-password-change, and administrator account-management screens are wired. Verify the full login and save flow on the deployed service before declaring it production-ready.
 
 ## Security notes
