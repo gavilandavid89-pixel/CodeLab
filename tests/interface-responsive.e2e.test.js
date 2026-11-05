@@ -146,9 +146,27 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#designUndoBtn').click();
     await page.locator('#designRedoBtn').click();
+    // Required target viewport: 720 × 1600 CSS px, excluding browser chrome.
+    await page.setViewportSize({ width: 720, height: 1600 });
+    await page.waitForFunction(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--codelab-visible-width').trim() === '720px',
+      null, { timeout: 3000 });
+    const targetViewport = await page.evaluate(() => ({
+      width: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      canvasVisible: !!document.querySelector('#designCanvas') &&
+        document.querySelector('#designCanvas').getBoundingClientRect().width > 0,
+      toolbarVisible: !!document.querySelector('#designStudioPanel .design-toolbar') &&
+        getComputedStyle(document.querySelector('#designStudioPanel .design-toolbar')).display !== 'none'
+    }));
+    assert.equal(targetViewport.width, 720, 'mobile target viewport must be exactly 720 CSS pixels wide');
+    assert.ok(targetViewport.documentWidth <= 720, 'the full interface must not create horizontal page overflow at 720×1600');
+    assert.equal(targetViewport.canvasVisible, true, 'design canvas must remain visible at 720×1600');
+    assert.equal(targetViewport.toolbarVisible, true, 'design toolbar must remain reachable at 720×1600');
+
 
     assert.deepEqual(failures, [], 'mobile UI journey should not throw uncaught JavaScript errors');
-    console.log('Responsive interface E2E passed: mobile design tools tabs, component search/filter, web/design creation, code/preview switching, mobile menu and AI drawer, touch-sized controls, portrait/landscape design canvas.');
+    console.log('Responsive interface E2E passed: mobile design tools tabs, component search/filter, web/design creation, code/preview switching, mobile menu and AI drawer, touch-sized controls, portrait/landscape and 720×1600 target design canvas.');
     await context.close();
   } finally {
     await browser.close();
