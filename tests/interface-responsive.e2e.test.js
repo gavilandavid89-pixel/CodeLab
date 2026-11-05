@@ -107,9 +107,9 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     const touchTargets = await page.locator('#designStudioPanel button:visible').evaluateAll(buttons =>
       buttons.filter(button => {
         const r = button.getBoundingClientRect();
-        return r.width > 0 && r.height > 0 && (r.width < 32 || r.height < 32);
+        return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
       }).length);
-    assert.equal(touchTargets, 0, 'visible design-studio buttons should not fall below the 32px minimum target');
+    assert.equal(touchTargets, 0, 'visible mobile design-studio buttons should provide 44px touch targets');
 
     // Browser viewport/zoom changes must refresh the full shell, not only the canvas.
     const initialVisibleWidth = await page.evaluate(() =>
