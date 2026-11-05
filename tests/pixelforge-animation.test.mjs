@@ -407,8 +407,11 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(editorHtml.includes('id="animation-add-frame"') && editorHtml.includes('id="animation-play"') &&
     editorHtml.includes('id="animation-onion"') && editorHtml.includes('id="animation-export-sheet"'),
     'the raster editor must expose the animation timeline controls');
-  assert.ok(editorSource.includes('function renderAuthenticationRequired()') &&
-    editorSource.includes("error?.status === 401 || error?.code === 'not_authenticated'"),
+  assert.match(editorSource, /function renderAuthenticationRequired\s*\(/,
+    'PixelForge must provide a dedicated CodeLab sign-in screen');
+  assert.ok(editorSource.includes("error?.status === 401 || error?.code === 'not_authenticated'") &&
+    editorHtml.includes('id="auth-required-screen"') &&
+    editorHtml.includes('id="auth-required-link"'),
     'PixelForge must render its CodeLab sign-in screen when the shared session API rejects an anonymous visitor');
   const addFrameHandler = editorSource.slice(editorSource.indexOf("$('#animation-add-frame').addEventListener"), editorSource.indexOf("$('#animation-duplicate-frame').addEventListener"));
   assert.ok(addFrameHandler.includes('const timelineWasActive = Boolean(animation)') &&

@@ -87,7 +87,7 @@
       #splitDivider { display: none !important; }
       #studioView { position: relative !important; z-index: 1 !important; padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
       #designStudioPanel button { min-height: 44px; min-width: 44px; }
-      #mobileBottomBar { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; pointer-events: auto !important; }
+      #mobileBottomBar:not(.hidden) { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; pointer-events: auto !important; }
       .hide-on-mobile { display: none !important; }
     }
     @media (min-width: 768px) {
@@ -159,6 +159,121 @@
       #studioView > header { padding-top: 4px !important; padding-bottom: 4px !important; }
       #studioView #currentProjectTitle { max-width: 24vw; }
     }
+  
+    /* LG K51S physical-mobile pass: 720x1600 portrait, ~1600x720 landscape.
+       Browser/system chrome reduces the usable dynamic height, so layout is driven
+       by dvh and by landscape height rather than assuming a desktop-width phone. */
+    @media (orientation: landscape) and (max-height: 720px) and (pointer: coarse) {
+      #studioView > header { padding: 4px 8px !important; min-height: 44px; }
+      #studioView > header > div:first-child { width: auto !important; flex-wrap: nowrap !important; }
+      #studioView #currentProjectTitle { max-width: 22vw; }
+      #studioView #statusBadge { max-width: 28vw; }
+      #studioView #mainSplit { min-height: 0; }
+      #editorPanel, #previewPanel, #designStudioPanel { min-height: 0 !important; }
+      #editorPanel { overflow: hidden !important; }
+      #designStudioPanel > .design-toolbar {
+        top: 8px; right: 8px; width: min(320px, 38vw);
+        max-height: min(58dvh, 360px);
+        padding: 8px !important;
+      }
+      #designStudioPanel #designLayersPanel {
+        left: 8px; bottom: 8px; width: min(300px, 36vw) !important;
+        height: min(30dvh, 190px); max-height: 190px;
+      }
+      #designStudioPanel #designCanvasScroll { padding: 8px !important; }
+      #designStudioPanel button { min-height: 40px; }
+      #mobileBottomBar:not(.hidden) { display: flex !important; height: 50px; }
+      #studioView { padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important; }
+    }
+
+    /* K51S landscape is 800 CSS px wide at DPR 2. Keep the web editor in
+       phone mode even though its CSS width crosses the old 767px breakpoint. */
+    @media (orientation: landscape) and (max-height: 400px) and (max-width: 900px) and (pointer: coarse) {
+      #studioView.mobile-mode-code #previewPanel { display: none !important; }
+      #studioView.mobile-mode-code #editorPanel { display: flex !important; width: 100% !important; height: 100% !important; flex: 1 1 auto !important; }
+      #studioView.mobile-mode-preview #editorPanel { display: none !important; }
+      #studioView.mobile-mode-preview #previewPanel { display: flex !important; width: 100% !important; height: 100% !important; flex: 1 1 auto !important; }
+      #splitDivider { display: none !important; }
+      #mobileBottomBar:not(.hidden) { display: flex !important; position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; z-index: 40 !important; min-height: 50px; }
+      #mobileBottomBar button { min-width: 44px; min-height: 44px; }
+      #studioView { padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important; }
+      #studioView > header { flex-wrap: nowrap !important; }
+      #studioView > header > div:first-child { min-width: 0 !important; max-width: calc(100vw - 16px) !important; }
+      #designStudioPanel button, #designStudioPanel a { min-width: 44px !important; min-height: 44px !important; }
+    }
+
+    /* Portrait K51S: the 720px physical width is a real phone width, not desktop.
+       Keep editor/preview single-mode and give controls finger-sized hit areas. */
+    @media (orientation: portrait) and (max-width: 760px) and (pointer: coarse) {
+      #studioView > header { padding: 6px 8px !important; }
+      #studioView > header > div:first-child { width: 100% !important; }
+      #studioView #currentProjectTitle { max-width: 34vw; }
+      #studioView #statusBadge { max-width: 42vw; }
+      #designStudioPanel > .design-toolbar { max-height: min(44dvh, 400px); }
+      #designStudioPanel #designLayersPanel {
+        max-height: min(30dvh, 220px);
+      }
+      #designStudioPanel .design-toolbar button,
+      #designStudioPanel .design-toolbar a,
+      #mobileBottomBar button {
+        min-height: 44px !important;
+      }
+      #designCanvasScroll { padding: 10px !important; }
+    }
+
+    html.keyboard-open [role="dialog"] > div {
+      max-height: min(82dvh, 680px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    html.keyboard-open #aiDrawer {
+      height: var(--visual-viewport-height) !important;
+      max-height: var(--visual-viewport-height) !important;
+    }
+    /* Keyboard-aware mobile viewport: the virtual keyboard is not part of the app surface.
+       When it opens, reclaim the visual viewport and hide the fixed navigation bar so it
+       never covers the editor's active line/input. */ 
+    html.keyboard-open #studioView {
+      height: var(--visual-viewport-height) !important;
+      max-height: var(--visual-viewport-height) !important;
+    }
+    html.keyboard-open #mobileBottomBar { display: none !important; }
+    html.keyboard-open #studioView { padding-bottom: env(safe-area-inset-bottom) !important; }
+    html.keyboard-open #studioView #editorPanel,
+    html.keyboard-open #studioView #previewPanel,
+    html.keyboard-open #studioView #designStudioPanel {
+      min-height: 0 !important;
+    }
+    @media (max-width: 767px) {
+      #mobileBottomBar button {
+        min-height: 44px;
+        min-width: 44px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #editorPanel .monaco-editor,
+      #editorPanel textarea {
+        touch-action: pan-x pan-y;
+      }
+      #designCanvasScroll {
+        -webkit-overflow-scrolling: touch;
+        scroll-padding: 12px;
+      }
+      #designStudioPanel .design-toolbar {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+      #designStudioPanel #designLayersPanel {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+    }
+
+    /* Do not let the app compete with Android/browser chrome for the last pixels. */
+    #studioView, #welcomeDashboard {
+      min-height: 100dvh;
+    }
+    
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-full flex flex-col font-sans overflow-hidden">
@@ -183,17 +298,6 @@
       <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <div id="authContainer" class="flex items-center gap-1.5">
           <button onclick="openNativeLoginModal()" id="btnNativeLogin" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-medium border border-cyan-600 transition" title="Iniciar sesión en CodeLab"><i class="fa-solid fa-user-lock" aria-hidden="true"></i><span>Cuenta</span></button>
-          <button onclick="openAuthModal('github')" id="btnAuthGithub" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition" title="Conectar GitHub" aria-label="Conectar GitHub">
-            <i class="fa-brands fa-github text-base" aria-hidden="true"></i>
-            <span class="hidden sm:inline">GitHub</span>
-            <span data-auth-label class="sm:hidden text-[10px] text-slate-400">Demo</span>
-          </button>
-          <button onclick="openAuthModal('google')" id="btnAuthGoogle" class="touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition" title="Conectar Google" aria-label="Conectar Google">
-            <i class="fa-brands fa-google text-red-400 text-sm" aria-hidden="true"></i>
-            <span class="hidden sm:inline">Google</span>
-            <span data-auth-label class="sm:hidden text-[10px] text-slate-400">Demo</span>
-          </button>
-        </div>
         <div id="userProfileBadge" class="hidden flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-300 text-xs max-w-[140px] sm:max-w-none">
           <img id="userAvatar" src="https://ui-avatars.com/api/?name=Usuario&background=0891b2&color=fff" alt="" class="w-5 h-5 rounded-full shrink-0" width="20" height="20">
           <span id="userName" class="truncate hidden sm:inline">Usuario</span>
@@ -271,20 +375,6 @@
           <i class="fa-solid fa-plug text-cyan-400"></i> Conexiones
         </h3>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button type="button" onclick="openAuthModal('github')" class="text-left bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 transition group">
-            <div class="flex items-center justify-between mb-2">
-              <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-brands fa-github text-lg"></i> GitHub</span>
-              <span id="connGithubBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">No conectado</span>
-            </div>
-            <p class="text-[11px] text-slate-500 leading-snug">Inicia sesión con OAuth (Render) o perfil demo si no hay claves configuradas.</p>
-          </button>
-          <button type="button" onclick="openAuthModal('google')" class="text-left bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 transition">
-            <div class="flex items-center justify-between mb-2">
-              <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-brands fa-google text-red-400"></i> Google</span>
-              <span id="connGoogleBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">No conectado</span>
-            </div>
-            <p class="text-[11px] text-slate-500 leading-snug">Inicia sesión con Google OAuth o usa perfil demo local.</p>
-          </button>
           <button type="button" onclick="openAiSettingsModal()" class="text-left bg-slate-900 border border-slate-800 hover:border-purple-500/40 rounded-xl p-4 transition">
             <div class="flex items-center justify-between mb-2">
               <span class="flex items-center gap-2 text-sm font-bold text-slate-100"><i class="fa-solid fa-robot text-purple-400"></i> Asistente IA</span>
@@ -548,7 +638,7 @@
           <div class="ml-auto flex items-center gap-2">
             <label class="text-[11px] text-slate-400" for="designFrameSize">Marco</label>
             <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
-              <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
+              <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option><option value="mobile-k51s">K51S · 720 × 1600</option><option value="mobile-k51s-landscape">K51S · 1600 × 720</option>
             </select>
 
             <button id="openDesignFlowGraph" type="button" onclick="openDesignFlowGraph()" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold" title="Conectar opciones con páginas mediante nodos"><i class="fa-solid fa-diagram-project mr-1"></i> Nodos</button>
@@ -744,27 +834,25 @@
   </div>
 
 
-  <!-- MODAL AUTH GITHUB / GOOGLE -->
+  </div><!-- close #welcomeDashboard before global dialogs -->
+
+  <!-- MODAL CUENTA CODELAB -->
   <div id="authModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
     <div class="bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <div class="flex items-center justify-between">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i id="authModalIcon" class="fa-brands fa-github"></i>
+          <i id="authModalIcon" class="fa-solid fa-user-lock"></i>
           <span id="authModalTitle">Conectar cuenta</span>
         </h3>
         <button onclick="closeAuthModal()" class="touch-target text-slate-400 hover:text-white p-2"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <p id="authModalHint" class="text-xs text-slate-400 leading-relaxed">Inicia sesión con tu cuenta de CodeLab. También puedes usar un perfil demo local sin cuenta.</p>
+      <p id="authModalHint" class="text-xs text-slate-400 leading-relaxed">Inicia sesión con tu usuario y contraseña de CodeLab.</p>
       <form onsubmit="event.preventDefault(); loginNativeAccount();" class="space-y-3">
         <div><label for="authUsernameInput" class="text-[11px] text-slate-400 block mb-1">Usuario</label><input id="authUsernameInput" autocomplete="username" autocapitalize="none" spellcheck="false" type="text" maxlength="32" placeholder="ADMIN" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"></div>
         <div><label for="authPasswordInput" class="text-[11px] text-slate-400 block mb-1">Contraseña</label><input id="authPasswordInput" autocomplete="current-password" type="password" maxlength="1024" placeholder="Tu contraseña" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"></div>
         <p id="nativeLoginError" class="hidden text-xs text-red-300" role="alert"></p>
         <button type="submit" id="nativeLoginSubmit" class="w-full touch-target py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition">Iniciar sesión</button>
       </form>
-      <div class="grid grid-cols-2 gap-2">
-        <button onclick="openAuthModal('github')" class="touch-target py-2 rounded-xl border border-slate-700 text-slate-300 text-xs">GitHub / demo</button>
-        <button onclick="openAuthModal('google')" class="touch-target py-2 rounded-xl border border-slate-700 text-slate-300 text-xs">Google / demo</button>
-      </div>
     </div>
   </div>
 

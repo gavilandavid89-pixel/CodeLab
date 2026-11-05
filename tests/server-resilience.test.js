@@ -436,7 +436,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
 
     // A previously valid session must not bypass ownership checks if the
     // deterministic account workspace is later replaced by another owner's state.
-    const ownerMismatchWorkspaceId = 'ws_github_123456789';
+    const ownerMismatchWorkspaceId = 'ws_local_123456789';
     const ownerMismatchStatePath = path.join(dataDir, 'workspaces', ownerMismatchWorkspaceId + '.json');
     const ownerMismatchSessionId = 'a'.repeat(48);
     const ownerMismatchSessionPath = path.join(sessionsDir, ownerMismatchSessionId + '.json');
@@ -446,7 +446,7 @@ const BASE_URL = 'http://127.0.0.1:' + PORT;
     }), { mode: 0o600 });
     await fs.writeFile(ownerMismatchSessionPath, JSON.stringify({
       id: ownerMismatchSessionId,
-      user: { id: '123456789', provider: 'github', name: 'Test account' },
+      user: { id: '123456789', provider: 'local', name: 'Test account' },
       createdAt: Date.now(), expiresAt: Date.now() + 60000
     }), { mode: 0o600 });
     const ownerMismatchHeaders = { Cookie: 'codelab_sid=' + ownerMismatchSessionId };

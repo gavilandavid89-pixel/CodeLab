@@ -1,54 +1,38 @@
 # CodeLab XD Studio Pro v2.6.6
 
-Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
+Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y cuentas propias CodeLab.
 
 Cero dependencias npm — solo Node.js nativo.
 
-## Login OAuth (recomendado en Render)
+## Cuentas propias de CodeLab
 
-Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así puedes abrir la app desde cualquier dispositivo y recuperar tus proyectos.
+CodeLab usa exclusivamente su sistema de cuentas nativo: nombre de usuario y contraseña administrados por CodeLab. No hay inicio de sesión con Google, Gmail ni GitHub.
 
-### 1. GitHub
+- Las cuentas y sesiones se almacenan en PostgreSQL.
+- Las contraseñas se almacenan como hashes scrypt con salt individual.
+- El administrador puede crear cuentas desde **Administrar cuentas** después de iniciar sesión. Las cuentas nuevas pueden requerir cambio de contraseña inicial; el `ADMIN` existente no queda bloqueado por esa política.
+- Las contraseñas nuevas deben tener al menos 16 caracteres.
+- `ADMIN_BOOTSTRAP_PASSWORD` crea la cuenta `ADMIN` únicamente si todavía no existe. No restablece la contraseña de una cuenta existente y el `ADMIN` no queda sujeto a un bloqueo de primer acceso.
+- `CODELAB_WORKSPACE_SECRET` debe ser una clave aleatoria persistente en Render; no debe cambiar entre despliegues.
 
-1. GitHub → Settings → Developer settings → **OAuth Apps** → New OAuth App  
-2. Homepage URL: `https://TU-APP.onrender.com`  
-3. Authorization callback URL: `https://TU-APP.onrender.com/api/auth/github/callback`  
-4. Copia Client ID y Client Secret  
+### Variables principales en Render
 
-### 2. Google
+| Variable | Uso |
+|---|---|
+| `CODELAB_WORKSPACE_SECRET` | Firma tokens de workspace; mantener estable |
+| `ADMIN_BOOTSTRAP_PASSWORD` | Contraseña inicial solo si falta la cuenta ADMIN |
+| `DATABASE_URL` | PostgreSQL para cuentas, sesiones y persistencia |
+| `CODELAB_DATA_DIR` | Directorio para respaldos y archivos auxiliares |
+| `PIXELFORGE_GUEST_MODE` | Debe ser `false` para aislar PixelForge por cuenta |
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → OAuth 2.0 Client ID (Web)  
-2. Authorized redirect URI: `https://TU-APP.onrender.com/api/auth/google/callback`  
-3. Copia Client ID y Client Secret  
+### Persistencia y Persistent Disk
 
-### 3. Variables en Render
-
-| Variable | Descripción |
-|----------|-------------|
-| `GITHUB_CLIENT_ID` | Client ID de GitHub |
-| `GITHUB_CLIENT_SECRET` | Client Secret de GitHub |
-| `GOOGLE_CLIENT_ID` | Client ID de Google |
-| `GOOGLE_CLIENT_SECRET` | Client Secret de Google |
-| `OAUTH_PUBLIC_URL` | URL pública exacta, ej. `https://TU-APP.onrender.com` (recomendado) |
-| `CODELAB_DATA_DIR` | `/var/data` con Persistent Disk |
-| `CODELAB_WORKSPACE_SECRET` | Cadena aleatoria larga |
-| `CODELAB_TRUSTED_PROXY_HOPS` | Saltos de proxy inverso confiables que agregan X-Forwarded-For (default 1; ajusta a la cadena real del hosting) |
-| `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 10 MiB) |
-| `CODELAB_MAX_PROJECTS` | Máximo de proyectos por workspace (default 50) |
-| `CODELAB_UPSTREAM_TIMEOUT_MS` | Tiempo máximo de inactividad para llamadas HTTPS a proveedores (default 60000; entre 1000 y 300000 ms) |
-| `NODE_ENV` | `production` |
-
-Si no configuras OAuth, la UI ofrece **perfil demo local** (sin login real).
-
-### Persistent Disk
-
-Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, workspaces y sesiones se pierden al redeploy.
+Con `DATABASE_URL` configurada, cuentas, sesiones, workspaces y proyectos PixelForge se guardan en PostgreSQL. El disco persistente de Render (`/var/data` con `CODELAB_DATA_DIR=/var/data`) se reserva para respaldos y archivos auxiliares o para el modo sin PostgreSQL; no sustituye a la base de datos.
 
 ## Seguridad
 
-- OAuth con `state` anti-CSRF  
 - Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)  
-- Workspace por usuario: `ws_{provider}_{id}`  
+- Workspace por cuenta: `ws_local_{id}`  
 - Acceso por token HMAC **o** sesión dueña del workspace  
 - Rate limit con saltos de proxy confiables configurables; se rechazan cadenas X-Forwarded-For malformadas para evitar desplazar la selección de IP confiable  
 - Validación de payload, límites de tamaño y path traversal bloqueado  
@@ -67,7 +51,7 @@ El cliente llama a **`POST /api/ai/complete`** (proxy en el servidor). Así se e
 | `AI_RATE_MAX` | Max peticiones IA / minuto / IP (default 20) |
 
 Sin key en el servidor, el usuario puede pegar la suya en **Ajustes del copiloto** (modo API). Sin ninguna key, se usan plantillas locales.
-Las claves y preferencias del copiloto se guardan en el navegador bajo una clave separada por cuenta OAuth. Las claves heredadas de versiones anteriores que usaban un único espacio global no se reutilizan al entrar en una cuenta real, para evitar mezclar credenciales entre usuarios del mismo dispositivo.
+Las claves y preferencias del copiloto se guardan en el navegador bajo una clave separada por cuenta CodeLab. Las claves heredadas de versiones anteriores que usaban un único espacio global no se reutilizan al entrar en otra cuenta, para evitar mezclar credenciales entre usuarios del mismo dispositivo.
 
 Comprobar: `GET /api/ai/status` → `{ "serverKey": true, ... }`
 
@@ -80,10 +64,9 @@ node server.js
 
 ## Changelog v2.6.1.0
 
-- Login real GitHub y Google (OAuth 2.0)  
+- Cuentas nativas CodeLab con contraseña propia  
 - Workspaces ligados a la cuenta del usuario  
 - Cookie de sesión HttpOnly  
-- Fallback demo si OAuth no está configurado  
 - Móvil, dashboard de conexiones, asistente IA local/API (v2.5)  
 
 
@@ -105,7 +88,7 @@ Desde **Herramientas** en el panel principal se abre el laboratorio de diseño. 
 - Tokens ajustables para escala tipográfica, espaciado y radios de borde.
 - Aplicación directa del bloque de tokens al CSS del proyecto web abierto, reemplazando solo el bloque administrado y preservando el resto del CSS.
 - Exportación de variables CSS y JSON estructurado para reutilizar el sistema visual en proyectos.
-- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Con OAuth real configurado, los ajustes se recuperan en otros dispositivos con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
+- Guardado local de respaldo y sincronización del sistema visual con el workspace del usuario. Con una sesión CodeLab válida, los ajustes se recuperan en otros dispositivos con la misma cuenta; si el servidor no está disponible, se conserva la copia local. La importación/exportación JSON sigue disponible para compartir o trasladar sistemas manualmente.
 
 Las pruebas automáticas cubren los cálculos de contraste, generación de tokens, exportaciones y una prueba de interacción en Chromium.
 

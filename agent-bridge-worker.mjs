@@ -783,7 +783,7 @@ async function processCommand(command) {
 }
 async function main() {
   workspaceId = await resolveAdminWorkspace();
-  if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
+  if (String(process.env.PIXELFORGE_GUEST_MODE || 'false').toLowerCase() !== 'true') {
     pixelForgeWorkspaceId = workspaceId;
   } else {
     await migrateAdminPixelForgeProjectsToGuest();

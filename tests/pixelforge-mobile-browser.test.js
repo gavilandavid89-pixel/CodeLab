@@ -17,7 +17,7 @@ const sessionsDir = path.join(dataDir, 'sessions');
 fs.mkdirSync(sessionsDir, { recursive: true });
 fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
   id: sessionId,
-  user: { id: 'pixelforge-mobile-ui-user', provider: 'github', name: 'PIXELFORGE_MOBILE_TEST', role: 'user' },
+  user: { id: 'pixelforge-mobile-ui-user', provider: 'local', name: 'PIXELFORGE_MOBILE_TEST', role: 'user' },
   createdAt: Date.now(),
   expiresAt: Date.now() + 60 * 60 * 1000
 }), { mode: 0o600 });
@@ -25,13 +25,49 @@ fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
 async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
+    // Direct PixelForge links must not leave an anonymous visitor inside a
+    // non-functional editor. Require the same CodeLab account session.
+    const anonymousContext = await browser.newContext({
+      viewport: { width: 360, height: 748 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2
+    });
+    const anonymousPage = await anonymousContext.newPage();
+    await anonymousPage.goto(base + '/pixelforge/index.html', { waitUntil: 'domcontentloaded' });
+    await anonymousPage.locator('#auth-required-screen').waitFor({ state: 'visible', timeout: 10000 });
+    assert.equal(await anonymousPage.locator('.app-shell').evaluate(node => node.hidden), true,
+      'anonymous PixelForge visitors must not see an interactive editor shell');
+    assert.equal(await anonymousPage.locator('#auth-required-link').getAttribute('href'), '/',
+      'PixelForge sign-in gate must return to CodeLab authentication');
+    await anonymousContext.close();
+
+    // Accounts with a pending first-password change also stay outside the editor.
+    const pendingSessionId = 'f'.repeat(48);
+    const pendingSessionPath = path.join(dataDir, 'sessions', pendingSessionId + '.json');
+    fs.writeFileSync(pendingSessionPath, JSON.stringify({
+      id: pendingSessionId,
+      user: { id: 'pending-password-user', provider: 'local', name: 'PENDING', role: 'user', mustChangePassword: true },
+      createdAt: Date.now(), expiresAt: Date.now() + 60 * 60 * 1000
+    }), { mode: 0o600 });
+    const pendingContext = await browser.newContext({
+      viewport: { width: 360, height: 748 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2
+    });
+    await pendingContext.addCookies([{ name: 'codelab_sid', value: pendingSessionId, url: base }]);
+    const pendingPage = await pendingContext.newPage();
+    await pendingPage.goto(base + '/pixelforge/index.html', { waitUntil: 'domcontentloaded' });
+    await pendingPage.locator('#auth-required-screen').waitFor({ state: 'visible', timeout: 10000 });
+    assert.match(await pendingPage.locator('#auth-required-message').textContent(), /contraseña inicial/i,
+      'PixelForge must direct accounts with pending password rotation back to CodeLab');
+    await pendingContext.close();
+    fs.unlinkSync(pendingSessionPath);
+
     for (const viewport of [
-      { width: 390, height: 844, label: 'mobile portrait' },
-      { width: 320, height: 640, label: 'narrow mobile' },
-      { width: 667, height: 375, label: 'mobile landscape' },
+      { width: 390, height: 844, label: 'mobile portrait', mobile: true },
+      { width: 320, height: 640, label: 'narrow mobile', mobile: true },
+      { width: 667, height: 375, label: 'mobile landscape', mobile: true },
+      { width: 360, height: 748, label: 'K51S portrait · 720x1600 physical at DPR 2', mobile: true, k51s: true },
+      { width: 800, height: 310, label: 'K51S landscape · 1600x720 physical at DPR 2', mobile: true, k51s: true },
       { width: 1280, height: 800, label: 'desktop' }
     ]) {
-      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, isMobile: !!viewport.mobile, hasTouch: !!viewport.mobile, deviceScaleFactor: viewport.mobile ? 2 : undefined });
       await context.addCookies([{ name: 'codelab_sid', value: sessionId, url: base }]);
       const page = await context.newPage();
       const pageErrors = [];
@@ -68,7 +104,39 @@ async function main() {
       }
 
       assert.equal(await page.locator('#files-tab').isVisible(), true, viewport.label + ': Files tab should be visible');
-      await page.locator('#files-tab').click();
+      if (viewport.k51s) {
+        const physical = await page.evaluate(() => ({
+          width: Math.round(window.innerWidth * window.devicePixelRatio),
+          height: Math.round(window.innerHeight * window.devicePixelRatio),
+          dpr: window.devicePixelRatio
+        }));
+        assert.equal(physical.dpr, 2, viewport.label + ': device pixel ratio should be 2');
+        assert.equal(physical.width, viewport.width === 360 ? 720 : 1600,
+          viewport.label + ': CSS viewport must map to the requested physical screen width');
+        assert.equal(physical.height, viewport.width === 360 ? 1496 : 620,
+          viewport.label + ': usable page height must reserve the modeled browser/system chrome area');
+      }
+      const mobileTouchTargets = await page.locator('.inspector-tabs button:visible, .tool-button:visible, .stage-bottom-right button:visible').evaluateAll(nodes =>
+        nodes.filter(node => {
+          const r = node.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
+        }).length
+      );
+      if (viewport.mobile) {
+        assert.equal(mobileTouchTargets, 0, viewport.label + ': visible primary editor controls should provide 44px touch targets');
+      }
+      if (viewport.mobile) {
+        const animationTouchTargets = await page.locator('.animation-actions button:visible').evaluateAll(nodes =>
+          nodes.filter(node => {
+            const r = node.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
+          }).length
+        );
+        assert.equal(animationTouchTargets, 0,
+          viewport.label + ': visible animation actions should provide 44px touch targets');
+      }
+      if (viewport.mobile) await page.locator('#files-tab').tap();
+      else await page.locator('#files-tab').click();
       assert.equal(await page.locator('.files-section').evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Files panel should be revealed');
       assert.equal(await page.locator('label[for="import-file"]').isVisible(), true,
@@ -78,13 +146,16 @@ async function main() {
       assert.equal(await page.locator('#export-sprite-sheet').isVisible(), true,
         viewport.label + ': sprite-sheet export should be visible');
 
-      await page.locator('#layers-tab').click();
+      if (viewport.mobile) await page.locator('#layers-tab').tap();
+      else await page.locator('#layers-tab').click();
       assert.equal(await page.locator('.layer-section').evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Layers panel should be reachable');
-      await page.locator('#ai-tab').click();
+      if (viewport.mobile) await page.locator('#ai-tab').tap();
+      else await page.locator('#ai-tab').click();
       assert.equal(await page.locator('#ai-workspace-panel').evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': AI workspace should be reachable');
-      await page.locator('#properties-tab').click();
+      if (viewport.mobile) await page.locator('#properties-tab').tap();
+      else await page.locator('#properties-tab').click();
       assert.equal(await page.locator('.inspector-section').first().evaluate(node => getComputedStyle(node).display !== 'none'), true,
         viewport.label + ': Properties panel should be reachable');
 
@@ -281,6 +352,11 @@ async function main() {
         assert.equal(headerOverflow, false, viewport.label + ': topbar must fit without horizontal overflow');
         const contextOverflow = await page.locator('.contextbar').evaluate(node => node.scrollWidth > node.clientWidth + 1);
         assert.equal(contextOverflow, false, viewport.label + ': context toolbar must fit without horizontal overflow');
+        const contextScroll = await page.locator('.context-right').evaluate(node => ({
+          overflow: node.scrollWidth > node.clientWidth + 1,
+          mode: getComputedStyle(node).overflowX
+        }));
+        assert.equal(contextScroll.mode, 'auto', viewport.label + ': context controls must remain horizontally reachable in a contained scroll row');
       }
       if (viewport.label === 'mobile landscape') {
         assert.equal(await page.locator('.bottom-bar').evaluate(node => getComputedStyle(node).display), 'none',

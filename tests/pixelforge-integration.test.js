@@ -13,6 +13,33 @@ async function readZipDownload(download) {
 
 const base = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 
+async function seedTestSession(sessionId, user, ttlMs = 60_000) {
+  const createdAt = Date.now();
+  const expiresAt = createdAt + ttlMs;
+  const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
+  const sessionsDir = path.join(dataDir, 'sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  if (process.env.DATABASE_URL) {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ...(process.env.CODELAB_DATABASE_SSL === 'disable' ? { ssl: false } : {})
+    });
+    try {
+      await pool.query(
+        'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, to_timestamp($3 / 1000.0), to_timestamp($4 / 1000.0)) ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at',
+        [sessionId, JSON.stringify(user), createdAt, expiresAt]
+      );
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
+  fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
+    id: sessionId, user, createdAt, expiresAt
+  }), { mode: 0o600 });
+}
+
 function makePixelProject(id, name, width = 2, height = 2) {
   const layerId = 'layer-' + id;
   return {
@@ -27,10 +54,47 @@ function makePixelProject(id, name, width = 2, height = 2) {
 
 async function main() {
   const health = await (await fetch(base + '/api/health')).json();
+  for (const path of ['/api/auth/google', '/api/auth/google/callback', '/api/auth/github', '/api/auth/github/callback']) {
+    const disabledProvider = await fetch(base + path, { redirect: 'manual' });
+    assert.equal(disabledProvider.status, 410, path + ' must reject external identity providers');
+    assert.equal((await disabledProvider.json()).error, 'external_auth_disabled');
+  }
   const usesPostgres = health.persistence === 'postgresql';
+  if (usesPostgres) {
+    // A stale session flag must not override the database's normalized ADMIN policy.
+    const adminSessionId = 'e'.repeat(48);
+    await seedTestSession(adminSessionId, {
+      id: 'admin', provider: 'local', name: 'ADMIN', role: 'admin', mustChangePassword: true
+    });
+    const adminHeaders = { cookie: 'codelab_sid=' + adminSessionId };
+    const adminStatusResponse = await fetch(base + '/api/auth/status', { headers: adminHeaders });
+    assert.equal(adminStatusResponse.status, 200, 'existing ADMIN session should remain usable');
+    const adminStatus = await adminStatusResponse.json();
+    assert.equal(adminStatus.mustChangePassword, false,
+      'database policy must override a stale mustChangePassword=true cached in the session');
+    const adminMe = await fetch(base + '/api/auth/me', { headers: adminHeaders });
+    assert.equal(adminMe.status, 200, 'ADMIN must access its workspace without forced password rotation');
+  }
   const dashboardResponse = await fetch(base + '/');
   assert.equal(dashboardResponse.status, 200, 'CodeLab dashboard should be served');
   const dashboard = await dashboardResponse.text();
+  assert.equal(dashboardResponse.headers.get('x-content-type-options'), 'nosniff',
+    'static HTML must include MIME sniffing protection');
+  assert.equal(dashboardResponse.headers.get('x-frame-options'), 'SAMEORIGIN',
+    'static HTML must prevent cross-origin framing');
+  assert.equal(dashboardResponse.headers.get('referrer-policy'), 'strict-origin-when-cross-origin',
+    'static HTML must use a restrictive referrer policy');
+  assert.doesNotMatch(dashboard, /openAuthModal|btnAuthGoogle|btnAuthGithub|Google|GitHub/,
+    'dashboard must expose only native CodeLab account sign-in');
+  const authStatus = await (await fetch(base + '/api/auth/status')).json();
+  assert.equal(authStatus.authMode, 'native', 'server must advertise native-only authentication');
+  assert.equal(authStatus.demoFallback, false, 'demo identities must never be accepted');
+  const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const bridgeSource = fs.readFileSync(path.join(__dirname, '..', 'agent-bridge-worker.mjs'), 'utf8');
+  assert.match(serverSource, /PIXELFORGE_GUEST_MODE \\|\\| 'false'/,
+    'PixelForge guest access must be opt-in, not the default');
+  assert.match(bridgeSource, /PIXELFORGE_GUEST_MODE \\|\\| 'false'/,
+    'Native Bridge must default to account-scoped workspaces');
   assert.doesNotMatch(dashboard, /id="studioChooser"/, 'PixelForge should not appear as a separate top-level studio');
   const designPanelStart = dashboard.indexOf('id="designStudioPanel"');
   const pixelForgeEntry = dashboard.indexOf('id="openPixelForgeFromDesign"');
@@ -92,12 +156,7 @@ async function main() {
   const sessionId = 'a'.repeat(48);
   const sessionsDir = path.join(dataDir, 'sessions');
   fs.mkdirSync(sessionsDir, { recursive: true });
-  fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
-    id: sessionId,
-    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 60_000
-  }), { mode: 0o600 });
+  await seedTestSession(sessionId, { id: 'pixelforge-integration-user', provider: 'local', name: 'PIXELFORGE_TEST', role: 'user' });
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
   const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
   assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
@@ -109,7 +168,7 @@ async function main() {
   });
   assert.equal(coreWorkspaceResponse.status, 200, 'PixelForge must use the same authenticated CodeLab workspace identity');
   const coreWorkspace = await coreWorkspaceResponse.json();
-  assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
+  assert.equal(coreWorkspace.workspaceId, 'ws_local_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
   assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
@@ -353,11 +412,7 @@ async function main() {
   // A fresh session for the same provider/account must resolve the same workspace,
   // matching the cross-device behavior of CodeLab's deterministic account binding.
   const sameAccountSessionId = 'c'.repeat(48);
-  fs.writeFileSync(path.join(sessionsDir, sameAccountSessionId + '.json'), JSON.stringify({
-    id: sameAccountSessionId,
-    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
-    createdAt: Date.now(), expiresAt: Date.now() + 60_000
-  }), { mode: 0o600 });
+  await seedTestSession(sameAccountSessionId, { id: 'pixelforge-integration-user', provider: 'local', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' });
   const sameAccountHeaders = { cookie: 'codelab_sid=' + sameAccountSessionId, 'x-forwarded-for': '198.51.100.82' };
   const sameAccountList = await fetch(base + '/api/pixelforge/projects', { headers: sameAccountHeaders });
   assert.equal(sameAccountList.status, 200);
@@ -365,12 +420,7 @@ async function main() {
     'a new session for the same CodeLab account must see its saved PixelForge projects');
 
   const secondSessionId = 'b'.repeat(48);
-  fs.writeFileSync(path.join(sessionsDir, secondSessionId + '.json'), JSON.stringify({
-    id: secondSessionId,
-    user: { id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 60_000
-  }), { mode: 0o600 });
+  await seedTestSession(secondSessionId, { id: 'pixelforge-other-user', provider: 'local', name: 'PIXELFORGE_OTHER', role: 'user' });
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
   if (process.env.DATABASE_URL) {
   const ownerUploadId = 'd'.repeat(32);
@@ -458,9 +508,9 @@ async function main() {
 
     const accountContext = await browser.newContext();
     await accountContext.addInitScript(() => {
-      localStorage.setItem('pixelforge.palette.v1:github:pixelforge-integration-user', JSON.stringify(['#A1B2C3']));
+      localStorage.setItem('pixelforge.palette.v1:local:pixelforge-integration-user', JSON.stringify(['#A1B2C3']));
       localStorage.setItem('pixelforge.palette.v1', JSON.stringify(['#DEAD00']));
-      localStorage.setItem('codelab_xd_ai_settings_v1:github_pixelforge-integration-user', JSON.stringify({
+      localStorage.setItem('codelab_xd_ai_settings_v1:local_pixelforge-integration-user', JSON.stringify({
         mode: 'api',
         baseUrl: 'https://api.example.test/v1',
         model: 'test-model',

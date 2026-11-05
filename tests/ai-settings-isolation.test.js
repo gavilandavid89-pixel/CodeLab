@@ -45,4 +45,11 @@ assert.match(designTools, /function isCurrentWorkspace\(credentials\)[\s\S]*?act
 assert.match(designTools, /Ignore stale responses if logout\/account switching changed the active workspace\.[\s\S]*?if \(!isCurrentWorkspace\(credentials\)\) return;/,
   'late design-system responses must not overwrite settings after account switching');
 
+const refreshStart = source.indexOf('async function refreshWorkspaceAfterNativeLogin()');
+const refreshEnd = source.indexOf('\nfunction closeAuthModal()', refreshStart);
+const refreshBody = source.slice(refreshStart, refreshEnd);
+assert.ok(refreshBody.indexOf('loadAiSettings()') >= 0 &&
+  refreshBody.indexOf('loadAiSettings()') < refreshBody.indexOf('loadProjectsFromStorage()'),
+  'native login must load the active account AI settings before refreshing its workspace');
+
 console.log('AI and design-system account isolation checks passed.');

@@ -37,8 +37,6 @@ let currentUser = null;
 let aiSettings = { mode: 'auto', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '' };
 let serverAi = { serverKey: false, model: 'gpt-4o-mini', baseUrl: null, hint: '' };
 let maxProjects = 50;
-let pendingAuthProvider = null;
-let oauthConfig = { github: false, google: false, demoFallback: true };
 let nativePasswordChangeRequired = false;
 let mobileStudioMode = 'code';
 let editors = {};
@@ -403,13 +401,19 @@ window.addEventListener('DOMContentLoaded', () => {
   showBootLoading(true, 'Iniciando CodeLab…', 'Conectando con el workspace y cargando proyectos.');
   handleAuthQueryParams();
   loadAuthFromServer()
-    .catch(() => loadAuthFromStorage())
+    .catch(() => { currentUser = null; lsRemove(STORAGE_KEY_AUTH); updateAuthUI(); })
     .then(() => {
-      // Resolve account identity before loading provider credentials from local storage.
+      if (nativePasswordChangeRequired) {
+        openChangePasswordModal(true);
+        setSyncStatus('error', 'Cambia la contraseña inicial');
+        return false;
+      }
+      // Resolve account identity before loading account-scoped credentials from local storage.
       loadAiSettings();
       return Promise.all([loadProjectsFromStorage(), loadServerAiStatus()]);
     })
-    .then(() => {
+    .then(canContinue => {
+      if (canContinue === false || nativePasswordChangeRequired) return;
       // Let optional workspace tools (e.g. design tokens) load their account-backed
       // settings only after auth has resolved the correct workspace credentials.
       window.codelabWorkspaceReady = true;
@@ -433,17 +437,52 @@ window.addEventListener('DOMContentLoaded', () => {
         pg._codelabBound = true;
         pg.addEventListener('click', onProjectsGridClick);
       }
-      updateOauthDemoBanner();
       maybeOfferLocalImport();
       // Complete a PixelForge sign-in round-trip only after CodeLab has confirmed
       // the real server session and loaded that account's workspace.
       if (resumePostLoginRedirect()) return;
-      // Initial-password rotation is temporarily optional; do not block the workspace UI.
+      // Accounts with a pending initial-password change are stopped above.
+      // The existing ADMIN is explicitly exempt from that policy.
     })
     .finally(() => {
       showBootLoading(false);
     });
 });
+
+// ---------- Mobile visual viewport / keyboard ergonomics ----------
+let lastVisualViewportWidth = 0;
+let lastVisualViewportHeight = 0;
+function syncMobileVisualViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const viewportWidth = Math.round(vv.width);
+  const viewportHeight = Math.round(vv.height);
+  const layoutHeight = Math.max(
+    Number(window.innerHeight) || 0,
+    Number(document.documentElement.clientHeight) || 0,
+    Number(window.screen && window.screen.height) || 0
+  );
+  const hasTouchInput = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+    (Number(navigator.maxTouchPoints) || 0) > 0;
+  const keyboardOpen = hasTouchInput &&
+    (layoutHeight - viewportHeight) > Math.max(120, layoutHeight * 0.22);
+  document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
+  document.documentElement.style.setProperty('--visual-viewport-height', viewportHeight + 'px');
+  if (Math.abs(viewportWidth - lastVisualViewportWidth) >= 1 ||
+      Math.abs(viewportHeight - lastVisualViewportHeight) >= 1) {
+    lastVisualViewportWidth = viewportWidth;
+    lastVisualViewportHeight = viewportHeight;
+    Object.values(editors || {}).forEach(editor => {
+      try { editor.layout(); } catch (_) {}
+    });
+  }
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncMobileVisualViewport, { passive: true });
+}
+window.addEventListener('resize', syncMobileVisualViewport, { passive: true });
+window.addEventListener('orientationchange', () => setTimeout(syncMobileVisualViewport, 120), { passive: true });
+setTimeout(syncMobileVisualViewport, 0);
 
 window.addEventListener('beforeunload', () => {
   if (autosaveTimer) {
@@ -531,7 +570,7 @@ async function loadProjectsFromStorage() {
     const sameWorkspace = !!localWorkspaceMarker && localWorkspaceMarker === boot.workspaceId;
     const mayMergeLocal = sameWorkspace || !currentUser || !currentUser.real;
     if (currentUser && currentUser.real && localProjects.length && !sameWorkspace) {
-      // Never silently mix another browser workspace into an OAuth account.
+      // Never silently mix another browser workspace into a CodeLab account.
       // Keep it available for an explicit import after the account loads. Do
       // not overwrite a pending snapshot already preserved for this account.
       if (!(Array.isArray(pendingLocalImportProjects) && pendingLocalImportProjects.length)) {
@@ -1390,14 +1429,14 @@ async function editCurrentProjectName() {
   else showToast('Nombre actualizado localmente; sincronización pendiente.', 'warn');
 }
 
-// ---------- Auth (OAuth + demo fallback) ----------
+// ---------- Auth (CodeLab native accounts) ----------
 function handleAuthQueryParams() {
   try {
     const params = new URLSearchParams(window.location.search);
     const auth = params.get('auth');
     if (!auth) return;
     if (auth === 'ok') {
-      showToast('Sesión iniciada con ' + (params.get('provider') || 'OAuth') + '.');
+      showToast('Sesión iniciada en CodeLab.');
     } else if (auth === 'error') {
       showToast('No se pudo iniciar sesión (' + (params.get('reason') || 'error') + ').', 'error');
     }
@@ -1413,11 +1452,6 @@ function handleAuthQueryParams() {
 async function loadAuthFromServer() {
   try {
     const data = await window.CodeLabStudioCore.getCodeLabSession();
-    oauthConfig = {
-      github: !!(data.oauth && data.oauth.github),
-      google: !!(data.oauth && data.oauth.google),
-      demoFallback: !!data.demoFallback
-    };
     nativePasswordChangeRequired = !!data.mustChangePassword;
     if (data.user) {
       currentUser = {
@@ -1436,30 +1470,17 @@ async function loadAuthFromServer() {
         lsSet(STORAGE_KEY_WORKSPACE, workspaceId);
       }
     } else {
-      // Keep local demo profile only if no real session
-      loadAuthFromStorage();
-      if (currentUser && currentUser.real) {
-        currentUser = null;
-        lsRemove(STORAGE_KEY_AUTH);
-      }
+      // No server session: clear cached identity; local project backups remain untouched.
+      currentUser = null;
+      lsRemove(STORAGE_KEY_AUTH);
     }
     updateAuthUI();
     return data;
   } catch (e) {
-    oauthConfig = { github: false, google: false, demoFallback: true };
-    loadAuthFromStorage();
+    currentUser = null;
+    lsRemove(STORAGE_KEY_AUTH);
     updateAuthUI();
     throw e;
-  }
-}
-
-function loadAuthFromStorage() {
-  const auth = lsGet(STORAGE_KEY_AUTH);
-  if (auth) {
-    try {
-      currentUser = JSON.parse(auth);
-      updateAuthUI();
-    } catch (e) {}
   }
 }
 
@@ -1529,7 +1550,7 @@ function openNativeLoginModal() {
   const hint = document.getElementById('authModalHint');
   if (title) title.textContent = 'Cuenta de CodeLab';
   if (icon) icon.className = 'fa-solid fa-user-lock text-cyan-400';
-  if (hint) hint.textContent = 'Inicia sesión con tu usuario y contraseña de CodeLab. No necesitas Google.';
+  if (hint) hint.textContent = 'Inicia sesión con tu usuario y contraseña de CodeLab.';
   const error = document.getElementById('nativeLoginError');
   if (error) { error.textContent = ''; error.classList.add('hidden'); }
   const user = document.getElementById('authUsernameInput');
@@ -1558,6 +1579,11 @@ async function loginNativeAccount() {
     closeAuthModal();
     if (document.getElementById('authPasswordInput')) document.getElementById('authPasswordInput').value = '';
     await loadAuthFromServer();
+    if (nativePasswordChangeRequired) {
+      openChangePasswordModal(true);
+      showToast('Antes de continuar, cambia la contraseña inicial.', 'warn');
+      return;
+    }
     showToast('Sesión iniciada en CodeLab.');
     await refreshWorkspaceAfterNativeLogin();
   } catch (e) {
@@ -1571,7 +1597,7 @@ function openChangePasswordModal(required) {
   const modal = document.getElementById('changePasswordModal');
   const hint = document.getElementById('changePasswordHint');
   const error = document.getElementById('changePasswordError');
-  if (hint && !required) hint.textContent = 'Usa una contraseña única de al menos 16 caracteres.';
+  if (hint) hint.textContent = required ? 'Esta cuenta tiene una contraseña inicial. Debes cambiarla antes de acceder a tus proyectos.' : 'Usa una contraseña única de al menos 16 caracteres.';
   if (error) { error.textContent = ''; error.classList.add('hidden'); }
   if (modal) modal.classList.remove('hidden');
 }
@@ -1630,6 +1656,8 @@ async function refreshWorkspaceAfterNativeLogin() {
   projects = [];
   currentProjectId = null;
   lsRemove(STORAGE_KEY_WORKSPACE_TOKEN);
+  // Resolve API credentials only after the server has confirmed the active account.
+  loadAiSettings();
   await loadProjectsFromStorage();
   window.dispatchEvent(new Event('codelab-workspace-ready'));
   renderProjectsList();
@@ -1637,71 +1665,9 @@ async function refreshWorkspaceAfterNativeLogin() {
   resumePostLoginRedirect();
 }
 
-function openAuthModal(provider) {
-  provider = provider === 'google' ? 'google' : 'github';
-  // Real OAuth redirect when configured
-  if (provider === 'github' && oauthConfig.github) {
-    window.location.href = '/api/auth/github';
-    return;
-  }
-  if (provider === 'google' && oauthConfig.google) {
-    window.location.href = '/api/auth/google';
-    return;
-  }
-  // Demo fallback when OAuth env vars not set
-  pendingAuthProvider = provider;
-  const modal = document.getElementById('authModal');
-  const title = document.getElementById('authModalTitle');
-  const icon = document.getElementById('authModalIcon');
-  const input = document.getElementById('authUsernameInput');
-  const hint = document.getElementById('authModalHint');
-  if (title) title.textContent = provider === 'github' ? 'GitHub (modo demo)' : 'Google (modo demo)';
-  if (icon) {
-    icon.className = provider === 'github' ? 'fa-brands fa-github' : 'fa-brands fa-google text-red-400';
-  }
-  if (hint) {
-    hint.innerHTML =
-      'OAuth real no está configurado en este servidor. Usa un perfil <strong class="text-amber-300">demo local</strong> o configura las variables en Render (ver README).';
-  }
-  if (input) {
-    input.value = currentUser && currentUser.provider === provider ? currentUser.name : '';
-    input.placeholder = provider === 'github' ? 'usuario_github' : 'nombre';
-  }
-  if (modal) modal.classList.remove('hidden');
-  setTimeout(() => { if (input) input.focus(); }, 50);
-}
-
 function closeAuthModal() {
   const modal = document.getElementById('authModal');
   if (modal) modal.classList.add('hidden');
-  pendingAuthProvider = null;
-}
-
-function confirmAuthModal() {
-  const input = document.getElementById('authUsernameInput');
-  const name = (input && input.value.trim()) || '';
-  if (!name) {
-    showToast('Escribe un nombre de usuario.', 'warn');
-    return;
-  }
-  const provider = pendingAuthProvider || 'github';
-  currentUser = {
-    provider: provider,
-    name: name,
-    avatar:
-      provider === 'github'
-        ? 'https://github.com/identicons/' + encodeURIComponent(name) + '.png'
-        : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=0891b2&color=fff',
-    real: false
-  };
-  lsSet(STORAGE_KEY_AUTH, JSON.stringify(currentUser));
-  updateAuthUI();
-  closeAuthModal();
-  showToast('Perfil demo guardado. Configura OAuth en Render para login real.');
-}
-
-function connectAuth(provider) {
-  openAuthModal(provider);
 }
 
 async function logoutAuth() {
@@ -1756,84 +1722,22 @@ function updateAuthUI() {
   const container = document.getElementById('authContainer');
   const badge = document.getElementById('userProfileBadge');
   if (!container || !badge) return;
-  if (currentUser) {
+  if (currentUser && currentUser.real) {
     container.classList.add('hidden');
     badge.classList.remove('hidden');
-    const av = document.getElementById('userAvatar');
-    const un = document.getElementById('userName');
-    if (av) av.src = currentUser.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name || 'U'));
-    if (un) {
-      const tag = currentUser.real ? currentUser.provider : 'demo';
-      un.innerText = (currentUser.name || 'Usuario') + ' · ' + tag;
-    }
+    const avatar = document.getElementById('userAvatar');
+    const name = document.getElementById('userName');
+    if (avatar) avatar.src = currentUser.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name || 'U'));
+    if (name) name.innerText = (currentUser.name || 'Usuario') + ' · CodeLab';
   } else {
     container.classList.remove('hidden');
     badge.classList.add('hidden');
   }
-  const gh = document.getElementById('connGithubBadge');
-  const gg = document.getElementById('connGoogleBadge');
-  if (gh) {
-    const on = currentUser && currentUser.provider === 'github';
-    const oauthOn = oauthConfig.github;
-    gh.textContent = on ? currentUser.name : oauthOn ? 'OAuth listo' : 'Demo / config';
-    gh.className = on
-      ? 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-      : oauthOn
-        ? 'text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-        : 'text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
-  }
-  if (gg) {
-    const on = currentUser && currentUser.provider === 'google';
-    const oauthOn = oauthConfig.google;
-    gg.textContent = on ? currentUser.name : oauthOn ? 'OAuth listo' : 'Demo / config';
-    gg.className = on
-      ? 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-      : oauthOn
-        ? 'text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-        : 'text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
-  }
-  const btnGh = document.getElementById('btnAuthGithub');
-  const btnGg = document.getElementById('btnAuthGoogle');
-  if (btnGh) {
-    btnGh.title = oauthConfig.github ? 'Iniciar sesión con GitHub' : 'GitHub (demo — configura OAuth)';
-    btnGh.setAttribute('aria-label', btnGh.title);
-    const lab = btnGh.querySelector('[data-auth-label]');
-    if (lab) lab.textContent = oauthConfig.github ? 'Entrar' : 'Demo';
-  }
-  if (btnGg) {
-    btnGg.title = oauthConfig.google ? 'Iniciar sesión con Google' : 'Google (demo — configura OAuth)';
-    btnGg.setAttribute('aria-label', btnGg.title);
-    const lab = btnGg.querySelector('[data-auth-label]');
-    if (lab) lab.textContent = oauthConfig.google ? 'Entrar' : 'Demo';
-  }
+  const adminButton = document.getElementById('adminAccountsButton');
+  if (adminButton) adminButton.classList.toggle('hidden', !(currentUser && currentUser.real && currentUser.role === 'admin'));
 }
 
-
-function updateOauthDemoBanner() {
-  let bar = document.getElementById('oauthDemoBanner');
-  const show = !oauthConfig.github && !oauthConfig.google;
-  if (show) {
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = 'oauthDemoBanner';
-      bar.setAttribute('role', 'status');
-      bar.className =
-        'mx-4 sm:mx-6 mt-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200/90 flex items-start gap-2';
-      bar.innerHTML =
-        '<i class="fa-solid fa-circle-info mt-0.5 text-amber-400" aria-hidden="true"></i>' +
-        '<span>OAuth no configurado en este servidor: GitHub/Google usan <strong>perfil demo local</strong>. ' +
-        'En Render define <code class="font-mono text-amber-100">GITHUB_CLIENT_*</code> / <code class="font-mono text-amber-100">GOOGLE_CLIENT_*</code> para login real.</span>';
-      const main = document.querySelector('#welcomeDashboard main');
-      if (main && main.parentNode) main.parentNode.insertBefore(bar, main);
-    } else {
-      bar.classList.remove('hidden');
-    }
-  } else if (bar) {
-    bar.classList.add('hidden');
-  }
-}
-
-/** One-shot: if user just logged in via OAuth and server workspace is empty, import local projects. */
+/** One-shot: if a user just logged in and the server workspace is empty, offer local project import. */
 function maybeOfferLocalImport() {
   try {
     if (!currentUser || !currentUser.real) return;
@@ -3893,9 +3797,17 @@ function exportDesignHtml() {
 function setDesignFrame(frame) {
   const p = activeDesignProject(); if (!p) return;
   recordDesignHistory();
-  p.design.frame = ['desktop','tablet','mobile'].includes(frame) ? frame : 'desktop';
-  delete p.design.canvasWidth;
-  delete p.design.canvasHeight;
+  p.design.frame = ['desktop','tablet','mobile','mobile-k51s','mobile-k51s-landscape'].includes(frame) ? frame : 'desktop';
+  if (frame === 'mobile-k51s') {
+    p.design.canvasWidth = 720;
+    p.design.canvasHeight = 1600;
+  } else if (frame === 'mobile-k51s-landscape') {
+    p.design.canvasWidth = 1600;
+    p.design.canvasHeight = 720;
+  } else {
+    delete p.design.canvasWidth;
+    delete p.design.canvasHeight;
+  }
   renderDesignWorkspace(); fitDesignToViewport(); saveProjectsToStorage();
 }
 function setDesignCanvasDimensions(widthValue, heightValue) {
@@ -4033,13 +3945,14 @@ function importDesignImage(file) {
   reader.readAsDataURL(file);
 }
 function getDesignCanvasWidth(design) {
-  const fallback = ({ desktop: 1440, tablet: 768, mobile: 390 })[design && design.frame] || 1440;
+  const fallback = ({ desktop: 1440, tablet: 768, mobile: 390, 'mobile-k51s': 720, 'mobile-k51s-landscape': 1600 })[design && design.frame] || 1440;
   const width = Number(design && design.canvasWidth);
   return Number.isInteger(width) && width >= 100 && width <= 4000 ? width : fallback;
 }
 function getDesignCanvasHeight(design) {
+  const fallback = ({ 'mobile-k51s': 1600, 'mobile-k51s-landscape': 720 })[design && design.frame] || 0;
   const height = Number(design && design.canvasHeight);
-  return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : 0;
+  return Number.isInteger(height) && height >= 100 && height <= 10000 ? height : fallback;
 }
 function getDesignElementDimension(el, axis, containerSize = 900) {
   const fallback = axis === 'width' ? 120 : 48;
@@ -4787,7 +4700,7 @@ function setupNewProjectModalKeys() {
     authIn.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        confirmAuthModal();
+        loginNativeAccount();
       }
     });
   }
