@@ -1688,7 +1688,7 @@ function updateAuthUI() {
   if (adminButton) adminButton.classList.toggle('hidden', !(currentUser && currentUser.real && currentUser.role === 'admin'));
 }
 
-/** One-shot: if user just logged in via OAuth and server workspace is empty, import local projects. */
+/** One-shot: if a user just logged in and the server workspace is empty, offer local project import. */
 function maybeOfferLocalImport() {
   try {
     if (!currentUser || !currentUser.real) return;
