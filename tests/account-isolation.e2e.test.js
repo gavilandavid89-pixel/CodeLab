@@ -14,7 +14,7 @@ function seedSession(id, name) {
   fs.mkdirSync(sessionDir, { recursive: true });
   fs.writeFileSync(path.join(sessionDir, sid + '.json'), JSON.stringify({
     id: sid,
-    user: { id, provider: 'github', name, email: null, avatar: null },
+    user: { id, provider: 'local', name, email: null, avatar: null },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
