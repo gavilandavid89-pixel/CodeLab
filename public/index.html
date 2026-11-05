@@ -205,6 +205,15 @@
       #designCanvasScroll { padding: 10px !important; }
     }
 
+    html.keyboard-open [role="dialog"] > div {
+      max-height: min(82dvh, 680px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    html.keyboard-open #aiDrawer {
+      height: var(--visual-viewport-height) !important;
+      max-height: var(--visual-viewport-height) !important;
+    }
     /* Keyboard-aware mobile viewport: the virtual keyboard is not part of the app surface.
        When it opens, reclaim the visual viewport and hide the fixed navigation bar so it
        never covers the editor's active line/input. */ 
