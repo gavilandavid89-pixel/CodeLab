@@ -65,7 +65,7 @@
           const outgoing = p.design.flowConnections.filter(c => c.sourceElementId === el.id);
           const hasConnection = outgoing.length > 0;
           const label = el.label || el.text || el.name || el.type || 'Capa';
-          return '<div role="button" tabindex="0" data-flow-action="' + esc(el.id) + '" data-flow-source-project="' + esc(p.id) + '" class="flex items-center gap-2 rounded-lg border p-2 '+(isSelected?'border-yellow-300 ring-1 ring-yellow-300/70':'border-slate-800')+' bg-slate-950/70 '+(chooseMode?'cursor-pointer':'')+'" title="'+(chooseMode?'Elegir esta capa como origen':'Activa Elegir para seleccionar esta capa')+'">' +
+          return '<div role="button" tabindex="0" data-flow-action="' + esc(el.id) + '" data-flow-target-element="' + esc(el.id) + '" data-flow-target-project="' + esc(p.id) + '" data-flow-source-project="' + esc(p.id) + '" class="flex items-center gap-2 rounded-lg border p-2 '+(isSelected?'border-yellow-300 ring-1 ring-yellow-300/70':'border-slate-800')+' bg-slate-950/70 '+(chooseMode?'cursor-pointer':'')+'" title="'+(chooseMode?'Elegir esta capa como origen':'Activa Elegir para seleccionar esta capa')+'">' +
             '<span class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-cyan-500/15 text-cyan-200"><i class="fa-solid fa-shapes"></i></span><div class="min-w-0 flex-1"><div class="truncate text-xs font-medium">' + esc(label) + '</div><div class="text-[10px] text-slate-500">' + esc(el.type || 'capa') + (hasConnection?' · conectada':'') + '</div><label class="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400"><input type="checkbox" data-flow-menu="' + esc(el.id) + '" data-flow-project="' + esc(p.id) + '" ' + (isMenu ? 'checked' : '') + '> Menú desplegable</label></div>' +
             (isMenu ? '<span class="text-[10px] text-amber-300">Menú</span>' : '<button type="button" data-flow-source-port="' + esc(el.id) + '" data-flow-project="' + esc(p.id) + '" title="'+(isSelected?'Arrastra la soga desde aquí':'Selecciona primero esta capa')+'" class="h-8 w-8 shrink-0 touch-none rounded-full border-2 '+(isSelected?'border-slate-300 bg-slate-500/30 text-slate-100':'border-slate-600 bg-slate-700/30 text-slate-400')+'">●</button>') +
             (outgoing.length ? '<span class="text-[10px] text-violet-300">' + outgoing.length + ' ↗</span>' : '') + '</div>';
@@ -114,11 +114,12 @@
   function commitConnection(target) {
     if (!pendingStart || !target) return;
     const sourceProject = findProject(pendingStart.projectId), source = sourceProject && sourceProject.design.elements.find(el => el.id === pendingStart.elementId);
-    const targetId = target.dataset.flowTargetProject;
-    if (!sourceProject || !source || sourceProject.id === targetId) { showToast('Conecta una opción con otra página distinta.', 'warn'); return; }
-    if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra página.', 'warn'); return; }
+    const targetId = target.dataset.flowTargetProject, targetElementId = target.dataset.flowTargetElement;
+    const targetProject = findProject(targetId), targetElement = targetProject && targetProject.design.elements.find(el => el.id === targetElementId);
+    if (!sourceProject || !source || !targetProject || !targetElement || (sourceProject.id === targetId && source.id === targetElementId)) { showToast('Conecta una opción con otra capa/interfaz distinta.', 'warn'); return; }
+    if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra interfaz.', 'warn'); return; }
     sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(c => c.sourceElementId !== source.id);
-    sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId });
+    sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId, targetElementId });
     selectedSource = { projectId: sourceProject.id, elementId: source.id };
     source.flowRole = 'navigate';
     sourceProject.updatedAt = new Date().toISOString();
@@ -138,7 +139,7 @@
     for (const c of allConnections()) {
       const a = pointFor('[data-flow-source-port]','data-flow-source-port',c.sourceElementId);
       const sourceCard = Array.from(modal.querySelectorAll('[data-flow-source-project]')).find(el => el.dataset.flowSourceProject === c.sourceProjectId && el.dataset.flowAction === c.sourceElementId);
-      const target = Array.from(modal.querySelectorAll('[data-flow-target-project]')).find(el => el.dataset.flowTargetProject === c.targetProjectId);
+      const target = c.targetElementId ? Array.from(modal.querySelectorAll('[data-flow-target-element]')).find(el => el.dataset.flowTargetProject === c.targetProjectId && el.dataset.flowTargetElement === c.targetElementId) : Array.from(modal.querySelectorAll('[data-flow-target-project]')).find(el => el.dataset.flowTargetProject === c.targetProjectId);
       if (!sourceCard || !target || !a) continue;
       const port = sourceCard.querySelector('[data-flow-source-port]');
       if (!port) continue;
@@ -174,15 +175,15 @@
     const ex=sx+dx*rayLength, ey=sy+dy*rayLength;
     const canvasRect=canvas.getBoundingClientRect(), x2=ex-canvasRect.left+canvas.scrollLeft, y2=ey-canvasRect.top+canvas.scrollTop, mid=(x1+x2)/2;
     const d='M '+x1+' '+y1+' C '+mid+' '+y1+', '+mid+' '+y2+', '+x2+' '+y2; draftPath.setAttribute('d',d); const draftHalo=svg.querySelector('[data-draft-halo]'); if(draftHalo) draftHalo.setAttribute('d',d);
-    const targets=Array.from(modal.querySelectorAll('[data-flow-target-project]')); let hit=null, hitDistance=Infinity;
-    for(const card of targets){if(card.dataset.flowTargetProject===pendingStart.projectId)continue;const t=rayRectDistance(sx,sy,dx,dy,card.getBoundingClientRect(),rayLength);if(t!==null&&t<hitDistance){hit=card;hitDistance=t;}}
+    const targets=Array.from(modal.querySelectorAll('[data-flow-target-element]')); let hit=null, hitDistance=Infinity;
+    for(const row of targets){if(row.dataset.flowTargetProject===pendingStart.projectId&&row.dataset.flowTargetElement===pendingStart.elementId)continue;const t=rayRectDistance(sx,sy,dx,dy,row.getBoundingClientRect(),rayLength);if(t!==null&&t<hitDistance){hit=row;hitDistance=t;}}
     if(hit!==activeTarget){if(activeTarget)activeTarget.classList.remove('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');activeTarget=hit;if(activeTarget)activeTarget.classList.add('border-white','ring-2','ring-white/90','shadow-[0_0_24px_rgba(255,255,255,0.45)]');}
   }
   function finishDraft(e) {
     if (!pendingStart) return;
-    const directTarget = e.target && e.target.closest ? e.target.closest('[data-flow-target-project]') : null;
-    const target = directTarget || Array.from(modal.querySelectorAll('[data-flow-target-project]')).find(card => {
-      const r = card.getBoundingClientRect();
+    const directTarget = e.target && e.target.closest ? e.target.closest('[data-flow-target-element]') : null;
+    const target = directTarget || Array.from(modal.querySelectorAll('[data-flow-target-element]')).find(row => {
+      const r = row.getBoundingClientRect();
       return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
     }) || null;
     if (target) commitConnection(target);
@@ -221,7 +222,8 @@
         const posCss=auto?'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;':'position:absolute;left:'+x+'px;top:'+y+'px;';
         const style=posCss+'width:'+w+'px;height:'+h+'px;color:'+color+';background:'+bg+';font-size:'+fs+'px;font-weight:'+weight+';text-align:'+align+';border-radius:'+(el.type==='ellipse'?'50%':radius+'px')+';display:flex;align-items:center;box-sizing:border-box;padding:'+(el.type==='image'?'0':'4px')+';overflow:hidden;'+(el.type==='button'?'justify-content:center;text-decoration:none;':'')+(el.type==='image'?'object-fit:'+(['contain','cover','fill'].includes(el.objectFit)?el.objectFit:'cover')+';':'');
         const flow=(d.flowConnections||[]).find(c=>c.sourceElementId===el.id);
-        const target=flow && projectsById.has(flow.targetProjectId) ? flow.targetProjectId : '';
+        const target=flow && flow.targetProjectId!==p.id && projectsById.has(flow.targetProjectId) ? flow.targetProjectId : '';
+        const targetElement=flow && flow.targetProjectId===p.id && typeof flow.targetElementId==='string' ? flow.targetElementId : '';
         const text=el.type==='rectangle'||el.type==='ellipse'||el.type==='image'?'':esc(el.text||'');
         const id='layer-'+String(el.id||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,120);
         if(el.type==='image') {
@@ -229,6 +231,7 @@
           const navAttrs = target && el.flowRole !== 'menu' ? ' role="link" tabindex="0" data-flow-to="'+escAttr(target)+'" style="'+style+';cursor:pointer"' : ' style="'+style+'"';
           return src?'<img id="'+escAttr(id)+'" src="'+escAttr(src)+'" alt="'+escAttr(String(el.alt||el.label||'Imagen').slice(0,300))+'"'+navAttrs+'>' : '<div id="'+escAttr(id)+'"'+(target && el.flowRole!=='menu'?' role="link" tabindex="0" data-flow-to="'+escAttr(target)+'"':'')+' style="'+style+'">'+esc(el.text||'Añade una imagen')+'</div>';
         }
+        if(targetElement && el.flowRole!=='menu') { const tag=el.type==='button'?'button':el.type==='heading'?'h1':(el.type==='rectangle'||el.type==='ellipse')?'div':el.type==='text'?'p':'div'; return '<'+tag+' id="'+escAttr(id)+'" role="link" tabindex="0" data-flow-to-element="'+escAttr(targetElement)+'" style="'+style+';cursor:pointer">'+text+'</'+tag+'>'; }
         if(target && el.flowRole!=='menu') { const tag=el.type==='button'?'button':el.type==='heading'?'h1':(el.type==='rectangle'||el.type==='ellipse')?'div':el.type==='text'?'p':'div'; return '<'+tag+' id="'+escAttr(id)+'" role="link" tabindex="0" data-flow-to="'+escAttr(target)+'" style="'+style+';cursor:pointer">'+text+'</'+tag+'>'; }
         if(el.type==='button' && el.flowRole==='menu') return '<button type="button" id="'+escAttr(id)+'" data-flow-menu="true" aria-expanded="false" style="'+style+'">'+esc(el.text||'Menú')+'</button>';
         if(el.type==='button' && safeDesignLink(el.href) && !safeDesignLink(el.href).startsWith('#layer-')) return '<a id="'+escAttr(id)+'" href="'+escAttr(safeDesignLink(el.href))+'" target="_blank" rel="noopener noreferrer" style="'+style+'">'+esc(el.text||'Abrir enlace')+'</a>';
@@ -239,7 +242,7 @@
       return '<section class="flow-screen" data-page-id="'+escAttr(p.id)+'" '+(p.id===root.id?'':'hidden')+'><div class="flow-viewport"><main class="flow-frame'+(auto?' auto-layout':'')+'" style="'+frameStyle+'">'+items+'</main></div></section>';
     }).join('');
     const routeMap=Object.fromEntries(reachable.map(p=>[p.id,routeId(p.id)]));
-    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(root.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.flow-screen{width:100%;min-height:100vh}.flow-viewport{position:relative;width:100%;overflow:hidden}.flow-frame{transform-origin:top left}.flow-frame.auto-layout{width:100%;max-width:100%}@media(max-width:768px){.flow-frame.auto-layout{flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}.flow-frame.auto-layout>*{max-width:100%}}</style></head><body>'+pages+'<script>(function(){var screens=[].slice.call(document.querySelectorAll(".flow-screen"));function show(id){var found=screens.find(function(s){return s.getAttribute("data-page-id")===id});if(!found)return;screens.forEach(function(s){s.hidden=s!==found});fit();window.scrollTo(0,0)}function fit(){var active=screens.find(function(s){return !s.hidden});if(!active)return;var f=active.querySelector(".flow-frame"),v=active.querySelector(".flow-viewport");if(!f||!v)return;if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return}var w=parseFloat(f.style.width)||1440,h=parseFloat(f.style.height)||900,s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px"}document.addEventListener("click",function(e){var nav=e.target.closest("[data-flow-to]");if(nav){e.preventDefault();show(nav.getAttribute("data-flow-to"));return}var menu=e.target.closest("[data-flow-menu]");if(menu){menu.setAttribute("aria-expanded",menu.getAttribute("aria-expanded")!=="true"?"true":"false")}});document.addEventListener("keydown",function(e){var nav=e.target.closest&&e.target.closest("[data-flow-to]");if(nav&&(e.key==="Enter"||e.key===" ")){e.preventDefault();show(nav.getAttribute("data-flow-to"))}});window.addEventListener("resize",fit,{passive:true});window.addEventListener("hashchange",function(){var id=decodeURIComponent(location.hash.slice(1));if(id)show(id)});fit()})();<\/script></body></html>';
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(root.name)+'</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.flow-screen{width:100%;min-height:100vh}.flow-viewport{position:relative;width:100%;overflow:hidden}.flow-frame{transform-origin:top left}.flow-frame.auto-layout{width:100%;max-width:100%}@media(max-width:768px){.flow-frame.auto-layout{flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}.flow-frame.auto-layout>*{max-width:100%}}</style></head><body>'+pages+'<script>(function(){var screens=[].slice.call(document.querySelectorAll(".flow-screen"));function show(id){var found=screens.find(function(s){return s.getAttribute("data-page-id")===id});if(!found)return;screens.forEach(function(s){s.hidden=s!==found});fit();window.scrollTo(0,0)}function fit(){var active=screens.find(function(s){return !s.hidden});if(!active)return;var f=active.querySelector(".flow-frame"),v=active.querySelector(".flow-viewport");if(!f||!v)return;if(f.classList.contains("auto-layout")){f.style.transform="none";f.style.marginLeft="auto";v.style.height="auto";return}var w=parseFloat(f.style.width)||1440,h=parseFloat(f.style.height)||900,s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px"}document.addEventListener("click",function(e){var localNav=e.target.closest("[data-flow-to-element]");if(localNav){e.preventDefault();var target=document.getElementById("layer-"+String(localNav.getAttribute("data-flow-to-element")).replace(/[^a-zA-Z0-9_-]/g,"").slice(0,120));if(target)target.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});return}var nav=e.target.closest("[data-flow-to]");if(nav){e.preventDefault();show(nav.getAttribute("data-flow-to"));return}var menu=e.target.closest("[data-flow-menu]");if(menu){menu.setAttribute("aria-expanded",menu.getAttribute("aria-expanded")!=="true"?"true":"false")}});document.addEventListener("keydown",function(e){var localNav=e.target.closest&&e.target.closest("[data-flow-to-element]");if(localNav&&(e.key==="Enter"||e.key===" ")){e.preventDefault();var target=document.getElementById("layer-"+String(localNav.getAttribute("data-flow-to-element")).replace(/[^a-zA-Z0-9_-]/g,"").slice(0,120));if(target)target.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});return}var nav=e.target.closest&&e.target.closest("[data-flow-to]");if(nav&&(e.key==="Enter"||e.key===" ")){e.preventDefault();show(nav.getAttribute("data-flow-to"))}});window.addEventListener("resize",fit,{passive:true});window.addEventListener("hashchange",function(){var id=decodeURIComponent(location.hash.slice(1));if(id)show(id)});fit()})();<\/script></body></html>';
   }
 
   // The launcher uses the inline handler in index.html; avoid registering a second click path.
