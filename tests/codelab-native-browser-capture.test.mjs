@@ -52,6 +52,9 @@ test('CodeLab public route QA authenticates ADMIN, tests preview, reload, and sa
   assert.match(worker, /switch-mobile-to-preview/);
   assert.match(worker, /previewTabSwitchWorks/);
   assert.match(worker, /codeTabRestoresEditor/);
+  assert.match(worker, /toolbarControlsDoNotOverlap/);
+  assert.match(worker, /toolbarActionsTouchSized/);
+  assert.match(worker, /toolbarScrollsInsteadOfShrinking/);
   assert.match(worker, /public-route-desktop/);
   assert.match(worker, /expectedSandboxPageErrors/);
   assert.match(worker, /sandboxIsolationConfirmed/);
