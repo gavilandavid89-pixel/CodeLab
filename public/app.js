@@ -3277,7 +3277,11 @@ let designDragState = null;
 let designEventsBound = false;
 let designZoom = 1;
 let designCanvasLocked = false;
+let designPageDragState = null;
+let designPageMoveBound = false;
 const MAX_DESIGN_ELEMENTS = 500;
+const DESIGN_WORLD_WIDTH = 6000;
+const DESIGN_WORLD_HEIGHT = 4000;
 
 function toggleDesignLayerVisibility(id) {
   const project = activeDesignProject();
@@ -3332,6 +3336,13 @@ function normalizeDesignElementIdentifiers(elements) {
     used.add(identifier.toLowerCase());
   }
 }
+function normalizeDesignPagePosition(design) {
+  if (!design || typeof design !== 'object') return;
+  if (!Number.isFinite(Number(design.pageX))) design.pageX = 1200;
+  if (!Number.isFinite(Number(design.pageY))) design.pageY = 900;
+  design.pageX = Math.max(0, Math.min(DESIGN_WORLD_WIDTH - 100, Number(design.pageX)));
+  design.pageY = Math.max(0, Math.min(DESIGN_WORLD_HEIGHT - 100, Number(design.pageY)));
+}
 function activeDesignProject() {
   const p = projects.find(item => item.id === currentProjectId);
   if (!p || activeProjectWorkspace !== 'design') return null;
@@ -3339,6 +3350,7 @@ function activeDesignProject() {
     p.design = { elements: [], frame: 'desktop', background: '#ffffff', grid: true };
   }
   if (p.design.grid == null) p.design.grid = true;
+  normalizeDesignPagePosition(p.design);
   if (!['free','auto'].includes(p.design.layoutMode)) p.design.layoutMode = 'free';
   if (!['row','column'].includes(p.design.layoutDirection)) p.design.layoutDirection = 'row';
   p.design.layoutGap = Number.isFinite(Number(p.design.layoutGap)) ? Math.max(0, Math.min(200, Number(p.design.layoutGap))) : 16;
@@ -3409,8 +3421,9 @@ function initializeDesignProject(project) {
   if (frame) frame.value = project.design.frame || 'desktop';
   renderDesignWorkspace();
   bindDesignCanvasEvents();
+  bindDesignPageMoveEvents();
   updateDesignHistoryButtons();
-  requestAnimationFrame(() => fitDesignToViewport());
+  requestAnimationFrame(() => fitDesignToViewport(true));
 }
 
 // Overlay controls let the canvas use the full workspace underneath.
@@ -3492,7 +3505,10 @@ function setupDesignCanvasGestures() {
 }
 
 function setDesignZoom(value) {
-  
+  const viewport = document.getElementById('designCanvasScroll');
+  const oldZoom = designZoom || 1;
+  const centerWorldX = viewport ? (viewport.scrollLeft + viewport.clientWidth / 2) / oldZoom : 0;
+  const centerWorldY = viewport ? (viewport.scrollTop + viewport.clientHeight / 2) / oldZoom : 0;
   const next = Math.max(0.1, Math.min(1.5, Number(value) / 100 || 1));
   designZoom = next;
   const canvas = document.getElementById('designCanvas');
@@ -3501,8 +3517,14 @@ function setDesignZoom(value) {
   if (label) label.textContent = Math.round(next * 100) + '%';
   const slider = document.getElementById('designZoom');
   if (slider) slider.value = String(Math.round(next * 100 / 5) * 5);
+  if (viewport && oldZoom !== next) {
+    requestAnimationFrame(() => {
+      viewport.scrollLeft = Math.max(0, centerWorldX * next - viewport.clientWidth / 2);
+      viewport.scrollTop = Math.max(0, centerWorldY * next - viewport.clientHeight / 2);
+    });
+  }
 }
-function fitDesignToViewport() {
+function fitDesignToViewport(centerPage = false) {
   const project = activeDesignProject();
   const canvas = document.getElementById('designCanvas');
   const viewport = document.getElementById('designCanvasScroll');
@@ -3512,6 +3534,54 @@ function fitDesignToViewport() {
   const fitScale = Math.min(1, availableWidth / frameWidth);
   const snappedScale = Math.max(0.1, Math.floor(fitScale * 20) / 20);
   setDesignZoom(Math.round(snappedScale * 100));
+  if (centerPage) {
+    const page = activeDesignProject()?.design;
+    requestAnimationFrame(() => {
+      if (!page || !viewport) return;
+      viewport.scrollLeft = Math.max(0, page.pageX * designZoom - Math.max(0, (viewport.clientWidth - frameWidth * designZoom) / 2));
+      viewport.scrollTop = Math.max(0, page.pageY * designZoom - Math.max(0, (viewport.clientHeight - (getDesignCanvasHeight(page) || 900) * designZoom) / 2));
+    });
+  }
+}
+function setDesignPagePosition(axis, value) {
+  const p = activeDesignProject(); if (!p || !p.design) return;
+  const next = Number(value);
+  if (!Number.isFinite(next)) return;
+  recordDesignHistory();
+  if (axis === 'x') p.design.pageX = Math.max(0, Math.min(DESIGN_WORLD_WIDTH - 100, Math.round(next)));
+  else p.design.pageY = Math.max(0, Math.min(DESIGN_WORLD_HEIGHT - 100, Math.round(next)));
+  p.updatedAt = new Date().toISOString();
+  renderDesignWorkspace(); saveProjectsToStorage();
+}
+function bindDesignPageMoveEvents() {
+  const handle = document.getElementById('designPageMoveHandle');
+  const viewport = document.getElementById('designCanvasScroll');
+  if (!handle || !viewport || designPageMoveBound) return;
+  designPageMoveBound = true;
+  handle.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    const p = activeDesignProject(); if (!p) return;
+    ev.preventDefault(); ev.stopPropagation();
+    recordDesignHistory();
+    designPageDragState = { startX: ev.clientX, startY: ev.clientY, pageX: p.design.pageX, pageY: p.design.pageY, zoom: designZoom };
+    try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
+  });
+  handle.addEventListener('pointermove', ev => {
+    if (!designPageDragState) return;
+    const p = activeDesignProject(); if (!p) return;
+    p.design.pageX = Math.max(0, Math.min(DESIGN_WORLD_WIDTH - 100, Math.round(designPageDragState.pageX + (ev.clientX - designPageDragState.startX) / designPageDragState.zoom)));
+    p.design.pageY = Math.max(0, Math.min(DESIGN_WORLD_HEIGHT - 100, Math.round(designPageDragState.pageY + (ev.clientY - designPageDragState.startY) / designPageDragState.zoom)));
+    renderDesignWorkspace();
+    ev.preventDefault();
+  });
+  const finish = () => {
+    if (!designPageDragState) return;
+    designPageDragState = null;
+    const p = activeDesignProject(); if (p) { p.updatedAt = new Date().toISOString(); saveProjectsToStorage(); }
+  };
+  handle.addEventListener('pointerup', finish);
+  handle.addEventListener('pointercancel', finish);
+  handle.addEventListener('lostpointercapture', finish);
 }
 function toggleDesignGrid() {
   const p = activeDesignProject(); if (!p) return;
@@ -4186,17 +4256,27 @@ function renderDesignWorkspace() {
   canvas.style.boxSizing = 'border-box';
   canvas.style.border = '1px solid #cbd5e1';
   canvas.style.boxShadow = '0 12px 36px rgba(0,0,0,0.28)';
+  normalizeDesignPagePosition(p.design);
   const frameWidth = getDesignCanvasWidth(p.design);
   const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design) || 900);
   canvas.style.width = frameWidth + 'px';
   canvas.style.height = frameHeight + 'px';
   canvas.style.zoom = String(designZoom);
   const pageFrame = document.getElementById('designPageFrame');
+  const world = document.getElementById('designWorkspaceWorld');
+  if (world) {
+    world.style.width = DESIGN_WORLD_WIDTH * designZoom + 'px';
+    world.style.height = DESIGN_WORLD_HEIGHT * designZoom + 'px';
+  }
   if (pageFrame) {
     pageFrame.style.width = frameWidth * designZoom + 'px';
     pageFrame.style.height = frameHeight * designZoom + 'px';
+    pageFrame.style.left = p.design.pageX * designZoom + 'px';
+    pageFrame.style.top = p.design.pageY * designZoom + 'px';
     pageFrame.dataset.size = frameWidth + ' × ' + frameHeight;
+    pageFrame.dataset.position = Math.round(p.design.pageX) + ' × ' + Math.round(p.design.pageY);
   }
+
   const zoomLabel = document.getElementById('designZoomLabel');
   if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
   canvas.style.backgroundColor = p.design.background || '#ffffff';
@@ -4336,7 +4416,10 @@ function renderDesignWorkspace() {
     '<button type="button" data-design-lock="' + escapeAttr(el.id) + '" onclick="toggleDesignLayerLock(\'' + escapeAttr(el.id) + '\')" class="shrink-0 px-1.5 py-2 rounded hover:bg-slate-800 ' + (el.locked ? 'text-amber-300' : 'text-slate-500') + '" aria-label="' + (el.locked ? 'Desbloquear capa ' : 'Bloquear capa ') + escapeAttr(el.identifier || el.label || el.type) + '" title="' + (el.locked ? 'Desbloquear capa' : 'Bloquear capa') + '"><i class="fa-solid ' + (el.locked ? 'fa-lock' : 'fa-lock-open') + '"></i></button></div>'
   ).join('') : '<p class="p-2 text-[11px] text-slate-500">Sin capas todavía.</p>';
   layers.querySelectorAll('[data-design-select]').forEach(button => button.addEventListener('click', ev => selectDesignElement(button.getAttribute('data-design-select'), ev.shiftKey || ev.ctrlKey || ev.metaKey)));
-  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Marco de diseño</div><p class="text-[10px] text-slate-500">Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom.</p>' +
+  const canvasControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Página</div><p class="text-[10px] text-slate-500">La página es una hoja independiente dentro del workspace. X/Y son coordenadas de la hoja en el espacio de trabajo.</p>' +
+    '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400 text-[11px]">X workspace</span><input id="designPageX" type="number" min="0" max="5900" step="1" value="'+Math.round(p.design.pageX)+'" onchange="setDesignPagePosition(\'x\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Y workspace</span><input id="designPageY" type="number" min="0" max="3900" step="1" value="'+Math.round(p.design.pageY)+'" onchange="setDesignPagePosition(\'y\',this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label></div>' +
+    '<div class="text-[10px] text-slate-500">Arrastra la barra de la página para moverla. Los X/Y de las capas siguen siendo internos a esta página.</div>' +
+    '<p class="text-[10px] text-slate-500">Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom.</p>' +
     '<div class="grid grid-cols-2 gap-2"><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Ancho (px)</span><input id="designCanvasWidth" type="number" min="100" max="4000" step="1" value="'+getDesignCanvasWidth(p.design)+'" onchange="setDesignCanvasDimensions(this.value,document.getElementById(\'designCanvasHeight\').value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label><label class="block space-y-1"><span class="text-slate-400 text-[11px]">Alto (px)</span><input id="designCanvasHeight" type="number" min="100" max="10000" step="1" value="'+(getDesignCanvasHeight(p.design)||'')+'" placeholder="Auto" onchange="setDesignCanvasDimensions(document.getElementById(\'designCanvasWidth\').value,this.value)" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100"></label></div>' +
     '<button type="button" onclick="resetDesignCanvasDimensions()" class="w-full px-2 py-2 rounded-lg border border-slate-700 text-[11px] text-slate-300 hover:bg-slate-800">Usar altura automática</button></section>';
   const layoutControls = '<section class="rounded-xl border border-slate-700 bg-slate-900/70 p-3 mb-3 space-y-2"><div class="text-[11px] font-bold text-violet-300">Distribución del diseño</div>' +
