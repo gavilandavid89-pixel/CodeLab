@@ -502,11 +502,20 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
       const page = await context.newPage();
       const allPageErrors = [];
+      const allConsoleErrors = [];
       page.on('pageerror', error => {
         if (allPageErrors.length < 20) allPageErrors.push(String(error.message || error).slice(0, 300));
       });
       page.on('console', message => {
-        if (message.type() === 'error' && allPageErrors.length < 20) allPageErrors.push(message.text().slice(0, 300));
+        if (message.type() === 'error' && allConsoleErrors.length < 40) {
+          const location = message.location() || {};
+          allConsoleErrors.push({
+            message: message.text().slice(0, 300),
+            url: String(location.url || '').slice(0, 300),
+            lineNumber: Number(location.lineNumber || 0),
+            columnNumber: Number(location.columnNumber || 0)
+          });
+        }
       });
       const viewports = [
         { name: 'desktop', width: 1440, height: 1000 },
@@ -556,6 +565,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         const screenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
         if (screenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab ' + viewport.name + ' screenshot exceeds 3 MiB.');
         const pageErrors = allPageErrors.slice();
+        const consoleErrors = allConsoleErrors.slice();
         results.push({
           viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
           checks: {
@@ -567,10 +577,11 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
             interactionWorks: buttonClicked,
             noHorizontalOverflow: !metrics.horizontalOverflow,
             mobileControlsReadable: viewport.name !== 'mobile' || (metrics.buttonWidth >= 140 && metrics.buttonFontSize >= 14 && metrics.headingFontSize >= 24),
-            noPageErrors: pageErrors.length === 0
+            noPageErrors: pageErrors.length === 0 && consoleErrors.length === 0
           },
           page: { title: before.title, heading: before.heading, statusText, ...metrics, documentHeight: before.documentHeight },
           pageErrors,
+          consoleErrors,
           screenshot: {
             role: viewport.name + '-render',
             label: 'CodeLab converted project — ' + viewport.name,
@@ -586,6 +597,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
       const routeUrl = baseUrl + '/?projectId=' + encodeURIComponent(project.id);
       const routeErrorStart = allPageErrors.length;
+      const routeConsoleStart = allConsoleErrors.length;
       const routeResponse = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
       if (!routeResponse || !routeResponse.ok()) throw new Error('Public CodeLab project route returned HTTP ' + (routeResponse?.status() || 'no response'));
       step = 'wait-public-project-open';
@@ -620,6 +632,13 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       const routeScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
       if (routeScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab public route screenshot exceeds 3 MiB.');
       const routeErrors = allPageErrors.slice(routeErrorStart);
+      const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
+      const expectedSandboxWarnings = routeConsoleErrors.filter(item =>
+        /Failed to read the 'localStorage' property from 'Window'/.test(item.message) &&
+        /about:srcdoc|about:blank/.test(item.url)
+      );
+      const unexpectedConsoleErrors = routeConsoleErrors.filter(item => !expectedSandboxWarnings.includes(item));
+      const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
       const routeTest = {
         url: routeUrl,
         captureMethod: 'playwright-chromium-public-route-admin-workspace',
@@ -631,10 +650,13 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           interactionButtonPresent: routeButtonCount > 0,
           interactionWorks: routeInteractionWorks,
           noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
-          noPageErrors: routeErrors.length === 0
+          previewSandboxed: previewSandbox.includes('allow-scripts') && !previewSandbox.includes('allow-same-origin'),
+          noPageErrors: routeErrors.length === 0 && unexpectedConsoleErrors.length === 0
         },
-        page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus },
+        page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus, previewSandbox },
         pageErrors: routeErrors,
+        consoleErrors: routeConsoleErrors,
+        expectedSandboxWarnings,
         screenshot: {
           role: 'public-route-desktop',
           label: 'CodeLab deployed project route — ADMIN workspace',
