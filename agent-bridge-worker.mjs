@@ -826,12 +826,115 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
     if (browser) await browser.close().catch(() => {});
   }
 }
+async function captureCodeLabDashboardBrowser(expectedState) {
+  const expectedProjects = Array.isArray(expectedState?.projects) ? expectedState.projects : [];
+  const expectedNames = expectedProjects.map(project => String(project?.name || 'Sin título'));
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      defaultViewport: null,
+      timeout: 60000
+    });
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      deviceScaleFactor: 1,
+      colorScheme: 'dark',
+      reducedMotion: 'reduce'
+    });
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+    const page = await context.newPage();
+    const pageErrors = [];
+    const consoleErrors = [];
+    page.on('pageerror', error => {
+      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 30) {
+        consoleErrors.push(message.text().slice(0, 300));
+      }
+    });
+    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+    const response = await page.goto(baseUrl + '/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    if (!response || !response.ok()) throw new Error('Dashboard returned HTTP ' + (response?.status() || 'no response'));
+    await page.waitForFunction(expectedCount => {
+      const count = document.getElementById('projectCount');
+      const grid = document.getElementById('projectsGrid');
+      return !!count && !!grid && Number(count.textContent.trim()) === expectedCount &&
+        grid.querySelectorAll(':scope > div').length === expectedCount;
+    }, expectedProjects.length, { timeout: 45000 });
+    const captures = [];
+    for (const viewport of [
+      { name: 'desktop', width: 1440, height: 1000 },
+      { name: 'mobile', width: 390, height: 844 }
+    ]) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.waitForTimeout(250);
+      const pageData = await page.evaluate(() => {
+        const grid = document.getElementById('projectsGrid');
+        const count = document.getElementById('projectCount');
+        return {
+          title: document.title,
+          projectCountText: count?.textContent?.trim() || '',
+          cardCount: grid ? grid.querySelectorAll(':scope > div').length : 0,
+          projectNames: grid ? Array.from(grid.querySelectorAll(':scope > div h4')).map(node => node.textContent.trim()) : [],
+          horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        };
+      });
+      const screenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (screenshot.length > 3 * 1024 * 1024) throw new Error('Dashboard ' + viewport.name + ' screenshot exceeds 3 MiB.');
+      captures.push({
+        viewport,
+        page: pageData,
+        screenshot: {
+          role: 'dashboard-' + viewport.name,
+          label: 'CodeLab dashboard — ' + viewport.name,
+          mimeType: 'image/png',
+          sizeBytes: screenshot.length,
+          dataBase64: screenshot.toString('base64')
+        }
+      });
+    }
+    const renderedNames = captures[0]?.page?.projectNames || [];
+    const missing = expectedNames.filter(name => !renderedNames.includes(name));
+    const unexpected = renderedNames.filter(name => !expectedNames.includes(name));
+    return {
+      passed: missing.length === 0 && unexpected.length === 0 &&
+        captures.every(item => item.page.cardCount === expectedProjects.length) &&
+        pageErrors.length === 0 && consoleErrors.length === 0,
+      workspaceId,
+      revision: expectedState.revision,
+      databaseProjectCount: expectedProjects.length,
+      expectedProjectNames: expectedNames,
+      renderedProjectNames: renderedNames,
+      missingProjectNames: missing,
+      unexpectedProjectNames: unexpected,
+      pageErrors,
+      consoleErrors,
+      captures
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
 async function inspectCodeLabProject(command) {
+  const state = await loadAdminWorkspace();
+  if (command.payload?.dashboard_test === true) {
+    return { dashboardTest: await captureCodeLabDashboardBrowser(state) };
+  }
   const projectId = command.payload?.project_id;
   if (typeof projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
     throw new Error('A valid CodeLab project_id is required.');
   }
-  const state = await loadAdminWorkspace();
   const project = state.projects.find(item => item && item.id === projectId);
   if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
   const inspection = {
