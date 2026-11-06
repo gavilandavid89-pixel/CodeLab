@@ -364,6 +364,8 @@ function exportDesignToHtml(project) {
     const id = 'design-layer-' + index;
     const type = String(element.type || 'text');
     const tag = type === 'heading' ? 'h1' : type === 'button' ? 'button' : 'div';
+    const typeClass = ['heading','text','button','rectangle','ellipse','image'].includes(type) ? type : 'text';
+    const layerClass = 'design-layer design-layer-' + typeClass;
     const text = escapeHtml(element.text || (type === 'image' ? 'Añade una imagen' : ''));
     const color = exportColor(element.color, '#111827');
     const fill = exportColor(element.background, 'transparent');
@@ -378,17 +380,17 @@ function exportDesignToHtml(project) {
       ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;'
       : 'position:absolute;left:' + x + 'px;top:' + y + 'px;';
     const style = position + 'width:' + w + 'px;height:' + h + 'px;min-width:20px;min-height:20px;display:flex;align-items:center;box-sizing:border-box;padding:8px;color:' + color + ';background:' + fill + ';font-size:' + font + 'px;font-weight:' + Math.max(100,Math.min(900,Number(element.weight)||400)) + ';text-align:' + align + ';border-radius:' + (type === 'ellipse' ? '50%' : radius + 'px') + ';';
-    if (type === 'button') return '<button id="' + id + '" type="button" data-codelab-demo style="' + style + 'justify-content:center;cursor:pointer;border:0;">' + (text || 'Probar interacción') + '</button>';
-    if (type === 'rectangle' || type === 'ellipse') return '<div id="' + id + '" aria-hidden="true" style="' + style + '"></div>';
-    if (type === 'image') return '<div id="' + id + '" role="img" aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + '">Imagen pendiente</div>';
-    return '<' + tag + ' id="' + id + '" style="' + style + '">' + text + '</' + tag + '>';
+    if (type === 'button') return '<button id="' + id + '" class="' + layerClass + '" type="button" data-codelab-demo style="' + style + 'justify-content:center;cursor:pointer;border:0;">' + (text || 'Probar interacción') + '</button>';
+    if (type === 'rectangle' || type === 'ellipse') return '<div id="' + id + '" class="' + layerClass + '" aria-hidden="true" style="' + style + '"></div>';
+    if (type === 'image') return '<div id="' + id + '" class="' + layerClass + '" role="img" aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + '">Imagen pendiente</div>';
+    return '<' + tag + ' id="' + id + '" class="' + layerClass + '" style="' + style + '">' + text + '</' + tag + '>';
   }).join('');
   const frameStyle = autoLayout
     ? 'position:relative;width:100%;max-width:' + width + 'px;min-height:' + height + 'px;display:flex;flex-direction:' + direction + ';flex-wrap:' + (direction === 'row' ? 'wrap' : 'nowrap') + ';gap:' + gap + 'px;padding:' + padding + 'px;align-items:flex-start;background:' + background + ';margin:0 auto;'
     : 'position:relative;width:' + width + 'px;height:' + height + 'px;min-height:' + height + 'px;background:' + background + ';transform-origin:top left;margin:0 auto;';
   const mobile = autoLayout
     ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}'
-    : '';
+    : '@media(max-width:768px){.design-viewport{min-height:100vh;overflow:visible!important}.design-frame:not(.auto-layout){width:100%!important;height:auto!important;min-height:100vh!important;transform:none!important;margin:0!important;display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:18px;padding:24px!important}.design-frame:not(.auto-layout)>.design-layer{position:relative!important;left:auto!important;top:auto!important;width:100%!important;height:auto!important;min-height:0!important;max-width:100%!important;flex:0 0 auto!important}.design-frame:not(.auto-layout)>.design-layer-heading{font-size:clamp(28px,7vw,40px)!important;line-height:1.15}.design-frame:not(.auto-layout)>.design-layer-text{font-size:clamp(16px,4.5vw,20px)!important;line-height:1.45}.design-frame:not(.auto-layout)>.design-layer-button{width:100%!important;max-width:320px;min-height:48px;align-self:flex-start}.design-frame:not(.auto-layout)>.design-layer-rectangle{height:100px!important;min-height:100px!important}.design-frame:not(.auto-layout)>.design-layer-ellipse{width:160px!important;height:120px!important;min-height:120px!important;align-self:center}.design-frame:not(.auto-layout)>.design-layer-image{height:180px!important;min-height:180px!important}}';
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeHtml(project.name) + '</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}.demo-status{position:fixed;left:16px;bottom:16px;padding:8px 12px;border-radius:8px;background:#0f172a;color:#fff;font:14px system-ui;z-index:10}' + mobile + '</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame' + (autoLayout ? ' auto-layout' : '') + '" style="' + frameStyle + '">' + markup + '</main></div><p class="demo-status" id="demoStatus" role="status" aria-live="polite">Diseño convertido · listo</p><script>(function(){var f=document.getElementById("designFrame"),v=f.parentNode,w=' + width + ',h=' + height + ';function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";v.style.height="auto";return;}var s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();document.querySelectorAll("[data-codelab-demo]").forEach(function(b){b.addEventListener("click",function(){document.getElementById("demoStatus").textContent="Interacción funcionando ✓";});});})();<\/script></body></html>';
 }
 function createCodeLabProjectPayload(command, payload) {
