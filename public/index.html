@@ -539,7 +539,6 @@
             <span class="text-xs font-bold text-slate-200">Herramientas de diseño</span>
             <button type="button" onclick="toggleDesignOptions(false)" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" aria-label="Cerrar panel de opciones" title="Cerrar panel">&gt;</button>
           </div>
-          <button id="designCanvasLockBtn" type="button" onclick="toggleDesignCanvasLock()" aria-pressed="false" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-left" title="Bloquear zoom y posición del lienzo">🔓 Bloquear lienzo</button>
           <button id="toggleDesignInspector" type="button" onclick="toggleDesignPanel('inspector')" aria-expanded="true" aria-controls="designLayersPanel" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar Inspector"><i class="fa-solid fa-panel-left"></i><span class="hidden sm:inline ml-1">Inspector</span></button>
           <div class="flex items-center gap-1">
             <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
@@ -595,7 +594,7 @@
           <button onclick="captureDesignForAI()" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold" title="Genera una captura y envíala al modelo de IA para revisión visual"><i class="fa-solid fa-camera mr-1"></i> Revisar con IA</button>
 
           <div class="ml-auto flex items-center gap-2">
-            <label class="text-[11px] text-slate-400" for="designFrameSize">Marco</label>
+            <label class="text-[11px] text-slate-400" for="designFrameSize">Página</label>
             <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
               <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
             </select>
