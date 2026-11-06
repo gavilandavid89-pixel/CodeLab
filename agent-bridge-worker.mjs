@@ -676,6 +676,54 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         },
         page: { previewHeading: reloadedHeading, statusText: reloadedStatus }
       };
+      step = 'set-route-mobile-viewport';
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(250);
+      const mobileRoutePage = await page.evaluate(() => {
+        const rectFor = id => {
+          const element = document.getElementById(id);
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), display: getComputedStyle(element).display };
+        };
+        const studioHeader = document.querySelector('#studioView > header');
+        const headerRect = studioHeader?.getBoundingClientRect();
+        const primaryButton = document.querySelector('#studioView > header button');
+        const buttonRect = primaryButton?.getBoundingClientRect();
+        return {
+          viewportWidth: innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          documentHeight: document.documentElement.scrollHeight,
+          studioVisible: !!document.getElementById('studioView') && !document.getElementById('studioView').classList.contains('hidden'),
+          projectTitle: document.getElementById('currentProjectTitle')?.textContent?.trim() || '',
+          mainSplit: rectFor('mainSplit'),
+          webWorkspacePanel: rectFor('webWorkspacePanel'),
+          previewPanel: rectFor('previewPanel'),
+          previewIframe: rectFor('previewIframe'),
+          headerHeight: headerRect ? Math.round(headerRect.height) : 0,
+          headerButtonHeight: buttonRect ? Math.round(buttonRect.height) : 0
+        };
+      });
+      const mobileRouteScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (mobileRouteScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile public route screenshot exceeds 3 MiB.');
+      const mobileRouteTest = {
+        checks: {
+          studioVisible: mobileRoutePage.studioVisible,
+          projectOpened: mobileRoutePage.projectTitle === project.name,
+          noHorizontalOverflow: mobileRoutePage.documentWidth <= mobileRoutePage.viewportWidth + 1,
+          workspaceVisible: !!mobileRoutePage.webWorkspacePanel && mobileRoutePage.webWorkspacePanel.width > 0 && mobileRoutePage.webWorkspacePanel.height > 0,
+          previewVisible: !!mobileRoutePage.previewIframe && mobileRoutePage.previewIframe.width > 0 && mobileRoutePage.previewIframe.height > 0,
+          headerControlsTouchSized: mobileRoutePage.headerButtonHeight >= 40
+        },
+        page: mobileRoutePage,
+        screenshot: {
+          role: 'public-route-mobile',
+          label: 'CodeLab deployed project route — ADMIN workspace — mobile',
+          mimeType: 'image/png',
+          sizeBytes: mobileRouteScreenshot.length,
+          dataBase64: mobileRouteScreenshot.toString('base64')
+        }
+      };
       const routeErrors = allPageErrors.slice(routeErrorStart);
       const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
       const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
@@ -706,10 +754,12 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
           previewSandboxed: sandboxIsolationConfirmed,
           reloadRestoresProject: Object.values(reloadTest.checks).every(Boolean),
+          mobileLayoutPasses: Object.values(mobileRouteTest.checks).every(Boolean),
           noPageErrors: unexpectedPageErrors.length === 0 && unexpectedConsoleErrors.length === 0
         },
         page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus, previewSandbox },
         reload: reloadTest,
+        mobile: mobileRouteTest,
         pageErrors: unexpectedPageErrors,
         consoleErrors: unexpectedConsoleErrors,
         expectedSandboxWarnings,
