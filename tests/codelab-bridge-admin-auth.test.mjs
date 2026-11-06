@@ -45,3 +45,10 @@ test('comment mailbox does not expose irreversible project deletion or branch me
   assert.doesNotMatch(block, /'branch_merge'/);
   assert.doesNotMatch(block, /'branch_undo_merge'/);
 });
+
+
+test('failed UI sequence clicks report the element intercepting pointer events', () => {
+  assert.match(bridge, /Pointer interception:/);
+  assert.match(bridge, /document\.elementFromPoint/);
+  assert.match(bridge, /Original error:/);
+});
