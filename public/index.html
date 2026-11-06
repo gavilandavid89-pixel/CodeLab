@@ -112,7 +112,20 @@
     #webWorkspacePanel, #webWorkspaceMain { min-width: 0; min-height: 0; }
     #webWorkspaceToolbar { min-height: 46px; }
     @media (max-width: 767px) {
-      #webWorkspaceToolbar { min-height: 48px; padding-bottom: 6px; }
+      #webWorkspaceToolbar {
+        min-height: 48px;
+        padding-bottom: 6px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+      }
+      #webWorkspaceToolbar > *,
+      #webWorkspaceToolbar .web-action {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
       #webWorkspaceToolbar .web-action { min-height: 44px; min-width: 44px; }
       #webWorkspaceMain { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
     }
