@@ -13,7 +13,10 @@ test('CodeLab browser QA runs against the persisted project HTML with Chromium',
 
 test('CodeLab browser QA covers desktop and mobile and tests the actual CTA click', () => {
   assert.match(worker, /name: 'desktop', width: 1440, height: 1000/);
-  assert.match(worker, /name: 'mobile', width: 390, height: 844/);\n  assert.match(worker, /await page\\.setViewportSize/);\n  assert.match(worker, /const context = await browser\\.newContext/);\n  assert.doesNotMatch(worker, /for \\(const viewport of viewports\\)[\\s\\S]{0,500}browser\\.newContext/);
+  assert.match(worker, /name: 'mobile', width: 390, height: 844/);
+  assert.match(worker, /await page\.setViewportSize/);
+  assert.match(worker, /const context = await browser\.newContext/);
+  assert.doesNotMatch(worker, /for \(const viewport of viewports\)[\s\S]{0,500}browser\.newContext/);
   assert.match(worker, /button\.click\(\{ timeout: 5000 \}\)/);
   assert.match(worker, /Interacción funcionando/);
   assert.match(worker, /noHorizontalOverflow/);
