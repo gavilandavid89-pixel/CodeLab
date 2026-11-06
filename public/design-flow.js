@@ -3,7 +3,7 @@
   'use strict';
   let modal, canvas, svg, pendingStart = null, draftPath = null, chooseMode = false, selectedSource = null, activeTarget = null, gestureOrigin = null;
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  function designProjects() { return projects.filter(p => p && p.type === 'design' && p.design && Array.isArray(p.design.elements)); }
+  function designProjects() { return projects.filter(p => p && (p.type === 'design' || p.hasDesignSpace === true) && p.design && Array.isArray(p.design.elements)); }
   function findProject(id) { return designProjects().find(p => p.id === id); }
   function allConnections() {
     const out = [];
