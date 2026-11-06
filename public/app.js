@@ -4830,6 +4830,10 @@ function duplicateDesignElement() {
     label: (el.label || 'Capa') + ' copia'
   }));
   const duplicateIds = new Map(selected.map((el, index) => [el.id, copies[index].id]));
+  if (Array.isArray(p.design.canvasConnections)) {
+    const newCanvasConnections = p.design.canvasConnections.filter(connection => duplicateIds.has(connection.sourceElementId) && duplicateIds.has(connection.targetElementId)).map(connection => ({...connection, id:'wire_'+(crypto.randomUUID ? crypto.randomUUID() : Date.now()+Math.random()), sourceElementId:duplicateIds.get(connection.sourceElementId), targetElementId:duplicateIds.get(connection.targetElementId)}));
+    p.design.canvasConnections.push(...newCanvasConnections);
+  }
   copies.forEach((copy, index) => {
     const original = selected[index];
     const internalTarget = selected.find(target => original.href === '#' + designLayerDomId(target.id));
@@ -4848,6 +4852,7 @@ function deleteDesignElement() {
   p.design.elements = p.design.elements.filter(el => !deletedElementIds.has(el.id));
   // Never leave graph edges pointing at a layer that no longer exists.
   if (Array.isArray(p.design.flowConnections)) p.design.flowConnections = p.design.flowConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId));
+  if (Array.isArray(p.design.canvasConnections)) p.design.canvasConnections = p.design.canvasConnections.filter(connection => !deletedElementIds.has(connection.sourceElementId) && !deletedElementIds.has(connection.targetElementId));
   selectedDesignElementId = null; selectedDesignElementIds = []; renderDesignWorkspace(); saveProjectsToStorage();
 }
 function openDesignFlowGraph() {
