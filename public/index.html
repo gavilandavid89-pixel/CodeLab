@@ -764,6 +764,7 @@
             <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
               <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
             </select>
+            <button id="syncDesignToWebBtn" type="button" onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white" title="Sincroniza el diseño actual con el Editor Web"><i class="fa-solid fa-arrows-rotate mr-1"></i><span class="hidden sm:inline">Sincronizar con Web</span><span class="sm:hidden">Sincronizar</span></button>
 
             <button id="designConnectBtn" type="button" onclick="setDesignConnectMode(!window.designConnectMode)" aria-pressed="false" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold" title="Une dos capas directamente en el lienzo arrastrando una soga"><i class="fa-solid fa-link mr-1"></i> Conectar</button>
             <button id="openDesignFlowGraph" type="button" onclick="openDesignFlowGraph()" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold" title="Conectar opciones con páginas mediante nodos"><i class="fa-solid fa-diagram-project mr-1"></i> Nodos</button>
