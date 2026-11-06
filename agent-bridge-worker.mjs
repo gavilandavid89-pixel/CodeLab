@@ -690,6 +690,12 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         const headerRect = studioHeader?.getBoundingClientRect();
         const primaryButton = document.querySelector('#studioView > header button');
         const buttonRect = primaryButton?.getBoundingClientRect();
+        const toolbar = document.getElementById('webWorkspaceToolbar');
+        const toolbarButtons = [...(toolbar?.querySelectorAll('.web-action') || [])].map(button => {
+          const rect = button.getBoundingClientRect();
+          return { left: Math.round(rect.left), right: Math.round(rect.right), width: Math.round(rect.width), height: Math.round(rect.height) };
+        });
+        const toolbarControlsDoNotOverlap = toolbarButtons.every((rect, index) => index === 0 || rect.left >= toolbarButtons[index - 1].right - 1);
         return {
           viewportWidth: innerWidth,
           documentWidth: document.documentElement.scrollWidth,
@@ -701,7 +707,11 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           previewPanel: rectFor('previewPanel'),
           previewIframe: rectFor('previewIframe'),
           headerHeight: headerRect ? Math.round(headerRect.height) : 0,
-          headerButtonHeight: buttonRect ? Math.round(buttonRect.height) : 0
+          headerButtonHeight: buttonRect ? Math.round(buttonRect.height) : 0,
+          toolbarClientWidth: toolbar?.clientWidth || 0,
+          toolbarScrollWidth: toolbar?.scrollWidth || 0,
+          toolbarButtons,
+          toolbarControlsDoNotOverlap
         };
       });
       const mobileCodeScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
@@ -724,6 +734,9 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           studioVisible: mobileRoutePage.studioVisible,
           projectOpened: mobileRoutePage.projectTitle === project.name,
           noHorizontalOverflow: mobileRoutePage.documentWidth <= mobileRoutePage.viewportWidth + 1,
+          toolbarControlsDoNotOverlap: mobileRoutePage.toolbarControlsDoNotOverlap,
+          toolbarActionsTouchSized: mobileRoutePage.toolbarButtons.length > 0 && mobileRoutePage.toolbarButtons.every(button => button.width >= 44 && button.height >= 44),
+          toolbarScrollsInsteadOfShrinking: mobileRoutePage.toolbarScrollWidth >= mobileRoutePage.toolbarClientWidth,
           workspaceVisible: !!mobileRoutePage.webWorkspacePanel && mobileRoutePage.webWorkspacePanel.width > 0 && mobileRoutePage.webWorkspacePanel.height > 0,
           previewTabTouchSized: previewTabHeight >= 44,
           previewTabSwitchWorks: !!mobilePreviewHeading,
