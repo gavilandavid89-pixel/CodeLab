@@ -1934,6 +1934,49 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Auth status / me
+      // One-time ADMIN handoff minted only by the trusted native operator.
+      // The ticket is a short-lived row in codelab_auth_sessions and is consumed
+      // atomically before a normal HttpOnly browser session is issued.
+      if (req.method === 'GET' && pathname === '/api/auth/native-handoff') {
+        const requestUrl = new URL(req.url, 'http://localhost');
+        const ticket = requestUrl.searchParams.get('ticket') || '';
+        if (!/^[a-f0-9]{48}$/.test(ticket) || !accountPool) {
+          return sendJson(res, 404, { error: 'handoff_not_found' });
+        }
+        try {
+          const accountResult = await accountPool.query(
+            "SELECT id, username, role FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1"
+          );
+          if (!accountResult.rowCount) return sendJson(res, 404, { error: 'handoff_not_found' });
+          const account = accountResult.rows[0];
+          const consumed = await accountPool.query(
+            "DELETE FROM codelab_auth_sessions WHERE session_id=$1 AND expires_at > NOW() AND user_data->>'provider'='local' AND user_data->>'id'=$2 AND user_data->>'role'='admin' RETURNING user_data",
+            [ticket, String(account.id)]
+          );
+          if (!consumed.rowCount) return sendJson(res, 404, { error: 'handoff_expired_or_used' });
+          const storedUser = consumed.rows[0].user_data || {};
+          const session = await createSession({
+            id: String(account.id),
+            provider: 'local',
+            name: account.username,
+            role: 'admin',
+            email: storedUser.email || null,
+            avatar: storedUser.avatar || null
+          });
+          setSessionCookie(res, session.id, req);
+          setSecurityHeaders(res);
+          res.writeHead(303, {
+            Location: '/',
+            'Cache-Control': 'no-store, max-age=0',
+            'Referrer-Policy': 'no-referrer'
+          });
+          return res.end();
+        } catch (error) {
+          console.error('native_admin_handoff_failed:', error.message);
+          return sendJson(res, 500, { error: 'handoff_unavailable' });
+        }
+      }
+
       if (req.method === 'GET' && pathname === '/api/auth/status') {
         const cfg = oauthConfigured();
         const user = await getSessionUser(req);
