@@ -580,6 +580,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           }
         });
       }
+      step = 'set-route-desktop-viewport';
+      await page.setViewportSize({ width: 1440, height: 1000 });
       step = 'load-public-project-route';
       const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
       const routeUrl = baseUrl + '/?projectId=' + encodeURIComponent(project.id);
