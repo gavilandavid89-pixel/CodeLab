@@ -704,25 +704,49 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           headerButtonHeight: buttonRect ? Math.round(buttonRect.height) : 0
         };
       });
-      const mobileRouteScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
-      if (mobileRouteScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile public route screenshot exceeds 3 MiB.');
+      const mobileCodeScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (mobileCodeScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile code-mode screenshot exceeds 3 MiB.');
+      const previewTab = page.locator('#mobileTabPreview');
+      const previewTabHeight = await previewTab.evaluate(element => Math.round(element.getBoundingClientRect().height)).catch(() => 0);
+      step = 'switch-mobile-to-preview';
+      await previewTab.click({ timeout: 10000 });
+      await page.locator('#previewPanel').waitFor({ state: 'visible', timeout: 10000 });
+      await page.frameLocator('#previewIframe').locator('h1').waitFor({ state: 'visible', timeout: 15000 });
+      const mobilePreviewHeading = String(await page.frameLocator('#previewIframe').locator('h1').textContent() || '').trim();
+      const mobilePreviewScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (mobilePreviewScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile preview-mode screenshot exceeds 3 MiB.');
+      step = 'switch-mobile-back-to-code';
+      await page.locator('#mobileTabCode').click({ timeout: 10000 });
+      await page.locator('#editorPanel').waitFor({ state: 'visible', timeout: 10000 });
+      const mobileCodeRestored = await page.locator('#editorPanel').evaluate(element => getComputedStyle(element).display !== 'none');
       const mobileRouteTest = {
         checks: {
           studioVisible: mobileRoutePage.studioVisible,
           projectOpened: mobileRoutePage.projectTitle === project.name,
           noHorizontalOverflow: mobileRoutePage.documentWidth <= mobileRoutePage.viewportWidth + 1,
           workspaceVisible: !!mobileRoutePage.webWorkspacePanel && mobileRoutePage.webWorkspacePanel.width > 0 && mobileRoutePage.webWorkspacePanel.height > 0,
-          previewVisible: !!mobileRoutePage.previewIframe && mobileRoutePage.previewIframe.width > 0 && mobileRoutePage.previewIframe.height > 0,
-          headerControlsTouchSized: mobileRoutePage.headerButtonHeight >= 40
+          previewTabTouchSized: previewTabHeight >= 44,
+          previewTabSwitchWorks: !!mobilePreviewHeading,
+          previewVisibleInPreviewMode: mobilePreviewHeading === 'Diseña. Construye. Publica.',
+          codeTabRestoresEditor: mobileCodeRestored
         },
-        page: mobileRoutePage,
-        screenshot: {
-          role: 'public-route-mobile',
-          label: 'CodeLab deployed project route — ADMIN workspace — mobile',
-          mimeType: 'image/png',
-          sizeBytes: mobileRouteScreenshot.length,
-          dataBase64: mobileRouteScreenshot.toString('base64')
-        }
+        page: { ...mobileRoutePage, previewTabHeight, mobilePreviewHeading, mobileCodeRestored },
+        screenshots: [
+          {
+            role: 'public-route-mobile-code',
+            label: 'CodeLab deployed project route — mobile code mode',
+            mimeType: 'image/png',
+            sizeBytes: mobileCodeScreenshot.length,
+            dataBase64: mobileCodeScreenshot.toString('base64')
+          },
+          {
+            role: 'public-route-mobile-preview',
+            label: 'CodeLab deployed project route — mobile preview mode',
+            mimeType: 'image/png',
+            sizeBytes: mobilePreviewScreenshot.length,
+            dataBase64: mobilePreviewScreenshot.toString('base64')
+          }
+        ]
       };
       const routeErrors = allPageErrors.slice(routeErrorStart);
       const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
