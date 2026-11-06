@@ -48,6 +48,10 @@ test('CodeLab public route QA authenticates ADMIN, tests preview, reload, and sa
   assert.match(worker, /set-route-mobile-viewport/);
   assert.match(worker, /mobileLayoutPasses/);
   assert.match(worker, /public-route-mobile/);
+  assert.match(worker, /#mobileTabPreview/);
+  assert.match(worker, /switch-mobile-to-preview/);
+  assert.match(worker, /previewTabSwitchWorks/);
+  assert.match(worker, /codeTabRestoresEditor/);
   assert.match(worker, /public-route-desktop/);
   assert.match(worker, /expectedSandboxPageErrors/);
   assert.match(worker, /sandboxIsolationConfirmed/);
