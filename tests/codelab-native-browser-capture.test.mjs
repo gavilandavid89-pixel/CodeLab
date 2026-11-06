@@ -37,3 +37,11 @@ test('CodeLab browser QA returns viewable PNG evidence and is opt-in on project 
 test('CodeLab browser QA does not claim the isolated HTML render is the public route', () => {
   assert.match(worker, /not the public app route/);
 });
+
+test('Native mailbox leases are workspace-scoped, expire dead commands, and heartbeat active work', () => {
+  assert.match(worker, /status IN \\('queued','running'\\) AND expires_at <= now\\(\\)/);
+  assert.match(worker, /WHERE workspace_id=\\$1 AND status='running' AND updated_at < now\\(\\) - interval '3 minutes'/);
+  assert.match(worker, /heartbeatTimer = setInterval/);
+  assert.match(worker, /SET updated_at=now\\(\\) WHERE command_id=\\$1 AND workspace_id=\\$2 AND status='running'/);
+  assert.match(worker, /clearInterval\\(heartbeatTimer\\)/);
+});
