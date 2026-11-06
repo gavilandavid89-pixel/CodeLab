@@ -2,7 +2,7 @@
 
 **Cuenta propietaria de trabajo y pruebas: `ADMIN`.**
 
-Esta política aplica a cualquier agente, asistente, automatización, prueba manual o ejecución de navegador que trabaje sobre CodeLab.
+Esta política aplica a cualquier agente, asistente, automatización, prueba manual o ejecución de navegador que trabaje sobre CodeLab. El puente de GitHub Actions aplica esta regla a **todos** sus comandos, incluidos los de solo lectura.
 
 ## Regla principal
 
@@ -20,10 +20,10 @@ El objetivo es que el usuario pueda entrar posteriormente en CodeLab con su cuen
 
 ## Automatización y pruebas con GitHub Actions
 
-- Para las acciones de proyecto del puente de CodeLab, usar obligatoriamente `use_admin_session: true`.
+- Para **todos** los comandos del puente de CodeLab, usar obligatoriamente `use_admin_session: true`; el validador rechaza cualquier comando que no lo indique.
 - Los secretos `CODELAB_ADMIN_USERNAME` y `CODELAB_ADMIN_PASSWORD` deben corresponder a las credenciales de la cuenta CodeLab **ADMIN**. El valor esperado de `CODELAB_ADMIN_USERNAME` es `ADMIN`.
-- El puente debe comprobar el usuario devuelto por `/api/auth/login` y rechazar la ejecución si no es exactamente `ADMIN`; no basta con que el login responda correctamente o que el rol sea administrador.
-- Después de cargar la aplicación, comprobar `/api/auth/status` y verificar que la sesión activa sigue siendo `ADMIN` y que el workspace es el de esa cuenta.
+- El puente exige que `CODELAB_ADMIN_USERNAME` sea exactamente `ADMIN`, comprueba que `/api/auth/login` devuelva el nombre exacto `ADMIN` con proveedor `local` e ID de usuario, y rechaza la ejecución si no coincide. No basta con que el login responda correctamente o que el rol sea administrador.
+- Después de cargar la aplicación, comprobar `/api/auth/status` y verificar que la sesión activa sigue siendo `ADMIN`, con el mismo ID de usuario y el mismo `workspaceId` que devolvió el login. Si identidad o workspace no coinciden, la ejecución se detiene antes de operar.
 - No usar el fallback demo de la interfaz para pruebas automatizadas.
 - Las pruebas de lectura sin cambios también deben usar la cuenta ADMIN cuando inspeccionen proyectos privados del usuario.
 
@@ -39,7 +39,7 @@ Para declarar guardado un proyecto o cambio:
 4. Confirmar que el proyecto, sus elementos y los cambios esperados aparecen en esa lectura.
 5. Cuando sea relevante, abrir una sesión nueva autenticada como ADMIN y comprobar que el contenido sigue disponible.
 
-Los resultados deben distinguir claramente entre guardado local, sincronización confirmada y lectura de vuelta desde el servidor.
+Los resultados exitosos del puente incluyen `diagnostics.account_context` con cuenta, proveedor, rol, workspace y confirmaciones de identidad/workspace; nunca incluyen contraseñas, cookies ni tokens. Los resultados deben distinguir claramente entre guardado local, sincronización confirmada y lectura de vuelta desde el servidor.
 
 ## Proyectos auxiliares de QA
 
