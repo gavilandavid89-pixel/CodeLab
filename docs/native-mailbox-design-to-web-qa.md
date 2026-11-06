@@ -155,7 +155,31 @@ Se corrigió el worker:
 
 La interrupción real durante los deploys quedó observada: un comando permaneció `running` tras el reinicio y fue recuperado por el worker después del umbral de tres minutos. Ese evento sirvió para identificar el problema de lease; no se borró ni se maquilló el resultado histórico.
 
-## 7. Qué está probado y qué no
+## 7. Verificación de la ruta pública y arreglo de layout
+
+La prueba nativa `native-codelab-browser-qa-20261106-08` terminó `succeeded` con `browserTest.passed=true`. Ya no prueba solamente `page.setContent`: abre la ruta desplegada `/?projectId=...` en Chromium y carga el workspace ADMIN mediante las claves locales `codelab_xd_workspace_v4` y `codelab_xd_workspace_token_v1` (token HMAC generado dentro del worker; nunca se devuelve al resultado).
+
+Comprobaciones de la ruta real:
+- HTTP 200/OK.
+- Workspace activo `ws_local_admin`.
+- Proyecto abierto con el nombre esperado.
+- Vista previa embebida renderizada.
+- Botón de la vista previa pulsado y texto `Interacción funcionando ✓`.
+- Sin overflow horizontal.
+- Iframe de preview conserva `sandbox="allow-scripts allow-forms"`, sin `allow-same-origin`.
+- Cero errores inesperados de página/consola.
+
+Los cuatro errores de acceso a `localStorage` del documento sandboxed se clasifican aparte como restricciones esperadas del iframe aislado. No se añadió `allow-same-origin`: hacerlo debilitaría el aislamiento del código de usuario. El resultado conserva esos avisos en `expectedSandboxWarnings`, no los oculta.
+
+La captura de la ruta detectó un bug de estructura HTML: el `<header>` principal de Studio no se cerraba antes de `#mainSplit`. El panel de trabajo terminaba con solo 242 px de alto y quedaba mucho espacio vacío. Se añadió el cierre correcto en `public/index.html` y una regresión que garantiza que el header cierre antes del main. Tras el deploy, Chromium midió:
+- `#studioView`: 1440×1000.
+- `#mainSplit`: 1440×953.
+- `#previewPanel`: 712×906.
+- `#previewIframe`: 712×869.
+
+Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase64` (ruta real), `result.browserTest.viewports[0].screenshot.dataBase64` (HTML escritorio) y `result.browserTest.viewports[1].screenshot.dataBase64` (HTML móvil). Las tres se recuperaron del resultado del buzón y se visualizaron.
+
+## 8. Qué está probado y qué no
 
 ### Confirmado por resultados del buzón/DB
 - Creación del proyecto en ADMIN.
@@ -174,7 +198,7 @@ La interrupción real durante los deploys quedó observada: un comando permaneci
 
 La navegación pública intentada desde el cliente de investigación no pudo completarse (error interno/no accesible). Eso no demuestra que la web esté caída, pero tampoco permite afirmar que la ruta pública funciona. La prueba de navegador sigue pendiente. El worker ya importa `playwright-core` y `@sparticuz/chromium`, pero la acción `codelab_project_inspect` actual solo inspecciona el estado guardado; todavía no ejecuta Chromium sobre el HTML de CodeLab.
 
-## 8. Protocolo para continuar sin desviaciones
+## 9. Protocolo para continuar sin desviaciones
 
 1. Leer esta bitácora antes de ejecutar trabajo nuevo.
 2. Confirmar repo, rama y servicio autorizado; no cambiar otros recursos.
@@ -187,9 +211,9 @@ La navegación pública intentada desde el cliente de investigación no pudo com
 9. Si se cambia el código, Actions puede validar el código fuente. Después comprobar el deploy del único servicio permitido. Finalmente, volver a usar el buzón nativo para probar el proyecto real.
 10. Actualizar esta bitácora con comandos, estados, revisiones, commit/deploy y evidencia. Marcar cada resultado como **confirmado**, **fallido** o **pendiente**.
 
-## 9. Próximo bloque de trabajo
+## 10. Próximo bloque de trabajo
 
-**Prioridad inmediata:** agregar una prueba separada de la ruta pública real del proyecto, con identidad ADMIN y sesión/workspace autenticados. No confundirla con el render aislado ya aprobado. La prueba debe:
+**Próxima mejora:** ampliar el test móvil de la aplicación CodeLab en sí (la prueba actual valida el HTML móvil aislado y la ruta pública en escritorio). Mantener separada la prueba del editor móvil de la prueba de responsive del sitio exportado. También conviene persistir las capturas de producción en Object Storage con claves por comando y mantener solo referencias/metadata en JSONB si el volumen crece.
 - cargar el HTML guardado en Chromium;
 - esperar DOM listo;
 - confirmar título, encabezado y botón;
@@ -198,7 +222,7 @@ La navegación pública intentada desde el cliente de investigación no pudo com
 - reportar errores de consola y excepciones de página;
 - distinguir entre render aislado del HTML (`page.setContent`) y navegación por la URL pública real.
 
-No declarar “web verificada” hasta completar ambos niveles: render/interacción del HTML y carga de la ruta pública. Las capturas del buzón se deben recuperar desde `result.browserTest.viewports[].screenshot.dataBase64` y visualizar; no basta con afirmar que existen.
+La conversión de prueba ya pasó ambos niveles: render/interacción del HTML y carga de la ruta pública. Para proyectos nuevos, repetir ambos niveles y visualizar las capturas; no basta con afirmar que existen.
 
 ---
 **Regla de mantenimiento:** esta bitácora prevalece sobre recuerdos informales o explicaciones anteriores cuando describan de forma distinta la arquitectura o los resultados observados. Si algo cambia, corregir este documento con fecha y evidencia; no borrar el historial de decisiones importantes.
