@@ -129,14 +129,18 @@
       #webWorkspaceToolbar .web-action { min-height: 44px; min-width: 44px; }
       #webWorkspaceMain { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
     }
-    #designStudioPanel { max-width: 100%; position: relative; overflow: hidden; }
-    #designCanvasScroll { position: absolute; inset: 0; min-width: 0; overscroll-behavior: contain; touch-action: pan-x pan-y; padding: 24px; }
+    #designStudioPanel { max-width: 100%; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+    #designCanvasScroll {
+      position: relative; flex: 1 1 auto; min-width: 0; min-height: 0;
+      overscroll-behavior: contain; touch-action: pan-x pan-y; padding: 48px;
+      overflow: auto; cursor: grab;
+    }
     #designStudioPanel > .design-toolbar {
-      position: absolute; z-index: 40; top: 12px; right: 12px;
-      width: min(360px, calc(100vw - 24px)); max-height: min(68dvh, 760px);
-      display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+      position: relative; z-index: 40; flex: 0 0 auto;
+      width: 100%; max-height: min(38dvh, 420px);
+      display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
       gap: 8px; overflow-y: auto; overflow-x: hidden; white-space: normal;
-      border: 1px solid #334155; border-radius: 14px; box-shadow: 0 20px 60px #0009;
+      border-bottom: 1px solid #334155; box-shadow: 0 8px 30px #0006;
       background: rgb(15 23 42 / .97); backdrop-filter: blur(14px);
     }
     #designStudioPanel > .design-toolbar > * { max-width: 100%; flex-shrink: 0; }
@@ -150,7 +154,13 @@
     #designStudioPanel.design-inspector-hidden #designLayersPanel { display: none !important; }
     #designStudioPanel.design-options-hidden > .design-toolbar { display: none !important; }
     #designStudioPanel.design-inspector-hidden #designCanvasScroll { flex: 1 1 auto; }
-    #designStudioPanel #designCanvas { transform-origin: top left; touch-action: none; user-select: none; }
+    #designStudioPanel #designCanvas { transform-origin: top left; touch-action: none; user-select: none; flex: 0 0 auto; }
+    #designStudioPanel #designPageFrame { position: relative; flex: 0 0 auto; width: max-content; margin: 0 auto 48px; }
+    #designStudioPanel #designPageFrame::before {
+      content: 'Página · ' attr(data-size); position: absolute; left: 0; top: -24px;
+      color: #94a3b8; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+      pointer-events: none;
+    }
     #designCanvasScroll.design-gesture-active { cursor: grabbing; }
     #designOptionsReopen { position: absolute; z-index: 45; top: 12px; right: 12px; }
     #designStudioPanel:not(.design-options-hidden) #designOptionsReopen { display: none; }
@@ -159,24 +169,18 @@
          stacking on top of each other. Both panels stay reachable, but consume
          only bounded portions of the viewport. */
       #designStudioPanel { overflow: hidden !important; }
+      #designCanvasScroll { padding: 32px 24px calc(32px + 56px + env(safe-area-inset-bottom)) !important; }
       #designStudioPanel > .design-toolbar {
-        top: 8px !important;
-        right: 8px !important;
-        left: 8px !important;
-        width: auto !important;
-        max-height: min(30dvh, 280px) !important;
+        width: 100% !important;
+        max-height: min(24dvh, 220px) !important;
         padding: 8px !important;
         gap: 6px !important;
-        border-radius: 12px !important;
+        border-radius: 0 !important;
       }
       #designStudioPanel > .design-toolbar > * { min-width: 0; }
       #designStudioPanel > .design-toolbar > .ml-auto {
         width: 100%;
         margin-left: 0 !important;
-      }
-      #designStudioPanel #designCanvasScroll {
-        padding: 10px !important;
-        padding-bottom: calc(10px + 56px + env(safe-area-inset-bottom)) !important;
       }
       #designStudioPanel #designCanvasScroll > div:first-child { display: none; }
       #designStudioPanel #designLayersPanel {
@@ -233,7 +237,7 @@
       #studioView > header > div:first-child { width: 100%; gap: 6px !important; }
       #studioView #statusBadge { flex: 0 1 auto; }
       #studioView #mainSplit { min-height: 0; }
-      #designStudioPanel { overflow: auto; }
+      #designStudioPanel { overflow: hidden !important; }
       #mobileBottomBar { bottom: max(0px, env(safe-area-inset-bottom)) !important; }
       /* The mobile bar uses display:flex !important; let the workspace's
          hidden state win when Design is active. */
@@ -487,9 +491,7 @@
           </div>
           <div class="flex items-center gap-2 py-1">
             <span class="hidden lg:inline text-[10px] text-slate-500 font-mono mr-1">Alt+1 HTML · Alt+2 CSS · Alt+3 JS</span>
-            <button onclick="updatePreview()" title="Ctrl+Enter" class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-xs text-white font-semibold flex items-center gap-1">
-              <i class="fa-solid fa-play text-[10px]"></i> Ejecutar
-            </button>
+            <span class="hidden lg:inline text-[10px] text-slate-500 font-mono mr-1">Ctrl+Enter · actualiza Preview</span>
           </div>
         </div>
 
@@ -608,11 +610,13 @@
             <div id="designLayers" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-1"></div>
             <div id="designInspectorProperties" class="shrink-0 max-h-[52%] overflow-y-auto border-t border-slate-800 p-3 space-y-2 text-xs"></div>
           </aside>
-          <div id="designCanvasScroll" class="flex-1 min-w-0 w-full max-w-full overflow-auto p-4 sm:p-8 bg-[#171923]">
-            <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Lienzo · arrastra elementos para moverlos</div>
-            <div id="designCanvas" class="relative mx-auto bg-white text-slate-900 shadow-2xl overflow-hidden" style="width:1440px;height:900px;max-width:none;background-color:#ffffff;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:20px 20px;touch-action:pan-x pan-y;">
-              <div id="designCanvasEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
-                <i class="fa-solid fa-pen-ruler text-4xl mb-3"></i><strong class="text-sm">Tu lienzo está listo</strong><span class="text-xs mt-1">Añade un elemento desde la barra superior.</span>
+          <div id="designCanvasScroll" class="flex-1 min-w-0 w-full max-w-full overflow-auto bg-[#171923]">
+            <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Workspace · mueve la página y conecta nodos alrededor de ella</div>
+            <div id="designPageFrame" data-size="1440 × 900">
+              <div id="designCanvas" class="relative bg-white text-slate-900 shadow-2xl overflow-hidden" style="width:1440px;height:900px;max-width:none;background-color:#ffffff;touch-action:none;">
+                <div id="designCanvasEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
+                  <i class="fa-solid fa-pen-ruler text-4xl mb-3"></i><strong class="text-sm">Tu página está lista</strong><span class="text-xs mt-1">Añade elementos desde la barra superior.</span>
+                </div>
               </div>
             </div>
           </div>
@@ -629,9 +633,6 @@
     </button>
     <button type="button" onclick="setMobileStudioMode('preview')" id="mobileTabPreview" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-lg text-slate-400 text-[10px] font-semibold">
       <i class="fa-solid fa-desktop text-base"></i> Preview
-    </button>
-    <button type="button" onclick="updatePreview()" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-lg text-emerald-400 text-[10px] font-semibold">
-      <i class="fa-solid fa-play text-base"></i> Ejecutar
     </button>
     <button type="button" onclick="toggleAiPanel()" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-lg text-purple-400 text-[10px] font-semibold">
       <i class="fa-solid fa-wand-magic-sparkles text-base"></i> IA
