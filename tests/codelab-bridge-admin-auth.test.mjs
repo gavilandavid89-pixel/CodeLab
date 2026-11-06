@@ -28,3 +28,20 @@ test('successful bridge reports include verified account context without credent
   assert.match(bridge, /identityVerified: true/);
   assert.match(bridge, /workspaceVerified: true/);
 });
+
+
+test('comment mailbox supports CodeLab QA and project operations with approval gates', () => {
+  assert.match(bridge, /commentMailboxActions/);
+  assert.match(bridge, /'sequence', 'workspace_inspect', 'project_list'/);
+  assert.match(bridge, /'design_element_add'/);
+  assert.match(bridge, /commentMutatingActions/);
+  assert.match(bridge, /State-changing CodeLab mailbox commands require approval/);
+  assert.match(bridge, /This action is not available from the CodeLab QA mailbox/);
+});
+
+test('comment mailbox does not expose irreversible project deletion or branch merge', () => {
+  const block = bridge.match(/const commentMailboxActions = new Set\(\[([\s\S]*?)\]\);/)?.[1] || '';
+  assert.doesNotMatch(block, /'project_delete'/);
+  assert.doesNotMatch(block, /'branch_merge'/);
+  assert.doesNotMatch(block, /'branch_undo_merge'/);
+});
