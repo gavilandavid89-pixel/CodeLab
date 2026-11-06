@@ -8,7 +8,7 @@ test('CodeLab browser QA runs against the persisted project HTML with Chromium',
   assert.match(worker, /async function captureCodeLabProjectBrowser\(/);
   assert.match(worker, /playwrightChromium\.launch/);
   assert.match(worker, /page\.setContent\(html/);
-  assert.match(worker, /captureMethod: 'playwright-chromium-saved-html-setcontent'/);
+  assert.match(worker, /captureMethod: 'playwright-chromium-saved-html-and-public-route'/);
 });
 
 test('CodeLab browser QA covers desktop and mobile and tests the actual CTA click', () => {
@@ -30,12 +30,18 @@ test('CodeLab browser QA covers desktop and mobile and tests the actual CTA clic
 
 test('CodeLab browser QA returns viewable PNG evidence and is opt-in on project inspection', () => {
   assert.match(worker, /dataBase64: screenshot\.toString\('base64'\)/);
+  assert.match(worker, /dataBase64: routeScreenshot\.toString\('base64'\)/);
   assert.match(worker, /command\.payload\?\.browser_test === true/);
   assert.match(worker, /inspection\.browserTest = await captureCodeLabProjectBrowser/);
 });
 
-test('CodeLab browser QA does not claim the isolated HTML render is the public route', () => {
-  assert.match(worker, /not the public app route/);
+test('CodeLab public route QA authenticates the ADMIN workspace and tests the embedded preview', () => {
+  assert.match(worker, /localStorage\.setItem\('codelab_xd_workspace_v4', id\)/);
+  assert.match(worker, /workspaceTokenFor\(workspaceId\)/);
+  assert.match(worker, /page\.goto\(routeUrl/);
+  assert.match(worker, /#currentProjectTitle/);
+  assert.match(worker, /frameLocator\('#previewIframe'\)/);
+  assert.match(worker, /public-route-desktop/);
 });
 
 test('Native mailbox leases are workspace-scoped, expire dead commands, and heartbeat active work', () => {
