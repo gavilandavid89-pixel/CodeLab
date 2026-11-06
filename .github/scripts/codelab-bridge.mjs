@@ -1782,7 +1782,24 @@ try {
             if (u.origin !== targetUrl.origin) throw new Error('External navigation is blocked by the bridge.');
           }
         }
-        await locator.click({ timeout: 10000 });
+        try {
+          await locator.click({ timeout: 10000 });
+        } catch (clickError) {
+          const interception = await locator.evaluate(el => {
+            const rect = el.getBoundingClientRect();
+            const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            if (!hit || hit === el || el.contains(hit)) return null;
+            return {
+              tag: hit.tagName?.toLowerCase() || null,
+              id: hit.id || null,
+              className: typeof hit.className === 'string' ? hit.className.slice(0, 160) : null,
+              role: hit.getAttribute?.('role') || null,
+              text: (hit.innerText || hit.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 160)
+            };
+          }).catch(() => null);
+          throw new Error('Sequence step ' + (index + 1) + ' click failed. Pointer interception: ' +
+            JSON.stringify(interception) + '. Original error: ' + String(clickError?.message || clickError).slice(0, 700));
+        }
         result.push({ step: index + 1, action: step.action, selector: step.selector, succeeded: true, urlAfter: page.url() });
       } else if (step.action === 'fill') {
         await locator.fill(step.value, { timeout: 10000 });
