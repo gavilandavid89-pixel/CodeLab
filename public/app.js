@@ -3410,6 +3410,7 @@ function initializeDesignProject(project) {
   renderDesignWorkspace();
   bindDesignCanvasEvents();
   updateDesignHistoryButtons();
+  requestAnimationFrame(() => fitDesignToViewport());
 }
 
 // Overlay controls let the canvas use the full workspace underneath.
@@ -3421,7 +3422,9 @@ function toggleDesignOptions(show) {
   if (reopen) reopen.setAttribute('aria-expanded', String(!!show));
 }
 function toggleDesignCanvasLock() {
-  designCanvasLocked = !designCanvasLocked;
+  // Kept for backwards compatibility with saved UI handlers. Design navigation
+  // must remain available; locking the whole workspace is intentionally removed.
+  designCanvasLocked = false;
   const button = document.getElementById('designCanvasLockBtn');
   const viewport = document.getElementById('designCanvasScroll');
   if (viewport) {
@@ -3462,7 +3465,7 @@ function setupDesignCanvasGestures() {
   const pointers = new Map(); let pinchStart = null; let panStart = null;
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   viewport.addEventListener('pointerdown', event => {
-    if (event.pointerType !== 'touch' || designCanvasLocked) return;
+    if (event.pointerType !== 'touch') return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
       const pts = Array.from(pointers.values());
@@ -3473,7 +3476,7 @@ function setupDesignCanvasGestures() {
     }
   }, { passive: false });
   viewport.addEventListener('pointermove', event => {
-    if (designCanvasLocked || !pointers.has(event.pointerId)) return;
+    if (!pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size >= 2 && pinchStart) {
       const pts = Array.from(pointers.values()).slice(0, 2);
@@ -3489,7 +3492,7 @@ function setupDesignCanvasGestures() {
 }
 
 function setDesignZoom(value) {
-  if (designCanvasLocked) return;
+  
   const next = Math.max(0.1, Math.min(1.5, Number(value) / 100 || 1));
   designZoom = next;
   const canvas = document.getElementById('designCanvas');
@@ -4183,15 +4186,33 @@ function renderDesignWorkspace() {
   canvas.style.boxSizing = 'border-box';
   canvas.style.border = '1px solid #cbd5e1';
   canvas.style.boxShadow = '0 12px 36px rgba(0,0,0,0.28)';
-  canvas.style.width = getDesignCanvasWidth(p.design) + 'px';
-  canvas.style.height = Math.max(layout.height, getDesignCanvasHeight(p.design)) + 'px';
+  const frameWidth = getDesignCanvasWidth(p.design);
+  const frameHeight = Math.max(layout.height, getDesignCanvasHeight(p.design) || 900);
+  canvas.style.width = frameWidth + 'px';
+  canvas.style.height = frameHeight + 'px';
   canvas.style.zoom = String(designZoom);
+  const pageFrame = document.getElementById('designPageFrame');
+  if (pageFrame) {
+    pageFrame.style.width = frameWidth * designZoom + 'px';
+    pageFrame.style.height = frameHeight * designZoom + 'px';
+    pageFrame.dataset.size = frameWidth + ' × ' + frameHeight;
+  }
   const zoomLabel = document.getElementById('designZoomLabel');
   if (zoomLabel) zoomLabel.textContent = Math.round(designZoom * 100) + '%';
   canvas.style.backgroundColor = p.design.background || '#ffffff';
+  // The page/frame is the real document surface. The grid belongs to the
+  // surrounding infinite workspace so it never washes out page colors.
+  canvas.style.backgroundImage = 'none';
+  canvas.style.backgroundSize = '';
   const gridSize = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
-  canvas.style.backgroundImage = p.design.grid ? 'linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px)' : 'none';
-  canvas.style.backgroundSize = p.design.grid ? gridSize + 'px ' + gridSize + 'px' : '';
+  const viewport = document.getElementById('designCanvasScroll');
+  if (viewport) {
+    viewport.style.backgroundColor = '#171923';
+    viewport.style.backgroundImage = p.design.grid
+      ? 'linear-gradient(rgba(148,163,184,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.13) 1px,transparent 1px)'
+      : 'none';
+    viewport.style.backgroundSize = p.design.grid ? gridSize + 'px ' + gridSize + 'px' : '';
+  }
   const bgPicker = document.getElementById('designBackgroundColor');
   if (bgPicker) bgPicker.value = /^#[0-9a-f]{6}$/i.test(p.design.background || '') ? p.design.background : '#ffffff';
   const gridBtn = document.getElementById('designGridBtn');
