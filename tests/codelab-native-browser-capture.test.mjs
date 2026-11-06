@@ -35,7 +35,7 @@ test('CodeLab browser QA returns viewable PNG evidence and is opt-in on project 
   assert.match(worker, /inspection\.browserTest = await captureCodeLabProjectBrowser/);
 });
 
-test('CodeLab public route QA authenticates the ADMIN workspace and tests the embedded preview', () => {
+test('CodeLab public route QA authenticates ADMIN, tests preview, and classifies sandbox warnings', () => {
   assert.match(worker, /localStorage\.setItem\('codelab_xd_workspace_v4', id\)/);
   assert.match(worker, /workspaceTokenFor\(workspaceId\)/);
   assert.match(worker, /step = 'set-route-desktop-viewport';[\s\S]{0,100}page\.setViewportSize\(\{ width: 1440, height: 1000 \}\)/);
@@ -43,6 +43,9 @@ test('CodeLab public route QA authenticates the ADMIN workspace and tests the em
   assert.match(worker, /getElementById\('currentProjectTitle'\)/);
   assert.match(worker, /frameLocator\('#previewIframe'\)/);
   assert.match(worker, /public-route-desktop/);
+  assert.match(worker, /expectedSandboxWarnings/);
+  assert.match(worker, /previewSandboxed/);
+  assert.match(worker, /about:srcdoc\|about:blank/);
 });
 
 test('Native mailbox leases are workspace-scoped, expire dead commands, and heartbeat active work', () => {
