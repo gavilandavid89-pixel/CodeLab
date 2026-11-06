@@ -432,6 +432,44 @@ async function createCodeLabProject(command) {
     designUrl: '/?projectId=' + encodeURIComponent(project.id),
   };
 }
+async function connectCodeLabProject(command) {
+  const payload = command.payload || {};
+  const sourceProjectId = payload.source_project_id;
+  const targetProjectId = payload.target_project_id;
+  const sourceElementId = payload.source_element_id;
+  for (const [label, value] of [['source_project_id', sourceProjectId], ['target_project_id', targetProjectId]]) {
+    if (typeof value !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new Error(label + ' must be a valid CodeLab project id.');
+  }
+  if (sourceProjectId === targetProjectId) throw new Error('A navigation connection must point to a different interface.');
+  if (typeof sourceElementId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(sourceElementId)) throw new Error('source_element_id must be a valid design element id.');
+  const result = await mutateAdminWorkspace(projects => {
+    const sourceIndex = projects.findIndex(item => item && item.id === sourceProjectId);
+    const target = projects.find(item => item && item.id === targetProjectId);
+    if (sourceIndex < 0) throw new Error('Source CodeLab project was not found.');
+    if (!target) throw new Error('Target CodeLab interface was not found.');
+    const sourceProject = { ...projects[sourceIndex] };
+    if (!sourceProject.design || !Array.isArray(sourceProject.design.elements)) throw new Error('Source project has no design canvas.');
+    const element = sourceProject.design.elements.find(item => item && item.id === sourceElementId);
+    if (!element) throw new Error('Source design element was not found.');
+    if (element.flowRole === 'menu') throw new Error('A dropdown menu cannot navigate to another interface.');
+    const design = { ...sourceProject.design };
+    const connections = Array.isArray(design.flowConnections) ? design.flowConnections.slice() : [];
+    const existing = connections.find(item => item && item.sourceElementId === sourceElementId && item.targetProjectId === targetProjectId);
+    if (!existing) connections.push({ sourceElementId, targetProjectId });
+    design.flowConnections = connections.filter(item => item && (item.sourceElementId !== sourceElementId || item.targetProjectId === targetProjectId));
+    const elements = design.elements.map(item => item && item.id === sourceElementId ? { ...item, flowRole: 'navigate' } : item);
+    sourceProject.design = { ...design, elements };
+    sourceProject.updatedAt = new Date().toISOString();
+    const next = projects.slice();
+    next[sourceIndex] = sourceProject;
+    return next;
+  });
+  const saved = result.state.projects.find(item => item && item.id === sourceProjectId);
+  const savedConnection = saved?.design?.flowConnections?.find(item => item && item.sourceElementId === sourceElementId && item.targetProjectId === targetProjectId);
+  if (!savedConnection) throw new Error('Connection did not pass post-save verification.');
+  return { sourceProjectId, sourceElementId, targetProjectId, sourceProjectName: saved.name, targetProjectName: result.state.projects.find(item => item && item.id === targetProjectId)?.name, revision: result.state.revision, persisted: !result.unchanged, connection: savedConnection };
+}
+
 async function convertCodeLabProjectToWeb(command) {
   const projectId = command.payload?.project_id;
   if (typeof projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
@@ -1212,6 +1250,9 @@ async function processCommand(command) {
     case 'codelab_project_inspect':
       await finish(command.command_id, 'succeeded', await inspectCodeLabProject(command));
       return;
+    case 'codelab_project_connect':
+      await finish(command.command_id, 'succeeded', await connectCodeLabProject(command));
+      return;
     case 'status':
       if (payload.operation === 'mint_admin_handoff') {
         await finish(command.command_id, 'succeeded', await mintNativeAdminHandoff());
@@ -1293,6 +1334,31 @@ async function processCommand(command) {
   }
 }
 async function main() {
+  await pool.query(`
+    DO $codelab_migration$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'codelab_agent_commands'::regclass
+           AND conname = 'codelab_agent_commands_action_check'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_connect%'
+      ) THEN
+        ALTER TABLE codelab_agent_commands
+          DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
+        ALTER TABLE codelab_agent_commands
+          ADD CONSTRAINT codelab_agent_commands_action_check
+          CHECK (action = ANY (ARRAY[
+            'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
+            'pixelforge_propose','pixelforge_approve','pixelforge_discard',
+            'pixelforge_export_image','pixelforge_capture_interface',
+            'codelab_project_create','codelab_project_convert_to_web',
+            'codelab_project_inspect','codelab_project_connect'
+          ]));
+      END IF;
+    END
+    $codelab_migration$;
+  `);
   workspaceId = await resolveAdminWorkspace();
   if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
     pixelForgeWorkspaceId = workspaceId;
