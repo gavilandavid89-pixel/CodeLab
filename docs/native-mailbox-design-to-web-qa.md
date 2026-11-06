@@ -75,7 +75,45 @@ La inspección posterior confirmó `type=web`, revisión 58, tres elementos, HTM
 URL directa del proyecto:
 https://codelab-pbw9.onrender.com/?projectId=proj_native_native-design-to-web-20261106-01
 
-## 4. Qué está probado y qué no
+## 4. Recorrido de capturas: hallazgo y corrección
+
+### 4.1 Cómo funcionaba el flujo anterior
+
+El worker ya tenía Chromium + Playwright y una rutina de captura llamada `capturePixelForgeInterface`. Esa rutina:
+- inicia Chromium headless;
+- navega a una URL fija: `/pixelforge/index.html`;
+- escucha errores de consola y excepciones de página;
+- captura la interfaz y el lienzo;
+- puede subir PNG a Neon Object Storage;
+- devuelve metadatos, `visionContext` y, cuando se solicita, `dataBase64` para que el consumidor pueda visualizar la imagen.
+
+El buzón conservaba resultados en `codelab_agent_commands.result`. Se recuperaron comandos históricos con estado `succeeded`, método `playwright-chromium-real-browser`, capturas PNG y errores de página vacíos. Ejemplo: `chatgpt-mobile-720x1600-1793844780000` (viewport 720×1600). La imagen se recuperó desde el campo `result.images[0].dataBase64` y pudo mostrarse para inspección.
+
+### 4.2 Desconexión detectada
+
+La captura anterior estaba acoplada a PixelForge: URL fija, selector `#canvas` y captura del lienzo de PixelForge. No era una capacidad genérica de CodeLab Design/Web. Las acciones `codelab_project_inspect` solo devolvían metadatos JSON y nunca abrían Chromium. Por eso la prueba de diseño a web no podía producir capturas visuales aunque el worker tuviera Playwright instalado.
+
+También existen dos buckets en Neon:
+- `codelab-captures-public` (`public_read`), usado por capturas recientes;
+- `codelab-captures` (`private`), legado. No asumir que ambos tienen el mismo acceso.
+
+### 4.3 Corrección de código introducida
+
+Se amplió `codelab_project_inspect` con una opción explícita `browser_test: true`. En ese modo:
+- vuelve a leer el proyecto persistido del workspace ADMIN;
+- carga su HTML guardado en Chromium con `page.setContent`;
+- ejecuta el test en escritorio (1440×1000) y móvil (390×844);
+- comprueba documento, viewport, frame, encabezado, botón, clic real, cambio de texto de estado, overflow horizontal y errores de consola/página;
+- toma un PNG por viewport y lo devuelve en `result.browserTest.viewports[].screenshot.dataBase64`;
+- etiqueta el método como `playwright-chromium-saved-html-setcontent` y deja claro que es un render aislado del HTML, no una navegación por la ruta pública.
+
+La captura se incluye en el resultado del comando del buzón, por lo que el consumidor puede recuperar el base64 y mostrar la imagen. El test es opt-in para que las inspecciones normales no gasten CPU ni generen imágenes.
+
+### 4.4 Regresión de código
+
+Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al job de validación de código en `.github/workflows/codelab-command-bridge.yml`. Actions solo valida sintaxis y pruebas del repositorio; no crea ni ejecuta el proyecto. El test de navegador real se dispara a través del buzón nativo.
+
+## 5. Qué está probado y qué no
 
 ### Confirmado por resultados del buzón/DB
 - Creación del proyecto en ADMIN.
@@ -94,7 +132,7 @@ https://codelab-pbw9.onrender.com/?projectId=proj_native_native-design-to-web-20
 
 La navegación pública intentada desde el cliente de investigación no pudo completarse (error interno/no accesible). Eso no demuestra que la web esté caída, pero tampoco permite afirmar que la ruta pública funciona. La prueba de navegador sigue pendiente. El worker ya importa `playwright-core` y `@sparticuz/chromium`, pero la acción `codelab_project_inspect` actual solo inspecciona el estado guardado; todavía no ejecuta Chromium sobre el HTML de CodeLab.
 
-## 5. Protocolo para continuar sin desviaciones
+## 6. Protocolo para continuar sin desviaciones
 
 1. Leer esta bitácora antes de ejecutar trabajo nuevo.
 2. Confirmar repo, rama y servicio autorizado; no cambiar otros recursos.
@@ -107,9 +145,9 @@ La navegación pública intentada desde el cliente de investigación no pudo com
 9. Si se cambia el código, Actions puede validar el código fuente. Después comprobar el deploy del único servicio permitido. Finalmente, volver a usar el buzón nativo para probar el proyecto real.
 10. Actualizar esta bitácora con comandos, estados, revisiones, commit/deploy y evidencia. Marcar cada resultado como **confirmado**, **fallido** o **pendiente**.
 
-## 6. Próximo bloque de trabajo
+## 7. Próximo bloque de trabajo
 
-**Prioridad inmediata:** implementar o habilitar una prueba de navegador real para el HTML persistido del proyecto de prueba, idealmente mediante una extensión segura de `codelab_project_inspect` o una acción de QA explícita. La prueba debe:
+**Prioridad inmediata:** ejecutar `codelab_project_inspect` con `browser_test: true` sobre el proyecto de prueba. Después de confirmar el render aislado, agregar una prueba separada de la ruta pública real. La prueba aislada debe:
 - cargar el HTML guardado en Chromium;
 - esperar DOM listo;
 - confirmar título, encabezado y botón;
@@ -118,7 +156,7 @@ La navegación pública intentada desde el cliente de investigación no pudo com
 - reportar errores de consola y excepciones de página;
 - distinguir entre render aislado del HTML (`page.setContent`) y navegación por la URL pública real.
 
-No declarar “web verificada” hasta completar ambos niveles: render/interacción del HTML y carga de la ruta pública.
+No declarar “web verificada” hasta completar ambos niveles: render/interacción del HTML y carga de la ruta pública. Las capturas del buzón se deben recuperar desde `result.browserTest.viewports[].screenshot.dataBase64` y visualizar; no basta con afirmar que existen.
 
 ---
 **Regla de mantenimiento:** esta bitácora prevalece sobre recuerdos informales o explicaciones anteriores cuando describan de forma distinta la arquitectura o los resultados observados. Si algo cambia, corregir este documento con fecha y evidencia; no borrar el historial de decisiones importantes.
