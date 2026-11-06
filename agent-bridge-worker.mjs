@@ -620,14 +620,32 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         routeStatus = String(await preview.locator('#demoStatus').textContent().catch(() => '') || '').trim();
         routeInteractionWorks = routeStatus.includes('Interacción funcionando');
       }
-      const routePage = await page.evaluate(() => ({
-        title: document.title,
-        projectTitle: document.getElementById('currentProjectTitle')?.textContent?.trim() || '',
-        studioVisible: !!document.getElementById('studioView') && !document.getElementById('studioView').classList.contains('hidden'),
-        workspaceId: localStorage.getItem('codelab_xd_workspace_v4') || '',
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth
-      }));
+      const routePage = await page.evaluate(() => {
+        const layout = {};
+        for (const id of ['studioView','mainSplit','webWorkspacePanel','previewPanel','previewIframe']) {
+          const element = document.getElementById(id);
+          if (!element) { layout[id] = null; continue; }
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          layout[id] = {
+            x: Math.round(rect.x), y: Math.round(rect.y),
+            width: Math.round(rect.width), height: Math.round(rect.height),
+            display: style.display, visibility: style.visibility,
+            flex: style.flex, classes: String(element.className || '').slice(0, 160)
+          };
+        }
+        return {
+          title: document.title,
+          projectTitle: document.getElementById('currentProjectTitle')?.textContent?.trim() || '',
+          studioVisible: !!document.getElementById('studioView') && !document.getElementById('studioView').classList.contains('hidden'),
+          workspaceId: localStorage.getItem('codelab_xd_workspace_v4') || '',
+          documentWidth: document.documentElement.scrollWidth,
+          documentHeight: document.documentElement.scrollHeight,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          layout
+        };
+      });
       step = 'screenshot-public-project-route';
       const routeScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
       if (routeScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab public route screenshot exceeds 3 MiB.');
