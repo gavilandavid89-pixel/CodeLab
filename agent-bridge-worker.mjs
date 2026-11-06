@@ -530,11 +530,19 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           statusText = String(await page.locator('#demoStatus').textContent().catch(() => '') || '').trim();
           buttonClicked = statusText.includes('Interacción funcionando');
         }
-        const metrics = await page.evaluate(() => ({
-          documentWidth: document.documentElement.scrollWidth,
-          viewportWidth: window.innerWidth,
-          horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1
-        }));
+        const metrics = await page.evaluate(() => {
+          const button = document.querySelector('[data-codelab-demo]');
+          const heading = document.querySelector('h1');
+          const buttonRect = button?.getBoundingClientRect();
+          return {
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+            horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+            buttonWidth: buttonRect ? Math.round(buttonRect.width) : 0,
+            buttonFontSize: button ? Number.parseFloat(getComputedStyle(button).fontSize) : 0,
+            headingFontSize: heading ? Number.parseFloat(getComputedStyle(heading).fontSize) : 0
+          };
+        });
         step = 'screenshot-' + viewport.name;
         const screenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
         if (screenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab ' + viewport.name + ' screenshot exceeds 3 MiB.');
@@ -549,6 +557,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
             interactionButtonPresent: buttonCount > 0,
             interactionWorks: buttonClicked,
             noHorizontalOverflow: !metrics.horizontalOverflow,
+            mobileControlsReadable: viewport.name !== 'mobile' || (metrics.buttonWidth >= 140 && metrics.buttonFontSize >= 14 && metrics.headingFontSize >= 24),
             noPageErrors: pageErrors.length === 0
           },
           page: { title: before.title, heading: before.heading, statusText, ...metrics, documentHeight: before.documentHeight },
