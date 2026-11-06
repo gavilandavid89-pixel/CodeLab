@@ -1937,6 +1937,30 @@ const server = http.createServer(async (req, res) => {
       // One-time ADMIN handoff minted only by the trusted native operator.
       // The ticket is a short-lived row in codelab_auth_sessions and is consumed
       // atomically before a normal HttpOnly browser session is issued.
+      // Mint a short-lived browser handoff only for the trusted native ADMIN workspace worker.
+      if (req.method === 'POST' && pathname === '/api/auth/native-handoff/mint') {
+        if (!accountPool) return sendJson(res, 503, { error: 'handoff_unavailable' });
+        try {
+          const accountResult = await accountPool.query(
+            "SELECT id, username, role FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1"
+          );
+          if (!accountResult.rowCount) return sendJson(res, 404, { error: 'admin_account_not_found' });
+          const account = accountResult.rows[0];
+          const workspaceId = safeId('ws_local_' + String(account.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100));
+          if (!(await isAuthorized(req, workspaceId))) return sendJson(res, 403, { error: 'native_admin_required' });
+          const ticket = crypto.randomBytes(24).toString('hex');
+          const userData = { id: String(account.id), provider: 'local', name: account.username, role: 'admin' };
+          await accountPool.query(
+            'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + INTERVAL \'10 minutes\')',
+            [ticket, JSON.stringify(userData)]
+          );
+          return sendJson(res, 201, { ok: true, ticket, expiresInSeconds: 600, oneTime: true }, { 'Cache-Control': 'no-store, max-age=0' });
+        } catch (error) {
+          console.error('native_admin_handoff_mint_failed:', error.message);
+          return sendJson(res, 500, { error: 'handoff_unavailable' });
+        }
+      }
+
       if (req.method === 'GET' && pathname === '/api/auth/native-handoff') {
         const requestUrl = new URL(req.url, 'http://localhost');
         const ticket = requestUrl.searchParams.get('ticket') || '';
