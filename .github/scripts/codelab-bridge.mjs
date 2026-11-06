@@ -20,6 +20,7 @@ function parseCommand(raw) {
   if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(command.command_id || ''))) throw new Error('Invalid command_id.');
   const allowed = new Set(['status', 'read_page', 'list_controls', 'connections_status', 'ai_ping', 'preview_diagnostics', 'preview_interact', 'preview_editor_smoke_test', 'click', 'read_element', 'fill', 'select', 'sequence', 'project_list', 'project_rename', 'project_save', 'branch_status', 'branch_create', 'branch_resume', 'branch_save', 'branch_merge', 'branch_undo_merge', 'workspace_inspect', 'project_inspect', 'project_code_read', 'design_read', 'project_code_write', 'component_search', 'component_inspect', 'component_insert', 'design_element_add', 'design_element_update', 'design_element_delete', 'design_elements_delete', 'design_element_duplicate', 'design_layer_move', 'design_layer_reorder', 'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure', 'design_element_duplicate', 'design_layer_move', 'design_elements_align', 'design_layout_configure', 'design_canvas_configure', 'project_create', 'project_duplicate', 'project_delete', 'design_template_apply', 'design_history', 'accessibility_audit', 'design_tokens_generate', 'design_export', 'design_import_json', 'design_system_import_json', 'design_system_export_json', 'ai_settings_inspect', 'design_flow_read', 'design_flow_connect', 'design_flow_disconnect', 'ai_generate', 'pixelforge_headless_list_projects', 'pixelforge_headless_inspect', 'pixelforge_headless_batch', 'project_convert_design_to_web', 'project_export_html']);
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
+  if (command.use_admin_session !== true) throw new Error('Every CodeLab bridge command must run in the authenticated ADMIN account; set use_admin_session: true.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
   // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
   if (commandSource === 'comment' && !['status', 'connections_status', 'list_controls', 'preview_diagnostics'].includes(command.action)) {
@@ -262,6 +263,7 @@ async function getJson(page, path) {
 let browser;
 let page;
 let result;
+let verifiedAdminSession = null;
 let commandId = 'unknown';
 let commandAction = 'unknown';
 let stage = 'parse_command';
@@ -330,17 +332,42 @@ try {
     stage = 'admin_authentication';
     const username = process.env.CODELAB_ADMIN_USERNAME || '';
     const password = process.env.CODELAB_ADMIN_PASSWORD || '';
-    if (!username || !password) throw new Error('Authenticated bridge unavailable: configure CODELAB_ADMIN_USERNAME and CODELAB_ADMIN_PASSWORD as repository Actions secrets.');
+    if (username !== 'ADMIN') throw new Error('ADMIN authentication blocked: CODELAB_ADMIN_USERNAME must be exactly ADMIN. No project operation was started.');
+    if (!password) throw new Error('Authenticated bridge unavailable: configure CODELAB_ADMIN_PASSWORD as a repository Actions secret.');
     const login = await page.request.post(new URL('/api/auth/login', targetUrl).href, {
       timeout: 20000,
       headers: { 'content-type': 'application/json' },
       data: { username, password }
     });
     const loginData = await login.json().catch(() => ({}));
-    if (!login.ok() || loginData.ok !== true) throw new Error('CodeLab ADMIN login failed (HTTP ' + login.status() + '). Check the Actions secrets and account status.');
-    result = { authenticatedAs: loginData.user?.name || username, role: loginData.user?.role || null, mustChangePassword: !!loginData.mustChangePassword };
+    if (!login.ok() || loginData.ok !== true) throw new Error('CodeLab ADMIN login failed (HTTP ' + login.status() + '). Check the ADMIN account secret and account status.');
+    if (loginData.user?.name !== 'ADMIN' || loginData.user?.provider !== 'local' || typeof loginData.user?.id !== 'string' || !loginData.user.id) {
+      throw new Error('ADMIN identity verification failed: the login response did not identify the exact local account ADMIN.');
+    }
+    if (typeof loginData.workspaceId !== 'string' || !loginData.workspaceId) {
+      throw new Error('ADMIN workspace verification failed: the login response did not include its workspace ID.');
+    }
     stage = 'post_login_navigation';
     await page.goto(targetUrl.href, { waitUntil: 'load', timeout: 45000 });
+    stage = 'admin_session_verification';
+    const authStatus = await getJson(page, '/api/auth/status');
+    const activeUser = authStatus.data?.user;
+    const activeWorkspaceId = authStatus.data?.workspaceId;
+    if (!authStatus.ok || authStatus.httpStatus !== 200 ||
+        activeUser?.name !== 'ADMIN' || activeUser?.provider !== 'local' ||
+        activeUser?.id !== loginData.user.id ||
+        activeWorkspaceId !== loginData.workspaceId) {
+      throw new Error('ADMIN session verification failed: /api/auth/status did not confirm the same ADMIN identity and workspace established by login. No project operation was started.');
+    }
+    verifiedAdminSession = {
+      username: 'ADMIN',
+      provider: 'local',
+      role: activeUser.role || loginData.user.role || null,
+      workspaceId: activeWorkspaceId,
+      identityVerified: true,
+      workspaceVerified: true
+    };
+    result = { authenticatedAs: 'ADMIN', role: verifiedAdminSession.role, workspaceVerified: true, mustChangePassword: !!loginData.mustChangePassword };
   }
   // Let the app's own initialization and initial API calls finish before inspecting it.
   stage = 'page_initialization';
@@ -1787,7 +1814,8 @@ try {
       elapsed_ms: Date.now() - startedAt,
       workflow_run_id: process.env.GITHUB_RUN_ID || null,
       workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
-      issue_number: Number.isFinite(issueNumber) ? issueNumber : null
+      issue_number: Number.isFinite(issueNumber) ? issueNumber : null,
+      account_context: verifiedAdminSession
     },
     result
   };
