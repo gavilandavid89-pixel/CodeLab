@@ -113,7 +113,49 @@ La captura se incluye en el resultado del comando del buzón, por lo que el cons
 
 Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al job de validación de código en `.github/workflows/codelab-command-bridge.yml`. La ejecución del job para el commit `c6a114a` terminó en verde: 11 tests aprobados, 0 fallos. La corrección posterior del ciclo de contextos también debe validarse en la siguiente ejecución. Actions solo valida sintaxis y pruebas del repositorio; no crea ni ejecuta el proyecto. El test de navegador real se dispara a través del buzón nativo.
 
-## 5. Qué está probado y qué no
+## 5. Resultado final de la prueba visual y adaptación móvil
+
+El primer test visual con el HTML antiguo detectó que el diseño absoluto se reducía proporcionalmente en móvil: CTA de 67 px y encabezado de 48 px dentro de un canvas escalado. La comprobación `mobileControlsReadable` falló aunque el HTML cargaba, el clic funcionaba y no había overflow.
+
+Se corrigió `exportDesignToHtml` para que los diseños absolutos se reorganicen en una columna a menos de 768 px:
+- encabezados con tamaño fluido `clamp(28px, 7vw, 40px)`;
+- textos con tamaño legible y altura automática;
+- botones con ancho adaptativo y máximo de 320 px;
+- rectángulos, elipses e imágenes con reglas móviles específicas;
+- desktop conserva el posicionamiento original.
+
+Importante: actualizar el conversor no cambia HTML ya generado. Por eso se volvió a ejecutar `codelab_project_convert_to_web` sobre el mismo proyecto para persistir la revisión nueva.
+
+Comandos finales:
+- `native-design-to-web-reconvert-20261106-01` — conversión nativa — `succeeded`, revisión 59, HTML 3,977 bytes.
+- `native-codelab-browser-qa-20261106-04` — inspección + Chromium — `succeeded`, `browserTest.passed=true`.
+
+Resultado observado en revisión 59:
+- Escritorio 1440×1000: todos los checks verdaderos.
+- Móvil 390×844: todos los checks verdaderos.
+- CTA móvil: 342 px de ancho, fuente 17 px.
+- Encabezado móvil: 28 px.
+- `horizontalOverflow=false`, `pageErrors=[]`, clic real y texto de confirmación presentes.
+
+Las capturas PNG de ambas vistas se guardan en el resultado JSONB del comando, dentro de `result.browserTest.viewports[0|1].screenshot.dataBase64`. Se recuperaron desde PostgreSQL y se visualizaron. La captura es evidencia del HTML persistido en un navegador aislado; todavía no demuestra la carga de la ruta pública del proyecto.
+
+## 6. Revisión del ciclo de vida de la cola y corrección
+
+La revisión del flujo encontró dos riesgos operativos:
+1. La recuperación de comandos `running` antiguos no filtraba por `workspace_id`, por lo que un worker podía reencolar comandos ajenos.
+2. La recuperación usaba `started_at` como si fuera una concesión de ejecución; una tarea larga podía superar tres minutos y parecer abandonada aunque siguiera activa. Un deploy durante una ejecución también puede detener el proceso y dejar un comando en `running`.
+
+Se corrigió el worker:
+- las órdenes expiradas en cola o ejecución pasan a `expired` y reciben `finished_at`;
+- recuperación de ejecuciones abandonadas limitada a `workspace_id=ws_local_admin`;
+- el timeout de recuperación usa `updated_at`, no `started_at`;
+- cada comando activo renueva `updated_at` cada 30 segundos mediante heartbeat;
+- el heartbeat se detiene al terminar el comando;
+- el test de regresión comprueba scope de workspace, expiración, heartbeat y limpieza del timer.
+
+La interrupción real durante los deploys quedó observada: un comando permaneció `running` tras el reinicio y fue recuperado por el worker después del umbral de tres minutos. Ese evento sirvió para identificar el problema de lease; no se borró ni se maquilló el resultado histórico.
+
+## 7. Qué está probado y qué no
 
 ### Confirmado por resultados del buzón/DB
 - Creación del proyecto en ADMIN.
@@ -132,7 +174,7 @@ Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al j
 
 La navegación pública intentada desde el cliente de investigación no pudo completarse (error interno/no accesible). Eso no demuestra que la web esté caída, pero tampoco permite afirmar que la ruta pública funciona. La prueba de navegador sigue pendiente. El worker ya importa `playwright-core` y `@sparticuz/chromium`, pero la acción `codelab_project_inspect` actual solo inspecciona el estado guardado; todavía no ejecuta Chromium sobre el HTML de CodeLab.
 
-## 6. Protocolo para continuar sin desviaciones
+## 8. Protocolo para continuar sin desviaciones
 
 1. Leer esta bitácora antes de ejecutar trabajo nuevo.
 2. Confirmar repo, rama y servicio autorizado; no cambiar otros recursos.
@@ -145,9 +187,9 @@ La navegación pública intentada desde el cliente de investigación no pudo com
 9. Si se cambia el código, Actions puede validar el código fuente. Después comprobar el deploy del único servicio permitido. Finalmente, volver a usar el buzón nativo para probar el proyecto real.
 10. Actualizar esta bitácora con comandos, estados, revisiones, commit/deploy y evidencia. Marcar cada resultado como **confirmado**, **fallido** o **pendiente**.
 
-## 7. Próximo bloque de trabajo
+## 9. Próximo bloque de trabajo
 
-**Prioridad inmediata:** ejecutar `codelab_project_inspect` con `browser_test: true` sobre el proyecto de prueba. Después de confirmar el render aislado, agregar una prueba separada de la ruta pública real. La prueba aislada debe:
+**Prioridad inmediata:** agregar una prueba separada de la ruta pública real del proyecto, con identidad ADMIN y sesión/workspace autenticados. No confundirla con el render aislado ya aprobado. La prueba debe:
 - cargar el HTML guardado en Chromium;
 - esperar DOM listo;
 - confirmar título, encabezado y botón;
