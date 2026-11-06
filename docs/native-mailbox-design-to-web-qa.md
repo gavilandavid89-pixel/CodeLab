@@ -161,7 +161,7 @@ La interrupción real durante los deploys quedó observada: un comando permaneci
 
 ## 7. Verificación de la ruta pública y arreglo de layout
 
-La prueba nativa `native-codelab-browser-qa-20261106-08` terminó `succeeded` con `browserTest.passed=true`. Ya no prueba solamente `page.setContent`: abre la ruta desplegada `/?projectId=...` en Chromium y carga el workspace ADMIN mediante las claves locales `codelab_xd_workspace_v4` y `codelab_xd_workspace_token_v1` (token HMAC generado dentro del worker; nunca se devuelve al resultado).
+La prueba nativa `native-codelab-browser-qa-20261106-08` terminó `succeeded` con `browserTest.passed=true`. Después de añadir la comprobación de recarga, la ejecución `native-codelab-browser-qa-20261106-09` también terminó `succeeded` y confirmó la ruta pública desplegada. Ya no prueba solamente `page.setContent`: abre la ruta desplegada `/?projectId=...` en Chromium y carga el workspace ADMIN mediante las claves locales `codelab_xd_workspace_v4` y `codelab_xd_workspace_token_v1` (token HMAC generado dentro del worker; nunca se devuelve al resultado).
 
 Comprobaciones de la ruta real:
 - HTTP 200/OK.
@@ -181,7 +181,7 @@ La captura de la ruta detectó un bug de estructura HTML: el `<header>` principa
 - `#previewPanel`: 712×906.
 - `#previewIframe`: 712×869.
 
-Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase64` (ruta real), `result.browserTest.viewports[0].screenshot.dataBase64` (HTML escritorio) y `result.browserTest.viewports[1].screenshot.dataBase64` (HTML móvil). Las tres se recuperaron del resultado del buzón y se visualizaron.
+Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase64` (ruta real), `result.browserTest.viewports[0].screenshot.dataBase64` (HTML escritorio) y `result.browserTest.viewports[1].screenshot.dataBase64` (HTML móvil). Las tres se recuperaron del resultado del buzón y se visualizaron. La ejecución `-09` también recargó la URL pública y volvió a pulsar el botón. Sus cuatro checks fueron verdaderos: `httpOk`, `projectRestored`, `previewRestored` e `interactionWorks`. Tras la recarga, el título fue `QA — Diseño a Web — Native Mailbox`, el encabezado `Diseña. Construye. Publica.` y el estado `Interacción funcionando ✓`. Los checks de ruta completos también quedaron verdaderos: `httpOk`, `adminWorkspaceLoaded`, `projectOpened`, `previewRendered`, `interactionButtonPresent`, `interactionWorks`, `previewSandboxed`, `noHorizontalOverflow`, `reloadRestoresProject` y `noPageErrors`.
 
 ## 8. Qué está probado y qué no
 
@@ -194,9 +194,19 @@ Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase
 - Lectura posterior del proyecto desde el workspace ADMIN.
 
 ### Pendiente
-- Verificar explícitamente que una recarga completa de la ruta pública vuelve a abrir el mismo proyecto y conserva el preview.
 - Añadir una pasada de la interfaz completa de CodeLab en viewport móvil; por ahora el HTML exportado sí se prueba en móvil, mientras la ruta/editor se prueba en escritorio.
 - Si las capturas crecen en volumen, migrar PNG grandes desde JSONB a Neon Object Storage y conservar en la cola solo referencias y metadata.
+
+## 11. Estado de validación del repositorio y límites de alcance
+
+En el commit `9eb38e5`:
+- `CodeLab QA and command mailbox`: **success**; el job `code-tests` terminó correctamente.
+- `Validate CodeLab`: **failure** en pruebas del subsistema PixelForge, no en el buzón nativo ni en el flujo de conversión.
+  - `tests/pixelforge-animation.test.mjs`: 17/18 pasaron; falla la aserción de pantalla de inicio de sesión de PixelForge en la línea 410.
+  - `tests/pixelforge-integration.test.js`: la base PostgreSQL efímera del job no tiene inicializada la tabla `codelab_workspace_states`; el servidor aborta antes de ejecutar la integración.
+- No se modificó PixelForge para intentar silenciar estos fallos. Quedan registrados como problemas separados y fuera del alcance de esta tarea.
+
+El deploy del servicio CodeLab autorizado quedó **LIVE** para el commit `9eb38e5`. Después del deploy, el comando nativo `native-codelab-browser-qa-20261106-09` terminó **succeeded** con `browserTest.passed=true`, incluida la recarga completa de la URL pública.
 
 ## 9. Protocolo para continuar sin desviaciones
 
@@ -213,7 +223,7 @@ Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase
 
 ## 10. Próximo bloque de trabajo
 
-**Próxima mejora:** ampliar el test móvil de la aplicación CodeLab en sí (la prueba actual valida el HTML móvil aislado y la ruta pública en escritorio). Mantener separada la prueba del editor móvil de la prueba de responsive del sitio exportado. También conviene persistir las capturas de producción en Object Storage con claves por comando y mantener solo referencias/metadata en JSONB si el volumen crece.
+**Próxima mejora:** ampliar el test móvil de la aplicación CodeLab en sí (la prueba actual valida el HTML exportado en móvil y la ruta pública/editor en escritorio). Mantener separada la prueba del editor móvil de la prueba responsive del sitio exportado. Después, valorar mover PNG grandes a Object Storage y dejar referencias/metadata en JSONB si el volumen crece.
 - cargar el HTML guardado en Chromium;
 - esperar DOM listo;
 - confirmar título, encabezado y botón;
