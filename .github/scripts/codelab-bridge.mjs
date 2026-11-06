@@ -22,9 +22,41 @@ function parseCommand(raw) {
   if (command.use_admin_session !== undefined && typeof command.use_admin_session !== 'boolean') throw new Error('use_admin_session must be a boolean.');
   if (command.use_admin_session !== true) throw new Error('Every CodeLab bridge command must run in the authenticated ADMIN account; set use_admin_session: true.');
   if (!allowed.has(command.action)) throw new Error('Action is not allowlisted.');
-  // Comments are a read-only mailbox. Mutating interactions remain available only through explicit issue commands.
-  if (commandSource === 'comment' && !['status', 'connections_status', 'list_controls', 'preview_diagnostics'].includes(command.action)) {
-    throw new Error('Comment mailbox is read-only; use a separately approved issue command for interactions.');
+  // The comment thread is the operational mailbox for CodeLab browser and project QA.
+  // Keep irreversible operations out of this channel; all state-changing mailbox commands
+  // require explicit approval below. GitHub Actions is only the transport/runner.
+  const commentMailboxActions = new Set([
+    'status', 'read_page', 'list_controls', 'connections_status', 'ai_ping',
+    'preview_diagnostics', 'preview_interact', 'click', 'read_element', 'fill',
+    'select', 'sequence', 'workspace_inspect', 'project_list', 'project_rename',
+    'project_save', 'project_inspect', 'project_code_read', 'design_read',
+    'project_code_write', 'component_search', 'component_inspect', 'component_insert',
+    'design_element_add', 'design_element_update', 'design_element_delete',
+    'design_elements_delete', 'design_element_duplicate', 'design_layer_move',
+    'design_layer_reorder', 'design_elements_align', 'design_elements_distribute',
+    'design_prototype_target_set', 'design_layout_configure', 'design_canvas_configure',
+    'project_create', 'project_duplicate', 'design_template_apply', 'design_history',
+    'accessibility_audit', 'design_tokens_generate', 'design_export',
+    'design_import_json', 'design_system_import_json', 'design_system_export_json',
+    'design_flow_read', 'design_flow_connect', 'design_flow_disconnect',
+    'project_convert_design_to_web', 'project_export_html'
+  ]);
+  if (commandSource === 'comment' && !commentMailboxActions.has(command.action)) {
+    throw new Error('This action is not available from the CodeLab QA mailbox.');
+  }
+  const commentMutatingActions = new Set([
+    'preview_interact', 'click', 'fill', 'select', 'sequence', 'project_rename',
+    'project_save', 'project_code_write', 'component_insert', 'design_element_add',
+    'design_element_update', 'design_element_delete', 'design_elements_delete',
+    'design_element_duplicate', 'design_layer_move', 'design_layer_reorder',
+    'design_elements_align', 'design_elements_distribute', 'design_prototype_target_set',
+    'design_layout_configure', 'design_canvas_configure', 'project_create',
+    'project_duplicate', 'design_template_apply', 'design_history',
+    'design_tokens_generate', 'design_import_json', 'design_system_import_json',
+    'design_flow_connect', 'design_flow_disconnect', 'project_convert_design_to_web'
+  ]);
+  if (commandSource === 'comment' && commentMutatingActions.has(command.action) && command.approval !== 'approved') {
+    throw new Error('State-changing CodeLab mailbox commands require approval: "approved".');
   }
   if (!command.expires_at || !Number.isFinite(Date.parse(command.expires_at))) throw new Error('A valid expires_at is required.');
   if (Date.parse(command.expires_at) < Date.now()) throw new Error('Command expired.');
@@ -182,7 +214,7 @@ function parseCommand(raw) {
       if (typeof args[key] !== 'string' || args[key].length > 50000) throw new Error('Each supplied code field must be a string of at most 50000 characters.');
     }
   }
-  if (commandSource === 'comment' && args.self_test === true) throw new Error('Preview diagnostic self-test is not allowed from the read-only comment mailbox.');
+  if (commandSource === 'comment' && args.self_test === true) throw new Error('Preview diagnostic self-test is not allowed from the CodeLab QA mailbox.');
   for (const key of ['selector', 'value']) {
     if (args[key] !== undefined && (typeof args[key] !== 'string' || args[key].length > 2000)) throw new Error('Invalid ' + key + '.');
   }
