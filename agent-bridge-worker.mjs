@@ -456,7 +456,7 @@ async function connectCodeLabProject(command) {
     const connections = Array.isArray(design.flowConnections) ? design.flowConnections.slice() : [];
     const existing = connections.find(item => item && item.sourceElementId === sourceElementId && item.targetProjectId === targetProjectId);
     if (!existing) connections.push({ sourceElementId, targetProjectId });
-    design.flowConnections = connections.filter(item => item && item.sourceElementId !== sourceElementId || item && item.targetProjectId === targetProjectId);
+    design.flowConnections = connections.filter(item => item && (item.sourceElementId !== sourceElementId || item.targetProjectId === targetProjectId));
     const elements = design.elements.map(item => item && item.id === sourceElementId ? { ...item, flowRole: 'navigate' } : item);
     sourceProject.design = { ...design, elements };
     sourceProject.updatedAt = new Date().toISOString();
@@ -1334,8 +1334,31 @@ async function processCommand(command) {
   }
 }
 async function main() {
-  await pool.query("ALTER TABLE codelab_agent_commands DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check");
-  await pool.query("ALTER TABLE codelab_agent_commands ADD CONSTRAINT codelab_agent_commands_action_check CHECK (action = ANY (ARRAY['status','pixelforge_create','pixelforge_list','pixelforge_inspect','pixelforge_propose','pixelforge_approve','pixelforge_discard','pixelforge_export_image','pixelforge_capture_interface','codelab_project_create','codelab_project_convert_to_web','codelab_project_inspect','codelab_project_connect']))");
+  await pool.query(`
+    DO $codelab_migration$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'codelab_agent_commands'::regclass
+           AND conname = 'codelab_agent_commands_action_check'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_connect%'
+      ) THEN
+        ALTER TABLE codelab_agent_commands
+          DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
+        ALTER TABLE codelab_agent_commands
+          ADD CONSTRAINT codelab_agent_commands_action_check
+          CHECK (action = ANY (ARRAY[
+            'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
+            'pixelforge_propose','pixelforge_approve','pixelforge_discard',
+            'pixelforge_export_image','pixelforge_capture_interface',
+            'codelab_project_create','codelab_project_convert_to_web',
+            'codelab_project_inspect','codelab_project_connect'
+          ]));
+      END IF;
+    END
+    $codelab_migration$;
+  `);
   workspaceId = await resolveAdminWorkspace();
   if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
     pixelForgeWorkspaceId = workspaceId;
