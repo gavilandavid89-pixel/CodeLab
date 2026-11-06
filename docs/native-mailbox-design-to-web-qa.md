@@ -109,9 +109,13 @@ Se amplió `codelab_project_inspect` con una opción explícita `browser_test: t
 
 La captura se incluye en el resultado del comando del buzón, por lo que el consumidor puede recuperar el base64 y mostrar la imagen. El test es opt-in para que las inspecciones normales no gasten CPU ni generen imágenes. El navegador reutiliza una sola página y cambia el viewport con `page.setViewportSize`; esto evita cerrar/crear varios contextos Chromium en el modo `--single-process` de `@sparticuz/chromium`.
 
-### 4.4 Diagnóstico del primer intento y corrección\n\nEl primer test de navegador falló en Render con `browserContext.newPage: Target page, context or browser has been closed`. Los logs confirmaron que Chromium se lanzó y ejecutó la inyección de `page.setContent`, pero el ciclo que cerraba y recreaba contextos dentro del mismo navegador era frágil con el Chromium empaquetado en modo single-process. Se cambió a un único BrowserContext y una única Page reutilizada para escritorio y móvil, cambiando el viewport entre pasadas. El fallo quedó registrado como fallido; no se sobrescribió como éxito. La corrección requiere repetir el comando nativo para obtener evidencia nueva.\n\n### 4.5 Regresión de código
+### 4.4 Diagnóstico del primer intento y corrección
 
-Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al job de validación de código en `.github/workflows/codelab-command-bridge.yml`. La ejecución del job para el commit `c6a114a` terminó en verde: 11 tests aprobados, 0 fallos. La corrección posterior del ciclo de contextos también debe validarse en la siguiente ejecución. Actions solo valida sintaxis y pruebas del repositorio; no crea ni ejecuta el proyecto. El test de navegador real se dispara a través del buzón nativo.
+El primer test de navegador falló en Render con `browserContext.newPage: Target page, context or browser has been closed`. Los logs confirmaron que Chromium había arrancado. La primera implementación cerraba y recreaba contextos dentro del mismo navegador empaquetado en modo single-process. Se cambió a un único BrowserContext y una única Page reutilizada para escritorio y móvil, cambiando el viewport entre pasadas. El fallo original quedó registrado como fallido; no se sobrescribió como éxito.
+
+### 4.5 Regresión de código
+
+Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al job de validación de código en `.github/workflows/codelab-command-bridge.yml`. La suite `CodeLab QA and command mailbox` terminó en verde para el commit `65d1874`; el job `code-tests` finalizó correctamente. La regresión también cubre la estructura del header Studio, la clasificación del sandbox y la recuperación/heartbeat de la cola. Actions solo valida sintaxis y pruebas del repositorio; no crea ni ejecuta el proyecto. El test de navegador real se dispara a través del buzón nativo.
 
 ## 5. Resultado final de la prueba visual y adaptación móvil
 
@@ -189,14 +193,10 @@ Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase
 - Documento HTML, meta viewport, lógica de interacción y persistencia detectados por comprobaciones estructurales del conversor.
 - Lectura posterior del proyecto desde el workspace ADMIN.
 
-### Pendiente de prueba real de navegador
-- Abrir la URL pública del proyecto y confirmar que la ruta carga correctamente.
-- Confirmar render visual del HTML convertido.
-- Pulsar el botón y observar que el estado cambia a “Interacción funcionando ✓”.
-- Repetir en viewport móvil y escritorio; revisar overflow horizontal, dimensiones y errores de consola.
-- Verificar que al recargar la ruta el proyecto sigue abriendo con el mismo contenido.
-
-La navegación pública intentada desde el cliente de investigación no pudo completarse (error interno/no accesible). Eso no demuestra que la web esté caída, pero tampoco permite afirmar que la ruta pública funciona. La prueba de navegador sigue pendiente. El worker ya importa `playwright-core` y `@sparticuz/chromium`, pero la acción `codelab_project_inspect` actual solo inspecciona el estado guardado; todavía no ejecuta Chromium sobre el HTML de CodeLab.
+### Pendiente
+- Verificar explícitamente que una recarga completa de la ruta pública vuelve a abrir el mismo proyecto y conserva el preview.
+- Añadir una pasada de la interfaz completa de CodeLab en viewport móvil; por ahora el HTML exportado sí se prueba en móvil, mientras la ruta/editor se prueba en escritorio.
+- Si las capturas crecen en volumen, migrar PNG grandes desde JSONB a Neon Object Storage y conservar en la cola solo referencias y metadata.
 
 ## 9. Protocolo para continuar sin desviaciones
 
