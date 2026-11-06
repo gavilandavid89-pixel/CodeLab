@@ -10,8 +10,9 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 - Target: `https://codelab-pbw9.onrender.com/`
 - Commands may be sent by opening an issue titled `[CodeLab Bridge] ...` or, after the mailbox workflow is enabled, by posting a command as a new comment on an existing issue with that title.
 - Only commands authored by the repository owner are executed. Bot-generated result comments do not trigger commands.
-- Comment-triggered commands are restricted in the bridge script to the read-only actions `status`, `connections_status`, and `list_controls`. In comment mode, control text/labels are omitted; only structural metadata such as tag, ID, type, and disabled state is returned. Mutating actions remain on the explicit issue-command path.
-- Comment mailbox commands avoid creating a new issue for each read-only query. Reuse a dedicated bridge issue rather than creating repeated issues.
+- Comment-triggered commands are the preferred mailbox for CodeLab UI and project QA. They support bounded browser interactions and allowlisted project/design operations; irreversible project deletion and branch merge/undo-merge remain unavailable from comments.
+- Every state-changing comment command must include `approval: "approved"`; the command still requires the exact authenticated ADMIN account and workspace verification. Read-only commands do not need approval.
+- Reuse a dedicated bridge issue and post new command comments there. The workflow's Actions run is only the transport/runner and evidence record; it is not a substitute for the operation inside the live CodeLab application.
 - The job uses a fresh Playwright browser for each command. It does not control the user's existing browser or inherit their browser login.
 - When `use_admin_session: true`, the bridge signs in through CodeLab using GitHub Actions secrets. Credentials are never read from command payloads.
 - Results are posted as JSON comments on the same issue. Treat this repository's issue threads as potentially public: never send passwords, tokens, cookies, API keys, or private workspace/project contents in command results.
@@ -32,7 +33,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 
 ## Comment mailbox example
 
-Post the JSON command as a new comment on an existing issue titled `[CodeLab Bridge] ...`. The workflow consumes the comment body, executes the allowlisted action, and adds a result comment to the same issue. Use a unique command ID for every request.
+Post the JSON command as a new comment on an existing issue titled `[CodeLab Bridge] ...`. The workflow consumes the comment body, executes the allowlisted action against the live CodeLab app under ADMIN, and adds a result comment to the same issue. Use a unique command ID for every request. For any operation that changes UI or project state, include `approval: "approved"`.
 
 ```json
 {
@@ -48,7 +49,7 @@ Post the JSON command as a new comment on an existing issue titled `[CodeLab Bri
 
 ## Multi-step interaction example
 
-Use an issue command (not a comment mailbox command) to perform a bounded sequence in one authenticated browser session:
+Use the comment mailbox to perform a bounded sequence in one authenticated browser session:
 
 ```json
 {
@@ -66,6 +67,12 @@ Use an issue command (not a comment mailbox command) to perform a bounded sequen
   "approval": "approved"
 }
 ```
+
+## Division of responsibilities
+
+- GitHub Actions code tests: syntax checks, unit tests, lint, build checks, and repository-level automated tests.
+- CodeLab mailbox: live browser interaction, UI behavior, project creation/editing, persistence checks, and reading the result back from the application.
+- Actions may execute the mailbox request, but the test subject is the running CodeLab application and its ADMIN-owned project data.
 
 ## Diagnosing blocked or failed commands
 
