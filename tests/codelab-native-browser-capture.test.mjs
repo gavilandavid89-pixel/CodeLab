@@ -42,7 +42,7 @@ test('CodeLab public route QA authenticates ADMIN, tests preview, and classifies
   assert.match(worker, /step = 'set-route-desktop-viewport';[\s\S]{0,100}page\.setViewportSize\(\{ width: 1440, height: 1000 \}\)/);
   assert.match(worker, /page\.goto\(routeUrl/);
   assert.match(worker, /getElementById\('currentProjectTitle'\)/);
-  assert.match(worker, /frameLocator\('#previewIframe'\)/);
+  assert.match(worker, /frameLocator\('#previewIframe'\)/);\n  assert.match(worker, /page\.reload\(\{ waitUntil: 'domcontentloaded', timeout: 45000 \}\)/);\n  assert.match(worker, /reloadRestoresProject/);
   assert.match(worker, /public-route-desktop/);
   assert.match(worker, /expectedSandboxPageErrors/);
   assert.match(worker, /sandboxIsolationConfirmed/);
