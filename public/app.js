@@ -4980,7 +4980,8 @@ async function convertDesignToWeb() {
   // Keep the mutation lock until both local snapshot and server sync have settled.
   // Otherwise a second create/switch can race this conversion's in-flight save.
   try {
-    p.code = normalizeCode({ html, css: '', js: '' });
+    const existingWebCode = normalizeCode(p.code);
+    p.code = normalizeCode({ html, css: existingWebCode.css, js: existingWebCode.js });
     p.type = 'web';
     p.hasWebSpace = true;
     p.hasDesignSpace = true;
