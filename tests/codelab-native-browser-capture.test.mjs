@@ -39,7 +39,7 @@ test('CodeLab public route QA authenticates the ADMIN workspace and tests the em
   assert.match(worker, /localStorage\.setItem\('codelab_xd_workspace_v4', id\)/);
   assert.match(worker, /workspaceTokenFor\(workspaceId\)/);
   assert.match(worker, /page\.goto\(routeUrl/);
-  assert.match(worker, /#currentProjectTitle/);
+  assert.match(worker, /getElementById\('currentProjectTitle'\)/);
   assert.match(worker, /frameLocator\('#previewIframe'\)/);
   assert.match(worker, /public-route-desktop/);
 });
