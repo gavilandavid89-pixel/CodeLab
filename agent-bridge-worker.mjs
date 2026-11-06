@@ -1052,6 +1052,29 @@ async function capturePixelForgeInterface(payload = {}) {
   }
 }
 
+async function mintNativeAdminHandoff() {
+  const token = workspaceTokenFor(workspaceId);
+  const base = 'http://127.0.0.1:' + String(process.env.PORT || 3000);
+  const response = await fetch(base + '/api/auth/native-handoff/mint', {
+    method: 'POST',
+    headers: { 'x-workspace-token': token, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(15000),
+  });
+  let data;
+  try { data = await response.json(); } catch { data = {}; }
+  if (!response.ok || data.ok !== true || !/^[a-f0-9]{48}$/.test(data.ticket || '')) {
+    throw new Error('Native ADMIN handoff mint failed with HTTP ' + response.status + '.');
+  }
+  const publicBase = String(process.env.CODELAB_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+  return {
+    status: 'ready',
+    handoffUrl: publicBase + '/api/auth/native-handoff?ticket=' + encodeURIComponent(data.ticket),
+    expiresInSeconds: Number(data.expiresInSeconds || 600),
+    oneTime: true,
+    workspaceId,
+  };
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   if (new Date(command.expires_at).getTime() < Date.now()) {
@@ -1070,6 +1093,10 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await inspectCodeLabProject(command));
       return;
     case 'status':
+      if (payload.operation === 'mint_admin_handoff') {
+        await finish(command.command_id, 'succeeded', await mintNativeAdminHandoff());
+        return;
+      }
       await finish(command.command_id, 'succeeded', {
         status: 'online', protocol: 'codelab-native-headless/v1',
         workspaceId, runtime: 'PixelForge Headless',
