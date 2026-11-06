@@ -63,7 +63,12 @@ async function claimCommand() {
   try {
     await client.query('BEGIN');
     await client.query(
-      "UPDATE codelab_agent_commands SET status='queued', started_at=NULL, updated_at=now() WHERE status='running' AND started_at < now() - interval '3 minutes' AND expires_at > now()"
+      "UPDATE codelab_agent_commands SET status='expired', result=COALESCE(result, '{\"error\":\"command_expired\"}'::jsonb), finished_at=now(), updated_at=now() WHERE workspace_id=$1 AND status IN ('queued','running') AND expires_at <= now()",
+      [workspaceId]
+    );
+    await client.query(
+      "UPDATE codelab_agent_commands SET status='queued', started_at=NULL, updated_at=now() WHERE workspace_id=$1 AND status='running' AND updated_at < now() - interval '3 minutes' AND expires_at > now()",
+      [workspaceId]
     );
     const selected = await client.query(
       "SELECT command_id, workspace_id, action, payload, expires_at FROM codelab_agent_commands WHERE status='queued' AND expires_at > now() AND workspace_id=$1 ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1",
@@ -922,6 +927,13 @@ async function main() {
         await delay(POLL_MS);
         continue;
       }
+      const heartbeatTimer = setInterval(() => {
+        pool.query(
+          "UPDATE codelab_agent_commands SET updated_at=now() WHERE command_id=$1 AND workspace_id=$2 AND status='running'",
+          [command.command_id, workspaceId]
+        ).catch(error => console.error('[CodeLab Native Bridge] heartbeat failed:', command.command_id, error.message));
+      }, 30000);
+      heartbeatTimer.unref?.();
       try {
         await processCommand(command);
       } catch (error) {
@@ -930,6 +942,8 @@ async function main() {
           error: 'command_failed',
           message: String(error.message || 'Unknown bridge error').slice(0, 1000),
         }).catch(() => {});
+      } finally {
+        clearInterval(heartbeatTimer);
       }
     } catch (error) {
       console.error('[CodeLab Native Bridge] poll error:', error.message);
