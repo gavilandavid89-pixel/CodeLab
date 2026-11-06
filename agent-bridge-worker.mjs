@@ -649,6 +649,33 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       step = 'screenshot-public-project-route';
       const routeScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
       if (routeScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab public route screenshot exceeds 3 MiB.');
+      step = 'reload-public-project-route';
+      const reloadResponse = await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+      if (!reloadResponse || !reloadResponse.ok()) throw new Error('Public CodeLab project route reload returned HTTP ' + (reloadResponse?.status() || 'no response'));
+      await page.waitForFunction(expectedName => {
+        const studio = document.getElementById('studioView');
+        const title = document.getElementById('currentProjectTitle');
+        return !!studio && !studio.classList.contains('hidden') && !!title && title.textContent.trim() === expectedName;
+      }, project.name, { timeout: 45000 });
+      const reloadedPreview = page.frameLocator('#previewIframe');
+      await reloadedPreview.locator('h1').waitFor({ state: 'visible', timeout: 45000 });
+      const reloadedHeading = String(await reloadedPreview.locator('h1').textContent() || '').trim();
+      const reloadedButton = reloadedPreview.locator('[data-codelab-demo]').first();
+      const reloadedButtonCount = await reloadedPreview.locator('[data-codelab-demo]').count();
+      let reloadedStatus = '';
+      if (reloadedButtonCount > 0) {
+        await reloadedButton.click({ timeout: 10000 });
+        reloadedStatus = String(await reloadedPreview.locator('#demoStatus').textContent().catch(() => '') || '').trim();
+      }
+      const reloadTest = {
+        checks: {
+          httpOk: reloadResponse.ok(),
+          projectRestored: await page.locator('#currentProjectTitle').textContent().then(value => String(value || '').trim() === project.name),
+          previewRestored: !!reloadedHeading,
+          interactionWorks: reloadedStatus.includes('Interacción funcionando')
+        },
+        page: { previewHeading: reloadedHeading, statusText: reloadedStatus }
+      };
       const routeErrors = allPageErrors.slice(routeErrorStart);
       const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
       const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
@@ -678,9 +705,11 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           interactionWorks: routeInteractionWorks,
           noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
           previewSandboxed: sandboxIsolationConfirmed,
+          reloadRestoresProject: Object.values(reloadTest.checks).every(Boolean),
           noPageErrors: unexpectedPageErrors.length === 0 && unexpectedConsoleErrors.length === 0
         },
         page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus, previewSandbox },
+        reload: reloadTest,
         pageErrors: unexpectedPageErrors,
         consoleErrors: unexpectedConsoleErrors,
         expectedSandboxWarnings,
