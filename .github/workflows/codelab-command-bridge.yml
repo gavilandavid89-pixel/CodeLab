@@ -1,6 +1,10 @@
-name: CodeLab GitHub command bridge
+name: CodeLab QA and command mailbox
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   issues:
     types: [opened]
   issue_comment:
@@ -11,10 +15,29 @@ permissions:
   issues: write
 
 concurrency:
-  group: codelab-bridge-issue-${{ github.event.issue.number }}
+  group: codelab-bridge-${{ github.event.issue.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  code-tests:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check JavaScript syntax
+        run: |
+          node --check server.js
+          node --check agent-bridge-worker.mjs
+          node --check .github/scripts/codelab-bridge.mjs
+      - name: Run bridge authorization and mailbox regression tests
+        run: node --test tests/codelab-bridge-admin-auth.test.mjs
+
   execute-command:
     if: |
       (github.event_name == 'issues' &&
@@ -47,7 +70,7 @@ jobs:
         run: |
           npm install --no-save playwright@1.64.1
           npx playwright install --with-deps chromium
-      - name: Execute allowlisted browser command
+      - name: Execute allowlisted CodeLab mailbox command
         env:
           ISSUE_BODY: ${{ github.event.comment.body || github.event.issue.body }}
           COMMAND_SOURCE: ${{ github.event_name == 'issue_comment' && 'comment' || 'issue' }}
