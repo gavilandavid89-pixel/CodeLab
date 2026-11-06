@@ -183,6 +183,21 @@ La captura de la ruta detectó un bug de estructura HTML: el `<header>` principa
 
 Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase64` (ruta real), `result.browserTest.viewports[0].screenshot.dataBase64` (HTML escritorio) y `result.browserTest.viewports[1].screenshot.dataBase64` (HTML móvil). Las tres se recuperaron del resultado del buzón y se visualizaron. La ejecución `-09` también recargó la URL pública y volvió a pulsar el botón. Sus cuatro checks fueron verdaderos: `httpOk`, `projectRestored`, `previewRestored` e `interactionWorks`. Tras la recarga, el título fue `QA — Diseño a Web — Native Mailbox`, el encabezado `Diseña. Construye. Publica.` y el estado `Interacción funcionando ✓`. Los checks de ruta completos también quedaron verdaderos: `httpOk`, `adminWorkspaceLoaded`, `projectOpened`, `previewRendered`, `interactionButtonPresent`, `interactionWorks`, `previewSandboxed`, `noHorizontalOverflow`, `reloadRestoresProject` y `noPageErrors`.
 
+
+### Captura móvil del editor y navegación Código/Preview
+
+La prueba nativa `native-codelab-browser-qa-20261106-11` detectó primero que el editor móvil usa pestañas: al entrar, `#previewPanel` está oculto de forma intencional y la vista previa se abre con `#mobileTabPreview`. La prueba se ajustó para seguir el flujo real: Código → Preview → Código. En el primer screenshot apareció un bug distinto: las acciones de `#webWorkspaceToolbar` se encogían y sus etiquetas se solapaban. No era un fallo de la pestaña Preview.
+
+Se corrigió el toolbar móvil en `public/index.html`: los botones ya no se encogen, mantienen un mínimo de 44×44 px y la barra se desplaza horizontalmente sin ensanchar el documento. La prueba nativa `native-codelab-browser-qa-20261106-12` terminó `succeeded` con `browserTest.passed=true` después del deploy. Checks móviles verdaderos:
+- proyecto ADMIN abierto y Studio visible;
+- sin overflow horizontal del documento (390 px);
+- pestaña Preview táctil (57 px de alto) y cambia al preview correcto;
+- pestaña Código devuelve el editor;
+- acciones del toolbar con mínimo 44×44 px;
+- botones sin solaparse y barra con scroll horizontal en vez de comprimir controles.
+
+La captura final de Código y la captura final de Preview se recuperaron del resultado del buzón y se visualizaron. En la captura de Preview aparece el contenido convertido y el estado `Diseño convertido · listo`. La prueba separada del HTML exportado ya comprueba el click del CTA también en viewport móvil; la ruta/editor móvil ahora comprueba el cambio de pestañas y la presencia real del preview.
+
 ## 8. Qué está probado y qué no
 
 ### Confirmado por resultados del buzón/DB
@@ -194,7 +209,7 @@ Las capturas finales están en `result.browserTest.routeTest.screenshot.dataBase
 - Lectura posterior del proyecto desde el workspace ADMIN.
 
 ### Pendiente
-- Añadir una pasada de la interfaz completa de CodeLab en viewport móvil; por ahora el HTML exportado sí se prueba en móvil, mientras la ruta/editor se prueba en escritorio.
+- Ampliar los controles de interacción del editor móvil (por ejemplo, ejecutar desde la barra inferior y validar el estado resultante), además de los cambios de pestaña ya probados.
 - Si las capturas crecen en volumen, migrar PNG grandes desde JSONB a Neon Object Storage y conservar en la cola solo referencias y metadata.
 
 ## 11. Estado de validación del repositorio y límites de alcance
@@ -206,7 +221,7 @@ En el commit `9eb38e5`:
   - `tests/pixelforge-integration.test.js`: la base PostgreSQL efímera del job no tiene inicializada la tabla `codelab_workspace_states`; el servidor aborta antes de ejecutar la integración.
 - No se modificó PixelForge para intentar silenciar estos fallos. Quedan registrados como problemas separados y fuera del alcance de esta tarea.
 
-El deploy del servicio CodeLab autorizado quedó **LIVE** para el commit `9eb38e5`. Después del deploy, el comando nativo `native-codelab-browser-qa-20261106-09` terminó **succeeded** con `browserTest.passed=true`, incluida la recarga completa de la URL pública.
+El deploy del servicio CodeLab autorizado quedó **LIVE** para el commit `0475682` (la corrección del toolbar está en `bfa42b5`; la revisión de test en `0475682`). Después del deploy, el comando nativo `native-codelab-browser-qa-20261106-12` terminó **succeeded** con `browserTest.passed=true`, incluida la recarga completa de la URL pública y la navegación móvil Código/Preview/Código.
 
 ## 9. Protocolo para continuar sin desviaciones
 
