@@ -45,6 +45,7 @@ test('CodeLab public route QA authenticates ADMIN, tests preview, reload, and sa
   assert.match(worker, /frameLocator\('#previewIframe'\)/);
   assert.match(worker, /page\.reload\(\{ waitUntil: 'domcontentloaded', timeout: 45000 \}\)/);
   assert.match(worker, /reloadRestoresProject/);
+  assert.match(worker, /set-route-mobile-viewport/);\n  assert.match(worker, /mobileLayoutPasses/);\n  assert.match(worker, /public-route-mobile/);
   assert.match(worker, /public-route-desktop/);
   assert.match(worker, /expectedSandboxPageErrors/);
   assert.match(worker, /sandboxIsolationConfirmed/);
