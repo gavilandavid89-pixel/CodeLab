@@ -107,6 +107,8 @@
       min-width: 0; min-height: 0;
     }
     #studioView #mainSplit { flex: 1 1 auto; }
+    /* Keep the active workspace's floating controls above the project header stacking layer. */
+    #studioView > main { position: relative; z-index: 30; }
     #webWorkspacePanel, #webWorkspaceMain { min-width: 0; min-height: 0; }
     #webWorkspaceToolbar { min-height: 46px; }
     @media (max-width: 767px) {
