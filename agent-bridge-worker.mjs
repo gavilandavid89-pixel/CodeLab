@@ -466,6 +466,106 @@ async function convertCodeLabProjectToWeb(command) {
     },
   };
 }
+async function captureCodeLabProjectBrowser(project, payload = {}) {
+  const html = String(project.code?.html || '');
+  if (!html || !/<!doctype html>/i.test(html)) throw new Error('The saved project has no complete HTML document to render.');
+  if (Buffer.byteLength(html, 'utf8') > 2 * 1024 * 1024) throw new Error('The saved HTML exceeds the 2 MiB browser QA limit.');
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      defaultViewport: null
+    });
+    const viewports = [
+      { name: 'desktop', width: 1440, height: 1000, mobile: false },
+      { name: 'mobile', width: 390, height: 844, mobile: true }
+    ];
+    const results = [];
+    for (const viewport of viewports) {
+      const context = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+        deviceScaleFactor: 1,
+        isMobile: viewport.mobile,
+        hasTouch: viewport.mobile,
+        colorScheme: 'dark',
+        reducedMotion: 'reduce'
+      });
+      try {
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on('pageerror', error => {
+          if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+        });
+        page.on('console', message => {
+          if (message.type() === 'error' && pageErrors.length < 20) pageErrors.push(message.text().slice(0, 300));
+        });
+        await page.setContent(html, { waitUntil: 'load', timeout: 30000 });
+        await page.locator('#designFrame').waitFor({ state: 'visible', timeout: 10000 });
+        const before = await page.evaluate(() => ({
+          title: document.title,
+          heading: document.querySelector('h1')?.textContent?.trim() || '',
+          viewportMeta: !!document.querySelector('meta[name="viewport"]'),
+          frameVisible: !!document.querySelector('#designFrame') && getComputedStyle(document.querySelector('#designFrame')).display !== 'none',
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+          documentHeight: document.documentElement.scrollHeight
+        }));
+        const button = page.locator('[data-codelab-demo]').first();
+        const buttonCount = await page.locator('[data-codelab-demo]').count();
+        let buttonClicked = false;
+        let statusText = '';
+        if (buttonCount > 0) {
+          await button.click({ timeout: 5000 });
+          statusText = String(await page.locator('#demoStatus').textContent().catch(() => '') || '').trim();
+          buttonClicked = statusText.includes('Interacción funcionando');
+        }
+        const metrics = await page.evaluate(() => ({
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+          horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1
+        }));
+        const screenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+        if (screenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab ' + viewport.name + ' screenshot exceeds 3 MiB.');
+        results.push({
+          viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
+          checks: {
+            htmlDocument: true,
+            viewportMeta: before.viewportMeta,
+            frameVisible: before.frameVisible,
+            headingVisible: !!before.heading,
+            interactionButtonPresent: buttonCount > 0,
+            interactionWorks: buttonClicked,
+            noHorizontalOverflow: !metrics.horizontalOverflow,
+            noPageErrors: pageErrors.length === 0
+          },
+          page: { title: before.title, heading: before.heading, statusText, ...metrics, documentHeight: before.documentHeight },
+          pageErrors,
+          screenshot: {
+            role: viewport.name + '-render',
+            label: 'CodeLab converted project — ' + viewport.name,
+            mimeType: 'image/png',
+            sizeBytes: screenshot.length,
+            dataBase64: screenshot.toString('base64')
+          }
+        });
+      } finally {
+        await context.close().catch(() => {});
+      }
+    }
+    return {
+      captureMethod: 'playwright-chromium-saved-html-setcontent',
+      target: 'persisted CodeLab project HTML (isolated render; not the public app route)',
+      passed: results.every(item => Object.values(item.checks).every(Boolean)),
+      viewports: results
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
 async function inspectCodeLabProject(command) {
   const projectId = command.payload?.project_id;
   if (typeof projectId !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(projectId)) {
@@ -474,7 +574,7 @@ async function inspectCodeLabProject(command) {
   const state = await loadAdminWorkspace();
   const project = state.projects.find(item => item && item.id === projectId);
   if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
-  return {
+  const inspection = {
     projectId, name: project.name, type: project.type,
     revision: state.revision, designElements: project.design?.elements?.length || 0,
     hasDesignSpace: !!project.hasDesignSpace, hasWebSpace: !!project.hasWebSpace,
@@ -482,6 +582,10 @@ async function inspectCodeLabProject(command) {
     hasInteractiveDemo: /data-codelab-demo/.test(project.code?.html || ''),
     updatedAt: project.updatedAt,
   };
+  if (command.payload?.browser_test === true) {
+    inspection.browserTest = await captureCodeLabProjectBrowser(project, command.payload);
+  }
+  return inspection;
 }
 
 function resolveProjectFrame(project, frameIndex) {
