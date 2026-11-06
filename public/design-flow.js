@@ -206,7 +206,7 @@
       for (const c of (p.design.flowConnections || [])) visit(projectsById.get(c.targetProjectId));
     }
     visit(root);
-    if (reachable.length < 2) return fallbackHtml;
+    if (reachable.length < 2 && !(root.design.flowConnections || []).some(c => c && c.targetProjectId === root.id && typeof c.targetElementId === 'string')) return fallbackHtml;
     const escAttr = value => esc(value).replace(/\`/g, '&#96;');
     const routeId = id => 'page-' + String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     const frameWidth = p => ({desktop:1440,tablet:768,mobile:390})[p.design.frame] || 1440;
