@@ -651,12 +651,21 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       if (routeScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab public route screenshot exceeds 3 MiB.');
       const routeErrors = allPageErrors.slice(routeErrorStart);
       const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
-      const expectedSandboxWarnings = routeConsoleErrors.filter(item =>
+      const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
+      const sandboxIsolationConfirmed = previewSandbox.includes('allow-scripts') && !previewSandbox.includes('allow-same-origin');
+      const expectedSandboxPageErrors = sandboxIsolationConfirmed
+        ? routeErrors.filter(item => /Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag/.test(item))
+        : [];
+      const unexpectedPageErrors = routeErrors.filter(item => !expectedSandboxPageErrors.includes(item));
+      const expectedSandboxConsoleErrors = routeConsoleErrors.filter(item =>
         /Failed to read the 'localStorage' property from 'Window'/.test(item.message) &&
         /about:srcdoc|about:blank/.test(item.url)
       );
-      const unexpectedConsoleErrors = routeConsoleErrors.filter(item => !expectedSandboxWarnings.includes(item));
-      const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
+      const unexpectedConsoleErrors = routeConsoleErrors.filter(item => !expectedSandboxConsoleErrors.includes(item));
+      const expectedSandboxWarnings = [
+        ...expectedSandboxPageErrors.map(message => ({ source: 'sandboxed-preview-pageerror', message })),
+        ...expectedSandboxConsoleErrors.map(item => ({ source: 'sandboxed-preview-console', ...item }))
+      ];
       const routeTest = {
         url: routeUrl,
         captureMethod: 'playwright-chromium-public-route-admin-workspace',
@@ -668,12 +677,12 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           interactionButtonPresent: routeButtonCount > 0,
           interactionWorks: routeInteractionWorks,
           noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
-          previewSandboxed: previewSandbox.includes('allow-scripts') && !previewSandbox.includes('allow-same-origin'),
-          noPageErrors: routeErrors.length === 0 && unexpectedConsoleErrors.length === 0
+          previewSandboxed: sandboxIsolationConfirmed,
+          noPageErrors: unexpectedPageErrors.length === 0 && unexpectedConsoleErrors.length === 0
         },
         page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus, previewSandbox },
-        pageErrors: routeErrors,
-        consoleErrors: routeConsoleErrors,
+        pageErrors: unexpectedPageErrors,
+        consoleErrors: unexpectedConsoleErrors,
         expectedSandboxWarnings,
         screenshot: {
           role: 'public-route-desktop',
