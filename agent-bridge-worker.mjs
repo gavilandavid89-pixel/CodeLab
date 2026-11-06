@@ -851,9 +851,15 @@ async function captureCodeLabDashboardBrowser(expectedState) {
     }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
     const page = await context.newPage();
     const pageErrors = [];
+    const sandboxWarnings = [];
     const consoleErrors = [];
     page.on('pageerror', error => {
-      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+      const message = String(error.message || error).slice(0, 300);
+      if (/document is sandboxed and lacks the ['"]allow-same-origin['"] flag/i.test(message)) {
+        if (sandboxWarnings.length < 20) sandboxWarnings.push(message);
+      } else if (pageErrors.length < 20) {
+        pageErrors.push(message);
+      }
     });
     page.on('console', message => {
       if (message.type() === 'error' && consoleErrors.length < 30) {
@@ -890,7 +896,10 @@ async function captureCodeLabDashboardBrowser(expectedState) {
         };
       });
       const screenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
-      if (screenshot.length > 3 * 1024 * 1024) throw new Error('Dashboard ' + viewport.name + ' screenshot exceeds 3 MiB.');
+      const projectListScreenshot = await page.locator('#projectsGrid').screenshot({ animations: 'disabled' });
+      if (screenshot.length > 3 * 1024 * 1024 || projectListScreenshot.length > 3 * 1024 * 1024) {
+        throw new Error('Dashboard ' + viewport.name + ' screenshot exceeds 3 MiB.');
+      }
       captures.push({
         viewport,
         page: pageData,
@@ -900,6 +909,13 @@ async function captureCodeLabDashboardBrowser(expectedState) {
           mimeType: 'image/png',
           sizeBytes: screenshot.length,
           dataBase64: screenshot.toString('base64')
+        },
+        projectListScreenshot: {
+          role: 'dashboard-project-list-' + viewport.name,
+          label: 'CodeLab projects list — ' + viewport.name,
+          mimeType: 'image/png',
+          sizeBytes: projectListScreenshot.length,
+          dataBase64: projectListScreenshot.toString('base64')
         }
       });
     }
@@ -918,6 +934,7 @@ async function captureCodeLabDashboardBrowser(expectedState) {
       missingProjectNames: missing,
       unexpectedProjectNames: unexpected,
       pageErrors,
+      sandboxWarnings,
       consoleErrors,
       captures
     };
