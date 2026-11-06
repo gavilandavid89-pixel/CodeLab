@@ -496,6 +496,10 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
     });
     try {
       step = 'create-page';
+      await context.addInitScript(({ id, token }) => {
+        localStorage.setItem('codelab_xd_workspace_v4', id);
+        localStorage.setItem('codelab_xd_workspace_token_v1', token);
+      }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
       const page = await context.newPage();
       const allPageErrors = [];
       page.on('pageerror', error => {
@@ -576,11 +580,73 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           }
         });
       }
+      step = 'load-public-project-route';
+      const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+      const routeUrl = baseUrl + '/?projectId=' + encodeURIComponent(project.id);
+      const routeErrorStart = allPageErrors.length;
+      const routeResponse = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      if (!routeResponse || !routeResponse.ok()) throw new Error('Public CodeLab project route returned HTTP ' + (routeResponse?.status() || 'no response'));
+      step = 'wait-public-project-open';
+      await page.waitForFunction(expectedName => {
+        const studio = document.getElementById('studioView');
+        const title = document.getElementById('currentProjectTitle');
+        return !!studio && !studio.classList.contains('hidden') && !!title && title.textContent.trim() === expectedName;
+      }, project.name, { timeout: 45000 });
+      step = 'wait-public-preview';
+      const preview = page.frameLocator('#previewIframe');
+      await preview.locator('h1').waitFor({ state: 'visible', timeout: 45000 });
+      const routeHeading = String(await preview.locator('h1').textContent() || '').trim();
+      const routeButton = preview.locator('[data-codelab-demo]').first();
+      const routeButtonCount = await preview.locator('[data-codelab-demo]').count();
+      let routeStatus = '';
+      let routeInteractionWorks = false;
+      if (routeButtonCount > 0) {
+        step = 'click-public-preview-cta';
+        await routeButton.click({ timeout: 10000 });
+        routeStatus = String(await preview.locator('#demoStatus').textContent().catch(() => '') || '').trim();
+        routeInteractionWorks = routeStatus.includes('Interacción funcionando');
+      }
+      const routePage = await page.evaluate(() => ({
+        title: document.title,
+        projectTitle: document.getElementById('currentProjectTitle')?.textContent?.trim() || '',
+        studioVisible: !!document.getElementById('studioView') && !document.getElementById('studioView').classList.contains('hidden'),
+        workspaceId: localStorage.getItem('codelab_xd_workspace_v4') || '',
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth
+      }));
+      step = 'screenshot-public-project-route';
+      const routeScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (routeScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab public route screenshot exceeds 3 MiB.');
+      const routeErrors = allPageErrors.slice(routeErrorStart);
+      const routeTest = {
+        url: routeUrl,
+        captureMethod: 'playwright-chromium-public-route-admin-workspace',
+        checks: {
+          httpOk: routeResponse.ok(),
+          adminWorkspaceLoaded: routePage.workspaceId === workspaceId,
+          projectOpened: routePage.studioVisible && routePage.projectTitle === project.name,
+          previewRendered: !!routeHeading,
+          interactionButtonPresent: routeButtonCount > 0,
+          interactionWorks: routeInteractionWorks,
+          noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
+          noPageErrors: routeErrors.length === 0
+        },
+        page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus },
+        pageErrors: routeErrors,
+        screenshot: {
+          role: 'public-route-desktop',
+          label: 'CodeLab deployed project route — ADMIN workspace',
+          mimeType: 'image/png',
+          sizeBytes: routeScreenshot.length,
+          dataBase64: routeScreenshot.toString('base64')
+        }
+      };
       return {
-        captureMethod: 'playwright-chromium-saved-html-setcontent',
-        target: 'persisted CodeLab project HTML (isolated render; not the public app route)',
-        passed: results.every(item => Object.values(item.checks).every(Boolean)),
-        viewports: results
+        captureMethod: 'playwright-chromium-saved-html-and-public-route',
+        target: 'persisted HTML plus deployed CodeLab route opened with the ADMIN workspace token',
+        passed: results.every(item => Object.values(item.checks).every(Boolean)) && Object.values(routeTest.checks).every(Boolean),
+        viewports: results,
+        routeTest
       };
     } finally {
       await context.close().catch(() => {});
