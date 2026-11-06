@@ -107,11 +107,11 @@ Se amplió `codelab_project_inspect` con una opción explícita `browser_test: t
 - toma un PNG por viewport y lo devuelve en `result.browserTest.viewports[].screenshot.dataBase64`;
 - etiqueta el método como `playwright-chromium-saved-html-setcontent` y deja claro que es un render aislado del HTML, no una navegación por la ruta pública.
 
-La captura se incluye en el resultado del comando del buzón, por lo que el consumidor puede recuperar el base64 y mostrar la imagen. El test es opt-in para que las inspecciones normales no gasten CPU ni generen imágenes.
+La captura se incluye en el resultado del comando del buzón, por lo que el consumidor puede recuperar el base64 y mostrar la imagen. El test es opt-in para que las inspecciones normales no gasten CPU ni generen imágenes. El navegador reutiliza una sola página y cambia el viewport con `page.setViewportSize`; esto evita cerrar/crear varios contextos Chromium en el modo `--single-process` de `@sparticuz/chromium`.
 
-### 4.4 Regresión de código
+### 4.4 Diagnóstico del primer intento y corrección\n\nEl primer test de navegador falló en Render con `browserContext.newPage: Target page, context or browser has been closed`. Los logs confirmaron que Chromium se lanzó y ejecutó la inyección de `page.setContent`, pero el ciclo que cerraba y recreaba contextos dentro del mismo navegador era frágil con el Chromium empaquetado en modo single-process. Se cambió a un único BrowserContext y una única Page reutilizada para escritorio y móvil, cambiando el viewport entre pasadas. El fallo quedó registrado como fallido; no se sobrescribió como éxito. La corrección requiere repetir el comando nativo para obtener evidencia nueva.\n\n### 4.5 Regresión de código
 
-Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al job de validación de código en `.github/workflows/codelab-command-bridge.yml`. Actions solo valida sintaxis y pruebas del repositorio; no crea ni ejecuta el proyecto. El test de navegador real se dispara a través del buzón nativo.
+Se añadió `tests/codelab-native-browser-capture.test.mjs` y se incorporó al job de validación de código en `.github/workflows/codelab-command-bridge.yml`. La ejecución del job para el commit `c6a114a` terminó en verde: 11 tests aprobados, 0 fallos. La corrección posterior del ciclo de contextos también debe validarse en la siguiente ejecución. Actions solo valida sintaxis y pruebas del repositorio; no crea ni ejecuta el proyecto. El test de navegador real se dispara a través del buzón nativo.
 
 ## 5. Qué está probado y qué no
 
