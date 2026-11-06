@@ -1065,7 +1065,7 @@ async function mintNativeAdminHandoff() {
   if (!response.ok || data.ok !== true || !/^[a-f0-9]{48}$/.test(data.ticket || '')) {
     throw new Error('Native ADMIN handoff mint failed with HTTP ' + response.status + '.');
   }
-  const publicBase = String(process.env.CODELAB_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+  const publicBase = String(process.env.CODELAB_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
   return {
     status: 'ready',
     handoffUrl: publicBase + '/api/auth/native-handoff?ticket=' + encodeURIComponent(data.ticket),
