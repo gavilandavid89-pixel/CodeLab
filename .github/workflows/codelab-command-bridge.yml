@@ -34,6 +34,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Validate ADMIN-only bridge contract
+        run: |
+          node --check .github/scripts/codelab-bridge.mjs
+          node --test tests/codelab-bridge-admin-auth.test.mjs
       - name: Cache Playwright Chromium
         uses: actions/cache@v4
         with:
