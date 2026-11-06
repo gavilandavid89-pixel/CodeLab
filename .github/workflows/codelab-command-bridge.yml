@@ -36,7 +36,7 @@ jobs:
           node --check agent-bridge-worker.mjs
           node --check .github/scripts/codelab-bridge.mjs
       - name: Run bridge authorization and mailbox regression tests
-        run: node --test tests/codelab-bridge-admin-auth.test.mjs
+        run: node --test tests/codelab-bridge-admin-auth.test.mjs tests/codelab-native-browser-capture.test.mjs
 
   execute-command:
     if: |
