@@ -115,3 +115,8 @@ test('CodeLab browser QA clicks every same-canvas navigation link in saved HTML 
   assert.match(worker, /navigationWorks/);
   assert.match(worker, /routeNavigationWorks/);
 });
+
+test('Mobile web workspace toolbar actions keep a minimum 44px touch target after cascade overrides', () => {
+  assert.match(indexHtml, /#webWorkspaceToolbar \.web-action \{\s*min-height: 44px !important;\s*height: 44px !important;/);
+  assert.doesNotMatch(indexHtml, /#webWorkspaceToolbar \.web-action \{\s*min-height: 40px !important;/);
+});
