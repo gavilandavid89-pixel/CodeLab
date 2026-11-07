@@ -415,7 +415,8 @@ function exportDesignToHtml(project) {
       return '<div id="' + id + '" class="' + layerClass + '"' + navAttrs + ' aria-hidden="' + (navAttrs ? 'false' : 'true') + '" style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '"></div>';
     }
     if (type === 'image') {
-      return '<div id="' + id + '" class="' + layerClass + '"' + navAttrs + ' role="img" aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '">Imagen pendiente</div>';
+      const imageRole = navAttrs ? navAttrs : ' role="img"';
+      return '<div id="' + id + '" class="' + layerClass + '"' + imageRole + ' aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '">Imagen pendiente</div>';
     }
     return '<' + tag + ' id="' + id + '" class="' + layerClass + '"' + navAttrs + ' style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '">' + text + '</' + tag + '>';
   }).join('');
