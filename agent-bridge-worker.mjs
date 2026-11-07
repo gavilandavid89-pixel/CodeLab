@@ -721,8 +721,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       }, project.name, { timeout: 45000 });
       step = 'wait-public-preview';
       const preview = page.frameLocator('#previewIframe');
-      await preview.locator('h1').waitFor({ state: 'visible', timeout: 45000 });
-      const routeHeading = String(await preview.locator('h1').textContent() || '').trim();
+      await preview.locator('h1').first().waitFor({ state: 'visible', timeout: 45000 });
+      const routeHeading = String(await preview.locator('h1').first().textContent() || '').trim();
       const routeButton = preview.locator('[data-codelab-demo]').first();
       const routeButtonCount = await preview.locator('[data-codelab-demo]').count();
       let routeStatus = '';
@@ -771,8 +771,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         return !!studio && !studio.classList.contains('hidden') && !!title && title.textContent.trim() === expectedName;
       }, project.name, { timeout: 45000 });
       const reloadedPreview = page.frameLocator('#previewIframe');
-      await reloadedPreview.locator('h1').waitFor({ state: 'visible', timeout: 45000 });
-      const reloadedHeading = String(await reloadedPreview.locator('h1').textContent() || '').trim();
+      await reloadedPreview.locator('h1').first().waitFor({ state: 'visible', timeout: 45000 });
+      const reloadedHeading = String(await reloadedPreview.locator('h1').first().textContent() || '').trim();
       const reloadedButton = reloadedPreview.locator('[data-codelab-demo]').first();
       const reloadedButtonCount = await reloadedPreview.locator('[data-codelab-demo]').count();
       let reloadedStatus = '';
@@ -835,7 +835,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       await previewTab.click({ timeout: 10000 });
       await page.locator('#previewPanel').waitFor({ state: 'visible', timeout: 10000 });
       await page.frameLocator('#previewIframe').locator('h1').waitFor({ state: 'visible', timeout: 15000 });
-      const mobilePreviewHeading = String(await page.frameLocator('#previewIframe').locator('h1').textContent() || '').trim();
+      const mobilePreviewHeading = String(await page.frameLocator('#previewIframe').locator('h1').first().textContent() || '').trim();
       const mobilePreviewScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
       if (mobilePreviewScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile preview-mode screenshot exceeds 3 MiB.');
       step = 'switch-mobile-back-to-code';
@@ -853,7 +853,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           workspaceVisible: !!mobileRoutePage.webWorkspacePanel && mobileRoutePage.webWorkspacePanel.width > 0 && mobileRoutePage.webWorkspacePanel.height > 0,
           previewTabTouchSized: previewTabHeight >= 44,
           previewTabSwitchWorks: !!mobilePreviewHeading,
-          previewVisibleInPreviewMode: mobilePreviewHeading === 'Diseña. Construye. Publica.',
+          previewVisibleInPreviewMode: !!mobilePreviewHeading && mobilePreviewHeading === routeHeading,
           codeTabRestoresEditor: mobileCodeRestored
         },
         page: { ...mobileRoutePage, previewTabHeight, mobilePreviewHeading, mobileCodeRestored },
