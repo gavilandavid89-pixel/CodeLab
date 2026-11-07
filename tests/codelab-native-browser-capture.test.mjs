@@ -139,3 +139,10 @@ test('Node graph browser capture targets the actual store project among other sa
   assert.match(worker, /data-flow-target-project="proj_native_store-canvas-20261106-01"/);
   assert.match(worker, /storeProjectCardVisible/);
 });
+
+test('Node graph QA scopes connection counts to the selected store project', () => {
+  assert.match(worker, /storeProjectConnectionCount/);
+  assert.match(worker, /storeProjectHasTwoConnections/);
+  assert.match(worker, /desktopWireCount >= 4/);
+  assert.match(worker, /mobileWireCount >= 4/);
+});
