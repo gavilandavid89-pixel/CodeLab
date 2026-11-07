@@ -78,3 +78,13 @@ test('Native mailbox leases are workspace-scoped, expire dead commands, and hear
   assert.match(worker, /SET updated_at=now\(\) WHERE command_id=\$1 AND workspace_id=\$2 AND status='running'/);
   assert.match(worker, /clearInterval\(heartbeatTimer\)/);
 });
+
+test('Native mailbox supports navigation between different layers in the same project', () => {
+  const connect = worker.match(/async function connectCodeLabProject\(command\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(connect, /payload\.target_element_id/);
+  assert.match(connect, /A same-canvas connection must identify a different target element/);
+  assert.match(connect, /sourceElementId === targetElementId/);
+  assert.match(connect, /targetProject\.design\.elements\.some/);
+  assert.match(connect, /targetElementId \? item\.targetElementId === targetElementId/);
+  assert.doesNotMatch(connect, /sourceProjectId === targetProjectId\) throw new Error/);
+});
