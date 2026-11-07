@@ -133,3 +133,9 @@ test('CodeLab browser QA captures the actual same-canvas node graph on desktop a
   assert.match(worker, /designFlowConnectionsVisible/);
   assert.match(worker, /designFlowGraphMobileFits/);
 });
+
+test('Node graph browser capture targets the actual store project among other saved projects', () => {
+  assert.match(worker, /data-flow-source-project="proj_native_store-canvas-20261106-01"/);
+  assert.match(worker, /data-flow-target-project="proj_native_store-canvas-20261106-01"/);
+  assert.match(worker, /storeProjectCardVisible/);
+});
