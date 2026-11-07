@@ -100,3 +100,9 @@ test('CodeLab web export preserves full same-canvas dimensions and navigation ta
   assert.match(exporter, /w>window\.innerWidth/);
   assert.match(exporter, /overflow:auto/);
 });
+
+test('CodeLab browser QA handles multi-heading designs without strict locator failures', () => {
+  assert.match(worker, /preview\.locator\('h1'\)\.first\(\)\.waitFor/);
+  assert.match(worker, /reloadedPreview\.locator\('h1'\)\.first\(\)\.waitFor/);
+  assert.match(worker, /mobilePreviewHeading === routeHeading/);
+});
