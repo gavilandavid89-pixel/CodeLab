@@ -920,8 +920,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       await page.locator('#designFlowOverviewToggle').click({ timeout: 10000 });
       await page.locator('#designFlowOverview').waitFor({ state: 'visible', timeout: 10000 });
       const graphOverviewText = String(await page.locator('#designFlowOverview').innerText() || '');
-      const sourceNode = page.locator('[data-flow-action="hero-cta"]');
-      const targetNode = page.locator('[data-flow-target-element="catalog-title"]');
+      const sourceNode = page.locator('[data-flow-source-project="proj_native_store-canvas-20261106-01"][data-flow-action="hero-cta"]');
+      const targetNode = page.locator('[data-flow-target-project="proj_native_store-canvas-20261106-01"][data-flow-target-element="catalog-title"]');
       await sourceNode.scrollIntoViewIfNeeded();
       await targetNode.scrollIntoViewIfNeeded();
       await page.waitForTimeout(350);
@@ -932,6 +932,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         modalVisible: !!document.getElementById('designFlowGraphModal') &&
           !document.getElementById('designFlowGraphModal').classList.contains('hidden'),
         cardCount: document.querySelectorAll('#designFlowCards > article').length,
+        storeProjectCardVisible: !!document.querySelector('[data-flow-page="proj_native_store-canvas-20261106-01"]'),
         overviewText: document.getElementById('designFlowOverview')?.innerText || ''
       }));
       const desktopGraphScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
@@ -955,7 +956,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       const designFlowGraph = {
         checks: {
           modalVisible: desktopGraphMetrics.modalVisible,
-          projectCardVisible: desktopGraphMetrics.cardCount === 1,
+          projectCardVisible: desktopGraphMetrics.storeProjectCardVisible,
           overviewShowsTwoConnections: /2 conexiones/.test(graphOverviewText),
           overviewShowsNoBrokenConnections: /0 rotas/.test(graphOverviewText),
           desktopWiresVisible: desktopWireCount >= 2,
