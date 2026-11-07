@@ -155,7 +155,7 @@
       const start={x:r.left-cr.left+canvas.scrollLeft+r.width/2,y:r.top-cr.top+canvas.scrollTop+r.height/2};
       const end={x:tr.left-cr.left+canvas.scrollLeft+tr.width/2,y:tr.top-cr.top+canvas.scrollTop+tr.height/2};
       const samePage = c.sourceProjectId === c.targetProjectId;
-      const laneX = samePage ? Math.max(start.x,end.x)+54 : (start.x+end.x)/2;
+      const laneX = samePage ? Math.min(Math.max(start.x,end.x)+40, Math.max(canvas.scrollWidth,canvas.clientWidth)-8) : (start.x+end.x)/2;
       const path=document.createElementNS('http://www.w3.org/2000/svg','path');
       path.setAttribute('d','M '+start.x+' '+start.y+' C '+laneX+' '+start.y+', '+laneX+' '+end.y+', '+end.x+' '+end.y);
       const halo=path.cloneNode(false); halo.setAttribute('fill','none'); halo.setAttribute('stroke','#ffffff'); halo.setAttribute('stroke-width','6'); halo.setAttribute('stroke-opacity','0.72'); halo.setAttribute('stroke-linecap','round'); halo.setAttribute('data-wire-halo','true'); svg.appendChild(halo);
