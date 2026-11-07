@@ -923,6 +923,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       await page.locator('#designFlowOverviewToggle').click({ timeout: 10000 });
       await page.locator('#designFlowOverview').waitFor({ state: 'visible', timeout: 10000 });
       const graphOverviewText = String(await page.locator('#designFlowOverview').innerText() || '');
+      const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
+      const sandboxIsolationConfirmed = previewSandbox.includes('allow-scripts') && !previewSandbox.includes('allow-same-origin');
       await page.locator('#designFlowOverviewToggle').click({ timeout: 10000 });
       // The preview was already tested above; release its iframe before capturing the graph to stay within the free Render memory budget.
       await page.evaluate(() => { document.getElementById('previewPanel')?.remove(); });
@@ -994,8 +996,6 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       };
       const routeErrors = allPageErrors.slice(routeErrorStart);
       const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
-      const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
-      const sandboxIsolationConfirmed = previewSandbox.includes('allow-scripts') && !previewSandbox.includes('allow-same-origin');
       const expectedSandboxPageErrors = sandboxIsolationConfirmed
         ? routeErrors.filter(item => /Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag/.test(item))
         : [];
