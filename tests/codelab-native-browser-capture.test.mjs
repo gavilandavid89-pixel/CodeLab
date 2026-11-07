@@ -120,3 +120,22 @@ test('Mobile web workspace toolbar actions keep a minimum 44px touch target afte
   assert.match(indexHtml, /#webWorkspaceToolbar \.web-action \{\s*min-height: 44px !important;\s*height: 44px !important;/);
   assert.doesNotMatch(indexHtml, /#webWorkspaceToolbar \.web-action \{\s*min-height: 40px !important;/);
 });
+
+test('CodeLab browser QA captures the actual same-canvas node graph on desktop and mobile', () => {
+  assert.match(worker, /openDesignFlowGraph/);
+  assert.match(worker, /designFlowGraphModal/);
+  assert.match(worker, /designFlowOverview/);
+  assert.match(worker, /data-flow-action="hero-cta"/);
+  assert.match(worker, /data-flow-target-element="catalog-title"/);
+  assert.match(worker, /path\[data-connection\]/);
+  assert.match(worker, /design-flow-graph-desktop/);
+  assert.match(worker, /design-flow-graph-mobile/);
+  assert.match(worker, /designFlowConnectionsVisible/);
+  assert.match(worker, /designFlowGraphMobileFits/);
+});
+
+test('Node graph browser capture targets the actual store project among other saved projects', () => {
+  assert.match(worker, /data-flow-source-project="proj_native_store-canvas-20261106-01"/);
+  assert.match(worker, /data-flow-target-project="proj_native_store-canvas-20261106-01"/);
+  assert.match(worker, /storeProjectCardVisible/);
+});

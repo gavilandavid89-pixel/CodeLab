@@ -905,6 +905,83 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           }
         ]
       };
+      step = 'open-design-flow-graph';
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.evaluate(() => {
+        if (typeof window.openDesignFlowGraph !== 'function') {
+          throw new Error('The deployed design-flow graph launcher is not available.');
+        }
+        window.openDesignFlowGraph();
+      });
+      const graphModal = page.locator('#designFlowGraphModal');
+      await graphModal.waitFor({ state: 'visible', timeout: 10000 });
+      const graphCards = page.locator('#designFlowCards > article');
+      await graphCards.first().waitFor({ state: 'visible', timeout: 10000 });
+      await page.locator('#designFlowOverviewToggle').click({ timeout: 10000 });
+      await page.locator('#designFlowOverview').waitFor({ state: 'visible', timeout: 10000 });
+      const graphOverviewText = String(await page.locator('#designFlowOverview').innerText() || '');
+      const sourceNode = page.locator('[data-flow-source-project="proj_native_store-canvas-20261106-01"][data-flow-action="hero-cta"]');
+      const targetNode = page.locator('[data-flow-target-project="proj_native_store-canvas-20261106-01"][data-flow-target-element="catalog-title"]');
+      await sourceNode.scrollIntoViewIfNeeded();
+      await targetNode.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(350);
+      const desktopWireCount = await page.locator('#designFlowWires path[data-connection]').count();
+      const desktopGraphMetrics = await page.evaluate(() => ({
+        viewportWidth: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        modalVisible: !!document.getElementById('designFlowGraphModal') &&
+          !document.getElementById('designFlowGraphModal').classList.contains('hidden'),
+        cardCount: document.querySelectorAll('#designFlowCards > article').length,
+        storeProjectCardVisible: !!document.querySelector('[data-flow-page="proj_native_store-canvas-20261106-01"]'),
+        overviewText: document.getElementById('designFlowOverview')?.innerText || ''
+      }));
+      const desktopGraphScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (desktopGraphScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab desktop node-graph screenshot exceeds 3 MiB.');
+      step = 'capture-design-flow-graph-mobile';
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(250);
+      await sourceNode.scrollIntoViewIfNeeded();
+      await targetNode.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(350);
+      const mobileWireCount = await page.locator('#designFlowWires path[data-connection]').count();
+      const mobileGraphMetrics = await page.evaluate(() => ({
+        viewportWidth: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        modalWidth: Math.round(document.getElementById('designFlowGraphModal')?.getBoundingClientRect().width || 0),
+        canvasWidth: document.getElementById('designFlowCanvas')?.clientWidth || 0,
+        cardCount: document.querySelectorAll('#designFlowCards > article').length
+      }));
+      const mobileGraphScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
+      if (mobileGraphScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile node-graph screenshot exceeds 3 MiB.');
+      const designFlowGraph = {
+        checks: {
+          modalVisible: desktopGraphMetrics.modalVisible,
+          projectCardVisible: desktopGraphMetrics.storeProjectCardVisible,
+          overviewShowsTwoConnections: /2 conexiones/.test(graphOverviewText),
+          overviewShowsNoBrokenConnections: /0 rotas/.test(graphOverviewText),
+          desktopWiresVisible: desktopWireCount >= 2,
+          mobileWiresVisible: mobileWireCount >= 2,
+          mobileNoDocumentOverflow: mobileGraphMetrics.documentWidth <= mobileGraphMetrics.viewportWidth + 1,
+          mobileGraphFitsViewport: mobileGraphMetrics.modalWidth === mobileGraphMetrics.viewportWidth
+        },
+        metrics: { overviewText: graphOverviewText, desktop: desktopGraphMetrics, mobile: mobileGraphMetrics, desktopWireCount, mobileWireCount },
+        screenshots: [
+          {
+            role: 'design-flow-graph-desktop',
+            label: 'CodeLab — grafo de nodos y conexiones — escritorio',
+            mimeType: 'image/png',
+            sizeBytes: desktopGraphScreenshot.length,
+            dataBase64: desktopGraphScreenshot.toString('base64')
+          },
+          {
+            role: 'design-flow-graph-mobile',
+            label: 'CodeLab — grafo de nodos y conexiones — móvil',
+            mimeType: 'image/png',
+            sizeBytes: mobileGraphScreenshot.length,
+            dataBase64: mobileGraphScreenshot.toString('base64')
+          }
+        ]
+      };
       const routeErrors = allPageErrors.slice(routeErrorStart);
       const routeConsoleErrors = allConsoleErrors.slice(routeConsoleStart);
       const previewSandbox = await page.locator('#previewIframe').getAttribute('sandbox').catch(() => '') || '';
@@ -923,6 +1000,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         ...expectedSandboxConsoleErrors.map(item => ({ source: 'sandboxed-preview-console', ...item }))
       ];
       const routeTest = {
+        designFlowGraph,
         url: routeUrl,
         captureMethod: 'playwright-chromium-public-route-admin-workspace',
         checks: {
@@ -938,6 +1016,9 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           previewSandboxed: sandboxIsolationConfirmed,
           reloadRestoresProject: Object.values(reloadTest.checks).every(Boolean),
           mobileLayoutPasses: Object.values(mobileRouteTest.checks).every(Boolean),
+          designFlowGraphVisible: designFlowGraph.checks.modalVisible && designFlowGraph.checks.projectCardVisible,
+          designFlowConnectionsVisible: designFlowGraph.checks.overviewShowsTwoConnections && designFlowGraph.checks.overviewShowsNoBrokenConnections && designFlowGraph.checks.desktopWiresVisible && designFlowGraph.checks.mobileWiresVisible,
+          designFlowGraphMobileFits: designFlowGraph.checks.mobileNoDocumentOverflow && designFlowGraph.checks.mobileGraphFitsViewport,
           noPageErrors: unexpectedPageErrors.length === 0 && unexpectedConsoleErrors.length === 0
         },
         page: { ...routePage, previewHeading: routeHeading, statusText: routeStatus, previewSandbox },
