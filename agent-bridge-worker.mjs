@@ -659,7 +659,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           const link = flowLinks.nth(index);
           const targetId = await link.getAttribute('data-flow-to-element');
           await link.click({ timeout: 5000 });
-          await page.waitForTimeout(180);
+          await page.waitForTimeout(350);
           const targetVisible = targetId ? await page.locator('#' + targetId).evaluate(element => {
             const rect = element.getBoundingClientRect();
             return rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
@@ -747,7 +747,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         const link = routeFlowLinks.nth(index);
         const targetId = await link.getAttribute('data-flow-to-element');
         await link.click({ timeout: 10000 });
-        await page.waitForTimeout(180);
+        await page.waitForTimeout(350);
         const targetVisible = targetId ? await preview.locator('#' + targetId).evaluate(element => {
           const rect = element.getBoundingClientRect();
           return rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
