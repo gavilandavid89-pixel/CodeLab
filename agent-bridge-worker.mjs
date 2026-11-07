@@ -587,6 +587,7 @@ async function convertCodeLabProjectToWeb(command) {
   };
 }
 async function captureCodeLabProjectBrowser(project, payload = {}) {
+  const requireFlowNavigation = payload.require_flow_navigation === true;
   const html = String(project.code?.html || '');
   if (!html || !/<!doctype html>/i.test(html)) throw new Error('The saved project has no complete HTML document to render.');
   if (Buffer.byteLength(html, 'utf8') > 2 * 1024 * 1024) throw new Error('The saved HTML exceeds the 2 MiB browser QA limit.');
@@ -651,6 +652,20 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           viewportWidth: window.innerWidth,
           documentHeight: document.documentElement.scrollHeight
         }));
+        const flowLinks = page.locator('[data-flow-to-element]');
+        const flowLinkCount = await flowLinks.count();
+        let navigationWorks = flowLinkCount > 0;
+        for (let index = 0; index < flowLinkCount; index++) {
+          const link = flowLinks.nth(index);
+          const targetId = await link.getAttribute('data-flow-to-element');
+          await link.click({ timeout: 5000 });
+          await page.waitForTimeout(180);
+          const targetVisible = targetId ? await page.locator('#' + targetId).evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
+          }).catch(() => false) : false;
+          navigationWorks = navigationWorks && targetVisible;
+        }
         step = 'click-cta-' + viewport.name;
         const button = page.locator('[data-codelab-demo]').first();
         const buttonCount = await page.locator('[data-codelab-demo]').count();
@@ -688,6 +703,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
             headingVisible: !!before.heading,
             interactionButtonPresent: buttonCount > 0,
             interactionWorks: buttonClicked,
+            navigationLinkPresent: !requireFlowNavigation || flowLinkCount > 0,
+            navigationWorks: !requireFlowNavigation || navigationWorks,
             noHorizontalOverflow: !metrics.horizontalOverflow,
             mobileControlsReadable: viewport.name !== 'mobile' || (metrics.buttonWidth >= 140 && metrics.buttonFontSize >= 14 && metrics.headingFontSize >= 24),
             noPageErrors: pageErrors.length === 0 && consoleErrors.length === 0
@@ -723,6 +740,20 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       const preview = page.frameLocator('#previewIframe');
       await preview.locator('h1').first().waitFor({ state: 'visible', timeout: 45000 });
       const routeHeading = String(await preview.locator('h1').first().textContent() || '').trim();
+      const routeFlowLinks = preview.locator('[data-flow-to-element]');
+      const routeFlowLinkCount = await routeFlowLinks.count();
+      let routeNavigationWorks = routeFlowLinkCount > 0;
+      for (let index = 0; index < routeFlowLinkCount; index++) {
+        const link = routeFlowLinks.nth(index);
+        const targetId = await link.getAttribute('data-flow-to-element');
+        await link.click({ timeout: 10000 });
+        await page.waitForTimeout(180);
+        const targetVisible = targetId ? await preview.locator('#' + targetId).evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          return rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
+        }).catch(() => false) : false;
+        routeNavigationWorks = routeNavigationWorks && targetVisible;
+      }
       const routeButton = preview.locator('[data-codelab-demo]').first();
       const routeButtonCount = await preview.locator('[data-codelab-demo]').count();
       let routeStatus = '';
@@ -901,6 +932,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           previewRendered: !!routeHeading,
           interactionButtonPresent: routeButtonCount > 0,
           interactionWorks: routeInteractionWorks,
+          navigationLinkPresent: !requireFlowNavigation || routeFlowLinkCount > 0,
+          navigationWorks: !requireFlowNavigation || routeNavigationWorks,
           noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
           previewSandboxed: sandboxIsolationConfirmed,
           reloadRestoresProject: Object.values(reloadTest.checks).every(Boolean),
