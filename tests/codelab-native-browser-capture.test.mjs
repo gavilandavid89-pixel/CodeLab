@@ -154,3 +154,11 @@ test('Node graph screenshots release the preview iframe and capture only the act
   assert.match(worker, /desktopWireCount >= 2/);
   assert.match(worker, /mobileWireCount >= 2/);
 });
+
+test('Browser QA verifies preview sandbox isolation before removing the preview iframe', () => {
+  const sandboxCheckIndex = worker.indexOf("const previewSandbox = await page.locator('#previewIframe')");
+  const iframeCleanupIndex = worker.indexOf("document.getElementById('previewPanel')?.remove()");
+  assert.ok(sandboxCheckIndex >= 0 && iframeCleanupIndex >= 0);
+  assert.ok(sandboxCheckIndex < iframeCleanupIndex);
+  assert.match(worker, /sandboxIsolationConfirmed = previewSandbox\.includes\('allow-scripts'\) && !previewSandbox\.includes\('allow-same-origin'\)/);
+});
