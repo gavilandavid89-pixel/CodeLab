@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const worker = await readFile(new URL('../agent-bridge-worker.mjs', import.meta.url), 'utf8');
 const indexHtml = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+const designFlow = await readFile(new URL('../public/design-flow.js', import.meta.url), 'utf8');
 
 test('CodeLab browser QA runs against the persisted project HTML with Chromium', () => {
   assert.match(worker, /async function captureCodeLabProjectBrowser\(/);
@@ -161,4 +162,14 @@ test('Browser QA verifies preview sandbox isolation before removing the preview 
   assert.ok(sandboxCheckIndex >= 0 && iframeCleanupIndex >= 0);
   assert.ok(sandboxCheckIndex < iframeCleanupIndex);
   assert.match(worker, /sandboxIsolationConfirmed = previewSandbox\.includes\('allow-scripts'\) && !previewSandbox\.includes\('allow-same-origin'\)/);
+});
+
+test('Same-canvas node wires render above card backgrounds but below interactive rows', () => {
+  assert.match(designFlow, /absolute left-0 top-0 z-30/);
+  assert.match(designFlow, /id="designFlowCards" class="relative grid/);
+  assert.match(designFlow, /class="relative z-40 flex items-center gap-2 rounded-lg border p-2/);
+  assert.match(worker, /desktopWireVisuals\.visibleCount >= 2/);
+  assert.match(worker, /mobileWireVisuals\.visibleCount >= 2/);
+  assert.match(worker, /desktopWireVisuals\.rowZ > desktopWireVisuals\.svgZ/);
+  assert.match(worker, /mobileWireVisuals\.rowZ > mobileWireVisuals\.svgZ/);
 });
