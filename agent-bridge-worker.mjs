@@ -939,6 +939,26 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       await targetNode.scrollIntoViewIfNeeded();
       await page.waitForTimeout(350);
       const desktopWireCount = await page.locator('#designFlowWires path[data-connection]').count();
+      const desktopWireVisuals = await page.locator('#designFlowWires path[data-connection]').evaluateAll(paths => {
+        const canvasRect = document.getElementById('designFlowCanvas').getBoundingClientRect();
+        const svg = document.getElementById('designFlowWires');
+        const cards = document.getElementById('designFlowCards');
+        const source = document.querySelector('[data-flow-source-project="proj_native_store-canvas-20261106-01"][data-flow-action="hero-cta"]');
+        const visibleCount = paths.filter(path => {
+          const rect = path.getBoundingClientRect();
+          const style = getComputedStyle(path);
+          return style.stroke !== 'none' && Number(style.opacity || 1) > 0 &&
+            rect.width > 1 && rect.height > 1 &&
+            rect.left < canvasRect.right && rect.right > canvasRect.left &&
+            rect.top < canvasRect.bottom && rect.bottom > canvasRect.top;
+        }).length;
+        return {
+          visibleCount,
+          svgZ: Number.parseInt(getComputedStyle(svg).zIndex, 10) || 0,
+          cardsZ: Number.parseInt(getComputedStyle(cards).zIndex, 10) || 0,
+          rowZ: Number.parseInt(getComputedStyle(source).zIndex, 10) || 0
+        };
+      });
       const desktopGraphMetrics = await page.evaluate(() => ({
         viewportWidth: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,
@@ -956,6 +976,26 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       await targetNode.scrollIntoViewIfNeeded();
       await page.waitForTimeout(350);
       const mobileWireCount = await page.locator('#designFlowWires path[data-connection]').count();
+      const mobileWireVisuals = await page.locator('#designFlowWires path[data-connection]').evaluateAll(paths => {
+        const canvasRect = document.getElementById('designFlowCanvas').getBoundingClientRect();
+        const svg = document.getElementById('designFlowWires');
+        const cards = document.getElementById('designFlowCards');
+        const source = document.querySelector('[data-flow-source-project="proj_native_store-canvas-20261106-01"][data-flow-action="hero-cta"]');
+        const visibleCount = paths.filter(path => {
+          const rect = path.getBoundingClientRect();
+          const style = getComputedStyle(path);
+          return style.stroke !== 'none' && Number(style.opacity || 1) > 0 &&
+            rect.width > 1 && rect.height > 1 &&
+            rect.left < canvasRect.right && rect.right > canvasRect.left &&
+            rect.top < canvasRect.bottom && rect.bottom > canvasRect.top;
+        }).length;
+        return {
+          visibleCount,
+          svgZ: Number.parseInt(getComputedStyle(svg).zIndex, 10) || 0,
+          cardsZ: Number.parseInt(getComputedStyle(cards).zIndex, 10) || 0,
+          rowZ: Number.parseInt(getComputedStyle(source).zIndex, 10) || 0
+        };
+      });
       const mobileGraphMetrics = await page.evaluate(() => ({
         viewportWidth: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,
@@ -971,12 +1011,12 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           projectCardVisible: desktopGraphMetrics.storeProjectCardVisible,
           storeProjectHasTwoConnections: storeProjectConnectionCount === 2,
           overviewShowsNoBrokenConnections: /0 rotas/.test(graphOverviewText),
-          desktopWiresVisible: desktopWireCount >= 2,
-          mobileWiresVisible: mobileWireCount >= 2,
+          desktopWiresVisible: desktopWireCount >= 2 && desktopWireVisuals.visibleCount >= 2 && desktopWireVisuals.svgZ > desktopWireVisuals.cardsZ && desktopWireVisuals.rowZ > desktopWireVisuals.svgZ,
+          mobileWiresVisible: mobileWireCount >= 2 && mobileWireVisuals.visibleCount >= 2 && mobileWireVisuals.svgZ > mobileWireVisuals.cardsZ && mobileWireVisuals.rowZ > mobileWireVisuals.svgZ,
           mobileNoDocumentOverflow: mobileGraphMetrics.documentWidth <= mobileGraphMetrics.viewportWidth + 1,
           mobileGraphFitsViewport: mobileGraphMetrics.modalWidth === mobileGraphMetrics.viewportWidth
         },
-        metrics: { overviewText: graphOverviewText, desktop: desktopGraphMetrics, mobile: mobileGraphMetrics, storeProjectConnectionCount, desktopWireCount, mobileWireCount },
+        metrics: { overviewText: graphOverviewText, desktop: desktopGraphMetrics, mobile: mobileGraphMetrics, storeProjectConnectionCount, desktopWireCount, mobileWireCount, desktopWireVisuals, mobileWireVisuals },
         screenshots: [
           {
             role: 'design-flow-graph-desktop',
