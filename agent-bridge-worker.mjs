@@ -917,6 +917,9 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       await graphModal.waitFor({ state: 'visible', timeout: 10000 });
       const graphCards = page.locator('#designFlowCards > article');
       await graphCards.first().waitFor({ state: 'visible', timeout: 10000 });
+      const storeProjectCard = page.locator('[data-flow-page="proj_native_store-canvas-20261106-01"]');
+      await storeProjectCard.waitFor({ state: 'visible', timeout: 10000 });
+      const storeProjectConnectionCount = await storeProjectCard.locator('[data-flow-remove]').count();
       await page.locator('#designFlowOverviewToggle').click({ timeout: 10000 });
       await page.locator('#designFlowOverview').waitFor({ state: 'visible', timeout: 10000 });
       const graphOverviewText = String(await page.locator('#designFlowOverview').innerText() || '');
@@ -957,14 +960,14 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         checks: {
           modalVisible: desktopGraphMetrics.modalVisible,
           projectCardVisible: desktopGraphMetrics.storeProjectCardVisible,
-          overviewShowsTwoConnections: /2 conexiones/.test(graphOverviewText),
+          storeProjectHasTwoConnections: storeProjectConnectionCount === 2,
           overviewShowsNoBrokenConnections: /0 rotas/.test(graphOverviewText),
-          desktopWiresVisible: desktopWireCount >= 2,
-          mobileWiresVisible: mobileWireCount >= 2,
+          desktopWiresVisible: desktopWireCount >= 4,
+          mobileWiresVisible: mobileWireCount >= 4,
           mobileNoDocumentOverflow: mobileGraphMetrics.documentWidth <= mobileGraphMetrics.viewportWidth + 1,
           mobileGraphFitsViewport: mobileGraphMetrics.modalWidth === mobileGraphMetrics.viewportWidth
         },
-        metrics: { overviewText: graphOverviewText, desktop: desktopGraphMetrics, mobile: mobileGraphMetrics, desktopWireCount, mobileWireCount },
+        metrics: { overviewText: graphOverviewText, desktop: desktopGraphMetrics, mobile: mobileGraphMetrics, storeProjectConnectionCount, desktopWireCount, mobileWireCount },
         screenshots: [
           {
             role: 'design-flow-graph-desktop',
@@ -1017,7 +1020,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           reloadRestoresProject: Object.values(reloadTest.checks).every(Boolean),
           mobileLayoutPasses: Object.values(mobileRouteTest.checks).every(Boolean),
           designFlowGraphVisible: designFlowGraph.checks.modalVisible && designFlowGraph.checks.projectCardVisible,
-          designFlowConnectionsVisible: designFlowGraph.checks.overviewShowsTwoConnections && designFlowGraph.checks.overviewShowsNoBrokenConnections && designFlowGraph.checks.desktopWiresVisible && designFlowGraph.checks.mobileWiresVisible,
+          designFlowConnectionsVisible: designFlowGraph.checks.storeProjectHasTwoConnections && designFlowGraph.checks.overviewShowsNoBrokenConnections && designFlowGraph.checks.desktopWiresVisible && designFlowGraph.checks.mobileWiresVisible,
           designFlowGraphMobileFits: designFlowGraph.checks.mobileNoDocumentOverflow && designFlowGraph.checks.mobileGraphFitsViewport,
           noPageErrors: unexpectedPageErrors.length === 0 && unexpectedConsoleErrors.length === 0
         },
