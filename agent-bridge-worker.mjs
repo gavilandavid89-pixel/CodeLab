@@ -834,7 +834,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       step = 'switch-mobile-to-preview';
       await previewTab.click({ timeout: 10000 });
       await page.locator('#previewPanel').waitFor({ state: 'visible', timeout: 10000 });
-      await page.frameLocator('#previewIframe').locator('h1').waitFor({ state: 'visible', timeout: 15000 });
+      await page.frameLocator('#previewIframe').locator('h1').first().waitFor({ state: 'visible', timeout: 15000 });
       const mobilePreviewHeading = String(await page.frameLocator('#previewIframe').locator('h1').first().textContent() || '').trim();
       const mobilePreviewScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
       if (mobilePreviewScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile preview-mode screenshot exceeds 3 MiB.');
