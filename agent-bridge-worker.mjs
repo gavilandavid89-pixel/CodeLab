@@ -437,27 +437,57 @@ async function connectCodeLabProject(command) {
   const sourceProjectId = payload.source_project_id;
   const targetProjectId = payload.target_project_id;
   const sourceElementId = payload.source_element_id;
+  const targetElementId = payload.target_element_id;
   for (const [label, value] of [['source_project_id', sourceProjectId], ['target_project_id', targetProjectId]]) {
-    if (typeof value !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new Error(label + ' must be a valid CodeLab project id.');
+    if (typeof value !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(value)) {
+      throw new Error(label + ' must be a valid CodeLab project id.');
+    }
   }
-  if (sourceProjectId === targetProjectId) throw new Error('A navigation connection must point to a different interface.');
-  if (typeof sourceElementId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(sourceElementId)) throw new Error('source_element_id must be a valid design element id.');
+  if (typeof sourceElementId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(sourceElementId)) {
+    throw new Error('source_element_id must be a valid design element id.');
+  }
+  if (targetElementId != null && (typeof targetElementId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(targetElementId))) {
+    throw new Error('target_element_id must be a valid design element id.');
+  }
+  if (sourceProjectId === targetProjectId && !targetElementId) {
+    throw new Error('A same-canvas connection must identify a different target element.');
+  }
+  if (sourceProjectId === targetProjectId && sourceElementId === targetElementId) {
+    throw new Error('A navigation connection cannot point to the same element.');
+  }
   const result = await mutateAdminWorkspace(projects => {
     const sourceIndex = projects.findIndex(item => item && item.id === sourceProjectId);
-    const target = projects.find(item => item && item.id === targetProjectId);
+    const targetProject = projects.find(item => item && item.id === targetProjectId);
     if (sourceIndex < 0) throw new Error('Source CodeLab project was not found.');
-    if (!target) throw new Error('Target CodeLab interface was not found.');
+    if (!targetProject) throw new Error('Target CodeLab interface was not found.');
     const sourceProject = { ...projects[sourceIndex] };
-    if (!sourceProject.design || !Array.isArray(sourceProject.design.elements)) throw new Error('Source project has no design canvas.');
-    const element = sourceProject.design.elements.find(item => item && item.id === sourceElementId);
-    if (!element) throw new Error('Source design element was not found.');
-    if (element.flowRole === 'menu') throw new Error('A dropdown menu cannot navigate to another interface.');
+    if (!sourceProject.design || !Array.isArray(sourceProject.design.elements)) {
+      throw new Error('Source project has no design canvas.');
+    }
+    if (!targetProject.design || !Array.isArray(targetProject.design.elements)) {
+      throw new Error('Target project has no design canvas.');
+    }
+    const sourceElement = sourceProject.design.elements.find(item => item && item.id === sourceElementId);
+    if (!sourceElement) throw new Error('Source design element was not found.');
+    if (sourceElement.flowRole === 'menu') {
+      throw new Error('A dropdown menu cannot navigate to another interface.');
+    }
+    if (targetElementId && !targetProject.design.elements.some(item => item && item.id === targetElementId)) {
+      throw new Error('Target design element was not found.');
+    }
     const design = { ...sourceProject.design };
     const connections = Array.isArray(design.flowConnections) ? design.flowConnections.slice() : [];
-    const existing = connections.find(item => item && item.sourceElementId === sourceElementId && item.targetProjectId === targetProjectId);
-    if (!existing) connections.push({ sourceElementId, targetProjectId });
-    design.flowConnections = connections.filter(item => item && (item.sourceElementId !== sourceElementId || item.targetProjectId === targetProjectId));
-    const elements = design.elements.map(item => item && item.id === sourceElementId ? { ...item, flowRole: 'navigate' } : item);
+    const nextConnection = {
+      sourceElementId,
+      targetProjectId,
+      ...(targetElementId ? { targetElementId } : {})
+    };
+    const nextConnections = connections.filter(item => item && item.sourceElementId !== sourceElementId);
+    nextConnections.push(nextConnection);
+    design.flowConnections = nextConnections;
+    const elements = design.elements.map(item =>
+      item && item.id === sourceElementId ? { ...item, flowRole: 'navigate' } : item
+    );
     sourceProject.design = { ...design, elements };
     sourceProject.updatedAt = new Date().toISOString();
     const next = projects.slice();
@@ -465,9 +495,24 @@ async function connectCodeLabProject(command) {
     return next;
   });
   const saved = result.state.projects.find(item => item && item.id === sourceProjectId);
-  const savedConnection = saved?.design?.flowConnections?.find(item => item && item.sourceElementId === sourceElementId && item.targetProjectId === targetProjectId);
+  const savedConnection = saved?.design?.flowConnections?.find(item =>
+    item && item.sourceElementId === sourceElementId &&
+    item.targetProjectId === targetProjectId &&
+    (targetElementId ? item.targetElementId === targetElementId : !item.targetElementId)
+  );
   if (!savedConnection) throw new Error('Connection did not pass post-save verification.');
-  return { sourceProjectId, sourceElementId, targetProjectId, sourceProjectName: saved.name, targetProjectName: result.state.projects.find(item => item && item.id === targetProjectId)?.name, revision: result.state.revision, persisted: !result.unchanged, connection: savedConnection };
+  const target = result.state.projects.find(item => item && item.id === targetProjectId);
+  return {
+    sourceProjectId,
+    sourceElementId,
+    targetProjectId,
+    ...(targetElementId ? { targetElementId } : {}),
+    sourceProjectName: saved.name,
+    targetProjectName: target?.name,
+    revision: result.state.revision,
+    persisted: !result.unchanged,
+    connection: savedConnection
+  };
 }
 
 async function convertCodeLabProjectToWeb(command) {
