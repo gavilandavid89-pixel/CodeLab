@@ -106,3 +106,12 @@ test('CodeLab browser QA handles multi-heading designs without strict locator fa
   assert.match(worker, /reloadedPreview\.locator\('h1'\)\.first\(\)\.waitFor/);
   assert.match(worker, /mobilePreviewHeading === routeHeading/);
 });
+
+test('CodeLab browser QA clicks every same-canvas navigation link in saved HTML and deployed preview', () => {
+  assert.match(worker, /require_flow_navigation/);
+  assert.match(worker, /flowLinks\.count\(\)/);
+  assert.match(worker, /routeFlowLinks\.count\(\)/);
+  assert.match(worker, /navigationLinkPresent/);
+  assert.match(worker, /navigationWorks/);
+  assert.match(worker, /routeNavigationWorks/);
+});
