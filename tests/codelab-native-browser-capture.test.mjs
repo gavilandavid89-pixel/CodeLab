@@ -146,3 +146,11 @@ test('Node graph QA scopes connection counts to the selected store project', () 
   assert.match(worker, /desktopWireCount >= 4/);
   assert.match(worker, /mobileWireCount >= 4/);
 });
+
+test('Node graph screenshots release the preview iframe and capture only the active graph modal', () => {
+  assert.match(worker, /previewPanel.*remove/);
+  assert.match(worker, /cards\.forEach\(card => \{ if \(card\.dataset\.flowPage !== projectId\) card\.remove\(\); \}\)/);
+  assert.match(worker, /locator\('#designFlowGraphModal'\)\.screenshot/);
+  assert.match(worker, /desktopWireCount >= 2/);
+  assert.match(worker, /mobileWireCount >= 2/);
+});
