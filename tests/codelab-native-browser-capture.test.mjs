@@ -88,3 +88,15 @@ test('Native mailbox supports navigation between different layers in the same pr
   assert.match(connect, /targetElementId \? item\.targetElementId === targetElementId/);
   assert.doesNotMatch(connect, /sourceProjectId === targetProjectId\) throw new Error/);
 });
+
+test('CodeLab web export preserves full same-canvas dimensions and navigation targets', () => {
+  const exporter = worker.match(/function exportDesignToHtml\(project\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(exporter, /Math\.min\(4000, Number\(design\.canvasWidth/);
+  assert.match(exporter, /design\.flowConnections/);
+  assert.match(exporter, /targetProjectId === project\.id/);
+  assert.match(exporter, /data-flow-to-element/);
+  assert.match(exporter, /outputId\(targetElementId\)/);
+  assert.match(exporter, /scrollIntoView/);
+  assert.match(exporter, /w>window\.innerWidth/);
+  assert.match(exporter, /overflow:auto/);
+});
