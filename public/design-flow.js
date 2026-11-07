@@ -54,6 +54,7 @@
     if (!modal || modal.classList.contains('hidden')) return;
     const cards = modal.querySelector('#designFlowCards');
     const list = designProjects();
+    const connections = allConnections();
     if (!list.length) { cards.innerHTML = '<p class="text-sm text-slate-400">Crea un proyecto de diseño para comenzar.</p>'; svg.innerHTML = ''; return; }
     cards.innerHTML = list.map(p => {
       if (!Array.isArray(p.design.flowConnections)) p.design.flowConnections = [];
@@ -63,11 +64,17 @@
         '<div class="space-y-2 p-3">' + (actions.length ? actions.map(el => {
           const isMenu = el.flowRole === 'menu', isSelected = selectedSource && selectedSource.projectId === p.id && selectedSource.elementId === el.id;
           const outgoing = p.design.flowConnections.filter(c => c.sourceElementId === el.id);
+          const incoming = connections.filter(c => c.targetProjectId === p.id && c.targetElementId === el.id).length;
           const hasConnection = outgoing.length > 0;
+          const portClass = isSelected
+            ? 'border-yellow-300 bg-yellow-400/30 text-yellow-100'
+            : incoming
+              ? 'border-slate-200 bg-slate-100/30 text-white'
+              : 'border-slate-600 bg-slate-700/30 text-slate-400';
           const label = el.label || el.text || el.name || el.type || 'Capa';
           return '<div role="button" tabindex="0" data-flow-action="' + esc(el.id) + '" data-flow-target-element="' + esc(el.id) + '" data-flow-target-project="' + esc(p.id) + '" data-flow-source-project="' + esc(p.id) + '" class="relative z-40 flex items-center gap-2 rounded-lg border p-2 '+(isSelected?'border-yellow-300 ring-1 ring-yellow-300/70':'border-slate-800')+' bg-slate-950/70 '+(chooseMode?'cursor-pointer':'')+'" title="'+(chooseMode?'Elegir esta capa como origen':'Activa Elegir para seleccionar esta capa')+'">' +
             '<span class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-cyan-500/15 text-cyan-200"><i class="fa-solid fa-shapes"></i></span><div class="min-w-0 flex-1"><div class="truncate text-xs font-medium">' + esc(label) + '</div><div class="text-[10px] text-slate-500">' + esc(el.type || 'capa') + (hasConnection?' · conectada':'') + '</div><label class="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400"><input type="checkbox" data-flow-menu="' + esc(el.id) + '" data-flow-project="' + esc(p.id) + '" ' + (isMenu ? 'checked' : '') + '> Menú desplegable</label></div>' +
-            (isMenu ? '<span class="text-[10px] text-amber-300">Menú</span>' : '<button type="button" data-flow-source-port="' + esc(el.id) + '" data-flow-project="' + esc(p.id) + '" title="'+(isSelected?'Arrastra la soga desde aquí':'Selecciona primero esta capa')+'" class="h-8 w-8 shrink-0 touch-none rounded-full border-2 '+(isSelected?'border-slate-300 bg-slate-500/30 text-slate-100':'border-slate-600 bg-slate-700/30 text-slate-400')+'">●</button>') +
+            (isMenu ? '<span class="text-[10px] text-amber-300">Menú</span>' : '<button type="button" data-flow-source-port="' + esc(el.id) + '" data-flow-target-port="' + esc(el.id) + '" data-flow-project="' + esc(p.id) + '" title="'+(isSelected?'Arrastra la soga desde aquí':incoming?'Destino de conexión':'Selecciona primero esta capa')+'" class="h-8 w-8 shrink-0 touch-none rounded-full border-2 '+portClass+'">●</button>') +
             (outgoing.length ? '<span class="text-[10px] text-violet-300">' + outgoing.length + ' ↗</span>' : '') + '</div>';
         }).join('') : '<p class="text-xs text-slate-500">Añade formas, texto, imágenes u otras capas al diseño para crear opciones conectables.</p>') + '</div>' +
         (p.design.flowConnections.length ? '<div class="border-t border-slate-800 p-3"><div class="mb-2 text-[10px] font-semibold uppercase text-slate-500">Conexiones</div>' + p.design.flowConnections.map(c => {
@@ -143,11 +150,14 @@
       if (!sourceCard || !target || !a) continue;
       const port = sourceCard.querySelector('[data-flow-source-port]');
       if (!port) continue;
-      const r=port.getBoundingClientRect(), cr=canvas.getBoundingClientRect();
+      const targetPort = target.querySelector('[data-flow-target-port]') || target;
+      const r=port.getBoundingClientRect(), tr=targetPort.getBoundingClientRect(), cr=canvas.getBoundingClientRect();
       const start={x:r.left-cr.left+canvas.scrollLeft+r.width/2,y:r.top-cr.top+canvas.scrollTop+r.height/2};
-      const tr=target.getBoundingClientRect(), end={x:tr.left-cr.left+canvas.scrollLeft+tr.width/2,y:tr.top-cr.top+canvas.scrollTop+tr.height/2};
-      const mid=(start.x+end.x)/2, path=document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d','M '+start.x+' '+start.y+' C '+mid+' '+start.y+', '+mid+' '+end.y+', '+end.x+' '+end.y);
+      const end={x:tr.left-cr.left+canvas.scrollLeft+tr.width/2,y:tr.top-cr.top+canvas.scrollTop+tr.height/2};
+      const samePage = c.sourceProjectId === c.targetProjectId;
+      const laneX = samePage ? Math.min(Math.max(start.x,end.x)+40, Math.max(canvas.scrollWidth,canvas.clientWidth)-8) : (start.x+end.x)/2;
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M '+start.x+' '+start.y+' C '+laneX+' '+start.y+', '+laneX+' '+end.y+', '+end.x+' '+end.y);
       const halo=path.cloneNode(false); halo.setAttribute('fill','none'); halo.setAttribute('stroke','#ffffff'); halo.setAttribute('stroke-width','6'); halo.setAttribute('stroke-opacity','0.72'); halo.setAttribute('stroke-linecap','round'); halo.setAttribute('data-wire-halo','true'); svg.appendChild(halo);
       path.setAttribute('fill','none'); path.setAttribute('stroke','#9ca3af'); path.setAttribute('stroke-width','3'); path.setAttribute('stroke-linecap','round'); path.setAttribute('data-connection','true'); svg.appendChild(path);
     }

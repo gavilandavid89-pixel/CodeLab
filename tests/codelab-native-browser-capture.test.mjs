@@ -173,3 +173,11 @@ test('Same-canvas node wires render above card backgrounds but below interactive
   assert.match(worker, /desktopWireVisuals\.rowZ > desktopWireVisuals\.svgZ/);
   assert.match(worker, /mobileWireVisuals\.rowZ > mobileWireVisuals\.svgZ/);
 });
+
+test('Same-canvas wires connect source and destination ports through an outer lane', () => {
+  assert.match(designFlow, /data-flow-target-port/);
+  assert.match(designFlow, /samePage = c\.sourceProjectId === c\.targetProjectId/);
+  assert.match(designFlow, /Math\.min\(Math\.max\(start\.x,end\.x\)\+40/);
+  assert.match(worker, /desktopWireVisuals\.outsideCardCount >= 2/);
+  assert.match(worker, /mobileWireVisuals\.outsideCardCount >= 2/);
+});
