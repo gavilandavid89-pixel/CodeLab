@@ -358,15 +358,34 @@ function exportDesignToHtml(project) {
   const design = project.design || {};
   const elements = Array.isArray(design.elements) ? design.elements : [];
   if (!elements.length) throw new Error('The design has no elements to convert.');
-  const width = Math.max(320, Math.min(2400, Number(design.canvasWidth || design.width) || 1280));
+  const width = Math.max(320, Math.min(4000, Number(design.canvasWidth || design.width) || 1280));
   const height = Math.max(240, Math.min(4000, Number(design.canvasHeight || design.height) || 800));
   const background = exportColor(design.background, '#ffffff');
   const autoLayout = design.layoutMode === 'auto';
   const direction = design.layoutDirection === 'column' ? 'column' : 'row';
   const gap = Math.max(0, Math.min(200, Number(design.layoutGap) || 0));
   const padding = Math.max(0, Math.min(200, Number(design.layoutPadding) || 0));
+  const outputId = value => 'design-layer-' + String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+  const elementsById = new Map(elements.filter(item => item && typeof item.id === 'string').map(item => [item.id, item]));
+  const connections = Array.isArray(design.flowConnections) ? design.flowConnections : [];
+  const localConnections = connections.filter(item =>
+    item && item.targetProjectId === project.id && typeof item.targetElementId === 'string'
+  );
+  const flowTargets = new Map();
+  for (const connection of localConnections) {
+    if (!elementsById.has(connection.sourceElementId)) {
+      throw new Error('A same-canvas navigation source does not exist in the design.');
+    }
+    if (!elementsById.has(connection.targetElementId)) {
+      throw new Error('A same-canvas navigation target does not exist in the design.');
+    }
+    if (connection.sourceElementId === connection.targetElementId) {
+      throw new Error('A same-canvas navigation cannot point to the same element.');
+    }
+    flowTargets.set(connection.sourceElementId, connection.targetElementId);
+  }
   const markup = elements.map((element, index) => {
-    const id = 'design-layer-' + index;
+    const id = outputId(element.id || index);
     const type = String(element.type || 'text');
     const tag = type === 'heading' ? 'h1' : type === 'button' ? 'button' : 'div';
     const typeClass = ['heading','text','button','rectangle','ellipse','image'].includes(type) ? type : 'text';
@@ -385,18 +404,29 @@ function exportDesignToHtml(project) {
       ? 'position:relative;left:auto;top:auto;flex:0 0 auto;max-width:100%;'
       : 'position:absolute;left:' + x + 'px;top:' + y + 'px;';
     const style = position + 'width:' + w + 'px;height:' + h + 'px;min-width:20px;min-height:20px;display:flex;align-items:center;box-sizing:border-box;padding:8px;color:' + color + ';background:' + fill + ';font-size:' + font + 'px;font-weight:' + Math.max(100,Math.min(900,Number(element.weight)||400)) + ';text-align:' + align + ';border-radius:' + (type === 'ellipse' ? '50%' : radius + 'px') + ';';
-    if (type === 'button') return '<button id="' + id + '" class="' + layerClass + '" type="button" data-codelab-demo style="' + style + 'justify-content:center;cursor:pointer;border:0;">' + (text || 'Probar interacción') + '</button>';
-    if (type === 'rectangle' || type === 'ellipse') return '<div id="' + id + '" class="' + layerClass + '" aria-hidden="true" style="' + style + '"></div>';
-    if (type === 'image') return '<div id="' + id + '" class="' + layerClass + '" role="img" aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + '">Imagen pendiente</div>';
-    return '<' + tag + ' id="' + id + '" class="' + layerClass + '" style="' + style + '">' + text + '</' + tag + '>';
+    const targetElementId = flowTargets.get(element.id);
+    const navAttrs = targetElementId && element.flowRole !== 'menu'
+      ? ' role="link" tabindex="0" data-flow-to-element="' + escapeHtml(outputId(targetElementId)) + '"'
+      : '';
+    if (type === 'button') {
+      return '<button id="' + id + '" class="' + layerClass + '"' + navAttrs + ' type="button" data-codelab-demo style="' + style + 'justify-content:center;cursor:pointer;border:0;">' + (text || 'Probar interacción') + '</button>';
+    }
+    if (type === 'rectangle' || type === 'ellipse') {
+      return '<div id="' + id + '" class="' + layerClass + '"' + navAttrs + ' aria-hidden="' + (navAttrs ? 'false' : 'true') + '" style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '"></div>';
+    }
+    if (type === 'image') {
+      const imageRole = navAttrs ? navAttrs : ' role="img"';
+      return '<div id="' + id + '" class="' + layerClass + '"' + imageRole + ' aria-label="' + escapeHtml(element.alt || 'Imagen') + '" style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '">Imagen pendiente</div>';
+    }
+    return '<' + tag + ' id="' + id + '" class="' + layerClass + '"' + navAttrs + ' style="' + style + (navAttrs ? 'cursor:pointer;' : '') + '">' + text + '</' + tag + '>';
   }).join('');
   const frameStyle = autoLayout
     ? 'position:relative;width:100%;max-width:' + width + 'px;min-height:' + height + 'px;display:flex;flex-direction:' + direction + ';flex-wrap:' + (direction === 'row' ? 'wrap' : 'nowrap') + ';gap:' + gap + 'px;padding:' + padding + 'px;align-items:flex-start;background:' + background + ';margin:0 auto;'
     : 'position:relative;width:' + width + 'px;height:' + height + 'px;min-height:' + height + 'px;background:' + background + ';transform-origin:top left;margin:0 auto;';
   const mobile = autoLayout
     ? '@media(max-width:768px){.design-frame.auto-layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.design-frame.auto-layout>*{max-width:100%}}'
-    : '@media(max-width:768px){.design-viewport{min-height:100vh;overflow:visible!important}.design-frame:not(.auto-layout){width:100%!important;height:auto!important;min-height:100vh!important;transform:none!important;margin:0!important;display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:18px;padding:24px!important}.design-frame:not(.auto-layout)>.design-layer{position:relative!important;left:auto!important;top:auto!important;width:100%!important;height:auto!important;min-height:0!important;max-width:100%!important;flex:0 0 auto!important}.design-frame:not(.auto-layout)>.design-layer-heading{font-size:clamp(28px,7vw,40px)!important;line-height:1.15}.design-frame:not(.auto-layout)>.design-layer-text{font-size:clamp(16px,4.5vw,20px)!important;line-height:1.45}.design-frame:not(.auto-layout)>.design-layer-button{width:100%!important;max-width:320px;min-height:48px;align-self:flex-start}.design-frame:not(.auto-layout)>.design-layer-rectangle{height:100px!important;min-height:100px!important}.design-frame:not(.auto-layout)>.design-layer-ellipse{width:160px!important;height:120px!important;min-height:120px!important;align-self:center}.design-frame:not(.auto-layout)>.design-layer-image{height:180px!important;min-height:180px!important}}';
-  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeHtml(project.name) + '</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;overflow:hidden}.design-frame{transform-origin:top left}.demo-status{position:fixed;left:16px;bottom:16px;padding:8px 12px;border-radius:8px;background:#0f172a;color:#fff;font:14px system-ui;z-index:10}' + mobile + '</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame' + (autoLayout ? ' auto-layout' : '') + '" style="' + frameStyle + '">' + markup + '</main></div><p class="demo-status" id="demoStatus" role="status" aria-live="polite">Diseño convertido · listo</p><script>(function(){var f=document.getElementById("designFrame"),v=f.parentNode,w=' + width + ',h=' + height + ';function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";v.style.height="auto";return;}var s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";v.style.height=(h*s)+"px";}window.addEventListener("resize",fit,{passive:true});fit();document.querySelectorAll("[data-codelab-demo]").forEach(function(b){b.addEventListener("click",function(){document.getElementById("demoStatus").textContent="Interacción funcionando ✓";});});})();<\/script></body></html>';
+    : '@media(max-width:768px){.design-viewport{min-height:100vh;max-width:100vw;overflow:auto!important;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}.design-frame:not(.auto-layout){margin:0!important}}';
+  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeHtml(project.name) + '</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;overflow-x:hidden}.design-viewport{position:relative;width:100%;max-width:100vw;overflow:auto;overscroll-behavior:contain}.design-frame{transform-origin:top left}.demo-status{position:fixed;left:16px;bottom:16px;padding:8px 12px;border-radius:8px;background:#0f172a;color:#fff;font:14px system-ui;z-index:10}' + mobile + '</style></head><body><div class="design-viewport"><main id="designFrame" class="design-frame' + (autoLayout ? ' auto-layout' : '') + '" style="' + frameStyle + '">' + markup + '</main></div><p class="demo-status" id="demoStatus" role="status" aria-live="polite">Diseño convertido · listo</p><script>(function(){var f=document.getElementById("designFrame"),v=f.parentNode,w=' + width + ',h=' + height + ';function fit(){if(f.classList.contains("auto-layout")){f.style.transform="none";v.style.height="auto";return;}if(w>window.innerWidth){f.style.transform="none";f.style.marginLeft="0";v.style.height=h+"px";return;}var s=Math.min(1,Math.max(.1,window.innerWidth/w));f.style.transform="scale("+s+")";f.style.marginLeft=Math.max(0,(window.innerWidth-w*s)/2)+"px";v.style.height=(h*s)+"px";}function navigate(el){var targetId=el.getAttribute("data-flow-to-element"),target=targetId&&document.getElementById(targetId);if(target)target.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});}document.addEventListener("click",function(event){var nav=event.target.closest&&event.target.closest("[data-flow-to-element]");if(nav){event.preventDefault();navigate(nav);return;}var demo=event.target.closest&&event.target.closest("[data-codelab-demo]");if(demo)document.getElementById("demoStatus").textContent="Interacción funcionando ✓";});document.addEventListener("keydown",function(event){var nav=event.target.closest&&event.target.closest("[data-flow-to-element]");if(nav&&(event.key==="Enter"||event.key===" ")){event.preventDefault();navigate(nav);}});window.addEventListener("resize",fit,{passive:true});fit();})();<\/script></body></html>';
 }
 function createCodeLabProjectPayload(command, payload) {
   const name = typeof payload.name === 'string' ? payload.name.trim() : '';
@@ -557,6 +587,7 @@ async function convertCodeLabProjectToWeb(command) {
   };
 }
 async function captureCodeLabProjectBrowser(project, payload = {}) {
+  const requireFlowNavigation = payload.require_flow_navigation === true;
   const html = String(project.code?.html || '');
   if (!html || !/<!doctype html>/i.test(html)) throw new Error('The saved project has no complete HTML document to render.');
   if (Buffer.byteLength(html, 'utf8') > 2 * 1024 * 1024) throw new Error('The saved HTML exceeds the 2 MiB browser QA limit.');
@@ -621,6 +652,20 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           viewportWidth: window.innerWidth,
           documentHeight: document.documentElement.scrollHeight
         }));
+        const flowLinks = page.locator('[data-flow-to-element]');
+        const flowLinkCount = await flowLinks.count();
+        let navigationWorks = flowLinkCount > 0;
+        for (let index = 0; index < flowLinkCount; index++) {
+          const link = flowLinks.nth(index);
+          const targetId = await link.getAttribute('data-flow-to-element');
+          await link.click({ timeout: 5000 });
+          await page.waitForTimeout(350);
+          const targetVisible = targetId ? await page.locator('#' + targetId).evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
+          }).catch(() => false) : false;
+          navigationWorks = navigationWorks && targetVisible;
+        }
         step = 'click-cta-' + viewport.name;
         const button = page.locator('[data-codelab-demo]').first();
         const buttonCount = await page.locator('[data-codelab-demo]').count();
@@ -658,6 +703,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
             headingVisible: !!before.heading,
             interactionButtonPresent: buttonCount > 0,
             interactionWorks: buttonClicked,
+            navigationLinkPresent: !requireFlowNavigation || flowLinkCount > 0,
+            navigationWorks: !requireFlowNavigation || navigationWorks,
             noHorizontalOverflow: !metrics.horizontalOverflow,
             mobileControlsReadable: viewport.name !== 'mobile' || (metrics.buttonWidth >= 140 && metrics.buttonFontSize >= 14 && metrics.headingFontSize >= 24),
             noPageErrors: pageErrors.length === 0 && consoleErrors.length === 0
@@ -691,8 +738,22 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       }, project.name, { timeout: 45000 });
       step = 'wait-public-preview';
       const preview = page.frameLocator('#previewIframe');
-      await preview.locator('h1').waitFor({ state: 'visible', timeout: 45000 });
-      const routeHeading = String(await preview.locator('h1').textContent() || '').trim();
+      await preview.locator('h1').first().waitFor({ state: 'visible', timeout: 45000 });
+      const routeHeading = String(await preview.locator('h1').first().textContent() || '').trim();
+      const routeFlowLinks = preview.locator('[data-flow-to-element]');
+      const routeFlowLinkCount = await routeFlowLinks.count();
+      let routeNavigationWorks = routeFlowLinkCount > 0;
+      for (let index = 0; index < routeFlowLinkCount; index++) {
+        const link = routeFlowLinks.nth(index);
+        const targetId = await link.getAttribute('data-flow-to-element');
+        await link.click({ timeout: 10000 });
+        await page.waitForTimeout(350);
+        const targetVisible = targetId ? await preview.locator('#' + targetId).evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          return rect.left < window.innerWidth && rect.right > 0 && rect.top < window.innerHeight && rect.bottom > 0;
+        }).catch(() => false) : false;
+        routeNavigationWorks = routeNavigationWorks && targetVisible;
+      }
       const routeButton = preview.locator('[data-codelab-demo]').first();
       const routeButtonCount = await preview.locator('[data-codelab-demo]').count();
       let routeStatus = '';
@@ -741,8 +802,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
         return !!studio && !studio.classList.contains('hidden') && !!title && title.textContent.trim() === expectedName;
       }, project.name, { timeout: 45000 });
       const reloadedPreview = page.frameLocator('#previewIframe');
-      await reloadedPreview.locator('h1').waitFor({ state: 'visible', timeout: 45000 });
-      const reloadedHeading = String(await reloadedPreview.locator('h1').textContent() || '').trim();
+      await reloadedPreview.locator('h1').first().waitFor({ state: 'visible', timeout: 45000 });
+      const reloadedHeading = String(await reloadedPreview.locator('h1').first().textContent() || '').trim();
       const reloadedButton = reloadedPreview.locator('[data-codelab-demo]').first();
       const reloadedButtonCount = await reloadedPreview.locator('[data-codelab-demo]').count();
       let reloadedStatus = '';
@@ -804,8 +865,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
       step = 'switch-mobile-to-preview';
       await previewTab.click({ timeout: 10000 });
       await page.locator('#previewPanel').waitFor({ state: 'visible', timeout: 10000 });
-      await page.frameLocator('#previewIframe').locator('h1').waitFor({ state: 'visible', timeout: 15000 });
-      const mobilePreviewHeading = String(await page.frameLocator('#previewIframe').locator('h1').textContent() || '').trim();
+      await page.frameLocator('#previewIframe').locator('h1').first().waitFor({ state: 'visible', timeout: 15000 });
+      const mobilePreviewHeading = String(await page.frameLocator('#previewIframe').locator('h1').first().textContent() || '').trim();
       const mobilePreviewScreenshot = await page.screenshot({ type: 'png', fullPage: true, animations: 'disabled' });
       if (mobilePreviewScreenshot.length > 3 * 1024 * 1024) throw new Error('CodeLab mobile preview-mode screenshot exceeds 3 MiB.');
       step = 'switch-mobile-back-to-code';
@@ -823,7 +884,7 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           workspaceVisible: !!mobileRoutePage.webWorkspacePanel && mobileRoutePage.webWorkspacePanel.width > 0 && mobileRoutePage.webWorkspacePanel.height > 0,
           previewTabTouchSized: previewTabHeight >= 44,
           previewTabSwitchWorks: !!mobilePreviewHeading,
-          previewVisibleInPreviewMode: mobilePreviewHeading === 'Diseña. Construye. Publica.',
+          previewVisibleInPreviewMode: !!mobilePreviewHeading && mobilePreviewHeading === routeHeading,
           codeTabRestoresEditor: mobileCodeRestored
         },
         page: { ...mobileRoutePage, previewTabHeight, mobilePreviewHeading, mobileCodeRestored },
@@ -871,6 +932,8 @@ async function captureCodeLabProjectBrowser(project, payload = {}) {
           previewRendered: !!routeHeading,
           interactionButtonPresent: routeButtonCount > 0,
           interactionWorks: routeInteractionWorks,
+          navigationLinkPresent: !requireFlowNavigation || routeFlowLinkCount > 0,
+          navigationWorks: !requireFlowNavigation || routeNavigationWorks,
           noHorizontalOverflow: routePage.documentWidth <= routePage.viewportWidth + 1,
           previewSandboxed: sandboxIsolationConfirmed,
           reloadRestoresProject: Object.values(reloadTest.checks).every(Boolean),
