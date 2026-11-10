@@ -55,6 +55,8 @@ jobs:
           node --check tests/pixelforge-integration.test.js
       - name: Test Penpot native integration guardrails
         run: npm run test:penpot-config
+      - name: Test Penpot proxy authentication gate
+        run: node --test tests/penpot-proxy-guard.test.mjs
       - name: Test PixelForge animation model and UI–Headless contract
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test PixelForge ZIP export package
