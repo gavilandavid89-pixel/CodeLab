@@ -18,6 +18,8 @@ services:
       PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
     expose:
       - "8080"
+    ports:
+      - "127.0.0.1:9001:8080" # Local development only; production uses the CodeLab same-origin proxy.
     volumes:
       - penpot_assets:/opt/data/assets
     networks: [codelab_internal]
