@@ -13,6 +13,7 @@ const { Pool } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
+const penpotAdapter = require('./lib/penpot-adapter.js');
 const pixelForgeUploads = require('./pixelforge-upload-store.js');
 
 const PORT = process.env.PORT || 3000;
@@ -2722,6 +2723,121 @@ const server = http.createServer(async (req, res) => {
           state: state,
           user: sessionUser || null
         });
+      }
+
+      // Import a native Penpot v3 archive into the existing CodeLab workspace.
+      // The workspace token/session, revision and project ownership remain CodeLab-authoritative.
+      const penpotImportMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/penpot\/import$/);
+      if (req.method === 'POST' && penpotImportMatch) {
+        const workspaceId = safeId(penpotImportMatch[1]);
+        const body = await readBody(req, 50 * 1024 * 1024);
+        if (!workspaceId || !body || typeof body !== 'object' || Array.isArray(body) ||
+            typeof body.projectId !== 'string' || !body.projectId.trim() ||
+            !Number.isInteger(body.baseRevision) || typeof body.fileBase64 !== 'string' ||
+            body.fileBase64.length > 24 * 1024 * 1024 ||
+            !/^[A-Za-z0-9+/]+={0,2}$/.test(body.fileBase64)) {
+          return sendJson(res, 400, { error: 'invalid_penpot_import_request' });
+        }
+        if (!(await isAuthorized(req, workspaceId))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        let imported;
+        try {
+          const archive = Buffer.from(body.fileBase64, 'base64');
+          imported = penpotAdapter.mapPenpotArchive(archive);
+        } catch (error) {
+          const code = String(error && error.message || 'penpot_import_invalid');
+          return sendJson(res, 400, { error: code.slice(0, 120) });
+        }
+        if (!imported.screens.length) return sendJson(res, 422, { error: 'penpot_import_has_no_screens' });
+        try {
+          const current = await enforceSessionWorkspaceOwner(workspaceId, await readState(workspaceId), await getSessionUser(req));
+          if (body.baseRevision !== current.revision) {
+            return sendJson(res, 409, { error: 'revision_conflict', revision: current.revision, projects: current.projects });
+          }
+          const projects = current.projects.slice();
+          const anchor = projects.find(project => project && project.id === body.projectId);
+          if (!anchor || !anchor.design || typeof anchor.design !== 'object') {
+            return sendJson(res, 404, { error: 'penpot_import_target_design_project_not_found' });
+          }
+          const screenIdMap = new Map();
+          const existingBySource = new Map();
+          for (const project of projects) {
+            const source = project && project.design && project.design.penpotSource;
+            if (source && source.fileId === imported.fileId && source.pageId && source.frameId) {
+              existingBySource.set(source.pageId + ':' + source.frameId, project);
+            }
+          }
+          const importedProjects = [];
+          for (let index = 0; index < imported.screens.length; index++) {
+            const screen = imported.screens[index];
+            const source = screen.design.penpotSource;
+            const existing = existingBySource.get(source.pageId + ':' + source.frameId);
+            let target = existing;
+            if (!target && index === 0) {
+              const anchorSource = anchor.design.penpotSource;
+              if (anchorSource && anchorSource.fileId && anchorSource.fileId !== imported.fileId) {
+                return sendJson(res, 409, { error: 'penpot_import_target_owned_by_another_file' });
+              }
+              target = anchor;
+            }
+            if (!target) {
+              target = { ...screen };
+              if (projects.length >= MAX_PROJECTS) {
+                return sendJson(res, 409, { error: 'workspace_project_limit', maxProjects: MAX_PROJECTS });
+              }
+              projects.push(target);
+            } else {
+              const preservedCode = target.code && typeof target.code === 'object' ? target.code : screen.code;
+              const hadWeb = target.hasWebSpace === true || !!(preservedCode && (preservedCode.html || preservedCode.css || preservedCode.js));
+              Object.assign(target, screen, {
+                id: target.id,
+                code: preservedCode,
+                hasWebSpace: hadWeb,
+                hasDesignSpace: true
+              });
+            }
+            target.design.penpotSource = {
+              ...target.design.penpotSource,
+              importedAt: new Date().toISOString(),
+              sourceFormat: 'penpot-v3'
+            };
+            screenIdMap.set(screen.id, target.id);
+            importedProjects.push(target);
+          }
+          for (const target of importedProjects) {
+            const links = Array.isArray(target.design.flowConnections) ? target.design.flowConnections : [];
+            target.design.flowConnections = links.map(link => ({
+              ...link,
+              targetProjectId: screenIdMap.get(link.targetProjectId) || link.targetProjectId
+            }));
+          }
+          const validationError = validateProjects(projects);
+          if (validationError) return sendJson(res, 400, { error: 'penpot_import_invalid_project_graph', detail: validationError });
+          const next = {
+            version: current.version,
+            revision: current.revision + 1,
+            updatedAt: new Date().toISOString(),
+            projects,
+            owner: current.owner
+          };
+          await writeState(workspaceId, next, current.revision);
+          return sendJson(res, 200, {
+            ok: true,
+            fileId: imported.fileId,
+            fileName: imported.fileName,
+            revision: next.revision,
+            importedScreens: importedProjects.length,
+            importedElements: importedProjects.reduce((sum, project) => sum + (project.design.elements || []).length, 0),
+            importedConnections: importedProjects.reduce((sum, project) => sum + (project.design.flowConnections || []).length, 0),
+            projectIds: importedProjects.map(project => project.id)
+          });
+        } catch (error) {
+          if (error && error.code === 'WORKSPACE_REVISION_CONFLICT') {
+            const latest = await readState(workspaceId);
+            return sendJson(res, 409, { error: 'revision_conflict', revision: latest.revision, projects: latest.projects });
+          }
+          console.error('Penpot workspace import failed:', error.message);
+          return sendJson(res, 500, { error: 'penpot_workspace_import_failed' });
+        }
       }
 
       const getMatch = pathname.match(/^\/api\/workspace\/([^/]+)$/);
