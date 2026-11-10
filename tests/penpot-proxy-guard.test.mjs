@@ -17,7 +17,11 @@ test('Penpot proxy never exposes the upstream before CodeLab SSO is ready', asyn
       PENPOT_FRONTEND_URL: 'http://127.0.0.1:1' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  let childOutput = '';\n  child.stdout.on('data', chunk => { childOutput += chunk.toString(); });\n  child.stderr.on('data', chunk => { childOutput += chunk.toString(); });\n  try {\n    let ready = false;
+  let childOutput = '';
+  child.stdout.on('data', chunk => { childOutput += chunk.toString(); });
+  child.stderr.on('data', chunk => { childOutput += chunk.toString(); });
+  try {
+    let ready = false;
     for (let i = 0; i < 40; i++) {
       try { const response = await fetch(base + '/api/health'); if (response.ok) { ready = true; break; } } catch (_) {}
       await new Promise(resolve => setTimeout(resolve, 250));
