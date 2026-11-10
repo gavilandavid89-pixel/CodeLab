@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { zipSync, strToU8 } from 'fflate';
-import { mapPenpotArchive, parsePenpotArchive } from '../lib/penpot-adapter.js';
+import { mapPenpotArchive, mapPenpotDesignSystem, parsePenpotArchive } from '../lib/penpot-adapter.js';
 
 const fileId = '11111111-1111-4111-8111-111111111111';
 const pageId = '22222222-2222-4222-8222-222222222222';
@@ -73,7 +73,7 @@ test('reads native Penpot v3 ZIP and maps pages/frames to CodeLab screens', () =
   assert.equal(graph.screens[0].design.elements[0].penpotSource.properties.componentId, componentId);
   assert.equal(graph.screens[0].design.penpotLibrary.components[0].id, componentId);
   assert.equal(graph.library.typographies[0].fontFamily, 'Inter');
-  assert.equal(graph.library.colors[0].color, '#2563eb');
+  assert.equal(graph.library.colors[0].color, '#2563eb');\n  const mappedSystem = mapPenpotDesignSystem(graph, { primary: '#000000', secondary: '#222222', accent: '#333333', surface: '#444444', background: '#555555', text: '#ffffff', baseFont: 16, typeRatio: 1.25, baseSpacing: 4, baseRadius: 12, contrastForeground: '#ffffff', contrastBackground: '#000000' });\n  assert.equal(mappedSystem.primary, '#2563eb');\n  assert.equal(mappedSystem.name, 'Tienda Demo');\n  assert.equal(mappedSystem.baseFont, 28);
   assert.equal(graph.assets.length, 1);
   assert.equal(graph.screens[0].design.flowConnections.length, 1);
   assert.equal(graph.screens[0].design.flowConnections[0].targetProjectId, graph.screens[1].id);
