@@ -142,7 +142,7 @@ test('profile broadcasts are scoped to the authenticated CodeLab profile', async
   }
 });
 
-test('unauthorized file and team subscriptions close the connection', async t => {
+test('unauthorized file subscriptions close the connection', async t => {
   const f = await fixture();
   const socket = await connect(f.url, deriveUuid('session', 'unauthorized'));
   try {
@@ -158,6 +158,26 @@ test('unauthorized file and team subscriptions close the connection', async t =>
   } finally {
     await f.close([socket]);
   }
+});
+
+test('team subscription is accepted only for the authenticated CodeLab workspace', async t => {
+  const f = await fixture();
+  const socket = await connect(f.url, deriveUuid('session', 'team-subscription'));
+  t.after(() => f.close([socket]));
+  send(socket, makeMessage('subscribe-team', { 'team-id': teamId }));
+  await new Promise(resolve => setTimeout(resolve, 40));
+  assert.equal(socket.readyState, WebSocket.OPEN);
+});
+
+test('team subscription to another workspace is rejected', async t => {
+  const f = await fixture();
+  const socket = await connect(f.url, deriveUuid('session', 'foreign-team'));
+  t.after(() => f.close([socket]));
+  const closed = new Promise(resolve => socket.once('close', (code) => resolve(code)));
+  send(socket, makeMessage('subscribe-team', {
+    'team-id': deriveUuid('codelab:penpot:team', 'ws_foreign_account')
+  }));
+  assert.equal(await closed, 1008);
 });
 
 test('Transit WebSocket messages remain Transit maps with keyword keys', () => {
