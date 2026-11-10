@@ -108,6 +108,17 @@
     return { ...payload, penpotIds };
   }
 
+  function saveTransitDocument(transitPayload) {
+    if (typeof transitPayload !== 'string' || !transitPayload.length) {
+      return Promise.reject(new Error('penpot_transit_document_must_be_a_string'));
+    }
+    return saveDocument({
+      format: 'penpot-transit-document',
+      version: 1,
+      payload: transitPayload
+    });
+  }
+
   function saveDocument(document) {
     if (!document || typeof document !== 'object' || Array.isArray(document)) {
       return Promise.reject(new Error('penpot_document_must_be_an_object'));
@@ -177,6 +188,7 @@
     },
     loadDocument,
     getPenpotIds: () => penpotIds,
-    saveDocument
+    saveDocument,
+    saveTransitDocument
   });
 })(window);
