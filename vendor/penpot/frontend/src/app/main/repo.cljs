@@ -11,6 +11,8 @@
    [app.common.logging :as log]
    [app.common.time :as ct]
    [app.common.transit :as t]
+   [app.common.types.file :as ctf]
+   [app.common.uuid :as uuid]
    [app.common.uri :as u]
    [app.config :as cf]
    [app.main.data.event :as-alias ev]
@@ -213,6 +215,65 @@
    :export-binfile {:response-type :blob}
    :retrieve-list-of-builtin-templates {:query-params :all}})
 
+(defn- codelab-host
+  []
+  (when (and (exists? js/window)
+             (some? (.-CodeLabPenpotHost js/window)))
+    (.-CodeLabPenpotHost js/window)))
+
+(defn- codelab-get-file
+  [params]
+  (let [host (codelab-host)]
+    (if-not host
+      (rx/throw (ex-info "CodeLab host bridge is unavailable"
+                         {:type :internal :code :codelab-host-unavailable}))
+      (->> (rx/from (.loadDocument host))
+           (rx/map
+            (fn [raw-payload]
+              (let [payload    (js->clj raw-payload :keywordize-keys true)
+                    ids        (:penpotIds payload)
+                    context    (js->clj (.getContext host) :keywordize-keys true)
+                    file-id    (uuid/parse (:fileId ids))
+                    project-id (uuid/parse (:projectId ids))
+                    requested  (:id params)
+                    stored     (:document payload)
+                    file       (cond
+                                 (nil? stored)
+                                 (ctf/make-file
+                                  {:id file-id
+                                   :project-id project-id
+                                   :name (or (:projectName context) "CodeLab design")
+                                   :revn 0
+                                   :is-shared false
+                                   :features #{}
+                                   :created-at (ct/now)
+                                   :modified-at (ct/now)})
+
+                                 (and (map? stored)
+                                      (= "penpot-transit-document" (:format stored))
+                                      (string? (:payload stored)))
+                                 (t/decode-str (:payload stored))
+
+                                 :else
+                                 (ex/raise :type :validation
+                                           :code :invalid-penpot-document
+                                           :hint "Stored CodeLab document is not a native Penpot Transit file"))]
+                (when-not (= file-id requested)
+                  (ex/raise :type :not-found
+                            :code :object-not-found
+                            :hint "The requested Penpot file is not the active CodeLab project"))
+                (when-not (= file-id (:id file))
+                  (ex/raise :type :validation
+                            :code :penpot-file-identity-mismatch
+                            :hint "Stored Penpot file identity does not match this CodeLab project"))
+                (assoc file :permissions
+                       {:type :membership
+                        :is-owner true
+                        :is-admin true
+                        :can-edit true
+                        :can-read true
+                        :is-logged true}))))))))
+
 (defn- send!
   [id params options]
   (let [{:keys [response-type
@@ -264,7 +325,9 @@
 
     (log/trc :hint "make request" :id id)
 
-    (let [make-request
+    (if (and (= id :get-file) (codelab-host))
+      (codelab-get-file params)
+      (let [make-request
           (fn []
             (->> (http/fetch request)
                  (rx/map http/response->map)
@@ -298,7 +361,7 @@
       ;; retried to avoid unintended side-effects.
       (if (= :get method)
         (with-retry make-request)
-        (make-request)))))
+        (make-request))))))
 
 (defmulti cmd! (fn [id _] id))
 
