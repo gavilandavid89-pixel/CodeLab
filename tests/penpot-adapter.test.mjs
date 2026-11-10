@@ -34,7 +34,7 @@ function archive() {
     },
     [prefix + 'pages/' + pageId + '/' + shapeA + '.json']: {
       id: shapeA, name: 'Ver producto', type: 'text', x: 24, y: 40, width: 180, height: 44,
-      parentId: frameA, frameId: frameA, content: { children: [{ text: 'Ver producto', fontSize: 28, fontWeight: 700, fills: [{ color: '#2563eb' }] }] },
+      parentId: frameA, frameId: frameA, transform: [0.8660254, 0.5, -0.5, 0.8660254, 0, 0], content: { children: [{ text: 'Ver producto', fontSize: 28, fontWeight: 700, fills: [{ color: '#2563eb' }] }] },
       componentId, appliedTokens: { color: 'primary' },
       interactions: [{ eventType: 'click', destinationFrameId: frameB }]
     },
@@ -68,7 +68,7 @@ test('reads native Penpot v3 ZIP and maps pages/frames to CodeLab screens', () =
   assert.equal(graph.screens[0].design.elements.length, 2);
   assert.equal(graph.screens[0].design.elements[0].type, 'heading');
   assert.equal(graph.screens[0].design.elements[0].text, 'Ver producto');
-  assert.equal(graph.screens[0].design.elements[0].fontSize, 28);
+  assert.equal(graph.screens[0].design.elements[0].fontSize, 28);\n  assert.ok(Math.abs(graph.screens[0].design.elements[0].rotation - 30) < 0.1);
   assert.equal(graph.screens[0].design.elements[0].penpotSource.properties.componentId, componentId);
   assert.equal(graph.screens[0].design.penpotLibrary.components[0].id, componentId);
   assert.equal(graph.library.typographies[0].fontFamily, 'Inter');
