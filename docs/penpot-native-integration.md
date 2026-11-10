@@ -27,7 +27,7 @@ El compose de desarrollo contiene los procesos del motor: frontend, backend, exp
 
 ## Identidad: bloqueo seguro hasta completar SSO
 
-La configuración del runtime desactiva registro y contraseña nativos (`disable-registration`, `disable-login-with-password`). Así no aparecen cuentas paralelas. **Todavía no se habilita el acceso de usuarios finales:** CodeLab no expone hoy un proveedor OIDC compatible para Penpot. Hay que implementar y probar SSO/OIDC de CodeLab antes de permitir entrar al editor. No se debe reemplazar esto por un iframe Cloud, login duplicado, cookie compartida inventada ni acceso sin autorización.
+La configuración del runtime desactiva registro y contraseña nativos (`disable-registration`, `disable-login-with-password`). Así no aparecen cuentas paralelas. El proxy también exige una sesión CodeLab y mantiene bloqueado el upstream mediante un guard de identidad mientras no exista SSO. **Todavía no se habilita el acceso de usuarios finales:** CodeLab no expone hoy un proveedor OIDC compatible para Penpot. Hay que implementar y probar SSO/OIDC de CodeLab antes de permitir entrar al editor. No se debe reemplazar esto por un iframe Cloud, login duplicado, cookie compartida inventada ni acceso sin autorización.
 
 Cada apertura, guardado, exportación y sincronización debe validar la sesión CodeLab y el ownership del workspace/proyecto. El identificador de documento Penpot se asocia al ID estable del proyecto CodeLab mediante un registro administrado por CodeLab; nunca se acepta un project ID enviado por el navegador sin comprobar su propietario.
 
