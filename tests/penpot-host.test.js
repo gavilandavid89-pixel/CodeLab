@@ -90,6 +90,23 @@ test('saveDocument persists optimistically and updates the in-memory CodeLab pro
   assert.equal(host.events[0].type, 'codelab:penpot-document-saved');
 });
 
+test('saveTransitDocument preserves native Penpot Transit payloads inside the host envelope', async () => {
+  const transitPayload = '["^ ","~:id","~#u123e4567-e89b-52d3-a456-426614174000"]';
+  const host = createHost(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.document, {
+      format: 'penpot-transit-document',
+      version: 1,
+      payload: transitPayload
+    });
+    return { ok: true, json: async () => ({
+      ok: true, documentRevision: 1, workspaceRevision: 5
+    }) };
+  });
+  await host.context.CodeLabPenpotHost.saveTransitDocument(transitPayload);
+  assert.equal(host.context.localSnapshotSaved, true);
+});
+
 test('saveDocument reports revision conflicts without overwriting the server copy', async () => {
   const localDocument = { pages: [{ id: 'local', name: 'Local' }] };
   const host = createHost(async () => ({
