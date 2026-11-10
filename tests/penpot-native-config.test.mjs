@@ -21,7 +21,7 @@ test('Penpot reuses CodeLab database and persistent data without provisioning pa
   assert.doesNotMatch(env, /jdbc:postgresql|currentSchema=/);
   assert.match(compose, /PENPOT_DATABASE_URI: \$\{PENPOT_DATABASE_URI/);
   assert.match(compose, /\$\{CODELAB_DATA_DIR:[^}]+\}\/opt\/data\/assets/);
-  assert.match(compose, /PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: \/opt\/data\/assets\/penpot/);
+  assert.match(compose, /PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: \/opt\/data\/assets\/penpot/);\n  assert.doesNotMatch(compose, /JDBC URL|currentSchema=|existing CodeLab database username/);\n  assert.equal((compose.match(/CODELAB_DATA_DIR/g) || []).length, 1, 'only the Penpot backend needs the shared asset mount');
   assert.doesNotMatch(compose, /penpot-postgres|penpot_postgres|penpot_assets:|volumes:\s*\n\s*penpot_/);
   assert.match(compose, /penpot-valkey/);
 });
