@@ -6,7 +6,9 @@ on:
       - feat/penpot-source-integration
     paths:
       - "public/penpot-host.js"
+      - "penpot-transit.js"
       - "tests/penpot-host.test.js"
+      - "tests/penpot-transit.test.js"
       - "package.json"
       - ".github/workflows/penpot-host-tests.yml"
   pull_request:
@@ -27,5 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run Penpot host adapter tests
-        run: npm run test:penpot-host
+      - name: Install pinned Transit dependency
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run Penpot host and Transit codec tests
+        run: npm run test:penpot
