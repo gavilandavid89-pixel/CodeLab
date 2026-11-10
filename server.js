@@ -2846,6 +2846,8 @@ const server = http.createServer(async (req, res) => {
               targetProjectId: screenIdMap.get(link.targetProjectId) || link.targetProjectId
             }));
           }
+          const validationError = validateProjects(projects);
+          if (validationError) return sendJson(res, 400, { error: 'penpot_import_invalid_project_graph', detail: validationError });
           // Binary media is stored under CodeLab's existing persistent data directory.
           // It is not placed in a separate Penpot volume or public static directory.
           if (imported.assets && imported.assets.length) {
@@ -2865,8 +2867,6 @@ const server = http.createServer(async (req, res) => {
               fs.renameSync(metaTemp, metaPath);
             }
           }
-          const validationError = validateProjects(projects);
-          if (validationError) return sendJson(res, 400, { error: 'penpot_import_invalid_project_graph', detail: validationError });
           const next = {
             version: current.version,
             revision: current.revision + 1,
