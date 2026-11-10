@@ -157,7 +157,7 @@ These are observed frontend call sites, not a blanket authorization grant. Sever
 - Profile/team/font/comment/upload call sites: `vendor/penpot/frontend/src/app/main/data/profile.cljs`, `team.cljs`, `fonts.cljs`, `comments.cljs`, and `uploads.cljs`.
 - WebSocket server: `vendor/penpot/backend/src/app/http/websocket.clj`; frontend client: `vendor/penpot/frontend/src/app/main/data/websocket.cljs`.
 
-This discovery is now detailed enough to implement a command-by-command adapter without guessing the upstream transport. The adapter itself, Transit codec, WebSocket server, and command handlers remain implementation work; none are marked complete by this source audit.
+This discovery is now detailed enough to implement a command-by-command adapter without guessing the upstream transport. The bounded Transit codec and authenticated WebSocket transport have since been implemented and tested in CodeLab. The /api/main/methods/{method-name} dispatcher and the actual RPC command handlers remain implementation work.
 
 ## First vertical-slice method map (backend handlers inspected)
 
@@ -211,3 +211,11 @@ The pinned frontend source shows that command transport and persistence have two
 4. **WebSocket lifecycle — `frontend/src/app/main/data/websocket.cljs`.** The client opens `/ws/notifications?session-id={uuid}` and sends Transit messages through the same session. The CodeLab endpoint is now mounted; the remaining collaboration work is to publish actual document-change events and provide cross-instance fan-out.
 
 The recommended next implementation is to connect the frontend's RPC choke point to a strict server-side allowlist, then route `get-file` and `update-file` through the existing CodeLab host persistence boundary. Do not enable the Penpot workbench until bootstrap, native file shape, save/reopen and conflict behavior pass end-to-end tests.
+
+## Strict first-slice RPC contract module
+
+The initial explicit allowlist and parameter validator now live in `penpot-rpc-contract.js`. It defines ten source-confirmed methods for the first slice: profile/team/project/file reads, file update, rename and delete. It enforces HTTP verbs, required and one-of parameters, UUIDs, revision integers, change-array shape, file-name bounds and rejection of unknown parameters. It accepts both ordinary JavaScript objects and keyword-keyed Transit maps.
+
+The contract deliberately returns `501 PENPOT_METHOD_HANDLER_NOT_IMPLEMENTED` when a registered method has no injected handler. It does not invoke arbitrary function names and it is not yet mounted as the `/api/main/methods` route. Actual handlers must still resolve IDs through `penpot-identity.js`, read/write CodeLab-owned projects, and preserve Penpot's native file-change semantics.
+
+The latest dedicated Penpot CI run [42760296672](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/42760296672) passed the server syntax check and all 30 host, Transit, identity, WebSocket and RPC-contract tests.
