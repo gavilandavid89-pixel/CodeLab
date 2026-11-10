@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     depends_on: [penpot-backend, penpot-admin-console, penpot-exporter]
     environment:
-      PENPOT_FLAGS: disable-registration disable-login-with-password enable-secure-session-cookies
+      PENPOT_FLAGS: disable-registration disable-login-with-password disable-telemetry enable-secure-session-cookies
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_BACKEND_URI: http://penpot-backend:6060
       PENPOT_EXPORTER_URI: http://penpot-exporter:6061
@@ -24,7 +24,7 @@ services:
       penpot-valkey:
         condition: service_healthy
     environment:
-      PENPOT_FLAGS: disable-registration disable-login-with-password enable-secure-session-cookies
+      PENPOT_FLAGS: disable-registration disable-login-with-password disable-telemetry enable-secure-session-cookies
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_SECRET_KEY: ${PENPOT_SECRET_KEY:?Set a unique random PENPOT_SECRET_KEY}
       # Existing CodeLab PostgreSQL connection, isolated to a dedicated schema.
