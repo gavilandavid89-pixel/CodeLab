@@ -2678,7 +2678,7 @@ const server = http.createServer(async (req, res) => {
 
       // Penpot-native document persistence inside the existing CodeLab workspace/project store.
       // No second database, user directory, project store, or durable asset bucket is introduced.
-      const penpotDocumentMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/projects\\/([^/]+)\\/penpot-document$/);
+      const penpotDocumentMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/projects\/([^/]+)\/penpot-document$/);
       if (penpotDocumentMatch && (req.method === 'GET' || req.method === 'PUT')) {
         const id = safeId(penpotDocumentMatch[1]);
         let projectId = '';
