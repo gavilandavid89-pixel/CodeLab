@@ -150,3 +150,15 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El Inspector completo se puede plegar y volver a abrir desde la barra del editor para liberar el lienzo, por ejemplo al trabajar con diagramas y conexiones de nodos.
 - Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
+
+## Espacio de diseño integrado (Penpot)
+
+CodeLab incorpora un stack privado de Penpot para reemplazar el editor visual propio. La integración se sirve desde el mismo origen de CodeLab en `/penpot/`; el navegador no se conecta a Penpot Cloud. El proxy del servidor usa `PENPOT_FRONTEND_URL` para alcanzar el frontend interno y admite HTTP y WebSocket para colaboración.
+
+- Stack de desarrollo: `infra/penpot/docker-compose.yml`.
+- Variables: copiar `infra/penpot/.env.example` a `infra/penpot/.env` y generar secretos únicos.
+- Iniciar Penpot: `docker compose -f infra/penpot/docker-compose.yml --env-file infra/penpot/.env up -d`.
+- Iniciar CodeLab con `PENPOT_FRONTEND_URL=http://127.0.0.1:9001` y `PENPOT_PUBLIC_URI=http://localhost:3000/penpot/`.
+- Abrir `http://localhost:3000/penpot/`. El puerto 9001 queda ligado a loopback para desarrollo, no debe exponerse públicamente.
+
+La integración visual, el inicio de sesión unificado, la importación de páginas/prototipos al generador y el despliegue de producción siguen en implementación. No retirar el editor visual actual hasta completar esas pruebas. Pixelforge y su sistema de animación permanecen separados y preservados.
