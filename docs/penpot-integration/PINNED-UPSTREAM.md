@@ -17,3 +17,22 @@ and records the resolved build-image digest for each run. The Penpot source snap
 outputs are distinct from the CodeLab Node.js host and must not change the
 production Render start/build configuration until the integrated application
 has passed end-to-end validation.
+
+## Build verification
+
+The pinned Penpot 2.19.0 frontend source was successfully built on 2026-11-10 in CodeLab GitHub Actions run [42758280222](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/42758280222).
+
+The run passed:
+- immutable upstream source-pin verification;
+- official `penpotapp/devenv` toolchain verification;
+- shared JVM class compilation;
+- frontend, worker, plugin and WASM compilation;
+- compiled artifact verification and upload.
+
+Uploaded artifact:
+- Name: `codelab-penpot-2.19.0-frontend`
+- Artifact ID: `13737275293`
+- Size: 133,607,725 bytes
+- Retention expiry: 2026-11-24
+
+This is a successful source build artifact, not yet a deployed or mounted CodeLab editor. It is a temporary GitHub Actions artifact with a 14-day retention period; the production build/mount strategy and native RPC backend integration remain open.
