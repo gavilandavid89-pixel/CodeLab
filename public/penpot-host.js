@@ -22,6 +22,7 @@
     if (!project) throw new Error('codelab_project_not_found');
     return {
       workspaceId,
+      token: workspaceToken,
       projectId: currentProjectId,
       workspaceRevision: Number.isInteger(workspaceRevision) ? workspaceRevision : 0,
       project,
@@ -48,7 +49,7 @@
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
-          'x-workspace-token': workspaceToken
+          'x-workspace-token': context.token
         },
         ...(body ? { body: JSON.stringify(body) } : {})
       });
@@ -107,7 +108,14 @@
     if (!document || typeof document !== 'object' || Array.isArray(document)) {
       return Promise.reject(new Error('penpot_document_must_be_an_object'));
     }
-    const serialized = JSON.stringify(document);
+    let snapshot;
+    let serialized;
+    try {
+      serialized = JSON.stringify(document);
+      snapshot = JSON.parse(serialized);
+    } catch (_) {
+      return Promise.reject(new Error('penpot_document_not_serializable'));
+    }
     if (new TextEncoder().encode(serialized).byteLength > MAX_DOCUMENT_BYTES) {
       return Promise.reject(new Error('penpot_document_too_large'));
     }
@@ -118,12 +126,12 @@
       const context = currentContext();
       const baseRevision = Number.isInteger(workspaceRevision) ? workspaceRevision : context.workspaceRevision;
       try {
-        const payload = await request('PUT', context, { document, baseRevision });
+        const payload = await request('PUT', context, { document: snapshot, baseRevision });
         if (!payload.ok || !Number.isInteger(payload.workspaceRevision)) {
           throw new Error('penpot_invalid_save_response');
         }
         workspaceRevision = payload.workspaceRevision;
-        ensureProjectDocument(context, document, Number(payload.documentRevision) || 1, payload.updatedAt);
+        ensureProjectDocument(context, snapshot, Number(payload.documentRevision) || 1, payload.updatedAt);
         if (typeof saveLocalProjectsSnapshot === 'function') saveLocalProjectsSnapshot();
         emit('codelab:penpot-document-saved', {
           projectId: context.projectId,
@@ -136,7 +144,7 @@
         if (error.status === 409) {
           emit('codelab:penpot-conflict', {
             projectId: context.projectId,
-            localDocument: document,
+            localDocument: snapshot,
             serverDocument: error.payload && error.payload.document || null,
             documentRevision: error.payload && error.payload.documentRevision || 0,
             workspaceRevision: error.payload && error.payload.workspaceRevision
