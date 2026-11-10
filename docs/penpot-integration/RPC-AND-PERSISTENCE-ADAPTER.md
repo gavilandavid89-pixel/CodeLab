@@ -78,9 +78,13 @@ The Node suites are available through `npm run test:penpot-host` and `npm run te
 - [x] CodeLab project-scoped document GET/PUT route with workspace authorization and optimistic revision checks.
 - [x] Browser host bridge for the active CodeLab project, load/save, serialized local writes, size validation and conflict events.
 - [x] Unit tests and a dedicated CI workflow for the browser host bridge.
-- [ ] Connect Penpot's native `app.main.repo` / Transit command layer to CodeLab's allowlisted RPC adapter.
+- [ ] Connect Penpot's native `app.main.repo` / Transit command layer to CodeLab's allowlisted RPC adapter and map native document-change operations onto CodeLab project persistence.
 - [x] Build the pinned Penpot frontend + workers + plugins + WASM from source in CI and upload the resulting bundle.
-- [x] Add a bounded Node Transit JSON codec using pinned `transit-js` 0.8.874; host/codec suite passed 12/12 tests in Actions run 42759363063.
+- [x] Add a bounded Node Transit JSON codec using pinned `transit-js` 0.8.874.
+- [x] Add stable CodeLab-account/workspace/project to Penpot UUID mapping in `penpot-identity.js`; every file/team resolver rechecks the authenticated workspace owner.
+- [x] Mount the authenticated `/ws/notifications` endpoint in CodeLab with Transit messages, same-origin validation, file/team ownership checks, presence, pointer relay, rate and payload limits.
+- [x] Verify server syntax and 24 host/Transit/identity/WebSocket tests in Actions run 42759768697.
+- [ ] Add cross-instance notification fan-out and team/project mutation events; the current WebSocket event hub is in-process and does not yet carry native document-change notifications.
 - [ ] Replace Penpot's account/team/file bootstrap with the active CodeLab account and project context.
 - [ ] Add native Penpot save/reopen, multi-page, prototype and generator round-trip tests.
 - [ ] Mount the compiled Penpot workspace in CodeLab's design route while preserving the native Penpot workbench layout.
