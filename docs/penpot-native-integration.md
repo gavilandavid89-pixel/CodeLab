@@ -47,7 +47,9 @@ No se debe interpretar una exportación visual como navegación funcional si no 
 
 No eliminar ni sustituir PixelForge. Su almacenamiento, composición, timeline, validaciones, presupuestos, endpoints y pruebas permanecen bajo CodeLab. Las transiciones Penpot son una fuente adicional de especificación, no reemplazan el motor de animación.
 
-## Despliegue y validación
+## Versión y despliegue
+
+La rama fija Penpot en **2.19.0**, versión publicada el 9 de noviembre de 2026. Es un pin exacto, no `latest`. Penpot 2.19 incluye una migración de payloads históricos y cambios de Admin Console; aunque esta integración aún no tiene datos Penpot productivos, antes de actualizar una instancia con datos se debe revisar el runbook oficial de migración de 2.19 y hacer backup verificado de PostgreSQL y assets.
 
 La configuración de esta rama es infraestructura de desarrollo, no un despliegue listo para Render. Antes de habilitar el runtime hay que validar la versión exacta de imágenes, el esquema y permisos SQL, SSO, autorización por proyecto, almacenamiento compartido real, proxy HTTP/WebSocket, importador del documento, exportación y pruebas E2E móviles. El editor visual existente se conserva hasta alcanzar paridad y pasar las pruebas.
 
