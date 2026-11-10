@@ -1674,7 +1674,7 @@ function salvageCodeFromText(text, fallback) {
   if (jsM) out.js = jsM[1].trim();
   // Heuristic: if only one big HTML-looking chunk
   if (!htmlM && /<\/?[a-z][\s\S]*>/i.test(s) && s.length < 50000) {
-    const stripped = s.replace(/^```[\s\S]*?
+    const stripped = s.replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
 /, '').replace(/```$/, '').trim();
     if (stripped.startsWith('<') || stripped.includes('<div') || stripped.includes('<!DOCTYPE')) {
       out.html = stripped;
@@ -2166,10 +2166,7 @@ const server = http.createServer(async (req, res) => {
           const messages = [
             { role: 'system', content: 'Eres un revisor experto de diseño visual y UX. Analiza la imagen real, no infieras elementos que no se vean. Usa el contexto estructurado como apoyo para medidas exactas. Responde en español con resumen, hallazgos observables priorizados y recomendaciones concretas.' },
             { role: 'user', content: [
-              { type: 'text', text: prompt + '\
-\
-Contexto estructurado del diseño:\
-' + JSON.stringify(context).slice(0, 40000) },
+              { type: 'text', text: prompt + '\\n\\nContexto estructurado del diseño:\\n' + JSON.stringify(context).slice(0, 40000) },
               { type: 'image_url', image_url: { url: image } }
             ] }
           ];
@@ -2236,10 +2233,7 @@ Contexto estructurado del diseño:\
             {
               role: 'user',
               content:
-                prompt +
-                '
-
-Responde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
+                '\n\nResponde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
             }
           ];
           const { content } = await proxyChatCompletions({
