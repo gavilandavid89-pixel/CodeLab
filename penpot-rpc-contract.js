@@ -7,6 +7,7 @@
  */
 'use strict';
 
+const transit = require('transit-js');
 const { UUID_RE } = require('./penpot-identity');
 
 const METHODS = Object.freeze({
@@ -104,6 +105,9 @@ function fail(status, code) {
 }
 
 function paramValue(params, key) {
+  if (transit.isMap(params)) {
+    return params.get(transit.keyword(key)) ?? params.get(key) ?? params.get(':' + key);
+  }
   if (params && typeof params.get === 'function') {
     return params.get(key) ?? params.get(':' + key);
   }
