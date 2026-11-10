@@ -67,8 +67,9 @@ jobs:
           set -euo pipefail
           test -s vendor/penpot/frontend/target/dist/index.html
           test -d vendor/penpot/frontend/target/dist/js
-          test -s vendor/penpot/frontend/resources/public/js/render.js
-          test -s vendor/penpot/frontend/resources/public/js/render.wasm
+          test -s vendor/penpot/frontend/resources/public/js/render-wasm.js
+          test -s vendor/penpot/frontend/resources/public/js/render-wasm.wasm
+          test -s vendor/penpot/frontend/resources/public/js/worker/render.js
           test -s vendor/penpot/frontend/resources/public/js/libs.js
           echo "Penpot frontend bundle compiled successfully."
 
