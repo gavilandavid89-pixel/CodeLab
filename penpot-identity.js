@@ -11,10 +11,11 @@ const crypto = require('node:crypto');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROJECT_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
+const UUID_V5_NAMESPACE = Buffer.from('6ba7b8109dad11d180b400c04fd430c8', 'hex');
 
 function deriveUuid(namespace, ...parts) {
   const name = [namespace, ...parts.map(value => String(value))].join('\0');
-  const bytes = crypto.createHash('sha1').update(name, 'utf8').digest().subarray(0, 16);
+  const bytes = crypto.createHash('sha1').update(UUID_V5_NAMESPACE).update(name, 'utf8').digest().subarray(0, 16);
   // RFC 4122 name-based UUID (version 5) and variant bits.
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
