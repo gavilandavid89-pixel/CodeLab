@@ -35,7 +35,11 @@ function archive() {
       fills: [{ color: '#2563eb' }], fontSize: 28,
       interactions: [{ eventType: 'click', destinationFrameId: frameB }]
     },
-    [prefix + 'pages/' + pageId + '/' + imageId + '.json']: { id: imageId, name: 'Producto', type: 'image', x: 20, y: 100, width: 160, height: 160, parentId: frameA, frameId: frameA, metadata: { id: mediaId } },\n    [prefix + 'media/' + mediaId + '.json']: { id: mediaId, mediaId: storageId, name: 'producto.png' },\n    ['objects/' + storageId + '.json']: { id: storageId, contentType: 'image/png', size: 8 },\n    ['objects/' + storageId + '.png']: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),\n    [prefix + 'tokens.json']: { sets: { core: { tokens: { color: { primary: { value: '#2563eb' } } } } } }
+    [prefix + 'pages/' + pageId + '/' + imageId + '.json']: { id: imageId, name: 'Producto', type: 'image', x: 20, y: 100, width: 160, height: 160, parentId: frameA, frameId: frameA, metadata: { id: mediaId } },
+    [prefix + 'media/' + mediaId + '.json']: { id: mediaId, mediaId: storageId, name: 'producto.png' },
+    ['objects/' + storageId + '.json']: { id: storageId, contentType: 'image/png', size: 8 },
+    ['objects/' + storageId + '.png']: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    [prefix + 'tokens.json']: { sets: { core: { tokens: { color: { primary: { value: '#2563eb' } } } } } }
   };
   const encoded = {};
   for (const [name, value] of Object.entries(entries)) encoded[name] = strToU8(JSON.stringify(value));
@@ -47,7 +51,8 @@ test('reads native Penpot v3 ZIP and maps pages/frames to CodeLab screens', () =
   assert.equal(parsed.fileId, fileId);
   assert.equal(parsed.fileName, 'Tienda Demo');
   assert.equal(parsed.revision, 7);
-  assert.equal(parsed.pages.length, 1);\n  assert.equal(parsed.assets.length, 1);
+  assert.equal(parsed.pages.length, 1);
+  assert.equal(parsed.assets.length, 1);
 
   const graph = mapPenpotArchive(Buffer.from(archive()));
   assert.equal(graph.screens.length, 2);
@@ -55,7 +60,8 @@ test('reads native Penpot v3 ZIP and maps pages/frames to CodeLab screens', () =
   assert.equal(graph.screens[0].design.width, 390);
   assert.equal(graph.screens[0].design.elements.length, 2);
   assert.equal(graph.screens[0].design.elements[0].type, 'heading');
-  assert.equal(graph.screens[0].design.elements[0].text, 'Ver producto');\n  assert.equal(graph.assets.length, 1);
+  assert.equal(graph.screens[0].design.elements[0].text, 'Ver producto');
+  assert.equal(graph.assets.length, 1);
   assert.equal(graph.screens[0].design.flowConnections.length, 1);
   assert.equal(graph.screens[0].design.flowConnections[0].targetProjectId, graph.screens[1].id);
   assert.equal(graph.screens[0].design.penpotTokens.sets.core.tokens.color.primary.value, '#2563eb');
