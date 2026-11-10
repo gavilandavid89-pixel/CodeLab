@@ -43,6 +43,7 @@ test('Penpot identity UUIDs are stable, valid and scoped by entity', () => {
   assert.notEqual(first.fileId, penpotIdsForUser(user, 'ws_local_admin', { id: 'project_2' }).fileId);
   assert.notEqual(first.teamId, penpotIdsForUser(user, 'ws_other_user', project).teamId);
   assert.equal(deriveUuid('namespace', 'same'), deriveUuid('namespace', 'same'));
+  assert.equal(deriveUuid('www.widgets.com'), '3d813cbb-47fb-32ba-91df-831e1593ac29');
 });
 
 test('authenticated session resolves only projects in its CodeLab workspace', async () => {
