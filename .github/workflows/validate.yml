@@ -53,6 +53,8 @@ jobs:
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
           node --check tests/pixelforge-integration.test.js
+      - name: Test Penpot native integration guardrails
+        run: npm run test:penpot-config
       - name: Test PixelForge animation model and UI–Headless contract
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test PixelForge ZIP export package
