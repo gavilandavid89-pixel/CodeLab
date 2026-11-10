@@ -2725,6 +2725,42 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      const penpotAssetMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/penpot\/assets\/([^/]+)\/([^/]+)$/);
+      if (req.method === 'GET' && penpotAssetMatch) {
+        const workspaceId = safeId(penpotAssetMatch[1]);
+        const fileId = safeId(penpotAssetMatch[2]);
+        const assetId = safeId(penpotAssetMatch[3]);
+        if (!workspaceId || workspaceId !== penpotAssetMatch[1] ||
+            !fileId || fileId !== penpotAssetMatch[2] ||
+            !assetId || assetId !== penpotAssetMatch[3]) {
+          return sendJson(res, 400, { error: 'invalid_penpot_asset_id' });
+        }
+        if (!(await isAuthorized(req, workspaceId))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        try {
+          const state = await enforceSessionWorkspaceOwner(workspaceId, await readState(workspaceId), await getSessionUser(req));
+          const ownsFile = state.projects.some(project => project && project.design &&
+            project.design.penpotSource && project.design.penpotSource.fileId === fileId);
+          if (!ownsFile) return sendJson(res, 404, { error: 'penpot_asset_not_found' });
+          const assetDir = path.join(DATA_DIR, 'penpot-assets', workspaceId, fileId);
+          const meta = JSON.parse(fs.readFileSync(path.join(assetDir, assetId + '.json'), 'utf8'));
+          if (!meta || !['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(meta.extension) ||
+              !/^image\/(png|jpeg|webp|gif)$/.test(meta.contentType)) {
+            return sendJson(res, 404, { error: 'penpot_asset_not_found' });
+          }
+          const bytes = fs.readFileSync(path.join(assetDir, assetId + '.' + meta.extension));
+          res.writeHead(200, {
+            'Content-Type': meta.contentType,
+            'Content-Length': bytes.length,
+            'Cache-Control': 'private, max-age=300',
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox"
+          });
+          return res.end(bytes);
+        } catch (_) {
+          return sendJson(res, 404, { error: 'penpot_asset_not_found' });
+        }
+      }
+
       // Import a native Penpot v3 archive into the existing CodeLab workspace.
       // The workspace token/session, revision and project ownership remain CodeLab-authoritative.
       const penpotImportMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/penpot\/import$/);
@@ -2742,7 +2778,7 @@ const server = http.createServer(async (req, res) => {
         let imported;
         try {
           const archive = Buffer.from(body.fileBase64, 'base64');
-          imported = penpotAdapter.mapPenpotArchive(archive);
+          imported = penpotAdapter.mapPenpotArchive(archive, { workspaceId });
         } catch (error) {
           const code = String(error && error.message || 'penpot_import_invalid');
           return sendJson(res, 400, { error: code.slice(0, 120) });
@@ -2810,6 +2846,25 @@ const server = http.createServer(async (req, res) => {
               targetProjectId: screenIdMap.get(link.targetProjectId) || link.targetProjectId
             }));
           }
+          // Binary media is stored under CodeLab's existing persistent data directory.
+          // It is not placed in a separate Penpot volume or public static directory.
+          if (imported.assets && imported.assets.length) {
+            const assetDir = path.join(DATA_DIR, 'penpot-assets', workspaceId, safeId(imported.fileId));
+            fs.mkdirSync(assetDir, { recursive: true, mode: 0o700 });
+            for (const asset of imported.assets) {
+              if (!/^[a-zA-Z0-9_-]{1,100}$/.test(asset.id) ||
+                  !['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(asset.extension) ||
+                  !/^image\/(png|jpeg|webp|gif)$/.test(asset.contentType)) continue;
+              const assetPath = path.join(assetDir, asset.id + '.' + asset.extension);
+              const metaPath = path.join(assetDir, asset.id + '.json');
+              const tempPath = assetPath + '.tmp.' + process.pid + '.' + crypto.randomBytes(4).toString('hex');
+              fs.writeFileSync(tempPath, asset.bytes, { flag: 'wx', mode: 0o600 });
+              fs.renameSync(tempPath, assetPath);
+              const metaTemp = metaPath + '.tmp.' + process.pid + '.' + crypto.randomBytes(4).toString('hex');
+              fs.writeFileSync(metaTemp, JSON.stringify({ extension: asset.extension, contentType: asset.contentType, size: asset.bytes.length }), { flag: 'wx', mode: 0o600 });
+              fs.renameSync(metaTemp, metaPath);
+            }
+          }
           const validationError = validateProjects(projects);
           if (validationError) return sendJson(res, 400, { error: 'penpot_import_invalid_project_graph', detail: validationError });
           const next = {
@@ -2828,6 +2883,7 @@ const server = http.createServer(async (req, res) => {
             importedScreens: importedProjects.length,
             importedElements: importedProjects.reduce((sum, project) => sum + (project.design.elements || []).length, 0),
             importedConnections: importedProjects.reduce((sum, project) => sum + (project.design.flowConnections || []).length, 0),
+            importedAssets: imported.assets ? imported.assets.length : 0,
             projectIds: importedProjects.map(project => project.id)
           });
         } catch (error) {
