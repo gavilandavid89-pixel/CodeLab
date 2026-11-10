@@ -12,7 +12,7 @@ test('Penpot runtime is pinned and cannot create a parallel account system', asy
   assert.ok(env.includes('PENPOT_VERSION=2.19.0'));
   assert.ok(compose.includes('disable-registration disable-login-with-password'));
   assert.ok(!compose.includes('enable-registration'));
-  assert.ok(!compose.includes('enable-login-with-password'));
+  assert.ok(!compose.includes('enable-login-with-password'));\n  assert.ok(compose.includes('disable-telemetry'));
 });
 
 test('Penpot reuses CodeLab database and persistent data without parallel durable stores', async () => {
