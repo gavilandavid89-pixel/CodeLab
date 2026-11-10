@@ -1611,17 +1611,35 @@ function buildAiSystemPrompt(code) {
   const css = String((code && code.css) || '').slice(0, 12000);
   const js = String((code && code.js) || '').slice(0, 12000);
   return (
-    'Eres un ingeniero frontend. Debes modificar el código web del usuario.\n' +
-    'FORMATO DE RESPUESTA (obligatorio):\n' +
-    'Devuelve UN objeto JSON con exactamente 4 claves string: html, css, js, message.\n' +
-    'Ejemplo mínimo:\n' +
-    '{"html":"<h1>Hola</h1>","css":"h1{color:blue}","js":"console.log(1)","message":"Título azul"}\n' +
-    'Reglas:\n' +
-    '- Sin markdown, sin ```, sin texto fuera del JSON.\n' +
-    '- Si solo cambias una parte, incluye igual las otras claves con el código actual.\n' +
-    '- message en español, una frase.\n' +
-    '- Código ejecutable en navegador sin bundler.\n\n' +
-    'HTML actual:\n' + html + '\n\nCSS actual:\n' + css + '\n\nJS actual:\n' + js
+    'Eres un ingeniero frontend. Debes modificar el código web del usuario.
+' +
+    'FORMATO DE RESPUESTA (obligatorio):
+' +
+    'Devuelve UN objeto JSON con exactamente 4 claves string: html, css, js, message.
+' +
+    'Ejemplo mínimo:
+' +
+    '{"html":"<h1>Hola</h1>","css":"h1{color:blue}","js":"console.log(1)","message":"Título azul"}
+' +
+    'Reglas:
+' +
+    '- Sin markdown, sin ```, sin texto fuera del JSON.
+' +
+    '- Si solo cambias una parte, incluye igual las otras claves con el código actual.
+' +
+    '- message en español, una frase.
+' +
+    '- Código ejecutable en navegador sin bundler.
+
+' +
+    'HTML actual:
+' + html + '
+
+CSS actual:
+' + css + '
+
+JS actual:
+' + js
   );
 }
 
@@ -1674,7 +1692,8 @@ function salvageCodeFromText(text, fallback) {
   if (jsM) out.js = jsM[1].trim();
   // Heuristic: if only one big HTML-looking chunk
   if (!htmlM && /<\/?[a-z][\s\S]*>/i.test(s) && s.length < 50000) {
-    const stripped = s.replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
+    const stripped = s.replace(/^```[\s\S]*?
+/, '').replace(/```$/, '').trim();
     if (stripped.startsWith('<') || stripped.includes('<div') || stripped.includes('<!DOCTYPE')) {
       out.html = stripped;
       out.message = 'HTML extraído de la respuesta del modelo.';
@@ -2165,7 +2184,10 @@ const server = http.createServer(async (req, res) => {
           const messages = [
             { role: 'system', content: 'Eres un revisor experto de diseño visual y UX. Analiza la imagen real, no infieras elementos que no se vean. Usa el contexto estructurado como apoyo para medidas exactas. Responde en español con resumen, hallazgos observables priorizados y recomendaciones concretas.' },
             { role: 'user', content: [
-              { type: 'text', text: prompt + '\\n\\nContexto estructurado del diseño:\\n' + JSON.stringify(context).slice(0, 40000) },
+              { type: 'text', text: prompt + '\
+\
+Contexto estructurado del diseño:\
+' + JSON.stringify(context).slice(0, 40000) },
               { type: 'image_url', image_url: { url: image } }
             ] }
           ];
@@ -2233,7 +2255,9 @@ const server = http.createServer(async (req, res) => {
               role: 'user',
               content:
                 prompt +
-                '\n\nResponde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
+                '
+
+Responde SOLO con JSON: {"html":"...","css":"...","js":"...","message":"..."}'
             }
           ];
           const { content } = await proxyChatCompletions({
@@ -2894,7 +2918,8 @@ const server = http.createServer(async (req, res) => {
             importedScreens: importedProjects.length,
             importedElements: importedProjects.reduce((sum, project) => sum + (project.design.elements || []).length, 0),
             importedConnections: importedProjects.reduce((sum, project) => sum + (project.design.flowConnections || []).length, 0),
-            importedAssets: imported.assets ? imported.assets.length : 0,\n            designSystemApplied,
+            importedAssets: imported.assets ? imported.assets.length : 0,
+            designSystemApplied,
             projectIds: importedProjects.map(project => project.id)
           });
         } catch (error) {
@@ -3001,13 +3026,17 @@ server.on('upgrade', (req, socket, head) => {
     headers
   });
   upstream.on('upgrade', (response, upstreamSocket, upstreamHead) => {
-    const statusLine = 'HTTP/1.1 ' + (response.statusCode || 101) + ' ' + (response.statusMessage || 'Switching Protocols') + '\r\n';
+    const statusLine = 'HTTP/1.1 ' + (response.statusCode || 101) + ' ' + (response.statusMessage || 'Switching Protocols') + '\r
+';
     socket.write(statusLine);
     for (const [name, value] of Object.entries(response.headers)) {
-      if (Array.isArray(value)) for (const item of value) socket.write(name + ': ' + item + '\r\n');
-      else if (value !== undefined) socket.write(name + ': ' + value + '\r\n');
+      if (Array.isArray(value)) for (const item of value) socket.write(name + ': ' + item + '\r
+');
+      else if (value !== undefined) socket.write(name + ': ' + value + '\r
+');
     }
-    socket.write('\r\n');
+    socket.write('\r
+');
     if (upstreamHead && upstreamHead.length) socket.write(upstreamHead);
     if (head && head.length) upstreamSocket.write(head);
     upstreamSocket.pipe(socket);
@@ -3016,7 +3045,9 @@ server.on('upgrade', (req, socket, head) => {
     upstreamSocket.on('error', () => socket.destroy());
   });
   upstream.on('response', response => {
-    socket.write('HTTP/1.1 ' + (response.statusCode || 502) + ' ' + (response.statusMessage || 'Bad Gateway') + '\r\n\r\n');
+    socket.write('HTTP/1.1 ' + (response.statusCode || 502) + ' ' + (response.statusMessage || 'Bad Gateway') + '\r
+\r
+');
     socket.destroy();
   });
   upstream.on('error', error => {
