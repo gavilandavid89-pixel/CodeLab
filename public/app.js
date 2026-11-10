@@ -4944,7 +4944,7 @@ async function importPenpotArchive(file) {
     showToast('El archivo Penpot debe pesar como máximo 18 MB por importación.', 'warn');
     return;
   }
-  if (!confirm('Se importarán los marcos de este archivo como pantallas del workspace. El primer marco ocupará el proyecto de Diseño actual. ¿Continuar?')) return;
+  if (!confirm('Se importarán los marcos como pantallas del workspace. El primer marco ocupará el proyecto de Diseño actual y los tokens compatibles actualizarán el sistema visual de CodeLab. ¿Continuar?')) return;
 
   const button = document.getElementById('importPenpotArchiveButton');
   if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
@@ -4986,7 +4986,7 @@ async function importPenpotArchive(file) {
     if (!refreshed) throw new Error('La importación se guardó, pero no se pudo actualizar la vista. Recarga el workspace para ver las pantallas.');
     renderProjectsList();
     openProject(project.id);
-    showToast('Penpot importado: ' + result.importedScreens + ' pantallas, ' + result.importedElements + ' capas y ' + result.importedConnections + ' conexiones. Guardado en CodeLab.');
+    showToast('Penpot importado: ' + result.importedScreens + ' pantallas, ' + result.importedElements + ' capas y ' + result.importedConnections + ' conexiones.' + (result.designSystemApplied ? ' Sistema visual sincronizado.' : '') + ' Guardado en CodeLab.');
   } catch (error) {
     console.error('Penpot import failed:', error);
     showToast(String(error.message || 'No se pudo importar el archivo Penpot.'), 'error');
