@@ -49,8 +49,8 @@ Do not point Penpot at an unrelated Penpot backend or silently create a second u
 
 ## Verification checklist
 
-- [ ] Complete pinned upstream frontend/common/resources/plugin/WASM dependency closure is present.
-- [ ] Reproducible build runs in CodeLab CI and produces the Penpot workbench bundle.
+- [x] Pinned upstream frontend/common/resources/plugin/WASM dependency closure compiles from the vendored source snapshot.
+- [x] Reproducible build runs in CodeLab CI and produces the Penpot 2.19.0 frontend bundle (Actions run 42758280222; artifact `codelab-penpot-2.19.0-frontend`, 133,607,725 bytes).
 - [ ] Existing CodeLab session opens the editor without a second login.
 - [ ] Create/open/rename/delete project and multi-page document operations persist to existing PostgreSQL storage.
 - [ ] Edit, reload, and reopen preserve document contents and revision ordering.
@@ -71,7 +71,7 @@ It exposes `window.CodeLabPenpotHost` with:
 
 The adapter intentionally reports a revision conflict and preserves both local and server document values in the event payload; it does not silently choose one side or overwrite newer server state. The existing workspace token is sent only as the request authorization header. The adapter is a host boundary for the future Penpot ClojureScript integration, not a substitute for Penpot's Transit RPC transport or native document-change pipeline.
 
-A Node test suite is available through `npm run test:penpot-host`, with a dedicated GitHub Actions workflow on the integration branch and relevant pull requests.
+The Node suites are available through `npm run test:penpot-host` and `npm run test:penpot`. The dedicated GitHub Actions workflow installs the pinned Transit dependency and runs the host bridge plus Transit codec tests on the integration branch and relevant pull requests.
 
 ## Current implementation status after host bridge
 
@@ -79,7 +79,8 @@ A Node test suite is available through `npm run test:penpot-host`, with a dedica
 - [x] Browser host bridge for the active CodeLab project, load/save, serialized local writes, size validation and conflict events.
 - [x] Unit tests and a dedicated CI workflow for the browser host bridge.
 - [ ] Connect Penpot's native `app.main.repo` / Transit command layer to CodeLab's allowlisted RPC adapter.
-- [ ] Complete the pinned upstream source dependency closure and reproducible ClojureScript + Rust/WASM build.
+- [x] Build the pinned Penpot frontend + workers + plugins + WASM from source in CI and upload the resulting bundle.
+- [x] Add a bounded Node Transit JSON codec using pinned `transit-js` 0.8.874; host/codec suite passed 12/12 tests in Actions run 42759363063.
 - [ ] Replace Penpot's account/team/file bootstrap with the active CodeLab account and project context.
 - [ ] Add native Penpot save/reopen, multi-page, prototype and generator round-trip tests.
 - [ ] Mount the compiled Penpot workspace in CodeLab's design route while preserving the native Penpot workbench layout.
