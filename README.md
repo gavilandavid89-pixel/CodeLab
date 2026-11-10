@@ -151,14 +151,15 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
 
-## Espacio de diseño integrado (Penpot)
+## Motor de diseño integrado (Penpot)
 
-CodeLab incorpora un stack privado de Penpot para reemplazar el editor visual propio. La integración se sirve desde el mismo origen de CodeLab en `/penpot/`; el navegador no se conecta a Penpot Cloud. El proxy del servidor usa `PENPOT_FRONTEND_URL` para alcanzar el frontend interno y admite HTTP y WebSocket para colaboración.
+Penpot se incorpora como motor interno de diseño de CodeLab. CodeLab conserva la propiedad de cuentas, sesiones, workspaces, proyectos, historial y almacenamiento. No se crea una segunda base PostgreSQL ni un volumen separado para los documentos/assets.
 
-- Stack de desarrollo: `infra/penpot/docker-compose.yml`.
-- Variables: copiar `infra/penpot/.env.example` a `infra/penpot/.env` y generar secretos únicos.
-- Iniciar Penpot: `docker compose -f infra/penpot/docker-compose.yml --env-file infra/penpot/.env up -d`.
-- Iniciar CodeLab con `PENPOT_FRONTEND_URL=http://127.0.0.1:9001` y `PENPOT_PUBLIC_URI=http://localhost:3000/penpot/`.
-- Abrir `http://localhost:3000/penpot/`. El puerto 9001 queda ligado a loopback para desarrollo, no debe exponerse públicamente.
+- Stack privado: `infra/penpot/docker-compose.yml`.
+- Configuración: `infra/penpot/.env.example`.
+- PostgreSQL: reutilizar la base existente de CodeLab, aislando las tablas de Penpot en el esquema `penpot`.
+- Archivos: montar el directorio persistente existente de CodeLab; los assets de Penpot quedan dentro de su subdirectorio `penpot/`.
+- Valkey: único motor de infraestructura adicional para la cola/cache efímera que requiere Penpot.
+- Navegador: acceder mediante el proxy same-origin de CodeLab en `/penpot/`; los servicios internos no se publican.
 
-La integración visual, el inicio de sesión unificado, la importación de páginas/prototipos al generador y el despliegue de producción siguen en implementación. No retirar el editor visual actual hasta completar esas pruebas. Pixelforge y su sistema de animación permanecen separados y preservados.
+La unificación de identidad, la autorización por workspace, la asociación de documentos con proyectos y el adaptador de páginas/prototipos al generador deben completarse antes de habilitar usuarios finales. Pixelforge y su pipeline de animación permanecen intactos. No retirar el editor actual ni desplegar la integración incompleta en producción.
