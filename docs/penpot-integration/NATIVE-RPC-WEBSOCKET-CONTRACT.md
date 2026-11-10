@@ -102,3 +102,59 @@ The Penpot adapter must call these existing functions and then resolve the reque
 - Keep optimistic revision checks; do not let the editor silently overwrite newer state.
 - Enforce per-document, per-asset, per-request and per-connection limits.
 - Do not alter production Render build/start settings until the integrated build and end-to-end tests pass.
+
+## Additional upstream transport findings (verified against the pinned source)
+
+### Transit wire types
+
+The authoritative shared codec is `vendor/penpot/common/src/app/common/transit.cljc`, namespace `app.common.transit`. It uses `cognitect.transit` with JSON as the default Transit wire type and registers Penpot-specific handlers in addition to Transit built-ins.
+
+Penpot-specific handler IDs confirmed in that source:
+
+- `n`: integer parsing in ClojureScript.
+- `u`: UUID parsing in ClojureScript.
+- `ordered-map`: preserves ordered-map semantics.
+- `ordered-set`: preserves ordered-set semantics.
+- `m`: JavaScript Date / JVM Instant, encoded as epoch milliseconds.
+- `uri`: Penpot URI values.
+- `penpot/pointer`: pointer values with an ID and metadata.
+
+The codec also uses the Transit library's built-in handling for keywords, symbols, sets, and ordinary maps. A JSON.parse/JSON.stringify shim would lose typed values and is not acceptable. The CodeLab server's current `package.json` does not declare a Transit dependency; the server codec dependency must be added and pinned only after its Node API and compatibility fixtures are verified.
+
+### RPC dispatch and authorization semantics
+
+The authoritative backend dispatcher is `vendor/penpot/backend/src/app/rpc.clj`:
+
+- The route parameter `method-name` is looked up in a resolved method map; unknown names dispatch to a not-found handler.
+- The method map is built from explicitly scanned RPC namespaces, with method metadata processed into wrappers. It is not an open-ended dynamic function call.
+- GET/HEAD is rejected unless the method name starts with `get-`.
+- Authentication, required auth type, token permissions, parameter validation, response transformations, and completion hooks are applied by the backend wrappers.
+- The main route is `/api/main/methods/:method-name`; it applies CORS, client-header checks, session authorization, and access-token authorization before dispatch.
+- The backend also retains `/rpc/command/:method-name` as a compatibility route.
+
+For CodeLab, the safe equivalent is an explicit registry whose entries declare method, parameter schema, project-resolution rule, required permission, response type, and whether the operation streams or uploads. Registry misses must return a Penpot-compatible not-found error; they must never fall through to arbitrary server functions.
+
+### Source-confirmed command families beyond dashboard/workspace
+
+The frontend call sites below were scanned directly for `rp/cmd!` invocations:
+
+- Profile: `get-profile`, `update-profile`, `update-profile-props`, `update-profile-notifications`, `update-profile-password`, `update-profile-photo`, `delete-profile-photo`, `delete-profile`, `recover-profile`, `request-profile-recovery`, `request-email-change`, `cancel-email-change`, `get-access-tokens`, `create-access-token`, `delete-access-token`, `get-subscription-usage`.
+- Teams: `get-teams`, `get-team`, `create-team`, `update-team`, `delete-team`, `leave-team`, `get-team-members`, `delete-team-member`, `update-team-member-role`, `get-team-invitations`, `create-team-invitations`, `create-team-with-invitations`, `delete-team-invitation`, `update-team-invitation-role`, `get-team-invitation-token`, `get-team-shared-files`, `get-team-stats`, `all-organization-members-in-team`, `check-organization-members`, `check-nitrate-sso`, and webhook CRUD methods.
+- Project: `get-project`, `get-project-files`.
+- Fonts: `get-font-variants`, `create-font-variant`, `update-font`, `delete-font`, `delete-font-variant`.
+- Comments: `get-comments`, `get-comment-thread`, `get-comment-threads`, `get-unread-comment-threads`, `get-profiles-for-file-comments`, `create-comment`, `update-comment`, `delete-comment`, `create-comment-thread`, `update-comment-thread`, `update-comment-thread-frame`, `update-comment-thread-status`, `mark-all-threads-as-read`, and `delete-comment-thread`.
+- Upload sessions: `create-upload-session`, `upload-chunk`.
+- Persistence: `update-file` is invoked from the workspace persistence layer.
+
+These are observed frontend call sites, not a blanket authorization grant. Several profile/team operations (password, email, token, team membership, webhooks) are not appropriate to expose as part of the first CodeLab editor slice. The first allowlist should stay limited to the CodeLab-owned project/file lifecycle, document persistence, required assets/fonts, and the minimum bootstrap queries. Collaboration/comments and administrative account operations remain gated until their identity and permission mappings are implemented.
+
+### Verified upstream source locations
+
+- Transit types and handlers: `vendor/penpot/common/src/app/common/transit.cljc`.
+- RPC dispatch, method lookup, GET restriction, auth wrappers and routes: `vendor/penpot/backend/src/app/rpc.clj`.
+- Dashboard command call sites: `vendor/penpot/frontend/src/app/main/data/dashboard.cljs`.
+- Workspace and persistence call sites: `vendor/penpot/frontend/src/app/main/data/workspace.cljs`, `vendor/penpot/frontend/src/app/main/data/persistence.cljs`.
+- Profile/team/font/comment/upload call sites: `vendor/penpot/frontend/src/app/main/data/profile.cljs`, `team.cljs`, `fonts.cljs`, `comments.cljs`, and `uploads.cljs`.
+- WebSocket server: `vendor/penpot/backend/src/app/http/websocket.clj`; frontend client: `vendor/penpot/frontend/src/app/main/data/websocket.cljs`.
+
+This discovery is now detailed enough to implement a command-by-command adapter without guessing the upstream transport. The adapter itself, Transit codec, WebSocket server, and command handlers remain implementation work; none are marked complete by this source audit.
