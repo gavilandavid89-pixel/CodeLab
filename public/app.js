@@ -4984,6 +4984,7 @@ async function importPenpotArchive(file) {
     }
     const refreshed = await refreshWorkspaceFromServer();
     if (!refreshed) throw new Error('La importación se guardó, pero no se pudo actualizar la vista. Recarga el workspace para ver las pantallas.');
+    window.dispatchEvent(new Event('codelab-workspace-ready'));
     renderProjectsList();
     openProject(project.id);
     showToast('Penpot importado: ' + result.importedScreens + ' pantallas, ' + result.importedElements + ' capas y ' + result.importedConnections + ' conexiones.' + (result.designSystemApplied ? ' Sistema visual sincronizado.' : '') + ' Guardado en CodeLab.');
