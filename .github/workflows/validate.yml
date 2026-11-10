@@ -53,6 +53,8 @@ jobs:
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
           node --check tests/pixelforge-integration.test.js
+      - name: Test Penpot archive adapter and workspace import end to end
+        run: npm run test:penpot
       - name: Test Penpot native integration guardrails
         run: npm run test:penpot-config
       - name: Validate Penpot Docker Compose manifest
