@@ -1,9 +1,8 @@
 -- Run against the EXISTING CodeLab database as a database administrator.
--- psql example:
---   psql "$DATABASE_URL" \
---     -v penpot_role=codelab_penpot \
---     -v penpot_password='REPLACE_WITH_UNIQUE_LONG_PASSWORD' \
---     -v penpot_schema=penpot
+-- Example (password is prompted securely; it is not placed in shell history):
+--   psql "$DATABASE_URL" -v penpot_role=codelab_penpot -v penpot_schema=penpot
+--   \prompt -s 'Penpot DB role password: ' penpot_password
+--   \i infra/penpot/bootstrap-existing-postgres.sql
 -- This creates no database and does not touch CodeLab tables.
 \set ON_ERROR_STOP on
 
@@ -23,9 +22,8 @@ SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'penpot
 SELECT format('ALTER ROLE %I IN DATABASE %I SET search_path = %I, public', :'penpot_role', current_database(), :'penpot_schema')
 \gexec
 
-GRANT USAGE, CREATE ON SCHEMA penpot TO codelab_penpot;
+SELECT format('GRANT USAGE, CREATE ON SCHEMA %I TO %I', :'penpot_schema', :'penpot_role')
+\gexec
 
--- Verify before starting Penpot:
---   SET ROLE codelab_penpot;
+-- Verify in a new connection using the Penpot role:
 --   SHOW search_path;  -- expected: penpot, public
---   RESET ROLE;
