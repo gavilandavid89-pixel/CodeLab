@@ -218,4 +218,4 @@ The initial explicit allowlist and parameter validator now live in `penpot-rpc-c
 
 The contract deliberately returns `501 PENPOT_METHOD_HANDLER_NOT_IMPLEMENTED` when a registered method has no injected handler. It does not invoke arbitrary function names and it is not yet mounted as the `/api/main/methods` route. Actual handlers must still resolve IDs through `penpot-identity.js`, read/write CodeLab-owned projects, and preserve Penpot's native file-change semantics.
 
-The latest dedicated Penpot CI run [42760296672](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/42760296672) passed the server syntax check and all 30 host, Transit, identity, WebSocket and RPC-contract tests.
+The latest dedicated Penpot host CI run [42760486307](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/42760486307) passed all 31 host, Transit, identity, WebSocket and RPC-contract tests. The native ClojureScript file-load/save bridge was added afterward and is awaiting its full upstream frontend build.
