@@ -10,7 +10,10 @@ const frameB = '44444444-4444-4444-8444-444444444444';
 const shapeA = '55555555-5555-4555-8555-555555555555';
 const imageId = '66666666-6666-4666-8666-666666666666';
 const mediaId = '77777777-7777-4777-8777-777777777777';
-const storageId = '88888888-8888-4888-8888-888888888888';\nconst componentId = '99999999-9999-4999-8999-999999999999';\nconst typographyId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';\nconst colorId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const storageId = '88888888-8888-4888-8888-888888888888';
+const componentId = '99999999-9999-4999-8999-999999999999';
+const typographyId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const colorId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 function archive() {
   const prefix = 'files/' + fileId + '/';
@@ -39,7 +42,10 @@ function archive() {
     [prefix + 'media/' + mediaId + '.json']: { id: mediaId, mediaId: storageId, name: 'producto.png' },
     ['objects/' + storageId + '.json']: { id: storageId, contentType: 'image/png', size: 8 },
     ['objects/' + storageId + '.png']: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
-    [prefix + 'components/' + componentId + '.json']: { id: componentId, name: 'Botón principal', path: 'Buttons/Primary', mainInstanceId: shapeA, mainInstancePage: pageId },\n    [prefix + 'typographies/' + typographyId + '.json']: { id: typographyId, name: 'Título', fontFamily: 'Inter', fontSize: '28' },\n    [prefix + 'colors/' + colorId + '.json']: { id: colorId, name: 'Primary', color: '#2563eb' },\n    [prefix + 'tokens.json']: { sets: { core: { tokens: { color: { primary: { value: '#2563eb' } } } } } }
+    [prefix + 'components/' + componentId + '.json']: { id: componentId, name: 'Botón principal', path: 'Buttons/Primary', mainInstanceId: shapeA, mainInstancePage: pageId },
+    [prefix + 'typographies/' + typographyId + '.json']: { id: typographyId, name: 'Título', fontFamily: 'Inter', fontSize: '28' },
+    [prefix + 'colors/' + colorId + '.json']: { id: colorId, name: 'Primary', color: '#2563eb' },
+    [prefix + 'tokens.json']: { sets: { core: { tokens: { color: { primary: { value: '#2563eb' } } } } } }
   };
   const encoded = {};
   for (const [name, value] of Object.entries(entries)) encoded[name] = value instanceof Uint8Array ? value : strToU8(JSON.stringify(value));
@@ -57,10 +63,16 @@ test('reads native Penpot v3 ZIP and maps pages/frames to CodeLab screens', () =
   const graph = mapPenpotArchive(Buffer.from(archive()));
   assert.equal(graph.screens.length, 2);
   assert.deepEqual(graph.screens.map(screen => screen.name), ['Tienda Demo · Inicio', 'Tienda Demo · Detalle']);
-  assert.equal(graph.screens[0].design.width, 390);\n  assert.equal(graph.screens[0].design.canvasWidth, 390);
+  assert.equal(graph.screens[0].design.width, 390);
+  assert.equal(graph.screens[0].design.canvasWidth, 390);
   assert.equal(graph.screens[0].design.elements.length, 2);
   assert.equal(graph.screens[0].design.elements[0].type, 'heading');
-  assert.equal(graph.screens[0].design.elements[0].text, 'Ver producto');\n  assert.equal(graph.screens[0].design.elements[0].fontSize, 28);\n  assert.equal(graph.screens[0].design.elements[0].penpotSource.properties.componentId, componentId);\n  assert.equal(graph.screens[0].design.penpotLibrary.components[0].id, componentId);\n  assert.equal(graph.library.typographies[0].fontFamily, 'Inter');\n  assert.equal(graph.library.colors[0].color, '#2563eb');
+  assert.equal(graph.screens[0].design.elements[0].text, 'Ver producto');
+  assert.equal(graph.screens[0].design.elements[0].fontSize, 28);
+  assert.equal(graph.screens[0].design.elements[0].penpotSource.properties.componentId, componentId);
+  assert.equal(graph.screens[0].design.penpotLibrary.components[0].id, componentId);
+  assert.equal(graph.library.typographies[0].fontFamily, 'Inter');
+  assert.equal(graph.library.colors[0].color, '#2563eb');
   assert.equal(graph.assets.length, 1);
   assert.equal(graph.screens[0].design.flowConnections.length, 1);
   assert.equal(graph.screens[0].design.flowConnections[0].targetProjectId, graph.screens[1].id);
