@@ -91,9 +91,15 @@ test('CodeLab imports Penpot screens and prototype links into its existing works
     assert.equal(imported.body.importedScreens, 2);
     assert.equal(imported.body.importedElements, 2);
     assert.equal(imported.body.importedAssets, 1);
-    assert.equal(imported.body.importedConnections, 1);\n    assert.equal(imported.body.designSystemApplied, true);
+    assert.equal(imported.body.importedConnections, 1);
+    assert.equal(imported.body.designSystemApplied, true);
 
-    const designSystem = await jsonRequest(base + '/api/workspace/' + workspaceId + '/design-system', { headers });\n    assert.equal(designSystem.response.status, 200);\n    assert.equal(designSystem.body.settings.primary, '#2563eb');\n    assert.equal(designSystem.body.settings.name, 'Tienda Demo');\n\n    const state = await jsonRequest(base + '/api/workspace/' + workspaceId, { headers });
+    const designSystem = await jsonRequest(base + '/api/workspace/' + workspaceId + '/design-system', { headers });
+    assert.equal(designSystem.response.status, 200);
+    assert.equal(designSystem.body.settings.primary, '#2563eb');
+    assert.equal(designSystem.body.settings.name, 'Tienda Demo');
+
+    const state = await jsonRequest(base + '/api/workspace/' + workspaceId, { headers });
     assert.equal(state.response.status, 200);
     assert.equal(state.body.projects.length, 2);
     const source = state.body.projects.find(project => project.design.penpotSource);
