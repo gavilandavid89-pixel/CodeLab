@@ -28,8 +28,8 @@ jobs:
       - name: Verify immutable Penpot source pin
         run: |
           set -euo pipefail
-          test -s vendor/penpot/CODELAB-UPSTREAM-PIN.md
-          grep -q 'f66e5afa70e7d5e039b79cee758bf8e03510ad3e' vendor/penpot/CODELAB-UPSTREAM-PIN.md
+          test -s docs/penpot-integration/PINNED-UPSTREAM.md
+          grep -q 'f66e5afa70e7d5e039b79cee758bf8e03510ad3e' docs/penpot-integration/PINNED-UPSTREAM.md
           test -s vendor/penpot/LICENSE
           test -s vendor/penpot/frontend/scripts/build
           test -s vendor/penpot/render-wasm/_build_env
