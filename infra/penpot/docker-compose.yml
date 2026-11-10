@@ -15,7 +15,6 @@ services:
     expose: ["8080"]
     ports:
       - "127.0.0.1:9001:8080"
-    volumes:
     networks: [codelab_internal]
 
   penpot-backend:
