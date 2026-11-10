@@ -71,6 +71,17 @@ The backend registration was confirmed for `create-file` in `files_create.clj`, 
 
 The full native workspace will also require the command groups for file creation/duplication, document changes, comments, libraries, fonts, exports, plugin APIs and feature/configuration bootstrap. These must be inventoried from the pinned source before enabling the corresponding UI paths. A UI control must not be exposed as functional until its backend operation is implemented and permission-tested.
 
+## CodeLab identity primitives verified in the host server
+
+The existing server already provides the primitives the adapter must reuse:
+
+- `getSessionUser(req)` resolves the HttpOnly CodeLab session cookie to the signed-in account.
+- `userWorkspaceId(user)` derives the deterministic workspace ID from the authenticated provider and account ID.
+- `isAuthorized(req, workspaceId)` accepts either the signed workspace HMAC token or the owning signed-in session.
+- `enforceSessionWorkspaceOwner(workspaceId, state, user)` binds and validates the stored workspace owner.
+
+The Penpot adapter must call these existing functions and then resolve the requested project from the authorized workspace state. A Penpot `profile-id`, `team-id`, `file-id`, `workspace-id`, or owner value supplied in Transit parameters is only a lookup hint; it is never authorization. The logged-in CodeLab account (including ADMIN) remains the identity authority. Anonymous Penpot sessions and Penpot password/OAuth login flows must not be enabled as a second account system.
+
 ## Required implementation gates
 
 1. Define a CodeLab-owned identity adapter that derives the active ADMIN/user, workspace and project from the existing authenticated session. Do not trust profile, team, file, workspace or project ownership values supplied by the browser.
