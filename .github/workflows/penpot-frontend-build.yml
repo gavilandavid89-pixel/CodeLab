@@ -53,6 +53,15 @@ jobs:
             emcc --version | grep -F "4.0.6"
           '
 
+      - name: Compile Penpot shared JVM classes
+        run: |
+          set -euo pipefail
+          docker run --rm -e EXTERNAL_UID="$(id -u)" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/vendor/penpot,target=/home/penpot/penpot" \
+            --workdir /home/penpot/penpot/common \
+            penpotapp/devenv:latest \
+            sudo -EH -u penpot clojure -T:build compile
+
       - name: Compile Penpot frontend, workers, plugins and WASM
         run: |
           set -euo pipefail
