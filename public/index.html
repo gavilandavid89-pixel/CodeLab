@@ -746,6 +746,12 @@
           <label class="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Zoom del lienzo"><i class="fa-solid fa-magnifying-glass"></i><input id="designZoom" type="range" min="10" max="150" step="5" value="100" oninput="setDesignZoom(this.value)" class="w-16 sm:w-20 accent-violet-500"><span id="designZoomLabel" class="w-8 text-right">100%</span></label>
           <button id="designFitBtn" type="button" onclick="fitDesignToViewport()" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Ajustar el lienzo al ancho visible" aria-label="Ajustar lienzo al ancho visible"><i class="fa-solid fa-expand"></i><span class="hidden sm:inline ml-1">Encajar</span></button>
           <div class="relative">
+            <button id="importPenpotArchiveButton" type="button" onclick="document.getElementById('penpotArchiveFile').click()" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs font-semibold" title="Importar un archivo nativo de Penpot al proyecto actual">
+              <i class="fa-solid fa-file-import mr-1"></i> Penpot
+            </button>
+            <input id="penpotArchiveFile" type="file" accept=".penpot,application/zip" class="hidden" aria-label="Importar archivo nativo de Penpot" onchange="importPenpotArchive(this.files && this.files[0]); this.value = ''">
+          </div>
+          <div class="relative">
             <button id="designExportMenuButton" type="button" aria-expanded="false" aria-controls="designExportMenu" onclick="toggleDesignExportMenu()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-download mr-1"></i> Exportar <i class="fa-solid fa-chevron-down ml-1 text-[9px]"></i></button>
             <div id="designExportMenu" role="menu" aria-label="Formatos de exportación" class="hidden absolute left-0 top-full mt-1 z-50 min-w-44 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
 
