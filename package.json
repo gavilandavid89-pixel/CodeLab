@@ -8,9 +8,10 @@
     "dev": "node server.js",
     "test:penpot-host": "node --test tests/penpot-host.test.js",
     "test:penpot-transit": "node --test tests/penpot-transit.test.js",
-    "test:penpot": "node --test tests/penpot-host.test.js tests/penpot-transit.test.js tests/penpot-identity.test.js tests/penpot-websocket.test.js",
+    "test:penpot": "node --test tests/penpot-host.test.js tests/penpot-transit.test.js tests/penpot-identity.test.js tests/penpot-websocket.test.js tests/penpot-rpc-contract.test.js",
     "test:penpot-identity": "node --test tests/penpot-identity.test.js",
-    "test:penpot-websocket": "node --test tests/penpot-websocket.test.js"
+    "test:penpot-websocket": "node --test tests/penpot-websocket.test.js",
+    "test:penpot-rpc-contract": "node --test tests/penpot-rpc-contract.test.js"
   },
   "engines": {
     "node": ">=18"
