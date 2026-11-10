@@ -325,7 +325,7 @@
 
     (log/trc :hint "make request" :id id)
 
-    (if (and (= id :get-file) (codelab-host))
+    (if (and (= id :get-file) (not raw-transit?) (codelab-host))
       (codelab-get-file params)
       (let [make-request
           (fn []
