@@ -1720,6 +1720,43 @@ function parseAiJsonContent(content, fallbackCode) {
   );
 }
 
+const PENPOT_FRONTEND_URL = (() => {
+  const raw = String(process.env.PENPOT_FRONTEND_URL || '').trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    return url;
+  } catch (_) { return null; }
+})();
+
+function proxyPenpotHttp(req, res) {
+  if (!PENPOT_FRONTEND_URL) {
+    return sendJson(res, 503, { error: 'penpot_not_configured', message: 'El espacio de diseño integrado no está disponible en este entorno.' });
+  }
+  const transport = PENPOT_FRONTEND_URL.protocol === 'https:' ? https : http;
+  const headers = { ...req.headers, host: PENPOT_FRONTEND_URL.host };
+  headers['x-forwarded-host'] = req.headers.host || '';
+  headers['x-forwarded-proto'] = req.headers['x-forwarded-proto'] || 'https';
+  const upstream = transport.request({
+    protocol: PENPOT_FRONTEND_URL.protocol,
+    hostname: PENPOT_FRONTEND_URL.hostname,
+    port: PENPOT_FRONTEND_URL.port || undefined,
+    method: req.method,
+    path: req.url || '/penpot/',
+    headers
+  }, upstreamRes => {
+    res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+    upstreamRes.pipe(res);
+  });
+  upstream.on('error', error => {
+    console.error('[Penpot proxy] upstream request failed:', error.message);
+    if (!res.headersSent) sendJson(res, 502, { error: 'penpot_upstream_unavailable' });
+    else res.destroy(error);
+  });
+  req.pipe(upstream);
+}
+
 seedAdminAccountIfConfigured();
 
 const server = http.createServer(async (req, res) => {
@@ -1732,6 +1769,12 @@ const server = http.createServer(async (req, res) => {
     searchParams = u.searchParams;
   } catch (_) {
     return sendJson(res, 400, { error: 'bad_url' });
+  }
+
+  // Penpot is served through the CodeLab origin. The frontend and its internal
+  // backend/exporter stay private; no Penpot Cloud URL is used by the browser.
+  if (pathname === '/penpot' || pathname.startsWith('/penpot/')) {
+    return proxyPenpotHttp(req, res);
   }
 
   // Agent Space: isolated browser cockpit, served from its own public subdirectory.
@@ -2744,6 +2787,52 @@ const server = http.createServer(async (req, res) => {
     }
   }
   serveStatic(req, res, pathname);
+});
+
+// Preserve Penpot collaboration sockets through the same-origin reverse proxy.
+server.on('upgrade', (req, socket, head) => {
+  let pathname = '/';
+  try { pathname = new URL(req.url || '/', 'http://localhost').pathname; } catch (_) {}
+  if (!(pathname === '/penpot' || pathname.startsWith('/penpot/')) || !PENPOT_FRONTEND_URL) {
+    socket.destroy();
+    return;
+  }
+  const transport = PENPOT_FRONTEND_URL.protocol === 'https:' ? https : http;
+  const headers = { ...req.headers, host: PENPOT_FRONTEND_URL.host };
+  headers['x-forwarded-host'] = req.headers.host || '';
+  headers['x-forwarded-proto'] = req.headers['x-forwarded-proto'] || 'https';
+  const upstream = transport.request({
+    protocol: PENPOT_FRONTEND_URL.protocol,
+    hostname: PENPOT_FRONTEND_URL.hostname,
+    port: PENPOT_FRONTEND_URL.port || undefined,
+    method: 'GET',
+    path: req.url || '/penpot/',
+    headers
+  });
+  upstream.on('upgrade', (response, upstreamSocket, upstreamHead) => {
+    const statusLine = 'HTTP/1.1 ' + (response.statusCode || 101) + ' ' + (response.statusMessage || 'Switching Protocols') + '\r\n';
+    socket.write(statusLine);
+    for (const [name, value] of Object.entries(response.headers)) {
+      if (Array.isArray(value)) for (const item of value) socket.write(name + ': ' + item + '\r\n');
+      else if (value !== undefined) socket.write(name + ': ' + value + '\r\n');
+    }
+    socket.write('\r\n');
+    if (upstreamHead && upstreamHead.length) socket.write(upstreamHead);
+    if (head && head.length) upstreamSocket.write(head);
+    upstreamSocket.pipe(socket);
+    socket.pipe(upstreamSocket);
+    socket.on('error', () => upstreamSocket.destroy());
+    upstreamSocket.on('error', () => socket.destroy());
+  });
+  upstream.on('response', response => {
+    socket.write('HTTP/1.1 ' + (response.statusCode || 502) + ' ' + (response.statusMessage || 'Bad Gateway') + '\r\n\r\n');
+    socket.destroy();
+  });
+  upstream.on('error', error => {
+    console.error('[Penpot proxy] websocket upgrade failed:', error.message);
+    socket.destroy();
+  });
+  upstream.end();
 });
 
 try {
