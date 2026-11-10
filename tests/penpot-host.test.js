@@ -53,12 +53,21 @@ test('loadDocument reads the persisted Penpot document and adopts workspace revi
     return { ok: true, json: async () => ({
       document: { pages: [{ id: 'page-1', name: 'Inicio' }] },
       documentRevision: 2,
-      workspaceRevision: 7
+      workspaceRevision: 7,
+      penpotIds: {
+        profileId: '00000000-0000-5000-8000-000000000001',
+        teamId: '00000000-0000-5000-8000-000000000002',
+        projectId: '00000000-0000-5000-8000-000000000003',
+        fileId: '00000000-0000-5000-8000-000000000004'
+      }
     }) };
   });
   const result = await host.context.CodeLabPenpotHost.loadDocument();
   assert.equal(result.documentRevision, 2);
   assert.equal(host.context.CodeLabPenpotHost.getContext().workspaceRevision, 7);
+  assert.equal(host.context.CodeLabPenpotHost.getPenpotIds().fileId, '00000000-0000-5000-8000-000000000004');
+  assert.equal(result.penpotIds.teamId, '00000000-0000-5000-8000-000000000002');
+  assert.equal(host.events[0].detail.penpotIds.profileId, '00000000-0000-5000-8000-000000000001');
   assert.equal(host.events[0].type, 'codelab:penpot-document-loaded');
 });
 
