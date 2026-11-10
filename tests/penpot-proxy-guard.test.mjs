@@ -15,15 +15,14 @@ test('Penpot proxy never exposes the upstream before CodeLab SSO is ready', asyn
     env: { ...process.env, PORT: String(port), CODELAB_DATA_DIR: dataDir,
       CODELAB_WORKSPACE_SECRET: 'test-penpot-proxy-secret',
       PENPOT_FRONTEND_URL: 'http://127.0.0.1:1' },
-    stdio: 'ignore'
+    stdio: ['ignore', 'pipe', 'pipe']
   });
-  try {
-    let ready = false;
+  let childOutput = '';\n  child.stdout.on('data', chunk => { childOutput += chunk.toString(); });\n  child.stderr.on('data', chunk => { childOutput += chunk.toString(); });\n  try {\n    let ready = false;
     for (let i = 0; i < 40; i++) {
       try { const response = await fetch(base + '/api/health'); if (response.ok) { ready = true; break; } } catch (_) {}
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    assert.equal(ready, true, 'CodeLab should start for the proxy guard test');
+    assert.equal(ready, true, 'CodeLab should start for the proxy guard test: ' + childOutput.slice(-4000));
     const response = await fetch(base + '/penpot/');
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: 'penpot_codelab_session_required' });
