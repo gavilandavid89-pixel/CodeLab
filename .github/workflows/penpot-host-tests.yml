@@ -8,9 +8,11 @@ on:
       - "public/penpot-host.js"
       - "penpot-transit.js"
       - "penpot-identity.js"
+      - "penpot-websocket.js"
       - "tests/penpot-host.test.js"
       - "tests/penpot-transit.test.js"
       - "tests/penpot-identity.test.js"
+      - "tests/penpot-websocket.test.js"
       - "package.json"
       - ".github/workflows/penpot-host-tests.yml"
   pull_request:
@@ -18,9 +20,11 @@ on:
       - "public/penpot-host.js"
       - "penpot-transit.js"
       - "penpot-identity.js"
+      - "penpot-websocket.js"
       - "tests/penpot-host.test.js"
       - "tests/penpot-transit.test.js"
       - "tests/penpot-identity.test.js"
+      - "tests/penpot-websocket.test.js"
       - "package.json"
       - ".github/workflows/penpot-host-tests.yml"
 
