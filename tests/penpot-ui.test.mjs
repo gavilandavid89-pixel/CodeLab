@@ -14,5 +14,5 @@ test('Penpot import is exposed in the existing mobile design toolbar and remains
   assert.ok(app.includes("'/api/workspace/' + encodeURIComponent(workspaceId) + '/penpot/import'"));
   assert.ok(app.includes("'x-workspace-token': workspaceToken"));
   assert.ok(app.includes('await refreshWorkspaceFromServer()'));
-  assert.ok(app.includes('openProject(project.id)'));
+  assert.ok(app.includes('openProject(project.id)'));\n  assert.ok(app.includes("window.dispatchEvent(new Event('codelab-workspace-ready'))"));
 });
