@@ -1,0 +1,31 @@
+name: Penpot host adapter tests
+
+on:
+  push:
+    branches:
+      - feat/penpot-source-integration
+    paths:
+      - "public/penpot-host.js"
+      - "tests/penpot-host.test.js"
+      - "package.json"
+      - ".github/workflows/penpot-host-tests.yml"
+  pull_request:
+    paths:
+      - "public/penpot-host.js"
+      - "tests/penpot-host.test.js"
+      - "package.json"
+      - ".github/workflows/penpot-host-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  penpot-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run Penpot host adapter tests
+        run: npm run test:penpot-host
