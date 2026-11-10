@@ -158,3 +158,31 @@ These are observed frontend call sites, not a blanket authorization grant. Sever
 - WebSocket server: `vendor/penpot/backend/src/app/http/websocket.clj`; frontend client: `vendor/penpot/frontend/src/app/main/data/websocket.cljs`.
 
 This discovery is now detailed enough to implement a command-by-command adapter without guessing the upstream transport. The adapter itself, Transit codec, WebSocket server, and command handlers remain implementation work; none are marked complete by this source audit.
+
+## First vertical-slice method map (backend handlers inspected)
+
+The following mapping goes one level deeper than frontend call-site discovery: the actual upstream `sv/defmethod` declarations and handler metadata were inspected in the pinned backend.
+
+| Penpot method | Backend source | Verified contract / guardrail |
+|---|---|---|
+| `get-projects` | `backend/src/app/rpc/commands/projects.clj` | Requires `team-id`; calls team read-permission check. |
+| `get-project` | `backend/src/app/rpc/commands/projects.clj` | `id-type :project`; checks project read permissions. |
+| `create-project` | `backend/src/app/rpc/commands/projects.clj` | Requires `team-id` and name; checks team edition permissions; server generates the ID in 2.19.0. |
+| `get-project-files` | `backend/src/app/rpc/commands/files.clj` | Requires project context; returns files for that project. |
+| `create-file` | `backend/src/app/rpc/commands/files_create.clj` | Requires `project-id`; checks project edition permissions and team feature/quote limits; server generates the file ID in 2.19.0. |
+| `get-file` | `backend/src/app/rpc/commands/files.clj` | `id-type :file`; checks file read permissions and client/file feature compatibility; accepts file ID and project context. |
+| `update-file` | `backend/src/app/rpc/commands/files_update.clj` | `id-type :file`; checks file edition permissions; applies ordered document changes; validates `vern` and `revn` and returns explicit conflict errors. |
+| `rename-file` / `delete-file` | `backend/src/app/rpc/commands/files.clj` | File-scoped operations; must resolve the file through the owning CodeLab project before dispatch. |
+| `upload-file-media-object` | `backend/src/app/rpc/commands/media.clj` | Requires `file-id` and multipart `content`; validates media type, size and upload path; checks file edition permissions. |
+| `create-upload-session` / `upload-chunk` / `assemble-file-media-object` | `backend/src/app/rpc/commands/media.clj` | Chunked uploads are session/profile scoped, quota bounded, and use multipart content; they are not plain JSON mutations. |
+| `get-font-variants` | `backend/src/app/rpc/commands/fonts.clj` | Supports team/file/project context; font upload and management have separate permission and processing rules. |
+
+### Consequences for the CodeLab adapter
+
+1. A CodeLab project must resolve to one stable Penpot file identity for the editor document; Penpot pages remain pages inside that file. This is the shape that supports multiple pages without creating one CodeLab project per screen.
+2. Penpot 2.19.0 explicitly rejects client-supplied IDs for `create-project` and `create-file`. CodeLab must create and persist its mapping on the server, not force a browser-generated ID into those commands.
+3. Penpot file updates are change operations, not whole-document JSON replacement. The adapter must preserve change ordering and version fields (`revn` and `vern`) and translate conflicts into a visible save conflict; the current host bridge's workspace revision check remains an outer CodeLab guard, not a replacement for Penpot's native file version semantics.
+4. Media upload requires real multipart parsing, media validation, ownership checks and bounded storage. It cannot be enabled by forwarding a JSON/base64 field to the existing document endpoint.
+5. The first command allowlist should therefore be limited to the project/file bootstrap and editor persistence methods above, plus only the profile/team bootstrap queries needed to establish the virtual Penpot context. Team administration, profile security changes, comments, plugin APIs and collaboration remain disabled until separately mapped.
+
+This method map is source-derived from the pinned 2.19.0 backend. It is an implementation specification, not a claim that these handlers have already been ported to CodeLab.
