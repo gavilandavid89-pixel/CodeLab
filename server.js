@@ -14,6 +14,8 @@ const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const pixelForgeUploads = require('./pixelforge-upload-store.js');
+const { createPenpotIdentityAdapter } = require('./penpot-identity.js');
+const { attachPenpotWebSocket } = require('./penpot-websocket.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -2848,6 +2850,18 @@ const server = http.createServer(async (req, res) => {
     }
   }
   serveStatic(req, res, pathname);
+});
+
+// Penpot notifications reuse the authenticated CodeLab account/workspace.
+// File and team subscriptions are resolved against the owner's existing projects.
+const penpotIdentityAdapter = createPenpotIdentityAdapter({
+  getSessionUser,
+  userWorkspaceId,
+  readState,
+  enforceSessionWorkspaceOwner
+});
+const penpotWebSocketServer = attachPenpotWebSocket(server, {
+  identity: penpotIdentityAdapter
 });
 
 try {
