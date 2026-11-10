@@ -1,0 +1,78 @@
+name: Vendor complete Penpot source
+
+on:
+  push:
+    branches:
+      - feat/penpot-source-integration
+    paths:
+      - .github/workflows/vendor-penpot-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: penpot-source-vendor
+  cancel-in-progress: false
+
+jobs:
+  vendor-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout CodeLab integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/penpot-source-integration
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch the exact upstream Penpot revision
+        env:
+          PENPOT_COMMIT: f66e5afa70e7d5e039b79cee758bf8e03510ad3e
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/penpot/penpot.git /tmp/penpot
+          git -C /tmp/penpot fetch --depth=1 origin "$PENPOT_COMMIT"
+          git -C /tmp/penpot checkout --detach "$PENPOT_COMMIT"
+          test "$(git -C /tmp/penpot rev-parse HEAD)" = "$PENPOT_COMMIT"
+
+      - name: Replace partial placeholders with authentic upstream source
+        run: |
+          set -euo pipefail
+          rm -rf vendor/penpot
+          mkdir -p vendor/penpot
+          cp -a /tmp/penpot/. vendor/penpot/
+          rm -rf vendor/penpot/.git
+          cat > vendor/penpot/CODELAB-UPSTREAM-PIN.md <<'EOF'
+          # Penpot source pin
+
+          - Upstream: https://github.com/penpot/penpot
+          - Tag: 2.19.0
+          - Commit: f66e5afa70e7d5e039b79cee758bf8e03510ad3e
+          - License: MPL-2.0 (see LICENSE)
+
+          This directory is a source vendoring of the exact upstream commit.
+          CodeLab runtime must not clone or fetch Penpot. Updates are explicit,
+          pinned source changes reviewed in this repository.
+          EOF
+          test -s vendor/penpot/LICENSE
+          test -s vendor/penpot/frontend/src/app/main/ui/workspace.cljs
+          test -s vendor/penpot/common/src/app/common/transit.cljc
+          test -s vendor/penpot/render-wasm/Cargo.toml
+          count="$(find vendor/penpot -type f | wc -l)"
+          echo "Vendored source files: $count"
+          test "$count" -gt 6000
+
+      - name: Commit vendored source to the integration branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vendor/penpot
+          if git diff --cached --quiet; then
+            echo "Pinned Penpot source is already up to date."
+            exit 0
+          fi
+          git commit -m "build(penpot): vendor complete upstream source at 2.19.0"
+          git push origin HEAD:feat/penpot-source-integration
