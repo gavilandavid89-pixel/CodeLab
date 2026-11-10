@@ -2030,6 +2030,22 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true });
       }
 
+      // --- Penpot workspace ---
+      if (req.method === 'GET' && pathname === '/api/penpot/config') {
+        const configured = String(process.env.PENPOT_URL || 'https://design.penpot.app').trim().replace(/\/$/, '');
+        let url = 'https://design.penpot.app';
+        try {
+          const parsed = new URL(configured);
+          if (parsed.protocol === 'https:' && parsed.hostname) url = parsed.origin + parsed.pathname.replace(/\/$/, '');
+        } catch (_) {}
+        return sendJson(res, 200, {
+          ok: true,
+          url,
+          hosted: url !== 'https://design.penpot.app',
+          note: 'Penpot is the visual design workspace; CodeLab retains generation, Preview/Run and animation.'
+        });
+      }
+
       // --- AI copiloto ---
       if (req.method === 'GET' && pathname === '/api/ai/status') {
         const cfg = aiConfigured();
