@@ -14,7 +14,7 @@ const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const pixelForgeUploads = require('./pixelforge-upload-store.js');
-const { createPenpotIdentityAdapter } = require('./penpot-identity.js');
+const { createPenpotIdentityAdapter, penpotIdsForUser } = require('./penpot-identity.js');
 const { attachPenpotWebSocket } = require('./penpot-websocket.js');
 
 const PORT = process.env.PORT || 3000;
@@ -2692,17 +2692,20 @@ const server = http.createServer(async (req, res) => {
         if (!(await workspaceExists(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
 
         try {
-          const current = await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
+          const sessionUser = await getSessionUser(req);
+          const current = await enforceSessionWorkspaceOwner(id, await readState(id), sessionUser);
           const projectIndex = current.projects.findIndex(project => project.id === projectId);
           if (projectIndex < 0) return sendJson(res, 404, { error: 'project_not_found' });
           const project = current.projects[projectIndex];
           const stored = project.design && project.design.penpotDocument ? project.design.penpotDocument : null;
 
           if (req.method === 'GET') {
+            const penpotIds = sessionUser ? penpotIdsForUser(sessionUser, id, project) : null;
             return sendJson(res, 200, {
               document: stored ? stored.data : null,
               documentRevision: stored ? stored.revision : 0,
-              workspaceRevision: current.revision
+              workspaceRevision: current.revision,
+              penpotIds
             });
           }
 
