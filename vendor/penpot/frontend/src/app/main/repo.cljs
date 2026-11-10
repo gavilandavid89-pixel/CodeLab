@@ -258,7 +258,7 @@
                                  (ex/raise :type :validation
                                            :code :invalid-penpot-document
                                            :hint "Stored CodeLab document is not a native Penpot Transit file"))]
-                (when-not (= file-id requested)
+                (when-not (= (str file-id) (str requested))
                   (ex/raise :type :not-found
                             :code :object-not-found
                             :hint "The requested Penpot file is not the active CodeLab project"))
