@@ -66,7 +66,8 @@ A first-party browser adapter now exists at `public/penpot-host.js` and is loade
 
 It exposes `window.CodeLabPenpotHost` with:
 - `getContext()`: active authenticated workspace/project context, without exposing the workspace token to the Penpot document model;
-- `loadDocument()`: loads the project's persisted native-document envelope through the project-scoped CodeLab route;
+- `loadDocument()`: loads the project's persisted native-document envelope through the project-scoped CodeLab route and receives the stable Penpot profile/team/project/file UUID mapping from the authenticated server session;
+- `getPenpotIds()`: returns the server-resolved mapping after `loadDocument()` (it does not derive or trust IDs in the browser);
 - `saveDocument(document)`: serializes writes within the tab, enforces the 8 MiB document ceiling, sends the current workspace revision, updates the in-memory CodeLab project after success, and emits loaded/saved/conflict/error events.
 
 The adapter intentionally reports a revision conflict and preserves both local and server document values in the event payload; it does not silently choose one side or overwrite newer server state. The existing workspace token is sent only as the request authorization header. The adapter is a host boundary for the future Penpot ClojureScript integration, not a substitute for Penpot's Transit RPC transport or native document-change pipeline.
@@ -76,7 +77,7 @@ The Node suites are available through `npm run test:penpot-host` and `npm run te
 ## Current implementation status after host bridge
 
 - [x] CodeLab project-scoped document GET/PUT route with workspace authorization and optimistic revision checks.
-- [x] Browser host bridge for the active CodeLab project, load/save, serialized local writes, size validation and conflict events.
+- [x] Browser host bridge for the active CodeLab project, load/save, serialized local writes, size validation, conflict events and server-resolved Penpot IDs.
 - [x] Unit tests and a dedicated CI workflow for the browser host bridge.
 - [ ] Connect Penpot's native `app.main.repo` / Transit command layer to CodeLab's allowlisted RPC adapter and map native document-change operations onto CodeLab project persistence.
 - [x] Build the pinned Penpot frontend + workers + plugins + WASM from source in CI and upload the resulting bundle.
