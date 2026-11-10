@@ -6,6 +6,9 @@ on:
       - feat/penpot-source-integration
     paths:
       - .github/workflows/penpot-frontend-build.yml
+      - vendor/penpot/frontend/src/app/main/repo.cljs
+      - vendor/penpot/frontend/src/app/main/data/persistence.cljs
+      - vendor/penpot/common/src/app/common/transit.cljc
   workflow_dispatch:
 
 permissions:
