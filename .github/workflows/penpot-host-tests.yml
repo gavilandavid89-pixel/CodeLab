@@ -7,16 +7,20 @@ on:
     paths:
       - "public/penpot-host.js"
       - "penpot-transit.js"
+      - "penpot-identity.js"
       - "tests/penpot-host.test.js"
       - "tests/penpot-transit.test.js"
+      - "tests/penpot-identity.test.js"
       - "package.json"
       - ".github/workflows/penpot-host-tests.yml"
   pull_request:
     paths:
       - "public/penpot-host.js"
       - "penpot-transit.js"
+      - "penpot-identity.js"
       - "tests/penpot-host.test.js"
       - "tests/penpot-transit.test.js"
+      - "tests/penpot-identity.test.js"
       - "package.json"
       - ".github/workflows/penpot-host-tests.yml"
 
