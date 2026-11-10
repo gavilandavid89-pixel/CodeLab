@@ -11,6 +11,7 @@
    [app.common.exceptions :as ex]
    [app.common.logging :as log]
    [app.common.time :as ct]
+   [app.common.transit :as t]
    [app.common.uuid :as uuid]
    [app.main.data.changes :as dch]
    [app.main.data.common :as-alias dc]
@@ -494,21 +495,50 @@
       (not (dm/get-in state [:permissions :can-edit]))     :permission-denied
       :else                                                :ready)))
 
+(defn- codelab-host
+  []
+  (when (and (exists? js/window)
+             (some? (.-CodeLabPenpotHost js/window))
+             (fn? (.-saveTransitDocument (.-CodeLabPenpotHost js/window))))
+    (.-CodeLabPenpotHost js/window)))
+
+(defn- save-codelab-file-snapshot
+  [host state file-id file-revn]
+  (if-let [file (dsh/lookup-file state file-id)]
+    (let [next-revn (inc (max (or file-revn 0)
+                              (get @revn-data file-id 0)))
+          snapshot  (-> file
+                        (assoc :revn next-revn)
+                        (assoc :modified-at (ct/now)))
+          payload   (t/encode-str snapshot)]
+      (->> (rx/from (.saveTransitDocument host payload))
+           (rx/map (fn [_] {:revn next-revn}))))
+    (rx/throw (ex-info "The active Penpot file is missing from the CodeLab workspace"
+                       {:type :persistence
+                        :code :codelab-file-not-found
+                        :file-id file-id}))))
+
 (defn- send-queued-commit
   "Sends one queued commit and maps its outcome to persistence events."
-  [request-id session-id {:keys [id file-id file-revn file-vern changes features] :as commit}]
+  [request-id session-id state {:keys [id file-id file-revn file-vern changes features] :as commit}]
   (let [sent-at (inst-ms (ct/now))
         params  {:id file-id
-                 :revn (max file-revn (get @revn-data file-id 0))
+                 :revn (max (or file-revn 0) (get @revn-data file-id 0))
                  :vern file-vern
                  :session-id session-id
                  :origin (:origin commit)
                  :created-at (:created-at commit)
                  :commit-id id
                  :changes (vec changes)
-                 :features features}]
-    ;; UI read-only mode does not invalidate already queued edits.
-    (->> (update-file-request request-id params)
+                 :features features}
+        host    (codelab-host)
+        source  (if host
+                  (save-codelab-file-snapshot host state file-id file-revn)
+                  (update-file-request request-id params))]
+    ;; In CodeLab mode, persist a complete native Transit snapshot. This keeps
+    ;; Penpot UUIDs, dates, ordered maps/sets and pointer values typed without
+    ;; porting Penpot's full change processor into the Node server.
+    (->> source
          ;; Fails an unanswered request as a transient network error, so the
          ;; retry path resends it instead of blocking the queue.
          (rx/timeout save-request-timeout-ms
@@ -532,7 +562,7 @@
                      (rx/of (if (transient-error? (ex-data cause))
                               (persistence-transient-failure
                                id cause (- (inst-ms (ct/now)) sent-at))
-                              (persistence-failed id cause))))))))
+                              (persistence-failed id cause)))))))
 
 (defn- persist-commit
   "Sends the queued commit, stamping the attempt first. A commit whose
@@ -575,7 +605,7 @@
               ;; The replacement runner listens for the original request's result.
               :in-flight         (rx/empty)
               :permission-denied (fail :save-permission-denied "Edit permission was lost before changes could be saved")
-              :ready             (send-queued-commit request-id (:session-id state) commit))))))))
+              :ready             (send-queued-commit request-id (:session-id state) state commit))))))))
 
 
 (defn- run-persistence-task
