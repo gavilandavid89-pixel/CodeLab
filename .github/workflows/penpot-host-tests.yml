@@ -14,7 +14,9 @@ on:
   pull_request:
     paths:
       - "public/penpot-host.js"
+      - "penpot-transit.js"
       - "tests/penpot-host.test.js"
+      - "tests/penpot-transit.test.js"
       - "package.json"
       - ".github/workflows/penpot-host-tests.yml"
 
