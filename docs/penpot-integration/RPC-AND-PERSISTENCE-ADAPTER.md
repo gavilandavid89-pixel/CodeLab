@@ -86,8 +86,16 @@ The Node suites are available through `npm run test:penpot-host` and `npm run te
 - [x] Add stable CodeLab-account/workspace/project to Penpot UUID mapping in `penpot-identity.js`; every file/team resolver rechecks the authenticated workspace owner.
 - [x] Mount the authenticated `/ws/notifications` endpoint in CodeLab with Transit messages, same-origin validation, file/team ownership checks, presence, pointer relay, rate and payload limits.
 - [x] Verify server syntax and 24 host/Transit/identity/WebSocket tests in Actions run 42759768697.
-- [x] Add the explicit first-slice RPC allowlist and parameter contract in `penpot-rpc-contract.js`; server syntax plus all 30 host/Transit/identity/WebSocket/RPC-contract tests passed in Actions run 42760296672.
+- [x] Add the explicit first-slice RPC allowlist and parameter contract in `penpot-rpc-contract.js`; all 31 host/Transit/identity/WebSocket/RPC-contract tests passed in Actions run 42760486307.
 - [ ] Add cross-instance notification fan-out and team/project mutation events; the current WebSocket event hub is in-process and does not yet carry native document-change notifications.
 - [ ] Replace Penpot's account/team/file bootstrap with the active CodeLab account and project context.
 - [ ] Add native Penpot save/reopen, multi-page, prototype and generator round-trip tests.
 - [ ] Mount the compiled Penpot workspace in CodeLab's design route while preserving the native Penpot workbench layout.
+
+### Native Penpot file snapshot bridge (source added; build pending)
+
+- The authenticated document GET now returns server-derived Penpot UUIDs; the browser host exposes them through `getPenpotIds()` after `loadDocument()`.
+- `frontend/src/app/main/repo.cljs` intercepts the active file's `get-file` request when the CodeLab host is present. It decodes a stored Penpot Transit snapshot or creates a valid blank file with Penpot's own `app.common.types.file/make-file` function.
+- `frontend/src/app/main/data/persistence.cljs` intercepts the save queue in CodeLab mode and stores the complete native file snapshot through `CodeLabPenpotHost.saveTransitDocument()`. The payload stays Transit-encoded, preserving UUIDs, dates, ordered maps/sets and Penpot's typed values. CodeLab's workspace revision remains the outer concurrency guard; the Penpot `revn` is advanced in the stored file snapshot.
+- This avoids porting Penpot's complex `update-file` change processor to Node. It does not yet provide the dashboard/bootstrap RPC handlers, media upload endpoints, or the full editor mount.
+- Full frontend/workers/plugins/WASM compilation is running in Actions run [42760629362](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/42760629362); a newer run for the final source revision is queued as [42760855793](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/42760855793). Do not mark the ClojureScript bridge complete until that build passes.
