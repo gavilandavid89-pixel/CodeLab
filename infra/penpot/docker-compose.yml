@@ -1,70 +1,59 @@
-# CodeLab embeds Penpot behind the same-origin /penpot/ route.
-# Keep all Penpot services private; only CodeLab's web entry point is public.
-# Pin the upstream release so builds are reproducible.
+# CodeLab hosts Penpot's design/runtime engines privately.
+# User accounts, projects, PostgreSQL and persistent files remain CodeLab-owned.
 name: codelab
 services:
   penpot-frontend:
     image: penpotapp/frontend:${PENPOT_VERSION:-2.18}
     restart: unless-stopped
-    depends_on:
-      - penpot-backend
-      - penpot-admin-console
-      - penpot-exporter
+    depends_on: [penpot-backend, penpot-admin-console, penpot-exporter]
     environment:
       PENPOT_FLAGS: enable-registration enable-login-with-password enable-secure-session-cookies disable-email-verification
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_BACKEND_URI: http://penpot-backend:6060
       PENPOT_EXPORTER_URI: http://penpot-exporter:6061
       PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
-    expose:
-      - "8080"
+    expose: ["8080"]
     ports:
-      - "127.0.0.1:9001:8080" # Local development only; production uses the CodeLab same-origin proxy.
+      - "127.0.0.1:9001:8080"
     volumes:
-      - penpot_assets:/opt/data/assets
+      - ${CODELAB_DATA_DIR:?Mount CodeLab's existing persistent data directory}:/opt/data/assets
     networks: [codelab_internal]
 
   penpot-backend:
     image: penpotapp/backend:${PENPOT_VERSION:-2.18}
     restart: unless-stopped
     depends_on:
-      penpot-postgres:
-        condition: service_healthy
       penpot-valkey:
         condition: service_healthy
     environment:
       PENPOT_FLAGS: enable-registration enable-login-with-password enable-secure-session-cookies disable-email-verification
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_SECRET_KEY: ${PENPOT_SECRET_KEY:?Set a unique random PENPOT_SECRET_KEY}
-      PENPOT_DATABASE_URI: postgresql://penpot-postgres:5432/penpot
-      PENPOT_DATABASE_USERNAME: penpot
-      PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set PENPOT_DATABASE_PASSWORD}
+      # Existing CodeLab PostgreSQL connection, isolated to a dedicated schema.
+      PENPOT_DATABASE_URI: ${PENPOT_DATABASE_URI:?Set JDBC URL for CodeLab PostgreSQL with currentSchema=penpot}
+      PENPOT_DATABASE_USERNAME: ${PENPOT_DATABASE_USERNAME:?Set existing CodeLab database username}
+      PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set existing CodeLab database password}
       PENPOT_REDIS_URI: redis://penpot-valkey:6379/0
       PENPOT_OBJECTS_STORAGE_BACKEND: fs
-      PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: /opt/data/assets
+      PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: /opt/data/assets/penpot
       PENPOT_ADMIN_CONSOLE_URI: http://penpot-admin-console:3000
       PENPOT_TELEMETRY_ENABLED: "false"
-    expose:
-      - "6060"
+    expose: ["6060"]
     volumes:
-      - penpot_assets:/opt/data/assets
+      - ${CODELAB_DATA_DIR:?Mount CodeLab's existing persistent data directory}:/opt/data/assets
     networks: [codelab_internal]
 
   penpot-admin-console:
     image: penpotapp/admin-console:${PENPOT_VERSION:-2.18}
     restart: unless-stopped
-    depends_on:
-      penpot-postgres:
-        condition: service_healthy
     environment:
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_SECRET_KEY: ${PENPOT_SECRET_KEY:?Set a unique random PENPOT_SECRET_KEY}
-      PENPOT_DATABASE_URI: postgresql://penpot-postgres:5432/penpot
-      PENPOT_DATABASE_USERNAME: penpot
-      PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set PENPOT_DATABASE_PASSWORD}
+      PENPOT_DATABASE_URI: ${PENPOT_DATABASE_URI:?Set JDBC URL for CodeLab PostgreSQL with currentSchema=penpot}
+      PENPOT_DATABASE_USERNAME: ${PENPOT_DATABASE_USERNAME:?Set existing CodeLab database username}
+      PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set existing CodeLab database password}
       PENPOT_INTERNAL_URI: http://penpot-frontend:8080
-    expose:
-      - "3000"
+    expose: ["3000"]
     networks: [codelab_internal]
 
   penpot-exporter:
@@ -79,27 +68,10 @@ services:
       PENPOT_SECRET_KEY: ${PENPOT_SECRET_KEY:?Set a unique random PENPOT_SECRET_KEY}
       PENPOT_INTERNAL_URI: http://penpot-frontend:8080
       PENPOT_REDIS_URI: redis://penpot-valkey:6379/0
-    expose:
-      - "6061"
+    expose: ["6061"]
     networks: [codelab_internal]
 
-  penpot-postgres:
-    image: postgres:15
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: penpot
-      POSTGRES_USER: penpot
-      POSTGRES_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set PENPOT_DATABASE_PASSWORD}
-      POSTGRES_INITDB_ARGS: --data-checksums
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U penpot -d penpot"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - penpot_postgres:/var/lib/postgresql/data
-    networks: [codelab_internal]
-
+  # Runtime queue/cache engine only; it stores no durable CodeLab user/project data.
   penpot-valkey:
     image: valkey/valkey:8.1
     restart: unless-stopped
@@ -110,10 +82,6 @@ services:
       timeout: 3s
       retries: 10
     networks: [codelab_internal]
-
-volumes:
-  penpot_postgres:
-  penpot_assets:
 
 networks:
   codelab_internal:
