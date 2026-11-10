@@ -43,6 +43,21 @@ El adaptador server-side debe convertir documentos Penpot en un contrato version
 
 No se debe interpretar una exportación visual como navegación funcional si no hay interacciones explícitas. El generador CodeLab sigue produciendo la aplicación final.
 
+
+## Importador nativo Penpot v3 → CodeLab (en desarrollo)
+
+Se añadió `lib/penpot-adapter.js` para leer el archivo `.penpot` actual (ZIP v3), comprobar el manifiesto y extraer metadatos, páginas, marcos, formas y tokens. Cada marco superior se convierte en un proyecto/pantalla de Diseño de CodeLab. Los identificadores de origen se conservan para que la importación repetida actualice las pantallas existentes en vez de duplicarlas. El primer marco se incorpora al proyecto de Diseño elegido; los marcos adicionales se guardan como proyectos dentro del mismo workspace CodeLab.
+
+El endpoint `POST /api/workspace/:workspaceId/penpot/import`:
+- exige el token de workspace o la sesión propietaria de CodeLab;
+- valida el propietario, el proyecto de Diseño destino y la revisión base;
+- rechaza archivos inválidos, archivos con múltiples documentos en el mismo ZIP y cargas por encima de los límites;
+- convierte las interacciones con destinos explícitos que resuelven a marcos importados en conexiones de navegación CodeLab;
+- persiste el grafo resultante mediante el mecanismo de workspace existente (PostgreSQL/almacenamiento CodeLab), sin crear usuarios ni proyectos en un sistema externo;
+- es idempotente por documento/página/marco y responde con conteos de pantallas, capas y conexiones.
+
+**Alcance aún pendiente del adaptador:** los recursos binarios de `objects/` todavía no se copian al almacenamiento persistente CodeLab; las imágenes se importan como capas con marcador sin URL. Las formas vectoriales complejas (path/bool/svg-raw), los componentes reutilizables, las variantes y las interacciones no reconocidas se conservan parcialmente como metadatos o se degradan a geometría básica; no se declaran funcionales hasta implementar y probar esos mapeos. El importador acepta un archivo Penpot v3 con un único documento por operación. El archivo original no se modifica.
+
 ## PixelForge
 
 No eliminar ni sustituir PixelForge. Su almacenamiento, composición, timeline, validaciones, presupuestos, endpoints y pruebas permanecen bajo CodeLab. Las transiciones Penpot son una fuente adicional de especificación, no reemplazan el motor de animación.
