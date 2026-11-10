@@ -42,7 +42,7 @@ function makeArchive() {
     }
   };
   const encoded = {};
-  for (const [name, value] of Object.entries(entries)) encoded[name] = strToU8(JSON.stringify(value));
+  for (const [name, value] of Object.entries(entries)) encoded[name] = value instanceof Uint8Array ? value : strToU8(JSON.stringify(value));
   return Buffer.from(zipSync(encoded));
 }
 
