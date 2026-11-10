@@ -186,3 +186,17 @@ The following mapping goes one level deeper than frontend call-site discovery: t
 5. The first command allowlist should therefore be limited to the project/file bootstrap and editor persistence methods above, plus only the profile/team bootstrap queries needed to establish the virtual Penpot context. Team administration, profile security changes, comments, plugin APIs and collaboration remain disabled until separately mapped.
 
 This method map is source-derived from the pinned 2.19.0 backend. It is an implementation specification, not a claim that these handlers have already been ported to CodeLab.
+
+## CodeLab WebSocket adapter status
+
+A first authenticated notification transport is now implemented in `penpot-websocket.js` and mounted on the existing CodeLab HTTP server at `/ws/notifications`.
+
+- The upgrade requires the same-origin browser request, a valid Penpot `session-id` UUID, and an authenticated CodeLab session cookie.
+- The connection's profile identity is derived from the CodeLab account. Team and file subscriptions are resolved through `penpot-identity.js` against that account's workspace and projects; a supplied UUID is never accepted as proof of ownership.
+- Implemented message paths: `subscribe-team` (workspace validation), `subscribe-file`, `unsubscribe-file`, `keepalive`, profile-scoped `broadcast`, and file-scoped `pointer-update`.
+- File presence fan-out emits `join-file`, `leave-file`, `disconnect`, and `presence` events. Message payloads use the Transit codec.
+- The server enforces same-origin checks, a 256 KiB message ceiling, a per-connection message rate limit, and a maximum of eight active connections per profile by default.
+
+The current event hub is in-process. It does not yet relay notifications across multiple CodeLab server instances, and team subscriptions are currently authorization-validated but do not yet receive project/team mutation fan-out. Native document changes are also not yet being published through this socket. Do not enable collaborative editing or claim multi-instance presence until those paths are implemented and tested.
+
+The adapter and identity modules are covered by the Penpot test workflow. On 2026-11-10, the server syntax check and all 24 host, Transit, identity and WebSocket tests passed in Actions run 42759768697. The main CodeLab validation workflow still has an unrelated existing PixelForge animation test failure; the failing test and editor file have identical blob SHAs on `main` and this branch, so it is not introduced by the Penpot changes.
