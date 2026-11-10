@@ -31,7 +31,11 @@ function makeArchive() {
       id: frameB, name: 'Detalle', type: 'frame', x: 450, y: 0, width: 390, height: 844,
       parentId: '00000000-0000-0000-0000-000000000000', shapes: []
     },
-    [prefix + 'pages/' + pageId + '/' + imageId + '.json']: { id: imageId, name: 'Producto', type: 'image', x: 20, y: 100, width: 160, height: 160, parentId: frameA, frameId: frameA, metadata: { id: mediaId } },\n    [prefix + 'media/' + mediaId + '.json']: { id: mediaId, mediaId: storageId, name: 'producto.png' },\n    ['objects/' + storageId + '.json']: { id: storageId, contentType: 'image/png', size: 8 },\n    ['objects/' + storageId + '.png']: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),\n    [prefix + 'pages/' + pageId + '/' + shapeA + '.json']: {
+    [prefix + 'pages/' + pageId + '/' + imageId + '.json']: { id: imageId, name: 'Producto', type: 'image', x: 20, y: 100, width: 160, height: 160, parentId: frameA, frameId: frameA, metadata: { id: mediaId } },
+    [prefix + 'media/' + mediaId + '.json']: { id: mediaId, mediaId: storageId, name: 'producto.png' },
+    ['objects/' + storageId + '.json']: { id: storageId, contentType: 'image/png', size: 8 },
+    ['objects/' + storageId + '.png']: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    [prefix + 'pages/' + pageId + '/' + shapeA + '.json']: {
       id: shapeA, name: 'Ver producto', type: 'text', x: 24, y: 40, width: 180, height: 44,
       parentId: frameA, frameId: frameA, content: { children: [{ text: 'Ver producto' }] },
       interactions: [{ eventType: 'click', destinationFrameId: frameB }]
@@ -85,7 +89,8 @@ test('CodeLab imports Penpot screens and prototype links into its existing works
     });
     assert.equal(imported.response.status, 200, JSON.stringify(imported.body));
     assert.equal(imported.body.importedScreens, 2);
-    assert.equal(imported.body.importedElements, 2);\n    assert.equal(imported.body.importedAssets, 1);
+    assert.equal(imported.body.importedElements, 2);
+    assert.equal(imported.body.importedAssets, 1);
     assert.equal(imported.body.importedConnections, 1);
 
     const state = await jsonRequest(base + '/api/workspace/' + workspaceId, { headers });
@@ -93,7 +98,13 @@ test('CodeLab imports Penpot screens and prototype links into its existing works
     assert.equal(state.body.projects.length, 2);
     const source = state.body.projects.find(project => project.design.penpotSource);
     assert.ok(source);
-    assert.equal(source.design.elements[0].text, 'Ver producto');\n    const image = source.design.elements.find(element => element.type === 'image');\n    assert.ok(image && image.src.includes('/penpot/assets/' + fileId + '/' + mediaId));\n    const asset = await fetch(base + image.src, { headers: { 'x-workspace-token': token } });\n    assert.equal(asset.status, 200);\n    assert.equal(asset.headers.get('content-type'), 'image/png');\n    assert.deepEqual(Array.from(new Uint8Array(await asset.arrayBuffer())), [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal(source.design.elements[0].text, 'Ver producto');
+    const image = source.design.elements.find(element => element.type === 'image');
+    assert.ok(image && image.src.includes('/penpot/assets/' + fileId + '/' + mediaId));
+    const asset = await fetch(base + image.src, { headers: { 'x-workspace-token': token } });
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Array.from(new Uint8Array(await asset.arrayBuffer())), [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.equal(source.design.flowConnections[0].targetProjectId, state.body.projects.find(project => project.id !== source.id).id);
 
     const repeated = await jsonRequest(base + '/api/workspace/' + workspaceId + '/penpot/import', {
