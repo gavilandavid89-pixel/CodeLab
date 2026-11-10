@@ -56,7 +56,7 @@ jobs:
       - name: Compile Penpot frontend, workers, plugins and WASM
         run: |
           set -euo pipefail
-          docker run --rm \
+          docker run --rm -e EXTERNAL_UID="$(id -u)" \
             --mount "type=bind,source=$GITHUB_WORKSPACE/vendor/penpot,target=/home/penpot/penpot" \
             --workdir /home/penpot/penpot/frontend \
             penpotapp/devenv:latest \
