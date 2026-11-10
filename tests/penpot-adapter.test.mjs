@@ -68,7 +68,8 @@ test('reads native Penpot v3 ZIP and maps pages/frames to CodeLab screens', () =
   assert.equal(graph.screens[0].design.elements.length, 2);
   assert.equal(graph.screens[0].design.elements[0].type, 'heading');
   assert.equal(graph.screens[0].design.elements[0].text, 'Ver producto');
-  assert.equal(graph.screens[0].design.elements[0].fontSize, 28);\n  assert.ok(Math.abs(graph.screens[0].design.elements[0].rotation - 30) < 0.1);
+  assert.equal(graph.screens[0].design.elements[0].fontSize, 28);
+  assert.ok(Math.abs(graph.screens[0].design.elements[0].rotation - 30) < 0.1);
   assert.equal(graph.screens[0].design.elements[0].penpotSource.properties.componentId, componentId);
   assert.equal(graph.screens[0].design.penpotLibrary.components[0].id, componentId);
   assert.equal(graph.library.typographies[0].fontFamily, 'Inter');
