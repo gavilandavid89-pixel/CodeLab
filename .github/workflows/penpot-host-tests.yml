@@ -6,6 +6,7 @@ on:
       - feat/penpot-source-integration
     paths:
       - "public/penpot-host.js"
+      - "server.js"
       - "penpot-transit.js"
       - "penpot-identity.js"
       - "penpot-websocket.js"
@@ -18,6 +19,7 @@ on:
   pull_request:
     paths:
       - "public/penpot-host.js"
+      - "server.js"
       - "penpot-transit.js"
       - "penpot-identity.js"
       - "penpot-websocket.js"
@@ -41,5 +43,7 @@ jobs:
           node-version: 22
       - name: Install pinned Transit dependency
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Check CodeLab server syntax
+        run: node --check server.js
       - name: Run Penpot host and Transit codec tests
         run: npm run test:penpot
