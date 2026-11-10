@@ -50,6 +50,18 @@ CodeLab currently has a Node HTTP server and a project-scoped JSON persistence r
 
 The server does not currently expose Penpot's `/api/main/methods/*` registry, Transit codec, Penpot-compatible multipart/SSE flows, or `/ws/notifications` WebSocket endpoint. The current browser bridge is therefore a persistence proof-of-concept, not a live Penpot backend.
 
+## Source-verified command inventory
+
+The following RPC methods are registered by the pinned Penpot backend source and are useful for scoping the first authenticated vertical slice. This is an inventory, not yet a CodeLab allowlist implementation:
+
+- Profile: `get-profile`, `update-profile`.
+- Teams: `get-teams`, `get-team`, `get-team-members`, `get-team-info`.
+- Projects: `get-projects`, `get-project`, `create-project`, `rename-project`, `delete-project`.
+- Files: `get-file`, `get-file-fragment`, `get-project-files`, `get-page`, `get-file-info`, `rename-file`, `delete-file`.
+- Media: `upload-file-media-object`, `create-upload-session`, `upload-chunk`, `assemble-file-media-object`.
+
+The full native workspace will also require the command groups for file creation/duplication, document changes, comments, libraries, fonts, exports, plugin APIs and feature/configuration bootstrap. These must be inventoried from the pinned source before enabling the corresponding UI paths. A UI control must not be exposed as functional until its backend operation is implemented and permission-tested.
+
 ## Required implementation gates
 
 1. Define a CodeLab-owned identity adapter that derives the active ADMIN/user, workspace and project from the existing authenticated session. Do not trust profile, team, file, workspace or project ownership values supplied by the browser.
