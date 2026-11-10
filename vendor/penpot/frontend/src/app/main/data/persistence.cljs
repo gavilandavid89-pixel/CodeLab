@@ -562,7 +562,7 @@
                      (rx/of (if (transient-error? (ex-data cause))
                               (persistence-transient-failure
                                id cause (- (inst-ms (ct/now)) sent-at))
-                              (persistence-failed id cause)))))))
+                              (persistence-failed id cause))))))))
 
 (defn- persist-commit
   "Sends the queued commit, stamping the attempt first. A commit whose
