@@ -4936,7 +4936,7 @@ async function importPenpotArchive(file) {
     showToast('El workspace de CodeLab todavía no está listo para sincronizar.', 'error');
     return;
   }
-  if (!/\\.penpot$/i.test(file.name || '') && file.type !== 'application/zip') {
+  if (!/\.penpot$/i.test(file.name || '') && file.type !== 'application/zip') {
     showToast('Selecciona un archivo .penpot válido.', 'warn');
     return;
   }
