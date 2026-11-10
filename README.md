@@ -150,3 +150,16 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El Inspector completo se puede plegar y volver a abrir desde la barra del editor para liberar el lienzo, por ejemplo al trabajar con diagramas y conexiones de nodos.
 - Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
+
+
+## Workspace visual con Penpot
+
+El workspace de diseño de CodeLab usa **Penpot** como editor visual externo en lugar del canvas propietario. Penpot aporta páginas, boards, capas, componentes, tokens y prototipado; CodeLab conserva el editor de código, generación, Preview/Run y el pipeline de animaciones existente.
+
+Variable opcional en Render:
+
+| Variable | Descripción |
+|---|---|
+| `PENPOT_URL` | URL HTTPS de la instancia Penpot. Si no se define, usa `https://design.penpot.app`. |
+
+Penpot documenta prototipado con conexiones y animaciones entre boards, por lo que la sustitución no elimina la parte de animación del flujo.
