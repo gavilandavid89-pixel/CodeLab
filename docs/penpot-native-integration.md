@@ -48,6 +48,8 @@ No se debe interpretar una exportación visual como navegación funcional si no 
 
 Se añadió `lib/penpot-adapter.js` para leer el archivo `.penpot` actual (ZIP v3), comprobar el manifiesto y los límites de descompresión antes de extraer metadatos, páginas, marcos, formas, tokens, bibliotecas de componentes, colores, tipografías e imágenes compatibles. También conserva atributos de origen (componentes, tokens aplicados, estilos y contenido vectorial) para los mapeos que todavía no tienen representación nativa. La barra del editor de Diseño ya ofrece una acción móvil para seleccionar el archivo e iniciar la importación. Cada marco superior se convierte en un proyecto/pantalla de Diseño de CodeLab. Los identificadores de origen se conservan para que la importación repetida actualice las pantallas existentes en vez de duplicarlas. El primer marco se incorpora al proyecto de Diseño elegido; los marcos adicionales se guardan como proyectos dentro del mismo workspace CodeLab.
 
+El importador también transforma los tokens de color, tipografía, espaciado y radio reconocidos en los ajustes del **sistema visual de CodeLab** y los guarda mediante el archivo/endpoint de diseño del workspace ya existente; no crea un segundo sistema de temas. La UI informa si esa sincronización se aplicó.
+
 El endpoint `POST /api/workspace/:workspaceId/penpot/import`:
 - exige el token de workspace o la sesión propietaria de CodeLab;
 - valida el propietario, el proyecto de Diseño destino y la revisión base;
