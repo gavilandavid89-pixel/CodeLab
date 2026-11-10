@@ -58,3 +58,28 @@ Do not point Penpot at an unrelated Penpot backend or silently create a second u
 - [ ] Asset upload/download honors existing CodeLab ownership and quotas.
 - [ ] Pixelforge regression suite remains green.
 - [ ] Android: pan, zoom, select, draw, layer navigation, inspector drawers and save work with touch.
+
+
+## CodeLab browser host bridge (first vertical slice)
+
+A first-party browser adapter now exists at `public/penpot-host.js` and is loaded after CodeLab's existing `app.js` in `public/index.html`.
+
+It exposes `window.CodeLabPenpotHost` with:
+- `getContext()`: active authenticated workspace/project context, without exposing the workspace token to the Penpot document model;
+- `loadDocument()`: loads the project's persisted native-document envelope through the project-scoped CodeLab route;
+- `saveDocument(document)`: serializes writes within the tab, enforces the 8 MiB document ceiling, sends the current workspace revision, updates the in-memory CodeLab project after success, and emits loaded/saved/conflict/error events.
+
+The adapter intentionally reports a revision conflict and preserves both local and server document values in the event payload; it does not silently choose one side or overwrite newer server state. The existing workspace token is sent only as the request authorization header. The adapter is a host boundary for the future Penpot ClojureScript integration, not a substitute for Penpot's Transit RPC transport or native document-change pipeline.
+
+A Node test suite is available through `npm run test:penpot-host`, with a dedicated GitHub Actions workflow on the integration branch and relevant pull requests.
+
+## Current implementation status after host bridge
+
+- [x] CodeLab project-scoped document GET/PUT route with workspace authorization and optimistic revision checks.
+- [x] Browser host bridge for the active CodeLab project, load/save, serialized local writes, size validation and conflict events.
+- [x] Unit tests and a dedicated CI workflow for the browser host bridge.
+- [ ] Connect Penpot's native `app.main.repo` / Transit command layer to CodeLab's allowlisted RPC adapter.
+- [ ] Complete the pinned upstream source dependency closure and reproducible ClojureScript + Rust/WASM build.
+- [ ] Replace Penpot's account/team/file bootstrap with the active CodeLab account and project context.
+- [ ] Add native Penpot save/reopen, multi-page, prototype and generator round-trip tests.
+- [ ] Mount the compiled Penpot workspace in CodeLab's design route while preserving the native Penpot workbench layout.
