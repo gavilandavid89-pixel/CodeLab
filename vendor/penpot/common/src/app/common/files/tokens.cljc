@@ -1,0 +1,853 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns app.common.files.tokens
+  (:require
+   [app.common.data :as d]
+   [app.common.data.macros :as dm]
+   [app.common.i18n :refer [tr]]
+   [app.common.logging :as log]
+   [app.common.schema :as sm]
+   [app.common.types.token :as cto]
+   [app.common.types.tokens-lib :as ctob]
+   [app.common.types.tokens-status :as ctos]
+   [clojure.set :as set]
+   [cuerdas.core :as str]
+   [malli.core :as m]))
+
+;; Change this to :info :debug or :trace to debug this module, or :warn to reset to default
+(log/set-level! :warn)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; HIGH LEVEL SCHEMAS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Token value
+
+(defn- token-value-empty-fn
+  [{:keys [value]}]
+  (when (or (str/empty? value)
+            (str/blank? value))
+    (tr "errors.tokens.empty-input")))
+
+(def schema:token-value-generic
+  [::sm/text {:error/fn token-value-empty-fn}])
+
+(def schema:token-value-numeric
+  [:and
+   [::sm/text {:error/fn token-value-empty-fn}]
+   [:fn {:error/fn #(tr "errors.tokens.invalid-value" (:value %))}
+    (fn [value]
+      (if (str/numeric? value)
+        (let [n (d/parse-double value)]
+          (some? n))
+        true))]])  ;; Leave references or formulas to be checked by the resolver
+
+(def schema:token-value-percent
+  [:and
+   [::sm/text {:error/fn token-value-empty-fn}]
+   [:fn {:error/fn #(tr "errors.tokens.value-with-percent" (:value %))}
+    (fn [value]
+      (if (d/percent? value)
+        (let [v (d/parse-percent value)]
+          (some? v))
+        true))]])  ;; Leave references or formulas to be checked by the resolver
+
+(def schema:token-value-composite-ref
+  [::sm/text {:error/fn token-value-empty-fn}])
+
+(def schema:token-value-opacity
+  [:and
+   [::sm/text {:error/fn token-value-empty-fn}]
+   [:fn {:error/fn #(tr "errors.tokens.opacity-range")}
+    (fn [opacity]
+      (if (str/numeric? opacity)
+        (let [n (d/parse-percent opacity)]
+          (and (some? n) (<= 0 n 1)))
+        true))]])  ;; Leave references or formulas to be checked by the resolver
+
+(def schema:token-value-font-family
+  [:or
+   [:vector ::sm/text]
+   cto/schema:token-ref])
+
+(def schema:token-value-font-weight
+  [:or
+   [:fn {:error/fn #(tr "errors.tokens.invalid-font-weight-token-value")}
+    cto/valid-font-weight-variant]
+   ::sm/text])  ;; Leave references or formulas to be checked by the resolver
+
+(def schema:token-value-typography-map
+  [:and
+   [:map
+    [:font-family {:optional true} schema:token-value-font-family]
+    [:font-size {:optional true} schema:token-value-numeric]
+    [:font-weight {:optional true} schema:token-value-font-weight]
+    [:line-height {:optional true} schema:token-value-percent]
+    [:letter-spacing {:optional true} schema:token-value-generic]
+    [:paragraph-spacing {:optional true} schema:token-value-generic]
+    [:text-decoration {:optional true} schema:token-value-generic]
+    [:text-case {:optional true} schema:token-value-generic]]
+   [:fn (fn [value]
+          (and (seq value)
+               (or (not (contains? value :line-height))
+                   (contains? value :font-size))))]])
+
+(def schema:token-value-typography
+  [:or
+   schema:token-value-typography-map
+   schema:token-value-composite-ref])
+
+(def schema:token-value-shadow-vector
+  [:vector {:min 1}
+   [:map
+    [:offset-x :string]
+    [:offset-y :string]
+    [:blur
+     [:and
+      :string
+      [:fn {:error/fn #(tr "workspace.tokens.shadow-token-blur-value-error")}
+       (fn [blur]
+         (let [n (d/parse-double blur)]
+           (or (nil? n) (not (< n 0)))))]]]
+    [:spread
+     [:and
+      :string
+      [:fn {:error/fn #(tr "workspace.tokens.shadow-token-spread-value-error")}
+       (fn [spread]
+         (let [n (d/parse-double spread)]
+           (or (nil? n) (not (< n 0)))))]]]
+    [:color :string]
+    [:inset {:optional true} :boolean]]])
+
+(def schema:token-value-shadow
+  [:or
+   schema:token-value-shadow-vector
+   schema:token-value-composite-ref])
+
+(defn make-token-value-schema
+  [token-type]
+  [:multi {:dispatch (constantly token-type)
+           :title "Token Value"}
+   [:opacity schema:token-value-opacity]
+   [:font-family schema:token-value-font-family]
+   [:font-size schema:token-value-numeric]
+   [:font-weight schema:token-value-font-weight]
+   [:typography schema:token-value-typography]
+   [:shadow schema:token-value-shadow]
+   [::m/default schema:token-value-generic]])
+
+;; Token
+
+(defn make-token-name-schema
+  "Dynamically generates a schema to check a token name, adding translated error messages
+   and two additional validations:
+    - Min and max length.
+    - Checks if other token with a path derived from the name already exists at `tokens-tree`.
+      e.g. it's not allowed to create a token `foo.bar` if a token `foo` already exists."
+  [tokens-tree]
+  [:and
+   [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+   (-> cto/schema:token-name
+       (sm/update-properties assoc :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error"))))
+   [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
+    #(and (some? tokens-tree)
+          (not (ctob/token-name-path-exists? % tokens-tree)))]])
+
+(defn make-node-token-name-schema
+  "Dynamically generates a schema to check the name of a token node, that may be a final token or a group.
+   This runs same checks as make-token-name-schema, but for all tokens that will be renamed by this change,
+   if the group already contains tokens."
+  [active-tokens tokens-tree node]
+  [:and
+   [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+   (-> cto/schema:token-node-name
+       (sm/update-properties assoc :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error"))))
+   [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
+    (fn [name]
+      (let [current-path (:path node)
+            current-name (:name node)
+            new-tokens (ctob/update-tokens-group active-tokens current-path current-name name)]
+        (and (some? new-tokens)
+             (some (fn [[token-name _]]
+                     (not (ctob/token-name-path-exists? token-name tokens-tree)))
+                   new-tokens))))]])
+
+(defn- find-refs [value]
+  (cond
+    (string? value)
+    (cto/find-token-value-references value)
+
+    (map? value)
+    (->> (vals value)
+         (keep :reference)
+         (mapcat cto/find-token-value-references))
+
+    :else
+    nil))
+
+(defn token-circular-reference?
+  "Checks if the given `tokens` map contains a circular reference reachable from
+   `token-name`. Uses DFS with 3-color marking (:in-progress / :done) to detect
+   cycles without false positives on diamond dependencies (A->B, A->C, B->C).
+   Returns the token name that closes the cycle, or nil."
+  [tokens token-name]
+  (let [state (atom {})]
+    (letfn [(visit [name]
+              (let [mark (get @state name)]
+                (if (= mark :in-progress)
+                  name
+                  (when-not (= mark :done)
+                    (swap! state assoc name :in-progress)
+                    (let [token (get tokens name)
+                          result (when token
+                                   (let [refs (find-refs (:value token))]
+                                     (some visit refs)))]
+                      (swap! state assoc name :done)
+                      result)))))]
+      (let [token (get tokens token-name)]
+        (when token
+          (let [refs (find-refs (:value token))]
+            (some visit refs)))))))
+
+(def schema:token-description
+  [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}])
+
+(defn make-token-schema
+  [tokens-tree token-type current-token-path]
+  [:and
+   (sm/merge
+    cto/schema:token-attrs
+    [:map
+     [:name (make-token-name-schema (-> tokens-tree
+                                        (d/dissoc-in current-token-path)))]
+     [:value (make-token-value-schema token-type)]
+     [:description {:optional true} schema:token-description]])
+   [:fn {:error/field :value
+         :error/fn #(tr "errors.tokens.circular-reference")}
+    (fn [{:keys [name]}]
+      (when name
+        (not (token-circular-reference? tokens-tree name))))]
+   [:fn {:error/field :value
+         :error/fn #(tr "errors.tokens.self-reference")}
+    (fn [{:keys [name value]}]
+      (when (and name value)
+        (not (cto/token-value-self-reference? name value))))]])
+
+(defn make-node-token-schema
+  [active-tokens tokens-tree node]
+  [:map
+   [:name (make-node-token-name-schema active-tokens tokens-tree node)]])
+
+(defn convert-dtcg-token
+  "Convert token attributes as they come from a decoded json, with DTCG types, to internal types.
+   Eg. From this:
+
+     {'name' 'body-text'
+      'type' 'typography'
+      'value' {
+        'fontFamilies' ['Arial' 'Helvetica' 'sans-serif']
+        'fontSize' '16px'
+        'fontWeights' 'normal'}}
+
+   to this
+     {:name 'body-text'
+      :type :typography
+      :value {
+        :font-family ['Arial' 'Helvetica' 'sans-serif']
+        :font-size '16px'
+        :font-weight 'normal'}}"
+  [token-attrs]
+  (let [name        (get token-attrs "name")
+        type        (get token-attrs "type")
+        value       (get token-attrs "value")
+        description (get token-attrs "description")
+
+        type  (cto/dtcg-token-type->token-type type)
+        value (case type
+                :font-family (ctob/convert-dtcg-font-family value)
+                :typography  (ctob/convert-dtcg-typography-composite value)
+                :shadow      (ctob/convert-dtcg-shadow-composite value)
+                value)]
+
+    (d/without-nils {:name name
+                     :type type
+                     :value (cond-> value (number? value) str)
+                     :description description})))
+
+;; Token set
+
+(defn make-token-set-name-schema
+  "Generates a dynamic schema to check a token set name:
+    - Validate name length.
+    - Checks if other token set with a path derived from the name already exists in the tokens lib."
+  [tokens-lib set-id]
+  [:and
+   [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+   [:fn #(not (str/blank? (ctob/normalize-set-name %)))]
+   [:fn {:error/fn #(tr "errors.token-set-already-exists")}
+    (fn [name]
+      (or (nil? tokens-lib)
+          (let [set (ctob/get-set-by-name tokens-lib name)]
+            (or (nil? set) (= (ctob/get-id set) set-id)))))]])
+
+(def schema:token-set-description
+  [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}])
+
+(defn make-token-set-schema
+  [tokens-lib set-id]
+  (sm/merge
+   ctob/schema:token-set-attrs
+   [:map
+    [:name [:and (make-token-set-name-schema tokens-lib set-id)
+            [:fn #(ctob/normalized-set-name? %)]]]
+    [:description {:optional true} schema:token-set-description]]))
+
+;; Token theme
+
+(defn make-token-theme-group-schema
+  "Generates a dynamic schema to check a token theme group:
+    - Validate group length.
+    - Checks if other token theme with the same name already exists in the new group in the tokens lib."
+  [tokens-lib name theme-id]
+  [:and
+   [:string {:min 0 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+   [:fn {:error/fn #(tr "errors.token-theme-already-exists")}
+    (fn [group]
+      (or (nil? tokens-lib)
+          (let [theme (ctob/get-theme-by-name tokens-lib group name)]
+            (or (nil? theme) (= (:id theme) theme-id)))))]])
+
+(defn make-token-theme-name-schema
+  "Generates a dynamic schema to check a token theme name:
+    - Validate name length.
+    - Checks if other token theme with the same name already exists in the same group in the tokens lib."
+  [tokens-lib group theme-id]
+  [:and
+   [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+   [:fn #(not (str/blank? %))]
+   [:fn {:error/fn #(tr "errors.token-theme-already-exists" (str group "/" (:value %)))}
+    (fn [name]
+      (or (nil? tokens-lib)
+          (let [theme (ctob/get-theme-by-name tokens-lib group name)]
+            (or (nil? theme) (= (:id theme) theme-id)))))]])
+
+(def schema:token-theme-description
+  [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}])
+
+(defn make-token-theme-schema
+  [tokens-lib group name theme-id]
+  [:and
+   (sm/merge
+    ctob/schema:token-theme-attrs
+    [:map
+     [:group (make-token-theme-group-schema tokens-lib name theme-id)] ;; TODO how to keep error-fn from here?
+     [:name (make-token-theme-name-schema tokens-lib group theme-id)]
+     [:description {:optional true} schema:token-theme-description]])
+   [:fn {:error/field :sets
+         :error/fn #(tr "errors.token-theme-not-existing-sets" (str/join ", " (:sets (:value %))))}
+    (fn [{:keys [sets]}]
+      (or (nil? tokens-lib)
+          (every? #(ctob/get-set-by-name tokens-lib %) sets)))]])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; HELPERS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Token
+
+(def parseable-token-value-regexp
+  "Regexp that can be used to parse a number value out of resolved token value.
+  This regexp also trims whitespace around the value."
+  #"^\s*(-?[0-9]+\.?[0-9]*)(px|%)?\s*$")
+
+(defn parse-token-value
+  "Parses a resolved value and separates the unit from the value.
+  Returns a map of {:value `number` :unit `string`}."
+  [value]
+  (cond
+    (number? value) {:value value}
+    (string? value) (when-let [[_ value unit] (re-find parseable-token-value-regexp value)]
+                      (when-let [parsed-value (d/parse-double value)]
+                        {:value parsed-value
+                         :unit unit}))))
+
+(defn attributes-map
+  "Creates an attributes map using collection of `attributes` for `id`."
+  [attributes token]
+  (into {}
+        (map (fn [attr] [attr (:name token)]))
+        attributes))
+
+(defn remove-attributes-for-token
+  "Removes applied tokens with `token-name` for the given `attributes` set from `applied-tokens`."
+  [attributes token-name applied-tokens]
+  (let [attr? (set attributes)]
+    (->> (remove (fn [[k v]]
+                   (and (attr? k)
+                        (= v token-name)))
+                 applied-tokens)
+         (into {}))))
+
+(defn token-attribute-applied?
+  "Test if `token` is applied to a `shape` on single `token-attribute`."
+  [token shape token-attribute]
+  (when-let [id (dm/get-in shape [:applied-tokens token-attribute])]
+    (= (:name token) id)))
+
+(defn token-applied?
+  "Test if `token` is applied to a `shape` with at least one of the given `token-attributes`."
+  [token shape token-attributes]
+  (some #(token-attribute-applied? token shape %) token-attributes))
+
+(defn shapes-token-applied?
+  "Test if `token` is applied to to any of `shapes` with at least one of the given `token-attributes`."
+  [token shapes token-attributes]
+  (some #(token-applied? token % token-attributes) shapes))
+
+(defn shapes-ids-by-applied-attributes
+  [token shapes token-attributes]
+  (let [conj* (fnil conj #{})]
+    (reduce (fn [result shape]
+              (let [shape-id (dm/get-prop shape :id)]
+                (->> token-attributes
+                     (filter #(token-attribute-applied? token shape %))
+                     (reduce (fn [result attr]
+                               (update result attr conj* shape-id))
+                             result))))
+            {}
+            shapes)))
+
+(defn shapes-applied-all? [ids-by-attributes shape-ids attributes]
+  (every? #(set/superset? (get ids-by-attributes %) shape-ids) attributes))
+
+(defn color-token? [token]
+  (= (:type token) :color))
+
+;; FIXME: this should be precalculated ?
+(defn is-reference? [token]
+  (str/includes? (:value token) "{"))
+
+;; Tokens lib and status in file data
+
+(defn make-tokens-status-from-lib
+  "Make a TokensStatus from a TokensLib, activating the themes and sets
+   marked as active in the library (to migrate from legacy files)."
+  [tokens-lib]
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (let [active-theme-paths (ctob/get-legacy-active-themes tokens-lib)
+        active-theme-ids   (into #{}
+                                 (comp (map #(ctob/get-theme-by-path tokens-lib %))
+                                       (remove nil?)
+                                       (map ctob/get-id)
+                                       (filter #(not= % ctob/hidden-theme-id)))
+                                 active-theme-paths)
+        ;; Get active set names from the active themes
+        active-set-names   (into #{}
+                                 (comp (filter #(and (ctob/token-theme? %)
+                                                     (contains? active-theme-paths (ctob/get-theme-path %))))
+                                       (mapcat :sets))
+                                 (ctob/get-themes tokens-lib))
+        active-set-ids     (into #{}
+                                 (comp (map #(ctob/get-set-by-name tokens-lib %))
+                                       (remove nil?)
+                                       (map ctob/get-id))
+                                 active-set-names)]
+    (ctos/make-tokens-status :active-theme-ids active-theme-ids
+                             :active-set-ids active-set-ids)))
+
+(defn ensure-tokens-lib
+  "Ensure file-data has a :tokens-lib or an external :tokens-source, and also a :tokens-status,
+   creating them if necessary."
+  [file-data]
+  (cond-> file-data
+    (let [tokens-source (:tokens-source file-data)]
+      (or (nil? tokens-source)
+          (= tokens-source (:id file-data))))
+    (update :tokens-lib #(or % (ctob/make-tokens-lib)))
+
+    :always
+    (update :tokens-status #(or % (ctos/make-tokens-status)))))
+
+(defn ensure-tokens-status
+  "Ensure file-data has a :tokens-status, creating it empty if necessary."
+  [file-data]
+  (cond-> file-data
+    (nil? (:tokens-status file-data))
+    (update :tokens-status #(or % (ctos/make-tokens-status)))))
+
+(defn get-tokens-source
+  "Return the current value of :tokens-source attribute."
+  [file-data]
+  (:tokens-source file-data))
+
+(defn get-effective-tokens-source
+  "Return the current tokens source of the file. When there is no explicit
+   :tokens-source attribute, the source is the file itself."
+  [file-data]
+  (or (:tokens-source file-data) (:id file-data)))
+
+(defn set-tokens-source
+  "Set the tokens source of the file. Setting it to nil or to the file itself
+   removes the attribute, so the file uses its own tokens-lib."
+  [file-data tokens-source]
+  (assert (or (nil? tokens-source) (uuid? tokens-source)) "expected nil or valid uuid")
+  (if (or (nil? tokens-source)
+          (= tokens-source (:id file-data)))
+    (dissoc file-data :tokens-source)
+    (assoc file-data :tokens-source tokens-source)))
+
+(defn effective-tokens-source?
+  "Returns true if the given id is the current tokens source of the file-data."
+  [file-data id]
+  (assert (uuid? id) "expected valid uuid")
+  (= (get-effective-tokens-source file-data) id))
+
+(defn has-own-tokens?
+  "Returns true if the file-data contains a tokens-library itself and the library
+   contains some tokens. Note that it still may be true even if the tokens source
+   is external (in this case the own library is inactive, but still exists)."
+  [file-data]
+  (let [tokens-lib (:tokens-lib file-data)]
+    (and (some? tokens-lib)
+         (not (ctob/empty-lib? tokens-lib)))))
+
+(defn tokens-provider?
+  "Returns true if the file MAY become a tokens source. This is if the file has tokens and has
+   not configured another tokens source."
+  [file-data]
+  (and (has-own-tokens? file-data)
+       (effective-tokens-source? file-data (:id file-data))))
+
+(defn editable-tokens?
+  "Returns true if the file-data is its own tokens source.
+   Call only with the current local file's data. This predicate does not check
+   which file is open; callers must reject connected libraries first."
+  [file-data]
+  (effective-tokens-source? file-data (:id file-data)))
+
+(defn get-tokens-lib
+  [file-data]
+  (:tokens-lib file-data))
+
+(defn get-tokens-status
+  [file-data]
+  (:tokens-status file-data))
+
+(defn update-tokens-lib
+  "Update the tokens-lib inside file-data through a callback function.
+   The function will receive the tokens lib and the rest of args."
+  [file-data f & args]
+  (d/update-when file-data :tokens-lib #(apply f % args)))
+
+(defn update-tokens-status
+  "Update the tokens-status inside file-data through a callback function.
+   The function will receive the tokens status and the rest of args."
+  [file-data f & args]
+  (d/update-when file-data :tokens-status #(apply f % args)))
+
+(defn get-own-tokens-status
+  "The tokens status of the file's own tokens-lib, kept aside while the
+   tokens source is an external library."
+  [file-data]
+  (:own-tokens-status file-data))
+
+(defn set-own-tokens-status
+  "Keep aside the tokens status of the file's own tokens-lib. Setting it to
+   nil removes the attribute."
+  [file-data tokens-status]
+  (assert (or (nil? tokens-status) (ctos/tokens-status? tokens-status))
+          "expected nil or valid tokens-status")
+  (if (nil? tokens-status)
+    (dissoc file-data :own-tokens-status)
+    (assoc file-data :own-tokens-status tokens-status)))
+
+(defn detach-tokens-source
+  "Make the file its own tokens source again, restoring the tokens status
+   kept aside for its own tokens-lib. If none was kept, the tokens status
+   is removed."
+  [file-data]
+  (let [own-tokens-status (get-own-tokens-status file-data)]
+    (if (some? own-tokens-status)
+      (-> file-data
+          (set-tokens-source nil)
+          (set-own-tokens-status nil)
+          (assoc :tokens-status own-tokens-status))
+      (-> file-data
+          (set-tokens-source nil)
+          (dissoc :tokens-status)))))
+
+(defn absorb-tokens-lib
+  "Copy the tokens-lib of the library into the file, replacing the
+   previous one if any, and unset the tokens-source, so the file becomes
+   its own tokens source.
+
+   The tokens-status of the file is preserved. If the file has none, the
+   one of the library is copied along with the tokens-lib.
+
+   If the library has no tokens-lib, only the tokens-source is unset, and
+   the file keeps its own tokens-lib, with the tokens status kept aside for
+   it if any. If there is no library-data, there is nothing to absorb and
+   the file is returned unchanged."
+  [file-data library-data]
+  (if (nil? library-data)
+    file-data
+    (let [tokens-lib (get-tokens-lib library-data)]
+      (if (nil? tokens-lib)
+        (let [own-tokens-status (get-own-tokens-status file-data)]
+          (cond-> (-> file-data
+                      (set-tokens-source nil)
+                      (set-own-tokens-status nil))
+            (some? own-tokens-status)
+            (assoc :tokens-status own-tokens-status)))
+        (let [tokens-status (or (get-tokens-status file-data)
+                                (get-tokens-status library-data))]
+          (cond-> (-> file-data
+                      (set-tokens-source nil)
+                      ;; The kept status refers to the replaced tokens-lib
+                      (set-own-tokens-status nil)
+                      (assoc :tokens-lib tokens-lib))
+            (some? tokens-status)
+            (assoc :tokens-status tokens-status)))))))
+
+;; Tokens status with tokens lib
+
+(defn- calculate-active-sets
+  "Obtain the set-ids that needs to be active for a particular set of theme ids"
+  [active-theme-ids tokens-lib]
+  (let [active-themes (map #(ctob/get-theme tokens-lib %) active-theme-ids)
+        active-set-names (reduce set/union #{} (map :sets active-themes))
+        active-sets (map #(ctob/get-set-by-name tokens-lib %) active-set-names)
+        active-set-ids (into #{} (map ctob/get-id) active-sets)]
+    active-set-ids))
+
+(defn get-active-themes
+  "Return an ordered sequence of active themes"
+  [tokens-status tokens-lib]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (->> (ctob/get-themes tokens-lib)
+       (filter #(ctos/theme-active? tokens-status (ctob/get-id %)))))
+
+(defn activate-theme
+  "Activate a theme and all its sets. Deactivate any other theme in the same group."
+  [tokens-status tokens-lib id]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (assert (uuid? id) "expected valid theme id")
+  (if-not (ctos/theme-active? tokens-status id)
+    (if-let [theme (ctob/get-theme tokens-lib id)]
+      (let [group-themes      (into #{} (ctob/get-themes-in-group tokens-lib (:group theme)))
+            active-theme-ids  (ctos/get-active-theme-ids tokens-status)
+            active-theme-ids' (-> (set/difference active-theme-ids group-themes)
+                                  (conj id))
+            active-set-ids'   (calculate-active-sets active-theme-ids' tokens-lib)]
+        (ctos/set-tokens-status tokens-status active-theme-ids' active-set-ids'))
+      tokens-status)
+    tokens-status))
+
+(defn deactivate-theme
+  "Deactivate a theme and all its sets that are not in other active themes"
+  [tokens-status tokens-lib id]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (assert (uuid? id) "expected valid theme id")
+  (if (ctos/theme-active? tokens-status id)
+    (let [active-theme-ids' (disj (ctos/get-active-theme-ids tokens-status) id)
+          active-set-ids'   (calculate-active-sets active-theme-ids' tokens-lib)]
+      (ctos/set-tokens-status tokens-status active-theme-ids' active-set-ids'))
+    tokens-status))
+
+(defn toggle-theme-active
+  "Toggle a theme's active state and update active sets accordingly."
+  [tokens-status tokens-lib id]
+  (if (ctos/theme-active? tokens-status id)
+    (deactivate-theme tokens-status tokens-lib id)
+    (activate-theme tokens-status tokens-lib id)))
+
+(defn set-theme-active
+  "Set a theme's active state and update active sets accordingly."
+  [tokens-status tokens-lib id active?]
+  (if active?
+    (activate-theme tokens-status tokens-lib id)
+    (deactivate-theme tokens-status tokens-lib id)))
+
+(defn get-active-sets
+  "Return a clojure set of the active sets, resolved from TokensStatus + TokensLib."
+  [tokens-status tokens-lib]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (let [active-set-ids (ctos/get-active-set-ids tokens-status)]
+    (into #{}
+          (comp (map #(ctob/get-set tokens-lib %))
+                (filter some?))
+          active-set-ids)))
+
+(defn set-set-active
+  "Set directly a set's active state and deactivate all themes."
+  [tokens-status tokens-lib id active?]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (assert (uuid? id) "expected valid set id")
+  (if (and (ctob/get-set tokens-lib id)
+           (not= active? (ctos/set-active? tokens-status id)))
+    (let [active-set-ids (ctos/get-active-set-ids tokens-status)
+          active-set-ids' (if active?
+                            (conj active-set-ids id)
+                            (disj active-set-ids id))]
+      (ctos/set-tokens-status tokens-status #{} active-set-ids'))
+    tokens-status))
+
+(defn activate-set
+  "Activate directly a set, and deactivate all themes."
+  [tokens-status tokens-lib id]
+  (set-set-active tokens-status tokens-lib id true))
+
+(defn deactivate-set
+  "Deactivate directly a set, and deactivate all themes."
+  [tokens-status tokens-lib id]
+  (set-set-active tokens-status tokens-lib id false))
+
+(defn toggle-set-active
+  "Toggle a set's active state and deactivate all themes."
+  [tokens-status tokens-lib id]
+  (set-set-active tokens-status tokens-lib id (not (ctos/set-active? tokens-status id))))
+
+(defn sets-at-path-all-active?
+  "Check active state of sets at a group path.
+   Returns :none, :all, or :partial."
+  [tokens-status tokens-lib group-path]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (assert (vector? group-path) "expected valid group path")
+  (let [active-set-ids (ctos/get-active-set-ids tokens-status)
+        path-set-ids (into #{}
+                           (map ctob/get-id)
+                           (ctob/get-sets-at-path tokens-lib group-path))]
+    (if (seq active-set-ids)
+      (let [difference (set/difference path-set-ids active-set-ids)]
+        (cond
+          (empty? difference) :all
+          (seq (set/intersection path-set-ids active-set-ids)) :partial
+          :else :none))
+      :none)))
+
+(defn toggle-set-group-active
+  "Toggle the active state of all sets at a group path, and deactivate all themes.
+   If all sets are active, deactivate all. If none or some are active, activate all."
+  [tokens-status tokens-lib group-path]
+  (let [all-active?     (sets-at-path-all-active? tokens-status tokens-lib group-path)
+
+        sets-at-path    (ctob/get-sets-at-path tokens-lib group-path)
+        set-ids-at-path (into #{} (map ctob/get-id) sets-at-path)
+
+        active-set-ids  (ctos/get-active-set-ids tokens-status)
+        active-set-ids' (if (contains? #{:all :partial} all-active?)
+                          (set/difference active-set-ids set-ids-at-path)
+                          (set/union active-set-ids set-ids-at-path))]
+
+    (if (not= active-set-ids active-set-ids')
+      (ctos/set-tokens-status tokens-status #{} active-set-ids')
+      tokens-status)))
+
+(defn get-tokens-in-active-sets
+  "Get merged tokens from all active sets, in set order."
+  [tokens-status tokens-lib]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (let [active-set-ids (ctos/get-active-set-ids tokens-status)
+        all-set-ids    (map ctob/get-id (ctob/get-sets tokens-lib))
+        ordered-active (filter active-set-ids all-set-ids)]
+    (reduce (fn [tokens set-id]
+              (merge tokens (ctob/get-tokens tokens-lib set-id)))
+            (d/ordered-map)
+            ordered-active)))
+
+(defn get-tokens-in-active-sets-force
+  "Same as get-tokens-in-active-sets but force-including a set by id."
+  [tokens-status tokens-lib force-set-id]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (assert (uuid? force-set-id) "expected valid set id")
+  (let [active-set-ids (ctos/get-active-set-ids tokens-status)
+        all-set-ids    (map ctob/get-id (ctob/get-sets tokens-lib))
+        ordered-active   (cond-> (filter active-set-ids all-set-ids)
+                           (some? force-set-id)
+                           (conj force-set-id))]
+    (reduce (fn [tokens set-id]
+              (let [set (ctob/get-set tokens-lib set-id)]
+                (if set
+                  (merge tokens (ctob/get-tokens- set))
+                  tokens)))
+            (d/ordered-map)
+            ordered-active)))
+
+(defn sync-tokens-status-with-lib
+  "Synchronizes tokens status with the current tokens lib:
+   - Delete any theme or set that no longer exists in the lib.
+   - Recalculate the list of active sets from the new themes."
+  [tokens-status tokens-lib]
+  (assert (ctos/tokens-status? tokens-status) "expected valid tokens-status")
+  (assert (ctob/tokens-lib? tokens-lib) "expected valid tokens-lib")
+  (let [active-theme-ids (ctos/get-active-theme-ids tokens-status)
+        valid-theme-ids  (into #{}
+                               (filter #(some? (ctob/get-theme tokens-lib %)))
+                               active-theme-ids)
+        active-set-ids   (ctos/get-active-set-ids tokens-status)
+        valid-set-ids    (if (empty? valid-theme-ids)
+                           (into #{}
+                                 (filter #(some? (ctob/get-set tokens-lib %)))
+                                 active-set-ids)
+                           (calculate-active-sets valid-theme-ids tokens-lib))]
+
+    (if (or (not= active-theme-ids valid-theme-ids)
+            (not= active-set-ids valid-set-ids))
+      (do
+        (log/info :hint "syncing token status"
+                  :removed-themes (count (set/difference active-theme-ids valid-theme-ids))
+                  :removed-sets (count (set/difference active-set-ids valid-set-ids)))
+        (ctos/set-tokens-status tokens-status valid-theme-ids valid-set-ids))
+      tokens-status)))
+
+(defn ids->names
+  "Converts the ids inside a tokens status into full name paths."
+  [tokens-status tokens-lib]
+  (if tokens-lib
+    (let [active-theme-ids   (ctos/get-active-theme-ids tokens-status)
+          xf-theme-name      (comp (map #(ctob/get-theme tokens-lib %))
+                                   (remove nil?)
+                                   (map ctob/get-theme-path))
+          active-theme-names (into #{} xf-theme-name active-theme-ids)
+
+          active-set-ids     (ctos/get-active-set-ids tokens-status)
+          xf-set-name        (comp (map #(ctob/get-set tokens-lib %))
+                                   (remove nil?)
+                                   (map ctob/get-name))
+          active-set-names   (into #{} xf-set-name active-set-ids)]
+
+      {:active-themes active-theme-names
+       :active-sets active-set-names})
+    {:active-themes #{}
+     :active-sets #{}}))
+
+(defn names->ids
+  "Converts the full name paths in the structure in themes and sets ids."
+  [tokens-lib tokens-status-names]
+  (if tokens-lib
+    (let [xf-theme-id      (comp (map #(ctob/get-theme-by-path tokens-lib %))
+                                 (remove nil?)
+                                 (map ctob/get-id))
+          active-theme-ids (into #{} xf-theme-id (get tokens-status-names "activeThemes"))
+
+          xf-set-id        (comp (map #(ctob/get-set-by-name tokens-lib %))
+                                 (remove nil?)
+                                 (map ctob/get-id))
+          active-set-ids   (into #{} xf-set-id (get tokens-status-names "activeSets"))]
+
+      {:active-theme-ids active-theme-ids
+       :active-set-ids active-set-ids})
+    {:active-theme-ids #{}
+     :active-set-ids #{}}))
