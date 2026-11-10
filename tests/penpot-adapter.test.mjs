@@ -34,8 +34,8 @@ function archive() {
     },
     [prefix + 'pages/' + pageId + '/' + shapeA + '.json']: {
       id: shapeA, name: 'Ver producto', type: 'text', x: 24, y: 40, width: 180, height: 44,
-      parentId: frameA, frameId: frameA, content: { children: [{ text: 'Ver producto' }] },
-      fills: [{ color: '#2563eb' }], fontSize: 28, componentId, appliedTokens: { color: 'primary' },
+      parentId: frameA, frameId: frameA, content: { children: [{ text: 'Ver producto', fontSize: 28, fontWeight: 700, fills: [{ color: '#2563eb' }] }] },
+      componentId, appliedTokens: { color: 'primary' },
       interactions: [{ eventType: 'click', destinationFrameId: frameB }]
     },
     [prefix + 'pages/' + pageId + '/' + imageId + '.json']: { id: imageId, name: 'Producto', type: 'image', x: 20, y: 100, width: 160, height: 160, parentId: frameA, frameId: frameA, metadata: { id: mediaId } },
