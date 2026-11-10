@@ -55,6 +55,16 @@ jobs:
           node --check tests/pixelforge-integration.test.js
       - name: Test Penpot native integration guardrails
         run: npm run test:penpot-config
+      - name: Validate Penpot Docker Compose manifest
+        shell: bash
+        run: |
+          export PENPOT_DATABASE_URI="postgresql://127.0.0.1:5432/codelab"
+          export PENPOT_DATABASE_USERNAME="codelab_penpot"
+          export PENPOT_DATABASE_PASSWORD="ci-only-placeholder"
+          export PENPOT_SECRET_KEY="ci-only-secret-not-for-deployment"
+          export CODELAB_DATA_DIR="/tmp/codelab-data"
+          export PENPOT_PUBLIC_URI="https://example.invalid/penpot/"
+          docker compose -f infra/penpot/docker-compose.yml config --quiet
       - name: Test Penpot proxy authentication gate
         run: node --test tests/penpot-proxy-guard.test.mjs
       - name: Test PixelForge animation model and UI–Headless contract
