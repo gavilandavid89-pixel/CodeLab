@@ -19,7 +19,7 @@ function createHost(fetchImpl) {
       constructor(type, options) { this.type = type; this.detail = options && options.detail; }
     },
     dispatchEvent(event) { events.push(event); },
-    saveLocalProjectsSnapshot() { this.localSnapshotSaved = true; },
+    saveLocalProjectsSnapshot() { context.localSnapshotSaved = true; },
     localSnapshotSaved: false
   };
   context.window = context;
@@ -36,13 +36,13 @@ function createHost(fetchImpl) {
 
 test('host exposes only the active CodeLab workspace/project context', () => {
   const host = createHost(async () => { throw new Error('fetch should not run'); });
-  assert.deepEqual(host.context.CodeLabPenpotHost.getContext(), {
+  assert.equal(JSON.stringify(host.context.CodeLabPenpotHost.getContext()), JSON.stringify({
     workspaceId: 'ws_admin',
     projectId: 'proj_1',
     workspaceRevision: 4,
     projectName: 'Tienda',
     user: { id: 'admin', username: 'ADMIN', role: 'admin' }
-  });
+  }));
 });
 
 test('loadDocument reads the persisted Penpot document and adopts workspace revision', async () => {
