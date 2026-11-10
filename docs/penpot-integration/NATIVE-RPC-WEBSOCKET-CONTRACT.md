@@ -119,7 +119,7 @@ Penpot-specific handler IDs confirmed in that source:
 - `uri`: Penpot URI values.
 - `penpot/pointer`: pointer values with an ID and metadata.
 
-The codec also uses the Transit library's built-in handling for keywords, symbols, sets, and ordinary maps. A JSON.parse/JSON.stringify shim would lose typed values and is not acceptable. The CodeLab server's current `package.json` does not declare a Transit dependency; the server codec dependency must be added and pinned only after its Node API and compatibility fixtures are verified.
+The codec also uses the Transit library's built-in handling for keywords, symbols, sets, and ordinary maps. A JSON.parse/JSON.stringify shim would lose typed values and is not acceptable. CodeLab now pins `transit-js` 0.8.874 in `package.json` and implements a bounded codec in `penpot-transit.js`. Its initial host/codec suite verifies keyword maps, UUIDs, dates, sets, Penpot ordered collections, URI/pointer tags, malformed payload rejection and byte limits (12 tests passed in GitHub Actions run 42759363063). This codec is a tested transport component; the `/api/main/methods/*` dispatcher and native command handlers are not yet connected to it.
 
 ### RPC dispatch and authorization semantics
 
