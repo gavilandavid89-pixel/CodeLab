@@ -8,6 +8,7 @@
   const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
   const API_TIMEOUT_MS = 20000;
   let saveQueue = Promise.resolve();
+  let penpotIds = null;
 
   function currentContext() {
     // These identifiers are top-level lexical bindings from app.js. This file
@@ -92,6 +93,8 @@
       throw new Error('penpot_invalid_workspace_revision');
     }
     workspaceRevision = payload.workspaceRevision;
+    penpotIds = payload.penpotIds && typeof payload.penpotIds === 'object'
+      ? Object.freeze({ ...payload.penpotIds }) : null;
     if (payload.document && typeof payload.document === 'object' && !Array.isArray(payload.document)) {
       ensureProjectDocument(context, payload.document, Number(payload.documentRevision) || 0);
     }
@@ -99,9 +102,10 @@
       projectId: context.projectId,
       document: payload.document || null,
       documentRevision: Number(payload.documentRevision) || 0,
-      workspaceRevision: payload.workspaceRevision
+      workspaceRevision: payload.workspaceRevision,
+      penpotIds
     });
-    return payload;
+    return { ...payload, penpotIds };
   }
 
   function saveDocument(document) {
@@ -172,6 +176,7 @@
       };
     },
     loadDocument,
+    getPenpotIds: () => penpotIds,
     saveDocument
   });
 })(window);
