@@ -102,7 +102,9 @@ test('CodeLab imports Penpot screens and prototype links into its existing works
     const image = source.design.elements.find(element => element.type === 'image');
     assert.ok(image && image.src.includes('/penpot/assets/' + fileId + '/' + mediaId));
     const asset = await fetch(base + image.src, { headers: { 'x-workspace-token': token } });
-    assert.equal(asset.status, 200);\n    const deniedAsset = await fetch(base + image.src);\n    assert.equal(deniedAsset.status, 401, 'asset delivery must require the CodeLab workspace token');
+    assert.equal(asset.status, 200);
+    const deniedAsset = await fetch(base + image.src);
+    assert.equal(deniedAsset.status, 401, 'asset delivery must require the CodeLab workspace token');
     assert.equal(asset.headers.get('content-type'), 'image/png');
     assert.deepEqual(Array.from(new Uint8Array(await asset.arrayBuffer())), [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.equal(source.design.flowConnections[0].targetProjectId, state.body.projects.find(project => project.id !== source.id).id);
