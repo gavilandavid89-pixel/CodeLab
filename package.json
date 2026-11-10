@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test:penpot-config": "node --test tests/penpot-native-config.test.mjs",
-    "test:penpot-adapter": "node --test tests/penpot-adapter.test.mjs"
+    "test:penpot-adapter": "node --test tests/penpot-adapter.test.mjs",
+    "test:penpot": "node --test tests/penpot-native-config.test.mjs tests/penpot-adapter.test.mjs tests/penpot-import-api.test.mjs tests/penpot-proxy-guard.test.mjs"
   },
   "engines": {
     "node": ">=18"
