@@ -1611,35 +1611,17 @@ function buildAiSystemPrompt(code) {
   const css = String((code && code.css) || '').slice(0, 12000);
   const js = String((code && code.js) || '').slice(0, 12000);
   return (
-    'Eres un ingeniero frontend. Debes modificar el código web del usuario.
-' +
-    'FORMATO DE RESPUESTA (obligatorio):
-' +
-    'Devuelve UN objeto JSON con exactamente 4 claves string: html, css, js, message.
-' +
-    'Ejemplo mínimo:
-' +
-    '{"html":"<h1>Hola</h1>","css":"h1{color:blue}","js":"console.log(1)","message":"Título azul"}
-' +
-    'Reglas:
-' +
-    '- Sin markdown, sin ```, sin texto fuera del JSON.
-' +
-    '- Si solo cambias una parte, incluye igual las otras claves con el código actual.
-' +
-    '- message en español, una frase.
-' +
-    '- Código ejecutable en navegador sin bundler.
-
-' +
-    'HTML actual:
-' + html + '
-
-CSS actual:
-' + css + '
-
-JS actual:
-' + js
+    'Eres un ingeniero frontend. Debes modificar el código web del usuario.\n' +
+    'FORMATO DE RESPUESTA (obligatorio):\n' +
+    'Devuelve UN objeto JSON con exactamente 4 claves string: html, css, js, message.\n' +
+    'Ejemplo mínimo:\n' +
+    '{"html":"<h1>Hola</h1>","css":"h1{color:blue}","js":"console.log(1)","message":"Título azul"}\n' +
+    'Reglas:\n' +
+    '- Sin markdown, sin ```, sin texto fuera del JSON.\n' +
+    '- Si solo cambias una parte, incluye igual las otras claves con el código actual.\n' +
+    '- message en español, una frase.\n' +
+    '- Código ejecutable en navegador sin bundler.\n\n' +
+    'HTML actual:\n' + html + '\n\nCSS actual:\n' + css + '\n\nJS actual:\n' + js
   );
 }
 
