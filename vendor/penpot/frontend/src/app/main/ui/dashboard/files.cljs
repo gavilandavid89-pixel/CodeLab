@@ -1,0 +1,242 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns app.main.ui.dashboard.files
+  (:require-macros [app.main.style :as stl])
+  (:require
+   [app.main.data.common :as dcm]
+   [app.main.data.dashboard :as dd]
+   [app.main.data.dashboard.shortcuts :as sc]
+   [app.main.data.event :as ev]
+   [app.main.data.project :as dpj]
+   [app.main.refs :as refs]
+   [app.main.store :as st]
+   [app.main.ui.dashboard.grid :refer [grid*]]
+   [app.main.ui.dashboard.import :as udi]
+   [app.main.ui.dashboard.inline-edition :refer [inline-edition]]
+   [app.main.ui.dashboard.layout-toggle :as lt :refer [layout-toggle*]]
+   [app.main.ui.dashboard.project-menu :refer [project-menu*]]
+   [app.main.ui.ds.buttons.button :refer [button*]]
+   [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
+   [app.main.ui.ds.foundations.assets.icon :as i]
+   [app.main.ui.ds.product.empty-placeholder :refer [empty-placeholder*]]
+   [app.main.ui.hooks :as hooks]
+   [app.util.dom :as dom]
+   [app.util.i18n :as i18n :refer [tr]]
+   [app.util.keyboard :as kbd]
+   [cuerdas.core :as str]
+   [rumext.v2 :as mf]))
+
+(mf/defc header*
+  {::mf/private true}
+  [{:keys [project create-fn can-edit layout on-change]}]
+  (let [project-id (:id project)
+
+        local
+        (mf/use-state {:edition false})
+
+        menu-open*
+        (mf/use-state false)
+
+        on-create-click
+        (mf/use-fn
+         (mf/deps create-fn)
+         (fn [event]
+           (dom/prevent-default event)
+           (create-fn "dashboard:header")))
+
+        on-menu-click
+        (mf/use-fn
+         (fn [event]
+           (dom/prevent-default event)
+           (swap! menu-open* not)))
+
+        on-edit
+        (mf/use-fn
+         (fn []
+           (reset! menu-open* false)
+           (swap! local assoc :edition true)))
+
+        toggle-pin
+        (mf/use-fn
+         (mf/deps project)
+         #(st/emit! (dd/toggle-project-pin project)))
+
+        file-input
+        (mf/use-ref nil)
+
+        on-import-click
+        (mf/use-fn #(dom/click (mf/ref-val file-input)))
+
+        on-finish-import
+        (mf/use-fn
+         (mf/deps project-id)
+         (fn []
+           (st/emit! (dpj/fetch-files project-id)
+                     (dd/clear-selected-files))))]
+
+
+    [:header {:class (stl/css :dashboard-header)
+              :data-testid "dashboard-header"}
+     (if (:is-default project)
+       [:div#dashboard-drafts-title {:class (stl/css :dashboard-title)}
+        [:h1 (tr "labels.drafts")]]
+
+       (if (and (:edition @local) can-edit)
+         [:& inline-edition
+          {:content (:name project)
+           :on-end (fn [name]
+                     (let [name (str/trim name)]
+                       (when-not (str/empty? name)
+                         (st/emit! (-> (dd/rename-project (assoc project :name name))
+                                       (with-meta {::ev/origin "project"}))))
+                       (swap! local assoc :edition false)))
+           :max-length 250}]
+         [:div {:class (stl/css :dashboard-title)}
+          [:h1 {:on-double-click on-edit
+                :data-testid "project-title"
+                :id (:id project)}
+           (:name project)]]))
+
+     [:div {:class (stl/css :dashboard-header-actions)}
+      [:> layout-toggle* {:layout layout
+                          :on-change on-change}]
+
+      (when ^boolean can-edit
+        [:> button* {:variant "secondary"
+                     :class (stl/css :new-file)
+                     :on-click on-create-click
+                     :on-key-down (fn [event]
+                                    (when (kbd/enter? event)
+                                      (on-create-click event)))
+                     :tab-index "0"
+                     :data-testid "new-file"}
+         (tr "dashboard.new-file")])
+
+      (when-not (:is-default project)
+        [:> icon-button* {:icon i/pin
+                          :variant "ghost"
+                          :aria-label (tr "dashboard.pin-unpin")
+                          :aria-pressed (:is-pinned project)
+                          :tab-index 0
+                          :on-click toggle-pin
+                          :on-key-down (fn [event]
+                                         (when (kbd/enter? event)
+                                           (toggle-pin event)))}])
+
+      (when ^boolean can-edit
+        [:*
+         [:> project-menu*
+          {:project project
+           :is-open (deref menu-open*)
+           :on-open-change #(reset! menu-open* %)
+           :on-edit on-edit
+           :on-import-click on-import-click
+           :placement "bottom end"
+           :trigger
+           (mf/html
+            [:> icon-button* {:icon i/menu
+                              :variant "ghost"
+                              :aria-label (tr "dashboard.options")
+                              :aria-pressed (deref menu-open*)
+                              :on-click on-menu-click
+                              :on-key-down (fn [event]
+                                             (when (kbd/enter? event)
+                                               (on-menu-click event)))}])}]
+
+         ;; Kept mounted for as long as this header is, regardless of the
+         ;; menu's own open state: the popover really unmounts its content on
+         ;; close (unlike the old context-menu-a11y, which just hid it), and
+         ;; selecting "Import" closes the menu in the same tick — a ref owned
+         ;; inside the popover could already be gone by the time its own
+         ;; click handler fires.
+         [:> udi/import-form* {:ref file-input
+                               :project-id project-id
+                               :on-finish-import on-finish-import}]])]]))
+
+(mf/defc files-section*
+  [{:keys [project team layout on-layout-change]}]
+  (let [files            (mf/deref refs/files)
+        project-id       (get project :id)
+
+        files            (mf/with-memo [project-id files]
+                           (->> (vals files)
+                                (filter #(= project-id (:project-id %)))
+                                (sort-by :modified-at)
+                                (reverse)))
+
+        can-edit?          (-> team :permissions :can-edit)
+        project-id         (:id project)
+        is-draft-proyect   (:is-default project)
+
+        [rowref limit]     (hooks/use-dynamic-grid-item-width)
+
+        file-count         (or (count files) 0)
+
+        loading?           (and (some? (:count project))
+                                (not= (:count project) file-count))
+
+        empty-state-viewer (and (not can-edit?)
+                                (= 0 file-count)
+                                (not loading?))
+
+        selected-files     (mf/deref refs/selected-files)
+
+        on-file-created
+        (mf/use-fn
+         (fn [file-data]
+           (let [file-id (:id file-data)
+                 page-id (get-in file-data [:pages 0])]
+             (st/emit! (dcm/go-to-workspace :file-id file-id :page-id page-id)))))
+
+        create-file
+        (mf/use-fn
+         (mf/deps project)
+         (fn [origin]
+           (let [mdata  {:on-success on-file-created}
+                 params {:project-id (:id project)}]
+             (st/emit! (-> (dd/create-file (with-meta params mdata))
+                           (with-meta {::ev/origin origin :has-files (> file-count 0)}))))))]
+
+    (mf/with-effect [project]
+      (when project
+        (let [pname (if (:is-default project)
+                      (tr "labels.drafts")
+                      (:name project))]
+          (dom/set-html-title (tr "title.dashboard.files" pname)))))
+
+    (mf/with-effect [project-id]
+      (st/emit! (dpj/fetch-files project-id)
+                (dd/clear-selected-files)))
+
+    (hooks/use-shortcuts ::dashboard sc/shortcuts-drafts-libraries :dashboard)
+
+    [:*
+     [:> header* {:team team
+                  :can-edit can-edit?
+                  :project project
+                  :create-fn create-file
+                  :layout layout
+                  :on-change on-layout-change}]
+     [:section {:class (stl/css :dashboard-container :no-bg)
+                :ref rowref}
+      (if empty-state-viewer
+        [:> empty-placeholder* {:title (if is-draft-proyect
+                                         (tr "dashboard.empty-placeholder-drafts-title")
+                                         (tr "dashboard.empty-placeholder-files-title"))
+                                :class (stl/css :placeholder-placement)
+                                :type 1
+                                :subtitle (if is-draft-proyect
+                                            (tr "dashboard.empty-placeholder-drafts-subtitle")
+                                            (tr "dashboard.empty-placeholder-files-subtitle"))}]
+        [:> grid* {:project project
+                   :files (if loading? nil files)
+                   :selected-files selected-files
+                   :can-edit can-edit?
+                   :origin :files
+                   :create-fn create-file
+                   :limit limit
+                   :layout layout}])]]))

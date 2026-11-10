@@ -1,0 +1,133 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns app.common.test-helpers.tokens
+  (:require
+   [app.common.data :as d]
+   [app.common.files.tokens :as cfo]
+   [app.common.test-helpers.files :as thf]
+   [app.common.test-helpers.shapes :as ths]
+   [app.common.types.container :as ctn]
+   [app.common.types.file :as ctf]
+   [app.common.types.pages-list :as ctpl]
+   [app.common.types.shape-tree :as ctst]
+   [app.common.types.text :as ctt]
+   [app.common.types.token :as cto]
+   [app.common.types.tokens-lib :as ctob]))
+
+(defn get-tokens-source
+  [file]
+  (-> file (ctf/file-data) (cfo/get-tokens-source)))
+
+(defn get-tokens-lib
+  [file]
+  (-> file (ctf/file-data) (cfo/get-tokens-lib)))
+
+(defn get-tokens-status
+  [file]
+  (-> file (ctf/file-data) (cfo/get-tokens-status)))
+
+(defn get-own-tokens-status
+  [file]
+  (-> file (ctf/file-data) (cfo/get-own-tokens-status)))
+
+(defn add-tokens-lib
+  "Ensure the file has a tokens-lib and a tokens-status in its data, creating empty ones if not"
+  [file]
+  (ctf/update-file-data file cfo/ensure-tokens-lib))
+
+(defn update-tokens-lib
+  "Modify the tokens-lib of a file "
+  [file f]
+  (ctf/update-file-data file #(cfo/update-tokens-lib % f)))
+
+(defn update-tokens-status
+  [file f]
+  (ctf/update-file-data file #(cfo/update-tokens-status % f)))
+
+(defn sample-file-with-tokens
+  [& {:keys [lib-fn status-fn file-id] :as params
+      :or {lib-fn identity status-fn identity file-id :file1}}]
+  (-> (thf/sample-file file-id (dissoc params :lib-fn :status-fn))
+      (add-tokens-lib)
+      (update-tokens-lib lib-fn)
+      (update-tokens-status status-fn)))
+
+(defn get-token
+  [file set-id token-id]
+  (let [tokens-lib (:tokens-lib (:data file))]
+    (when tokens-lib
+      (ctob/get-token tokens-lib set-id token-id))))
+
+(defn token-data-eq?
+  "Compare token data without comparing unstable fields."
+  [t1 t2]
+  (= (dissoc t1 :id :modified-at) (dissoc t2 :id :modified-at)))
+
+(defn- set-stroke-width
+  [shape stroke-width]
+  (let [strokes (if (seq (:strokes shape))
+                  (:strokes shape)
+                  [{:stroke-style :solid
+                    :stroke-alignment :inner
+                    :stroke-width 1
+                    :stroke-color "#000000"
+                    :stroke-opacity 1}])
+        new-strokes (update strokes 0 assoc :stroke-width stroke-width)]
+    (ctn/set-shape-attr shape :strokes new-strokes {:ignore-touched true})))
+
+(defn- set-stroke-color
+  [shape stroke-color]
+  (let [strokes (if (seq (:strokes shape))
+                  (:strokes shape)
+                  [{:stroke-style :solid
+                    :stroke-alignment :inner
+                    :stroke-width 1
+                    :stroke-color "#000000"
+                    :stroke-opacity 1}])
+        new-strokes (update strokes 0 assoc :stroke-color stroke-color)]
+    (ctn/set-shape-attr shape :strokes new-strokes {:ignore-touched true})))
+
+(defn- set-fill-color
+  [shape fill-color]
+  (let [fills (if (seq (:fills shape))
+                (:fills shape)
+                [{:fill-color "#000000"
+                  :fill-opacity 1}])
+        new-fills (update fills 0 assoc :fill-color fill-color)]
+    (ctn/set-shape-attr shape :fills new-fills {:ignore-touched true})))
+
+(defn apply-token-to-shape
+  [file shape-label token-name token-attrs shape-attrs resolved-value]
+  (let [page   (thf/current-page file)
+        shape  (ths/get-shape file shape-label)
+        shape' (when shape
+                 (as-> shape $
+                   (cto/apply-token-to-shape {:shape $
+                                              :token {:name token-name}
+                                              :attributes token-attrs})
+                   (reduce (fn [shape attr]
+                             (if (ctt/text-node-attr? attr)
+                               (let [value (if (sequential? resolved-value) (first resolved-value) resolved-value)]
+                                 (ctt/update-text-content shape
+                                                          ctt/is-content-node?
+                                                          d/txt-merge {attr value}))
+                               (case attr
+                                 :stroke-width (set-stroke-width shape resolved-value)
+                                 :stroke-color (set-stroke-color shape resolved-value)
+                                 :fill (set-fill-color shape resolved-value)
+                                 (ctn/set-shape-attr shape attr resolved-value {:ignore-touched true}))))
+                           $
+                           shape-attrs)))]
+
+    (if shape'
+      (ctf/update-file-data
+       file
+       (fn [file-data]
+         (ctpl/update-page file-data
+                           (:id page)
+                           #(ctst/set-shape % shape'))))
+      file)))

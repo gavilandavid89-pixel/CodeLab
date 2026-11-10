@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -ex
+pnpm install;
+
+# Build render wasm binary
+pushd ../render-wasm;
+./build
+popd
+
+pnpm run lint:scss;
+pnpm run test;
+
+# Mousetrap JS unit tests (node:test, zero deps)
+pushd packages/mousetrap;
+pnpm test;
+popd

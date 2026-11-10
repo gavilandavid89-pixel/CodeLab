@@ -1,0 +1,135 @@
+use skia_safe as skia;
+
+use crate::error::{Error, Result};
+use crate::state::ShapesPoolRef;
+use crate::uuid::Uuid;
+use macros::ToJs;
+
+use super::vector;
+use super::RenderResources;
+
+/// Half the default 2 GiB emscripten heap (a 16384² RGBA surface), leaving
+/// room for the encoded copies and the scene. Estimated, not measured.
+const MAX_RASTER_BYTES: i64 = 1 << 30;
+/// PNG stores each side in 31 bits; the memory budget limits it first.
+const MAX_PNG_SIDE: i32 = i32::MAX;
+/// libjpeg-turbo's `JPEG_MAX_DIMENSION`, below the 16-bit JPEG header limit.
+const MAX_JPEG_SIDE: i32 = 65500;
+/// libwebp's `WEBP_MAX_DIMENSION`: WebP stores each side in 14 bits.
+const MAX_WEBP_SIDE: i32 = 16383;
+
+/// Encoded output format for [`render_to_raster`] and `render_shape_pixels`.
+/// `ToJs` publishes the discriminants to `api/shared.js`, so the CLJS side
+/// reads them from here instead of hardcoding the codes.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ToJs)]
+pub enum RasterFormat {
+    Png = 0,
+    Jpeg = 1,
+    Webp = 2,
+}
+
+impl RasterFormat {
+    /// Maps the wire code sent by the CLJS hosts.
+    pub fn from_u32(value: u32) -> Result<Self> {
+        match value {
+            0 => Ok(Self::Png),
+            1 => Ok(Self::Jpeg),
+            2 => Ok(Self::Webp),
+            _ => Err(Error::CriticalError(format!(
+                "Unknown raster format: {value}"
+            ))),
+        }
+    }
+
+    pub fn encoded(self) -> skia::EncodedImageFormat {
+        match self {
+            Self::Png => skia::EncodedImageFormat::PNG,
+            Self::Jpeg => skia::EncodedImageFormat::JPEG,
+            Self::Webp => skia::EncodedImageFormat::WEBP,
+        }
+    }
+
+    /// Encoder quality. Mirrors the Playwright backend (`bitmap.cljs`): jpeg
+    /// screenshots default to 95, webp is converted with `-quality 100`.
+    /// Ignored by the PNG encoder.
+    pub fn quality(self) -> u32 {
+        match self {
+            Self::Jpeg => 95,
+            _ => 100,
+        }
+    }
+
+    /// Opaque backdrop this format requires, or `None` when it keeps alpha.
+    /// JPEG has no alpha channel, so transparent regions must be flattened onto
+    /// white — Playwright ignores `omitBackground` for jpeg and does the same.
+    /// PNG/WEBP keep transparency.
+    pub fn opaque_background(self) -> Option<skia::Color> {
+        match self {
+            Self::Jpeg => Some(skia::Color::WHITE),
+            _ => None,
+        }
+    }
+
+    /// Colour to clear a fresh export surface with.
+    pub fn clear_color(self) -> skia::Color {
+        self.opaque_background().unwrap_or(skia::Color::TRANSPARENT)
+    }
+
+    pub fn fits_raster(self, width: i32, height: i32) -> bool {
+        let max_side = match self {
+            Self::Png => MAX_PNG_SIDE,
+            Self::Jpeg => MAX_JPEG_SIDE,
+            Self::Webp => MAX_WEBP_SIDE,
+        };
+        width <= max_side
+            && height <= max_side
+            && width as i64 * height as i64 * 4 <= MAX_RASTER_BYTES
+    }
+}
+
+/// Renders a shape tree to encoded image bytes on a CPU raster surface (no
+/// GPU/WebGL). Returns `(encoded_bytes, width_px, height_px)`.
+pub fn render_to_raster(
+    shared: &mut RenderResources,
+    id: &Uuid,
+    tree: ShapesPoolRef,
+    scale: f32,
+    format: RasterFormat,
+) -> Result<(Vec<u8>, i32, i32)> {
+    let Some(shape) = tree.get(id) else {
+        return Ok((Vec::new(), 0, 0));
+    };
+    // Boards crop overflowing children (classic board box) but keep their own
+    // strokes/shadows/blur. Other shapes use full extrect.
+    let bounds = shape.export_root_bounds(tree, scale);
+
+    let width = (bounds.width() * scale).ceil() as i32;
+    let height = (bounds.height() * scale).ceil() as i32;
+    if width <= 0 || height <= 0 {
+        return Ok((Vec::new(), 0, 0));
+    }
+
+    let mut surface = skia::surfaces::raster_n32_premul((width, height)).ok_or_else(|| {
+        Error::CriticalError("Failed to create raster export surface".to_string())
+    })?;
+
+    {
+        let canvas = surface.canvas();
+        canvas.clear(format.clear_color());
+        canvas.scale((scale, scale));
+        canvas.translate((-bounds.left(), -bounds.top()));
+        vector::render_tree(shared, canvas, id, tree, scale, bounds)?;
+    }
+
+    let data = surface
+        .image_snapshot()
+        .encode(
+            None::<&mut skia::gpu::DirectContext>,
+            format.encoded(),
+            format.quality(),
+        )
+        .ok_or_else(|| Error::CriticalError(format!("{format:?} encode failed")))?;
+
+    Ok((data.as_bytes().to_vec(), width, height))
+}

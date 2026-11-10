@@ -1,0 +1,548 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns common-tests.files.repair-test
+  "Tests for the validate / repair functions in app.common.files.validate
+   and app.common.files.repair. 
+
+   The tests generate cases of broken files and check that the validation functions
+   generate accurate errors, and that the repair functions return the file to
+   a stable state."
+  (:require
+   [app.common.files.repair :as cfr]
+   [app.common.files.validate :as cfv]
+   [app.common.test-helpers.components :as thc]
+   [app.common.test-helpers.compositions :as tho]
+   [app.common.test-helpers.files :as thf]
+   [app.common.test-helpers.ids-map :as thi]
+   [app.common.test-helpers.shapes :as ths]
+   [app.common.test-helpers.variants :as thv]
+   [app.common.uuid :as uuid]
+   [clojure.test :as t]))
+
+(t/use-fixtures :each thi/test-fixture)
+
+(t/deftest repair-invalid-main-instance-name
+  (t/testing "detect and repair a main instance whose name doesn't match the component's name"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (tho/add-simple-component-with-copy :component1 :root1 :child1 :copy1)
+                      (tho/add-simple-component-with-copy :component2 :root2 :child2 :copy2)
+
+                      ;; Update component paths and names
+                      (thc/update-component :component1 {:path "Group / Subgroup" :name "Component1"})
+                      (thc/update-component :component2 {:path "Group / Subgroup" :name "Component2"})
+
+                      ;; Update component1 shapes name to have path structure
+                      (ths/update-shape :root1 :name "Group / Subgroup / Component1")
+                      (ths/update-shape :copy1 :name "Group / Subgroup / Component1")
+
+                      ;; Update component2's name to have unnormalized path
+                      ;; Note that the copy name is allowed to be different
+                      (ths/update-shape :root2 :name "Group/Subgroup  /  Component2")
+                      (ths/update-shape :copy2 :name "Group/Subgroup  /  Component2"))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+          root1'  (ths/get-shape file' :root1)
+          child1' (ths/get-shape file' :child1)
+          copy1'  (ths/get-shape file' :copy1)
+          root2'  (ths/get-shape file' :root2)
+          child2' (ths/get-shape file' :child2)
+          copy2'  (ths/get-shape file' :copy2)]
+
+      (t/is (= 1 (count errors)))
+      (t/is (= :invalid-main-instance-name (:code (first errors))))
+      (t/is (nil? errors'))
+
+      (t/is (= "Group / Subgroup / Component1" (:name root1')))
+      (t/is (= "Rect1" (:name child1')))
+      (t/is (= "Group / Subgroup / Component1" (:name copy1')))
+
+      (t/is (= "Group / Subgroup / Component2" (:name root2')))
+      (t/is (= "Rect1" (:name child2')))
+      (t/is (= "Group/Subgroup  /  Component2" (:name copy2'))))))
+
+(t/deftest repair-main-instance-not-a-variant
+  (t/testing "detect and repair a variant component whose root shape is not a variant"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      (ths/update-shape :root1 :variant-id nil))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+
+          root1'  (ths/get-shape file' :root1 :page-label :page1)]
+
+      (t/is (= 2 (count errors)))  ;; There are two different checks that detect the same problem
+      (t/is (= :main-instance-not-a-variant (:code (first errors))))
+
+      (t/is (nil? errors'))
+      (t/is (= (thi/id :variant1) (:variant-id root1'))))))
+
+(t/deftest repair-invalid-variant-id-variant-component-bad-id
+  (t/testing "detect and repair a variant main whose variant id does not match the container's id"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      (ths/update-shape :root1 :variant-id (uuid/next)))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+
+          root1'  (ths/get-shape file' :root1 :page-label :page1)]
+
+      (t/is (= 2 (count errors)))  ;; There are two different validation that actually check the same problem
+      (t/is (= :main-instance-invalid-variant-id (:code (first errors))))
+      (t/is (= :variant-component-bad-id (:code (second errors))))
+
+      (t/is (nil? errors'))
+      (t/is (= (thi/id :variant1) (:variant-id root1')))))
+
+  (t/testing "detect and repair a variant component whose variant id does not match the container's id"
+    (let [file         (-> (thf/sample-file :file1 :page-label :page1)
+                           (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                           (thc/update-component :component1 {:variant-id (uuid/next)}))
+
+          errors       (cfv/validate-file file {})
+          changes      (cfr/repair-file file {} errors)
+          file'        (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors'      (cfv/validate-file file' {})
+
+          component1'  (thc/get-component file' :component1)]
+
+      (t/is (= 1 (count errors)))
+      (t/is (= :variant-component-bad-id (:code (first errors))))
+
+      (t/is (nil? errors'))
+      (t/is (= (thi/id :variant1) (:variant-id component1'))))))
+
+(t/deftest repair-invalid-variant-properties
+  (t/testing "detect and repair a second variant component whose properties do not match the first variant component's properties"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      ;; Component1 has ["Property 1", "Property 2"], component2 gets ["Property 1", "Property 3"]
+                      ;; This breaks validation: prop-names mismatch (missing "Property 2", extra "Property 3")
+                      (thc/update-component :component1 {:variant-properties [{:name "Property 1" :value "Value1"}
+                                                                              {:name "Property 2" :value "ValueA"}]})
+                      (thc/update-component :component2 {:variant-properties [{:name "Property 1" :value "Value2"}
+                                                                              {:name "Property 3" :value "ValueB"}]})
+                      (ths/update-shape :root1 :variant-name "Value1, ValueA")
+                      (ths/update-shape :root2 :variant-name "Value2, ValueB"))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+
+          comp1'  (thc/get-component file' :component1)
+          comp2'  (thc/get-component file' :component2)
+          root1'  (ths/get-shape file' :root1)
+          root2'  (ths/get-shape file' :root2)]
+
+      (t/is (= 1 (count errors)))
+      (t/is (= :invalid-variant-properties (:code (first errors))))
+
+      (t/is (nil? errors'))
+
+      ;; After repair, component1's properties are rebuilt to match component2's property names
+      ;; (the first child in the variant container is root2, so prop-names come from component2)
+      ;; "Property 1" keeps its value, "Property 3" is added with empty value, "Property 2" is removed
+      (t/is (= [{:name "Property 1" :value "Value1"}
+                {:name "Property 3" :value ""}]
+               (:variant-properties comp1')))
+
+      (t/is (= "Value1" (:variant-name root1')))
+
+      ;; Component2 is unchanged (it was the reference for the property names)
+      (t/is (= [{:name "Property 1" :value "Value2"}
+                {:name "Property 3" :value "ValueB"}]
+               (:variant-properties comp2')))
+
+      (t/is (= "Value2, ValueB" (:variant-name root2'))))))
+
+(t/deftest repair-variant-not-main
+  (t/testing "detect and repair a non-main-instance shape inside a variant container"
+    (let [file       (-> (thf/sample-file :file1 :page-label :page1)
+                         (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                         ;; Add a third child to the variant container with :variant-id but NOT a main-instance
+                         (ths/add-sample-shape :bad-shape
+                                               :type :frame
+                                               :parent-label :variant1
+                                               :variant-id (thi/id :variant1)
+                                               :variant-name "")
+                         ;; Add a child to the bad shape (to verify the repair deletes it too)
+                         (ths/add-sample-shape :bad-child
+                                               :type :rect
+                                               :parent-label :bad-shape))
+
+          errors     (cfv/validate-file file {})
+          changes    (cfr/repair-file file {} errors)
+          file'      (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors'    (cfv/validate-file file' {})
+
+          bad-shape' (ths/get-shape file' :bad-shape)
+          bad-child' (ths/get-shape file' :bad-child)]
+
+      (t/is (= 4 (count errors)))  ;; The bad container also triggers other errors
+      (t/is (= :invalid-variant-properties (:code (nth errors 0))))
+      (t/is (= :variant-not-main (:code (nth errors 1))))
+      (t/is (= :variant-component-bad-name (:code (nth errors 2))))
+      (t/is (= :variant-component-bad-id (:code (nth errors 3))))
+      (t/is (nil? errors'))
+
+      (t/is (nil? bad-shape'))
+      (t/is (nil? bad-child')))))
+
+(t/deftest repair-parent-not-variant
+  (t/testing "detect and repair a variant shape whose parent is not a variant-container"
+    (let [file       (-> (thf/sample-file :file1 :page-label :page1)
+                         (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                         ;; Break the variant container
+                         (ths/update-shape :variant1 :is-variant-container false))
+
+          errors     (cfv/validate-file file {})
+          changes    (cfr/repair-file file {} errors)
+          file'      (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors'    (cfv/validate-file file' {})
+
+          container' (ths/get-shape file' :variant1)]
+
+      (t/is (= 2 (count errors)))  ;; The error is detected twice, once for each child of the variant container
+      (t/is (= :parent-not-variant (:code (first errors))))
+      (t/is (= :parent-not-variant (:code (second errors))))
+      (t/is (nil? errors'))
+
+      (t/is (true? (:is-variant-container container'))))))
+
+(t/deftest repair-variant-container-bad-name
+  (t/testing "detect and repair a variant container who has an unnormalized name"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      ;; Variant container has a name that is not normalized and thus it cannot
+                      ;; match the component names, that are separated in path and group.
+                      (ths/update-shape :variant1 :name "Group  /  Subgroup/Component")
+                      (ths/update-shape :root1 :name "Group  /  Subgroup/Component")
+                      (ths/update-shape :root2 :name "Group  /  Subgroup/Component")
+                      (thc/update-component :component1 {:path "Group / Subgroup" :name "Component"})
+                      (thc/update-component :component2 {:path "Group/Subgroup" :name "Component"}))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+          var1'   (ths/get-shape file' :variant1)
+          root1'  (ths/get-shape file' :root1)
+          comp1'  (thc/get-component file' :component1)
+          root2'  (ths/get-shape file' :root2)
+          comp2'  (thc/get-component file' :component2)]
+
+      (t/is (= 1 (count errors)))
+      (t/is (= :variant-container-bad-name (:code (first errors))))
+      (t/is (nil? errors'))
+      (t/is (= "Group / Subgroup / Component" (:name var1')))
+      (t/is (= "Group / Subgroup / Component" (:name root1')))
+      (t/is (= "Group / Subgroup" (:path comp1')))
+      (t/is (= "Component" (:name comp1')))
+      (t/is (= "Group / Subgroup / Component" (:name root2')))
+      (t/is (= "Group / Subgroup" (:path comp2')))
+      (t/is (= "Component" (:name comp2'))))))
+
+(t/deftest repair-variant-main-bad-name
+  (t/testing "detect and repair a main instance whose name doesn't match the variant container's name"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      ;; Change component's name so it doesn't match the container
+                      (thc/update-component :component1 :name "WrongName")
+                      (ths/update-shape :root1 :name "WrongName"))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+          root1'  (ths/get-shape file' :root1)
+          comp1'  (thc/get-component file' :component1)]
+
+      (t/is (= 2 (count errors)))
+      (t/is (= :variant-main-bad-name (:code (first errors))))
+      (t/is (= :variant-component-bad-name (:code (second errors))))
+      (t/is (nil? errors'))
+      (t/is (= "Board" (:name root1')))
+      (t/is (= "Board" (:name comp1'))))))
+
+(t/deftest repair-variant-main-bad-variant-name
+  (t/testing "detect and repair a variant shape whose :variant-name doesn't match the component's properties"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      (thc/update-component :component1 {:variant-properties [{:name "Property 1" :value "Value1"}
+                                                                              {:name "Property 2" :value "ValueA"}]})
+                      (thc/update-component :component2 {:variant-properties [{:name "Property 1" :value "Value2"}
+                                                                              {:name "Property 2" :value "ValueB"}]})
+                      ;; Change root1's :variant-name to something wrong
+                      (ths/update-shape :root1 :variant-name "WrongVariantName")
+                      (ths/update-shape :root2 :variant-name "Value2, ValueB"))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+
+          root1'  (ths/get-shape file' :root1)]
+
+      (t/is (= 1 (count errors)))
+      (t/is (= :variant-main-bad-variant-name (:code (first errors))))
+      (t/is (nil? errors'))
+      (t/is (= "Value1, ValueA" (:variant-name root1'))))))
+
+(t/deftest repair-variant-component-bad-name
+  (t/testing "detect and repair a variant component whose path/name doesn't match the container name"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (thv/add-variant :variant1 :component1 :root1 :component2 :root2)
+                      ;; Update names to have path structure
+                      (ths/update-shape :variant1 :name "Group / Subgroup / Component")
+                      (ths/update-shape :root1 :name "Group / Subgroup / Component")
+                      (ths/update-shape :root2 :name "Group / Subgroup / Component")
+                      (thc/update-component :component1 {:path "Group / Subgroup" :name "Component"})
+                      ;; Break component2's name
+                      (thc/update-component :component2 {:name "WrongName"}))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+          root1'  (ths/get-shape file' :root1)
+          comp1'  (thc/get-component file' :component1)
+          root2'  (ths/get-shape file' :root2)
+          comp2'  (thc/get-component file' :component2)]
+
+      (t/is (= 1 (count errors)))
+      (t/is (= :variant-component-bad-name (:code (first errors))))
+      (t/is (nil? errors'))
+      (t/is (= "Group / Subgroup / Component" (:name root1')))
+      (t/is (= "Group / Subgroup" (:path comp1')))
+      (t/is (= "Component" (:name comp1')))
+      (t/is (= "Group / Subgroup / Component" (:name root2')))
+      (t/is (= "Group / Subgroup" (:path comp2')))
+      (t/is (= "Component" (:name comp2'))))))
+
+(t/deftest repair-child-not-in-parent
+  (t/testing "detect and repair shapes whose parent exists but does not list them"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (ths/add-sample-shape :frame1 :type :frame)
+                      (ths/add-sample-shape :shape1 :parent-label :frame1)
+                      (ths/add-sample-shape :shape2 :parent-label :frame1)
+                      (ths/update-shape :frame1 :shapes []))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+
+          frame1' (ths/get-shape file' :frame1 :page-label :page1)]
+
+      (t/is (= #{:child-not-in-parent} (into #{} (map :code) errors)))
+      (t/is (= #{(thi/id :shape1) (thi/id :shape2)} (into #{} (map :shape-id) errors)))
+
+      (t/is (nil? errors'))
+      (t/is (= #{(thi/id :shape1) (thi/id :shape2)} (set (:shapes frame1')))))))
+
+(t/deftest repair-parent-not-found
+  (t/testing "detect and repair shapes whose parent does not exist"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (ths/add-sample-shape :shape1)
+                      (ths/add-sample-shape :shape2)
+                      (ths/update-shape :shape1 :parent-id (uuid/next))
+                      (ths/update-shape :shape2 :parent-id (uuid/next))
+                      (ths/update-shape-by-id uuid/zero :shapes []))
+
+          errors  (cfv/validate-file file {})
+          changes (cfr/repair-file file {} errors)
+          file'   (thf/apply-changes file {:redo-changes changes} :validate? false)
+          errors' (cfv/validate-file file' {})
+
+          shape1' (ths/get-shape file' :shape1 :page-label :page1)
+          shape2' (ths/get-shape file' :shape2 :page-label :page1)
+          root'   (ths/get-shape-by-id file' uuid/zero :page-label :page1)]
+
+      (t/is (= #{:parent-not-found} (into #{} (map :code) errors)))
+      (t/is (= #{(thi/id :shape1) (thi/id :shape2)} (into #{} (map :shape-id) errors)))
+
+      (t/is (nil? errors'))
+      (t/is (= uuid/zero (:parent-id shape1')))
+      (t/is (= uuid/zero (:parent-id shape2')))
+      (t/is (= #{(thi/id :shape1) (thi/id :shape2)} (set (:shapes root')))))))
+
+(defn- broken-frame-file
+  []
+  (-> (thf/sample-file :file1 :page-label :page1)
+      (assoc :revn 3)
+      (ths/add-sample-shape :shape1)
+      (ths/update-shape :shape1 :frame-id (uuid/next))))
+
+(t/deftest repair-file-until-valid-fixes-frame-not-found
+  (t/testing "repairs a :frame-not-found shape and leaves :revn untouched"
+    (let [file    (broken-frame-file)
+          errors  (cfv/validate-file file {})
+          result  (cfr/repair-file-until-valid
+                   file {}
+                   (fn [file _] (cfv/validate-file file {})))
+          file'   (:file result)
+          errors' (cfv/validate-file file' {})
+          shape'  (ths/get-shape file' :shape1 :page-label :page1)]
+
+      (t/is (= #{:frame-not-found} (into #{} (map :code) errors)))
+      (t/is (pos? (count (:changes result))))
+      (t/is (nil? (:errors result)))
+      (t/is (nil? errors'))
+      (t/is (= 3 (:revn file')))
+      (t/is (some? (get-in file' [:data :pages-index (thi/id :page1) :objects (:frame-id shape')]))))))
+
+(t/deftest repair-file-until-valid-healthy-file
+  (t/testing "a valid file is returned unchanged"
+    (let [file   (-> (thf/sample-file :file1 :page-label :page1)
+                     (assoc :revn 2)
+                     (ths/add-sample-shape :shape1))
+          result (cfr/repair-file-until-valid
+                  file {}
+                  (fn [file _] (cfv/validate-file file {})))]
+      (t/is (identical? file (:file result)))
+      (t/is (= [] (:changes result)))
+      (t/is (zero? (:iterations result)))
+      (t/is (nil? (:errors result)))
+      (t/is (= 2 (:revn (:file result)))))))
+
+(t/deftest repair-file-until-valid-passes-applied-changes
+  (t/testing "errors-fn receives the changes applied so far"
+    (let [calls  (atom [])
+          file   (broken-frame-file)
+          result (cfr/repair-file-until-valid
+                  file {}
+                  (fn [file applied]
+                    (swap! calls conj applied)
+                    (cfv/validate-file file {})))]
+      (t/is (nil? (:errors result)))
+      (t/is (>= (count @calls) 2))
+      (t/is (= [] (first @calls)))
+      (t/is (pos? (count (last @calls)))))))
+
+(t/deftest repair-file-until-valid-stops-on-noop-repair
+  (t/testing "an empty repair batch stops after one iteration"
+    (let [file   (broken-frame-file)
+          errors (cfv/validate-file file {})]
+      (with-redefs [cfr/repair-file (fn [_ _ _] [])]
+        (let [result (cfr/repair-file-until-valid
+                      file {}
+                      (fn [file _] (cfv/validate-file file {})))]
+          (t/is (= 1 (:iterations result)))
+          (t/is (= [] (:changes result)))
+          (t/is (= (mapv :code errors) (mapv :code (:errors result)))))))))
+
+(t/deftest repair-file-until-valid-repairs-several-errors-on-one-shape
+  (t/testing "three missing children of one frame are all removed although
+              every pass reports the same [code shape-id]"
+    (let [file    (-> (thf/sample-file :file1 :page-label :page1)
+                      (ths/add-sample-shape :frame1 :type :frame)
+                      (ths/update-shape :frame1 :shapes [(uuid/next) (uuid/next) (uuid/next)]))
+          errors  (cfv/validate-file file {})
+          result  (cfr/repair-file-until-valid
+                   file {}
+                   (fn [file _] (cfv/validate-file file {})))
+          frame1' (ths/get-shape (:file result) :frame1 :page-label :page1)]
+      (t/is (= [:child-not-found :child-not-found :child-not-found] (mapv :code errors)))
+      (t/is (= #{(thi/id :frame1)} (into #{} (map :shape-id) errors)))
+      (t/is (nil? (:errors result)))
+      (t/is (nil? (cfv/validate-file (:file result) {})))
+      (t/is (= [] (:shapes frame1'))))))
+
+(t/deftest repair-file-until-valid-stops-when-repair-changes-nothing
+  (t/testing "a non-empty repair that leaves data equal stops after one iteration"
+    (let [file     (broken-frame-file)
+          shape-id (thi/id :shape1)
+          page-id  (thi/id :page1)
+          cur-name (:name (ths/get-shape file :shape1 :page-label :page1))]
+      (with-redefs [cfr/repair-file
+                    (fn [_ _ _]
+                      [{:type :mod-obj
+                        :id shape-id
+                        :page-id page-id
+                        :operations [{:type :set :attr :name :val cur-name}]}])]
+        (let [result (cfr/repair-file-until-valid
+                      file {}
+                      (fn [_ _] [{:code :frame-not-found :shape-id shape-id}])
+                      :max-iterations 10)]
+          (t/is (= 1 (:iterations result)))
+          (t/is (= [] (:changes result)))
+          (t/is (= [:frame-not-found] (mapv :code (:errors result)))))))))
+
+(t/deftest repair-file-until-valid-stops-when-error-fingerprint-stable
+  (t/testing "a mutating repair with an unchanged error report stops after two iterations"
+    (let [file     (broken-frame-file)
+          shape-id (thi/id :shape1)
+          page-id  (thi/id :page1)
+          pass     (atom 0)
+          sticky   {:code :frame-not-found
+                    :shape-id shape-id
+                    :hint "stuck"
+                    :args {:x 1}}]
+      (with-redefs [cfr/repair-file
+                    (fn [_ _ _]
+                      [{:type :mod-obj
+                        :id shape-id
+                        :page-id page-id
+                        :operations [{:type :set
+                                      :attr :name
+                                      :val (str "pass-" (swap! pass inc))}]}])]
+        (let [result (cfr/repair-file-until-valid
+                      file {}
+                      (fn [_ _] [sticky])
+                      :max-iterations 10)]
+          (t/is (= 2 (:iterations result)))
+          (t/is (= 1 (count (:changes result))))
+          (t/is (= [:frame-not-found] (mapv :code (:errors result)))))))))
+
+(t/deftest repair-file-until-valid-stops-at-max-iterations
+  (t/testing "a repair that never empties errors stops at max-iterations"
+    (let [file   (broken-frame-file)
+          pass   (atom 0)
+          shape-id (thi/id :shape1)
+          page-id  (thi/id :page1)]
+      (with-redefs [cfr/repair-file
+                    (fn [_ _ _]
+                      [{:type :mod-obj
+                        :id shape-id
+                        :page-id page-id
+                        :operations [{:type :set
+                                      :attr :name
+                                      :val (str "pass-" (swap! pass inc))}]}])]
+        (let [result (cfr/repair-file-until-valid
+                      file {}
+                      (fn [_ _]
+                        [{:code :frame-not-found
+                          :shape-id (uuid/next)}])
+                      :max-iterations 3)]
+          (t/is (= 3 (:iterations result)))
+          (t/is (= 3 (count (:changes result))))
+          (t/is (some? (:errors result))))))))
+
+(t/deftest repair-file-until-valid-uses-initial-errors
+  (t/testing "errors-fn is not called on the first iteration when :initial-errors is given"
+    (let [calls  (atom 0)
+          file   (broken-frame-file)
+          seed   (cfv/validate-file file {})
+          result (cfr/repair-file-until-valid
+                  file {}
+                  (fn [file applied]
+                    (swap! calls inc)
+                    (cfv/validate-file file {}))
+                  :initial-errors seed)]
+      (t/is (nil? (:errors result)))
+      ;; First iteration used the seed; errors-fn runs only after the repair.
+      (t/is (= 1 @calls)))))
+

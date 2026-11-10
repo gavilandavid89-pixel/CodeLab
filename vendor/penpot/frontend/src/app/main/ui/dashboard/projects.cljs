@@ -1,0 +1,411 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns app.main.ui.dashboard.projects
+  (:require-macros [app.main.style :as stl])
+  (:require
+   [app.common.time :as ct]
+   [app.main.data.common :as dcm]
+   [app.main.data.dashboard :as dd]
+   [app.main.data.dashboard.shortcuts :as sc]
+   [app.main.data.event :as ev]
+   [app.main.data.nitrate :as dnt]
+   [app.main.data.project :as dpj]
+   [app.main.data.team :as dtm]
+   [app.main.refs :as refs]
+   [app.main.store :as st]
+   [app.main.ui.dashboard.deleted :as deleted]
+   [app.main.ui.dashboard.grid :refer [line-grid*]]
+   [app.main.ui.dashboard.import :as udi]
+   [app.main.ui.dashboard.inline-edition :refer [inline-edition]]
+   [app.main.ui.dashboard.layout-toggle :as lt :refer [layout-toggle*]]
+   [app.main.ui.dashboard.project-menu :refer [project-menu*
+                                               project-menu-items*]]
+   [app.main.ui.ds.buttons.button :refer [button*]]
+   [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
+   [app.main.ui.ds.foundations.assets.icon :as i :refer [icon*]]
+   [app.main.ui.ds.layout.menu :refer [context-menu*]]
+   [app.main.ui.ds.product.empty-placeholder :refer [empty-placeholder*]]
+   [app.main.ui.hooks :as hooks]
+   [app.util.dom :as dom]
+   [app.util.i18n :as i18n :refer [tr]]
+   [app.util.keyboard :as kbd]
+   [app.util.storage :as storage]
+   [cuerdas.core :as str]
+   [okulary.core :as l]
+   [rumext.v2 :as mf]))
+
+(mf/defc header*
+  {::mf/wrap [mf/memo]
+   ::mf/private true}
+  [{:keys [can-edit layout on-change ^boolean default-team?]}]
+  (let [on-click (mf/use-fn #(st/emit! (dd/create-project)))]
+    [:header {:class (stl/css :dashboard-header)
+              :data-testid "dashboard-header"}
+     [:div#dashboard-projects-title {:class (stl/css :dashboard-title)}
+      [:h1 (if default-team?
+             (tr "dashboard.personal-projects")
+             (tr "dashboard.projects-title"))]]
+     [:div {:class (stl/css :dashboard-header-actions)}
+      [:> layout-toggle* {:layout layout
+                          :on-change on-change}]
+      (when can-edit
+        [:> button* {:variant "secondary"
+                     :on-click on-click
+                     :data-testid "new-project-button"}
+         (tr "dashboard.new-project")])]]))
+
+(mf/defc team-hero*
+  {::mf/wrap [mf/memo]}
+  [{:keys [team on-close]}]
+  (let [on-nav-members-click
+        (mf/use-fn
+         #(st/emit! (dcm/go-to-dashboard-members)))
+
+        on-invite
+        (mf/use-fn
+         (mf/deps team)
+         (fn []
+           (st/emit! (dtm/check-and-invite-members {:team-id (:id team)
+                                                    :origin :hero}))))
+        on-close'
+        (mf/use-fn
+         (mf/deps on-close)
+         (fn [event]
+           (dom/prevent-default event)
+           (on-close event)))]
+
+    [:div {:class (stl/css :team-hero)}
+     [:div {:class (stl/css :img-wrapper)}
+      [:img {:src "images/deco-team-banner.png"
+             :border "0"
+             :role "presentation"}]]
+     [:div {:class (stl/css :text)}
+      [:div {:class (stl/css :title)} (tr "dasboard.team-hero.title")]
+      [:div {:class (stl/css :info)}
+       [:span (tr "dasboard.team-hero.text")]
+       [:a {:on-click on-nav-members-click} (tr "dasboard.team-hero.management")]]
+      [:> button* {:variant "primary"
+                   :on-click on-invite}
+       (tr "onboarding.choice.team-up.invite-members")]]
+     [:> icon-button* {:icon i/close
+                       :class (stl/css :close)
+                       :variant "ghost"
+                       :aria-label (tr "labels.close")
+                       :on-click on-close'}]]))
+
+(mf/defc project-item*
+  {::mf/private true}
+  [{:keys [project is-first team files can-edit layout]}]
+  (let [project-id (get project :id)
+        team-id    (get team :id)
+
+        file-count (or (:count project) 0)
+
+        loading?   (and (pos? (:count project))
+                        (empty? files))
+
+        is-draft?  (:is-default project)
+        empty?     (and (not can-edit)
+                        (= 0 file-count))
+
+        dstate     (mf/deref refs/dashboard-local)
+        edit-id    (:project-for-edit dstate)
+
+        local              (mf/use-state {:edition (= (:id project) edit-id)})
+        menu-open*         (mf/use-state false)
+        context-menu-open* (mf/use-state false)
+
+        [rowref limit]
+        (hooks/use-dynamic-grid-item-width)
+
+        on-nav
+        (mf/use-fn
+         (mf/deps project-id)
+         (fn []
+           (st/emit! (dcm/go-to-dashboard-files :project-id project-id))))
+
+        toggle-pin
+        (mf/use-fn
+         (mf/deps project)
+         (fn [event]
+           (dom/stop-propagation event)
+           (st/emit! (dd/toggle-project-pin project))))
+
+        on-menu-click
+        (mf/use-fn
+         (fn [event]
+           (dom/prevent-default event)
+           (swap! menu-open* not)))
+
+        on-edit-open
+        (mf/use-fn
+         #(swap! local assoc :edition true))
+
+        on-edit
+        (mf/use-fn
+         (mf/deps project)
+         (fn [name]
+           (let [name (str/trim name)]
+             (when-not (str/empty? name)
+               (st/emit! (-> (dd/rename-project (assoc project :name name))
+                             (with-meta {::ev/origin "dashboard"}))))
+             (swap! local assoc :edition false))))
+
+        on-file-created
+        (mf/use-fn
+         (fn [{:keys [id data]}]
+           (let [page-id (get-in data [:pages 0])]
+             (st/emit! (dcm/go-to-workspace :file-id id :page-id page-id)))))
+
+        create-file
+        (mf/use-fn
+         (mf/deps project-id on-file-created)
+         (fn [origin]
+           (let [mdata  {:on-success on-file-created}
+                 params {:project-id project-id}]
+             (st/emit! (-> (dd/create-file (with-meta params mdata))
+                           (with-meta {::ev/origin origin :has-files (> file-count 0)}))))))
+
+        on-create-click
+        (mf/use-fn
+         (mf/deps create-file)
+         (fn [_]
+           (create-file "dashboard:grid-header-plus-button")))
+
+        file-input
+        (mf/use-ref nil)
+
+        on-import-click
+        (mf/use-fn
+         #(dom/click (mf/ref-val file-input)))
+
+        on-finish-import
+        (mf/use-fn
+         (mf/deps project-id team-id)
+         (fn []
+           (st/emit! (dpj/fetch-files project-id)
+                     (dd/fetch-recent-files team-id)
+                     (dd/fetch-projects team-id)
+                     (dd/clear-selected-files))))
+
+        handle-create-click
+        (mf/use-fn
+         (mf/deps on-create-click)
+         (fn [event]
+           (when (kbd/enter? event)
+             (on-create-click event))))
+
+        handle-menu-click
+        (mf/use-fn
+         (mf/deps on-menu-click)
+         (fn [event]
+           (when (kbd/enter? event)
+             (dom/stop-propagation event)
+             (on-menu-click event))))]
+
+    [:article {:class (stl/css-case :dashboard-project-row true :first is-first)}
+     [:header {:class (stl/css :project)}
+      [:div {:class (stl/css :project-name-wrapper)}
+       (if (:edition @local)
+         [:& inline-edition {:content (:name project)
+                             :on-end on-edit
+                             :max-length 250}]
+         [:> context-menu* {:aria-label (tr "dashboard.options")
+                            :is-disabled (not can-edit)
+                            :on-open-change #(reset! context-menu-open* %)
+                            :trigger
+                            (mf/html
+                             [:h2 {:on-click on-nav
+                                   :class (stl/css :project-name)
+                                   :title (if (:is-default project)
+                                            (tr "labels.drafts")
+                                            (:name project))}
+                              (if (:is-default project)
+                                (tr "labels.drafts")
+                                (:name project))])}
+          [:> project-menu-items* {:project project
+                                   :on-edit on-edit-open
+                                   :on-import-click on-import-click}]])
+
+       [:div {:class (stl/css :info-wrapper)}
+
+        ;; We group these two spans under a div to avoid having extra space between them.
+        [:div
+         [:span {:class (stl/css :info)} (str (tr "labels.num-of-files" (i18n/c file-count)))]
+
+         (let [time (-> (:modified-at project)
+                        (ct/timeago))]
+           [:span {:class (stl/css :recent-files-row-title-info)} (str ", " time)])]
+
+        [:div {:class (stl/css-case :project-actions true
+                                    :pinned-project (:is-pinned project)
+                                    :is-force-display (or (deref menu-open*)
+                                                          (deref context-menu-open*)))}
+         (when-not (:is-default project)
+           [:> icon-button* {:icon i/pin
+                             :variant "ghost"
+                             :aria-label (tr "dashboard.pin-unpin")
+                             :aria-pressed (:is-pinned project)
+                             :on-click toggle-pin
+                             :tab-index 0}])
+
+         (when ^boolean can-edit
+           [:> icon-button* {:icon i/add
+                             :variant "ghost"
+                             :aria-label (tr "dashboard.new-file")
+                             :on-click on-create-click
+                             :on-key-down handle-create-click}])
+
+         (when ^boolean can-edit
+           [:> project-menu* {:project project
+                              :is-open (deref menu-open*)
+                              :on-open-change #(reset! menu-open* %)
+                              :on-edit on-edit-open
+                              :on-import-click on-import-click
+                              :placement "bottom start"
+                              :trigger
+                              (mf/html
+                               [:> icon-button* {:icon i/menu
+                                                 :variant "ghost"
+                                                 :aria-label (tr "dashboard.options")
+                                                 :aria-pressed (deref menu-open*)
+                                                 :data-testid "project-options"
+                                                 :on-click on-menu-click
+                                                 :on-key-down handle-menu-click}])}])]]
+
+       (when (and (> limit 0)
+                  (> file-count limit))
+         [:button {:class (stl/css :show-more)
+                   :on-click on-nav
+                   :tab-index "0"
+                   :on-key-down (fn [event]
+                                  (when (kbd/enter? event)
+                                    (on-nav)))}
+          (tr "dashboard.show-all-files")
+          [:> icon* {:icon-id i/arrow-right}]])]]
+
+     ;; Kept mounted for as long as this row is, shared by both menu
+     ;; instances above: the popover each renders inside really unmounts its
+     ;; content on close (unlike the old context-menu-a11y, which just hid
+     ;; it), and selecting "Import" closes the menu in the same tick — a ref
+     ;; owned inside either popover could already be gone by the time its
+     ;; own click handler fires.
+     [:> udi/import-form* {:ref file-input
+                           :project-id project-id
+                           :on-finish-import on-finish-import}]
+
+     [:div {:class (stl/css :grid-container) :ref rowref}
+      (if ^boolean empty?
+        [:> empty-placeholder* {:title (if ^boolean is-draft?
+                                         (tr "dashboard.empty-placeholder-drafts-title")
+                                         (tr "dashboard.empty-placeholder-files-title"))
+                                :class (stl/css :placeholder-placement)
+                                :type 1
+                                :subtitle (if ^boolean is-draft?
+                                            (tr "dashboard.empty-placeholder-drafts-subtitle")
+                                            (tr "dashboard.empty-placeholder-files-subtitle"))}]
+
+        [:> line-grid* {:project project
+                        :team team
+                        :files (if loading? nil files)
+                        :create-fn create-file
+                        :can-edit can-edit
+                        :limit limit
+                        :layout layout}])]]))
+
+(def ^:private ref:recent-files
+  (l/derived :recent-files st/state))
+
+(mf/defc projects-section*
+  [{:keys [team projects profile layout on-layout-change]}]
+
+  (let [team-id         (get team :id)
+
+        recent-map      (mf/deref ref:recent-files)
+        permisions      (:permissions team)
+
+        can-edit        (:can-edit permisions)
+        can-invite      (dnt/can-send-invitations?
+                         {:organization (:organization team)
+                          :profile-id (:id profile)
+                          :team-permissions permisions})
+
+        show-team-hero* (mf/use-state #(get storage/global ::show-team-hero true))
+        show-team-hero? (deref show-team-hero*)
+
+        my-penpot?      (= (:default-team-id profile) team-id)
+        default-team?   (:is-default team)
+
+        show-deleted?   (:can-edit permisions)
+
+        projects
+        (mf/with-memo [projects]
+          (->> projects
+               (remove :deleted-at)
+               (sort-by :modified-at)
+               (reverse)))
+
+        on-close
+        (mf/use-fn
+         (fn []
+           (reset! show-team-hero* false)
+           (st/emit! (ev/event {::ev/name "dont-show-team-up-hero"
+                                ::ev/origin "dashboard"}))))]
+
+    (mf/with-effect [show-team-hero?]
+      (swap! storage/global assoc ::show-team-hero show-team-hero?))
+
+    (mf/with-effect [team]
+      (let [tname (if (:is-default team)
+                    (tr "dashboard.personal-projects")
+                    (:name team))]
+        (dom/set-html-title (tr "title.dashboard.projects" tname))))
+
+    (mf/with-effect [team-id]
+      (st/emit! (dd/fetch-recent-files team-id)
+                (dd/clear-selected-files)))
+
+    (hooks/use-shortcuts ::dashboard sc/shortcuts-projects :dashboard)
+
+    (when (seq projects)
+      [:*
+       [:> header* {:can-edit can-edit
+                    :layout layout
+                    :on-change on-layout-change
+                    :default-team? default-team?}]
+       [:div {:class (stl/css :projects-container)}
+        [:*
+         (when (and show-team-hero?
+                    can-invite
+                    (not default-team?))
+           [:> team-hero* {:team team :on-close on-close}])
+
+         [:div {:class (stl/css-case :dashboard-container true
+                                     :no-bg true
+                                     :dashboard-projects true
+                                     :with-team-hero (and (not my-penpot?)
+                                                          (not default-team?)
+                                                          show-team-hero?
+                                                          can-invite))}
+
+          (when show-deleted?
+            [:> deleted/menu* {:team-id team-id
+                               :section :dashboard-recent}])
+
+          (for [{:keys [id] :as project} projects]
+            ;; FIXME: refactor this, looks inneficient
+            (let [files (when recent-map
+                          (->> (vals recent-map)
+                               (filterv #(= id (:project-id %)))
+                               (sort-by :modified-at #(compare %2 %1))))]
+              [:> project-item* {:project project
+                                 :team team
+                                 :files files
+                                 :can-edit can-edit
+                                 :layout layout
+                                 :is-first (= project (first projects))
+                                 :key id}]))]]]])))

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# Usage: ./watch [frontend|export]
+
+set -e
+
+_SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+pushd "$_SCRIPT_DIR" > /dev/null
+
+_RENDER_TARGET=${1:-${RENDER_TARGET:-frontend}}
+export RENDER_TARGET="$_RENDER_TARGET"
+. ./_build_env "$_RENDER_TARGET" "${@:2}"
+
+# The initial build uses the protected build entry point. Its lock is released
+# before cargo watch starts waiting for source changes.
+"$_SCRIPT_DIR/build" "$RENDER_TARGET" $CARGO_PARAMS
+
+set -x
+
+cargo watch \
+      --why \
+      -i "_tmp*" \
+      -x "build $CARGO_PARAMS" \
+      -s "\"$_SCRIPT_DIR/build\" \"$RENDER_TARGET\" $CARGO_PARAMS" \
+      -s "echo 'DONE\n'";
+
+popd > /dev/null

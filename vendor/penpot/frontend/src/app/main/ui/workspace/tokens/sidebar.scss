@@ -1,0 +1,120 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS SUBSIDIARY SL
+
+@use "ds/_utils.scss" as *;
+@use "ds/_sizes.scss" as *;
+@use "ds/_borders.scss" as *;
+@use "ds/spacing.scss" as *;
+@use "ds/typography.scss" as *;
+
+.sidebar-wrapper {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+
+  // Overflow on the bottom section can't be done without hardcoded values for the height
+  // This has to be changed from the wrapping sidebar styles
+  block-size: calc(100vh - #{px2rem(92)});
+  overflow: hidden;
+}
+
+.token-management-section-wrapper {
+  display: flex;
+  flex: 1;
+  block-size: var(--resize-height);
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  position: relative;
+  padding-block-start: var(--sp-xs);
+}
+
+.tokens-section-wrapper {
+  block-size: 100%;
+  padding-inline-start: var(--sp-m);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-inline-start: var(--sp-m);
+  color: var(--layer-row-foreground-color);
+}
+
+.import-export-button-wrapper {
+  position: relative;
+  display: flex;
+  gap: var(--sp-s);
+  flex-direction: row;
+  align-items: end;
+  justify-content: end;
+  padding: var(--sp-s);
+  background-color: var(--color-background-primary);
+  box-shadow: var(--el-shadow-dark);
+}
+
+.import-export-menu {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  inset-block-start: -#{px2rem(6)};
+  inset-inline-end: 0;
+  translate: 0 -100%;
+  inline-size: $sz-192;
+  padding: var(--sp-xs);
+  margin: 0;
+  border-radius: $br-8;
+  border: $b-2 solid var(--panel-border-color);
+  z-index: var(--z-index-dropdown);
+  color: var(--title-foreground-color-hover);
+  background-color: var(--menu-background-color);
+  box-shadow: 0 0 var(--sp-m) 0 var(--menu-shadow-color);
+}
+
+.import-export-menu-item {
+  @include use-typography(body-small);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  block-size: $sz-28;
+  padding: px2rem(6);
+  border-radius: $br-8;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--menu-background-color-hover);
+    color: var(--menu-foreground-color-hover);
+  }
+}
+
+.import-menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+}
+
+.resize-area-horiz {
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  padding-block: px2rem(3) px2rem(1);
+  padding-inline: 0;
+  block-size: $sz-6;
+  background-color: var(--panel-background-color);
+  cursor: ns-resize;
+  z-index: var(--z-index-panels);
+}
+
+.resize-handle-horiz {
+  border-block-end: $b-2 solid var(--resize-area-border-color);
+  cursor: ns-resize;
+}

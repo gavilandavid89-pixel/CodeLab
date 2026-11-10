@@ -1,0 +1,23 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS SUBSIDIARY SL
+
+@use "common/refactor/common-dashboard";
+@use "ds/_borders.scss" as *;
+@use "ds/_sizes.scss" as *;
+@use "ds/_utils.scss" as *;
+
+.dashboard-container {
+  flex: 1 0 0;
+  margin-inline-end: var(--sp-l);
+  overflow-y: auto;
+  inline-size: 100%;
+  border-block-start: $b-1 solid var(--color-background-quaternary);
+  padding-block-end: var(--sp-xxxl);
+}
+
+.placeholder-placement {
+  margin: var(--sp-l) var(--sp-xxxl);
+}

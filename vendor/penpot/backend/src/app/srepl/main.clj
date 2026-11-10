@@ -1,0 +1,1126 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns app.srepl.main
+  #_:clj-kondo/ignore
+  (:require
+   [app.auth :refer [derive-password]]
+   [app.binfile.common :as bfc]
+   [app.common.data :as d]
+   [app.common.data.macros :as dm]
+   [app.common.exceptions :as ex]
+   [app.common.features :as cfeat]
+   [app.common.files.validate :as cfv]
+   [app.common.logging :as l]
+   [app.common.pprint :as pp]
+   [app.common.schema :as sm]
+   [app.common.spec :as us]
+   [app.common.time :as ct]
+   [app.common.uuid :as uuid]
+   [app.config :as cf]
+   [app.db :as db]
+   [app.db.sql :as-alias sql]
+   [app.features.fdata :as fdata]
+   [app.features.file-snapshots :as fsnap]
+   [app.health :as health]
+   [app.http.session :as session]
+   [app.loggers.audit :as audit]
+   [app.msgbus :as mbus]
+   [app.rpc.commands.auth :as auth]
+   [app.rpc.commands.files :as files]
+   [app.rpc.commands.management :as mgmt]
+   [app.rpc.commands.profile :as profile]
+   [app.rpc.commands.projects :as projects]
+   [app.rpc.commands.teams :as teams]
+   [app.srepl.helpers :as h]
+   [app.srepl.procs.file-repair :as procs.file-repair]
+   [app.system :as sys]
+   [app.util.blob :as blob]
+   [app.util.pointer-map :as pmap]
+   [app.worker :as wrk]
+   [clojure.datafy :refer [datafy]]
+   [clojure.java.io :as io]
+   [clojure.pprint :refer [print-table]]
+   [clojure.stacktrace :as strace]
+   [clojure.tools.namespace.repl :as repl]
+   [cuerdas.core :as str]
+   [datoteka.fs :as fs]
+   [promesa.exec :as px]
+   [promesa.exec.csp :as sp]
+   [promesa.exec.semaphore :as ps]
+   [promesa.util :as pu]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; TASKS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn print-tasks
+  []
+  (let [tasks (:app.worker/registry sys/system)]
+    (pp/pprint (keys tasks) :level 200)))
+
+(defn run-task!
+  ([tname]
+   (run-task! tname {}))
+  ([tname params]
+   (wrk/invoke! (-> sys/system
+                    (assoc ::wrk/task tname)
+                    (assoc ::wrk/params params)))))
+
+(defn schedule-task!
+  ([name]
+   (schedule-task! name {}))
+  ([name params]
+   (wrk/submit! (-> sys/system
+                    (assoc ::wrk/task name)
+                    (assoc ::wrk/params params)))))
+
+(defn send-test-email!
+  [destination]
+  (assert (string? destination) "destination should be provided")
+  (-> sys/system
+      (assoc ::wrk/task :sendmail)
+      (assoc ::wrk/params {:body "test email"
+                           :subject "test email"
+                           :to [destination]})
+      (wrk/invoke!)))
+
+(defn resend-email-verification-email!
+  [email]
+  (db/tx-run! sys/system
+              (fn [{:keys [::db/conn] :as cfg}]
+                (let [email   (profile/clean-email email)
+                      profile (profile/get-profile-by-email conn email)]
+                  (#'auth/send-email-verification! cfg profile)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; INSTANCE AVAILABILITY
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn set-offline
+  "Take this instance out of the load balancer.
+
+  The `/readyz` endpoint starts answering 503, so the load balancer
+  removes the instance from rotation. Requests already in flight are
+  still served; wait for the load balancer to notice and for the traffic
+  to drop before restarting the process.
+
+  A restarted process comes back online on its own."
+  []
+  (health/set-offline))
+
+(defn set-online
+  "Put this instance back into the load balancer rotation.
+
+  Only needed to undo a `set-offline` without a restart; a restarted
+  process starts online."
+  []
+  (health/set-online))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; PROFILES MANAGEMENT
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn mark-profile-as-active!
+  "Mark the profile blocked and removes all the http sessiones
+  associated with the profile-id."
+  [email]
+  (some-> sys/system
+          (db/tx-run!
+           (fn [{:keys [::db/conn] :as system}]
+             (when-let [profile (db/get* conn :profile
+                                         {:email (str/lower email)}
+                                         {:columns [:id :email]})]
+               (when-not (:is-blocked profile)
+                 (db/update! conn :profile {:is-active true} {:id (:id profile)})
+                 :activated))))))
+
+(defn mark-profile-as-blocked!
+  "Mark the profile blocked and removes all the http sessiones
+  associated with the profile-id."
+  [email]
+  (some-> sys/system
+          (db/tx-run!
+           (fn [{:keys [::db/conn] :as system}]
+             (when-let [profile (db/get* conn :profile
+                                         {:email (str/lower email)}
+                                         {:columns [:id :email]})]
+               (when-not (:is-blocked profile)
+                 (db/update! conn :profile {:is-blocked true} {:id (:id profile)})
+                 (session/invalidate-all system (:id profile))
+                 :blocked))))))
+
+(defn reset-password!
+  "Reset a password to a specific one for a concrete user or all users
+  if email is `:all` keyword."
+  [& {:keys [email password]}]
+  (assert (string? email) "expected email")
+  (assert (string? password) "expected password")
+
+  (some-> sys/system
+          (db/tx-run!
+           (fn [{:keys [::db/conn] :as system}]
+             (let [password (derive-password password)
+                   email    (str/lower email)]
+               (-> (db/exec-one! conn ["update profile set password=? where email=?" password email])
+                   (db/get-update-count)
+                   (pos?)))))))
+
+(defn update-profile-email!
+  "Support helper: change a profile's email address.
+
+  Looks up the profile by its current email. Rejects with
+  `:email-already-exists` when the new address is already used by
+  another non-deleted profile. Does not clear bounce/complaint
+  reports; call `clear-email-complaint-reports!` for that."
+  [& {:keys [email new-email]}]
+  (assert (string? email) "expected email")
+  (assert (string? new-email) "expected new-email")
+
+  (let [email     (profile/clean-email email)
+        new-email (profile/clean-email new-email)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn] :as system}]
+                  (let [profile (profile/get-profile-by-email conn email)]
+                    (when-not profile
+                      (ex/raise :type :not-found
+                                :code :profile-not-found
+                                :hint "profile not found for email"
+                                :email email))
+
+                    (if (= email new-email)
+                      :unchanged
+                      (do
+                        (when (profile/get-profile-by-email conn new-email)
+                          (ex/raise :type :validation
+                                    :code :email-already-exists))
+
+                        (db/update! conn :profile
+                                    {:email new-email}
+                                    {:id (:id profile)}
+                                    {::db/return-keys false})
+
+                        (audit/insert system
+                                      {:name "update-profile-email"
+                                       :type "action"
+                                       :props {:id (:id profile)
+                                               :email email
+                                               :new-email new-email}
+                                       :context {:triggered-by "srepl"
+                                                 :cause "explicit call to update-profile-email!"}})
+                        :updated)))))))
+
+(defn clear-email-complaint-reports!
+  "Support helper: delete bounce and complaint reports for an email
+  from `global_complaint_report` and, when a profile owns that email,
+  from `profile_complaint_report`. Also unmutes that profile so mail
+  can be sent again after a false-positive bounce or complaint."
+  [email]
+  (assert (string? email) "expected email")
+
+  (let [email (profile/clean-email email)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn] :as system}]
+                  (let [profile (db/get* conn :profile {:email email})
+                        global-deleted
+                        (-> (db/delete! conn :global-complaint-report {:email email})
+                            (db/get-update-count))
+                        profile-deleted
+                        (if profile
+                          (-> (db/delete! conn :profile-complaint-report
+                                          {:profile-id (:id profile)})
+                              (db/get-update-count))
+                          0)]
+                    (when profile
+                      (db/update! conn :profile
+                                  {:is-muted false}
+                                  {:id (:id profile)}
+                                  {::db/return-keys false}))
+
+                    (when (or profile (pos? global-deleted))
+                      (audit/insert system
+                                    {:name "clear-email-complaint-reports"
+                                     :type "action"
+                                     :props (cond-> {:email email
+                                                     :global-deleted global-deleted
+                                                     :profile-deleted profile-deleted}
+                                              profile (assoc :id (:id profile)))
+                                     :context {:triggered-by "srepl"
+                                               :cause "explicit call to clear-email-complaint-reports!"}})
+                      :cleared))))))
+
+(defn parse-emails
+  "Parse the emails into a seq of cleaned emails. Accepts a single
+  email, a comma separated list of emails or a coll of emails.
+  Blank entries are skipped."
+  [emails]
+  (->> (cond
+         (string? emails)
+         (str/split emails #",")
+
+         (sequential? emails)
+         emails
+
+         :else
+         (throw (ex-info "expected email or comma separated list of emails"
+                         {:emails emails})))
+       (map str/trim)
+       (remove str/empty?)))
+
+(defn- delete-profile-by-email*
+  [system email deleted-at cause]
+  (when-let [profile (some-> (db/get* system :profile
+                                      {:email (str/lower email)}
+                                      {::db/remove-deleted false})
+                             (profile/decode-row))]
+    (audit/insert system
+                  {:name "delete-profile"
+                   :type "action"
+                   :profile-id (:id profile)
+                   :tracked-at deleted-at
+                   :props (audit/profile->props profile)
+                   :context {:triggered-by "srepl"
+                             :cause cause}})
+
+    (wrk/invoke! (-> system
+                     (assoc ::wrk/task :delete-object)
+                     (assoc ::wrk/params {:object :profile
+                                          :deleted-at deleted-at
+                                          :id (:id profile)})))
+    (:id profile)))
+
+(defn delete-profiles-by-email!
+  "Mark profiles for deletion by email. Accepts a single email or a
+  comma separated list of emails (or a coll of emails).
+
+  The deletion is immediate: the deleted-at is backdated with the
+  configured deletion-delay so the profiles and their owned teams are
+  purged on the next gc pass."
+  [emails]
+  (let [emails     (parse-emails emails)
+        deleted-at (ct/minus (ct/now) (cf/get-deletion-delay))
+        cause      "explicit call to delete-profiles-by-email!"]
+    (db/tx-run! sys/system
+                (fn [system]
+                  (reduce (fn [acc email]
+                            (if-let [id (delete-profile-by-email* system email deleted-at cause)]
+                              (update acc :deleted conj id)
+                              (update acc :not-found conj email)))
+                          {:total (count emails) :deleted [] :not-found []}
+                          emails)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FEATURES
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn enable-team-feature!
+  [team-id feature & {:keys [skip-check] :or {skip-check false}}]
+  (when (and (not skip-check) (not (contains? cfeat/supported-features feature)))
+    (ex/raise :type :assertion
+              :code :feature-not-supported
+              :hint (str "feature '" feature "' not supported")))
+
+  (let [team-id (h/parse-uuid team-id)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn]}]
+                  (let [team     (-> (db/get conn :team {:id team-id})
+                                     (update :features db/decode-pgarray #{}))
+                        features (conj (:features team) feature)]
+                    (when (not= features (:features team))
+                      (db/update! conn :team
+                                  {:features (db/create-array conn "text" features)}
+                                  {:id team-id})
+                      :enabled))))))
+
+(defn disable-team-feature!
+  [team-id feature & {:keys [skip-check] :or {skip-check false}}]
+  (when (and (not skip-check) (not (contains? cfeat/supported-features feature)))
+    (ex/raise :type :assertion
+              :code :feature-not-supported
+              :hint (str "feature '" feature "' not supported")))
+
+  (let [team-id (h/parse-uuid team-id)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn]}]
+                  (let [team     (-> (db/get conn :team {:id team-id})
+                                     (update :features db/decode-pgarray #{}))
+                        features (disj (:features team) feature)]
+                    (when (not= features (:features team))
+                      (db/update! conn :team
+                                  {:features (db/create-array conn "text" features)}
+                                  {:id team-id})
+                      :disabled))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; NOTIFICATIONS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn notify!
+  "Send flash notifications.
+
+  This method allows send flash notifications to specified target destinations.
+  The message can be a free text or a preconfigured one.
+
+  The destination can be: all, profile-id, team-id, or a coll of them.
+  It also can be:
+
+  {:email \"some@example.com\"}
+  [[:email \"some@example.com\"], ...]
+
+  Command examples:
+
+  (notify! :dest :all :code :maintenance)
+  (notify! :dest :all :code :upgrade-version)
+  "
+  [& {:keys [dest code message level]
+      :or {code :generic level :info}
+      :as params}]
+
+  (when-not (contains? #{:success :error :info :warning} level)
+    (ex/raise :type :assertion
+              :code :incorrect-level
+              :hint (str "level '" level "' not supported")))
+
+  (let [{:keys [::mbus/msgbus ::db/pool]} sys/system
+
+        send
+        (fn [dest]
+          (l/inf :hint "sending notification" :dest (str dest))
+          (let [message {:type :notification
+                         :code code
+                         :level level
+                         :version (:full cf/version)
+                         :subs-id dest
+                         :message message}
+                message (->> (dissoc params :dest :code :message :level)
+                             (merge message))]
+            (mbus/pub! msgbus
+                       :topic dest
+                       :message message)))
+
+        resolve-profile
+        (fn [email]
+          (some-> (db/get* pool :profile {:email (str/lower email)} {:columns [:id]}) :id vector))
+
+        resolve-team
+        (fn [team-id]
+          (->> (db/query pool :team-profile-rel
+                         {:team-id team-id}
+                         {:columns [:profile-id]})
+               (map :profile-id)))
+
+        resolve-dest
+        (fn resolve-dest [dest]
+          (cond
+            (= :all dest)
+            [uuid/zero]
+
+            (uuid? dest)
+            [dest]
+
+            (string? dest)
+            (some-> dest h/parse-uuid resolve-dest)
+
+            (nil? dest)
+            [uuid/zero]
+
+            (map? dest)
+            (sequence (comp
+                       (map vec)
+                       (mapcat resolve-dest))
+                      dest)
+
+            (and (vector? dest)
+                 (every? vector? dest))
+            (sequence (comp
+                       (map vec)
+                       (mapcat resolve-dest))
+                      dest)
+
+            (and (vector? dest)
+                 (keyword? (first dest)))
+            (let [[op param] dest]
+              (cond
+                (= op :email)
+                (cond
+                  (and (coll? param)
+                       (every? string? param))
+                  (sequence (comp
+                             (keep resolve-profile)
+                             (mapcat identity))
+                            param)
+
+                  (string? param)
+                  (resolve-profile param))
+
+                (= op :team-id)
+                (cond
+                  (coll? param)
+                  (sequence (comp
+                             (mapcat resolve-team)
+                             (keep h/parse-uuid))
+                            param)
+
+                  (uuid? param)
+                  (resolve-team param)
+
+                  (string? param)
+                  (some-> param h/parse-uuid resolve-team))
+
+                (= op :profile-id)
+                (if (coll? param)
+                  (sequence (keep h/parse-uuid) param)
+                  (resolve-dest param))))))]
+
+    (->> (resolve-dest dest)
+         (filter some?)
+         (into #{})
+         (run! send))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; SNAPSHOTS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn take-file-snapshot!
+  "An internal helper that persist the file snapshot using non-gc
+  collectable file-changes entry."
+  [& {:keys [file-id label]}]
+  (let [file-id (h/parse-uuid file-id)]
+    (db/tx-run! sys/system
+                (fn [cfg]
+                  (let [file (bfc/get-file cfg file-id :realize? true)]
+                    (fsnap/create! cfg file {:label label :created-by "admin"}))))))
+
+(defn restore-file-snapshot!
+  [file-id & {:keys [label id]}]
+  (let [file-id     (h/parse-uuid file-id)
+        snapshot-id (some-> id h/parse-uuid)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn] :as system}]
+                  (cond
+                    (uuid? snapshot-id)
+                    (fsnap/restore! system file-id snapshot-id)
+
+                    (string? label)
+                    (->> (h/search-file-snapshots conn #{file-id} label)
+                         (map :id)
+                         (first)
+                         (fsnap/restore! system file-id))
+
+                    :else
+                    (throw (ex-info "snapshot id or label should be provided" {})))))))
+
+(defn list-file-snapshots!
+  [file-id & {:as _}]
+  (let [file-id (h/parse-uuid file-id)]
+    (db/tx-run! sys/system
+                (fn [cfg]
+                  (->> (fsnap/get-visible-snapshots cfg file-id)
+                       (print-table [:label :id :revn :created-at :created-by]))))))
+
+(defn take-team-snapshot!
+  [team-id & {:keys [label rollback?] :or {rollback? true}}]
+  (let [team-id (h/parse-uuid team-id)]
+    (-> (assoc sys/system ::db/rollback rollback?)
+        (db/tx-run! h/take-team-snapshot! team-id label))))
+
+(defn restore-team-snapshot!
+  "Restore a snapshot on all files of the team. The snapshot should
+  exists for all files; if is not the case, an exception is raised."
+  [team-id label & {:keys [rollback?] :or {rollback? true}}]
+  (let [team-id (h/parse-uuid team-id)]
+    (-> (assoc sys/system ::db/rollback rollback?)
+        (db/tx-run! h/restore-team-snapshot! team-id label))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FILE VALIDATION & REPAIR
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn validate-file
+  "Validate structure, referencial integrity and semantic coherence of
+  all contents of a file. Returns a list of errors."
+  [file-id]
+  (let [file-id (h/parse-uuid file-id)]
+    (db/tx-run! (assoc sys/system ::db/rollback true)
+                (fn [system]
+                  (let [file (bfc/get-file system file-id)
+                        libs (bfc/get-resolved-file-libraries system file)]
+                    (cfv/validate-file file libs))))))
+
+(defn validate-file-schema
+  "Validate structure, referencial integrity and semantic coherence of
+  all contents of a file. Returns a list of errors."
+  [file-id]
+  (let [file-id (h/parse-uuid file-id)]
+    (db/tx-run! (assoc sys/system ::db/rollback true)
+                (fn [system]
+                  (try
+                    (let [file (bfc/get-file system file-id)]
+                      (cfv/validate-file-schema! file)
+                      (println "OK"))
+                    (catch Exception cause
+                      (if-let [explain (-> cause ex-data ::sm/explain)]
+                        (println (sm/humanize-explain explain))
+                        (ex/print-throwable cause))))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; GRAPH / LADYBUG
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; The graph namespaces resolve at call time, never at the top of this
+;; namespace. `app.graph.ladybug` imports `com.ladybugdb.*`, and this namespace
+;; loads with the REPL server on every boot, so a top-level require would link
+;; the Ladybug native library into every backend, graph or not. Calling one of
+;; the functions below loads the library at that point: the operator has asked
+;; for it explicitly. The `:graph` flag gates the request path
+;; (`app.http.debug`), not the REPL.
+
+(defn graph-smoke-test!
+  "Execute a basic Ladybug smoke test (CREATE + count).
+
+  Uses the embedded Ladybug Java API. Use :db-path \":memory:\" (default)
+  or a filesystem path such as /tmp/test.lbug."
+  [& {:keys [db-path] :or {db-path ":memory:"}}]
+  ((requiring-resolve 'app.graph.ladybug/smoke-test!) :db-path db-path))
+
+(defn graph-query-test!
+  "Query Document count for a file's graph db (REPL diagnostic)."
+  [file-id & {:keys [db-path]}]
+  (let [file-id       (h/parse-uuid file-id)
+        db-path       (or db-path ((requiring-resolve 'app.graph.ladybug/db-path-for-file) file-id))
+        query-scalar! (requiring-resolve 'app.graph.ladybug/query-scalar!)
+        stmt          "MATCH (n:Document) RETURN count(n) AS Document_c;"]
+    (query-scalar! db-path stmt)))
+
+(defn ingest-file-to-graph!
+  "Project a Penpot file into a per-file Ladybug database.
+
+  Loads and realizes the file from the database, ensures the slice schema,
+  projects Document/Page/shape nodes, and returns graph stats.
+
+  Options:
+  - `:db-path` path or `:memory:`
+  - `:reset-db?` delete any existing db first (default true)
+  - `:skip-stats?` skip post-ingest MATCH count queries (default false)"
+  [file-id & opts]
+  (let [ingest-file!  (requiring-resolve 'app.graph.ingest/ingest-file!)
+        print-ingest! (requiring-resolve 'app.graph.report/print-ingest!)
+        result        (apply ingest-file! sys/system file-id opts)]
+    (print-ingest! result)
+    result))
+
+
+(defn repair-file!
+  "Repair the list of errors detected by validation."
+  [file-id & {:keys [rollback?] :or {rollback? true} :as options}]
+  (let [system  (assoc sys/system ::db/rollback rollback?)
+        file-id (h/parse-uuid file-id)
+        options (assoc options ::h/with-libraries? true)]
+    (db/tx-run! system h/process-file! file-id procs.file-repair/repair-file options)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; PROCESSING
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn update-file!
+  "Apply a function to the file. Optionally save the changes or not.
+  The function receives the decoded and migrated file data."
+  [file-id update-fn & {:keys [rollback?] :or {rollback? true} :as opts}]
+  (let [file-id (h/parse-uuid file-id)]
+    (db/tx-run! (assoc sys/system ::db/rollback rollback?)
+                (fn [system]
+                  (binding [h/*system* system
+                            db/*conn* (db/get-connection system)]
+                    (h/process-file! system file-id update-fn opts))))))
+
+(defn process!
+  [& {:keys [max-items
+             max-jobs
+             rollback?
+             query
+             proc-fn
+             buffer]
+      :or {max-items Long/MAX_VALUE
+           rollback? true
+           max-jobs 1
+           buffer 128}
+      :as opts}]
+
+  (l/inf :hint "process start"
+         :rollback rollback?
+         :max-jobs max-jobs
+         :max-items max-items)
+
+  (let [tpoint    (ct/tpoint)
+        max-jobs  (or max-jobs (px/get-available-processors))
+        query     (or query
+                      (:query (meta proc-fn))
+                      (throw (ex-info "missing query" {})))
+        query     (if (vector? query) query [query])
+
+        proc-fn   (if (var? proc-fn)
+                    (deref proc-fn)
+                    proc-fn)
+
+        in-ch     (sp/chan :buf buffer)
+
+        worker-fn
+        (fn [worker-id]
+          (l/dbg :hint "worker started"
+                 :id worker-id)
+
+          (loop []
+            (when-let [[index item] (sp/<! in-ch)]
+              (l/dbg :hint "process item" :worker-id worker-id :index index :item item)
+              (try
+                (-> sys/system
+                    (assoc ::db/rollback rollback?)
+                    (db/tx-run! (fn [system]
+                                  (binding [h/*system* system
+                                            db/*conn* (db/get-connection system)]
+                                    (proc-fn system item opts)))))
+
+                (catch Throwable cause
+                  (l/wrn :hint "unexpected error on processing item (skiping)"
+                         :worker-id worker-id
+                         :item item
+                         :cause cause))
+                (finally
+                  (when-let [pause (:pause opts)]
+                    (Thread/sleep (int pause)))))
+
+              (recur)))
+
+          (l/dbg :hint "worker stoped"
+                 :id worker-id))
+
+        enqueue-item
+        (fn [index row]
+          (sp/>! in-ch [index (into {} row)])
+          (inc index))
+
+        process-items
+        (fn [{:keys [::db/conn] :as system}]
+          (db/exec! conn ["SET statement_timeout = 0"])
+          (db/exec! conn ["SET idle_in_transaction_session_timeout = 0"])
+
+          (->> (db/plan conn query {:fetch-size (* max-jobs 3)})
+               (transduce (take max-items)
+                          (completing enqueue-item)
+                          0))
+          (sp/close! in-ch))
+
+        threads
+        (->> (range max-jobs)
+             (map (fn [idx]
+                    (px/fn->thread (partial worker-fn idx)
+                                   :name (str "pentpot/process/" idx))))
+             (doall))]
+
+    (try
+      (db/tx-run! sys/system process-items)
+
+      ;; Await threads termination
+      (doseq [thread threads]
+        (px/await! thread))
+
+      (catch Throwable cause
+        (l/dbg :hint "process:error" :cause cause))
+
+      (finally
+        (let [elapsed (ct/format-duration (tpoint))]
+          (l/inf :hint "process end"
+                 :rollback rollback?
+                 :elapsed elapsed))))))
+
+
+(defn process-file!
+  "A specialized, file specific process! alternative"
+  [& {:keys [id] :as opts}]
+  (let [id (h/parse-uuid id)]
+    (-> opts
+        (assoc :query ["select id from file where id = ?" id])
+        (assoc :max-items 1)
+        (assoc :max-jobs 1)
+        (process!))))
+
+(defn mark-file-as-trimmed
+  [id]
+  (let [id (h/parse-uuid id)]
+    (db/tx-run! sys/system (fn [cfg]
+                             (-> (db/update! cfg :file
+                                             {:has-media-trimmed true}
+                                             {:id id}
+                                             {::db/return-keys false})
+                                 (db/get-update-count)
+                                 (pos?))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; DELETE/RESTORE OBJECTS (WITH CASCADE, SOFT)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn delete-file!
+  "Mark a project for deletion"
+  [file-id]
+  (let [file-id (h/parse-uuid file-id)
+        tnow    (ct/now)]
+
+    (audit/insert sys/system
+                  {:name "delete-file"
+                   :type "action"
+                   :props {:id file-id}
+                   :context {:triggered-by "srepl"
+                             :cause "explicit call to delete-file!"}
+                   :tracked-at tnow})
+    (wrk/invoke! (-> sys/system
+                     (assoc ::wrk/task :delete-object)
+                     (assoc ::wrk/params {:object :file
+                                          :deleted-at tnow
+                                          :id file-id})))
+    :deleted))
+
+(defn restore-file!
+  "Mark a file and all related objects as not deleted"
+  [file-id]
+  (let [file-id (h/parse-uuid file-id)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn] :as system}]
+                  (when-let [file (db/get* system :file
+                                           {:id file-id}
+                                           {::db/remove-deleted false
+                                            ::sql/columns [:id :name]})]
+                    (audit/insert system
+                                  {:name "restore-file"
+                                   :type "action"
+                                   :props file
+                                   :context {:triggered-by "srepl"
+                                             :cause "explicit call to restore-file!"}})
+
+                    (#'files/restore-files conn [file-id]))
+                  :restored))))
+
+(defn delete-project!
+  "Mark a project for deletion"
+  [project-id]
+  (let [project-id (h/parse-uuid project-id)
+        tnow       (ct/now)]
+
+    (audit/insert sys/system
+                  {:name "delete-project"
+                   :type "action"
+                   :props {:id project-id}
+                   :context {:triggered-by "srepl"
+                             :cause "explicit call to delete-project!"}
+                   :tracked-at tnow})
+
+    (wrk/invoke! (-> sys/system
+                     (assoc ::wrk/task :delete-object)
+                     (assoc ::wrk/params {:object :project
+                                          :deleted-at tnow
+                                          :id project-id})))
+    :deleted))
+
+(defn- restore-project*
+  [{:keys [::db/conn] :as cfg} project-id]
+  (db/update! conn :project
+              {:deleted-at nil}
+              {:id project-id})
+
+  (doseq [{:keys [id]} (db/query conn :file
+                                 {:project-id project-id}
+                                 {::sql/columns [:id]})]
+    (#'files/restore-files conn [id]))
+
+  :restored)
+
+(defn restore-project!
+  "Mark a project and all related objects as not deleted"
+  [project-id]
+  (let [project-id (h/parse-uuid project-id)]
+    (db/tx-run! sys/system
+                (fn [system]
+                  (when-let [project (db/get* system :project
+                                              {:id project-id}
+                                              {::db/remove-deleted false})]
+                    (audit/insert system
+                                  {:name "restore-project"
+                                   :type "action"
+                                   :props project
+                                   :context {:triggered-by "srepl"
+                                             :cause "explicit call to restore-team!"}})
+
+                    (restore-project* system project-id))))))
+
+(defn delete-team!
+  "Mark a team for deletion"
+  [team-id]
+  (let [team-id (h/parse-uuid team-id)
+        tnow    (ct/now)]
+
+    (audit/insert sys/system
+                  {:name "delete-team"
+                   :type "action"
+                   :props {:id team-id}
+                   :context {:triggered-by "srepl"
+                             :cause "explicit call to delete-team!"}
+                   :tracked-at tnow})
+
+    (wrk/invoke! (-> sys/system
+                     (assoc ::wrk/task :delete-object)
+                     (assoc ::wrk/params {:object :team
+                                          :deleted-at tnow
+                                          :id team-id})))
+    :deleted))
+
+(def ^:private sql:restore-font-file-objects
+  "UPDATE storage_object
+      SET deleted_at = null
+    WHERE deleted_at IS NOT NULL
+      AND id IN (SELECT unnest(array[woff1_file_id, woff2_file_id, otf_file_id, ttf_file_id])
+                   FROM team_font_variant
+                  WHERE team_id = ?::uuid
+                    AND deleted_at IS NULL)")
+
+(defn- restore-team*
+  [{:keys [::db/conn] :as cfg} team-id]
+  (db/update! conn :team
+              {:deleted-at nil}
+              {:id team-id})
+
+  (db/update! conn :team-font-variant
+              {:deleted-at nil}
+              {:team-id team-id})
+
+  ;; Same as in `restore-files`: the font objects of the variants we just
+  ;; brought back must stop being marked for deletion, or the storage GC will
+  ;; skip them forever (those foreign keys are `NO ACTION`).
+  (db/exec-one! conn [sql:restore-font-file-objects team-id])
+
+  (doseq [{:keys [id]} (db/query conn :project
+                                 {:team-id team-id}
+                                 {::sql/columns [:id]})]
+    (restore-project* cfg id))
+
+  :restored)
+
+(defn restore-team!
+  "Mark a team and all related objects as not deleted"
+  [team-id]
+  (let [team-id (h/parse-uuid team-id)]
+    (db/tx-run! sys/system
+                (fn [system]
+                  (when-let [team (some-> (db/get* system :team
+                                                   {:id team-id}
+                                                   {::db/remove-deleted false})
+                                          (teams/decode-row))]
+                    (audit/insert system
+                                  {:name "restore-team"
+                                   :type "action"
+                                   :props team
+                                   :context {:triggered-by "srepl"
+                                             :cause "explicit call to restore-team!"}})
+
+                    (restore-team* system team-id))))))
+
+(defn delete-profile!
+  "Mark a profile for deletion."
+  [profile-id]
+  (let [profile-id (h/parse-uuid profile-id)
+        tnow       (ct/now)]
+
+    (audit/insert sys/system
+                  {:name "delete-profile"
+                   :type "action"
+                   :props {:id profile-id}
+                   :context {:triggered-by "srepl"
+                             :cause "explicit call to delete-profile!"}
+                   :tracked-at tnow})
+
+    (wrk/invoke! (-> sys/system
+                     (assoc ::wrk/task :delete-object)
+                     (assoc ::wrk/params {:object :profile
+                                          :deleted-at tnow
+                                          :id profile-id})))
+    :deleted))
+
+(defn restore-profile!
+  "Mark a team and all related objects as not deleted"
+  [profile-id]
+  (let [profile-id (h/parse-uuid profile-id)]
+    (db/tx-run! sys/system
+                (fn [system]
+                  (when-let [profile (some-> (db/get* system :profile
+                                                      {:id profile-id}
+                                                      {::db/remove-deleted false})
+                                             (profile/decode-row))]
+                    (audit/insert system
+                                  {:name "restore-profile"
+                                   :type "action"
+                                   :props (audit/profile->props profile)
+                                   :context {:triggered-by "srepl"
+                                             :cause "explicit call to restore-profile!"}})
+
+                    (db/update! system :profile
+                                {:deleted-at nil}
+                                {:id profile-id}
+                                {::db/return-keys false})
+
+                    (doseq [{:keys [id]} (profile/get-owned-teams system profile-id)]
+                      (restore-team* system id))
+
+                    :restored)))))
+
+(defn delete-profiles-in-bulk!
+  [system path]
+  (let [path       (fs/path path)
+        deleted-at (ct/minus (ct/now) (cf/get-deletion-delay))
+        cause      "explicit call to delete-profiles-in-bulk!"]
+
+    (when-not (fs/exists? path)
+      (throw (ex-info "path does not exists" {:path path})))
+
+    (db/tx-run! system
+                (fn [system]
+                  (with-open [reader (io/reader path)]
+                    (loop [emails  (line-seq reader)
+                           deleted 0
+                           total   0]
+                      (if-let [email (first emails)]
+                        (if (delete-profile-by-email* system email deleted-at cause)
+                          (recur (rest emails) (inc deleted) (inc total))
+                          (recur (rest emails) deleted (inc total)))
+                        {:deleted deleted :total total})))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; CASCADE FIXING
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn- submit-deleted-cascade
+  "Replay the deletion cascade of every soft-deleted row of `table`, by
+  submitting one `:delete-object` task per row.
+
+  Reads the rows with a server-side cursor (`db/plan`) instead of materialising
+  the whole table, and enqueues the task instead of running it inline, so it
+  can be used against production in bounded batches. The task is idempotent (it
+  only marks the children with the row's own date), `label` is the row id and
+  `dedupe` drops not-yet-due duplicates.
+
+  Options: `:limit` (max rows read), `:ids` (restrict the run to these row ids)
+  and `:dry-run?` (count without enqueueing). `table` and `object` are internal
+  constants, never operator input.
+
+  Returns `{:found n :submitted m}`.
+
+  Note: the submissions are given the outer `system` (with the pool) on
+  purpose; handing them the read-only transaction cfg would write on it."
+  [system {:keys [table object limit ids dry-run?]}]
+  (let [clauses (cond-> ["deleted_at is not null"]
+                  (seq ids) (conj "id = any(?)"))
+        sql     (str "select id, deleted_at from " table
+                     " where " (str/join " and " clauses)
+                     (when limit (str " limit " (long limit))))]
+
+    (db/tx-run! (assoc system ::db/read-only true)
+                (fn [{:keys [::db/conn]}]
+                  (let [query (cond-> [sql]
+                                (seq ids) (conj (db/create-array conn "uuid" ids)))
+                        found (reduce (fn [total {:keys [id deleted-at]}]
+                                        (when-not dry-run?
+                                          (wrk/submit! (-> system
+                                                           (assoc ::wrk/task :delete-object)
+                                                           (assoc ::wrk/params {:object object
+                                                                                :deleted-at deleted-at
+                                                                                :id id})
+                                                           (assoc ::wrk/label (str id))
+                                                           (assoc ::wrk/dedupe true))))
+                                        (inc total))
+                                      0
+                                      (db/plan conn query))]
+                    {:found found
+                     :submitted (if dry-run? 0 found)})))))
+
+(defn process-deleted-profiles-cascade
+  "Replay the deletion cascade of every soft-deleted profile."
+  [& {:as opts}]
+  (submit-deleted-cascade sys/system (merge {:table "profile" :object :profile} opts)))
+
+(defn process-deleted-teams-cascade
+  "Replay the deletion cascade of every soft-deleted team."
+  [& {:as opts}]
+  (submit-deleted-cascade sys/system (merge {:table "team" :object :team} opts)))
+
+(defn process-deleted-projects-cascade
+  "Replay the deletion cascade of every soft-deleted project."
+  [& {:as opts}]
+  (submit-deleted-cascade sys/system (merge {:table "project" :object :project} opts)))
+
+(defn process-deleted-files-cascade
+  "Replay the deletion cascade of every soft-deleted file."
+  [& {:as opts}]
+  (submit-deleted-cascade sys/system (merge {:table "file" :object :file} opts)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; SSO
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn add-sso-config
+  [& {:keys [base-uri client-id client-secret domain]}]
+
+  (assert (and (string? base-uri) (str/starts-with? base-uri "http")) "expected a valid base-uri")
+  (assert (string? client-id) "expected a valid client-id")
+  (assert (string? client-secret) "expected a valid client-secret")
+  (assert (string? domain) "expected a valid domain")
+  (db/insert! sys/system :sso-provider
+              {:id (uuid/next)
+               :type "oidc"
+               :client-id client-id
+               :client-secret client-secret
+               :domain domain
+               :base-uri base-uri}))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; MISC
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn decode-session-token
+  [token]
+  (session/decode-token sys/system token))
+
+(defn instrument-var
+  [var]
+  (alter-var-root var (fn [f]
+                        (let [mf (meta f)]
+                          (if (::original mf)
+                            f
+                            (with-meta
+                              (fn [& params]
+                                (tap> params)
+                                (let [result (apply f params)]
+                                  (tap> result)
+                                  result))
+                              {::original f}))))))
+
+(defn uninstrument-var
+  [var]
+  (alter-var-root var (fn [f]
+                        (or (::original (meta f)) f))))
+
+
+(defn duplicate-team
+  [team-id & {:keys [name]}]
+  (let [team-id (h/parse-uuid team-id)]
+    (db/tx-run! sys/system
+                (fn [{:keys [::db/conn] :as cfg}]
+                  (db/exec-one! conn ["SET CONSTRAINTS ALL DEFERRED"])
+                  (let [team (-> (assoc cfg ::bfc/timestamp (ct/now))
+                                 (mgmt/duplicate-team :team-id team-id :name name))
+                        rels (db/query conn :team-profile-rel {:team-id team-id})]
+
+                    (doseq [rel rels]
+                      (let [params (-> rel
+                                       (assoc :id (uuid/next))
+                                       (assoc :team-id (:id team)))]
+                        (teams/add-profile-to-team! cfg params))))))))

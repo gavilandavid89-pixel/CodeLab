@@ -1,0 +1,809 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS SUBSIDIARY SL
+
+(ns backend-tests.helpers
+  (:require
+   [app.auth]
+   [app.common.data :as d]
+   [app.common.data.macros :as dm]
+   [app.common.exceptions :as ex]
+   [app.common.features :as cfeat]
+   [app.common.flags :as flags]
+   [app.common.pprint :as pp]
+   [app.common.schema :as sm]
+   [app.common.spec :as us]
+   [app.common.time :as ct]
+   [app.common.transit :as tr]
+   [app.common.uuid :as uuid]
+   [app.config :as cf]
+   [app.db :as db]
+   [app.main :as main]
+   [app.media]
+   [app.media :as-alias mtx]
+   [app.metrics :as-alias metrics]
+   [app.migrations]
+   [app.msgbus :as-alias mbus]
+   [app.rpc :as-alias rpc]
+   [app.rpc.climit :as-alias climit]
+   [app.rpc.commands.auth :as cmd.auth]
+   [app.rpc.commands.files :as files]
+   [app.rpc.commands.files-create :as files.create]
+   [app.rpc.commands.files-update :as files.update]
+   [app.rpc.commands.projects :as projects]
+   [app.rpc.commands.teams :as teams]
+   [app.rpc.helpers :as rph]
+   [app.util.blob :as blob]
+   [app.util.services :as sv]
+   [app.worker :as wrk]
+   [app.worker.runner]
+   [clojure.java.io :as io]
+   [clojure.spec.alpha :as s]
+   [clojure.test :as t]
+   [cuerdas.core :as str]
+   [datoteka.fs :as fs]
+   [environ.core :refer [env]]
+   [expound.alpha :as expound]
+   [integrant.core :as ig]
+   [mockery.core :as mk]
+   [promesa.core :as p]
+   [promesa.exec :as px]
+   [ring.core.protocols :as rcp]
+   [yetti.request :as yreq]
+   [yetti.response :as yres])
+  (:import
+   java.io.PipedInputStream
+   java.io.PipedOutputStream
+   java.util.UUID
+   org.postgresql.ds.PGSimpleDataSource))
+
+(def ^:dynamic *system* nil)
+(def ^:dynamic *pool* nil)
+
+;; Fallback values used when no PENPOT_TEST_* env vars are set (e.g. CI sets
+;; them explicitly, see .github/workflows/tests-backend.yml). Inside the
+;; devenv each wsN container receives per-instance values via
+;; manage.sh (PENPOT_TEST_DATABASE_URI=postgresql://postgres/penpot_test_wsN,
+;; PENPOT_TEST_REDIS_URI=redis://valkey/<6+N>), so parallel test runs on
+;; different workspaces never share a database. cf/read-config picks the env
+;; vars up through the "penpot-test" prefix.
+(def default
+  {:database-uri "postgresql://postgres/penpot_test"
+   :redis-uri "redis://valkey/1"
+   :auto-file-snapshot-every 1
+   :file-data-backend "db"})
+
+(def config
+  (cf/read-config :prefix "penpot-test"
+                  :default (merge cf/default default)))
+
+(def default-flags
+  [:enable-secure-session-cookies
+   :enable-email-verification
+   :enable-smtp
+   :enable-quotes
+   :enable-rpc-climit
+   :enable-auto-file-snapshot
+   :disable-file-validation
+   :disable-admin-console])
+
+(defn init-config
+  ([next]
+   (init-config nil next))
+  ([extra-flags next]
+   (let [flags (into default-flags extra-flags)]
+     (with-redefs [app.config/flags (flags/parse flags/default flags)
+                   app.config/config config
+                   app.loggers.audit/submit (constantly nil)
+                   app.auth/derive-password identity
+                   app.auth/verify-password (fn [a b] {:valid (= a b)})
+                   app.common.features/get-enabled-features
+                   (fn [& _] app.common.features/supported-features)]
+       (cf/validate! :exit-on-error? false)
+       (fs/create-dir "/tmp/penpot")
+       (next)))))
+
+(defn init-system
+  [next]
+  (let [templates [{:id "test"
+                    :name "test"
+                    :file-uri "test"
+                    :thumbnail-uri "test"
+                    :path (-> "backend_tests/test_files/template.penpot" io/resource fs/path)}]
+        system (-> (merge main/system-config main/worker-config)
+                   (assoc-in [:app.redis/client :app.redis/uri] (:redis-uri config))
+                   (assoc-in [::db/pool ::db/uri] (:database-uri config))
+                   (assoc-in [::db/pool ::db/username] (:database-username config))
+                   (assoc-in [::db/pool ::db/password] (:database-password config))
+                   (assoc-in [:app.rpc/methods :app.setup/templates] templates)
+                   (assoc-in [:app.rpc/methods :app.setup/templates] templates)
+                   (update :app.rpc/rlimit assoc
+                           :app.loggers.mattermost/reporter nil
+                           :app.loggers.database/reporter nil)
+                   (update :app.rpc/methods assoc
+                           :app.setup/templates templates
+                           :app.loggers.mattermost/reporter nil
+                           :app.loggers.database/reporter nil)
+                   (dissoc :app.srepl/server
+                           :app.http/server
+                           :app.http/route
+                           :app.setup/templates
+                           :app.http.oauth/handler
+                           :app.notifications/handler
+                           :app.loggers.mattermost/reporter
+                           :app.loggers.database/reporter
+                           :app.loggers.metrics/reporter
+                           :app.worker/cron
+                           :app.worker/dispatcher
+                           [:app.main/default :app.worker/runner]
+                           [:app.main/webhook :app.worker/runner]))
+        _      (ig/load-namespaces system)
+        system (-> (ig/expand system) (ig/init))]
+    (try
+      (binding [*system* system
+                *pool*   (:app.db/pool system)]
+        (next))
+      (finally
+        (ig/halt! system)))))
+
+(def state-init
+  (t/compose-fixtures init-config init-system))
+
+(defn database-reset
+  [next]
+  (let [sql (str "SELECT table_name "
+                 "  FROM information_schema.tables "
+                 " WHERE table_schema = 'public' "
+                 "   AND table_name != 'migrations';")]
+    (db/transact! *pool* (fn [conn]
+                           (db/exec-one! conn ["SET CONSTRAINTS ALL DEFERRED"])
+                           (db/exec-one! conn ["SET LOCAL rules.deletion_protection TO off"])
+                           (let [result (->> (db/exec! conn [sql])
+                                             (map :table-name))]
+                             (doseq [table result]
+                               (db/exec! conn [(str "delete from " table ";")])))))
+    (next)))
+
+(defn clean-storage
+  [next]
+  (let [path (fs/path "/tmp/penpot")]
+    (when (fs/exists? path)
+      (fs/delete (fs/path "/tmp/penpot")))
+    (fs/create-dir "/tmp/penpot")
+    (next)))
+
+(defn serial
+  [& funcs]
+  (fn [next]
+    (loop [f   (first funcs)
+           fs  (rest funcs)]
+      (when f
+        (let [prm (promise)]
+          (f #(deliver prm true))
+          (deref prm)
+          (recur (first fs)
+                 (rest fs)))))
+    (next)))
+
+(defn mk-uuid
+  [prefix & args]
+  (UUID/nameUUIDFromBytes (-> (apply str prefix args)
+                              (.getBytes "UTF-8"))))
+;; --- FACTORIES
+
+(defn create-profile*
+  ([i] (create-profile* *system* i {}))
+  ([i params] (create-profile* *system* i params))
+  ([system i params]
+   (let [params (merge {:id (mk-uuid "profile" i)
+                        :fullname (str "Profile " i)
+                        :email (str "profile" i ".test@nodomain.com")
+                        :password "Test123!"
+                        :is-demo false}
+                       params)]
+     (db/run! system
+              (fn [cfg]
+                (->> params
+                     (cmd.auth/create-profile cfg)
+                     (cmd.auth/create-profile-rels cfg)))))))
+
+(defn create-project*
+  ([i params] (create-project* *system* i params))
+  ([system i {:keys [profile-id team-id] :as params}]
+
+   (assert (uuid? profile-id))
+   (assert (uuid? team-id))
+   (let [timestamp (ct/now)]
+     (db/run! system
+              (fn [cfg]
+                (->> (merge {:id (mk-uuid "project" i)
+                             :name (str "project" i)}
+                            params
+                            {::rpc/request-at timestamp})
+                     (#'projects/create-project cfg)))))))
+
+(defn create-file*
+  ([i params]
+   (create-file* *system* i params))
+  ([system i {:keys [profile-id project-id] :as params}]
+   (dm/assert! "expected uuid" (uuid? profile-id))
+   (dm/assert! "expected uuid" (uuid? project-id))
+   (db/tx-run! system
+               (fn [system]
+                 (let [features (cfeat/get-enabled-features cf/flags)]
+                   (files.create/create-file system
+                                             (merge {:id (mk-uuid "file" i)
+                                                     :name (str "file" i)
+                                                     :features features}
+                                                    params)))))))
+
+(defn mark-file-deleted*
+  ([params]
+   (mark-file-deleted* *system* params))
+  ([conn {:keys [id] :as params}]
+   (#'files/mark-file-deleted conn {} id)))
+
+(defn create-team*
+  ([i params] (create-team* *system* i params))
+  ([system i {:keys [profile-id] :as params}]
+   (us/assert uuid? profile-id)
+   (dm/with-open [conn (db/open system)]
+     (let [id       (mk-uuid "team" i)
+           features (cfeat/get-enabled-features cf/flags)]
+       (teams/create-team {::db/conn conn} {:id id
+                                            :profile-id profile-id
+                                            :features features
+                                            :name (str "team" i)})))))
+
+(defn create-file-media-object*
+  ([params] (create-file-media-object* *system* params))
+  ([system {:keys [name width height mtype file-id is-local media-id]
+            :or {name "sample" width 100 height 100 mtype "image/svg+xml" is-local true}}]
+
+   (dm/with-open [conn (db/open system)]
+     (db/insert! conn :file-media-object
+                 {:id (uuid/next)
+                  :file-id file-id
+                  :is-local is-local
+                  :name name
+                  :media-id media-id
+                  :width  width
+                  :height height
+                  :mtype  mtype}))))
+
+(defn link-file-to-library*
+  ([params] (link-file-to-library* *system* params))
+  ([system {:keys [file-id library-id] :as params}]
+   (dm/with-open [conn (db/open system)]
+     (#'files/link-file-to-library conn {:file-id file-id :library-id library-id}))))
+
+(defn create-complaint-for
+  [system {:keys [id created-at type]}]
+  (dm/with-open [conn (db/open system)]
+    (db/insert! conn :profile-complaint-report
+                {:profile-id id
+                 :created-at (or created-at (ct/now))
+                 :type (name type)
+                 :content (db/tjson {})})))
+
+(defn create-global-complaint-for
+  [system {:keys [email type created-at]}]
+  (dm/with-open [conn (db/open system)]
+    (db/insert! conn :global-complaint-report
+                {:email email
+                 :type (name type)
+                 :created-at (or created-at (ct/now))
+                 :content (db/tjson {})})))
+
+(defn create-team-role*
+  ([params] (create-team-role* *system* params))
+  ([system {:keys [team-id profile-id role] :or {role :owner}}]
+   (dm/with-open [conn (db/open system)]
+     (#'teams/create-team-role {::db/conn conn}
+                               {:team-id team-id
+                                :profile-id profile-id
+                                :role role}))))
+
+(defn create-project-role*
+  ([params] (create-project-role* *system* params))
+  ([system {:keys [project-id profile-id role] :or {role :owner}}]
+   (dm/with-open [conn (db/open system)]
+     (#'teams/create-project-role conn profile-id project-id role))))
+
+(defn create-file-role*
+  ([params] (create-file-role* *system* params))
+  ([system {:keys [file-id profile-id role] :or {role :owner}}]
+   (dm/with-open [conn (db/open system)]
+     (files.create/create-file-role! conn {:file-id file-id
+                                           :profile-id profile-id
+                                           :role role}))))
+
+(defn update-file*
+  ([params] (update-file* *system* params))
+  ([system {:keys [file-id changes session-id profile-id revn]
+            :or {session-id (uuid/next) revn 0}}]
+   (-> system
+       (assoc ::files.update/timestamp (ct/now))
+       (db/tx-run! (fn [{:keys [::db/conn] :as system}]
+                     (let [file (files.update/get-file conn file-id)]
+                       (#'files.update/update-file* system
+                                                    {:id file-id
+                                                     :revn revn
+                                                     :vern 0
+                                                     :file file
+                                                     :features (:features file)
+                                                     :changes changes
+                                                     :session-id session-id
+                                                     :profile-id profile-id})))))))
+
+(declare command!)
+
+(defn update-file! [& {:keys [profile-id file-id changes revn] :or {revn 0}}]
+  (let [features (cfeat/get-enabled-features cf/flags)
+        params   {::type :update-file
+                  ::rpc/profile-id profile-id
+                  :id file-id
+                  :session-id (uuid/random)
+                  :revn revn
+                  :vern 0
+                  :features features
+                  :changes changes}
+        out      (command! params)]
+    (t/is (nil? (:error out)))
+    (:result out)))
+
+
+(defn create-webhook*
+  ([params] (create-webhook* *system* params))
+  ([system {:keys [team-id id uri mtype is-active]
+            :or {is-active true
+                 mtype "application/json"
+                 uri "http://example.com/webhook"}}]
+   (db/run! system (fn [{:keys [::db/conn]}]
+                     (db/insert! conn :webhook
+                                 {:id (or id (uuid/next))
+                                  :team-id team-id
+                                  :uri uri
+                                  :is-active is-active
+                                  :mtype mtype})))))
+
+;; --- RPC HELPERS
+
+(defn handle-error
+  [^Throwable err]
+  (if (instance? java.util.concurrent.ExecutionException err)
+    (handle-error (.getCause err))
+    err))
+
+(defmacro try-on!
+  [expr]
+  `(try
+     (let [result# ~expr
+           result# (cond-> result# (rph/wrapped? result#) deref)]
+       {:error nil
+        :result result#})
+     (catch Exception e#
+       {:error (handle-error e#)
+        :result nil})))
+
+(defrecord DummyRequest [headers cookies method body-stream
+                         remote-addr server-name server-port
+                         scheme protocol path query ssl-client-cert]
+  yreq/IRequestCookies
+  (get-cookie [_ name]
+    {:value (get cookies name)})
+
+  yreq/IRequest
+  (get-header [_ name]
+    (get headers name))
+  (method [_] method)
+  (body [_] body-stream)
+  (path [_] path)
+  (query [_] query)
+  (server-port [_] server-port)
+  (server-name [_] server-name)
+  (remote-addr [_] remote-addr)
+  (ssl-client-cert [_] ssl-client-cert)
+  (scheme [_] scheme)
+  (protocol [_] protocol))
+
+(defn make-dummy-request
+  "Constructs a DummyRequest from options. Called with keyword
+  arguments, a single options map, or no arguments; every key is
+  optional and missing values fall back to sensible defaults. New
+  fields added to DummyRequest won't break existing call sites
+  as long as this constructor keeps its `:or` defaults in sync.
+
+  Recognized keys:
+    :headers         — map of header name → value
+    :cookies         — map of cookie name → value
+    :method          — HTTP method keyword (default :get)
+    :body-stream     — InputStream for the body (used directly)
+    :body-bytes      — bytes or string for the body; wrapped in a
+                       ByteArrayInputStream if :body-stream is not
+                       given
+    :remote-addr     — string (default \"127.0.0.1\")
+    :server-name     — string (default \"test\")
+    :server-port     — long   (default 0)
+    :scheme          — keyword (default :http)
+    :protocol        — string (default \"HTTP/1.1\")
+    :path            — string (default \"/test\")
+    :query           — string or nil (default nil)
+    :ssl-client-cert — X509Certificate or nil (default nil)"
+  [& {:keys [headers cookies method body-stream body-bytes
+             remote-addr server-name server-port scheme protocol
+             path query ssl-client-cert]
+      :or   {headers {} cookies {} method :get
+             body-stream nil
+             remote-addr "127.0.0.1" server-name "test" server-port 0
+             scheme :http protocol "HTTP/1.1" path "/test" query nil
+             ssl-client-cert nil}}]
+  (let [body-stream (or body-stream
+                        (when body-bytes
+                          (java.io.ByteArrayInputStream.
+                           (if (string? body-bytes)
+                             (.getBytes ^String body-bytes "UTF-8")
+                             body-bytes))))]
+    (->DummyRequest headers cookies method body-stream
+                    remote-addr server-name server-port
+                    scheme protocol path query ssl-client-cert)))
+
+(defn- prepare-rpc-params
+  [data]
+  (let [params   (reduce-kv (fn [params k v]
+                              (if (qualified-keyword? k)
+                                (assoc params k v)
+                                params))
+                            {}
+                            (dissoc data ::type))
+        ;; Honor a caller-supplied request map from the data metadata so
+        ;; tests can inject headers, remote address and auth context (e.g.
+        ;; :app.http/auth-key-id). Non-map requests (reify IRequest stubs)
+        ;; fall back to the dummy request, which carries the body params
+        ;; the validation wrapper reads.
+        supplied (-> data meta :app.http/request)
+        request  (if (map? supplied)
+                   (assoc supplied :params (merge (:params supplied)
+                                                  (d/without-qualified data)))
+                   (assoc (make-dummy-request)
+                          :params (d/without-qualified data)))]
+
+    (-> params
+        (assoc :app.rpc/request-at (ct/now))
+        ;; Mirror of the production flag in `app.rpc/make-rpc-handler`:
+        ;; upload maps are only trusted over multipart. Tests declare it
+        ;; with a content-type header on the supplied request map.
+        (assoc ::rpc/is-multipart
+               (str/starts-with?
+                (str (yreq/get-header request "content-type"))
+                "multipart/"))
+        (with-meta {:app.http/request request}))))
+
+(defn command!
+  [{:keys [::type] :as data}]
+  (let [[mdata method-fn] (get-in *system* [:app.rpc/methods type])]
+    (when-not method-fn
+      (ex/raise :type :assertion
+                :code :rpc-method-not-found
+                :hint (str/ffmt "rpc method '%' not found" (name type))))
+
+    (let [params (prepare-rpc-params data)]
+      (try-on! (method-fn params)))))
+
+(defn command-raw!
+  "Like `command!`, but returns the raw result without unwrapping it, so a test
+  can read the result metadata (for example the audit props a command sets on a
+  nil result). The HTTP layer unwraps it the same way in production."
+  [{:keys [::type] :as data}]
+  (let [[_ method-fn] (get-in *system* [:app.rpc/methods type])]
+    (when-not method-fn
+      (ex/raise :type :assertion
+                :code :rpc-method-not-found
+                :hint (str/ffmt "rpc method '%' not found" (name type))))
+
+    (let [params (prepare-rpc-params data)]
+      (method-fn params))))
+
+(defn management-command!
+  [{:keys [::type] :as data}]
+  (let [[_ method-fn] (get-in *system* [:app.rpc/management-methods type])]
+    (when-not method-fn
+      (ex/raise :type :assertion
+                :code :rpc-method-not-found
+                :hint (str/ffmt "management rpc method '%' not found" (name type))))
+    (let [params (prepare-rpc-params data)]
+      (try-on! (method-fn params)))))
+
+(def multipart-headers
+  {"content-type" "multipart/form-data; boundary=test"})
+
+(defn with-multipart
+  "Attach a multipart content-type to RPC test params, declaring that the
+  upload maps they carry arrived over multipart (as the production
+  multipart parser would deliver them). Preserves any request metadata
+  already present on the data."
+  [data]
+  (let [request (-> data meta :app.http/request)]
+    (vary-meta data assoc :app.http/request
+               (assoc (if (map? request) request {})
+                      :headers (merge multipart-headers
+                                      (when (map? request)
+                                        (:headers request)))))))
+
+(defn multipart-command!
+  "Like `command!` but declares the request as multipart, for calls that
+  carry upload maps (`:file`, `:content`, `:media`)."
+  [data]
+  (command! (with-multipart data)))
+
+(defn multipart-management-command!
+  "Like `management-command!` but declares the request as multipart."
+  [data]
+  (management-command! (with-multipart data)))
+
+(defn run-task!
+  ([name]
+   (run-task! name {}))
+  ([name params]
+   (wrk/invoke! (-> *system*
+                    (assoc ::wrk/task name)
+                    (assoc ::wrk/params params)))))
+
+(def sql:pending-tasks
+  "select t.* from task as t
+    where t.status = 'new'
+    order by t.priority desc, t.scheduled_at")
+
+(defn run-pending-tasks!
+  []
+  (db/tx-run! *system* (fn [{:keys [::db/conn] :as cfg}]
+                         (let [tasks (->> (db/exec! conn [sql:pending-tasks])
+                                          (map #'app.worker.runner/decode-task-row))]
+                           (doseq [task tasks]
+                             (let [cfg (-> cfg
+                                           (assoc :app.worker.runner/queue (:queue task))
+                                           (assoc :app.worker.runner/id 0))]
+                               (#'app.worker.runner/run-task cfg task)))))))
+
+(defn metrics-stub
+  "A metrics instance with no collectors, where every `run!` is a no-op."
+  []
+  (reify metrics/IMetrics
+    (get-handler [_] nil)
+    (get-collector [_ _] nil)
+    (get-registry [_] nil)))
+
+(defn init-climit
+  "Build a concurrency limiter component from an inline config map. The
+  optional second argument is the metrics instance to publish to (a
+  `metrics-stub` by default, where every `run!` is a no-op).
+
+  The root limiters are added with permits that no test reaches: every
+  request goes through them, and a test that does not list them would log a
+  warning per request."
+  ([config]
+   (init-climit config (metrics-stub)))
+  ([config metrics]
+   (let [file (doto (java.io.File/createTempFile "climit" ".edn")
+                (.deleteOnExit))]
+     (spit file (pr-str (merge {:root/global {:permits 1000 :timeout 3000}
+                                :root/by-profile {:permits 1000 :timeout 3000}}
+                               config)))
+     (ig/init-key ::rpc/climit
+                  {::climit/enabled true
+                   ::climit/config (.getAbsolutePath file)
+                   ::metrics/metrics metrics}))))
+
+(defmacro with-climit
+  "Build a concurrency limiter from an inline config map, run the body and
+  halt it, so the republisher thread it starts never outlives the test. An
+  optional third binding element is the metrics instance to publish to."
+  [[sym config & [metrics]] & body]
+  `(let [~sym (init-climit ~config ~@(when metrics [metrics]))]
+     (try
+       ~@body
+       (finally
+         (ig/halt-key! ::rpc/climit ~sym)))))
+
+;; --- UTILS
+
+(defn print-error!
+  [error]
+  (let [data (ex-data error)]
+    (cond
+      (= :spec-validation (:code data))
+      (println
+       (us/pretty-explain data))
+
+      (= :params-validation (:code data))
+      (println
+       (sm/humanize-explain (::sm/explain data)))
+
+      (= :data-validation (:code data))
+      (println
+       (sm/humanize-explain (::sm/explain data)))
+
+      (= :service-error (:type data))
+      (print-error! (.getCause ^Throwable error))
+
+      :else
+      (.printStackTrace ^Throwable error))))
+
+(defn print-result!
+  [{:keys [error result]}]
+  (if error
+    (do
+      (println "====> START ERROR")
+      (print-error! error)
+      (println "====> END ERROR"))
+    (do
+      (println "====> START RESPONSE")
+      (pp/pprint result)
+      (println "====> END RESPONSE"))))
+
+(defn exception?
+  [v]
+  (instance? Throwable v))
+
+(defn ex-info?
+  [v]
+  (ex/error? v))
+
+(defn ex-type
+  [e]
+  (:type (ex-data e)))
+
+(defn ex-code
+  [e]
+  (:code (ex-data e)))
+
+(defn ex-of-type?
+  [e type]
+  (let [data (ex-data e)]
+    (= type (:type data))))
+
+(defn ex-of-code?
+  [e code]
+  (let [data (ex-data e)]
+    (= code (:code data))))
+
+(defn ex-with-code?
+  [e code]
+  (let [data (ex-data e)]
+    (= code (:code data))))
+
+(defn success?
+  [{:keys [result error]}]
+  (nil? error))
+
+(defn tempfile
+  [source]
+  (let [rsc (io/resource source)
+        tmp (fs/create-tempfile :dir "/tmp/penpot" :prefix "test-")]
+    (io/copy (io/file rsc)
+             (io/file tmp))
+    tmp))
+
+(defn pause
+  []
+  (let [^java.io.Console cnsl (System/console)]
+    (println "[waiting RETURN]")
+    (.readLine cnsl)
+    nil))
+
+(defn db-exec!
+  [sql]
+  (db/exec! *pool* sql))
+
+(defn db-exec-one!
+  [sql]
+  (db/exec-one! *pool* sql))
+
+(defn db-delete!
+  [& params]
+  (apply db/delete! *pool* params))
+
+(defn db-update!
+  [& params]
+  (apply db/update! *pool* params))
+
+(defn db-insert!
+  [& params]
+  (apply db/insert! *pool* params))
+
+(defn db-delete!
+  [& params]
+  (apply db/delete! *pool* params))
+
+(defn db-query
+  [& params]
+  (apply db/query *pool* params))
+
+(defn db-get
+  [& params]
+  (apply db/get* *pool* params))
+
+(defn sleep
+  [ms-or-duration]
+  (Thread/sleep (inst-ms (ct/duration ms-or-duration))))
+
+(defn config-get-mock
+  [data]
+  (fn
+    ([key]
+     (get data key (get cf/config key)))
+    ([key default]
+     (get data key (get cf/config key default)))))
+
+(defn reset-mock!
+  [m]
+  (swap! m (fn [m]
+             (-> m
+                 (assoc :called? false)
+                 (assoc :call-count 0)
+                 (assoc :return-list [])
+                 (assoc :call-args nil)
+                 (assoc :call-args-list [])))))
+
+(defn- slurp'
+  [input & opts]
+  (let [sw (java.io.StringWriter.)]
+    (with-open [^java.io.Reader r (java.io.InputStreamReader. input "UTF-8")]
+      (io/copy r sw)
+      (.toString sw))))
+
+(defn parse-sse
+  [content]
+  (let [state
+        (reduce (fn [{:keys [events data event id] :as state} line]
+                  (cond
+                    ;; empty line → dispatch event if we have data
+                    (str/blank? line)
+                    (if (seq data)
+                      (-> state
+                          (update :events conj {:event (or event "message")
+                                                :data (-> (str/join "\n" data))})
+                          (assoc :data [] :event nil))
+                      state)
+
+                    ;; comment line (starts with :)
+                    (str/starts-with? line ":")
+                    state
+
+                    :else
+                    (let [[field raw-value] (str/split line #":" 2)
+                          value (some-> raw-value (str/replace #"^ " ""))]
+                      (case field
+                        "data"  (update state :data conj (or value ""))
+                        "event" (assoc state :event value)
+                        ;; ignore retry and unknown fields
+                        state))))
+                {:events [] :data [] :event nil}
+                (str/split content #"\r?\n"))
+
+        ;; handle unterminated last event (no trailing blank line)
+        state (if (seq (:data state))
+                (update state :events conj
+                        {:event (or (:event state) "message")
+                         :data (str/join "\n" (:data state))})
+                state)]
+
+    (:events state)))
+
+(defn consume-sse
+  [callback]
+  (let [{:keys [::yres/status ::yres/body ::yres/headers] :as response} (callback {})
+        output (PipedOutputStream.)
+        input  (PipedInputStream. output)]
+
+    (try
+      (px/exec! :virtual #(rcp/write-body-to-stream body nil output))
+      (into []
+            (map (fn [{:keys [event data]}]
+                   (d/vec2 (keyword event)
+                           (tr/decode-str data))))
+            (parse-sse (slurp' input)))
+      (finally
+        (.close input)))))
