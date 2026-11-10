@@ -60,6 +60,15 @@ The following RPC methods are registered by the pinned Penpot backend source and
 - Files: `get-file`, `get-file-fragment`, `get-project-files`, `get-page`, `get-file-info`, `rename-file`, `delete-file`.
 - Media: `upload-file-media-object`, `create-upload-session`, `upload-chunk`, `assemble-file-media-object`.
 
+The pinned frontend source also identifies the actual dashboard/workspace calls (rather than only the backend's available methods):
+
+- Dashboard lifecycle: `create-file`, `duplicate-file`, `delete-file`, `rename-file`, `move-files`, `get-file-summary`, `get-projects`, `create-project`, `duplicate-project`, `rename-project`, `move-project`, `delete-project`, `update-project-pin`, `search-files`, `get-team-recent-files`, `get-team-deleted-files`, `get-builtin-templates`, `set-file-shared`.
+- Workspace open: `get-file`, `get-file-libraries`, `get-file-object-thumbnails`, `rename-file`.
+- Library sync: `get-library-usage`, `ignore-file-library-sync-status`, `link-file-to-library`, `unlink-file-from-library`, `update-file-library-sync-status`.
+- Media lifecycle: `upload-file-media-object`, `create-file-media-object-from-url`, `clone-file-media-object`, `assemble-file-media-object`.
+
+The backend registration was confirmed for `create-file` in `files_create.clj`, `update-file` in `files_update.clj`, snapshot operations in `files_snapshot.clj`, and the media methods in `media.clj`. This gives us a source-backed checklist for the dashboard-to-editor vertical slice. It is still not permission to expose every method: each one must be mapped to CodeLab project ownership and tested before its UI action is enabled.
+
 The full native workspace will also require the command groups for file creation/duplication, document changes, comments, libraries, fonts, exports, plugin APIs and feature/configuration bootstrap. These must be inventoried from the pinned source before enabling the corresponding UI paths. A UI control must not be exposed as functional until its backend operation is implemented and permission-tested.
 
 ## Required implementation gates
