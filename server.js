@@ -2875,6 +2875,17 @@ const server = http.createServer(async (req, res) => {
             owner: current.owner
           };
           await writeState(workspaceId, next, current.revision);
+          let designSystemApplied = false;
+          try {
+            const existingSettings = readDesignSystem(workspaceId) || designTools.sanitizeSettings({});
+            const mappedSettings = penpotAdapter.mapPenpotDesignSystem(imported, existingSettings);
+            if (mappedSettings) {
+              writeDesignSystem(workspaceId, designTools.sanitizeSettings(mappedSettings));
+              designSystemApplied = true;
+            }
+          } catch (designSystemError) {
+            console.error('Penpot design-system mapping failed:', designSystemError.message);
+          }
           return sendJson(res, 200, {
             ok: true,
             fileId: imported.fileId,
@@ -2883,7 +2894,7 @@ const server = http.createServer(async (req, res) => {
             importedScreens: importedProjects.length,
             importedElements: importedProjects.reduce((sum, project) => sum + (project.design.elements || []).length, 0),
             importedConnections: importedProjects.reduce((sum, project) => sum + (project.design.flowConnections || []).length, 0),
-            importedAssets: imported.assets ? imported.assets.length : 0,
+            importedAssets: imported.assets ? imported.assets.length : 0,\n            designSystemApplied,
             projectIds: importedProjects.map(project => project.id)
           });
         } catch (error) {
