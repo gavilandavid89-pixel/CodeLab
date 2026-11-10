@@ -26,6 +26,9 @@ const configuredMaxBodyBytes = Number.parseInt(process.env.CODELAB_MAX_BODY_BYTE
 const MAX_BODY_BYTES = Number.isInteger(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
   ? Math.min(50 * 1024 * 1024, Math.max(1024, configuredMaxBodyBytes))
   : 10 * 1024 * 1024;
+// Penpot document payloads live inside the existing CodeLab project/workspace JSON.
+// Keep this separate from PixelForge's binary asset budgets.
+const PENPOT_MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
 const configuredMaxProjects = Number.parseInt(process.env.CODELAB_MAX_PROJECTS || '', 10);
 const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxProjects > 0
   ? Math.min(500, configuredMaxProjects)
@@ -2671,6 +2674,107 @@ const server = http.createServer(async (req, res) => {
           state: state,
           user: sessionUser || null
         });
+      }
+
+      // Penpot-native document persistence inside the existing CodeLab workspace/project store.
+      // No second database, user directory, project store, or durable asset bucket is introduced.
+      const penpotDocumentMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/projects\\/([^/]+)\\/penpot-document$/);
+      if (penpotDocumentMatch && (req.method === 'GET' || req.method === 'PUT')) {
+        const id = safeId(penpotDocumentMatch[1]);
+        let projectId = '';
+        try { projectId = decodeURIComponent(penpotDocumentMatch[2]); } catch (_) {}
+        if (!id || !/^[A-Za-z0-9_-]{1,80}$/.test(projectId)) {
+          return sendJson(res, 400, { error: 'invalid_penpot_document_target' });
+        }
+        if (!(await isAuthorized(req, id))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!(await workspaceExists(id))) return sendJson(res, 404, { error: 'workspace_not_found' });
+
+        try {
+          const current = await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
+          const projectIndex = current.projects.findIndex(project => project.id === projectId);
+          if (projectIndex < 0) return sendJson(res, 404, { error: 'project_not_found' });
+          const project = current.projects[projectIndex];
+          const stored = project.design && project.design.penpotDocument ? project.design.penpotDocument : null;
+
+          if (req.method === 'GET') {
+            return sendJson(res, 200, {
+              document: stored ? stored.data : null,
+              documentRevision: stored ? stored.revision : 0,
+              workspaceRevision: current.revision
+            });
+          }
+
+          const body = await readBody(req);
+          if (!body || typeof body !== 'object' || Array.isArray(body) ||
+              !body.document || typeof body.document !== 'object' || Array.isArray(body.document) ||
+              !Number.isInteger(body.baseRevision) || body.baseRevision < 0) {
+            return sendJson(res, 400, { error: 'invalid_penpot_document' });
+          }
+          const serialized = JSON.stringify(body.document);
+          const documentBytes = Buffer.byteLength(serialized, 'utf8');
+          if (documentBytes > PENPOT_MAX_DOCUMENT_BYTES) {
+            return sendJson(res, 413, { error: 'penpot_document_too_large', maxBytes: PENPOT_MAX_DOCUMENT_BYTES });
+          }
+          if (body.baseRevision !== current.revision) {
+            return sendJson(res, 409, {
+              error: 'revision_conflict',
+              workspaceRevision: current.revision,
+              document: stored ? stored.data : null,
+              documentRevision: stored ? stored.revision : 0
+            });
+          }
+
+          const now = new Date().toISOString();
+          const nextProjects = current.projects.map((item, index) => {
+            if (index !== projectIndex) return item;
+            const design = item.design && typeof item.design === 'object' && !Array.isArray(item.design)
+              ? item.design : {};
+            const previousRevision = stored && Number.isInteger(stored.revision) ? stored.revision : 0;
+            return {
+              ...item,
+              design: {
+                ...design,
+                penpotDocument: {
+                  format: 'penpot-native-document',
+                  version: 1,
+                  revision: previousRevision + 1,
+                  updatedAt: now,
+                  data: body.document
+                }
+              }
+            };
+          });
+          const validationError = validateProjects(nextProjects);
+          if (validationError) return sendJson(res, 400, { error: 'invalid_payload', detail: validationError });
+
+          const nextState = {
+            revision: current.revision + 1,
+            updatedAt: now,
+            projects: nextProjects,
+            owner: current.owner
+          };
+          await writeState(id, nextState, current.revision);
+          return sendJson(res, 200, {
+            ok: true,
+            documentRevision: stored && Number.isInteger(stored.revision) ? stored.revision + 1 : 1,
+            workspaceRevision: nextState.revision,
+            updatedAt: now
+          });
+        } catch (error) {
+          if (error && error.code === 'WORKSPACE_REVISION_CONFLICT') {
+            const latest = await readState(id);
+            const latestProject = latest.projects.find(project => project.id === projectId);
+            const latestDocument = latestProject && latestProject.design && latestProject.design.penpotDocument;
+            return sendJson(res, 409, {
+              error: 'revision_conflict',
+              workspaceRevision: latest.revision,
+              document: latestDocument ? latestDocument.data : null,
+              documentRevision: latestDocument ? latestDocument.revision : 0
+            });
+          }
+          console.error('penpot_document_persistence_failed', id, projectId, error.message);
+          return sendJson(res, 500, { error: 'penpot_document_persistence_failed' });
+        }
       }
 
       const getMatch = pathname.match(/^\/api\/workspace\/([^/]+)$/);
