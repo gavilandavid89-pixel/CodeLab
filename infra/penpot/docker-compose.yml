@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     depends_on: [penpot-backend, penpot-admin-console, penpot-exporter]
     environment:
-      PENPOT_FLAGS: enable-registration enable-login-with-password enable-secure-session-cookies disable-email-verification
+      PENPOT_FLAGS: disable-registration disable-login-with-password enable-secure-session-cookies
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_BACKEND_URI: http://penpot-backend:6060
       PENPOT_EXPORTER_URI: http://penpot-exporter:6061
@@ -26,13 +26,13 @@ services:
       penpot-valkey:
         condition: service_healthy
     environment:
-      PENPOT_FLAGS: enable-registration enable-login-with-password enable-secure-session-cookies disable-email-verification
+      PENPOT_FLAGS: disable-registration disable-login-with-password enable-secure-session-cookies
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
       PENPOT_SECRET_KEY: ${PENPOT_SECRET_KEY:?Set a unique random PENPOT_SECRET_KEY}
       # Existing CodeLab PostgreSQL connection, isolated to a dedicated schema.
-      PENPOT_DATABASE_URI: ${PENPOT_DATABASE_URI:?Set JDBC URL for CodeLab PostgreSQL with currentSchema=penpot}
-      PENPOT_DATABASE_USERNAME: ${PENPOT_DATABASE_USERNAME:?Set existing CodeLab database username}
-      PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set existing CodeLab database password}
+      PENPOT_DATABASE_URI: ${PENPOT_DATABASE_URI:?Set PostgreSQL URI for the existing CodeLab database and dedicated Penpot role}
+      PENPOT_DATABASE_USERNAME: ${PENPOT_DATABASE_USERNAME:?Set the dedicated restricted Penpot database role}
+      PENPOT_DATABASE_PASSWORD: ${PENPOT_DATABASE_PASSWORD:?Set the dedicated Penpot database role password}
       PENPOT_REDIS_URI: redis://penpot-valkey:6379/0
       PENPOT_OBJECTS_STORAGE_BACKEND: fs
       PENPOT_OBJECTS_STORAGE_FS_DIRECTORY: /opt/data/assets/penpot
