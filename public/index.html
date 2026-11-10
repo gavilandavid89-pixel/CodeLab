@@ -699,101 +699,43 @@
 
         </div>
       </section>
-      <!-- ESPACIO DE DISEÑO VISUAL -->
+      <!-- PENPOT DESIGN WORKSPACE
+           Penpot owns pages, boards, layers and prototype interactions.
+           CodeLab keeps generation, Preview/Run and the existing animation pipeline. -->
       <section id="designStudioPanel" class="hidden flex-1 min-h-0 bg-slate-950 text-slate-100 flex-col">
-        <div class="design-toolbar flex flex-wrap items-center gap-2 overflow-x-auto px-3 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
-          <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-700">
-            <span class="text-xs font-bold text-slate-200">Herramientas de diseño</span>
-            <button type="button" onclick="toggleDesignOptions(false)" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" aria-label="Cerrar panel de opciones" title="Cerrar panel">&gt;</button>
-          </div>
-          <button id="toggleDesignInspector" type="button" onclick="toggleDesignPanel('inspector')" aria-expanded="true" aria-controls="designLayersPanel" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar Inspector"><i class="fa-solid fa-panel-left"></i><span class="hidden sm:inline ml-1">Inspector</span></button>
-          <div class="flex items-center gap-1">
-            <button onclick="designUndo()" id="designUndoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
-            <button onclick="designRedo()" id="designRedoBtn" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Rehacer"><i class="fa-solid fa-rotate-right"></i></button>
-          </div>
-          <span class="h-6 w-px bg-slate-700 mx-1"></span>
-          <button onclick="addDesignElement('heading')" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold"><i class="fa-solid fa-heading mr-1"></i> Título</button>
-          <button onclick="addDesignElement('text')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-font mr-1"></i> Texto</button>
-          <button onclick="addDesignElement('button')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square-caret-right mr-1"></i> Botón</button>
-          <button onclick="addDesignElement('rectangle')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-regular fa-square mr-1"></i> Rectángulo</button>
-          <button onclick="addDesignElement('ellipse')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Añadir una elipse o círculo"><i class="fa-regular fa-circle mr-1"></i> Elipse</button>
-          <button onclick="addDesignElement('image')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Añadir una imagen al diseño"><i class="fa-regular fa-image mr-1"></i> Imagen</button>
-          <div class="relative">
-            <button id="designTemplatesButton" type="button" aria-expanded="false" aria-controls="designTemplatesMenu" onclick="toggleDesignTemplatesMenu()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-layer-group mr-1"></i> Plantillas</button>
-            <div id="designTemplatesMenu" role="menu" aria-label="Plantillas de diseño" class="hidden absolute left-0 top-full mt-1 z-50 min-w-44 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
-              <button id="designTemplateLanding" type="button" role="menuitem" onclick="applyDesignTemplate('landing')" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">Landing de producto</button>
-              <button id="designTemplateDashboard" type="button" role="menuitem" onclick="applyDesignTemplate('dashboard')" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">Panel de control</button>
-              <button id="designTemplatePortfolio" type="button" role="menuitem" onclick="applyDesignTemplate('portfolio')" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">Portfolio</button>
-            </div>
-          </div>
-          <button onclick="toggleDesignGrid()" id="designGridBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Mostrar u ocultar cuadrícula"><i class="fa-solid fa-border-all mr-1"></i> Rejilla</button>
-          <button onclick="toggleDesignSnap()" id="designSnapBtn" type="button" aria-pressed="false" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Ajustar las capas a la cuadrícula al soltar" aria-label="Ajustar a la cuadrícula"><i class="fa-solid fa-magnet"></i><span class="hidden sm:inline ml-1">Ajustar</span></button>
-          <label class="flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1.5" title="Tamaño de la cuadrícula"><span class="sr-only">Tamaño de cuadrícula</span><select id="designGridSize" aria-label="Tamaño de cuadrícula" onchange="setDesignGridSize(this.value)" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="4">4 px</option><option value="8" selected>8 px</option><option value="16">16 px</option><option value="32">32 px</option></select></label>
-          <div class="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="Alinear elemento seleccionado">
-<button onclick="alignDesignElement('left')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la izquierda" aria-label="Alinear izquierda"><i class="fa-solid fa-align-left"></i></button>
-<button onclick="alignDesignElement('center-x')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar horizontalmente" aria-label="Centrar horizontal"><i class="fa-solid fa-arrows-left-right"></i></button>
-<button onclick="alignDesignElement('right')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear a la derecha" aria-label="Alinear derecha"><i class="fa-solid fa-align-right"></i></button>
-<span class="mx-0.5 h-5 border-l border-slate-700"></span>
-<button onclick="alignDesignElement('top')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear arriba" aria-label="Alinear arriba"><i class="fa-solid fa-arrow-up"></i></button>
-<button onclick="alignDesignElement('center-y')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Centrar verticalmente" aria-label="Centrar vertical"><i class="fa-solid fa-arrows-up-down"></i></button>
-<button onclick="alignDesignElement('bottom')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Alinear abajo" aria-label="Alinear abajo"><i class="fa-solid fa-arrow-down"></i></button>
-</div>
-          <div class="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="Distribuir capas seleccionadas">
-            <button type="button" onclick="distributeDesignElements('horizontal')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Distribuir horizontalmente (selecciona 3 o más capas con Shift + clic)" aria-label="Distribuir capas horizontalmente"><i class="fa-solid fa-arrows-left-right"></i><span class="hidden xl:inline ml-1">Distribuir H</span></button>
-            <button type="button" onclick="distributeDesignElements('vertical')" class="px-2 py-1.5 rounded hover:bg-slate-800 text-xs" title="Distribuir verticalmente (selecciona 3 o más capas con Shift + clic)" aria-label="Distribuir capas verticalmente"><i class="fa-solid fa-arrows-up-down"></i><span class="hidden xl:inline ml-1">Distribuir V</span></button>
-          </div>
-          <label class="flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Color de fondo del marco">Fondo <input id="designBackgroundColor" type="color" value="#ffffff" onchange="setDesignBackground(this.value)" class="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"></label>
-          <label class="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Zoom del lienzo"><i class="fa-solid fa-magnifying-glass"></i><input id="designZoom" type="range" min="10" max="150" step="5" value="100" oninput="setDesignZoom(this.value)" class="w-16 sm:w-20 accent-violet-500"><span id="designZoomLabel" class="w-8 text-right">100%</span></label>
-          <button id="designFitBtn" type="button" onclick="fitDesignToViewport()" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs" title="Ajustar el lienzo al ancho visible" aria-label="Ajustar lienzo al ancho visible"><i class="fa-solid fa-expand"></i><span class="hidden sm:inline ml-1">Encajar</span></button>
-          <div class="relative">
-            <button id="designExportMenuButton" type="button" aria-expanded="false" aria-controls="designExportMenu" onclick="toggleDesignExportMenu()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><i class="fa-solid fa-download mr-1"></i> Exportar <i class="fa-solid fa-chevron-down ml-1 text-[9px]"></i></button>
-            <div id="designExportMenu" role="menu" aria-label="Formatos de exportación" class="hidden absolute left-0 top-full mt-1 z-50 min-w-44 rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-xl">
-
-              <button id="exportDesignSvgOption" type="button" role="menuitem" onclick="exportDesignSvg(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-bezier-curve mr-2 text-cyan-400"></i>SVG vectorial</button>
-              <button id="exportDesignHtmlOption" type="button" role="menuitem" onclick="exportDesignHtml(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-code mr-2 text-emerald-400"></i>HTML adaptable</button>
-              <button id="exportDesignJsonOption" type="button" role="menuitem" onclick="exportDesignProjectJson(); closeDesignExportMenu()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-code mr-2 text-violet-400"></i>Proyecto JSON (respaldo)</button>
-              <button id="importDesignProjectJsonOption" type="button" role="menuitem" onclick="closeDesignExportMenu(); document.getElementById('designProjectJsonFile').click()" class="w-full rounded-md px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"><i class="fa-solid fa-file-arrow-up mr-2 text-emerald-400"></i>Importar respaldo como proyecto</button>
-            </div>
-            <input id="designProjectJsonFile" type="file" accept=".json,application/json" class="hidden" aria-label="Importar respaldo de proyecto de diseño" onchange="importDesignProjectJson(this.files && this.files[0]); this.value = ''">
-          </div>
-          <label class="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Qué parte del editor capturar"><span>Vista</span><select id="designCaptureMode" aria-label="Vista de captura IA" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="project">Proyecto completo</option><option value="canvas">Solo lienzo</option><option value="editor">Editor completo</option></select></label>
-          <label class="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5" title="Resolución de la captura IA"><span class="hidden sm:inline">Resolución</span><select id="designCaptureScale" aria-label="Resolución de captura IA" class="bg-slate-950 text-slate-200 rounded outline-none"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></label>
-          <button onclick="captureDesignForAI()" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold" title="Genera una captura y envíala al modelo de IA para revisión visual"><i class="fa-solid fa-camera mr-1"></i> Revisar con IA</button>
-
-          <div class="ml-auto flex items-center gap-2">
-            <label class="text-[11px] text-slate-400" for="designFrameSize">Página</label>
-            <select id="designFrameSize" onchange="setDesignFrame(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs">
-              <option value="desktop">Desktop · 1440</option><option value="tablet">Tablet · 768</option><option value="mobile">Móvil · 390</option>
-            </select>
-            <button id="syncDesignToWebBtn" type="button" onclick="convertDesignToWeb()" class="px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white" title="Sincroniza el diseño actual con el Editor Web"><i class="fa-solid fa-arrows-rotate mr-1"></i><span class="hidden sm:inline">Sincronizar con Web</span><span class="sm:hidden">Sincronizar</span></button>
-
-            <button id="designConnectBtn" type="button" onclick="setDesignConnectMode(!window.designConnectMode)" aria-pressed="false" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold" title="Une dos capas directamente en el lienzo arrastrando una soga"><i class="fa-solid fa-link mr-1"></i> Conectar</button>
-            <button id="openDesignFlowGraph" type="button" onclick="openDesignFlowGraph()" class="px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-xs font-bold" title="Conectar opciones con páginas mediante nodos"><i class="fa-solid fa-diagram-project mr-1"></i> Nodos</button>
-          </div>
-        </div>
-        <button id="designOptionsReopen" type="button" onclick="toggleDesignOptions(true)" class="px-3 py-2 rounded-xl bg-slate-900/95 border border-slate-600 text-slate-100 shadow-xl" aria-label="Abrir opciones de diseño" title="Abrir opciones">&lt;</button>
-        <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden flex-col sm:flex-row">
-          <aside id="designLayersPanel" class="hidden sm:flex w-64 lg:w-72 flex-col border-r border-slate-800 bg-slate-900/90 shrink-0 min-h-0 overflow-hidden">
-            <div class="px-3 py-2 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Inspector</div>
-            <div id="designLayers" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-1"></div>
-            <div id="designInspectorProperties" class="shrink-0 max-h-[52%] overflow-y-auto border-t border-slate-800 p-3 space-y-2 text-xs"></div>
-          </aside>
-          <div id="designCanvasScroll" class="flex-1 min-w-0 w-full max-w-full overflow-auto bg-[#171923]">
-            <div class="mx-auto mb-3 max-w-max text-[10px] uppercase tracking-[0.2em] text-slate-500">Workspace · mueve la página y conecta nodos alrededor de ella</div>
-            <div id="designWorkspaceWorld">
-              <div id="designPageFrame" data-size="1440 × 900" data-position="1200 × 900">
-                <div id="designPageMoveHandle" aria-label="Mover página">Mover página · espacio de trabajo</div>
-              <div id="designCanvas" class="relative bg-white text-slate-900 shadow-2xl overflow-hidden" style="width:1440px;height:900px;max-width:none;background-color:#ffffff;touch-action:none;">
-                <div id="designCanvasEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
-                  <i class="fa-solid fa-pen-ruler text-4xl mb-3"></i><strong class="text-sm">Tu página está lista</strong><span class="text-xs mt-1">Añade elementos desde la barra superior.</span>
+        <div class="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8">
+          <div class="w-full max-w-3xl rounded-2xl border border-violet-500/30 bg-slate-900/90 p-5 sm:p-8 shadow-2xl">
+            <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
+              <div class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-violet-500/15 border border-violet-400/20">
+                <i class="fa-solid fa-pen-ruler text-2xl text-violet-300"></i>
+              </div>
+              <div class="min-w-0 flex-1">
+                <h2 class="text-xl font-bold text-white">Diseño con Penpot</h2>
+                <p class="mt-2 text-sm leading-6 text-slate-300">
+                  El canvas propietario de CodeLab queda sustituido por Penpot. Diseña páginas, boards,
+                  componentes y prototipos; CodeLab conserva generación, Preview/Run y animaciones.
+                </p>
+                <div class="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3"><b class="text-violet-300">Páginas + boards</b><br>Varias pantallas en un mismo archivo.</div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3"><b class="text-cyan-300">Prototipado</b><br>Conexiones y transiciones entre pantallas.</div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3"><b class="text-emerald-300">Inspect + código</b><br>CSS, HTML y SVG desde el diseño.</div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3"><b class="text-amber-300">Animación preservada</b><br>El pipeline de animaciones de CodeLab/Pixelforge sigue intacto.</div>
                 </div>
-              </div>
+                <div class="mt-5 flex flex-wrap items-center gap-2">
+                  <button id="openPenpotWorkspace" type="button" class="rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold text-white hover:bg-violet-500">
+                    <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>Abrir Penpot
+                  </button>
+                  <button id="copyPenpotUrl" type="button" class="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-200 hover:bg-slate-700">
+                    <i class="fa-solid fa-copy mr-2"></i>Copiar URL
+                  </button>
+                </div>
+                <p id="penpotStatus" class="mt-3 text-xs text-slate-500">Comprobando conexión con Penpot…</p>
               </div>
             </div>
           </div>
-          
         </div>
       </section>
+
     </main>
   </div>
 
@@ -1228,7 +1170,7 @@
   <script src="/design-tools.js"></script>
   <script src="/capture.js"></script>
   <script src="/component-library.js"></script>
-  <script src="/design-flow.js"></script>
+  <script src="/design-flow.js"></script>\n  <script src="/penpot-workspace.js"></script>
 </body>
 
 </html>
