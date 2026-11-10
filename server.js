@@ -1720,6 +1720,9 @@ function parseAiJsonContent(content, fallbackCode) {
   );
 }
 
+// Keep the upstream inaccessible until CodeLab-issued Penpot identity/SSO is implemented and verified.
+const PENPOT_IDENTITY_BRIDGE_READY = false;
+
 const PENPOT_FRONTEND_URL = (() => {
   const raw = String(process.env.PENPOT_FRONTEND_URL || '').trim();
   if (!raw) return null;
@@ -1774,6 +1777,11 @@ const server = http.createServer(async (req, res) => {
   // Penpot is served through the CodeLab origin. The frontend and its internal
   // backend/exporter stay private; no Penpot Cloud URL is used by the browser.
   if (pathname === '/penpot' || pathname.startsWith('/penpot/')) {
+    const penpotUser = await getSessionUser(req);
+    if (!penpotUser) return sendJson(res, 401, { error: 'penpot_codelab_session_required' });
+    if (!PENPOT_IDENTITY_BRIDGE_READY) {
+      return sendJson(res, 503, { error: 'penpot_identity_bridge_not_ready', message: 'El acceso al motor de diseño se habilitará cuando el SSO de CodeLab esté integrado y probado.' });
+    }
     return proxyPenpotHttp(req, res);
   }
 
@@ -2793,7 +2801,7 @@ const server = http.createServer(async (req, res) => {
 server.on('upgrade', (req, socket, head) => {
   let pathname = '/';
   try { pathname = new URL(req.url || '/', 'http://localhost').pathname; } catch (_) {}
-  if (!(pathname === '/penpot' || pathname.startsWith('/penpot/')) || !PENPOT_FRONTEND_URL) {
+  if (!(pathname === '/penpot' || pathname.startsWith('/penpot/')) || !PENPOT_FRONTEND_URL || !PENPOT_IDENTITY_BRIDGE_READY) {
     socket.destroy();
     return;
   }
