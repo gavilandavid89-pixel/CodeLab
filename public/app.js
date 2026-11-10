@@ -4925,6 +4925,76 @@ function switchProjectWorkspace(targetType) {
     creatingProjectInFlight = false;
   }
 }
+async function importPenpotArchive(file) {
+  if (!file) return;
+  const project = typeof activeDesignProject === 'function' ? activeDesignProject() : null;
+  if (!project || !project.id || !project.design) {
+    showToast('Abre primero un proyecto del espacio Diseño para importar Penpot.', 'warn');
+    return;
+  }
+  if (!workspaceId || !workspaceToken) {
+    showToast('El workspace de CodeLab todavía no está listo para sincronizar.', 'error');
+    return;
+  }
+  if (!/\\.penpot$/i.test(file.name || '') && file.type !== 'application/zip') {
+    showToast('Selecciona un archivo .penpot válido.', 'warn');
+    return;
+  }
+  if (!Number.isFinite(file.size) || file.size < 22 || file.size > 18 * 1024 * 1024) {
+    showToast('El archivo Penpot debe pesar como máximo 18 MB por importación.', 'warn');
+    return;
+  }
+  if (!confirm('Se importarán los marcos de este archivo como pantallas del workspace. El primer marco ocupará el proyecto de Diseño actual. ¿Continuar?')) return;
+
+  const button = document.getElementById('importPenpotArchiveButton');
+  if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize)));
+    }
+    const fileBase64 = btoa(binary);
+    const endpoint = '/api/workspace/' + encodeURIComponent(workspaceId) + '/penpot/import';
+    const sendImport = () => fetch(endpoint, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', 'x-workspace-token': workspaceToken },
+      body: JSON.stringify({ projectId: project.id, baseRevision: workspaceRevision, fileBase64 })
+    });
+    let response = await sendImport();
+    if (response.status === 409) {
+      // A concurrent workspace save may win the revision race. Refresh and retry once.
+      const refreshed = await refreshWorkspaceFromServer();
+      const currentAnchor = projects.find(item => item && item.id === project.id);
+      if (refreshed && currentAnchor && currentAnchor.design) response = await sendImport();
+    }
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const messages = {
+        workspace_unauthorized: 'CodeLab rechazó el acceso al workspace.',
+        penpot_import_target_design_project_not_found: 'El proyecto de destino ya no existe o no pertenece al espacio Diseño.',
+        penpot_archive_invalid_zip: 'El archivo no es un ZIP Penpot válido.',
+        penpot_manifest_unsupported: 'La versión o el manifiesto del archivo Penpot no es compatible.',
+        penpot_archive_multiple_files_not_supported: 'Este archivo contiene varios documentos; expórtalos individualmente para importarlos.',
+        workspace_project_limit: 'El workspace alcanzó el límite de proyectos.'
+      };
+      throw new Error(messages[result.error] || result.error || 'penpot_import_failed');
+    }
+    const refreshed = await refreshWorkspaceFromServer();
+    if (!refreshed) throw new Error('La importación se guardó, pero no se pudo actualizar la vista. Recarga el workspace para ver las pantallas.');
+    renderProjectsList();
+    openProject(project.id);
+    showToast('Penpot importado: ' + result.importedScreens + ' pantallas, ' + result.importedElements + ' capas y ' + result.importedConnections + ' conexiones. Guardado en CodeLab.');
+  } catch (error) {
+    console.error('Penpot import failed:', error);
+    showToast(String(error.message || 'No se pudo importar el archivo Penpot.'), 'error');
+  } finally {
+    if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+  }
+}
+
 async function convertDesignToWeb() {
   const p = activeDesignProject(); if (!p) return;
   if (creatingProjectInFlight) {
