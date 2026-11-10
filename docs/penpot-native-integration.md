@@ -2,53 +2,55 @@
 
 ## Principio arquitectónico
 
-CodeLab es el único dueño de los datos y de la experiencia de producto. Penpot aporta el motor de diseño y los procesos técnicos que CodeLab no tiene. No se instala una segunda plataforma de usuarios, proyectos, archivos ni almacenamiento.
+CodeLab es el único dueño de los datos y de la experiencia de producto. Penpot aporta el motor visual y los procesos técnicos que CodeLab no tiene. No se crea una segunda plataforma de usuarios, workspaces ni proyectos de producto.
 
 | Recurso | Autoridad |
 | --- | --- |
 | Cuentas, autenticación, sesiones y permisos | CodeLab |
-| Workspaces y proyectos | CodeLab |
-| Persistencia PostgreSQL | Base de datos PostgreSQL existente de CodeLab |
-| Archivos y assets | Directorio/almacenamiento persistente existente de CodeLab |
-| Historial, cuotas y propiedad | CodeLab |
+| Workspaces y proyectos web | CodeLab (estado de workspace y APIs existentes) |
+| Relación proyecto CodeLab ↔ documento Penpot | Registro de integración propiedad de CodeLab |
+| PostgreSQL | El mismo servidor y la misma base de datos PostgreSQL de CodeLab |
+| Tablas internas de Penpot | Esquema PostgreSQL aislado `penpot`, con rol SQL dedicado |
+| Archivos y assets | Almacenamiento persistente existente de CodeLab, subdirectorio `penpot/` |
 | Canvas, capas, páginas, componentes y prototipos | Motor Penpot |
-| Renderizado/exportación de diseño | Procesos internos de Penpot |
-| Cola/cache efímera requerida por Penpot | Valkey privado |
 | Generación, editor web, preview y deploy | CodeLab |
-| Animación avanzada y composición existente | PixelForge de CodeLab |
+| Animación avanzada y composición | PixelForge de CodeLab, preservado íntegramente |
 
-## Infraestructura permitida
+## Infraestructura y aislamiento de datos
 
-El compose contiene únicamente los procesos que Penpot necesita como motor: frontend, backend, exporter, admin console y Valkey. **No crea otro PostgreSQL ni volúmenes Docker de datos separados.**
+El compose de desarrollo contiene los procesos del motor: frontend, backend, exporter, admin console y Valkey. No crea otro PostgreSQL ni volúmenes de datos Docker separados.
 
-- PostgreSQL: reutilizar el mismo servidor y base de datos de CodeLab, con un esquema dedicado `penpot` para evitar colisiones de tablas. Configurar el JDBC URL de Penpot con `currentSchema=penpot`.
-- Archivos: montar el mismo directorio persistente que CodeLab ya usa; Penpot escribe sus assets en el subdirectorio `penpot/`. No crear un segundo disco ni un segundo sistema de almacenamiento.
-- Valkey: proceso efímero de cola/cache que Penpot requiere; no se usa para usuarios, proyectos ni datos durables.
-- Servicios Penpot: privados, sin puertos públicos. El navegador accede a través del origen de CodeLab en `/penpot/`.
+- **PostgreSQL:** Penpot espera una URI PostgreSQL `postgresql://...`, no una JDBC URL. No se debe asumir que `currentSchema=penpot` funciona. La separación se realiza con un rol SQL dedicado cuyo `search_path` es `penpot,public`; el script `infra/penpot/bootstrap-existing-postgres.sql` prepara el esquema y el rol en la base ya existente. No reutilizar el rol de aplicación de CodeLab para Penpot.
+- **Archivos:** el backend Penpot escribe en `$CODELAB_DATA_DIR/penpot`. En desarrollo, ambos procesos pueden montar el mismo directorio existente. En producción hay que demostrar que la topología permite compartir ese almacenamiento: los discos persistentes de Render no se comparten automáticamente entre servicios. Si Penpot se ejecuta como servicio separado, se requiere un adaptador compatible con el almacenamiento existente o un despliegue conjunto que comparta el mismo disco; no crear un bucket/disco paralelo sin resolverlo como parte de la integración.
+- **Valkey:** cola/cache/notificaciones efímeras; no guarda cuentas, proyectos ni documentos durables.
+- **Red:** backend/exporter/admin console permanecen privados. El navegador usa `/penpot/` por el mismo origen. La documentación upstream confirma que Penpot admite subpath si el proxy conserva la ruta sin reescribirla y preserva WebSockets.
 
-## Identidad y propiedad de proyectos
+## Identidad: bloqueo seguro hasta completar SSO
 
-No habilitar registro autónomo para usuarios finales. CodeLab debe autenticar al usuario y autorizar el workspace/proyecto antes de abrir, guardar, exportar o sincronizar un documento Penpot. El adaptador debe vincular el identificador de documento Penpot a los IDs de workspace/proyecto existentes de CodeLab, guardando esa relación en la base de datos existente de CodeLab. La sesión de Penpot debe emitirse o federarse desde el backend de CodeLab; no pedir una segunda cuenta.
+La configuración del runtime desactiva registro y contraseña nativos (`disable-registration`, `disable-login-with-password`). Así no aparecen cuentas paralelas. **Todavía no se habilita el acceso de usuarios finales:** CodeLab no expone hoy un proveedor OIDC compatible para Penpot. Hay que implementar y probar SSO/OIDC de CodeLab antes de permitir entrar al editor. No se debe reemplazar esto por un iframe Cloud, login duplicado, cookie compartida inventada ni acceso sin autorización.
+
+Cada apertura, guardado, exportación y sincronización debe validar la sesión CodeLab y el ownership del workspace/proyecto. El identificador de documento Penpot se asocia al ID estable del proyecto CodeLab mediante un registro administrado por CodeLab; nunca se acepta un project ID enviado por el navegador sin comprobar su propietario.
 
 ## Integración con el generador
 
-El adaptador server-side debe leer el documento de diseño y normalizar:
-- páginas/boards como pantallas de CodeLab;
-- capas y componentes como elementos reutilizables;
-- estilos/tokens como sistema visual;
-- assets como recursos del proyecto existentes;
-- conexiones y transiciones del prototipo como navegación/acciones reales.
+El adaptador server-side debe convertir documentos Penpot en un contrato versionado de CodeLab:
+- páginas/boards → pantallas;
+- capas, grupos y componentes → elementos y componentes reutilizables;
+- estilos y tokens → sistema visual;
+- imágenes y recursos → assets del proyecto;
+- interacciones/prototipos → navegación y acciones;
+- identificadores de origen y versión → trazabilidad para sincronización idempotente y reversible.
 
-La sincronización debe ser versionada, idempotente y reversible. El generador CodeLab sigue produciendo la aplicación; Penpot no genera ni aloja la app final.
+No se debe interpretar una exportación visual como navegación funcional si no hay interacciones explícitas. El generador CodeLab sigue produciendo la aplicación final.
 
-## Animación
+## PixelForge
 
-No eliminar ni reemplazar PixelForge. Su almacenamiento, composición, timeline, validaciones, presupuestos, endpoints y pruebas permanecen bajo CodeLab. Las transiciones de prototipo Penpot se importan como especificaciones de navegación/transición y no sustituyen el motor de animación existente.
+No eliminar ni sustituir PixelForge. Su almacenamiento, composición, timeline, validaciones, presupuestos, endpoints y pruebas permanecen bajo CodeLab. Las transiciones Penpot son una fuente adicional de especificación, no reemplazan el motor de animación.
 
-## Configuración
+## Despliegue y validación
 
-Copiar `.env.example` y completar las variables con credenciales de la infraestructura **existente** de CodeLab. No crear un PostgreSQL nuevo ni mover datos de usuarios/proyectos. `CODELAB_DATA_DIR` debe apuntar al directorio persistente actual de CodeLab. En producción, la URL pública debe ser el dominio HTTPS de CodeLab y el proxy debe conservar rutas, cookies, cabeceras y WebSocket.
+La configuración de esta rama es infraestructura de desarrollo, no un despliegue listo para Render. Antes de habilitar el runtime hay que validar la versión exacta de imágenes, el esquema y permisos SQL, SSO, autorización por proyecto, almacenamiento compartido real, proxy HTTP/WebSocket, importador del documento, exportación y pruebas E2E móviles. El editor visual existente se conserva hasta alcanzar paridad y pasar las pruebas.
 
 ## Estado real
 
-La rama añade la base de infraestructura privada y el proxy same-origin. La unificación de identidad, la autorización por workspace, la asociación de documentos con proyectos, el adaptador del generador y la integración de interfaz todavía requieren implementación y pruebas antes de reemplazar el editor visual actual o desplegar a producción.
+Implementado en la rama: stack privado de desarrollo, proxy same-origin y documentación inicial. En progreso: identidad OIDC CodeLab, asociación segura de documentos a proyectos, almacenamiento compartido en topología Render y adaptador Penpot→generador. No desplegar ni presentar como funcional hasta completar esas piezas.
