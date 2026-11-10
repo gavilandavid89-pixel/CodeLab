@@ -3,7 +3,7 @@
 name: codelab
 services:
   penpot-frontend:
-    image: penpotapp/frontend:${PENPOT_VERSION:-2.18}
+    image: penpotapp/frontend:${PENPOT_VERSION:-2.19.0}
     restart: unless-stopped
     depends_on: [penpot-backend, penpot-admin-console, penpot-exporter]
     environment:
@@ -20,7 +20,7 @@ services:
     networks: [codelab_internal]
 
   penpot-backend:
-    image: penpotapp/backend:${PENPOT_VERSION:-2.18}
+    image: penpotapp/backend:${PENPOT_VERSION:-2.19.0}
     restart: unless-stopped
     depends_on:
       penpot-valkey:
@@ -44,7 +44,7 @@ services:
     networks: [codelab_internal]
 
   penpot-admin-console:
-    image: penpotapp/admin-console:${PENPOT_VERSION:-2.18}
+    image: penpotapp/admin-console:${PENPOT_VERSION:-2.19.0}
     restart: unless-stopped
     environment:
       PENPOT_PUBLIC_URI: ${PENPOT_PUBLIC_URI:-http://localhost:3000/penpot/}
@@ -57,7 +57,7 @@ services:
     networks: [codelab_internal]
 
   penpot-exporter:
-    image: penpotapp/exporter:${PENPOT_VERSION:-2.18}
+    image: penpotapp/exporter:${PENPOT_VERSION:-2.19.0}
     restart: unless-stopped
     depends_on:
       penpot-valkey:
