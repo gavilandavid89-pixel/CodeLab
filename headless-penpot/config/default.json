@@ -1,0 +1,5 @@
+{
+  "display": {"width": 1600, "height": 1000, "depth": 24},
+  "ports": {"design": 4310},
+  "capture": {"format": "png", "fullPage": false}
+}
