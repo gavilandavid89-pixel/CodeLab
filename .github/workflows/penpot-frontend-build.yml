@@ -100,6 +100,7 @@ jobs:
           rm -rf headless-penpot-package
           mkdir -p headless-penpot-package/penpot
           cp -R headless-penpot headless-penpot-package/
+          chmod +x headless-penpot-package/headless-penpot/bin/*.sh
           cp -R vendor/penpot/frontend/target/dist headless-penpot-package/penpot/dist
           cat > headless-penpot-package/package.json <<'EOF'
           {
