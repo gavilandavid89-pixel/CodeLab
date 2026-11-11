@@ -92,3 +92,38 @@ jobs:
           path: vendor/penpot/frontend/target/dist/
           if-no-files-found: error
           retention-days: 14
+
+
+      - name: Assemble offline headless worker
+        run: |
+          set -euo pipefail
+          rm -rf headless-penpot-package
+          mkdir -p headless-penpot-package/penpot
+          cp -R headless-penpot headless-penpot-package/
+          cp -R vendor/penpot/frontend/target/dist headless-penpot-package/penpot/dist
+          cat > headless-penpot-package/package.json <<'EOF'
+          {
+            "name": "codelab-headless-penpot-runtime",
+            "private": true,
+            "type": "module",
+            "dependencies": {
+              "@sparticuz/chromium": "153.0.0",
+              "playwright-core": "1.64.1"
+            }
+          }
+          EOF
+          npm install --prefix headless-penpot-package --omit=dev --ignore-scripts
+          cp -R headless-penpot-package/node_modules headless-penpot-package/headless-penpot/node_modules
+          rm -rf headless-penpot-package/penpot/dist/js/*.map
+          tar -C headless-penpot-package -czf codelab-penpot-headless-2.19.0.tar.gz .
+          sha256sum codelab-penpot-headless-2.19.0.tar.gz > codelab-penpot-headless-2.19.0.tar.gz.sha256
+
+      - name: Upload offline headless Penpot package
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-penpot-headless-2.19.0
+          path: |
+            codelab-penpot-headless-2.19.0.tar.gz
+            codelab-penpot-headless-2.19.0.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
