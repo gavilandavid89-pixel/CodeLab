@@ -15,6 +15,8 @@ const capture = args.includes('--capture');
 if (!url) throw new Error('--url is required');
 
 const {chromium} = require('playwright-core');
+let packagedChromium = null;
+try { packagedChromium = require('@sparticuz/chromium'); } catch {}
 const candidates = [
   process.env.CHROMIUM_PATH,
   '/usr/bin/chromium',
@@ -22,7 +24,8 @@ const candidates = [
   '/usr/bin/google-chrome',
   '/usr/bin/google-chrome-stable'
 ].filter(Boolean);
-const executablePath = candidates.find(p => fs.existsSync(p));
+let executablePath = candidates.find(p => fs.existsSync(p));
+if (!executablePath && packagedChromium) executablePath = await packagedChromium.executablePath();
 if (!executablePath) throw new Error('Chromium executable not found');
 
 const browser = await chromium.launch({
