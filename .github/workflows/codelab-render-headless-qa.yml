@@ -1,0 +1,53 @@
+name: Headless real CodeLab Render QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      render_url:
+        description: "Real CodeLab Render URL, for example https://codelab-xxxx.onrender.com"
+        required: true
+        type: string
+      path:
+        description: "Path to open after loading CodeLab"
+        required: false
+        default: "/"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-render-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout headless worker
+        uses: actions/checkout@v4
+        with:
+          ref: feat/penpot-source-integration
+
+      - name: Install browser runtime
+        run: |
+          set -euo pipefail
+          npm init -y
+          npm install --no-save playwright-core@1.64.1 @sparticuz/chromium@153.0.0
+
+      - name: Run real CodeLab Render diagnostics
+        env:
+          CHROMIUM_PATH: ""
+          CODELAB_HEADLESS_WIDTH: "1600"
+          CODELAB_HEADLESS_HEIGHT: "1000"
+        run: |
+          set -euo pipefail
+          mkdir -p headless-penpot/artifacts
+          export NODE_PATH="$PWD/node_modules"
+          node headless-penpot/runtime/web-test.mjs             --url "${{ inputs.render_url }}${{ inputs.path }}"             --capture             --report headless-penpot/artifacts/render-report.json
+
+      - name: Upload real CodeLab evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-render-qa-${{ github.run_id }}
+          path: headless-penpot/artifacts/
+          if-no-files-found: warn
+          retention-days: 14
