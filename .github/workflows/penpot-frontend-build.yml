@@ -9,6 +9,7 @@ on:
       - vendor/penpot/frontend/src/app/main/repo.cljs
       - vendor/penpot/frontend/src/app/main/data/persistence.cljs
       - vendor/penpot/common/src/app/common/transit.cljc
+      - headless-penpot/**
   workflow_dispatch:
 
 permissions:
@@ -128,3 +129,16 @@ jobs:
             codelab-penpot-headless-2.19.0.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30
+
+      - name: Validate packaged headless runtime
+        run: |
+          set -euo pipefail
+          rm -rf headless-validation
+          mkdir headless-validation
+          tar -xzf codelab-penpot-headless-2.19.0.tar.gz -C headless-validation
+          test -s headless-validation/penpot/dist/index.html
+          test -s headless-validation/headless-penpot/runtime/web-test.mjs
+          test -x headless-validation/headless-penpot/bin/codelab-headless.sh
+          node --check headless-validation/headless-penpot/runtime/design-server.mjs
+          node --check headless-validation/headless-penpot/runtime/web-test.mjs
+          headless-validation/headless-penpot/bin/codelab-headless.sh check
