@@ -40,3 +40,5 @@ The source, editor and local browser runtime are packaged. Features that depend 
 - `headless-codelab/` is Headless #2 and connects to the real deployed CodeLab origin.
 - GitHub Actions builds and validates packages/evidence; it is not either headless runtime.
 - Render remains the visual truth for the deployed application.
+
+See [`docs/penpot-integration/DUAL-HEADLESS-ARCHITECTURE.md`](../docs/penpot-integration/DUAL-HEADLESS-ARCHITECTURE.md) for the binding separation contract and responsibilities of both headless systems.
