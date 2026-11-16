@@ -2282,6 +2282,10 @@ window.addEventListener('blur', () => {
   if (panning) { panning = false; panStart = null; canvas.classList.remove('is-panning'); }
   render();
 });
+function isCodeLabAuthenticationError(error) {
+  return error?.status === 401 || error?.code === 'not_authenticated';
+}
+
 function renderAuthenticationRequired() {
   const existing = document.querySelector('[data-codelab-auth-required]');
   if (existing) return;
