@@ -101,6 +101,7 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     assert.notEqual(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
       'design workspace should show its own toolbar/canvas');
     const templateButton = page.locator('#designTemplatesButton');
+    await templateButton.scrollIntoViewIfNeeded();
     const templateButtonHit = await templateButton.evaluate(button => {
       const r = button.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
