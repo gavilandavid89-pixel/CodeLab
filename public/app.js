@@ -5599,3 +5599,158 @@ async function importDesignProjectJson(file) {
   else showToast('El respaldo se abrió, pero no se pudo confirmar el guardado. Exporta una copia antes de salir.', 'error');
 }
 
+
+window.__codelabCommandAgent = (() => {
+  'use strict';
+  const VERSION = '1.0.0';
+  const safeProject = project => {
+    if (!project || typeof project !== 'object') return null;
+    return {
+      id: project.id || null,
+      name: project.name || '',
+      type: project.type || 'web',
+      updatedAt: project.updatedAt || null,
+      hasWebSpace: !!project.hasWebSpace,
+      hasDesignSpace: !!project.hasDesignSpace,
+      code: normalizeCode(project.code),
+      design: project.design && typeof project.design === 'object'
+        ? JSON.parse(JSON.stringify(project.design))
+        : null
+    };
+  };
+  const requireWorkspace = async () => {
+    const started = Date.now();
+    while (!window.codelabWorkspaceReady && Date.now() - started < 15000) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (!window.codelabWorkspaceReady) throw new Error('codelab_workspace_not_ready');
+    if (!currentUser || !currentUser.real) throw new Error('codelab_user_session_required');
+    if (!workspaceId || !workspaceToken) throw new Error('codelab_workspace_session_missing');
+  };
+  const save = async () => {
+    await requireWorkspace();
+    const saved = await saveProjectsToStorage();
+    if (saved !== true) throw new Error('codelab_workspace_save_not_confirmed');
+    return { ok: true, revision: workspaceRevision };
+  };
+  const dispatch = async (action, args = {}) => {
+    await requireWorkspace();
+    switch (String(action)) {
+      case 'inspect-state':
+      case 'inspect':
+        return {
+          ok: true,
+          protocol: 'codelab-command-agent/1',
+          workspaceId,
+          currentProjectId,
+          activeProjectWorkspace,
+          user: { id: currentUser.id || null, provider: currentUser.provider || null },
+          revision: workspaceRevision,
+          projects: projects.map(safeProject)
+        };
+      case 'get-project': {
+        const id = String(args.projectId || args.id || currentProjectId || '');
+        const project = projects.find(item => item && item.id === id);
+        if (!project) throw new Error('project_not_found');
+        return { ok: true, project: safeProject(project) };
+      }
+      case 'open-project': {
+        const id = String(args.projectId || args.id || '');
+        if (!id) throw new Error('projectId_required');
+        const project = projects.find(item => item && item.id === id);
+        if (!project) throw new Error('project_not_found');
+        openProject(id, args.workspace === 'design' || args.workspace === 'web' ? args.workspace : undefined);
+        return { ok: true, project: safeProject(project), currentProjectId };
+      }
+      case 'create-project': {
+        if (projects.length >= maxProjects) throw new Error('project_limit_reached');
+        const name = String(args.name || 'Proyecto sin título').trim();
+        if (!name) throw new Error('project_name_required');
+        if (name.length > 200) throw new Error('project_name_too_long');
+        const type = args.type === 'design' ? 'design' : 'web';
+        const project = {
+          id: 'proj_' + crypto.randomUUID(),
+          name,
+          type,
+          updatedAt: new Date().toISOString(),
+          code: { ...defaultTemplate },
+          hasWebSpace: true,
+          hasDesignSpace: true,
+          design: { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false }
+        };
+        projects.unshift(project);
+        if (!saveLocalProjectsSnapshot()) {
+          projects = projects.filter(item => item !== project);
+          throw new Error('local_project_snapshot_failed');
+        }
+        const saved = await saveProjectsToStorage();
+        if (saved !== true) {
+          projects = projects.filter(item => item !== project);
+          saveLocalProjectsSnapshot();
+          throw new Error('codelab_workspace_save_not_confirmed');
+        }
+        renderProjectsList();
+        openProject(project.id, type === 'design' ? 'design' : 'web');
+        return { ok: true, project: safeProject(project), revision: workspaceRevision };
+      }
+      case 'update-code': {
+        const id = String(args.projectId || args.id || currentProjectId || '');
+        const project = projects.find(item => item && item.id === id);
+        if (!project) throw new Error('project_not_found');
+        if (project.type === 'design' && args.allowDesignCode !== true) {
+          throw new Error('design_project_code_update_requires_explicit_flag');
+        }
+        const next = normalizeCode(args.code || {});
+        if (next.html.length > 500000 || next.css.length > 500000 || next.js.length > 500000) {
+          throw new Error('code_payload_too_large');
+        }
+        project.code = next;
+        project.updatedAt = new Date().toISOString();
+        if (currentProjectId !== id) openProject(id, 'web');
+        const saved = await saveProjectsToStorage();
+        if (saved !== true) throw new Error('codelab_workspace_save_not_confirmed');
+        return { ok: true, project: safeProject(project), revision: workspaceRevision };
+      }
+      case 'update-design': {
+        const id = String(args.projectId || args.id || currentProjectId || '');
+        const project = projects.find(item => item && item.id === id);
+        if (!project) throw new Error('project_not_found');
+        if (!args.design || typeof args.design !== 'object' || Array.isArray(args.design)) {
+          throw new Error('design_payload_invalid');
+        }
+        const next = JSON.parse(JSON.stringify(args.design));
+        if (!Array.isArray(next.elements) || next.elements.length > MAX_DESIGN_ELEMENTS) {
+          throw new Error('design_elements_invalid');
+        }
+        project.design = next;
+        project.updatedAt = new Date().toISOString();
+        if (currentProjectId !== id) openProject(id, 'design');
+        renderDesignWorkspace();
+        const saved = await saveProjectsToStorage();
+        if (saved !== true) throw new Error('codelab_workspace_save_not_confirmed');
+        return { ok: true, project: safeProject(project), revision: workspaceRevision };
+      }
+      case 'save':
+        return save();
+      default:
+        throw new Error('Unsupported CodeLab command: ' + action);
+    }
+  };
+  const agent = {
+    version: VERSION,
+    protocol: 'codelab-command-agent/1',
+    visualInteractionRequired: false,
+    listCapabilities: () => ({
+      protocol: 'codelab-command-agent/1',
+      version: VERSION,
+      actions: ['inspect', 'inspect-state', 'get-project', 'open-project', 'create-project', 'update-code', 'update-design', 'save'],
+      visualInteractionRequired: false,
+      coordinateInteractionRequired: false
+    }),
+    inspectState: () => dispatch('inspect-state'),
+    dispatch
+  };
+  window.__codelabCommandAgent = agent;
+  window.__codelabCommandAgentDispatch = dispatch;
+  return agent;
+})();
