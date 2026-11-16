@@ -2282,6 +2282,24 @@ window.addEventListener('blur', () => {
   if (panning) { panning = false; panStart = null; canvas.classList.remove('is-panning'); }
   render();
 });
+function renderAuthenticationRequired() {
+  const existing = document.querySelector('[data-codelab-auth-required]');
+  if (existing) return;
+  const overlay = document.createElement('section');
+  overlay.dataset.codelabAuthRequired = 'true';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.className = 'codelab-auth-required';
+  overlay.innerHTML = `
+    <div class="codelab-auth-required__card">
+      <h2>Inicia sesión en CodeLab</h2>
+      <p>Esta instalación requiere una cuenta de CodeLab para abrir proyectos personales.</p>
+      <a class="primary-button" href="/">Volver a CodeLab</a>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
 async function boot() {
   try {
     const modeResponse = await fetch('/api/pixelforge/mode', {
@@ -2296,7 +2314,8 @@ async function boot() {
       ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
       : await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
-      status('PixelForge está listo, pero esta instalación requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
+      renderAuthenticationRequired();
+      status('PixelForge requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
       return;
     }
     const accountChip = $('#codelab-account-chip');
