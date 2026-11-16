@@ -1,31 +1,19 @@
-# CodeLab Headless Penpot Worker
+# CodeLab Native Penpot Runtime (Headless #1 component)
 
-Offline design and visual QA worker for the CodeLab agent. This is a local execution package, not a CodeLab web feature.
+This directory contains the full native Penpot editor runtime used by **Headless #1**, the assistant's local CodeLab workbench. It is not Headless #2 and does not connect to the deployed CodeLab instance.
 
-It uses the vendored Penpot source and its real editor bundle. The worker starts the editor under Xvfb, drives it with Playwright, captures screenshots, and exports the native Penpot workspace. It also has a separate web-preview runner for testing a generated CodeLab web app.
-
-The design surface is the compiled Penpot editor, not a reduced custom command API. The normal Penpot workspace and toolset remain available: pages, layers, vectors, text, fills/strokes, gradients, typography, layout, components/variants, assets, libraries, prototyping, inspect/export and the normal canvas.
-
-## Offline workflow
-
-1. Build/download the immutable headless package.
-2. Start `bin/codelab-headless.sh design`.
-3. Work on the design locally.
-4. Capture it repeatedly under Xvfb.
-5. Run the web-preview/test mode against the generated application.
-6. Export the native design workspace.
-7. Only then send the artifact to CodeLab.
-
-The browser worker blocks non-loopback HTTP(S) requests. It never installs packages or fetches fonts/assets at runtime.
+The parent `headless-local/` package combines this full editor with the actual CodeLab application source. The design surface is the compiled Penpot editor, not a reduced custom command API. The normal Penpot workspace and toolset remain available: pages, layers, vectors, text, fills/strokes, gradients, typography, layout, components/variants, assets, libraries, prototyping, inspect/export and the normal canvas.
 
 ## Commands
 
+These commands can be invoked through the unified local launcher:
+
 ```bash
-bin/codelab-headless.sh check
-bin/codelab-headless.sh design
-bin/codelab-headless.sh web --url http://127.0.0.1:3000 --capture
-bin/codelab-headless.sh capture --url http://127.0.0.1:4310 --output artifacts/design.png
-bin/codelab-headless.sh export --workspace ./workspace
+bin/codelab-local-headless.sh check
+bin/codelab-local-headless.sh design
+bin/codelab-local-headless.sh web --url http://127.0.0.1:3000 --capture
+bin/codelab-local-headless.sh capture --url http://127.0.0.1:4310 --output artifacts/design.png
+bin/codelab-local-headless.sh export --workspace ./workspace
 ```
 
-The package is built by `.github/workflows/penpot-headless-package.yml` from the pinned `vendor/penpot` tree. The generated artifact contains the compiled editor plus this worker, so a later agent session can download one self-contained package instead of rebuilding Penpot.
+The editor bundle is built from the pinned `vendor/penpot` source. The offline package includes the compiled editor and runtime dependencies; it does not fetch editor assets at runtime.
