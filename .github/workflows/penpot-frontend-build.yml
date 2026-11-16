@@ -203,7 +203,7 @@ jobs:
           set -euo pipefail
           rm -rf headless-validation
           mkdir headless-validation
-          tar -xzf codelab-penpot-headless-2.19.0.tar.gz -C headless-validation
+          tar -xzf codelab-local-headless-2.19.0.tar.gz -C headless-validation
           test -s headless-validation/app/server.js
           test -s headless-validation/app/public/index.html
           test -s headless-validation/bin/codelab-local-headless.sh
