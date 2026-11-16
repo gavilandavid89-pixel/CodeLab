@@ -63,8 +63,8 @@ case "$MODE" in
       echo "Packaged CodeLab application is incomplete." >&2
       exit 2
     fi
-    if [ ! -f "$LOCAL_ROOT/runtime/capabilities.json" ]; then
-      echo "Local workbench capability manifest is missing." >&2
+    if [ ! -f "$LOCAL_ROOT/runtime/capabilities.json" ] || [ ! -s "$LOCAL_ROOT/docker-compose.yml" ]; then
+      echo "Local workbench capability manifest or PostgreSQL service definition is missing." >&2
       exit 2
     fi
     if [ ! -x "$PENPOT_ROOT/bin/codelab-headless.sh" ] || [ ! -s "$PENPOT_DIST/index.html" ]; then
