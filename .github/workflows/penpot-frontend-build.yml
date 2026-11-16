@@ -108,9 +108,11 @@ jobs:
           rm -rf headless-penpot-package
           mkdir -p headless-penpot-package/penpot headless-penpot-package/app headless-penpot-package/bin
           cp -R headless-penpot headless-penpot-package/
-          cp -R public headless-penpot-package/app/
-          cp server.js package.json headless-penpot-package/app/
-          if [ -d migrations ]; then cp -R migrations headless-penpot-package/app/; fi
+          rsync -a ./ headless-penpot-package/app/ \\
+            --exclude='.git/' --exclude='node_modules/' --exclude='vendor/' \\
+            --exclude='headless-penpot/' --exclude='headless-codelab/' --exclude='headless-local/' \\
+            --exclude='headless-penpot-package/' --exclude='headless-codelab-package/' \\
+            --exclude='.env' --exclude='.env.*' --exclude='*.log' --exclude='artifacts/'
           cp headless-local/README.md headless-penpot-package/README.md
           cp headless-local/bin/codelab-local-headless.sh headless-penpot-package/bin/
           chmod +x headless-penpot-package/bin/codelab-local-headless.sh
@@ -134,7 +136,7 @@ jobs:
           tar -C headless-penpot-package -czf codelab-local-headless-2.19.0.tar.gz .
           sha256sum codelab-local-headless-2.19.0.tar.gz > codelab-local-headless-2.19.0.tar.gz.sha256
 
-      - name: Upload offline headless Penpot package
+      - name: Upload complete local CodeLab headless workbench
         uses: actions/upload-artifact@v4
         with:
           name: codelab-local-headless-2.19.0
