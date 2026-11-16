@@ -16,23 +16,27 @@ The package includes the CodeLab source snapshot and runtime dependencies. Capab
 
 ```bash
 bin/codelab-local-headless.sh check
+bin/codelab-local-headless.sh db-up
 bin/codelab-local-headless.sh app
+bin/codelab-local-headless.sh db-down
 bin/codelab-local-headless.sh design
 bin/codelab-local-headless.sh web --url http://127.0.0.1:3000 --commands commands.json --capture
 bin/codelab-local-headless.sh capture --url http://127.0.0.1:3000
 bin/codelab-local-headless.sh export --workspace ./workspace
 ```
 
-- `app`: starts the packaged CodeLab server locally.
+- `db-up`: starts an isolated PostgreSQL 16 container bound only to `127.0.0.1:55432`, with a persistent Docker volume.
+- `app`: starts the packaged CodeLab server and, by default, starts/waits for that local PostgreSQL service. This enables real local accounts, workspace persistence, agent command storage and other database-backed CodeLab features. It never connects to production unless the operator explicitly sets `CODELAB_LOCAL_ALLOW_DATABASE=1` with a chosen `DATABASE_URL`.
+- `db-down`: stops the local database but keeps its data volume.
 - `design`: starts the full native Penpot editor.
 - `web`: opens a CodeLab page in Chromium, executes an optional semantic command file (`--commands`) and records console, JS, HTTP, request and WebSocket diagnostics.
 - `check`: validates the bundled app, Penpot editor and runtime dependencies.
 
-The app uses local configuration only. Set `PORT`, `DATABASE_URL`, provider API variables, and OAuth settings only when the corresponding capability is needed. Never put production secrets in this package.
+The app uses local configuration only. The launcher creates a local database URL automatically for the isolated container. Set `PORT`, provider API variables and OAuth settings only when the corresponding capability is needed. AI providers and OAuth still require the user's own credentials and network access. Never put production secrets in this package. For frontend-only inspection without Docker, set `CODELAB_LOCAL_NO_DATABASE=1`; authentication and database-backed workflows will then be unavailable.
 
 ## Offline boundary
 
-The source, editor and local browser runtime are packaged. Features that depend on external APIs, OAuth identity providers, hosted storage, remote model providers or a live database cannot be made genuinely offline merely by bundling frontend code. Those integrations are reported as unavailable until configured; local project work and design remain available where supported by the application.
+The source, editor, local browser runtime and a persistent local PostgreSQL service definition are packaged. Local accounts and database-backed CodeLab workflows can run against the isolated container. Features that depend on external APIs, OAuth identity providers, hosted storage, collaboration services or remote model providers still require those services and credentials; no production service or secret is silently substituted.
 
 ## Separation contract
 
