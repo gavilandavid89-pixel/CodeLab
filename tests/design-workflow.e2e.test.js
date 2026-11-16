@@ -2062,10 +2062,13 @@ async function waitForPersistedProject(page, projectName) {
     const touchSourceCard = touchPage.locator('#projectsGrid > div').filter({ has: touchPage.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
     await touchSourceCard.locator('button[data-action="open"]').click();
     await touchPage.waitForFunction(id => getCurrentProject()?.id === id, sourceProjectId, { timeout: 15000 });
-    if (await touchPage.locator('#workspaceSwitchBtn').isVisible()) {
-      await touchPage.locator('#workspaceSwitchBtn').click();
-      await touchPage.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design', sourceProjectId, { timeout: 10000 });
+    const touchWorkspaceSwitch = touchPage.locator('#workspaceSwitchBtn');
+    if (await touchWorkspaceSwitch.isVisible() && (await touchWorkspaceSwitch.innerText()).trim() === 'Diseño') {
+      await touchWorkspaceSwitch.click();
     }
+    await touchPage.waitForFunction(id => getCurrentProject()?.id === id &&
+      !document.getElementById('designStudioPanel')?.classList.contains('hidden'),
+      sourceProjectId, { timeout: 10000 });
     await touchPage.locator('#openDesignFlowGraph').click();
     await touchPage.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 10000 });
     await touchPage.locator('#designFlowChoose').click();
