@@ -19,7 +19,20 @@ case "$MODE" in
     export PORT="${PORT:-3000}"
     exec node server.js "$@"
     ;;
-  design|web|capture|export|check)
+  check)
+    if [ ! -f "$APP_ROOT/server.js" ] || [ ! -f "$APP_ROOT/package.json" ] || [ ! -f "$APP_ROOT/public/index.html" ]; then
+      echo "Packaged CodeLab application is incomplete." >&2
+      exit 2
+    fi
+    if [ ! -x "$PENPOT_ROOT/bin/codelab-headless.sh" ]; then
+      echo "Full Penpot worker is missing from the local package." >&2
+      exit 2
+    fi
+    node --check "$APP_ROOT/server.js"
+    "$PENPOT_ROOT/bin/codelab-headless.sh" check
+    echo "CodeLab Local Headless Workbench: OK"
+    ;;
+  design|web|capture|export)
     if [ ! -x "$PENPOT_ROOT/bin/codelab-headless.sh" ]; then
       echo "Full Penpot worker is missing from the local package." >&2
       exit 2
