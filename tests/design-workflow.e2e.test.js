@@ -1989,7 +1989,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     await page.waitForFunction(id => document.querySelector('[data-flow-action="' + id + '"]')?.className.includes('border-yellow-300'), flowButtonId, { timeout: 5000 });
     const flowSource = page.locator('[data-flow-source-port="' + flowButtonId + '"]');
-    const flowTarget = page.locator('[data-flow-target-project="' + targetProjectId + '"]');
+    const flowTarget = page.locator('article[data-flow-page][data-flow-target-project="' + targetProjectId + '"]');
     await flowSource.waitFor({ state: 'visible' });
     // Use real pointer coordinates: locator.dragTo may trigger HTML drag events
     // without reliably reproducing the editor's pointer-driven connection gesture.
