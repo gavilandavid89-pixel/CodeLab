@@ -39,3 +39,10 @@ test('remote worker treats semantic ok:false as a failed command',()=>{
  assert.match(worker,/result&&result\.ok===false/);
  assert.match(worker,/requestFailures\.length===0/);
 });
+
+test('remote semantic bridge is present on the standalone CodeLab editor routes',()=>{
+ const pixelForge=fs.readFileSync(path.join(process.cwd(),'public/pixelforge/index.html'),'utf8');
+ const videoComposer=fs.readFileSync(path.join(process.cwd(),'public/pixelforge/video-composer.html'),'utf8');
+ assert.match(pixelForge,/src="\/codelab-headless-agent\.js"/);
+ assert.match(videoComposer,/src="\/codelab-headless-agent\.js"/);
+});
