@@ -210,6 +210,7 @@ jobs:
           test -s headless-validation/bin/codelab-local-headless.sh
           test -s headless-validation/headless-local/runtime/capabilities.json
           test -s headless-validation/headless-local/docker-compose.yml
+          docker compose -p codelab-local-headless-validation -f headless-validation/headless-local/docker-compose.yml config -q
           node -e "const m=require('./headless-validation/headless-local/runtime/capabilities.json'); if(m.headlessId!=='assistant-local-workbench'||!m.includes.codelabApplication||!m.includes.nativePenpotEditor) process.exit(1)"
           test -s headless-validation/penpot/dist/index.html
           test -s headless-validation/headless-penpot/runtime/web-test.mjs
