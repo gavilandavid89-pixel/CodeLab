@@ -148,18 +148,6 @@ async function seedAdminAccountIfConfigured() {
     console.error('DATABASE_URL is required for native accounts; ADMIN bootstrap skipped.');
     return;
   }
-  await accountPool.query(`
-    CREATE TABLE IF NOT EXISTS codelab_accounts (
-      username TEXT PRIMARY KEY,
-      id TEXT NOT NULL UNIQUE,
-      role TEXT NOT NULL DEFAULT 'user',
-      salt TEXT NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      password_changed_at TIMESTAMPTZ,
-      must_change_password BOOLEAN NOT NULL DEFAULT FALSE
-    )
-  `);
   const salt = crypto.randomBytes(16).toString('hex');
   await accountPool.query(
     'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO NOTHING',
@@ -1784,8 +1772,6 @@ function parseAiJsonContent(content, fallbackCode) {
     'El modelo no devolvió JSON usable. Prueba AI_MODEL=openai/gpt-oss-20b o llama-3.3-70b-versatile.'
   );
 }
-
-seedAdminAccountIfConfigured();
 
 const server = http.createServer(async (req, res) => {
   const ip = clientIp(req);
