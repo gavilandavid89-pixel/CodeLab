@@ -2298,7 +2298,7 @@ function renderAuthenticationRequired() {
     <div class="codelab-auth-required__card">
       <h2>Inicia sesión en CodeLab</h2>
       <p>Esta instalación requiere una cuenta de CodeLab para abrir proyectos personales.</p>
-      <a class="primary-button" href="/">Volver a CodeLab</a>
+      <a class="primary-button" href="/">Ir a CodeLab e iniciar sesión</a>
     </div>
   `;
   document.body.appendChild(overlay);
