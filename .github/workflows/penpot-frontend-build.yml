@@ -214,5 +214,5 @@ jobs:
           test -x headless-validation/headless-penpot/bin/codelab-headless.sh
           node --check headless-validation/headless-penpot/runtime/design-server.mjs
           node --check headless-validation/headless-penpot/runtime/web-test.mjs
-          headless-validation/headless-penpot/bin/codelab-headless.sh check
+          headless-validation/bin/codelab-local-headless.sh check
           node --check headless-validation/app/server.js
