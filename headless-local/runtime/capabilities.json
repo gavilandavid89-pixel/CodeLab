@@ -10,7 +10,14 @@
     "browserAutomation": "Playwright + Chromium",
     "visualCapture": true,
     "semanticInspection": true,
-    "diagnostics": ["console", "javascript-exceptions", "failed-requests", "http-errors", "websocket-errors"]
+    "diagnostics": [
+      "console",
+      "javascript-exceptions",
+      "failed-requests",
+      "http-errors",
+      "websocket-errors"
+    ],
+    "localDatabase": "PostgreSQL 16 via isolated Docker Compose service"
   },
   "applicationCapabilities": [
     "workspaces-and-projects",
@@ -19,10 +26,13 @@
     "branches-and-version-history",
     "agent-and-ai-provider-settings",
     "mailbox-and-approval-workflows",
-    "native-penpot-design-editor"
+    "native-penpot-design-editor",
+    "local-authentication-and-durable-workspace-database",
+    "agent-command-queue-and-session-persistence",
+    "PixelForge-project-persistence"
   ],
   "externalRequirements": {
-    "database": "Optional/configuration-dependent; production PostgreSQL is not bundled.",
+    "database": "Local PostgreSQL is packaged as a Compose service; Docker is required. External/production databases are never used unless explicitly opted in.",
     "aiProviders": "Require the user's own provider endpoint and API key.",
     "oauth": "Requires provider credentials and network access.",
     "remoteStorageAndCollaboration": "Require their configured services."
