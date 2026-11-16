@@ -214,3 +214,9 @@
 .animation-frame .frame-duration{position:absolute;right:4px;top:3px;font-size:8px;opacity:.75}
 @media(max-width:760px){.animation-panel{grid-column:2;grid-row:2;padding:8px 9px;max-height:150px;gap:6px}.animation-toolbar{align-items:flex-start}.animation-title{display:none}.animation-actions{justify-content:flex-start;gap:4px}.animation-actions button{min-height:29px;padding:4px 6px;font-size:9px}.animation-number,.animation-check{font-size:9px}.animation-number input{width:40px;min-height:27px}.animation-number input#animation-duration{width:48px}.animation-frames{min-height:62px}.animation-frame{flex-basis:58px;min-width:58px;padding:4px}.animation-frame canvas{width:36px;height:36px}}
 @media(max-width:420px){.animation-panel{padding:7px 6px}.animation-actions button{padding:3px 5px}.animation-check{gap:2px}.animation-frame{flex-basis:52px;min-width:52px}}
+
+
+/* Explicit authentication gate used by the headless/browser QA contract. */
+.codelab-auth-required{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:24px;background:rgba(8,10,16,.88);backdrop-filter:blur(8px)}
+.codelab-auth-required__card{width:min(460px,100%);padding:28px;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:var(--panel,#151821);box-shadow:0 24px 80px rgba(0,0,0,.45);text-align:center}
+.codelab-auth-required__card h2{margin:0 0 10px}.codelab-auth-required__card p{margin:0 0 20px;color:var(--muted,#a9adba);line-height:1.5}.codelab-auth-required__card .primary-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
