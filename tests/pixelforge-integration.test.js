@@ -125,7 +125,21 @@ async function main() {
   const coreWorkspace = await coreWorkspaceResponse.json();
   assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
-  assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
+  if (usesPostgres) {
+    const { Pool } = require('pg');
+    const workspacePool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false }
+    });
+    const workspaceRow = await workspacePool.query(
+      'SELECT workspace_id FROM codelab_workspace_states WHERE workspace_id = $1',
+      [coreWorkspace.workspaceId]
+    );
+    await workspacePool.end();
+    assert.equal(workspaceRow.rowCount, 1, 'CodeLab core should own the account workspace in PostgreSQL');
+  } else {
+    assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace file');
+  }
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
   // The database may persist between CI runs; clear only this dedicated test
   // account so the assertions remain repeatable without touching real users.
