@@ -26,7 +26,7 @@ The app source and browser/editor runtime are bundled. Capabilities requiring Po
 
 **Location:** `headless-codelab/` + `public/codelab-headless-agent.js`.
 
-**Purpose:** connect directly to the real CodeLab web origin (normally the Render deployment), authenticate using an operator-supplied browser session, and execute allowlisted semantic commands against that running application. It does not host a second local CodeLab copy and does not use coordinate-based mouse automation.
+**Purpose:** connect directly to the real CodeLab web origin (normally the Render deployment), use an existing authorized CodeLab browser session only as the transport authorization, and execute allowlisted native application commands against that running application. Headless #2 does not create, own, or maintain a separate CodeLab account. It does not host a second local CodeLab copy and does not use coordinate-based mouse automation.
 
 Commands:
 
@@ -39,7 +39,7 @@ headless-codelab/bin/codelab-headless.sh remote \
   --screenshot
 ```
 
-A Playwright storage-state file can be supplied with `--auth-state state.json`; never commit it. The persistent session directory also contains authentication state and must be treated as a secret. The page bridge exposes a versioned allowlisted protocol; navigation is same-origin and arbitrary JavaScript evaluation is not a supported command.
+A Playwright storage-state file can be supplied with `--auth-state state.json`; never commit it. This is delegated session authorization, not a headless-owned account. The persistent session directory contains the delegated authentication state and must be treated as a secret. The page bridge exposes a versioned allowlisted **native command** protocol. Commands are executed by CodeLab's own application logic; navigation is same-origin, coordinate clicks are not a supported operation, and arbitrary JavaScript evaluation is not a supported command.
 
 The worker captures final application state, screenshot, console messages, uncaught JavaScript exceptions, failed requests, HTTP failures and WebSocket errors. A successful page load is not proof that a mutation persisted: after each write, inspect the resulting state or reload and verify it.
 
