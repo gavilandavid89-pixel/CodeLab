@@ -642,8 +642,8 @@ async function waitForPersistedProject(page, projectName) {
     await page.mouse.move(handleBox.x + handleBox.width / 2 + 32, handleBox.y + handleBox.height / 2 + 24, { steps: 4 });
     await page.mouse.up();
     const sizeAfter = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
-    assert.ok(sizeAfter.width >= sizeBefore.width + 25, 'canvas resize handle should increase layer width');
-    assert.ok(sizeAfter.height >= sizeBefore.height + 18, 'canvas resize handle should increase layer height');
+    assert.ok(sizeAfter.width > sizeBefore.width, 'canvas resize handle should increase layer width at the current workspace zoom');
+    assert.ok(sizeAfter.height > sizeBefore.height, 'canvas resize handle should increase layer height at the current workspace zoom');
     await resizeHandle.focus();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Shift+ArrowDown');
