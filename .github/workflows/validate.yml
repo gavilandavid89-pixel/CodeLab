@@ -27,6 +27,9 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check server.js
+          node --check headless-codelab/runtime/remote-agent.mjs
+          node --check public/codelab-headless-agent.js
+          node --check tests/codelab-headless-agent.test.js
           node --check pixelforge-upload-store.js
           node --check public/app.js
           node --check public/capture.js
@@ -53,6 +56,8 @@ jobs:
           node --check tests/web-editor-ui.e2e.test.js
           node --check tests/continuous-ui-stress.e2e.test.js
           node --check tests/pixelforge-integration.test.js
+      - name: Test CodeLab dual-headless semantic contract
+        run: npm run test:headless-agent
       - name: Test PixelForge animation model and UI–Headless contract
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test PixelForge ZIP export package
