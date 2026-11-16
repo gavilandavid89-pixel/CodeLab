@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: codelab-local-headless-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codelab_local
+      POSTGRES_USER: codelab_local
+      POSTGRES_PASSWORD: codelab_local_only
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - codelab-local-headless-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codelab_local -d codelab_local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  codelab-local-headless-data:
