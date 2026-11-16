@@ -2903,7 +2903,8 @@ try {
 
 seedAdminAccountIfConfigured().then(async () => {
   if (accountPool) {
-    await accountPool.query('SELECT 1 FROM codelab_workspace_states LIMIT 0');
+    await ensureCoreDatabaseTables();
+    await seedAdminAccountIfConfigured();
     await ensureAuthSessionTable();
     await migrateLegacySessionsToDatabase();
     await cleanupExpiredSessions();
