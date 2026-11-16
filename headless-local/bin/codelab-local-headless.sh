@@ -17,6 +17,11 @@ case "$MODE" in
     cd "$APP_ROOT"
     export NODE_ENV="${NODE_ENV:-development}"
     export PORT="${PORT:-3000}"
+    export CODELAB_LOCAL_MODE=1
+    if [ -n "${DATABASE_URL:-}" ] && [ "${CODELAB_LOCAL_ALLOW_DATABASE:-0}" != "1" ]; then
+      echo "Ignoring inherited DATABASE_URL for safety. Set CODELAB_LOCAL_ALLOW_DATABASE=1 to opt in to a database." >&2
+      unset DATABASE_URL
+    fi
     exec node server.js "$@"
     ;;
   check)
