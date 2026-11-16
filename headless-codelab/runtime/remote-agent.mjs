@@ -5,7 +5,10 @@ const require=createRequire(import.meta.url);
 const{chromium}=require('playwright-core');
 let packagedChromium=null;try{packagedChromium=require('@sparticuz/chromium');}catch{}
 const args=process.argv.slice(2),value=(name,fallback=null)=>{const i=args.indexOf(name);return i<0?fallback:args[i+1];};
-const url=value('--url'),commandsPath=value('--commands'),reportPath=value('--report','./headless-codelab/artifacts/remote-report.json'),screenshotPath=value('--screenshot','./headless-codelab/artifacts/remote.png'),authState=value('--auth-state'),headed=args.includes('--headed'),allowExternal=args.includes('--allow-external'),sessionDir=value('--session-dir',path.join(process.cwd(),'.codelab-headless-session'));
+const url=value('--url'),commandsPath=value('--commands'),reportPath=value('--report','./headless-codelab/artifacts/remote-report.json');
+const screenshotFlag=args.indexOf('--screenshot');
+const screenshotPath=screenshotFlag<0?'./headless-codelab/artifacts/remote.png':(args[screenshotFlag+1]&&!args[screenshotFlag+1].startsWith('--')?args[screenshotFlag+1]:'./headless-codelab/artifacts/remote.png');
+const authState=value('--auth-state'),headed=args.includes('--headed'),allowExternal=args.includes('--allow-external'),sessionDir=value('--session-dir',path.join(process.cwd(),'.codelab-headless-session'));
 if(!url)throw new Error('--url is required');
 const target=new URL(url),commands=commandsPath?JSON.parse(fs.readFileSync(commandsPath,'utf8')):[{action:'inspect',required:true}];
 if(!Array.isArray(commands)||commands.length>200)throw new Error('Invalid command file');
