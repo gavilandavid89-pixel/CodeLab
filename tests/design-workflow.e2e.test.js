@@ -1989,7 +1989,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     await page.waitForFunction(id => document.querySelector('[data-flow-action="' + id + '"]')?.className.includes('border-yellow-300'), flowButtonId, { timeout: 5000 });
     const flowSource = page.locator('[data-flow-source-port="' + flowButtonId + '"]');
-    const flowTarget = page.locator('article[data-flow-page][data-flow-target-project="' + targetProjectId + '"]');
+    const flowTarget = page.locator('div[data-flow-target-element][data-flow-target-project="' + targetProjectId + '"]').first();
     await flowSource.waitFor({ state: 'visible' });
     // Use real pointer coordinates: locator.dragTo may trigger HTML drag events
     // without reliably reproducing the editor's pointer-driven connection gesture.
@@ -2010,7 +2010,7 @@ async function waitForPersistedProject(page, projectName) {
     }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
     // Invalid self-links must be rejected and must not overwrite the valid route.
     const selfSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
-    const selfCard = await page.locator('[data-flow-target-project="' + sourceProjectId + '"]').boundingBox();
+    const selfCard = await page.locator('div[data-flow-target-element][data-flow-target-project="' + sourceProjectId + '"]').first().boundingBox();
     assert.ok(selfSource && selfCard, 'source port and same-page target bounds must exist for invalid-link test');
     await page.mouse.move(selfSource.x + selfSource.width / 2, selfSource.y + selfSource.height / 2);
     await page.mouse.down();
