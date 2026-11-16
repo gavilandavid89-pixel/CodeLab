@@ -25,6 +25,26 @@ function makePixelProject(id, name, width = 2, height = 2) {
   };
 }
 
+async function persistTestSession(session, usesPostgres) {
+  const sessionsDir = path.join(process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data'), 'sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  fs.writeFileSync(path.join(sessionsDir, session.id + '.json'), JSON.stringify(session), { mode: 0o600 });
+  if (!usesPostgres) return;
+  const { Pool } = require('pg');
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false }
+  });
+  try {
+    await pool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, to_timestamp($3 / 1000.0), to_timestamp($4 / 1000.0)) ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [session.id, JSON.stringify(session.user), session.createdAt, session.expiresAt]
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
 async function main() {
   const health = await (await fetch(base + '/api/health')).json();
   const usesPostgres = health.persistence === 'postgresql';
@@ -99,19 +119,7 @@ async function main() {
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   };
-  fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify(testSession), { mode: 0o600 });
-  if (usesPostgres) {
-    const { Pool } = require('pg');
-    const sessionPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false }
-    });
-    await sessionPool.query(
-      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + INTERVAL \'1 minute\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
-      [sessionId, JSON.stringify(testSessionUser)]
-    );
-    await sessionPool.end();
-  }
+  await persistTestSession(testSession, usesPostgres);
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
   const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
   assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
@@ -381,11 +389,11 @@ async function main() {
   // A fresh session for the same provider/account must resolve the same workspace,
   // matching the cross-device behavior of CodeLab's deterministic account binding.
   const sameAccountSessionId = 'c'.repeat(48);
-  fs.writeFileSync(path.join(sessionsDir, sameAccountSessionId + '.json'), JSON.stringify({
+  await persistTestSession({
     id: sameAccountSessionId,
     user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
     createdAt: Date.now(), expiresAt: Date.now() + 60_000
-  }), { mode: 0o600 });
+  }, usesPostgres);
   const sameAccountHeaders = { cookie: 'codelab_sid=' + sameAccountSessionId, 'x-forwarded-for': '198.51.100.82' };
   const sameAccountList = await fetch(base + '/api/pixelforge/projects', { headers: sameAccountHeaders });
   assert.equal(sameAccountList.status, 200);
@@ -393,12 +401,12 @@ async function main() {
     'a new session for the same CodeLab account must see its saved PixelForge projects');
 
   const secondSessionId = 'b'.repeat(48);
-  fs.writeFileSync(path.join(sessionsDir, secondSessionId + '.json'), JSON.stringify({
+  await persistTestSession({
     id: secondSessionId,
     user: { id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' },
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
-  }), { mode: 0o600 });
+  }, usesPostgres);
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
   if (process.env.DATABASE_URL) {
   const ownerUploadId = 'd'.repeat(32);
