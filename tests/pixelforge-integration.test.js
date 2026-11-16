@@ -92,12 +92,26 @@ async function main() {
   const sessionId = 'a'.repeat(48);
   const sessionsDir = path.join(dataDir, 'sessions');
   fs.mkdirSync(sessionsDir, { recursive: true });
-  fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify({
+  const testSessionUser = { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' };
+  const testSession = {
     id: sessionId,
-    user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' },
+    user: testSessionUser,
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
-  }), { mode: 0o600 });
+  };
+  fs.writeFileSync(path.join(sessionsDir, sessionId + '.json'), JSON.stringify(testSession), { mode: 0o600 });
+  if (usesPostgres) {
+    const { Pool } = require('pg');
+    const sessionPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false }
+    });
+    await sessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + INTERVAL \'1 minute\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [sessionId, JSON.stringify(testSessionUser)]
+    );
+    await sessionPool.end();
+  }
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
   const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
   assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
