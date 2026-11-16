@@ -4461,7 +4461,7 @@ function renderDesignWorkspace() {
         selectedDesignElementId = el.id;
         recordDesignHistory();
         const rect = canvas.getBoundingClientRect();
-        designDragState = { mode: 'resize', id: el.id, startX: ev.clientX, startY: ev.clientY, width: getDesignElementDimension(el, 'width', getDesignCanvasWidth(activeDesignProject()?.design)), height: getDesignElementDimension(el, 'height', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+        designDragState = { mode: 'resize', id: el.id, projectId: currentProjectId, pointerId: ev.pointerId, startX: ev.clientX, startY: ev.clientY, width: getDesignElementDimension(el, 'width', getDesignCanvasWidth(activeDesignProject()?.design)), height: getDesignElementDimension(el, 'height', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
         try { resizeHandle.setPointerCapture(ev.pointerId); } catch (_) {}
       });
       resizeHandle.addEventListener('keydown', ev => {
@@ -4514,7 +4514,7 @@ function renderDesignWorkspace() {
       node.focus();
       recordDesignHistory();
       const rect = canvas.getBoundingClientRect();
-      designDragState = { id: el.id, startX: ev.clientX, startY: ev.clientY, x: getDesignElementPosition(el, 'x', getDesignCanvasWidth(activeDesignProject()?.design)), y: getDesignElementPosition(el, 'y', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
+      designDragState = { mode: 'move', id: el.id, projectId: currentProjectId, pointerId: ev.pointerId, startX: ev.clientX, startY: ev.clientY, x: getDesignElementPosition(el, 'x', getDesignCanvasWidth(activeDesignProject()?.design)), y: getDesignElementPosition(el, 'y', getDesignCanvasHeight(activeDesignProject()?.design) || 900), scaleX: rect.width / (Number.parseFloat(canvas.style.width)||1440) };
       node.setPointerCapture && node.setPointerCapture(ev.pointerId);
       ev.preventDefault();
     });
@@ -4662,7 +4662,10 @@ function bindDesignCanvasEvents() {
   if (designEventsBound) return; designEventsBound = true;
   document.addEventListener('pointermove', ev => {
     if (!designDragState) return;
-    const el = selectedDesignElement(); if (!el || el.id !== designDragState.id) return;
+    if (designDragState.pointerId != null && ev.pointerId !== designDragState.pointerId) return;
+    const dragProject = projects.find(item => item.id === designDragState.projectId);
+    const el = dragProject && dragProject.design && dragProject.design.elements.find(item => item.id === designDragState.id);
+    if (!el) return;
     const dx = (ev.clientX - designDragState.startX) / (designDragState.scaleX || 1);
     const dy = (ev.clientY - designDragState.startY) / (designDragState.scaleX || 1);
     const node = Array.from(document.querySelectorAll('[data-design-id]')).find(item => item.dataset.designId === el.id);
@@ -4677,10 +4680,12 @@ function bindDesignCanvasEvents() {
       if (node) { node.style.left = el.x + 'px'; node.style.top = el.y + 'px'; }
     }
   });
-  const finishDesignDrag = () => {
+  const finishDesignDrag = ev => {
     if (!designDragState) return;
-    const p = activeDesignProject();
-    const el = selectedDesignElement();
+    if (ev && designDragState.pointerId != null && ev.pointerId !== designDragState.pointerId) return;
+    const drag = designDragState;
+    const p = projects.find(item => item.id === drag.projectId) || activeDesignProject();
+    const el = p && p.design && p.design.elements.find(item => item.id === drag.id);
     if (p && el && p.design.snapToGrid) {
       const step = [4, 8, 16, 32].includes(Number(p.design.gridSize)) ? Number(p.design.gridSize) : 8;
       if (designDragState.mode === 'resize') {
@@ -4692,7 +4697,7 @@ function bindDesignCanvasEvents() {
         el.y = Math.max(0, Math.round((Number(el.y) || 0) / step) * step);
       }
     }
-    const selectedId = selectedDesignElementId;
+    const selectedId = drag.id;
     designDragState = null;
     renderDesignWorkspace();
     const selectedNode = Array.from(document.querySelectorAll('[data-design-id]')).find(node => node.dataset.designId === selectedId);
