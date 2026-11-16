@@ -10,6 +10,8 @@ on:
       - vendor/penpot/frontend/src/app/main/data/persistence.cljs
       - vendor/penpot/common/src/app/common/transit.cljc
       - headless-penpot/**
+      - headless-codelab/**
+      - public/codelab-headless-agent.js
   workflow_dispatch:
 
 permissions:
@@ -129,6 +131,55 @@ jobs:
             codelab-penpot-headless-2.19.0.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30
+
+      - name: Assemble downloadable CodeLab headless remote editor
+        run: |
+          set -euo pipefail
+          rm -rf headless-codelab-package
+          mkdir -p headless-codelab-package/headless-codelab/runtime headless-codelab-package/headless-codelab/bin headless-codelab-package/public
+          cp -R headless-codelab/runtime headless-codelab-package/headless-codelab/
+          cp -R headless-codelab/bin headless-codelab-package/headless-codelab/
+          cp headless-codelab/README.md headless-codelab-package/headless-codelab/README.md
+          cp public/codelab-headless-agent.js headless-codelab-package/public/
+          chmod +x headless-codelab-package/headless-codelab/bin/*.sh
+          cat > headless-codelab-package/package.json <<'EOF'
+          {
+            "name": "codelab-headless-remote-editor",
+            "private": true,
+            "type": "module",
+            "dependencies": {
+              "@sparticuz/chromium": "153.0.0",
+              "playwright-core": "1.64.1"
+            }
+          }
+          EOF
+          npm install --prefix headless-codelab-package --omit=dev --ignore-scripts
+          cp -R headless-codelab-package/node_modules headless-codelab-package/headless-codelab/node_modules
+          tar -C headless-codelab-package -czf codelab-headless-remote-editor.tar.gz .
+          sha256sum codelab-headless-remote-editor.tar.gz > codelab-headless-remote-editor.tar.gz.sha256
+
+      - name: Upload downloadable CodeLab headless remote editor
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-headless-remote-editor
+          path: |
+            codelab-headless-remote-editor.tar.gz
+            codelab-headless-remote-editor.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Validate downloadable CodeLab headless remote editor
+        run: |
+          set -euo pipefail
+          rm -rf headless-codelab-validation
+          mkdir headless-codelab-validation
+          tar -xzf codelab-headless-remote-editor.tar.gz -C headless-codelab-validation
+          test -s headless-codelab-validation/public/codelab-headless-agent.js
+          test -s headless-codelab-validation/headless-codelab/runtime/remote-agent.mjs
+          test -x headless-codelab-validation/headless-codelab/bin/codelab-headless.sh
+          node --check headless-codelab-validation/headless-codelab/runtime/remote-agent.mjs
+          node --check headless-codelab-validation/public/codelab-headless-agent.js
+          headless-codelab-validation/headless-codelab/bin/codelab-headless.sh check
 
       - name: Validate packaged headless runtime
         run: |
