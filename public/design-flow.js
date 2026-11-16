@@ -123,7 +123,7 @@
     const sourceProject = findProject(pendingStart.projectId), source = sourceProject && sourceProject.design.elements.find(el => el.id === pendingStart.elementId);
     const targetId = target.dataset.flowTargetProject, targetElementId = target.dataset.flowTargetElement;
     const targetProject = findProject(targetId), targetElement = targetProject && targetProject.design.elements.find(el => el.id === targetElementId);
-    if (!sourceProject || !source || !targetProject || !targetElement || (sourceProject.id === targetId && source.id === targetElementId)) { showToast('Conecta una opción con otra capa/interfaz distinta.', 'warn'); return; }
+    if (!sourceProject || !source || !targetProject || !targetElement || sourceProject.id === targetId) { showToast('Conecta una opción con una página distinta; no se permiten conexiones dentro de la misma página.', 'warn'); return; }
     if (source.flowRole === 'menu') { showToast('Los menús desplegables no navegan a otra interfaz.', 'warn'); return; }
     sourceProject.design.flowConnections = (sourceProject.design.flowConnections || []).filter(c => c.sourceElementId !== source.id);
     sourceProject.design.flowConnections.push({ sourceElementId: source.id, targetProjectId: targetId, targetElementId });
