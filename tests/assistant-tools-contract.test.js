@@ -60,9 +60,9 @@ assert.match(bridge, /exact local project state/, 'project save must verify exac
 assert.match(bridge, /persistedCodeMatchesRequested/, 'code write must verify the saved result');
 assert.match(bridge, /localSnapshotVerified/,
   'tools must distinguish local durable state from server sync');
-assert.match(bridge, /const commentMutatingActions = new Set\\(\\[[\\s\\S]*?\\]\\);/,
+assert.ok(bridge.includes("const commentMutatingActions = new Set(["),
   'comment mailbox must classify state-changing actions explicitly');
-assert.match(bridge, /commandSource === 'comment' && commentMutatingActions\.has\(command\.action\) && command\\.approval !== 'approved'/,
+assert.match(bridge, /commandSource === 'comment' && commentMutatingActions\\.has\\(command\\.action\\) && command\\.approval !== 'approved'/,
   'comment mailbox state changes must require explicit approval');
 assert.match(bridge, /allowedCanvasKeys = \[[^\]]*'canvas_width'[^\]]*'canvas_height'/, 'canvas tool must expose custom dimensions');
 assert.match(bridge, /canvas_width[\s\S]{0,180}4000/, 'custom canvas width must be bounded');
