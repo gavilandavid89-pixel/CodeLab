@@ -569,6 +569,34 @@ function decodePixelForgeProjectId(value) {
   }
 }
 
+async function ensureCoreDatabaseTables() {
+  if (!accountPool) return;
+  await accountPool.query(`
+    CREATE TABLE IF NOT EXISTS codelab_accounts (
+      username TEXT PRIMARY KEY,
+      id TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL DEFAULT 'user',
+      salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      password_changed_at TIMESTAMPTZ,
+      must_change_password BOOLEAN NOT NULL DEFAULT FALSE
+    )
+  `);
+  await accountPool.query(`
+    CREATE TABLE IF NOT EXISTS codelab_workspace_states (
+      workspace_id TEXT PRIMARY KEY,
+      revision INTEGER NOT NULL DEFAULT 0,
+      state JSONB NOT NULL,
+      owner JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (jsonb_typeof(state) = 'object'),
+      CHECK (owner IS NULL OR jsonb_typeof(owner) = 'object')
+    )
+  `);
+  await accountPool.query('CREATE INDEX IF NOT EXISTS codelab_workspace_states_updated_idx ON codelab_workspace_states (updated_at DESC)');
+}
+
 async function ensureAuthSessionTable() {
   if (!accountPool) return;
   await accountPool.query("CREATE TABLE IF NOT EXISTS codelab_auth_sessions (session_id VARCHAR(48) PRIMARY KEY CHECK (session_id ~ '^[a-f0-9]{48}$'), user_data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, CHECK (jsonb_typeof(user_data) = 'object'))");
