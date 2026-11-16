@@ -40,3 +40,5 @@ The page bridge exposes `window.__codelabEditorAgent` and a versioned semantic d
 - No production database credentials are packaged.
 - Browser authentication is supplied by the operator.
 - This connector does not host a local CodeLab copy or replace Headless #1.
+
+See [`docs/penpot-integration/DUAL-HEADLESS-ARCHITECTURE.md`](../docs/penpot-integration/DUAL-HEADLESS-ARCHITECTURE.md) for the binding separation contract and responsibilities of both headless systems.
