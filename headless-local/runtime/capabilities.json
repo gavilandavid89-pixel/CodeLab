@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "package": "codelab-local-headless",
+  "headlessId": "assistant-local-workbench",
+  "includes": {
+    "codelabApplication": true,
+    "applicationSource": "app/",
+    "nativePenpotEditor": true,
+    "penpotRuntime": "headless-penpot/",
+    "browserAutomation": "Playwright + Chromium",
+    "visualCapture": true,
+    "semanticInspection": true,
+    "diagnostics": ["console", "javascript-exceptions", "failed-requests", "http-errors", "websocket-errors"]
+  },
+  "applicationCapabilities": [
+    "workspaces-and-projects",
+    "code-editors-and-live-preview",
+    "project-import-export",
+    "branches-and-version-history",
+    "agent-and-ai-provider-settings",
+    "mailbox-and-approval-workflows",
+    "native-penpot-design-editor"
+  ],
+  "externalRequirements": {
+    "database": "Optional/configuration-dependent; production PostgreSQL is not bundled.",
+    "aiProviders": "Require the user's own provider endpoint and API key.",
+    "oauth": "Requires provider credentials and network access.",
+    "remoteStorageAndCollaboration": "Require their configured services."
+  },
+  "security": {
+    "productionSecretsBundled": false,
+    "remoteConnectorBundled": false,
+    "userSessionStateBundled": false
+  }
+}
