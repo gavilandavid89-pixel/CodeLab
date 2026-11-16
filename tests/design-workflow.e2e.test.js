@@ -2157,7 +2157,8 @@ async function waitForPersistedProject(page, projectName) {
       null, { timeout: 15000 });
     await page.locator('#workspaceSwitchBtn').click();
     try {
-      await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
+      await page.waitForFunction(expected => getCurrentProject()?.id === expected &&
+        !document.getElementById('designStudioPanel')?.classList.contains('hidden'),
         sourceProjectId, { timeout: 10000 });
     } catch (error) {
       const state = await page.evaluate(() => ({
@@ -2172,8 +2173,10 @@ async function waitForPersistedProject(page, projectName) {
     // Workspace type changes before the async persistence lock is released.
     await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
       null, { timeout: 15000 });
-    await page.locator('#switchToWebBtn').click();
-    await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'web',
+    await page.locator('#workspaceSwitchBtn').click();
+    await page.waitForFunction(expected => getCurrentProject()?.id === expected &&
+      document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
+      !document.getElementById('studioView')?.classList.contains('hidden'),
       sourceProjectId, { timeout: 10000 });
     assert.ok((await page.evaluate(() => getCurrentProject().code.html)).includes('data-page-id="' + targetProjectId + '"'),
       'web code must remain on the shared project after switching editors');
@@ -2183,12 +2186,15 @@ async function waitForPersistedProject(page, projectName) {
     // verify the same project retains both representations after every cycle.
     for (let cycle = 1; cycle <= 12; cycle += 1) {
       await page.locator('#workspaceSwitchBtn').click();
-      await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design' &&
+      await page.waitForFunction(id => getCurrentProject()?.id === id &&
+        !document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
         Array.isArray(getCurrentProject()?.design?.elements), sourceProjectId, { timeout: 10000 });
       await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
         null, { timeout: 15000 });
-      await page.locator('#switchToWebBtn').click();
-      await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'web' &&
+      await page.locator('#workspaceSwitchBtn').click();
+      await page.waitForFunction(id => getCurrentProject()?.id === id &&
+        document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
+        !document.getElementById('studioView')?.classList.contains('hidden') &&
         typeof getCurrentProject()?.code?.html === 'string', sourceProjectId, { timeout: 10000 });
       const retained = await page.evaluate(({ sourceProjectId, targetProjectId }) => {
         const project = projects.find(item => item.id === sourceProjectId);
