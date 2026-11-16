@@ -10,7 +10,12 @@ on:
       - vendor/penpot/frontend/src/app/main/data/persistence.cljs
       - vendor/penpot/common/src/app/common/transit.cljc
       - headless-penpot/**
+      - headless-local/**
       - headless-codelab/**
+      - server.js
+      - package.json
+      - public/**
+      - migrations/**
       - public/codelab-headless-agent.js
   workflow_dispatch:
 
@@ -101,8 +106,14 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf headless-penpot-package
-          mkdir -p headless-penpot-package/penpot
+          mkdir -p headless-penpot-package/penpot headless-penpot-package/app headless-penpot-package/bin
           cp -R headless-penpot headless-penpot-package/
+          cp -R public headless-penpot-package/app/
+          cp server.js package.json headless-penpot-package/app/
+          if [ -d migrations ]; then cp -R migrations headless-penpot-package/app/; fi
+          cp headless-local/README.md headless-penpot-package/README.md
+          cp headless-local/bin/codelab-local-headless.sh headless-penpot-package/bin/
+          chmod +x headless-penpot-package/bin/codelab-local-headless.sh
           chmod +x headless-penpot-package/headless-penpot/bin/*.sh
           cp -R vendor/penpot/frontend/target/dist headless-penpot-package/penpot/dist
           cat > headless-penpot-package/package.json <<'EOF'
@@ -116,19 +127,20 @@ jobs:
             }
           }
           EOF
-          npm install --prefix headless-penpot-package --omit=dev --ignore-scripts
+          npm install --prefix headless-penpot-package/app --omit=dev --ignore-scripts
+          npm install --prefix headless-penpot-package --omit=dev --ignore-scripts --package-lock=false
           cp -R headless-penpot-package/node_modules headless-penpot-package/headless-penpot/node_modules
           rm -rf headless-penpot-package/penpot/dist/js/*.map
-          tar -C headless-penpot-package -czf codelab-penpot-headless-2.19.0.tar.gz .
-          sha256sum codelab-penpot-headless-2.19.0.tar.gz > codelab-penpot-headless-2.19.0.tar.gz.sha256
+          tar -C headless-penpot-package -czf codelab-local-headless-2.19.0.tar.gz .
+          sha256sum codelab-local-headless-2.19.0.tar.gz > codelab-local-headless-2.19.0.tar.gz.sha256
 
       - name: Upload offline headless Penpot package
         uses: actions/upload-artifact@v4
         with:
-          name: codelab-penpot-headless-2.19.0
+          name: codelab-local-headless-2.19.0
           path: |
-            codelab-penpot-headless-2.19.0.tar.gz
-            codelab-penpot-headless-2.19.0.tar.gz.sha256
+            codelab-local-headless-2.19.0.tar.gz
+            codelab-local-headless-2.19.0.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -187,9 +199,13 @@ jobs:
           rm -rf headless-validation
           mkdir headless-validation
           tar -xzf codelab-penpot-headless-2.19.0.tar.gz -C headless-validation
+          test -s headless-validation/app/server.js
+          test -s headless-validation/app/public/index.html
+          test -s headless-validation/bin/codelab-local-headless.sh
           test -s headless-validation/penpot/dist/index.html
           test -s headless-validation/headless-penpot/runtime/web-test.mjs
           test -x headless-validation/headless-penpot/bin/codelab-headless.sh
           node --check headless-validation/headless-penpot/runtime/design-server.mjs
           node --check headless-validation/headless-penpot/runtime/web-test.mjs
           headless-validation/headless-penpot/bin/codelab-headless.sh check
+          node --check headless-validation/app/server.js
