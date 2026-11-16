@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   real-render-qa:
@@ -41,7 +42,11 @@ jobs:
           set -euo pipefail
           mkdir -p headless-penpot/artifacts
           export NODE_PATH="$PWD/node_modules"
-          node headless-penpot/runtime/web-test.mjs             --url "${{ inputs.render_url }}${{ inputs.path }}"             --capture             --report headless-penpot/artifacts/render-report.json
+          node headless-penpot/runtime/web-test.mjs \
+            --url "${{ inputs.render_url }}${{ inputs.path }}" \
+            --allow-external \
+            --capture \
+            --report headless-penpot/artifacts/render-report.json
 
       - name: Upload real CodeLab evidence
         if: always()
