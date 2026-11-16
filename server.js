@@ -584,6 +584,26 @@ async function ensureCoreDatabaseTables() {
     )
   `);
   await accountPool.query(`
+    CREATE TABLE IF NOT EXISTS codelab_agent_commands (
+      command_id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'queued',
+      result JSONB,
+      proposal JSONB,
+      proposal_token TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      started_at TIMESTAMPTZ,
+      finished_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes'),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (jsonb_typeof(payload) = 'object')
+    )
+  `);
+  await accountPool.query('CREATE INDEX IF NOT EXISTS codelab_agent_commands_queue_idx ON codelab_agent_commands (status, created_at)');
+  await accountPool.query('CREATE INDEX IF NOT EXISTS codelab_agent_commands_workspace_idx ON codelab_agent_commands (workspace_id, created_at DESC)');
+  await accountPool.query(`
     CREATE TABLE IF NOT EXISTS codelab_workspace_states (
       workspace_id TEXT PRIMARY KEY,
       revision INTEGER NOT NULL DEFAULT 0,
