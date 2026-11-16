@@ -108,11 +108,12 @@ jobs:
           rm -rf headless-penpot-package
           mkdir -p headless-penpot-package/penpot headless-penpot-package/app headless-penpot-package/bin
           cp -R headless-penpot headless-penpot-package/
-          rsync -a ./ headless-penpot-package/app/ \\
-            --exclude='.git/' --exclude='node_modules/' --exclude='vendor/' \\
-            --exclude='headless-penpot/' --exclude='headless-codelab/' --exclude='headless-local/' \\
-            --exclude='headless-penpot-package/' --exclude='headless-codelab-package/' \\
-            --exclude='.env' --exclude='.env.*' --exclude='*.log' --exclude='artifacts/'
+          rsync -a \
+            --exclude='.git/' --exclude='node_modules/' --exclude='vendor/' \
+            --exclude='headless-penpot/' --exclude='headless-codelab/' --exclude='headless-local/' \
+            --exclude='headless-penpot-package/' --exclude='headless-codelab-package/' \
+            --exclude='.env' --exclude='.env.*' --exclude='*.log' --exclude='artifacts/' \
+            ./ headless-penpot-package/app/
           cp headless-local/README.md headless-penpot-package/README.md
           mkdir -p headless-penpot-package/headless-local/runtime
           cp -R headless-local/runtime/. headless-penpot-package/headless-local/runtime/
