@@ -18,14 +18,14 @@ The package includes the CodeLab source snapshot and runtime dependencies. Capab
 bin/codelab-local-headless.sh check
 bin/codelab-local-headless.sh app
 bin/codelab-local-headless.sh design
-bin/codelab-local-headless.sh web --url http://127.0.0.1:3000 --capture
+bin/codelab-local-headless.sh web --url http://127.0.0.1:3000 --commands commands.json --capture
 bin/codelab-local-headless.sh capture --url http://127.0.0.1:3000
 bin/codelab-local-headless.sh export --workspace ./workspace
 ```
 
 - `app`: starts the packaged CodeLab server locally.
 - `design`: starts the full native Penpot editor.
-- `web`: opens a CodeLab page in Chromium and records console, JS, HTTP, request and WebSocket diagnostics.
+- `web`: opens a CodeLab page in Chromium, executes an optional semantic command file (`--commands`) and records console, JS, HTTP, request and WebSocket diagnostics.
 - `check`: validates the bundled app, Penpot editor and runtime dependencies.
 
 The app uses local configuration only. Set `PORT`, `DATABASE_URL`, provider API variables, and OAuth settings only when the corresponding capability is needed. Never put production secrets in this package.
