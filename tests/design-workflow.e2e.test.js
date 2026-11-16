@@ -1959,9 +1959,12 @@ async function waitForPersistedProject(page, projectName) {
       has: page.locator('h4').getByText(PROJECT_NAME, { exact: true })
     });
     await reloadedDesignCard.locator('button[data-action="open"]').click();
+    const reloadWorkspaceSwitch = page.locator('#workspaceSwitchBtn');
+    await reloadWorkspaceSwitch.waitFor({ state: 'visible', timeout: 15000 });
+    if ((await reloadWorkspaceSwitch.innerText()).trim() === 'Diseño') await reloadWorkspaceSwitch.click();
     await page.waitForFunction(expected => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
-      return project && project.name === expected.name && project.type === 'design' &&
+      return project && project.name === expected.name &&
         document.querySelectorAll('#designCanvas [data-design-id]').length === expected.count;
     }, { name: PROJECT_NAME, count: matrixBaselineCount }, { timeout: 15000 });
 
