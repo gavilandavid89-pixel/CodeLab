@@ -2035,7 +2035,7 @@ async function waitForPersistedProject(page, projectName) {
         return !(source?.design?.flowConnections || []).some(connection => connection.sourceElementId === flowButtonId);
       }, { sourceProjectId, flowButtonId }, { timeout: 5000 });
       const repeatSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
-      const repeatTarget = await page.locator('[data-flow-target-project="' + targetProjectId + '"]').boundingBox();
+      const repeatTarget = await page.locator('div[data-flow-target-element][data-flow-target-project="' + targetProjectId + '"]').first().boundingBox();
       assert.ok(repeatSource && repeatTarget, 'repeated option cycle ' + cycle + ' must retain source and target controls');
       await page.mouse.move(repeatSource.x + repeatSource.width / 2, repeatSource.y + repeatSource.height / 2);
       await page.mouse.down();
@@ -2071,7 +2071,7 @@ async function waitForPersistedProject(page, projectName) {
     await touchPage.locator('#designFlowChoose').click();
     await touchPage.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     const touchPort = touchPage.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]');
-    const touchTarget = touchPage.locator('[data-flow-target-project="' + targetProjectId + '"]');
+    const touchTarget = touchPage.locator('div[data-flow-target-element][data-flow-target-project="' + targetProjectId + '"]').first();
     await touchPort.waitFor({ state: 'visible', timeout: 10000 });
     const touchSourceBox = await touchPort.boundingBox();
     const touchTargetBox = await touchTarget.boundingBox();
