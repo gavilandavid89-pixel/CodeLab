@@ -204,6 +204,7 @@ jobs:
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-pixelforge-postgres-data"
           export CODELAB_WORKSPACE_SECRET="test-only-pixelforge-postgres-secret"
+          export ADMIN_BOOTSTRAP_PASSWORD="test-only-admin-bootstrap-password-2026"
           node server.js > "$RUNNER_TEMP/codelab-pixelforge-postgres.log" 2>&1 &
           SERVER_PID=$!
           trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== PixelForge PostgreSQL E2E server log ====="; cat "$RUNNER_TEMP/codelab-pixelforge-postgres.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
