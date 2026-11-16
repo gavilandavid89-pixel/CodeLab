@@ -116,6 +116,7 @@ jobs:
             ./ headless-penpot-package/app/
           cp headless-local/README.md headless-penpot-package/README.md
           mkdir -p headless-penpot-package/headless-local/runtime
+          cp headless-local/docker-compose.yml headless-penpot-package/headless-local/docker-compose.yml
           cp -R headless-local/runtime/. headless-penpot-package/headless-local/runtime/
           cp headless-local/bin/codelab-local-headless.sh headless-penpot-package/bin/
           chmod +x headless-penpot-package/bin/codelab-local-headless.sh
@@ -208,6 +209,7 @@ jobs:
           test -s headless-validation/app/public/index.html
           test -s headless-validation/bin/codelab-local-headless.sh
           test -s headless-validation/headless-local/runtime/capabilities.json
+          test -s headless-validation/headless-local/docker-compose.yml
           node -e "const m=require('./headless-validation/headless-local/runtime/capabilities.json'); if(m.headlessId!=='assistant-local-workbench'||!m.includes.codelabApplication||!m.includes.nativePenpotEditor) process.exit(1)"
           test -s headless-validation/penpot/dist/index.html
           test -s headless-validation/headless-penpot/runtime/web-test.mjs
