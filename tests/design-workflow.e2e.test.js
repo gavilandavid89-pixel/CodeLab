@@ -637,13 +637,23 @@ async function waitForPersistedProject(page, projectName) {
     await resizeHandle.waitFor({ state: 'visible' });
     const handleBox = await resizeHandle.boundingBox();
     assert.ok(handleBox, 'selected canvas layer should expose a visible resize handle');
+    const resizeHit = await resizeHandle.evaluate(handle => {
+      const r = handle.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { topmost: !!hit && (hit === handle || handle.contains(hit)),
+        hit: hit ? { tag: hit.tagName, id: hit.id, className: hit.className } : null,
+        snapToGrid: getCurrentProject()?.design?.snapToGrid,
+        width: handle.parentElement?.style.width,
+        height: handle.parentElement?.style.height };
+    });
+    assert.equal(resizeHit.topmost, true, 'resize handle must receive pointer input; hit=' + JSON.stringify(resizeHit));
     await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(handleBox.x + handleBox.width / 2 + 32, handleBox.y + handleBox.height / 2 + 24, { steps: 4 });
     await page.mouse.up();
     const sizeAfter = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
-    assert.ok(sizeAfter.width > sizeBefore.width, 'canvas resize handle should increase layer width at the current workspace zoom');
-    assert.ok(sizeAfter.height > sizeBefore.height, 'canvas resize handle should increase layer height at the current workspace zoom');
+    assert.ok(sizeAfter.width > sizeBefore.width, 'canvas resize handle should increase layer width at the current workspace zoom: ' + JSON.stringify({sizeBefore,sizeAfter,resizeHit,handleBox}));
+    assert.ok(sizeAfter.height > sizeBefore.height, 'canvas resize handle should increase layer height at the current workspace zoom: ' + JSON.stringify({sizeBefore,sizeAfter,resizeHit,handleBox}));
     await resizeHandle.focus();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Shift+ArrowDown');
