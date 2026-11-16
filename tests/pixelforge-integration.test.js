@@ -50,8 +50,8 @@ async function main() {
   assert.equal(pageResponse.status, 200, 'PixelForge entry route should serve its own editor page');
   const page = await pageResponse.text();
   assert.match(page, /id="canvas"/, 'PixelForge artwork canvas should be present');
-  assert.match(page, /src="\.\/src\/editor\.js"/, 'PixelForge should load its editor module');
-  assert.ok(page.indexOf('src="/studio-core.js"') < page.indexOf('src="./src/editor.js"'), 'PixelForge must load the same shared runtime before its editor');
+  assert.match(page, /import\('\.\/src\/editor\.js'\)/, 'PixelForge should dynamically load its editor module after authentication');
+  assert.ok(page.indexOf('src="/studio-core.js"') < page.indexOf("import('./src/editor.js')"), 'PixelForge must load the same shared runtime before dynamically importing its editor');
   assert.match(page, /href="\/"[^>]*CodeLab dashboard|href="\/" title="Back to CodeLab dashboard"/, 'PixelForge should provide a return path to CodeLab');
 
   for (const path of [
