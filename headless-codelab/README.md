@@ -1,6 +1,6 @@
 # CodeLab Headless Remote Connector (Headless #2)
 
-This directory is **not** the assistant's local working environment. It is the repo-hosted remote connector that opens the real CodeLab web application (normally the Render deployment), authenticates with a user-provided browser session, and executes semantic operations against that live application.
+This directory is **not** the assistant's local working environment. It is the repo-hosted remote connector that opens the real CodeLab web application (normally the Render deployment), uses an existing authorized CodeLab browser session supplied by the operator, and executes native semantic commands against that live application. It does not create, own, or store a separate CodeLab account.
 
 - **Headless #1:** `headless-local/` + the CodeLab app source + `headless-penpot/`; used by the assistant to build and test locally.
 - **Headless #2:** this directory + `public/codelab-headless-agent.js`; connects to the real deployed CodeLab origin.
@@ -32,13 +32,13 @@ Use `--session-dir` for a persistent browser profile or `--auth-state` for a use
 
 ## Protocol and evidence
 
-The page bridge exposes `window.__codelabEditorAgent` and a versioned semantic dispatch protocol. Commands are allowlisted; navigation is same-origin; arbitrary JavaScript execution is not exposed. The worker records the final app state, screenshots, console messages, uncaught JavaScript exceptions, failed requests, HTTP errors and WebSocket socket errors. A successful connection alone does not prove that a save or workflow persisted; verify the resulting state after each mutation.
+The page bridge exposes `window.__codelabCommandAgent` through `window.__codelabEditorAgent` and a versioned native command protocol. The remote worker does not use mouse coordinates, DOM `.click()` automation, or arbitrary JavaScript commands. Commands are allowlisted; navigation is same-origin; arbitrary JavaScript execution is not exposed. The worker records the final app state, screenshots, console messages, uncaught JavaScript exceptions, failed requests, HTTP errors and WebSocket socket errors. A successful connection alone does not prove that a save or workflow persisted; verify the resulting state after each mutation.
 
 ## Safety
 
 - External requests are blocked unless `--allow-external` is explicitly supplied.
 - No production database credentials are packaged.
-- Browser authentication is supplied by the operator.
+- Authentication is supplied by the existing authorized CodeLab session. The headless connector owns no CodeLab account.
 - This connector does not host a local CodeLab copy or replace Headless #1.
 
 See [`docs/penpot-integration/DUAL-HEADLESS-ARCHITECTURE.md`](../docs/penpot-integration/DUAL-HEADLESS-ARCHITECTURE.md) for the binding separation contract and responsibilities of both headless systems.
