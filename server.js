@@ -2901,10 +2901,9 @@ try {
   console.error('WARNING: DATA_DIR not writable:', DATA_DIR, e.message);
 }
 
-seedAdminAccountIfConfigured().then(async () => {
+ensureCoreDatabaseTables().then(async () => {
+  await seedAdminAccountIfConfigured();
   if (accountPool) {
-    await ensureCoreDatabaseTables();
-    await seedAdminAccountIfConfigured();
     await ensureAuthSessionTable();
     await migrateLegacySessionsToDatabase();
     await cleanupExpiredSessions();
