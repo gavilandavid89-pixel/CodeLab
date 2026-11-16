@@ -1829,8 +1829,8 @@ async function waitForPersistedProject(page, projectName) {
     // Design → Web conversion intentionally keeps the same project and its
     // current workspace type. Reopen that project, then explicitly switch back
     // to Design before asserting the design canvas state.
-    await page.locator('#switchToDesignBtn').waitFor({ state: 'visible', timeout: 15000 });
-    await page.locator('#switchToDesignBtn').click();
+    await page.locator('#workspaceSwitchBtn').waitFor({ state: 'visible', timeout: 15000 });
+    await page.locator('#workspaceSwitchBtn').click();
     await page.waitForFunction(name => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
       const canvasCount = document.querySelectorAll('#designCanvas [data-design-id]').length;
@@ -2056,8 +2056,8 @@ async function waitForPersistedProject(page, projectName) {
     const touchSourceCard = touchPage.locator('#projectsGrid > div').filter({ has: touchPage.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
     await touchSourceCard.locator('button[data-action="open"]').click();
     await touchPage.waitForFunction(id => getCurrentProject()?.id === id, sourceProjectId, { timeout: 15000 });
-    if (await touchPage.locator('#switchToDesignBtn').isVisible()) {
-      await touchPage.locator('#switchToDesignBtn').click();
+    if (await touchPage.locator('#workspaceSwitchBtn').isVisible()) {
+      await touchPage.locator('#workspaceSwitchBtn').click();
       await touchPage.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design', sourceProjectId, { timeout: 10000 });
     }
     await touchPage.locator('#openDesignFlowGraph').click();
@@ -2141,7 +2141,7 @@ async function waitForPersistedProject(page, projectName) {
     // Wait for its mutation lock to release before issuing another workspace action.
     await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
       null, { timeout: 15000 });
-    await page.locator('#switchToDesignBtn').click();
+    await page.locator('#workspaceSwitchBtn').click();
     try {
       await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
         sourceProjectId, { timeout: 10000 });
@@ -2168,7 +2168,7 @@ async function waitForPersistedProject(page, projectName) {
     // Long-run workspace-switch endurance: alternate Web/Design repeatedly and
     // verify the same project retains both representations after every cycle.
     for (let cycle = 1; cycle <= 12; cycle += 1) {
-      await page.locator('#switchToDesignBtn').click();
+      await page.locator('#workspaceSwitchBtn').click();
       await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design' &&
         Array.isArray(getCurrentProject()?.design?.elements), sourceProjectId, { timeout: 10000 });
       await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
