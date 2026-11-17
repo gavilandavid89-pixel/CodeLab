@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -149,5 +150,128 @@ test('real PixelForge editor loads a saved animation and records its native play
     if (browser) await browser.close().catch(() => {});
     await fs.rm(tempDir, { recursive: true, force: true });
     await new Promise(resolve => server.close(resolve));
+  }
+});
+
+
+test('real CodeLab project route renders saved web code and records WebM', {
+  timeout: 150000
+}, async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-project-route-test-'));
+  const portProbe = createServer();
+  await new Promise(resolve => portProbe.listen(0, '127.0.0.1', resolve));
+  const port = portProbe.address().port;
+  await new Promise(resolve => portProbe.close(resolve));
+  const secret = 'native-headless-integration-test-secret';
+  const child = spawn(process.execPath, [path.join(root, 'server.js')], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NODE_ENV: 'test',
+      DATABASE_URL: '',
+      CODELAB_DATA_DIR: dataDir,
+      CODELAB_WORKSPACE_SECRET: secret,
+      CODELAB_AGENT_BRIDGE_ENABLED: '0'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let serverOutput = '';
+  child.stdout.on('data', chunk => { serverOutput += chunk.toString(); });
+  child.stderr.on('data', chunk => { serverOutput += chunk.toString(); });
+  const baseUrl = 'http://127.0.0.1:' + port;
+  let browser;
+  let tempDir;
+  try {
+    let healthy = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (child.exitCode !== null) throw new Error('CodeLab server exited before startup: ' + serverOutput);
+      try {
+        const response = await fetch(baseUrl + '/api/health', { signal: AbortSignal.timeout(1000) });
+        if (response.ok && (await response.json()).ok === true) { healthy = true; break; }
+      } catch {}
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    assert.ok(healthy, 'CodeLab server must become healthy: ' + serverOutput);
+    const workspaceId = 'ws_local_headless_test';
+    const initialized = await fetch(baseUrl + '/api/workspace/init', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: workspaceId })
+    });
+    assert.equal(initialized.status, 200, await initialized.text());
+    const workspace = await initialized.json();
+    const html = '<!doctype html><html><head><style>' +
+      'body{margin:0;background:#101827;color:white;font:24px sans-serif}' +
+      '#motion{width:80px;height:80px;background:#4af;animation:move 1s ease-in-out infinite alternate}' +
+      '@keyframes move{to{transform:translateX(240px) rotate(180deg)}}' +
+      '</style></head><body><h1>CodeLab headless animation</h1><div id="motion"></div></body></html>';
+    const project = {
+      id: 'proj_headless_video_fixture',
+      name: 'Headless Video Fixture',
+      type: 'web',
+      code: { html, css: '', js: '' },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const saved = await fetch(baseUrl + '/api/workspace/' + encodeURIComponent(workspaceId), {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        'x-workspace-token': workspace.token
+      },
+      body: JSON.stringify({ projects: [project], baseRevision: workspace.state.revision })
+    });
+    assert.equal(saved.status, 200, await saved.text());
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-project-route-video-'));
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      timeout: 60000
+    });
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      deviceScaleFactor: 1,
+      recordVideo: { dir: tempDir, size: { width: 1280, height: 800 }, fps: 24 }
+    });
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspace.token });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(String(error.message || error)));
+    await page.goto(baseUrl + '/?projectId=' + project.id, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForFunction(expectedName => {
+      const studio = document.getElementById('studioView');
+      const title = document.getElementById('currentProjectTitle');
+      return !!studio && !studio.classList.contains('hidden') && !!title &&
+        title.textContent.trim() === expectedName;
+    }, project.name, { timeout: 45000 });
+    const previewBody = page.frameLocator('#previewIframe').locator('body');
+    await previewBody.waitFor({ state: 'visible', timeout: 30000 });
+    await page.waitForTimeout(1800);
+    assert.match(await previewBody.innerText(), /CodeLab headless animation/);
+    const png = await previewBody.screenshot({ type: 'png' });
+    assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.deepEqual(pageErrors, []);
+    const video = page.video();
+    await page.close();
+    await context.close();
+    const webm = await fs.readFile(await video.path());
+    assert.ok(webm.length > 1000);
+    assert.deepEqual([...webm.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3]);
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    if (child.exitCode === null) {
+      child.kill('SIGTERM');
+      await new Promise(resolve => {
+        const timeout = setTimeout(resolve, 5000);
+        child.once('exit', () => { clearTimeout(timeout); resolve(); });
+      });
+    }
+    if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
+    await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
