@@ -1342,6 +1342,7 @@ async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
     bucket: captureBucket,
     access: 'public_read',
     objectKey: target.objectKey,
+    publicUrl: targetUrl.origin + targetUrl.pathname,
     mimeType,
     sizeBytes: bytes.length
   };
@@ -1664,7 +1665,9 @@ async function capturePixelForgeInterface(payload = {}) {
     if (uploadTargets !== undefined && uploadTargets !== null) {
       const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
       const uploadImage = async (target, bytes, role) => {
-        if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' || !target.objectKey) {
+        if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
+            !target.objectKey.startsWith('pixelforge/captures/') || target.objectKey.includes('..') ||
+            !/^[a-zA-Z0-9._/-]+$/.test(target.objectKey)) {
           throw new Error('Invalid Neon capture upload target for ' + role + '.');
         }
         let targetUrl;
@@ -1673,8 +1676,8 @@ async function capturePixelForgeInterface(payload = {}) {
           targetUrl.port !== '' || targetUrl.username || targetUrl.password) {
           throw new Error('Neon capture upload URL host validation failed for ' + role + '.');
         }
-        const bucketSegment = decodeURIComponent(targetUrl.pathname.split('/').filter(Boolean)[0] || '');
-        if (bucketSegment !== captureBucket) {
+        const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+        if (pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
           throw new Error('Neon capture upload URL does not target the configured public bucket for ' + role + '.');
         }
         const uploaded = await fetch(targetUrl, {
@@ -1687,7 +1690,7 @@ async function capturePixelForgeInterface(payload = {}) {
         if (!uploaded.ok) {
           throw new Error('Neon capture upload failed for ' + role + ' (HTTP ' + uploaded.status + ').');
         }
-        return { role, objectKey: target.objectKey, mimeType: 'image/png', sizeBytes: bytes.length, uploaded: true };
+        return { role, objectKey: target.objectKey, publicUrl: targetUrl.origin + targetUrl.pathname, mimeType: 'image/png', sizeBytes: bytes.length, uploaded: true };
       };
       const [interfaceStored, artworkStored] = await Promise.all([
         uploadImage(uploadTargets.interface, screenshot, 'interface'),
