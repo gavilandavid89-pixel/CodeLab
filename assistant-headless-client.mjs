@@ -12,6 +12,8 @@ export const NATIVE_ACTIONS = Object.freeze([
   'codelab_project_connect',
   'codelab_project_get_code',
   'codelab_project_update_code',
+  'codelab_project_capture_png',
+  'codelab_project_record_video',
   'pixelforge_create',
   'pixelforge_list',
   'pixelforge_inspect',
@@ -147,6 +149,12 @@ export function createAssistantHeadlessClient(options = {}) {
     updateCode: (projectId, code, baseRevision) => run('codelab_project_update_code', {
       project_id: projectId, code, ...(baseRevision === undefined ? {} : { base_revision: baseRevision })
     }),
+    captureCodeLabPng: (projectId, options = {}) => run('codelab_project_capture_png', {
+      project_id: projectId, ...options
+    }),
+    recordCodeLabVideo: (projectId, options = {}) => run('codelab_project_record_video', {
+      project_id: projectId, ...options
+    }, { ttlMs: options.ttlMs ?? 90000, timeoutMs: options.timeoutMs ?? 95000 }),
     inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
     exportAnimationVideo: (projectId, options = {}) => run('pixelforge_export_animation_video', {
       project_id: projectId, ...options
