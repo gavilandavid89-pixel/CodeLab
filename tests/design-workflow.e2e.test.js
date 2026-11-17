@@ -4,6 +4,7 @@ const { chromium } = require('playwright');
 
 const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const PROJECT_NAME = 'Flujo integral E2E ' + Date.now();
+const VISUAL_ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || require('node:path').join(require('node:os').tmpdir(), 'codelab-visual-evidence');
 
 async function waitForPersistedProject(page, projectName) {
   await page.waitForFunction(async name => {
@@ -2020,6 +2021,8 @@ async function waitForPersistedProject(page, projectName) {
       const source = projects.find(item => item.id === sourceProjectId);
       return source?.design?.flowConnections?.some(c => c.sourceElementId === flowButtonId && c.targetProjectId === targetProjectId);
     }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
+    await fs.mkdir(VISUAL_ARTIFACT_DIR, { recursive: true });
+    await page.locator('#designFlowGraphModal').screenshot({ path: require('node:path').join(VISUAL_ARTIFACT_DIR, 'real-node-graph.png'), type: 'png' });
     // Invalid self-links must be rejected and must not overwrite the valid route.
     const selfSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
     const selfCard = await page.locator('[data-flow-target-element][data-flow-target-project="' + sourceProjectId + '"]:visible').first().boundingBox();
