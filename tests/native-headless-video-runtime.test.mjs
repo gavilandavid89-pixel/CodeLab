@@ -125,7 +125,7 @@ test('real PixelForge editor loads a saved animation and records its native play
     });
     const page = await context.newPage();
     const pageErrors = [];
-    page.on('pageerror', error => pageErrors.push(String(error.message || error)));
+    page.on('pageerror', error => pageErrors.push(String(error.stack || error.message || error)));
     await page.goto(baseUrl + '/pixelforge/index.html?projectId=' + project.id + '&capture=video', {
       waitUntil: 'domcontentloaded'
     });
