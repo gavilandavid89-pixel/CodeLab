@@ -19,6 +19,10 @@ test('native command mailbox registers direct CodeLab code operations', () => {
   assert.match(source, /case 'codelab_project_get_code'/);
   assert.match(source, /case 'codelab_project_update_code'/);
   assert.match(source, /persistenceVerified: true/);
+  assert.match(source, /case 'codelab_project_capture_png'/);
+  assert.match(source, /case 'codelab_project_record_video'/);
+  assert.match(source, /recordCodeLabProjectVideo/);
+  assert.match(source, /captureCodeLabProjectPng/);
   assert.match(source, /Only html, css and js fields can be updated/);
   assert.match(source, /500000/);
   assert.match(source, /codelab_project_get_code','codelab_project_update_code/);
@@ -39,6 +43,8 @@ test('animation video export uses real Chromium recording and validates artifact
 test('assistant headless client validates the supported command contract', () => {
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_update_code'));
   assert.ok(NATIVE_ACTIONS.includes('pixelforge_export_animation_video'));
+  assert.ok(NATIVE_ACTIONS.includes('codelab_project_capture_png'));
+  assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
   assert.deepEqual(validateCommandInput('status', { operation: 'ping' }), {
     action: 'status', payload: { operation: 'ping' }, ttlMs: 120000
   });
