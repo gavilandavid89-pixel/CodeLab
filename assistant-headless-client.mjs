@@ -55,6 +55,11 @@ export function createAssistantHeadlessClient(options = {}) {
   const pollIntervalMs = Number.isInteger(options.pollIntervalMs)
     ? Math.max(200, Math.min(5000, options.pollIntervalMs))
     : 700;
+  const appBaseUrl = String(options.baseUrl || process.env.CODELAB_BASE_URL ||
+    'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+  const wakeTimeoutMs = Number.isInteger(options.wakeTimeoutMs)
+    ? Math.max(5000, Math.min(120000, options.wakeTimeoutMs))
+    : 60000;
   let workspaceIdPromise;
 
   async function getWorkspaceId() {
@@ -74,10 +79,25 @@ export function createAssistantHeadlessClient(options = {}) {
     return workspaceIdPromise;
   }
 
+  async function wakeWorker() {
+    const response = await fetch(appBaseUrl + '/api/health', {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(wakeTimeoutMs)
+    });
+    let health;
+    try { health = await response.json(); } catch { health = null; }
+    if (!response.ok || health?.ok !== true) {
+      throw new Error('CodeLab service did not become healthy before native command submission (HTTP ' + response.status + ').');
+    }
+    return { ok: true, version: health.version || null, baseUrl: appBaseUrl };
+  }
+
   async function submit(action, payload = {}, commandOptions = {}) {
     const ttlMs = commandOptions.ttlMs ?? 120000;
     const normalized = validateCommandInput(action, payload, ttlMs);
     const workspaceId = await getWorkspaceId();
+    await wakeWorker();
     const commandId = randomUUID();
     const expiresAt = new Date(Date.now() + normalized.ttlMs);
     await pool.query(
@@ -139,6 +159,7 @@ export function createAssistantHeadlessClient(options = {}) {
 
   return Object.freeze({
     getWorkspaceId,
+    wakeWorker,
     submit,
     getCommand,
     wait,
