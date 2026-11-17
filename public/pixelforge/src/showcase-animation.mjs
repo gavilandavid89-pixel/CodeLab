@@ -18,70 +18,124 @@ function ellipse(buf,w,h,cx,cy,rx,ry,c){for(let y=-ry;y<=ry;y++)for(let x=-rx;x<
 function poly(buf,w,h,pts,c){const minY=Math.max(0,Math.min(...pts.map(p=>p[1]))),maxY=Math.min(h-1,Math.max(...pts.map(p=>p[1])));for(let y=minY;y<=maxY;y++){const xs=[];for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];if((a[1]<=y&&b[1]>y)||(b[1]<=y&&a[1]>y))xs.push(a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]));}xs.sort((a,b)=>a-b);for(let i=0;i+1<xs.length;i+=2)for(let x=Math.ceil(xs[i]);x<=Math.floor(xs[i+1]);x++)put(buf,w,h,x,y,c);}}
 function layerBuffer(doc,layer){const b=new Uint8ClampedArray(doc.width*doc.height*4);layer.pixels=b;return b;}
 
-function drawPerson(buf,w,h,phase){
-  const walk=phase<12, crouch=phase>=12;
-  const t=walk?phase:phase-12;
-  const cycle=[0,1,2,3,4,5,6,5,4,3,2,1][t%12];
-  const bob=walk?(cycle===0||cycle===6?0:-1):0;
-  const hipY=crouch?76:69+bob, torsoTop=crouch?57:43+bob;
-  const lean=crouch?3:0;
-  const headX=49+lean, headY=crouch?47:32+bob;
-  const swing=[-5,-4,-2,1,4,5,3,0,-3,-5,-3,0][t%12];
-  const legA=crouch?0:swing, legB=crouch?0:-swing;
-  const armA=crouch?7:-swing, armB=crouch?-7:swing;
-
-  // rear leg and shoe
-  if(crouch){
-    poly(buf,w,h,[[39,72],[50,73],[58,82],[55,88],[48,87],[44,81],[37,79]],P.pantsShade||P.pants);
-    poly(buf,w,h,[[52,83],[61,85],[66,90],[62,94],[52,92],[48,87]],P.pants);
-    poly(buf,w,h,[[60,91],[69,92],[72,95],[69,98],[59,97],[56,94]],P.shoe);
-  }else{
-    poly(buf,w,h,[[43,68],[52,69],[50,91+legA],[44,91+legA],[40,75]],P.pants);
-    poly(buf,w,h,[[43,90+legA],[51,90+legA],[50,101+legA],[43,101+legA]],P.pantsHi);
-    poly(buf,w,h,[[40,99+legA],[51,99+legA],[54,104+legA],[50,107+legA],[38,106+legA]],P.shoe);
-    rect(buf,w,h,39,105+legA,13,2,P.sole);
+function limb(buf,w,h,a,b,c1,c2,thickness=2){
+  line(buf,w,h,a[0],a[1],b[0],b[1],P.outline);
+  if(thickness>1){
+    line(buf,w,h,a[0]+1,a[1],b[0]+1,b[1],P.outline);
   }
-  // rear arm
-  const rearX=38+armB;
-  line(buf,w,h,44,51,35+armB,65+armB,P.outline); line(buf,w,h,43,51,36+armB,65+armB,P.skinShade);
-  ellipse(buf,w,h,35+armB,67+armB,4,5,P.skin);
+  line(buf,w,h,a[0],a[1],b[0],b[1],c1);
+  if(thickness>1) line(buf,w,h,a[0]+1,a[1],b[0]+1,b[1],c2||c1);
+}
+function joint(buf,w,h,p,r,c){ellipse(buf,w,h,p[0],p[1],r,r,c);}
+function drawPerson(buf,w,h,frame){
+  const N=24, walk=Math.min(frame,15), crouch=frame>=15;
+  const walkT=walk/15;
+  const crouchT=crouch?Math.min(1,(frame-15)/8):0;
+  const step=Math.sin(walkT*Math.PI*6);
+  const step2=Math.sin(walkT*Math.PI*6+Math.PI);
+  const bob=walk<15 ? Math.abs(Math.sin(walkT*Math.PI*6))*1.5 : 0;
+  const x=48 + (walk<15 ? walkT*8 : 8);
+  const uprightHipY=70-bob, crouchHipY=82;
+  const hipY=uprightHipY+(crouchHipY-uprightHipY)*crouchT;
+  const torsoTop=44+(57-44)*crouchT;
+  const headY=31+(47-31)*crouchT;
+  const headX=x+2.5*crouchT;
+  const shoulderY=47+(58-47)*crouchT;
+  const lean=1.5*crouchT;
 
-  // torso outline and jacket/shirt
-  poly(buf,w,h,[[43,42],[55,42],[62,50],[60,69],[54,74],[42,72],[38,63],[39,50]],P.outline);
-  poly(buf,w,h,[[44,44],[54,44],[59,51],[57,67],[52,70],[43,68],[41,62],[42,51]],P.shirt);
-  poly(buf,w,h,[[44,44],[49,46],[49,68],[43,67],[41,61],[42,51]],P.shirtHi);
-  poly(buf,w,h,[[49,46],[54,44],[59,51],[57,67],[53,69],[49,67]],P.shirtShade);
-  line(buf,w,h,49,46,49,66,P.accent); rect(buf,w,h,46,52,2,2,P.white); rect(buf,w,h,46,60,2,2,P.white);
+  const leftHip=[x-3,hipY], rightHip=[x+4,hipY];
+  const leftKnee=crouch
+    ? [x-8+3*crouchT, hipY+8]
+    : [x-5-step*4, 88+step*2];
+  const rightKnee=crouch
+    ? [x+5, hipY+7]
+    : [x+5-step2*4, 88+step2*2];
+  const leftFoot=crouch
+    ? [x-13,98]
+    : [x-10-step*5,105-step*2];
+  const rightFoot=crouch
+    ? [x+13,96]
+    : [x+8-step2*5,105-step2*2];
 
-  // front arm
-  const frontX=46+armA;
-  line(buf,w,h,54,50,frontX,64+armA,P.outline); line(buf,w,h,53,50,frontX,64+armA,P.skin);
-  ellipse(buf,w,h,frontX,66+armA,4,5,P.skinHi);
+  // rear leg
+  limb(buf,w,h,leftHip,leftKnee,P.pants,P.pantsHi,3);
+  limb(buf,w,h,leftKnee,leftFoot,P.pantsHi,P.pants,3);
+  poly(buf,w,h,[[leftFoot[0]-2,leftFoot[1]-1],[leftFoot[0]+8,leftFoot[1]-1],
+    [leftFoot[0]+11,leftFoot[1]+3],[leftFoot[0]+7,leftFoot[1]+5],
+    [leftFoot[0]-3,leftFoot[1]+4]],P.shoe);
+  line(buf,w,h,leftFoot[0]-3,leftFoot[1]+4,leftFoot[0]+8,leftFoot[1]+4,P.sole);
 
-  // neck
-  rect(buf,w,h,47,39+bob,6,7,P.skinShade); rect(buf,w,h,48,39+bob,5,5,P.skin);
+  // front leg
+  limb(buf,w,h,rightHip,rightKnee,P.pantsHi,P.pants,3);
+  limb(buf,w,h,rightKnee,rightFoot,P.pants,P.pantsHi,3);
+  poly(buf,w,h,[[rightFoot[0]-2,rightFoot[1]-1],[rightFoot[0]+8,rightFoot[1]-1],
+    [rightFoot[0]+11,rightFoot[1]+3],[rightFoot[0]+6,rightFoot[1]+5],
+    [rightFoot[0]-3,rightFoot[1]+4]],P.shoe);
+  line(buf,w,h,rightFoot[0]-3,rightFoot[1]+4,rightFoot[0]+8,rightFoot[1]+4,P.sole);
 
-  // head outline, face, ears
-  ellipse(buf,w,h,headX,headY,11,13,P.outline);
-  ellipse(buf,w,h,headX,headY,9,11,P.skin);
-  rect(buf,w,h,57,headY-2,3,5,P.skinShade); rect(buf,w,h,57,headY-1,2,3,P.skinHi);
-  // hair silhouette
-  poly(buf,w,h,[[39,32],[42,23],[49,20],[57,23],[61,30],[58,35],[55,30],[49,29],[44,34]],P.hair);
-  poly(buf,w,h,[[42,25],[49,21],[56,24],[59,29],[55,28],[51,25],[46,28],[42,31]],P.hairHi);
-  rect(buf,w,h,43,28,3,3,P.hair);
-  // face details
-  rect(buf,w,h,45,33,2,1,P.eye); rect(buf,w,h,52,33,2,1,P.eye);
-  put(buf,w,h,47,38,P.skinShade); put(buf,w,h,48,39,P.skinShade);
-  line(buf,w,h,46,41,52,41,P.skinShade);
-  // backpack / shoulder strap
-  line(buf,w,h,42,48,48,67,P.outline); line(buf,w,h,43,48,49,66,P.accent);
-  // ground shadow
-  ellipse(buf,w,h,48,crouch?98:108,18,crouch?3:2,[12,14,18,150]);
+  // torso silhouette and clothing
+  poly(buf,w,h,[[x-9,torsoTop],[x+7,torsoTop],[x+13,shoulderY+5],[x+10,hipY],
+    [x-8,hipY],[x-13,shoulderY+6]],P.outline);
+  poly(buf,w,h,[[x-7,torsoTop+2],[x+5,torsoTop+2],[x+10,shoulderY+5],
+    [x+7,hipY-2],[x-6,hipY-2],[x-10,shoulderY+6]],P.shirt);
+  poly(buf,w,h,[[x-7,torsoTop+2],[x-1,torsoTop+4],[x-1,hipY-2],[x-6,hipY-2],
+    [x-10,shoulderY+6]],P.shirtHi);
+  poly(buf,w,h,[[x-1,torsoTop+4],[x+5,torsoTop+2],[x+10,shoulderY+5],
+    [x+7,hipY-2],[x-1,hipY-2]],P.shirtShade);
+  line(buf,w,h,x,torsoTop+3,x,hipY-3,P.accent);
+  rect(buf,w,h,x-3,torsoTop+10,2,2,P.white);
+  rect(buf,w,h,x-3,torsoTop+18,2,2,P.white);
+
+  // arms use real opposing swing during walk and settle into a bent pose
+  const armSwing=walk<15 ? step*7 : 0;
+  const rearShoulder=[x-8-lean,shoulderY+2];
+  const frontShoulder=[x+8-lean,shoulderY+1];
+  const rearElbow=crouch
+    ? [x-14,shoulderY+8]
+    : [x-12-armSwing,shoulderY+10];
+  const frontElbow=crouch
+    ? [x+13,shoulderY+7]
+    : [x+13+armSwing,shoulderY+10];
+  const rearHand=crouch
+    ? [x-11,shoulderY+14]
+    : [x-13-armSwing,shoulderY+19];
+  const frontHand=crouch
+    ? [x+10,shoulderY+14]
+    : [x+14+armSwing,shoulderY+19];
+  limb(buf,w,h,rearShoulder,rearElbow,P.skinShade,P.skin,2);
+  limb(buf,w,h,rearElbow,rearHand,P.skinShade,P.skin,2);
+  limb(buf,w,h,frontShoulder,frontElbow,P.skin,P.skinHi,2);
+  limb(buf,w,h,frontElbow,frontHand,P.skin,P.skinHi,2);
+  joint(buf,w,h,rearHand,3,P.skin); joint(buf,w,h,frontHand,3,P.skinHi);
+
+  // neck + head
+  rect(buf,w,h,Math.round(headX-3),Math.round(headY+9),6,8,P.skinShade);
+  rect(buf,w,h,Math.round(headX-2),Math.round(headY+9),5,6,P.skin);
+  ellipse(buf,w,h,headX,headY,12,13,P.outline);
+  ellipse(buf,w,h,headX,headY,10,11,P.skin);
+  rect(buf,w,h,headX+8,headY-2,3,6,P.skinShade);
+  rect(buf,w,h,headX+8,headY-1,2,4,P.skinHi);
+  poly(buf,w,h,[[headX-10,headY-1],[headX-8,headY-10],[headX-1,headY-13],
+    [headX+8,headY-9],[headX+11,headY-2],[headX+6,headY-1],[headX+1,headY-6],
+    [headX-5,headY-4],[headX-9,headY+2]],P.hair);
+  poly(buf,w,h,[[headX-7,headY-8],[headX-1,headY-11],[headX+6,headY-8],
+    [headX+8,headY-4],[headX+2,headY-6],[headX-3,headY-3]],P.hairHi);
+  rect(buf,w,h,headX-5,headY-1,2,1,P.eye);
+  rect(buf,w,h,headX+2,headY-1,2,1,P.eye);
+  line(buf,w,h,headX-3,headY+6,headX+3,headY+6,P.skinShade);
+  // backpack strap and small lighting accents
+  line(buf,w,h,x-7,shoulderY,x,hipY-4,P.outline);
+  line(buf,w,h,x-6,shoulderY,x+1,hipY-5,P.accent);
+  put(buf,w,h,Math.round(x+11),Math.round(shoulderY+1),P.skinHi);
+  // contact shadow
+  ellipse(buf,w,h,Math.round((leftFoot[0]+rightFoot[0])/2),crouch?101:109,
+    crouch?18:20,crouch?3:2,[12,14,18,150]);
 }
 
+
 export function createOrbitalShowcase(){
-  const width=96,height=120;
-  const doc=new RasterDocument(width,height,'Person · Walk to Crouch · 18-frame study');
+  const width=128,height=128;
+  const doc=new RasterDocument(width,height,'Person · Walk to Crouch · 24-frame study');
   doc.layers[0].name='Twilight background';
   const ground=doc.addLayer('Ground');
   const person=doc.addLayer('Character');
@@ -97,9 +151,9 @@ export function createOrbitalShowcase(){
   for(let x=0;x<width;x+=7)line(gb,width,height,x,91,x+3,86+(x%3),P.groundHi);
   rect(gb,width,height,0,91,width,2,P.groundHi);
 
-  const animation=PixelForgeAnimation.fromDocument(doc,{fps:12});
-  const durationMs=Math.round(1000/12);
-  for(let i=0;i<18;i++){
+  const animation=PixelForgeAnimation.fromDocument(doc,{fps:16});
+  const durationMs=Math.round(1000/16);
+  for(let i=0;i<24;i++){
     if(i>0)animation.addFrame({duplicate:false,durationMs});
     const bp=new Uint8ClampedArray(bg), gp=new Uint8ClampedArray(gb), pp=new Uint8ClampedArray(pb), dp=new Uint8ClampedArray(db);
     drawPerson(pp,width,height,i);
@@ -116,7 +170,7 @@ export function createOrbitalShowcase(){
     animation.setLayerPixels(i,person.id,pp);
     animation.setLayerPixels(i,details.id,dp);
   }
-  animation.setFps(12); animation.setActiveFrame(0);
+  animation.setFps(16); animation.setActiveFrame(0);
   doc.setActiveLayer(person.id); doc.revision=1; doc.saveVersion=1; doc.history=[]; doc.future=[]; doc.historyBytes=0; doc.dirty=false;
   return {doc,animation,loop:true};
 }
