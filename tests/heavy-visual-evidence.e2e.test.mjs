@@ -165,7 +165,7 @@ test('heavy visual evidence: real node graph, web navigation, polished drawing a
       const ctx = c.getContext('2d'); const d = ctx.getImageData(0,0,c.width,c.height).data;
       let opaque=0; let checksum=0; for(let i=0;i<d.length;i+=4){opaque += d[i+3]>8?1:0; checksum=(checksum+d[i]*3+d[i+1]*5+d[i+2]*7+d[i+3])%1000000007;} return {opaque,checksum};
     });
-    assert.notEqual(afterData.checksum, initialData.opaque, 'animation playback must alter rendered canvas content');
+    assert.notEqual(afterData.checksum, initialData.checksum, 'animation playback must alter rendered canvas content');
     assert.ok(pixelErrors.length === 0, 'PixelForge must render without page errors: ' + pixelErrors.join(' | '));
     const video = pixel.video(); await pixel.close(); await pfContext.close();
     const webm = await fs.readFile(await video.path());
