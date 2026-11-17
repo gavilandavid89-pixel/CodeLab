@@ -37,14 +37,14 @@ The client discovers the ADMIN workspace ID from codelab_accounts, calls the exi
 - codelab_project_capture_png: capture the actual ADMIN project route or preview body in Chromium as a PNG; optionally upload it to Neon.
 - pixelforge_capture_interface: capture the real PixelForge interface and artwork canvas as PNGs; optionally upload both to Neon.
 - codelab_project_record_video: record the actual CodeLab project route in Chromium as WebM for 1–30 seconds; optionally upload it to Neon.
-- pixelforge_export_animation_video: load the saved animation timeline, render each saved frame, play frames for their recorded durations in headless Chromium, and record a WebM with Playwright. Output is capped at 240 frames, 60 seconds, 16 MiB of serialized frame data and 24 MiB of video.
+- pixelforge_export_animation_video: open the actual PixelForge editor with the saved project ID, activate its native animation playback in headless capture mode, and record the editor canvas/UI in Chromium. It preserves the saved frame order, frame durations and timeline FPS. Output is capped at 240 frames, 60 seconds and 24 MiB of video.
 - PNG capture remains provided by the existing real-Chromium capture action. Existing PixelForge structured animation editing remains approval-gated through proposal/approve commands.
 
 ## Video artifact storage
 
 For durable video output, the command may include a trusted Neon presigned uploadTarget. The worker accepts HTTPS uploads only to the configured Neon storage host, public capture bucket, and exact object key under pixelforge/exports/. The content type is video/webm. Without an upload target, small videos (up to 8 MiB) are returned inline as base64; larger videos fail clearly instead of bloating PostgreSQL command rows.
 
-The video is captured by Chromium itself; it is not a fabricated GIF, a sequence of PNGs renamed as a video, or a screenshot montage. Frame timing follows the saved durationMs values, and Playwright's WebM recorder is configured with the source timeline FPS (or the requested FPS for CodeLab web projects).
+The PixelForge video is captured from the actual PixelForge editor running in Chromium, using its own playback engine rather than a synthetic frame slideshow. The editor's headless capture mode starts one native playback cycle and stops without saving or mutating the project. Frame timing follows the saved durationMs values, and Playwright's WebM recorder is configured with the source timeline FPS (or the requested FPS for CodeLab web projects).
 
 ## Security and operational constraints
 
