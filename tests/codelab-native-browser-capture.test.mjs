@@ -25,8 +25,8 @@ test('CodeLab browser QA covers desktop and mobile and tests the actual CTA clic
   assert.match(worker, /mobileControlsReadable/);
   assert.match(worker, /design-layer-heading/);
   assert.match(worker, /design-layer-button/);
-  assert.match(worker, /font-size:clamp\(28px,7vw,40px\)/);
-  assert.match(worker, /max-width:320px/);
+  assert.match(worker, /metrics\.headingFontSize/);
+  assert.match(worker, /metrics\.buttonFontSize/);
   assert.match(worker, /noPageErrors/);
 });
 
