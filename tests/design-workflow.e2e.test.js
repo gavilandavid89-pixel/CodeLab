@@ -1990,8 +1990,10 @@ async function waitForPersistedProject(page, projectName) {
     // handful of empty cards. The template is applied through the real editor UI.
     await page.locator('#designTemplatesButton').click();
     await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
-    page.once('dialog', dialog => dialog.accept());
+    const acceptTemplateDialog = dialog => dialog.accept();
+    page.on('dialog', acceptTemplateDialog);
     await page.locator('#designTemplateDashboard').click();
+    page.off('dialog', acceptTemplateDialog);
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length >= 11);
     const sourceInterfaceMetrics = await page.evaluate(() => ({
       layers: document.querySelectorAll('#designCanvas [data-design-id]').length,
@@ -2017,8 +2019,10 @@ async function waitForPersistedProject(page, projectName) {
     // real, non-trivial pages on both sides of the connection.
     await page.locator('#designTemplatesButton').click();
     await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
-    page.once('dialog', dialog => dialog.accept());
+    const acceptTemplateDialog = dialog => dialog.accept();
+    page.on('dialog', acceptTemplateDialog);
     await page.locator('#designTemplateDashboard').click();
+    page.off('dialog', acceptTemplateDialog);
     await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length >= 11);
     const targetInterfaceMetrics = await page.evaluate(() => ({
       layers: document.querySelectorAll('#designCanvas [data-design-id]').length,
