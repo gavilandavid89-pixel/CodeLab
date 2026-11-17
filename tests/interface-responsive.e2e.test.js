@@ -100,6 +100,11 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design workspace must hide the web editor toolbar');
     assert.notEqual(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
       'design workspace should show its own toolbar/canvas');
+    const designOptionsReopen = page.locator('#designOptionsReopen');
+    if (await designOptionsReopen.isVisible()) {
+      await designOptionsReopen.click();
+      await page.locator('#designFitBtn').waitFor({ state: 'visible', timeout: 5000 });
+    }
     const fitButtonHit = await page.locator('#designFitBtn').evaluate(button => {
       const r = button.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
