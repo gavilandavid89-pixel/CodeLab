@@ -5,9 +5,12 @@ import fsSync from 'node:fs';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 test('headless Chromium captures a PNG and records an animated WebM at the requested FPS', {
   timeout: 120000
