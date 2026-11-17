@@ -19,12 +19,13 @@ function poly(buf,w,h,pts,c){const minY=Math.max(0,Math.min(...pts.map(p=>p[1]))
 function layerBuffer(doc,layer){const b=new Uint8ClampedArray(doc.width*doc.height*4);layer.pixels=b;return b;}
 
 function limb(buf,w,h,a,b,c1,c2,thickness=2){
-  line(buf,w,h,a[0],a[1],b[0],b[1],P.outline);
+  const aa=[Math.round(a[0]),Math.round(a[1])], bb=[Math.round(b[0]),Math.round(b[1])];
+  line(buf,w,h,aa[0],aa[1],bb[0],bb[1],P.outline);
   if(thickness>1){
-    line(buf,w,h,a[0]+1,a[1],b[0]+1,b[1],P.outline);
+    line(buf,w,h,aa[0]+1,aa[1],bb[0]+1,bb[1],P.outline);
   }
-  line(buf,w,h,a[0],a[1],b[0],b[1],c1);
-  if(thickness>1) line(buf,w,h,a[0]+1,a[1],b[0]+1,b[1],c2||c1);
+  line(buf,w,h,aa[0],aa[1],bb[0],bb[1],c1);
+  if(thickness>1) line(buf,w,h,aa[0]+1,aa[1],bb[0]+1,bb[1],c2||c1);
 }
 function joint(buf,w,h,p,r,c){ellipse(buf,w,h,p[0],p[1],r,r,c);}
 function drawPerson(buf,w,h,frame){
