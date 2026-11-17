@@ -114,7 +114,6 @@ export function createAssistantHeadlessClient(options = {}) {
     );
     return { commandId, workspaceId, action, expiresAt: expiresAt.toISOString(), submittedAt };
   }
-  }
 
   async function getCommand(commandId) {
     if (typeof commandId !== 'string' || !/^[a-f0-9-]{36}$/i.test(commandId)) {
