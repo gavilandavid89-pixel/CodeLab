@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
+const { Pool } = require('pg');
 
 
 async function readZipDownload(download) {
@@ -99,6 +100,18 @@ async function main() {
     expiresAt: Date.now() + 60_000
   }), { mode: 0o600 });
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
+  let testSessionPool = null;
+  if (process.env.DATABASE_URL) {
+    testSessionPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false },
+      max: 1
+    });
+    await testSessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'60 seconds\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [sessionId, JSON.stringify({ id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' })]
+    );
+  }
   const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
   assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
   assert.equal((await authenticatedMalformedId.json()).error, 'invalid_project_id', 'malformed project ID should have a stable error code');
@@ -920,6 +933,10 @@ async function main() {
     fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
     fs.rmSync(path.join(sessionsDir, sameAccountSessionId + '.json'), { force: true });
     fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
+    if (testSessionPool) {
+      await testSessionPool.query('DELETE FROM codelab_auth_sessions WHERE session_id = $1', [sessionId]).catch(() => {});
+      await testSessionPool.end().catch(() => {});
+    }
   }
   console.log('PixelForge account gate, project CRUD/isolation, and authenticated browser save/reload verified.');
 }
