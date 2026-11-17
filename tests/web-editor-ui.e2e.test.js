@@ -71,7 +71,7 @@ async function setCode(page, lang, value) {
     }, { name, html, css, js }, { timeout: 15000 });
 
     // Create a branch from the real editor, keep main isolated, then merge and undo.
-    await page.locator('#desktopProjectActions button[onclick="duplicateProject()"]').click();
+    await page.locator('button.web-action[onclick="duplicateProject()"]').click();
     await page.waitForFunction(() => document.getElementById('toggleCopyBranchBtn')?.disabled === false,
       null, { timeout: 10000 });
     await page.locator('#toggleCopyBranchBtn').click();
