@@ -59,7 +59,7 @@ export function createAssistantHeadlessClient(options = {}) {
     'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
   const wakeTimeoutMs = Number.isInteger(options.wakeTimeoutMs)
     ? Math.max(5000, Math.min(120000, options.wakeTimeoutMs))
-    : 60000;
+    : 120000;
   let workspaceIdPromise;
 
   async function getWorkspaceId() {
