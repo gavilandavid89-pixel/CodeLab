@@ -633,6 +633,8 @@ async function waitForPersistedProject(page, projectName) {
 
     // 4b. Resize the selected layer directly from its canvas handle.
     const sizeBefore = await element.evaluate(node => ({ width: parseFloat(node.style.width), height: parseFloat(node.style.height) }));
+    const elementId = await element.getAttribute('data-design-id');
+    assert.ok(elementId, 'selected design layer should expose its stable element id');
     const resizeHandle = page.locator('[data-design-resize-handle="' + elementId + '"]');
     await resizeHandle.waitFor({ state: 'visible' });
     const handleBox = await resizeHandle.boundingBox();
