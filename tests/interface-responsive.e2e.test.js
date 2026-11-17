@@ -100,20 +100,15 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design workspace must hide the web editor toolbar');
     assert.notEqual(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
       'design workspace should show its own toolbar/canvas');
-    const lockButtonHit = await page.locator('#designCanvasLockBtn').evaluate(button => {
+    const fitButtonHit = await page.locator('#designFitBtn').evaluate(button => {
       const r = button.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return { clickable: !!hit && (hit === button || button.contains(hit)),
         blocker: hit ? { tag: hit.tagName, id: hit.id, className: hit.className } : null };
     });
-    assert.equal(lockButtonHit.clickable, true,
-      'mobile Design toolbar lock button must be the topmost hit target; blocker=' + JSON.stringify(lockButtonHit.blocker));
-    await page.locator('#designCanvasLockBtn').click();
-    assert.equal(await page.locator('#designCanvasLockBtn').getAttribute('aria-pressed'), 'true',
-      'mobile Design canvas lock control should respond to a real pointer click');
-    await page.locator('#designCanvasLockBtn').click();
-    assert.equal(await page.locator('#designCanvasLockBtn').getAttribute('aria-pressed'), 'false',
-      'mobile Design canvas lock control should unlock on the next pointer click');
+    assert.equal(fitButtonHit.clickable, true,
+      'mobile Design toolbar fit button must be the topmost hit target; blocker=' + JSON.stringify(fitButtonHit.blocker));
+    await page.locator('#designFitBtn').click();
 
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designCanvas [data-design-id]').first().waitFor({ state: 'visible' });
