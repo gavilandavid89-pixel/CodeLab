@@ -1829,7 +1829,9 @@ async function waitForPersistedProject(page, projectName) {
     });
     await originalDesignCard.locator('button[data-action="open"]').click();
     // Design → Web conversion keeps the same project. Reopen it and
-    // assert that the current design workspace is restored directly.
+    // use the current workspace switch control to return to Design.
+    await page.locator('#openDesignTools').waitFor({ state: 'visible', timeout: 15000 });
+    await page.locator('#openDesignTools').click();
     await page.locator('#designStudioPanel').waitFor({ state: 'visible', timeout: 15000 });
     await page.waitForFunction(name => {
       const project = typeof window.getCurrentProject === 'function' ? window.getCurrentProject() : null;
