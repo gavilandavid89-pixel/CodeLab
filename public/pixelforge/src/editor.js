@@ -127,6 +127,17 @@ function syncBackgroundColor() {
   const swatch = $('#background-swatch');
   if (swatch) { swatch.style.background = backgroundColor; swatch.title = backgroundColor; }
 }
+function renderAuthenticationRequired() {
+  const accountChip = $('#codelab-account-chip');
+  if (accountChip) accountChip.textContent = 'CodeLab · Inicia sesión';
+  status('PixelForge requiere una sesión de CodeLab para abrir y guardar proyectos personales. Inicia sesión en CodeLab y vuelve a abrir PixelForge.', 'warning');
+  const statusNode = $('#status');
+  if (statusNode) {
+    statusNode.dataset.authRequired = 'true';
+    statusNode.title = 'Inicia sesión en CodeLab para continuar.';
+  }
+}
+
 function status(message, kind = 'neutral') {
   $('#status').textContent = message;
   $('#status').dataset.kind = kind;
@@ -2400,6 +2411,11 @@ async function boot() {
       }, animation.totalDurationMs + 250);
     }
   } catch (error) {
+    if (error?.status === 401 || error?.code === 'not_authenticated') {
+      document.documentElement.dataset.pixelforgeCapture = 'auth-required';
+      renderAuthenticationRequired();
+      return;
+    }
     document.documentElement.dataset.pixelforgeCapture = 'error';
     document.documentElement.dataset.pixelforgeCaptureError = String(error.message || error).slice(0, 300);
     status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
