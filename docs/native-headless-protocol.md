@@ -6,7 +6,7 @@ The assistant-side headless client and the repository-side native worker communi
 
 **Assistant headless client → codelab_agent_commands → agent-bridge-worker.mjs → CodeLab ADMIN workspace / PixelForge**
 
-The assistant client submits structured JSON commands directly to PostgreSQL. Normal commands use direct API/runtime operations and do not open the CodeLab UI. The repository worker can also execute an explicit `execution_mode: "browser"` command when the requested operation genuinely requires the real CodeLab interface. That browser mode is opt-in and auditable: the payload contains an ordered `actions` list such as `open_screen`, `open_panel`, `click`, `scroll`, `type`, `select`, `wait_for`, `screenshot`, and `record_video`. The worker runs those actions in real Playwright Chromium against the CodeLab origin; it never falls back to UI automation automatically.
+The assistant client submits structured JSON commands directly to PostgreSQL. Normal commands use direct API/runtime operations and do not open the CodeLab UI. The repository worker can also execute an explicit `execution_mode: "browser"` command when the requested operation genuinely requires the real CodeLab interface. That browser mode is opt-in and auditable: the payload contains an ordered `actions` list such as `open_screen`, `open_panel`, `click`, `scroll`, `type`, `select`, `wait_for`, `screenshot`, and `record_video`. The worker runs those actions in real Playwright Chromium against the CodeLab origin; it never falls back to UI automation automatically. Expected sandboxed-preview `localStorage` page/console errors are classified as warnings; unexpected browser errors still fail the run.
 
 ## Assistant-side client
 
