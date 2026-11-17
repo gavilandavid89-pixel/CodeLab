@@ -198,8 +198,8 @@ test('real CodeLab project route renders saved web code and records WebM', {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: workspaceId })
     });
-    assert.equal(initialized.status, 200, await initialized.text());
     const workspace = await initialized.json();
+    assert.equal(initialized.status, 200, JSON.stringify(workspace));
     const html = '<!doctype html><html><head><style>' +
       'body{margin:0;background:#101827;color:white;font:24px sans-serif}' +
       '#motion{width:80px;height:80px;background:#4af;animation:move 1s ease-in-out infinite alternate}' +
