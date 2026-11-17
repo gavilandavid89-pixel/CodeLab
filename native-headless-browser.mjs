@@ -133,19 +133,25 @@ export async function executeCodeLabBrowserActions(options = {}) {
       headless: true,
       timeout: 60000
     });
-    context = await browser.newContext({
+    const contextOptions = {
       viewport: {
         width: Number.isInteger(options.width) ? Math.max(320, Math.min(2560, options.width)) : 1440,
         height: Number.isInteger(options.height) ? Math.max(240, Math.min(1800, options.height)) : 1000
       },
       deviceScaleFactor: 1,
       colorScheme: 'dark',
-      reducedMotion: 'reduce',
-      ...(wantsVideo && tempDir ? { recordVideo: { dir: tempDir, size: {
-        width: Number.isInteger(options.width) ? Math.max(320, Math.min(1920, options.width)) : 1280,
-        height: Number.isInteger(options.height) ? Math.max(240, Math.min(1080, options.height)) : 720
-      } } : {})
-    });
+      reducedMotion: 'reduce'
+    };
+    if (wantsVideo && tempDir) {
+      contextOptions.recordVideo = {
+        dir: tempDir,
+        size: {
+          width: Number.isInteger(options.width) ? Math.max(320, Math.min(1920, options.width)) : 1280,
+          height: Number.isInteger(options.height) ? Math.max(240, Math.min(1080, options.height)) : 720
+        }
+      };
+    }
+    context = await browser.newContext(contextOptions);
     const page = await context.newPage();
     await context.addInitScript(({ id, token }) => {
       localStorage.setItem('codelab_xd_workspace_v4', id);
