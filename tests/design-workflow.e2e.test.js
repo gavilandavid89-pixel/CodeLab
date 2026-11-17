@@ -2191,13 +2191,15 @@ async function waitForPersistedProject(page, projectName) {
     // verify the same project retains both representations after every cycle.
     for (let cycle = 1; cycle <= 12; cycle += 1) {
       if ((await page.locator('#workspaceSwitchLabel').innerText()).trim() === 'Diseño') await page.locator('#workspaceSwitchBtn').click();
-      await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design' &&
-        Array.isArray(getCurrentProject()?.design?.elements), sourceProjectId, { timeout: 10000 });
+      await page.waitForFunction(id => getCurrentProject()?.id === id &&
+        Array.isArray(getCurrentProject()?.design?.elements) &&
+        !document.getElementById('designStudioPanel')?.classList.contains('hidden'), sourceProjectId, { timeout: 10000 });
       await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
         null, { timeout: 15000 });
       if ((await page.locator('#workspaceSwitchLabel').innerText()).trim() === 'Web') await page.locator('#workspaceSwitchBtn').click();
-      await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'web' &&
-        typeof getCurrentProject()?.code?.html === 'string', sourceProjectId, { timeout: 10000 });
+      await page.waitForFunction(id => getCurrentProject()?.id === id &&
+        typeof getCurrentProject()?.code?.html === 'string' &&
+        !document.getElementById('webWorkspacePanel')?.classList.contains('hidden'), sourceProjectId, { timeout: 10000 });
       const retained = await page.evaluate(({ sourceProjectId, targetProjectId }) => {
         const project = projects.find(item => item.id === sourceProjectId);
         return {
