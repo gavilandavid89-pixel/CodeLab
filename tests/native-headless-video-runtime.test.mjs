@@ -236,6 +236,7 @@ test('real CodeLab project route renders saved web code and records WebM', {
       recordVideo: { dir: tempDir, size: { width: 1280, height: 800 }, fps: 24 }
     });
     await context.addInitScript(({ id, token }) => {
+      if (window.top !== window) return;
       localStorage.setItem('codelab_xd_workspace_v4', id);
       localStorage.setItem('codelab_xd_workspace_token_v1', token);
     }, { id: workspaceId, token: workspace.token });
