@@ -1,0 +1,162 @@
+import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
+
+const require = createRequire(import.meta.url);
+const { Pool } = require('pg');
+
+export const NATIVE_ACTIONS = Object.freeze([
+  'status',
+  'codelab_project_create',
+  'codelab_project_convert_to_web',
+  'codelab_project_inspect',
+  'codelab_project_connect',
+  'codelab_project_get_code',
+  'codelab_project_update_code',
+  'pixelforge_create',
+  'pixelforge_list',
+  'pixelforge_inspect',
+  'pixelforge_capture_interface',
+  'pixelforge_export_image',
+  'pixelforge_export_animation_video',
+  'pixelforge_propose',
+  'pixelforge_approve',
+  'pixelforge_discard'
+]);
+
+export function validateCommandInput(action, payload = {}, ttlMs = 120000) {
+  if (!NATIVE_ACTIONS.includes(action)) throw new TypeError('Unsupported CodeLab native action: ' + action);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new TypeError('Native command payload must be a JSON object.');
+  }
+  if (!Number.isInteger(ttlMs) || ttlMs < 1000 || ttlMs > 15 * 60 * 1000) {
+    throw new RangeError('Native command TTL must be between 1 second and 15 minutes.');
+  }
+  const serialized = JSON.stringify(payload);
+  if (Buffer.byteLength(serialized, 'utf8') > 2 * 1024 * 1024) {
+    throw new RangeError('Native command payload exceeds 2 MiB.');
+  }
+  return { action, payload: JSON.parse(serialized), ttlMs };
+}
+
+export function createAssistantHeadlessClient(options = {}) {
+  const connectionString = String(options.connectionString || process.env.DATABASE_URL || '').trim();
+  if (!connectionString) throw new Error('DATABASE_URL is required by the assistant headless client.');
+  const pool = options.pool || new Pool({
+    connectionString,
+    ssl: options.ssl === false || process.env.CODELAB_DATABASE_SSL === 'disable'
+      ? false
+      : { rejectUnauthorized: false },
+    max: 2,
+    idleTimeoutMillis: 15000,
+    connectionTimeoutMillis: 10000
+  });
+  const pollIntervalMs = Number.isInteger(options.pollIntervalMs)
+    ? Math.max(200, Math.min(5000, options.pollIntervalMs))
+    : 700;
+  let workspaceIdPromise;
+
+  async function getWorkspaceId() {
+    if (!workspaceIdPromise) {
+      workspaceIdPromise = pool.query(
+        "SELECT id FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1"
+      ).then(result => {
+        if (!result.rowCount) throw new Error('CodeLab ADMIN account is not configured in the connected database.');
+        const id = String(result.rows[0].id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+        if (!id) throw new Error('CodeLab ADMIN workspace identity is invalid.');
+        return 'ws_local_' + id;
+      }).catch(error => {
+        workspaceIdPromise = null;
+        throw error;
+      });
+    }
+    return workspaceIdPromise;
+  }
+
+  async function submit(action, payload = {}, commandOptions = {}) {
+    const ttlMs = commandOptions.ttlMs ?? 120000;
+    const normalized = validateCommandInput(action, payload, ttlMs);
+    const workspaceId = await getWorkspaceId();
+    const commandId = randomUUID();
+    const expiresAt = new Date(Date.now() + normalized.ttlMs);
+    await pool.query(
+      "INSERT INTO codelab_agent_commands " +
+      "(command_id, workspace_id, action, payload, status, expires_at, created_at, updated_at) " +
+      "VALUES ($1, $2, $3, $4::jsonb, 'queued', $5, now(), now())",
+      [commandId, workspaceId, normalized.action, JSON.stringify(normalized.payload), expiresAt]
+    );
+    return { commandId, workspaceId, action, expiresAt: expiresAt.toISOString() };
+  }
+
+  async function getCommand(commandId) {
+    if (typeof commandId !== 'string' || !/^[a-f0-9-]{36}$/i.test(commandId)) {
+      throw new TypeError('A valid native command ID is required.');
+    }
+    const workspaceId = await getWorkspaceId();
+    const result = await pool.query(
+      'SELECT command_id, action, status, result, proposal, proposal_token, expires_at, ' +
+      'created_at, started_at, finished_at, updated_at FROM codelab_agent_commands ' +
+      'WHERE command_id=$1 AND workspace_id=$2',
+      [commandId, workspaceId]
+    );
+    if (!result.rowCount) throw new Error('Native command was not found in the ADMIN workspace.');
+    const row = result.rows[0];
+    return {
+      commandId: row.command_id,
+      action: row.action,
+      status: row.status,
+      result: row.result,
+      proposal: row.proposal,
+      proposalToken: row.proposal_token,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  async function wait(commandId, waitOptions = {}) {
+    const timeoutMs = Number.isInteger(waitOptions.timeoutMs)
+      ? Math.max(1000, Math.min(15 * 60 * 1000, waitOptions.timeoutMs))
+      : 120000;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const command = await getCommand(commandId);
+      if (['succeeded', 'failed', 'rejected', 'expired'].includes(command.status)) return command;
+      if (command.status === 'awaiting_approval') return command;
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+    return { ...(await getCommand(commandId)), timedOut: true };
+  }
+
+  async function run(action, payload = {}, commandOptions = {}) {
+    const submitted = await submit(action, payload, commandOptions);
+    const timeoutMs = commandOptions.timeoutMs ?? Math.min(15 * 60 * 1000, (commandOptions.ttlMs ?? 120000) + 5000);
+    return { ...submitted, ...(await wait(submitted.commandId, { timeoutMs })) };
+  }
+
+  return Object.freeze({
+    getWorkspaceId,
+    submit,
+    getCommand,
+    wait,
+    run,
+    status: () => run('status'),
+    inspectCodeLabProject: projectId => run('codelab_project_inspect', { project_id: projectId }),
+    readCode: projectId => run('codelab_project_get_code', { project_id: projectId }),
+    updateCode: (projectId, code, baseRevision) => run('codelab_project_update_code', {
+      project_id: projectId, code, ...(baseRevision === undefined ? {} : { base_revision: baseRevision })
+    }),
+    inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
+    exportAnimationVideo: (projectId, options = {}) => run('pixelforge_export_animation_video', {
+      project_id: projectId, ...options
+    }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
+    approveProposal: (proposalCommandId, proposalToken) => run('pixelforge_approve', {
+      proposal_command_id: proposalCommandId, proposal_token: proposalToken
+    }),
+    discardProposal: (proposalCommandId, proposalToken) => run('pixelforge_discard', {
+      proposal_command_id: proposalCommandId, proposal_token: proposalToken
+    }),
+    close: () => pool.end()
+  });
+}
