@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test",
     "test:native-headless": "node --test tests/native-headless-worker-contract.test.mjs"
   },
   "engines": {
