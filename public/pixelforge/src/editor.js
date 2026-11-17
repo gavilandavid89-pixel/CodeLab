@@ -2311,7 +2311,7 @@ async function boot() {
     if (!auth.user) {
       const appShell = document.querySelector('.app-shell');
       const authGate = document.getElementById('pixelforgeAuthGate');
-      if (appShell) appShell.style.display = 'none';
+      if (appShell) appShell.remove();
       if (authGate) authGate.style.display = 'flex';
       status('PixelForge está listo, pero esta instalación requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
       return;
