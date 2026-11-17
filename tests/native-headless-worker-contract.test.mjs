@@ -22,6 +22,7 @@ test('native command mailbox registers direct CodeLab code operations', () => {
   assert.match(source, /case 'codelab_project_capture_png'/);
   assert.match(source, /case 'codelab_project_record_video'/);
   assert.match(source, /recordCodeLabProjectVideo/);
+  assert.match(source, /if \(window\.top !== window\) return/);
   assert.match(source, /captureCodeLabProjectPng/);
   assert.match(source, /Only html, css and js fields can be updated/);
   assert.match(source, /500000/);
