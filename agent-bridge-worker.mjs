@@ -334,16 +334,20 @@ async function loadAdminWorkspace() {
   }
   return initialized.state;
 }
-async function mutateAdminWorkspace(transform) {
+async function mutateAdminWorkspace(transform, options = {}) {
+  const expectedRevision = options.expectedRevision;
   for (let attempt = 0; attempt < 3; attempt++) {
     const current = await loadAdminWorkspace();
+    if (expectedRevision !== undefined && Number(expectedRevision) !== Number(current.revision)) {
+      throw new Error('Revision conflict: the ADMIN workspace changed before this mutation.');
+    }
     const nextProjects = await transform(current.projects);
     if (nextProjects === null) return { state: current, unchanged: true };
     try {
       const saved = await workspaceApi('PUT', { projects: nextProjects, baseRevision: current.revision });
       return { state: { ...current, revision: saved.revision, projects: nextProjects }, unchanged: false };
     } catch (error) {
-      if (error.status === 409 && attempt < 2) continue;
+      if (error.status === 409 && expectedRevision === undefined && attempt < 2) continue;
       throw error;
     }
   }
@@ -1282,9 +1286,11 @@ async function updateCodeLabProjectCode(command) {
     const index = projects.findIndex(item => item && item.id === payload.project_id);
     if (index < 0) throw new Error('CodeLab project disappeared during code update.');
     const updated = projects.slice();
-    updated[index] = { ...updated[index], code: nextCode, updatedAt: new Date().toISOString() };
+    const latestCode = { ...(updated[index].code || {}) };
+    for (const field of fields) latestCode[field] = payload.code[field];
+    updated[index] = { ...updated[index], code: latestCode, updatedAt: new Date().toISOString() };
     return updated;
-  });
+  }, { expectedRevision: payload.base_revision });
   const verifiedState = await loadAdminWorkspace();
   const verifiedProject = verifiedState.projects.find(item => item && item.id === payload.project_id);
   if (!verifiedProject || fields.some(field => verifiedProject.code?.[field] !== nextCode[field])) {
