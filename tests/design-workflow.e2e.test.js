@@ -2157,6 +2157,8 @@ async function waitForPersistedProject(page, projectName) {
     }, targetProjectId, { timeout: 5000 });
     assert.equal(await flowPreview.locator('[data-page-id="' + sourceProjectId + '"]').evaluate(el => el.hidden), true,
       'navigating to the connected page must hide the source page');
+    await fs.mkdir(VISUAL_ARTIFACT_DIR, { recursive: true });
+    await flowPreview.locator('body').screenshot({ path: require('node:path').join(VISUAL_ARTIFACT_DIR, 'web-node-navigation-destination.png'), type: 'png' });
     await flowPreview.close();
 
     // Conversion updates the web space on the same project; switching editors
