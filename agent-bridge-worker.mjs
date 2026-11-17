@@ -1719,33 +1719,25 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
   const loaded = await loadProject(payload.project_id);
   const project = loaded.project;
   const timeline = project.animation;
-  if (!timeline || !Array.isArray(timeline.frames) || timeline.frames.length < 1) {
-    throw new Error('The PixelForge project has no animation frames to export.');
+  if (!timeline || !Array.isArray(timeline.frames) || timeline.frames.length < 2) {
+    throw new Error('The PixelForge project needs at least two animation frames to export a video.');
   }
   if (timeline.frames.length > 240) throw new Error('Animation export is limited to 240 frames.');
   const fps = Number.isInteger(payload.fps) ? payload.fps : Number(timeline.fps || 12);
   if (!Number.isInteger(fps) || fps < 1 || fps > 60) throw new Error('Video FPS must be an integer from 1 to 60.');
-  const frames = timeline.frames.map((frame, index) => {
+  const frameDurationsMs = timeline.frames.map((frame, index) => {
     const durationMs = Number(frame.durationMs);
     if (!Number.isInteger(durationMs) || durationMs < 20 || durationMs > 10000) {
       throw new Error('Animation frame ' + index + ' has an invalid duration.');
     }
-    const rendered = renderProjectSvg(resolveProjectFrame(project, index));
-    return {
-      index,
-      durationMs,
-      src: 'data:image/svg+xml;base64,' + Buffer.from(rendered.svg, 'utf8').toString('base64')
-    };
+    return durationMs;
   });
-  const totalDurationMs = frames.reduce((sum, frame) => sum + frame.durationMs, 0);
-  const serializedFrameBytes = frames.reduce((sum, frame) => sum + Buffer.byteLength(frame.src, 'utf8'), 0);
-  if (serializedFrameBytes > 16 * 1024 * 1024) throw new Error('Animation frame payload exceeds the 16 MiB browser transfer limit.');
+  const totalDurationMs = frameDurationsMs.reduce((sum, duration) => sum + duration, 0);
   if (totalDurationMs > 60000) throw new Error('Video export is limited to 60 seconds per pass.');
   const width = Math.max(320, Math.min(1920, Number.isInteger(payload.width) ? payload.width : project.width * 4));
   const height = Math.max(240, Math.min(1080, Number.isInteger(payload.height) ? payload.height : project.height * 4));
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-animation-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-pixelforge-video-'));
   let browser;
-  let videoPath = null;
   try {
     chromium.setGraphicsMode = false;
     browser = await playwrightChromium.launch({
@@ -1760,67 +1752,63 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       colorScheme: 'dark',
       recordVideo: { dir: tempDir, size: { width, height }, fps }
     });
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
     const page = await context.newPage();
     const pageErrors = [];
+    const consoleErrors = [];
     page.on('pageerror', error => {
       if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
     });
-    const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;background:#171717;display:grid;place-items:center;overflow:hidden}img{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}</style></head><body><img id="animation-frame" alt="PixelForge animation frame"></body></html>';
-    await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
-    await page.evaluate(async animationFrames => {
-      const image = document.getElementById('animation-frame');
-      for (const frame of animationFrames) {
-        image.src = frame.src;
-        await image.decode();
-        await new Promise(resolve => setTimeout(resolve, frame.durationMs));
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 30) {
+        consoleErrors.push(message.text().slice(0, 300));
       }
-      document.documentElement.dataset.animationComplete = 'true';
-    }, frames);
-    await page.waitForTimeout(350);
+    });
+    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+    const routeUrl = baseUrl + '/pixelforge/index.html?projectId=' +
+      encodeURIComponent(payload.project_id) + '&capture=video';
+    const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    if (!response || !response.ok()) {
+      throw new Error('PixelForge video route returned HTTP ' + (response?.status() || 'no response'));
+    }
+    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    await page.waitForFunction(() => {
+      const state = document.documentElement.dataset.pixelforgeCapture;
+      return state === 'playing' || state === 'error';
+    }, null, { timeout: 45000 });
+    const startupState = await page.evaluate(() => ({
+      state: document.documentElement.dataset.pixelforgeCapture || '',
+      error: document.documentElement.dataset.pixelforgeCaptureError || ''
+    }));
+    if (startupState.state === 'error') {
+      throw new Error('PixelForge could not start its native animation playback: ' + startupState.error);
+    }
+    await page.waitForFunction(() => {
+      const state = document.documentElement.dataset.pixelforgeCapture;
+      return state === 'complete' || state === 'error';
+    }, null, { timeout: totalDurationMs + 30000 });
+    const finalState = await page.evaluate(() => ({
+      state: document.documentElement.dataset.pixelforgeCapture || '',
+      error: document.documentElement.dataset.pixelforgeCaptureError || ''
+    }));
+    if (finalState.state !== 'complete') {
+      throw new Error('PixelForge animation playback did not complete: ' + finalState.error);
+    }
     const video = page.video();
     await page.close();
     await context.close();
-    videoPath = await video.path();
+    const videoPath = await video.path();
     const stat = fs.statSync(videoPath);
-    if (!stat.isFile() || stat.size < 1000) throw new Error('Chromium did not produce a valid animation video.');
+    if (!stat.isFile() || stat.size < 1000) throw new Error('Chromium did not produce a valid PixelForge animation video.');
     if (stat.size > 24 * 1024 * 1024) throw new Error('Animation video exceeds the 24 MiB artifact limit.');
     const videoBytes = fs.readFileSync(videoPath);
-    const uploadTarget = payload.uploadTarget;
     let artifact;
-    if (uploadTarget !== undefined && uploadTarget !== null) {
-      if (typeof uploadTarget.url !== 'string' || typeof uploadTarget.objectKey !== 'string' ||
-          !/^pixelforge\/exports\/[a-zA-Z0-9._/-]+\.webm$/.test(uploadTarget.objectKey) ||
-          uploadTarget.objectKey.includes('..')) {
-        throw new Error('A valid PixelForge WebM upload target is required.');
-      }
-      const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
-      const targetUrl = new URL(uploadTarget.url);
-      if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
-          targetUrl.port !== '' || targetUrl.username || targetUrl.password) {
-        throw new Error('Animation upload URL host validation failed.');
-      }
-      const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
-      const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
-      if (pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== uploadTarget.objectKey) {
-        throw new Error('Animation upload URL must target the requested object in the public capture bucket.');
-      }
-      const uploaded = await fetch(targetUrl, {
-        method: 'PUT',
-        redirect: 'error',
-        headers: { 'Content-Type': 'video/webm' },
-        body: videoBytes,
-        signal: AbortSignal.timeout(45000)
-      });
-      if (!uploaded.ok) throw new Error('Neon animation upload failed (HTTP ' + uploaded.status + ').');
-      artifact = {
-        stored: true,
-        provider: 'neon-object-storage',
-        bucket: captureBucket,
-        access: 'public_read',
-        objectKey: uploadTarget.objectKey,
-        mimeType: 'video/webm',
-        sizeBytes: videoBytes.length
-      };
+    if (payload.uploadTarget !== undefined && payload.uploadTarget !== null) {
+      artifact = await uploadNativeArtifact(payload.uploadTarget, videoBytes, 'video/webm', 'pixelforge/exports/');
     } else {
       if (videoBytes.length > 8 * 1024 * 1024) {
         throw new Error('Video exceeds the inline result limit; provide a presigned Neon uploadTarget.');
@@ -1833,19 +1821,21 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       };
     }
     return {
-      exportMethod: 'playwright-chromium-real-browser',
+      exportMethod: 'playwright-chromium-real-pixelforge-app',
       projectId: payload.project_id,
       serverRevision: loaded.serverRevision,
       contentSha256: loaded.contentSha256,
+      routeUrl,
       format: 'webm',
       timelineFps: fps,
       width,
       height,
-      frameCount: frames.length,
-      frameDurationsMs: frames.map(frame => frame.durationMs),
+      frameCount: timeline.frames.length,
+      frameDurationsMs,
       durationMs: totalDurationMs,
       pageErrors,
-      passed: pageErrors.length === 0,
+      consoleErrors,
+      passed: pageErrors.length === 0 && consoleErrors.length === 0,
       artifact
     };
   } finally {
