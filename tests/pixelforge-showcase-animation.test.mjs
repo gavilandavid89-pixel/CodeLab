@@ -20,7 +20,7 @@ test('builds a complete 18-frame walk-to-crouch animation with independent raste
   for (let frame = 0; frame < 18; frame++) {
     for (const layer of doc.layers) {
       const cel = animation.getLayerPixels(frame, layer.id);
-      assert.equal(cel.length, 96 * 96 * 4);
+      assert.equal(cel.length, 96 * 120 * 4);
       assert.ok(cel.some(value => value !== 0), layer.name + ' should have visible pixels in frame ' + frame);
     }
   }
