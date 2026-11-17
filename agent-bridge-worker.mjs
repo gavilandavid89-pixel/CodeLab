@@ -1579,6 +1579,10 @@ async function migrateAdminPixelForgeProjectsToGuest() {
 }
 
 async function capturePixelForgeInterface(payload = {}) {
+  if (payload.project_id !== undefined) {
+    assertProjectId(payload.project_id);
+    await loadProject(payload.project_id);
+  }
   const width = Number.isInteger(payload.width) ? Math.max(640, Math.min(2560, payload.width)) : 1440;
   const height = Number.isInteger(payload.height) ? Math.max(480, Math.min(1800, payload.height)) : 1000;
   const zoom = Number.isFinite(payload.zoom) ? Math.max(1, Math.min(3, payload.zoom)) : 1;
@@ -1600,13 +1604,19 @@ async function capturePixelForgeInterface(payload = {}) {
       colorScheme: 'dark',
       reducedMotion: 'reduce'
     });
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
     const page = await context.newPage();
     const consoleErrors = [];
     page.on('pageerror', error => consoleErrors.push(String(error.message || error).slice(0, 300)));
     page.on('console', message => {
       if (message.type() === 'error' && consoleErrors.length < 20) consoleErrors.push(message.text().slice(0, 300));
     });
-    const response = await page.goto(baseUrl + '/pixelforge/index.html?capture=1', {
+    const captureUrl = baseUrl + '/pixelforge/index.html?capture=1' +
+      (payload.project_id ? '&projectId=' + encodeURIComponent(payload.project_id) : '');
+    const response = await page.goto(captureUrl, {
       waitUntil: 'domcontentloaded',
       timeout: 45000
     });
