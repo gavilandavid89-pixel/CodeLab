@@ -394,7 +394,9 @@ function exportDesignToHtml(project) {
     const type = String(element.type || 'text');
     const tag = type === 'heading' ? 'h1' : type === 'button' ? 'button' : 'div';
     const typeClass = ['heading','text','button','rectangle','ellipse','image'].includes(type) ? type : 'text';
-    const layerClass = 'design-layer design-layer-' + typeClass;
+    const layerClass = typeClass === 'heading'
+      ? 'design-layer design-layer-heading'
+      : 'design-layer design-layer-' + typeClass;
     const text = escapeHtml(element.text || (type === 'image' ? 'Añade una imagen' : ''));
     const color = exportColor(element.color, '#111827');
     const fill = exportColor(element.background, 'transparent');
