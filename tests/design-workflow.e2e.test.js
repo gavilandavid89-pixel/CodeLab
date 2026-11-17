@@ -2129,6 +2129,11 @@ async function waitForPersistedProject(page, projectName) {
     const sourceCard = page.locator('#projectsGrid > div').filter({ has: page.locator('h4').getByText(PROJECT_NAME, { exact: true }) });
     await sourceCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(expected => getCurrentProject()?.id === expected, sourceProjectId, { timeout: 15000 });
+    const workspaceLabel = page.locator('#workspaceSwitchLabel');
+    if (await workspaceLabel.isVisible() && (await workspaceLabel.innerText()).trim() === 'Diseño') {
+      await page.locator('#workspaceSwitchBtn').click();
+    }
+    await page.locator('button[onclick="convertDesignToWeb()"]').waitFor({ state: 'visible', timeout: 15000 });
     await page.locator('button[onclick="convertDesignToWeb()"]').click();
     await page.waitForFunction(() => document.getElementById('designStudioPanel')?.classList.contains('hidden') &&
       !document.getElementById('studioView')?.classList.contains('hidden') && typeof getCurrentProject === 'function' &&
