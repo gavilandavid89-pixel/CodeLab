@@ -13,7 +13,7 @@ const P = Object.freeze({
 
 function put(buf,w,h,x,y,c){x|=0;y|=0;if(x<0||y<0||x>=w||y>=h)return;buf[(y*w+x)*4]=c[0];buf[(y*w+x)*4+1]=c[1];buf[(y*w+x)*4+2]=c[2];buf[(y*w+x)*4+3]=c[3];}
 function rect(buf,w,h,x,y,ww,hh,c){for(let yy=y;yy<y+hh;yy++)for(let xx=x;xx<x+ww;xx++)put(buf,w,h,xx,yy,c);}
-function line(buf,w,h,x1,y1,x2,y2,c){let dx=Math.abs(x2-x1),sx=x1<x2?1:-1,dy=-Math.abs(y2-y1),sy=y1<y2?1:-1,e=dx+dy;for(;;){put(buf,w,h,x1,y1,c);if(x1===x2&&y1===y2)break;let e2=2*e;if(e2>=dy){e+=dy;x1+=sx;}if(e2<=dx){e+=dx;y1+=sy;}}}
+function line(buf,w,h,x1,y1,x2,y2,c){x1=Math.round(x1);y1=Math.round(y1);x2=Math.round(x2);y2=Math.round(y2);let dx=Math.abs(x2-x1),sx=x1<x2?1:-1,dy=-Math.abs(y2-y1),sy=y1<y2?1:-1,e=dx+dy;for(;;){put(buf,w,h,x1,y1,c);if(x1===x2&&y1===y2)break;let e2=2*e;if(e2>=dy){e+=dy;x1+=sx;}if(e2<=dx){e+=dx;y1+=sy;}}}
 function ellipse(buf,w,h,cx,cy,rx,ry,c){for(let y=-ry;y<=ry;y++)for(let x=-rx;x<=rx;x++)if((x*x)/(rx*rx)+(y*y)/(ry*ry)<=1)put(buf,w,h,cx+x,cy+y,c);}
 function poly(buf,w,h,pts,c){const minY=Math.max(0,Math.min(...pts.map(p=>p[1]))),maxY=Math.min(h-1,Math.max(...pts.map(p=>p[1])));for(let y=minY;y<=maxY;y++){const xs=[];for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];if((a[1]<=y&&b[1]>y)||(b[1]<=y&&a[1]>y))xs.push(a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]));}xs.sort((a,b)=>a-b);for(let i=0;i+1<xs.length;i+=2)for(let x=Math.ceil(xs[i]);x<=Math.floor(xs[i+1]);x++)put(buf,w,h,x,y,c);}}
 function layerBuffer(doc,layer){const b=new Uint8ClampedArray(doc.width*doc.height*4);layer.pixels=b;return b;}
