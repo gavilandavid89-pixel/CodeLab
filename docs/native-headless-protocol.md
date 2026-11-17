@@ -6,7 +6,7 @@ The assistant-side headless client and the repository-side native worker communi
 
 **Assistant headless client → codelab_agent_commands → agent-bridge-worker.mjs → CodeLab ADMIN workspace / PixelForge**
 
-The assistant client submits structured JSON commands directly to PostgreSQL. It does not open the CodeLab UI, click menus, or depend on screen coordinates. The persistent repository worker claims commands, checks the ADMIN workspace, executes the action, and stores the result in the same mailbox row.
+The assistant client submits structured JSON commands directly to PostgreSQL. Normal commands use direct API/runtime operations and do not open the CodeLab UI. The repository worker can also execute an explicit `execution_mode: "browser"` command when the requested operation genuinely requires the real CodeLab interface. That browser mode is opt-in and auditable: the payload contains an ordered `actions` list such as `open_screen`, `open_panel`, `click`, `scroll`, `type`, `select`, `wait_for`, `screenshot`, and `record_video`. The worker runs those actions in real Playwright Chromium against the CodeLab origin; it never falls back to UI automation automatically.
 
 ## Assistant-side client
 
@@ -37,8 +37,23 @@ The client discovers the ADMIN workspace ID from codelab_accounts, calls the exi
 - codelab_project_capture_png: capture the actual ADMIN project route or preview body in Chromium as a PNG; optionally upload it to Neon.
 - pixelforge_capture_interface: capture the real PixelForge interface and artwork canvas as PNGs; optionally upload both to Neon.
 - codelab_project_record_video: record the actual CodeLab project route in Chromium as WebM for 1–30 seconds; optionally upload it to Neon.
+- codelab_ui_execute: execute an explicitly requested ordered browser/UI action sequence against the real CodeLab origin. Supported actions are `open_screen`, `open_panel`, `click`, `scroll`, `type`, `select`, `wait_for`, `screenshot`, and `record_video`. Browser commands are capped at 100 actions; external navigation and arbitrary JavaScript execution are rejected. Results include `execution_mode: "browser"` and an auditable `ui_actions` trace.
 - pixelforge_export_animation_video: open the actual PixelForge editor with the saved project ID, activate its native animation playback in headless capture mode, and record the editor canvas/UI in Chromium. It preserves the saved frame order, frame durations and timeline FPS. Output is capped at 240 frames, 60 seconds and 24 MiB of video.
 - PNG capture remains provided by the existing real-Chromium capture action. Existing PixelForge structured animation editing remains approval-gated through proposal/approve commands.
+
+## Explicit browser/UI execution
+
+Use browser execution only when the repository headless system explicitly asks for a real interface interaction. For example:
+
+    const result = await codelab.executeCodeLabUi([
+      { type: 'open_screen', path: '/?projectId=proj_example' },
+      { type: 'wait_for', selector: '#studioView', state: 'visible' },
+      { type: 'click', selector: '#webWorkspaceTab' },
+      { type: 'scroll', amount: 600 },
+      { type: 'screenshot', selector: '#studioView' }
+    ]);
+
+API/runtime commands continue to run without opening screens. Browser mode is therefore a second execution lane, not an automatic fallback. The result records `execution_mode`, final URL, every requested UI action and any screenshots/video captured.
 
 ## Video artifact storage
 
