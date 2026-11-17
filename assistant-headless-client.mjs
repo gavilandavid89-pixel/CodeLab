@@ -165,7 +165,12 @@ export function createAssistantHeadlessClient(options = {}) {
     wait,
     run,
     status: () => run('status'),
-    inspectCodeLabProject: projectId => run('codelab_project_inspect', { project_id: projectId }),
+    createCodeLabProject: options => run('codelab_project_create', options || {}),
+    convertCodeLabProjectToWeb: projectId => run('codelab_project_convert_to_web', { project_id: projectId }),
+    inspectCodeLabProject: (projectId, options = {}) => run('codelab_project_inspect', {
+      project_id: projectId, ...options
+    }),
+    connectCodeLabProject: options => run('codelab_project_connect', options || {}),
     readCode: projectId => run('codelab_project_get_code', { project_id: projectId }),
     updateCode: (projectId, code, baseRevision) => run('codelab_project_update_code', {
       project_id: projectId, code, ...(baseRevision === undefined ? {} : { base_revision: baseRevision })
@@ -176,6 +181,8 @@ export function createAssistantHeadlessClient(options = {}) {
     recordCodeLabVideo: (projectId, options = {}) => run('codelab_project_record_video', {
       project_id: projectId, ...options
     }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
+    createPixelForgeProject: options => run('pixelforge_create', options || {}),
+    listPixelForgeProjects: () => run('pixelforge_list'),
     inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
     capturePixelForgeInterface: (options = {}) => run('pixelforge_capture_interface', options),
     exportAnimationVideo: (projectId, options = {}) => run('pixelforge_export_animation_video', {
