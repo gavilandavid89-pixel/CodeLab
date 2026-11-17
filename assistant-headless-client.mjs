@@ -177,6 +177,7 @@ export function createAssistantHeadlessClient(options = {}) {
       project_id: projectId, ...options
     }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
     inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
+    capturePixelForgeInterface: (options = {}) => run('pixelforge_capture_interface', options),
     exportAnimationVideo: (projectId, options = {}) => run('pixelforge_export_animation_video', {
       project_id: projectId, ...options
     }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
