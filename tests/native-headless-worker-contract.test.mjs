@@ -25,6 +25,10 @@ test('native command mailbox registers direct CodeLab code operations', () => {
   assert.match(source, /captureCodeLabProjectPng/);
   assert.match(source, /Only html, css and js fields can be updated/);
   assert.match(source, /500000/);
+  assert.match(source, /async function mutateAdminWorkspace\(transform, options = \{\}\)/);
+  assert.match(source, /expectedRevision === undefined && attempt < 2/);
+  assert.match(source, /latestCode = \{ \.\.\.\(updated\[index\]\.code \|\| \{\}\) \}/);
+  assert.match(source, /\}, \{ expectedRevision: payload\.base_revision \}\);/);
   assert.match(source, /codelab_project_get_code','codelab_project_update_code/);
   assert.match(source, /'codelab_project_capture_png','codelab_project_record_video'/);
   assert.match(source, /pg_get_constraintdef\(oid\) LIKE '%codelab_project_capture_png%'/);
