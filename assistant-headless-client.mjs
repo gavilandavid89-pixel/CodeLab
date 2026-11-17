@@ -14,6 +14,7 @@ export const NATIVE_ACTIONS = Object.freeze([
   'codelab_project_update_code',
   'codelab_project_capture_png',
   'codelab_project_record_video',
+  'codelab_ui_execute',
   'pixelforge_create',
   'pixelforge_list',
   'pixelforge_inspect',
@@ -181,6 +182,16 @@ export function createAssistantHeadlessClient(options = {}) {
     recordCodeLabVideo: (projectId, options = {}) => run('codelab_project_record_video', {
       project_id: projectId, ...options
     }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
+    executeCodeLabUi: (actions, options = {}) => {
+      if (!Array.isArray(actions) || actions.length < 1) throw new TypeError('Browser UI execution requires at least one action.');
+      return run('codelab_ui_execute', {
+        execution_mode: 'browser',
+        actions,
+        ...(options.start_path ? { start_path: options.start_path } : {}),
+        ...(options.width ? { width: options.width } : {}),
+        ...(options.height ? { height: options.height } : {})
+      }, { ttlMs: options.ttlMs ?? 120000, timeoutMs: options.timeoutMs ?? 125000 });
+    },
     createPixelForgeProject: options => run('pixelforge_create', options || {}),
     listPixelForgeProjects: () => run('pixelforge_list'),
     inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
