@@ -95,8 +95,9 @@ test('heavy visual evidence: real node graph, web navigation, polished drawing a
       if (typeof window.saveProjectsToStorage === 'function') saveProjectsToStorage();
       openProject(source.id);
     }, { source, target, web });
-    await page.waitForFunction(() => getCurrentProject()?.id === 'aurora-home', null, { timeout: 10000 });
+    await page.locator('#studioView').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#designStudioPanel').waitFor({ state: 'visible', timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById('currentProjectTitle')?.textContent.includes('Aurora Expedition · Command'), null, { timeout: 10000 });
 
     await page.locator('#openDesignFlowGraph').click();
     await page.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 10000 });
