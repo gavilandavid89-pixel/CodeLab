@@ -25,7 +25,7 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
     await page.locator('#animation-frames .animation-frame').first().waitFor({ state: 'visible', timeout: 30000 });
 
     const layers = await page.locator('#layer-count').innerText();
-    const frames = await page.locator('#animation-frames [data-frame-index]').count();
+    const frames = await page.locator('#animation-frames .animation-frame').count();
     assert.ok(frames >= 12, 'visual showcase must expose at least 12 animation frames');
     assert.match(layers, /[2-9]|1[0-9]/, 'visual showcase must render multiple layers');
 
