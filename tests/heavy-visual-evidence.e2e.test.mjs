@@ -89,6 +89,12 @@ test('heavy visual evidence: real node graph, web navigation, polished drawing a
     }, { source, target, web });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#welcomeDashboard:not(.hidden)', { timeout: 15000 });
+    await page.evaluate(({ source, target, web }) => {
+      if (typeof window.projects !== 'undefined') window.projects = [source, target, web];
+      if (typeof window.saveProjectsToStorage === 'function') saveProjectsToStorage();
+      if (typeof window.renderProjectsList === 'function') renderProjectsList();
+    }, { source, target, web });
+    await page.waitForFunction(() => document.querySelectorAll('#projectsGrid > div').length >= 3, null, { timeout: 10000 });
 
     const sourceCard = page.locator('#projectsGrid > div').filter({ hasText: 'Aurora Expedition · Command' }).first();
     await sourceCard.locator('button[data-action="open"]').click();
