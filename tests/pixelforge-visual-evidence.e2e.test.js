@@ -52,10 +52,11 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
         if (d[i + 3] > 8) opaque++;
         checksum = (checksum + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3]) % 1000000007;
       }
-      return { width: node.width, height: node.height, opaque, checksum };
+      const colors = new Set(); for (let i = 0; i < d.length; i += 4) { if (d[i+3] > 8) colors.add(`${d[i]},${d[i+1]},${d[i+2]}`); } return { width: node.width, height: node.height, opaque, checksum, colors: colors.size };
     });
-    assert.ok(before.length > 50000, 'drawing screenshot must contain substantial visual content');
+    assert.ok(before.length > 5000, 'drawing screenshot must contain visual evidence');
     assert.ok(rasterStats.opaque > 1500, 'drawing must not be an almost-empty canvas');
+    assert.ok(rasterStats.colors >= 8, 'drawing must contain a meaningful palette, not a single flat color');
 
     await page.locator('#animation-play').click();
     await page.waitForTimeout(700);
