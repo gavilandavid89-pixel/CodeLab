@@ -566,8 +566,8 @@ async function waitForPersistedProject(page, projectName) {
     });
 
     // 3c. Frame dimensions are separate from workspace zoom/navigation.
-    assert.match(await page.locator('body').innerText(), /Marco de diseño/);
-    assert.match(await page.locator('body').innerText(), /no el espacio de trabajo ni el zoom/);
+    assert.match(await page.locator('body').innerText(), /Página/);
+    assert.match(await page.locator('body').innerText(), /Estas medidas definen la pantalla de la interfaz, no el espacio de trabajo ni el zoom/);
     const originalZoom = await page.locator('#designZoom').inputValue();
     const originalCanvasSize = await page.evaluate(() => ({
       width: document.getElementById('designCanvasWidth').value,
