@@ -116,7 +116,7 @@ async function setCode(page, lang, value) {
     await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent === expected,
       renamed, { timeout: 10000 });
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('#desktopProjectActions button[onclick="downloadProject()"]').click();
+    await page.locator('button.web-action[onclick="downloadProject()"]').click();
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /\.html?$/i, 'project export should download HTML');
 
