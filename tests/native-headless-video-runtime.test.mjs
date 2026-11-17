@@ -242,7 +242,7 @@ test('real CodeLab project route renders saved web code and records WebM', {
     }, { id: workspaceId, token: workspace.token });
     const page = await context.newPage();
     const pageErrors = [];
-    page.on('pageerror', error => pageErrors.push(String(error.message || error)));
+    page.on('pageerror', error => pageErrors.push(String(error.stack || error.message || error)));
     await page.goto(baseUrl + '/?projectId=' + project.id, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForFunction(expectedName => {
       const studio = document.getElementById('studioView');
