@@ -35,6 +35,7 @@ The client discovers the ADMIN workspace ID from codelab_accounts, calls the exi
 - codelab_project_get_code: read HTML, CSS and JavaScript from ADMIN workspace.
 - codelab_project_update_code: update one or more of HTML/CSS/JS, with 500 KiB per-field limits, optional revision precondition, conflict-safe workspace persistence, and read-after-write verification.
 - codelab_project_capture_png: capture the actual ADMIN project route or preview body in Chromium as a PNG; optionally upload it to Neon.
+- pixelforge_capture_interface: capture the real PixelForge interface and artwork canvas as PNGs; optionally upload both to Neon.
 - codelab_project_record_video: record the actual CodeLab project route in Chromium as WebM for 1–30 seconds; optionally upload it to Neon.
 - pixelforge_export_animation_video: load the saved animation timeline, render each saved frame, play frames for their recorded durations in headless Chromium, and record a WebM with Playwright. Output is capped at 240 frames, 60 seconds, 16 MiB of serialized frame data and 24 MiB of video.
 - PNG capture remains provided by the existing real-Chromium capture action. Existing PixelForge structured animation editing remains approval-gated through proposal/approve commands.
