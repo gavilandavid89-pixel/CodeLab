@@ -148,44 +148,6 @@ test('real PixelForge editor loads a saved animation and records its native play
     assert.ok(webm.length > 1000);
     assert.deepEqual([...webm.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3]);
 
-    // Explicit browser mode exercises the real CodeLab server/UI. The action
-    // sequence is deliberately visible in the result and is never an implicit
-    // fallback from an API command.
-    const uiRun = await executeCodeLabBrowserActions({
-      execution_mode: 'browser',
-      baseUrl,
-      workspaceId,
-      workspaceToken: workspace.token,
-      tempDir,
-      actions: [
-        { type: 'open_screen', path: '/' },
-        { type: 'wait_for', selector: '#searchProjectInput', state: 'visible' },
-        { type: 'click', selector: '#searchProjectInput' },
-        { type: 'type', selector: '#searchProjectInput', text: 'Headless' },
-        { type: 'open_screen', path: '/?projectId=' + encodeURIComponent(project.id) },
-        { type: 'wait_for', selector: '#studioView', state: 'visible' },
-        { type: 'open_panel', selector: 'button[onclick="editCurrentProjectName()"]' },
-        { type: 'wait_for', selector: '#newProjectNameInput', state: 'visible' },
-        { type: 'type', selector: '#newProjectNameInput', text: 'Headless UI temporary name' },
-        { type: 'scroll', amount: 450 },
-        { type: 'screenshot', selector: '#studioView' },
-        { type: 'record_video', duration_ms: 1000 }
-      ]
-    });
-    assert.equal(uiRun.execution_mode, 'browser');
-    assert.equal(uiRun.passed, true);
-    assert.equal(uiRun.actionCount, 12);
-    assert.equal(uiRun.ui_actions[0].type, 'open_screen');
-    assert.equal(uiRun.ui_actions[3].type, 'type');
-    assert.equal(uiRun.ui_actions[5].type, 'wait_for');
-    assert.equal(uiRun.ui_actions[6].type, 'open_panel');
-    assert.equal(uiRun.ui_actions[7].type, 'wait_for');
-    assert.equal(uiRun.ui_actions[8].type, 'type');
-    assert.equal(uiRun.ui_actions[9].type, 'scroll');
-    assert.equal(uiRun.ui_actions[10].type, 'screenshot');
-    assert.equal(uiRun.ui_actions[11].type, 'record_video');
-    assert.ok(uiRun.screenshots[0].sizeBytes > 1000);
-    assert.ok(uiRun.video && uiRun.video.sizeBytes > 1000);
   } finally {
     if (browser) await browser.close().catch(() => {});
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -303,6 +265,44 @@ test('real CodeLab project route renders saved web code and records WebM', {
     const webm = await fs.readFile(await video.path());
     assert.ok(webm.length > 1000);
     assert.deepEqual([...webm.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3]);
+    // Explicit browser mode exercises the real CodeLab server/UI. The action
+    // sequence is deliberately visible in the result and is never an implicit
+    // fallback from an API command.
+    const uiRun = await executeCodeLabBrowserActions({
+      execution_mode: 'browser',
+      baseUrl,
+      workspaceId,
+      workspaceToken: workspace.token,
+      tempDir,
+      actions: [
+        { type: 'open_screen', path: '/' },
+        { type: 'wait_for', selector: '#searchProjectInput', state: 'visible' },
+        { type: 'click', selector: '#searchProjectInput' },
+        { type: 'type', selector: '#searchProjectInput', text: 'Headless' },
+        { type: 'open_screen', path: '/?projectId=' + encodeURIComponent(project.id) },
+        { type: 'wait_for', selector: '#studioView', state: 'visible' },
+        { type: 'open_panel', selector: 'button[onclick="editCurrentProjectName()"]' },
+        { type: 'wait_for', selector: '#newProjectNameInput', state: 'visible' },
+        { type: 'type', selector: '#newProjectNameInput', text: 'Headless UI temporary name' },
+        { type: 'scroll', amount: 450 },
+        { type: 'screenshot', selector: '#studioView' },
+        { type: 'record_video', duration_ms: 1000 }
+      ]
+    });
+    assert.equal(uiRun.execution_mode, 'browser');
+    assert.equal(uiRun.passed, true);
+    assert.equal(uiRun.actionCount, 12);
+    assert.equal(uiRun.ui_actions[0].type, 'open_screen');
+    assert.equal(uiRun.ui_actions[3].type, 'type');
+    assert.equal(uiRun.ui_actions[5].type, 'wait_for');
+    assert.equal(uiRun.ui_actions[6].type, 'open_panel');
+    assert.equal(uiRun.ui_actions[7].type, 'wait_for');
+    assert.equal(uiRun.ui_actions[8].type, 'type');
+    assert.equal(uiRun.ui_actions[9].type, 'scroll');
+    assert.equal(uiRun.ui_actions[10].type, 'screenshot');
+    assert.equal(uiRun.ui_actions[11].type, 'record_video');
+    assert.ok(uiRun.screenshots[0].sizeBytes > 1000);
+    assert.ok(uiRun.video && uiRun.video.sizeBytes > 1000);
   } finally {
     if (browser) await browser.close().catch(() => {});
     if (child.exitCode === null) {
