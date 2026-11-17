@@ -47,7 +47,10 @@ test('animation video export uses real Chromium recording and validates artifact
   assert.match(source, /targetUrl\.port !== '' \|\| targetUrl\.username \|\| targetUrl\.password/);
   assert.match(source, /redirect: 'error'/);
   assert.match(fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8'), /params\.get\('capture'\) === 'video'/);
-  assert.match(fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8'), /startAnimationPlayback\(\)/);
+  const editorSource = fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8');
+  assert.match(editorSource, /startAnimationPlayback\(\)/);
+  assert.match(editorSource, /switchAnimationFrame\(0, \{ autosave: false \}\)/);
+  assert.match(editorSource, /animationPlayback\.saveOnStop = false/);
   assert.match(source, /totalDurationMs > 60000/);
   assert.match(source, /pixelforge_export_animation_video/);
 });
