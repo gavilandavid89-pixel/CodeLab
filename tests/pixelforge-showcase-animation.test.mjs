@@ -15,7 +15,7 @@ test('builds a complete 20-frame walk-to-crouch animation with independent raste
   assert.equal(animation.frameCount, 20);
   assert.equal(animation.fps, 16);
   assert.equal(loop, true);
-  assert.ok(Math.abs(animation.totalDurationMs - 1500) < 0.001, '18 frames at 12 FPS should last 1.5 seconds');
+  assert.ok(Math.abs(animation.totalDurationMs - 1250) < 0.001, '20 frames at 16 FPS should last 1.25 seconds');
   assert.deepEqual(animation.layerIds, doc.layers.map(layer => layer.id));
   for (let frame = 0; frame < 20; frame++) {
     for (const layer of doc.layers) {
