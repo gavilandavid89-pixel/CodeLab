@@ -89,8 +89,8 @@ test('assistant headless client validates the supported command contract', () =>
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_capture_png'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_ui_execute'));
-  assert.match(clientSource, /executeCodeLabUi: \(actions, options = \{\}\) =>/);
   const clientSource = fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8');
+  assert.match(clientSource, /executeCodeLabUi: \(actions, options = \{\}\) =>/);
   assert.match(clientSource, /\/api\/health/);
   assert.match(clientSource, /CODELAB_BASE_URL/);
   assert.match(clientSource, /await wakeWorker\(\)/);
