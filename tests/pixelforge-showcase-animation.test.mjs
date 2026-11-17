@@ -5,8 +5,8 @@ import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animati
 test('builds a complete 24-frame walk-to-crouch animation with independent raster layers', () => {
   const { doc, animation, loop } = createOrbitalShowcase();
   assert.equal(doc.name, 'Person · Walk to Crouch · 24-frame study');
-  assert.equal(doc.width, 128);
-  assert.equal(doc.height, 128);
+  assert.equal(doc.width, 96);
+  assert.equal(doc.height, 120);
   assert.equal(doc.layers.length, 4);
   assert.equal(doc.history.length, 0, 'the demo should open with a clean undo history');
   assert.equal(doc.dirty, false, 'the freshly generated demo should be ready to save without phantom edits');
@@ -20,7 +20,7 @@ test('builds a complete 24-frame walk-to-crouch animation with independent raste
   for (let frame = 0; frame < 24; frame++) {
     for (const layer of doc.layers) {
       const cel = animation.getLayerPixels(frame, layer.id);
-      assert.equal(cel.length, 128 * 128 * 4);
+      assert.equal(cel.length, 96 * 120 * 4);
       assert.ok(cel.some(value => value !== 0), layer.name + ' should have visible pixels in frame ' + frame);
     }
   }
