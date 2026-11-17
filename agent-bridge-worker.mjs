@@ -25,7 +25,7 @@ const pool = new Pool({
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const MAX_PROJECTS = 50;
-const POLL_MS = 700;
+const POLL_MS = 150;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 let stopping = false;
 let workspaceId;
