@@ -789,7 +789,9 @@ function startAnimationPlayback() {
   $('#animation-play').disabled = true; $('#animation-stop').disabled = false;
   const tick = now => {
     if (!animationPlayback.playing || !animation) return;
-    const elapsed = now - animationPlayback.startedAt;
+    const frameTime = Number.isFinite(now) ? now : performance.now();
+    const startedAt = Number.isFinite(animationPlayback.startedAt) ? animationPlayback.startedAt : frameTime;
+    const elapsed = Math.max(0, frameTime - startedAt);
     const index = animation.frameIndexAtTime(elapsed, { loop: $('#animation-loop').checked });
     if (index !== animationPlayback.lastIndex) {
       switchAnimationFrame(index, { autosave: false });
