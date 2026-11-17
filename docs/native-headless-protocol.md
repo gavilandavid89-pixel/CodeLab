@@ -21,7 +21,9 @@ The client uses the same CodeLab PostgreSQL database as the deployed app. Keep D
         html: '<!doctype html><html><body><h1>Updated</h1></body></html>',
         css: 'body { font-family: sans-serif; }'
       }, source.result.revision);
-      const video = await codelab.exportAnimationVideo('pixelforge_project_id', {
+      const png = await codelab.captureCodeLabPng('proj_example');
+  const projectVideo = await codelab.recordCodeLabVideo('proj_example', { duration_ms: 5000 });
+  const video = await codelab.exportAnimationVideo('pixelforge_project_id', {
         uploadTarget: { url: process.env.CODELAB_VIDEO_PRESIGNED_URL, objectKey: 'pixelforge/exports/example.webm' }
       });
     } finally { await codelab.close(); }
@@ -32,6 +34,8 @@ The client discovers the ADMIN workspace ID from codelab_accounts, queues a UUID
 
 - codelab_project_get_code: read HTML, CSS and JavaScript from ADMIN workspace.
 - codelab_project_update_code: update one or more of HTML/CSS/JS, with 500 KiB per-field limits, optional revision precondition, conflict-safe workspace persistence, and read-after-write verification.
+- codelab_project_capture_png: capture the actual ADMIN project route or preview body in Chromium as a PNG; optionally upload it to Neon.
+- codelab_project_record_video: record the actual CodeLab project route in Chromium as WebM for 1–30 seconds; optionally upload it to Neon.
 - pixelforge_export_animation_video: load the saved animation timeline, render each saved frame, play frames for their recorded durations in headless Chromium, and record a WebM with Playwright. Output is capped at 240 frames, 60 seconds, 16 MiB of serialized frame data and 24 MiB of video.
 - PNG capture remains provided by the existing real-Chromium capture action. Existing PixelForge structured animation editing remains approval-gated through proposal/approve commands.
 
