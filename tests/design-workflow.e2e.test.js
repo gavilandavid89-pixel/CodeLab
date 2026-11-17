@@ -2146,20 +2146,48 @@ async function waitForPersistedProject(page, projectName) {
     assert.ok(generatedFlowHtml.includes('data-page-id="' + targetProjectId + '"'), 'generated web must include the connected destination page');
     assert.ok(generatedFlowHtml.includes('data-flow-to="' + targetProjectId + '"'), 'generated option must navigate to the connected destination');
     // Execute the generated standalone web app and verify the actual route, not just its markup.
-    const flowPreview = await context.newPage();
+    // Record the actual interaction: source page visible -> pointer reaches the connected option
+    // -> real click -> destination page becomes visible. This is the evidence that was missing.
+    const navigationVideoDir = await fs.mkdtemp(require('node:path').join(require('node:os').tmpdir(), 'codelab-node-navigation-video-'));
+    const navigationVideoContext = await browser.newContext({
+      viewport: { width: 1365, height: 900 },
+      recordVideo: { dir: navigationVideoDir, size: { width: 1365, height: 900 }, fps: 24 }
+    });
+    const flowPreview = await navigationVideoContext.newPage();
     flowPreview.on('pageerror', error => failures.push(error.message));
-    await flowPreview.setContent(generatedFlowHtml);
-    await flowPreview.locator('[data-page-id="' + sourceProjectId + '"]:not([hidden])').waitFor({ state: 'visible' });
-    await flowPreview.locator('[data-flow-to="' + targetProjectId + '"]').first().click();
-    await flowPreview.waitForFunction(id => {
-      const target = Array.from(document.querySelectorAll('[data-page-id]')).find(section => section.getAttribute('data-page-id') === id);
-      return !!target && !target.hidden;
-    }, targetProjectId, { timeout: 5000 });
-    assert.equal(await flowPreview.locator('[data-page-id="' + sourceProjectId + '"]').evaluate(el => el.hidden), true,
-      'navigating to the connected page must hide the source page');
-    await fs.mkdir(VISUAL_ARTIFACT_DIR, { recursive: true });
-    await flowPreview.locator('body').screenshot({ path: require('node:path').join(VISUAL_ARTIFACT_DIR, 'web-node-navigation-destination.png'), type: 'png' });
-    await flowPreview.close();
+    try {
+      await flowPreview.setContent(generatedFlowHtml);
+      const sourcePage = flowPreview.locator('[data-page-id="' + sourceProjectId + '"]:not([hidden])');
+      const navigationOption = flowPreview.locator('[data-flow-to="' + targetProjectId + '"]').first();
+      await sourcePage.waitFor({ state: 'visible' });
+      await navigationOption.waitFor({ state: 'visible' });
+      await navigationOption.scrollIntoViewIfNeeded();
+      const optionBox = await navigationOption.boundingBox();
+      assert.ok(optionBox, 'connected navigation option must have a visible clickable bound');
+      await flowPreview.mouse.move(optionBox.x + optionBox.width / 2, optionBox.y + optionBox.height / 2, { steps: 6 });
+      await flowPreview.waitForTimeout(250);
+      await navigationOption.click();
+      await flowPreview.waitForFunction(id => {
+        const target = Array.from(document.querySelectorAll('[data-page-id]')).find(section => section.getAttribute('data-page-id') === id);
+        return !!target && !target.hidden;
+      }, targetProjectId, { timeout: 5000 });
+      assert.equal(await flowPreview.locator('[data-page-id="' + sourceProjectId + '"]').evaluate(el => el.hidden), true,
+        'navigating to the connected page must hide the source page');
+      assert.equal(await flowPreview.locator('[data-page-id="' + targetProjectId + '"]').evaluate(el => !el.hidden), true,
+        'navigating the connected option must reveal the connected destination page');
+      await fs.mkdir(VISUAL_ARTIFACT_DIR, { recursive: true });
+      await flowPreview.locator('body').screenshot({ path: require('node:path').join(VISUAL_ARTIFACT_DIR, 'web-node-navigation-destination.png'), type: 'png' });
+      await flowPreview.waitForTimeout(900);
+    } finally {
+      const video = flowPreview.video();
+      await flowPreview.close();
+      await navigationVideoContext.close();
+      const videoPath = await video.path();
+      const videoStat = await fs.stat(videoPath);
+      assert.ok(videoStat.size > 10000, 'node navigation video must contain substantial real interaction evidence');
+      await fs.copyFile(videoPath, require('node:path').join(VISUAL_ARTIFACT_DIR, 'web-node-navigation-real-click.webm'));
+      await fs.rm(navigationVideoDir, { recursive: true, force: true });
+    }
 
     // Conversion updates the web space on the same project; switching editors
     // must preserve identity and both the design document and generated web.
