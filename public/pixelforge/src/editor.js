@@ -19,7 +19,7 @@ const previewCanvas = document.createElement('canvas'), previewCtx = previewCanv
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true;
-let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1 };
+let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
 let color = $('#color').value, backgroundColor = '#242632', recentColors = [], brushSize = Number($('#brush-size').value);
@@ -796,7 +796,7 @@ function startAnimationPlayback() {
       animationPlayback.lastIndex = index;
     }
     const finished = !$('#animation-loop').checked && elapsed >= animation.totalDurationMs;
-    if (finished) { stopAnimationPlayback(); return; }
+    if (finished) { stopAnimationPlayback({ save: animationPlayback.saveOnStop !== false }); return; }
     animationPlayback.raf = requestAnimationFrame(tick);
   };
   animationPlayback.raf = requestAnimationFrame(tick);
@@ -2382,7 +2382,23 @@ async function boot() {
       }
     }
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
+    if (params.get('capture') === 'video') {
+      if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
+      animationLoop = false;
+      $('#animation-loop').checked = false;
+      animationPlayback.saveOnStop = false;
+      startAnimationPlayback();
+      if (!animationPlayback.playing) throw new Error('No se pudo iniciar la reproducción de la animación.');
+      document.documentElement.dataset.pixelforgeCapture = 'playing';
+      window.setTimeout(() => {
+        if (animationPlayback.playing) stopAnimationPlayback({ save: false });
+        animationPlayback.saveOnStop = true;
+        document.documentElement.dataset.pixelforgeCapture = 'complete';
+      }, animation.totalDurationMs + 250);
+    }
   } catch (error) {
+    document.documentElement.dataset.pixelforgeCapture = 'error';
+    document.documentElement.dataset.pixelforgeCaptureError = String(error.message || error).slice(0, 300);
     status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
     const statusNode = $('#status');
     if (statusNode) statusNode.title = 'Comprueba la conexión con CodeLab y vuelve a cargar.';
