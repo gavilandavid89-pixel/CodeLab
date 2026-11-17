@@ -97,7 +97,7 @@ async function main() {
     id: sessionId,
     user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' },
     createdAt: Date.now(),
-    expiresAt: Date.now() + 60_000
+    expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
   let testSessionPool = null;
@@ -380,9 +380,15 @@ async function main() {
   fs.writeFileSync(path.join(sessionsDir, sameAccountSessionId + '.json'), JSON.stringify({
     id: sameAccountSessionId,
     user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
-    createdAt: Date.now(), expiresAt: Date.now() + 60_000
+    createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   const sameAccountHeaders = { cookie: 'codelab_sid=' + sameAccountSessionId, 'x-forwarded-for': '198.51.100.82' };
+  if (testSessionPool) {
+    await testSessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'10 minutes\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [sameAccountSessionId, JSON.stringify({ id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' })]
+    );
+  }
   const sameAccountList = await fetch(base + '/api/pixelforge/projects', { headers: sameAccountHeaders });
   assert.equal(sameAccountList.status, 200);
   assert.ok((await sameAccountList.json()).projects.some(project => project.id === fixture.id),
@@ -393,9 +399,15 @@ async function main() {
     id: secondSessionId,
     user: { id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' },
     createdAt: Date.now(),
-    expiresAt: Date.now() + 60_000
+    expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
+  if (testSessionPool) {
+    await testSessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'10 minutes\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [secondSessionId, JSON.stringify({ id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' })]
+    );
+  }
   if (process.env.DATABASE_URL) {
   const ownerUploadId = 'd'.repeat(32);
   const ownerUpload = await fetch(base + '/api/pixelforge/projects/uploads', {
@@ -945,7 +957,7 @@ async function main() {
     fs.rmSync(path.join(sessionsDir, sameAccountSessionId + '.json'), { force: true });
     fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
     if (testSessionPool) {
-      await testSessionPool.query('DELETE FROM codelab_auth_sessions WHERE session_id = $1', [sessionId]).catch(() => {});
+      await testSessionPool.query('DELETE FROM codelab_auth_sessions WHERE session_id = ANY($1::varchar[])', [[sessionId, sameAccountSessionId, secondSessionId]]).catch(() => {});
       await testSessionPool.end().catch(() => {});
     }
   }
