@@ -1416,6 +1416,8 @@ async function recordCodeLabProjectVideo(project, payload = {}) {
   if (durationMs < 1000 || durationMs > 30000) throw new Error('CodeLab project video duration must be from 1 to 30 seconds.');
   const width = Number.isInteger(payload.width) ? Math.max(320, Math.min(1920, payload.width)) : 1280;
   const height = Number.isInteger(payload.height) ? Math.max(240, Math.min(1080, payload.height)) : 720;
+  const fps = Number.isInteger(payload.fps) ? payload.fps : 25;
+  if (fps < 1 || fps > 60) throw new Error('CodeLab project video FPS must be from 1 to 60.');
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-project-video-'));
   let browser;
   try {
@@ -1426,7 +1428,7 @@ async function recordCodeLabProjectVideo(project, payload = {}) {
     });
     const context = await browser.newContext({
       viewport: { width, height }, deviceScaleFactor: 1,
-      colorScheme: 'dark', recordVideo: { dir: tempDir, size: { width, height } }
+      colorScheme: 'dark', recordVideo: { dir: tempDir, size: { width, height }, fps }
     });
     const page = await context.newPage();
     const pageErrors = [];
@@ -1462,6 +1464,7 @@ async function recordCodeLabProjectVideo(project, payload = {}) {
       viewport: { width, height },
       format: 'webm',
       durationMs,
+      fps,
       pageErrors,
       consoleErrors,
       passed: pageErrors.length === 0 && consoleErrors.length === 0,
@@ -1747,7 +1750,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       viewport: { width, height },
       deviceScaleFactor: 1,
       colorScheme: 'dark',
-      recordVideo: { dir: tempDir, size: { width, height } }
+      recordVideo: { dir: tempDir, size: { width, height }, fps }
     });
     const page = await context.newPage();
     const pageErrors = [];
