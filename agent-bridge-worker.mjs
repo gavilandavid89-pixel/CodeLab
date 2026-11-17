@@ -1658,7 +1658,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       serverRevision: loaded.serverRevision,
       contentSha256: loaded.contentSha256,
       format: 'webm',
-      fps,
+      timelineFps: fps,
       width,
       height,
       frameCount: frames.length,
