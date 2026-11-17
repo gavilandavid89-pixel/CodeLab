@@ -56,6 +56,8 @@ test('assistant headless client validates the supported command contract', () =>
   assert.match(clientSource, /\/api\/health/);
   assert.match(clientSource, /CODELAB_BASE_URL/);
   assert.match(clientSource, /await wakeWorker\(\)/);
+  const serverSource = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(serverSource, /PLAYWRIGHT_BROWSERS_PATH \|\|= '0'/);
   assert.deepEqual(validateCommandInput('status', { operation: 'ping' }), {
     action: 'status', payload: { operation: 'ping' }, ttlMs: 120000
   });
