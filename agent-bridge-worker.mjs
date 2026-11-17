@@ -1560,6 +1560,8 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     };
   });
   const totalDurationMs = frames.reduce((sum, frame) => sum + frame.durationMs, 0);
+  const serializedFrameBytes = frames.reduce((sum, frame) => sum + Buffer.byteLength(frame.src, 'utf8'), 0);
+  if (serializedFrameBytes > 16 * 1024 * 1024) throw new Error('Animation frame payload exceeds the 16 MiB browser transfer limit.');
   if (totalDurationMs > 60000) throw new Error('Video export is limited to 60 seconds per pass.');
   const width = Math.max(320, Math.min(1920, Number.isInteger(payload.width) ? payload.width : project.width * 4));
   const height = Math.max(240, Math.min(1080, Number.isInteger(payload.height) ? payload.height : project.height * 4));
