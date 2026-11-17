@@ -154,7 +154,7 @@ export function createAssistantHeadlessClient(options = {}) {
     }),
     recordCodeLabVideo: (projectId, options = {}) => run('codelab_project_record_video', {
       project_id: projectId, ...options
-    }, { ttlMs: options.ttlMs ?? 90000, timeoutMs: options.timeoutMs ?? 95000 }),
+    }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
     inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
     exportAnimationVideo: (projectId, options = {}) => run('pixelforge_export_animation_video', {
       project_id: projectId, ...options
