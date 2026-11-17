@@ -47,6 +47,8 @@ test('animation video export uses real Chromium recording and validates artifact
   assert.match(source, /NEON_STORAGE_HOST/);
   assert.match(source, /targetUrl\.port !== '' \|\| targetUrl\.username \|\| targetUrl\.password/);
   assert.match(source, /redirect: 'error'/);
+  assert.match(source, /pathSegments\.slice\(1\)\.join\('\/'\) !== target\.objectKey/);
+  assert.match(source, /publicUrl: targetUrl\.origin \+ targetUrl\.pathname/);
   assert.match(fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8'), /params\.get\('capture'\) === 'video'/);
   const editorSource = fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8');
   assert.match(editorSource, /startAnimationPlayback\(\)/);
