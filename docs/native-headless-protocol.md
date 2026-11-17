@@ -43,7 +43,7 @@ The client discovers the ADMIN workspace ID from codelab_accounts, queues a UUID
 
 For durable video output, the command may include a trusted Neon presigned uploadTarget. The worker accepts HTTPS uploads only to the configured Neon storage host, public capture bucket, and exact object key under pixelforge/exports/. The content type is video/webm. Without an upload target, small videos (up to 8 MiB) are returned inline as base64; larger videos fail clearly instead of bloating PostgreSQL command rows.
 
-The video is captured by Chromium itself; it is not a fabricated GIF, a sequence of PNGs renamed as a video, or a screenshot montage. Frame timing follows the saved durationMs values. The reported timeline FPS is source metadata; Chromium's WebM encoder controls the encoded frame cadence.
+The video is captured by Chromium itself; it is not a fabricated GIF, a sequence of PNGs renamed as a video, or a screenshot montage. Frame timing follows the saved durationMs values, and Playwright's WebM recorder is configured with the source timeline FPS (or the requested FPS for CodeLab web projects).
 
 ## Security and operational constraints
 
