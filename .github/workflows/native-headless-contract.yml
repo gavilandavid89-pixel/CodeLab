@@ -26,5 +26,9 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Install Playwright video encoder
         run: npx playwright-core install ffmpeg
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
       - name: Run native headless contract tests
         run: npm run test:native-headless
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
