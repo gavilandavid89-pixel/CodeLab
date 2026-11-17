@@ -616,7 +616,7 @@ async function waitForPersistedProject(page, projectName) {
 
     // 4a. Snap-to-grid rounds the dragged layer to the configured grid size.
     await page.selectOption('#designGridSize', '16');
-    assert.equal(await page.locator('#designCanvas').evaluate(node => node.style.backgroundSize), '16px 16px',
+    assert.equal(await page.locator('#designCanvasScroll').evaluate(node => node.style.backgroundSize), '16px 16px',
       'visible grid spacing should match the selected grid size');
     await page.click('#designSnapBtn');
     const snapBefore = await element.boundingBox();
