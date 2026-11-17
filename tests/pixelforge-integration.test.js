@@ -124,7 +124,18 @@ async function main() {
   const coreWorkspace = await coreWorkspaceResponse.json();
   assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
-  assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
+  if (health.persistence === 'postgresql') {
+    const repeatedInit = await fetch(base + '/api/workspace/init', {
+      method: 'POST',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    assert.equal(repeatedInit.status, 200, 'PostgreSQL-backed CodeLab should reopen the same authenticated workspace');
+    assert.equal((await repeatedInit.json()).workspaceId, coreWorkspace.workspaceId, 'workspace identity must remain account-bound in PostgreSQL');
+    assert.equal(fs.existsSync(workspaceFile), false, 'PostgreSQL-backed CodeLab workspaces must not depend on local sidecar files');
+  } else {
+    assert.ok(fs.existsSync(workspaceFile), 'file-backed CodeLab core should own the account workspace used by PixelForge');
+  }
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
   // The database may persist between CI runs; clear only this dedicated test
   // account so the assertions remain repeatable without touching real users.
