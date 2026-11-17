@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NATIVE_ACTIONS, validateCommandInput } from '../assistant-headless-client.mjs';
+import { createAssistantHeadlessClient, NATIVE_ACTIONS, validateCommandInput } from '../assistant-headless-client.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workerPath = path.join(root, 'agent-bridge-worker.mjs');
@@ -64,4 +64,68 @@ test('assistant headless client validates the supported command contract', () =>
   assert.throws(() => validateCommandInput('status', {}, 999), /TTL must be between/);
   assert.throws(() => validateCommandInput('status', {}, 900001), /TTL must be between/);
   assert.throws(() => validateCommandInput('status', { data: 'x'.repeat(2 * 1024 * 1024) }), /exceeds 2 MiB/);
+});
+
+
+test('assistant client wakes CodeLab and submits/polls a command through the ADMIN mailbox', async () => {
+  const events = [];
+  const pool = {
+    async query(sql, params = []) {
+      if (sql.includes("SELECT id FROM codelab_accounts")) {
+        events.push('resolve-admin');
+        return { rowCount: 1, rows: [{ id: 'admin-42' }] };
+      }
+      if (sql.startsWith('INSERT INTO codelab_agent_commands')) {
+        events.push('insert-command');
+        assert.equal(params[1], 'ws_local_admin-42');
+        assert.equal(params[2], 'status');
+        return { rowCount: 1, rows: [] };
+      }
+      if (sql.startsWith('SELECT command_id, action, status')) {
+        events.push('poll-command');
+        return {
+          rowCount: 1,
+          rows: [{
+            command_id: params[0],
+            action: 'status',
+            status: 'succeeded',
+            result: { status: 'online' },
+            proposal: null,
+            proposal_token: null,
+            expires_at: new Date(Date.now() + 60000),
+            created_at: new Date(),
+            started_at: new Date(),
+            finished_at: new Date(),
+            updated_at: new Date()
+          }]
+        };
+      }
+      throw new Error('Unexpected SQL in assistant client test: ' + sql);
+    },
+    async end() { events.push('close-pool'); }
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    events.push('wake-service');
+    assert.equal(url, 'https://codelab.test/api/health');
+    assert.equal(options.method, 'GET');
+    return new Response(JSON.stringify({ ok: true, version: 'test' }), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    });
+  };
+  const client = createAssistantHeadlessClient({
+    pool, baseUrl: 'https://codelab.test/', pollIntervalMs: 200
+  });
+  try {
+    const result = await client.run('status');
+    assert.equal(result.status, 'succeeded');
+    assert.deepEqual(result.result, { status: 'online' });
+    assert.deepEqual(events.slice(0, 4), [
+      'resolve-admin', 'wake-service', 'insert-command', 'poll-command'
+    ]);
+    assert.equal(result.workspaceId, 'ws_local_admin-42');
+  } finally {
+    globalThis.fetch = originalFetch;
+    await client.close();
+  }
 });
