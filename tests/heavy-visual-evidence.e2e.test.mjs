@@ -55,12 +55,12 @@ function makeDesignProject(id, name, accent, targetId = null) {
   };
 }
 
-test('heavy visual evidence: real node graph, web navigation, polished drawing and animation', { timeout: 240000, concurrency: false }, async () => {
+test('heavy visual evidence: real node graph, web navigation, polished drawing and animation', { timeout: 150000, concurrency: false }, async () => {
   await ensureDir();
   const s = await startCodeLab();
   chromiumBinary.setGraphicsMode = false;
   const browser = await chromium.launch({ headless: true, args: chromiumBinary.args, executablePath: await chromiumBinary.executablePath(), timeout: 60000 });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, recordVideo: { dir: artifactDir, size: { width: 1440, height: 960 }, fps: 24 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(String(e.stack || e.message || e)));
