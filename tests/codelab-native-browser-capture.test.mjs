@@ -144,8 +144,8 @@ test('Node graph browser capture targets the actual store project among other sa
 test('Node graph QA scopes connection counts to the selected store project', () => {
   assert.match(worker, /storeProjectConnectionCount/);
   assert.match(worker, /storeProjectHasTwoConnections/);
-  assert.match(worker, /desktopWireCount >= 4/);
-  assert.match(worker, /mobileWireCount >= 4/);
+  assert.match(worker, /desktopWireCount >= 2/);
+  assert.match(worker, /mobileWireCount >= 2/);
 });
 
 test('Node graph screenshots release the preview iframe and capture only the active graph modal', () => {
