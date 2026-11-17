@@ -2342,15 +2342,15 @@ async function boot() {
     renderUserPalette();
     resizeCanvas();
     const params = new URLSearchParams(window.location.search);
-    if (params.get('createDemo') === 'orbital-12') {
+    if (params.get('createDemo') === 'walk-crouch-18') {
       const existingProjects = await listSavedProjects();
-      const existingDemo = existingProjects.find(project => project.name === 'Orbital · PixelForge 12-frame loop');
+      const existingDemo = existingProjects.find(project => project.name === 'Person · Walk to Crouch · 18-frame study');
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
         doc = RasterDocument.fromJSON(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
-        status('Demo Orbital recuperada · 12 fotogramas a 12 FPS', 'success');
+        status('Demo caminata → agacharse recuperada · 18 fotogramas a 12 FPS', 'success');
       } else {
         const showcase = createOrbitalShowcase();
         doc = showcase.doc;
@@ -2361,7 +2361,7 @@ async function boot() {
         const savedDemo = await saveProject(snapshot);
         if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
         doc.dirty = false;
-        status('Demo Orbital guardada · 12 fotogramas a 12 FPS', 'success');
+        status('Demo caminata → agacharse guardada · 18 fotogramas a 12 FPS', 'success');
       }
       animationFrameHistory.clear();
       animationOrphanCels.clear();
