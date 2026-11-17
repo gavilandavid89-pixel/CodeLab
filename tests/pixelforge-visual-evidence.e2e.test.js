@@ -3,12 +3,19 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
+const { spawn } = require('node:child_process');
+const http = require('node:http');
 
 const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tmpdir(), 'codelab-visual-evidence');
 
 (async () => {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true });
+  const probe = http.createServer(); await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve)); const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
+  const visualDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-visual-server-'));
+  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(port), CODELAB_DATA_DIR: visualDataDir, PIXELFORGE_GUEST_MODE: 'true' }, stdio: ['ignore','ignore','pipe'] });
+  const visualBase = 'http://127.0.0.1:' + port;
+  for (let i=0;i<60;i++){ try { const h=await fetch(visualBase+'/api/health'); if(h.ok) break; } catch {} await new Promise(r=>setTimeout(r,100)); }
   const browser = await chromium.launch({ headless: true });
   const videoDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pixelforge-visual-video-'));
   const context = await browser.newContext({
@@ -24,8 +31,7 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   page.on('pageerror', e => errors.push(String(e.stack || e.message || e)));
 
   try {
-    await context.addCookies([{ name: 'codelab_sid', value: sessionId, domain: '127.0.0.1', path: '/', httpOnly: true }]);
-    await page.goto(BASE_URL + '/pixelforge/index.html?createDemo=orbital-12&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(visualBase + '/pixelforge/index.html?createDemo=orbital-12&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
     await page.waitForFunction(() => /12 frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
@@ -74,6 +80,7 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   } finally {
     await browser.close().catch(() => {});
     await fs.rm(videoDir, { recursive: true, force: true });
+    server.kill('SIGTERM'); await fs.rm(visualDataDir, { recursive: true, force: true });
   }
   console.log('Visual PixelForge evidence passed: polished drawing, 12+ frames, playback delta and WebM captured.');
 })();
