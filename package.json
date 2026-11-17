@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test:native-headless": "node --test tests/native-headless-worker-contract.test.mjs"
+    "test:native-headless": "node --test tests/native-headless-worker-contract.test.mjs tests/native-headless-video-runtime.test.mjs"
   },
   "engines": {
     "node": ">=18"
