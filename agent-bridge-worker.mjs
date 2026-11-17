@@ -1904,7 +1904,7 @@ async function executeExplicitCodeLabBrowser(command) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-browser-actions-'));
   try {
     const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
-      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\\/$/, '');
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
     return await executeCodeLabBrowserActions({
       ...payload,
       execution_mode: 'browser',
