@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { NATIVE_ACTIONS, validateCommandInput } from '../assistant-headless-client.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workerPath = path.join(root, 'agent-bridge-worker.mjs');
@@ -32,4 +33,18 @@ test('animation video export uses real Chromium recording and validates artifact
   assert.match(source, /serializedFrameBytes > 16 \* 1024 \* 1024/);
   assert.match(source, /totalDurationMs > 60000/);
   assert.match(source, /pixelforge_export_animation_video/);
+});
+
+
+test('assistant headless client validates the supported command contract', () => {
+  assert.ok(NATIVE_ACTIONS.includes('codelab_project_update_code'));
+  assert.ok(NATIVE_ACTIONS.includes('pixelforge_export_animation_video'));
+  assert.deepEqual(validateCommandInput('status', { operation: 'ping' }), {
+    action: 'status', payload: { operation: 'ping' }, ttlMs: 120000
+  });
+  assert.throws(() => validateCommandInput('shell_exec', {}), /Unsupported CodeLab native action/);
+  assert.throws(() => validateCommandInput('status', []), /payload must be a JSON object/);
+  assert.throws(() => validateCommandInput('status', {}, 999), /TTL must be between/);
+  assert.throws(() => validateCommandInput('status', {}, 900001), /TTL must be between/);
+  assert.throws(() => validateCommandInput('status', { data: 'x'.repeat(2 * 1024 * 1024) }), /exceeds 2 MiB/);
 });
