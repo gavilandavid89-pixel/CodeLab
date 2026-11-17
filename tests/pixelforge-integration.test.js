@@ -776,7 +776,7 @@ async function main() {
     accountPage.on('dialog', dialog => dialog.accept());
     await accountPage.locator('#projects-button').click();
     await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
-    await accountPage.locator('.saved-project-open').filter({ hasText: /^Browser account artwork$/ }).waitFor({ state: 'visible' });
+    await accountPage.locator('.saved-project-open').filter({ hasText: 'Browser account artwork' }).first().waitFor({ state: 'visible' });
     const deleteRow = accountPage.locator('.saved-project').filter({ hasText: 'Browser delete artwork' });
     await deleteRow.locator('.saved-project-delete').click();
     await deleteRow.waitFor({ state: 'detached' });
