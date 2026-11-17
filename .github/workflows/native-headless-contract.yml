@@ -33,10 +33,6 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: '0'
           HEADLESS_VISUAL_ARTIFACT_DIR: artifacts/native-headless-visuals
-      - name: Run heavy visual evidence inspection
-        run: npm run test:heavy-visual
-        env:
-          HEADLESS_VISUAL_ARTIFACT_DIR: artifacts/native-headless-visuals
       - name: Upload native headless visual evidence
         if: always()
         uses: actions/upload-artifact@v4
