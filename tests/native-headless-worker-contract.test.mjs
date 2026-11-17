@@ -48,6 +48,10 @@ test('assistant headless client validates the supported command contract', () =>
   assert.ok(NATIVE_ACTIONS.includes('pixelforge_export_animation_video'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_capture_png'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
+  const clientSource = fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8');
+  assert.match(clientSource, /\/api\/health/);
+  assert.match(clientSource, /CODELAB_BASE_URL/);
+  assert.match(clientSource, /await wakeWorker\(\)/);
   assert.deepEqual(validateCommandInput('status', { operation: 'ping' }), {
     action: 'status', payload: { operation: 'ping' }, ttlMs: 120000
   });
