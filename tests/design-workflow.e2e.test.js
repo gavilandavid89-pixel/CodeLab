@@ -2165,25 +2165,23 @@ async function waitForPersistedProject(page, projectName) {
     // Wait for its mutation lock to release before issuing another workspace action.
     await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
       null, { timeout: 15000 });
-    await page.locator('#switchToDesignBtn').click();
-    try {
-      await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'design',
-        sourceProjectId, { timeout: 10000 });
-    } catch (error) {
-      const state = await page.evaluate(() => ({
-        project: typeof getCurrentProject === 'function' ? { id: getCurrentProject()?.id, type: getCurrentProject()?.type } : null,
-        mutationLock: typeof creatingProjectInFlight !== 'undefined' ? creatingProjectInFlight : 'unavailable',
-        syncStatus: document.getElementById('syncStatus')?.innerText || '',
-        visibleToasts: Array.from(document.querySelectorAll('[role=alert], [data-toast], .toast')).map(el => el.innerText).filter(Boolean).slice(-5)
-      }));
-      throw new Error('Workspace switch to design did not complete: ' + JSON.stringify(state) + '; ' + error.message);
+    const designWorkspaceSwitch = page.locator('#workspaceSwitchBtn');
+    await designWorkspaceSwitch.waitFor({ state: 'visible', timeout: 15000 });
+    if ((await page.locator('#workspaceSwitchLabel').innerText()).trim() === 'Diseño') {
+      await designWorkspaceSwitch.click();
     }
-    await page.waitForFunction(() => !document.getElementById('designStudioPanel')?.classList.contains('hidden'));
-    // Workspace type changes before the async persistence lock is released.
+    await page.waitForFunction(expected => getCurrentProject()?.id === expected &&
+      !!getCurrentProject()?.design &&
+      !document.getElementById('designStudioPanel')?.classList.contains('hidden'),
+      sourceProjectId, { timeout: 10000 });
+    // Workspace persistence runs asynchronously; wait before switching back to Web.
     await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
       null, { timeout: 15000 });
-    await page.locator('#switchToWebBtn').click();
-    await page.waitForFunction(expected => getCurrentProject()?.id === expected && getCurrentProject()?.type === 'web',
+    if ((await page.locator('#workspaceSwitchLabel').innerText()).trim() === 'Web') {
+      await designWorkspaceSwitch.click();
+    }
+    await page.waitForFunction(expected => getCurrentProject()?.id === expected &&
+      !document.getElementById('webWorkspacePanel')?.classList.contains('hidden'),
       sourceProjectId, { timeout: 10000 });
     assert.ok((await page.evaluate(() => getCurrentProject().code.html)).includes('data-page-id="' + targetProjectId + '"'),
       'web code must remain on the shared project after switching editors');
@@ -2192,12 +2190,12 @@ async function waitForPersistedProject(page, projectName) {
     // Long-run workspace-switch endurance: alternate Web/Design repeatedly and
     // verify the same project retains both representations after every cycle.
     for (let cycle = 1; cycle <= 12; cycle += 1) {
-      await page.locator('#switchToDesignBtn').click();
+      if ((await page.locator('#workspaceSwitchLabel').innerText()).trim() === 'Diseño') await page.locator('#workspaceSwitchBtn').click();
       await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'design' &&
         Array.isArray(getCurrentProject()?.design?.elements), sourceProjectId, { timeout: 10000 });
       await page.waitForFunction(() => typeof creatingProjectInFlight !== 'undefined' && !creatingProjectInFlight,
         null, { timeout: 15000 });
-      await page.locator('#switchToWebBtn').click();
+      if ((await page.locator('#workspaceSwitchLabel').innerText()).trim() === 'Web') await page.locator('#workspaceSwitchBtn').click();
       await page.waitForFunction(id => getCurrentProject()?.id === id && getCurrentProject()?.type === 'web' &&
         typeof getCurrentProject()?.code?.html === 'string', sourceProjectId, { timeout: 10000 });
       const retained = await page.evaluate(({ sourceProjectId, targetProjectId }) => {
