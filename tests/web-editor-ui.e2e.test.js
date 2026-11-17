@@ -51,7 +51,7 @@ async function setCode(page, lang, value) {
     await setCode(page, 'css', css);
     await setCode(page, 'js', js);
     await page.locator('#tab-html').click();
-    await page.locator('#editorPanel button[onclick="updatePreview()"]').click();
+    await page.locator('#previewPanel button[onclick="updatePreview()"]').click();
     const preview = page.frameLocator('#previewIframe');
     await preview.locator('#preview-action').waitFor({ state: 'visible' });
     assert.equal(await preview.locator('#preview-action').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(4, 5, 6)');
