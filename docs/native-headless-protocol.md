@@ -10,7 +10,7 @@ The assistant client submits structured JSON commands directly to PostgreSQL. It
 
 ## Assistant-side client
 
-The client uses the same CodeLab PostgreSQL database as the deployed app. Keep DATABASE_URL in the assistant runtime secret store; never commit it or send it to the browser.
+The client uses the same CodeLab PostgreSQL database as the deployed app. Keep DATABASE_URL in the assistant runtime secret store; never commit it or send it to the browser. For production, use a dedicated database role limited to reading the ADMIN account identity and inserting/reading command rows; do not give the assistant client the app's broad owner credentials when a restricted role can be provisioned.
 
     import { createAssistantHeadlessClient } from './assistant-headless-client.mjs';
     const codelab = createAssistantHeadlessClient();
