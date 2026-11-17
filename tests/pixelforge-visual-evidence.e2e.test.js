@@ -20,8 +20,11 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   page.on('pageerror', e => errors.push(String(e.stack || e.message || e)));
 
   try {
-    await page.goto(BASE_URL + '/pixelforge/index.html?createDemo=orbital-12', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await context.addCookies([{ name: 'codelab_sid', value: 'a'.repeat(48), domain: '127.0.0.1', path: '/', httpOnly: true }]);
+    await page.goto(BASE_URL + '/pixelforge/index.html?createDemo=orbital-12&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
+    await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
+    await page.waitForFunction(() => /12 frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
     await page.locator('#animation-frames .animation-frame').first().waitFor({ state: 'visible', timeout: 30000 });
 
     const layers = await page.locator('#layer-count').innerText();
