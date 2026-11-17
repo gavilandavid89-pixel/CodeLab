@@ -2309,6 +2309,10 @@ async function boot() {
       ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
       : await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
+      const appShell = document.querySelector('.app-shell');
+      const authGate = document.getElementById('pixelforgeAuthGate');
+      if (appShell) appShell.style.display = 'none';
+      if (authGate) authGate.style.display = 'flex';
       status('PixelForge está listo, pero esta instalación requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
       return;
     }
