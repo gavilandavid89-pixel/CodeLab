@@ -56,7 +56,7 @@ export function createAssistantHeadlessClient(options = {}) {
     ? Math.max(200, Math.min(5000, options.pollIntervalMs))
     : 700;
   const appBaseUrl = String(options.baseUrl || process.env.CODELAB_BASE_URL ||
-    'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+    'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
   const wakeTimeoutMs = Number.isInteger(options.wakeTimeoutMs)
     ? Math.max(5000, Math.min(120000, options.wakeTimeoutMs))
     : 60000;
