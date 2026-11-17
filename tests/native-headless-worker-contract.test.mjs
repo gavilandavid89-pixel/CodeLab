@@ -10,6 +10,28 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workerPath = path.join(root, 'agent-bridge-worker.mjs');
 const source = fs.readFileSync(workerPath, 'utf8');
 
+test('explicit browser UI executor parses and is wired as a separate execution mode', async () => {
+  const browserModulePath = path.join(root, 'native-headless-browser.mjs');
+  const result = spawnSync(process.execPath, ['--check', browserModulePath], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const browserSource = fs.readFileSync(browserModulePath, 'utf8');
+  assert.match(browserSource, /execution_mode !== 'browser'/);
+  assert.match(browserSource, /open_screen/);
+  assert.match(browserSource, /open_panel/);
+  assert.match(browserSource, /case 'click'/);
+  assert.match(browserSource, /case 'scroll'/);
+  assert.match(browserSource, /case 'type'/);
+  assert.match(browserSource, /case 'select'/);
+  assert.match(browserSource, /case 'wait_for'/);
+  assert.match(browserSource, /case 'screenshot'/);
+  assert.match(browserSource, /case 'record_video'/);
+  assert.match(browserSource, /playwright-chromium-real-codelab-ui/);
+  assert.match(browserSource, /Cannot navigate to an external URL|cannot navigate to an external URL/);
+  assert.match(source, /case 'codelab_ui_execute'/);
+  assert.match(source, /executeExplicitCodeLabBrowser/);
+  assert.match(source, /execution_mode: 'browser'/);
+});
+
 test('native bridge worker parses as valid JavaScript', () => {
   const result = spawnSync(process.execPath, ['--check', workerPath], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -31,9 +53,10 @@ test('native command mailbox registers direct CodeLab code operations', () => {
   assert.match(source, /latestCode = \{ \.\.\.\(updated\[index\]\.code \|\| \{\}\) \}/);
   assert.match(source, /\}, \{ expectedRevision: payload\.base_revision \}\);/);
   assert.match(source, /codelab_project_get_code','codelab_project_update_code/);
-  assert.match(source, /'codelab_project_capture_png','codelab_project_record_video'/);
+  assert.match(source, /'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute'/);
   assert.match(source, /pg_get_constraintdef\(oid\) LIKE '%codelab_project_capture_png%'/);
   assert.match(source, /pg_get_constraintdef\(oid\) LIKE '%codelab_project_record_video%'/);
+  assert.match(source, /pg_get_constraintdef\(oid\) LIKE '%codelab_ui_execute%'/);
 });
 
 test('animation video export uses real Chromium recording and validates artifacts', () => {
@@ -65,6 +88,8 @@ test('assistant headless client validates the supported command contract', () =>
   assert.match(fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8'), /capturePixelForgeInterface: \(options = \{\}\) => run\('pixelforge_capture_interface', options\)/);
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_capture_png'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
+  assert.ok(NATIVE_ACTIONS.includes('codelab_ui_execute'));
+  assert.match(clientSource, /executeCodeLabUi: \(actions, options = \{\}\) =>/);
   const clientSource = fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8');
   assert.match(clientSource, /\/api\/health/);
   assert.match(clientSource, /CODELAB_BASE_URL/);
