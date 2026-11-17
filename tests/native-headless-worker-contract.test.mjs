@@ -33,7 +33,7 @@ test('native command mailbox registers direct CodeLab code operations', () => {
 
 test('animation video export uses real Chromium recording and validates artifacts', () => {
   assert.match(source, /case 'pixelforge_export_animation_video'/);
-  assert.match(source, /recordVideo: \{ dir: tempDir, size: \{ width, height \} \}/);
+  assert.match(source, /recordVideo: \{ dir: tempDir, size: \{ width, height \}, fps \}/);
   assert.match(source, /playwright-chromium-real-browser/);
   assert.match(source, /video\/webm/);
   assert.match(source, /NEON_STORAGE_HOST/);
