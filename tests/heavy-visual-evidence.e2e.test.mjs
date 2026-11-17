@@ -78,7 +78,7 @@ test('heavy visual evidence: real node graph, web navigation, polished drawing a
           '<section class="hero"><div><div class="kicker">EXPEDITION CONTROL</div><h1 id="home-title">Aurora Runner</h1><p>Navigate a multi-page visual experience generated from connected design nodes.</p><a id="go-destination" class="cta" href="#destination">Enter Expedition →</a></div><div class="orb"></div></section>' +
           '<section class="modules"><article class="module"><b>05</b> connected design layers</article><article class="module"><b>02</b> web destinations</article><article class="module"><b>01</b> live navigation route</article></section>' +
           '<section id="destination" class="hero hidden"><div><div class="kicker">DESTINATION</div><h2>Aurora Archive reached</h2><p id="arrival">The node route is working inside the web space.</p><a id="back-home" class="cta" href="#home">← Back to Command</a></div><div class="orb"></div></section>' +
-          '</main><script>const home=document.querySelector('#home-title').closest('.hero');const dest=document.querySelector('#destination');const sync=()=>{const d=location.hash==='#destination';home.classList.toggle('hidden',d);dest.classList.toggle('hidden',!d)};addEventListener('hashchange',sync);sync();</script></body></html>',
+          '</main><script>const home=document.querySelector("#home-title").closest(".hero");const dest=document.querySelector("#destination");const sync=()=>{const d=location.hash==="#destination";home.classList.toggle("hidden",d);dest.classList.toggle("hidden",!d)};addEventListener("hashchange",sync);sync();</script></body></html>',
         css: '', js: ''
       }
     };
