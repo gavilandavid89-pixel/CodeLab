@@ -28,11 +28,11 @@ jobs:
         run: npx playwright-core install ffmpeg
         env:
           PLAYWRIGHT_BROWSERS_PATH: '0'
-          HEADLESS_VISUAL_ARTIFACT_DIR: artifacts/native-headless-visuals
       - name: Run native headless contract tests
         run: npm run test:native-headless
         env:
           PLAYWRIGHT_BROWSERS_PATH: '0'
+          HEADLESS_VISUAL_ARTIFACT_DIR: artifacts/native-headless-visuals
       - name: Upload native headless visual evidence
         if: always()
         uses: actions/upload-artifact@v4
