@@ -2002,6 +2002,7 @@ async function main() {
            AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_animation_video%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_update_code%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_record_video%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_capture_png%'
       ) THEN
         ALTER TABLE codelab_agent_commands
           DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
