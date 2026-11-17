@@ -117,7 +117,7 @@ export async function executeCodeLabBrowserActions(options = {}) {
     throw new Error('Browser automation requires execution_mode=browser.');
   }
   assertActions(options.actions);
-  const baseUrl = String(options.baseUrl || 'http://127.0.0.1:3000').replace(/\\/$/, '');
+  const baseUrl = String(options.baseUrl || 'http://127.0.0.1:3000').replace(/\/$/, '');
   const origin = new URL(baseUrl).origin;
   const token = String(options.workspaceToken || '');
   if (!token) throw new Error('A CodeLab workspace token is required for browser automation.');
