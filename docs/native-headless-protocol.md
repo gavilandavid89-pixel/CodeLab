@@ -52,5 +52,5 @@ The video is captured by Chromium itself; it is not a fabricated GIF, a sequence
 - Code updates only permit the html, css, and js fields.
 - Video upload URLs are checked for HTTPS, exact storage host, bucket, and object key.
 - Proposal-based raster/design changes retain explicit approval; the client does not auto-approve them.
-- The native worker still requires DATABASE_URL and CODELAB_AGENT_BRIDGE_ENABLED not set to 0. The assistant client also needs network access to CODELAB_BASE_URL (defaults to the current CodeLab Render URL) so it can wake the app before queueing work.
+- The native worker still requires DATABASE_URL and CODELAB_AGENT_BRIDGE_ENABLED not set to 0. Runtime requirements: Node.js 22.17 or newer (matching @sparticuz/chromium 153), plus the Playwright FFmpeg binary. The package postinstall hook installs FFmpeg automatically; CI installs it explicitly because dependency scripts are disabled there. The assistant client also needs network access to CODELAB_BASE_URL (defaults to the current CodeLab Render URL) so it can wake the app before queueing work.
 - Run npm run test:native-headless to execute the focused native bridge contract tests.
