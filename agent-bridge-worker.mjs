@@ -1668,7 +1668,8 @@ async function capturePixelForgeInterface(payload = {}) {
         }
         let targetUrl;
         try { targetUrl = new URL(target.url); } catch { throw new Error('Invalid Neon presigned URL for ' + role + '.'); }
-        if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost) {
+        if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+          targetUrl.port !== '' || targetUrl.username || targetUrl.password) {
           throw new Error('Neon capture upload URL host validation failed for ' + role + '.');
         }
         const bucketSegment = decodeURIComponent(targetUrl.pathname.split('/').filter(Boolean)[0] || '');
@@ -1677,6 +1678,7 @@ async function capturePixelForgeInterface(payload = {}) {
         }
         const uploaded = await fetch(targetUrl, {
           method: 'PUT',
+          redirect: 'error',
           headers: { 'Content-Type': 'image/png' },
           body: bytes,
           signal: AbortSignal.timeout(30000)
