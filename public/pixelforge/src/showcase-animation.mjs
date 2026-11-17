@@ -28,9 +28,9 @@ function limb(buf,w,h,a,b,c1,c2,thickness=2){
 }
 function joint(buf,w,h,p,r,c){ellipse(buf,w,h,p[0],p[1],r,r,c);}
 function drawPerson(buf,w,h,frame){
-  const N=24, walk=Math.min(frame,15), crouch=frame>=15;
-  const walkT=walk/15;
-  const crouchT=crouch?Math.min(1,(frame-15)/8):0;
+  const N=20, walk=Math.min(frame,13), crouch=frame>=13;
+  const walkT=walk/13;
+  const crouchT=crouch?Math.min(1,(frame-13)/6):0;
   const step=Math.sin(walkT*Math.PI*6);
   const step2=Math.sin(walkT*Math.PI*6+Math.PI);
   const bob=walk<15 ? Math.abs(Math.sin(walkT*Math.PI*6))*1.5 : 0;
@@ -153,7 +153,7 @@ export function createOrbitalShowcase(){
 
   const animation=PixelForgeAnimation.fromDocument(doc,{fps:16});
   const durationMs=Math.round(1000/16);
-  for(let i=0;i<24;i++){
+  for(let i=0;i<20;i++){
     if(i>0)animation.addFrame({duplicate:false,durationMs});
     const bp=new Uint8ClampedArray(bg), gp=new Uint8ClampedArray(gb), pp=new Uint8ClampedArray(pb), dp=new Uint8ClampedArray(db);
     drawPerson(pp,width,height,i);
