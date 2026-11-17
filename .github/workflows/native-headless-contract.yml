@@ -24,5 +24,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install Playwright video encoder
+        run: npx playwright-core install ffmpeg
       - name: Run native headless contract tests
         run: npm run test:native-headless
