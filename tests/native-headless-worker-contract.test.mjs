@@ -118,7 +118,6 @@ test('assistant client wakes CodeLab and submits/polls a command through the ADM
     });
   };
   const client = createAssistantHeadlessClient({
-    connectionString: 'postgres://unit-test.invalid/codelab',
     pool, baseUrl: 'https://codelab.test/', pollIntervalMs: 200
   });
   try {
