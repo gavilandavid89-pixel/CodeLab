@@ -42,7 +42,7 @@ The client discovers the ADMIN workspace ID from codelab_accounts, calls the exi
 
 ## Video artifact storage
 
-For durable video output, the command may include a trusted Neon presigned uploadTarget. The worker accepts HTTPS uploads only to the configured Neon storage host, public capture bucket, and exact object key under pixelforge/exports/. The content type is video/webm. Without an upload target, small videos (up to 8 MiB) are returned inline as base64; larger videos fail clearly instead of bloating PostgreSQL command rows.
+For durable video output, the command may include a trusted Neon presigned uploadTarget. The assistant should request a short-lived upload URL through Neon Storage's presign_storage_object action (operation=upload, content_type=video/webm) and pass its URL with the intended objectKey. The worker accepts HTTPS uploads only to the configured Neon storage host, public capture bucket, and exact object key under pixelforge/exports/. The result includes a publicUrl for later inspection. Without an upload target, small videos (up to 8 MiB) are returned inline as base64; larger videos fail clearly instead of bloating PostgreSQL command rows.
 
 The PixelForge video is captured from the actual PixelForge editor running in Chromium, using its own playback engine rather than a synthetic frame slideshow. The editor's headless capture mode starts one native playback cycle and stops without saving or mutating the project. Frame timing follows the saved durationMs values, and Playwright's WebM recorder is configured with the source timeline FPS (or the requested FPS for CodeLab web projects).
 
