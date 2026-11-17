@@ -41,8 +41,8 @@ const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 // MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
 const PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024;
 const PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
-// Temporary isolated guest workspace for PixelForge. Set PIXELFORGE_GUEST_MODE=false to restore account-scoped access.
-const PIXELFORGE_GUEST_MODE = String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() !== 'false';
+// Account-backed PixelForge is the default. Temporary guest mode is opt-in for isolated demos/tests.
+const PIXELFORGE_GUEST_MODE = String(process.env.PIXELFORGE_GUEST_MODE || 'false').toLowerCase() === 'true';
 const PIXELFORGE_GUEST_WORKSPACE_ID = 'ws_pixelforge_guest';
 const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
 const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
@@ -563,6 +563,19 @@ function decodePixelForgeProjectId(value) {
   } catch (_) {
     return null;
   }
+}
+
+async function ensureWorkspaceStateTable() {
+  if (!accountPool) return;
+  await accountPool.query(`
+    CREATE TABLE IF NOT EXISTS codelab_workspace_states (
+      workspace_id TEXT PRIMARY KEY,
+      revision INTEGER NOT NULL DEFAULT 0,
+      state JSONB NOT NULL,
+      owner JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 async function ensureAuthSessionTable() {
@@ -2755,7 +2768,7 @@ try {
 
 seedAdminAccountIfConfigured().then(async () => {
   if (accountPool) {
-    await accountPool.query('SELECT 1 FROM codelab_workspace_states LIMIT 0');
+    await ensureWorkspaceStateTable();
     await ensureAuthSessionTable();
     await migrateLegacySessionsToDatabase();
     await cleanupExpiredSessions();
