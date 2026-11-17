@@ -41,6 +41,8 @@ test('animation video export uses real Chromium recording and validates artifact
   assert.match(source, /playwright-chromium-real-browser/);
   assert.match(source, /video\/webm/);
   assert.match(source, /NEON_STORAGE_HOST/);
+  assert.match(source, /targetUrl\.port !== '' \|\| targetUrl\.username \|\| targetUrl\.password/);
+  assert.match(source, /redirect: 'error'/);
   assert.match(source, /serializedFrameBytes > 16 \* 1024 \* 1024/);
   assert.match(source, /totalDurationMs > 60000/);
   assert.match(source, /pixelforge_export_animation_video/);
