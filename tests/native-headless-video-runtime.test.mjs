@@ -174,14 +174,16 @@ test('real PixelForge editor loads a saved animation and records its native play
     });
     assert.equal(uiRun.execution_mode, 'browser');
     assert.equal(uiRun.passed, true);
-    assert.equal(uiRun.actionCount, 11);
+    assert.equal(uiRun.actionCount, 12);
     assert.equal(uiRun.ui_actions[0].type, 'open_screen');
     assert.equal(uiRun.ui_actions[3].type, 'type');
     assert.equal(uiRun.ui_actions[5].type, 'wait_for');
     assert.equal(uiRun.ui_actions[6].type, 'open_panel');
+    assert.equal(uiRun.ui_actions[7].type, 'wait_for');
     assert.equal(uiRun.ui_actions[8].type, 'type');
     assert.equal(uiRun.ui_actions[9].type, 'scroll');
     assert.equal(uiRun.ui_actions[10].type, 'screenshot');
+    assert.equal(uiRun.ui_actions[11].type, 'record_video');
     assert.ok(uiRun.screenshots[0].sizeBytes > 1000);
     assert.ok(uiRun.video && uiRun.video.sizeBytes > 1000);
   } finally {
