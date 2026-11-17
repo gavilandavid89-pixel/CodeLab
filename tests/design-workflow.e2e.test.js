@@ -1984,6 +1984,23 @@ async function waitForPersistedProject(page, projectName) {
     // End-to-end node graph: a specific option routes to another design page,
     // and conversion emits both connected pages as a working single-page web app.
     const sourceProjectId = await page.evaluate(() => getCurrentProject().id);
+
+    // Build a deliberately rich source interface before opening the node graph:
+    // the connection test must exercise a realistic dashboard rather than a
+    // handful of empty cards. The template is applied through the real editor UI.
+    await page.locator('#designTemplatesButton').click();
+    await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#designTemplateDashboard').click();
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length >= 11);
+    const sourceInterfaceMetrics = await page.evaluate(() => ({
+      layers: document.querySelectorAll('#designCanvas [data-design-id]').length,
+      canvasText: document.querySelector('#designCanvas')?.innerText || '',
+      buttons: document.querySelectorAll('#designCanvas [data-design-id]').length
+    }));
+    assert.ok(sourceInterfaceMetrics.layers >= 11, 'node source page must contain a substantial real interface');
+    assert.match(sourceInterfaceMetrics.canvasText, /Panel de control|Resumen|Actividad/i);
+
     await page.locator(`button[onclick="addDesignElement('button')"]`).click();
     const flowButtonId = await page.evaluate(() => getCurrentProject().design.elements.filter(el => el.type === 'button').at(-1)?.id);
     await page.locator('#studioView button').filter({ hasText: 'Proyectos' }).first().click();
@@ -1995,7 +2012,20 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('#newProjectModal button').filter({ hasText: 'Crear Proyecto' }).click();
     await page.locator('#designStudioPanel').waitFor({ state: 'visible', timeout: 15000 });
     const targetProjectId = await page.evaluate(() => getCurrentProject().id);
-    await page.locator(`button[onclick="addDesignElement('heading')"]`).click();
+
+    // Give the destination equal visual weight so the graph is tested against
+    // real, non-trivial pages on both sides of the connection.
+    await page.locator('#designTemplatesButton').click();
+    await page.waitForSelector('#designTemplatesMenu:not(.hidden)');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#designTemplateDashboard').click();
+    await page.waitForFunction(() => document.querySelectorAll('#designCanvas [data-design-id]').length >= 11);
+    const targetInterfaceMetrics = await page.evaluate(() => ({
+      layers: document.querySelectorAll('#designCanvas [data-design-id]').length,
+      text: document.querySelector('#designCanvas')?.innerText || ''
+    }));
+    assert.ok(targetInterfaceMetrics.layers >= 11, 'node destination page must contain a substantial real interface');
+    assert.match(targetInterfaceMetrics.text, /Panel de control|Resumen|Actividad/i);
     await page.locator('#openDesignFlowGraph').click();
     await page.locator('#designFlowGraphModal').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#designFlowChoose').click();
