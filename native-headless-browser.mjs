@@ -200,6 +200,10 @@ export async function executeCodeLabBrowserActions(options = {}) {
       };
     }
 
+    const expectedSandboxPageErrors = pageErrors.filter(message =>
+      /Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag\./.test(message)
+    );
+    const unexpectedPageErrors = pageErrors.filter(message => !expectedSandboxPageErrors.includes(message));
     const expectedSandboxConsoleErrors = consoleErrors.filter(message =>
       /Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag\./.test(message)
     );
@@ -213,10 +217,11 @@ export async function executeCodeLabBrowserActions(options = {}) {
       ui_actions: trace,
       screenshots,
       ...(videoArtifact ? { video: videoArtifact } : {}),
-      pageErrors,
+      pageErrors: unexpectedPageErrors,
       consoleErrors: unexpectedConsoleErrors,
+      expectedPageErrors: expectedSandboxPageErrors,
       expectedConsoleErrors: expectedSandboxConsoleErrors,
-      passed: pageErrors.length === 0 && unexpectedConsoleErrors.length === 0
+      passed: unexpectedPageErrors.length === 0 && unexpectedConsoleErrors.length === 0
     };
   } finally {
     if (context) await context.close().catch(() => {});
