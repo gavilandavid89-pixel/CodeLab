@@ -1306,6 +1306,173 @@ async function updateCodeLabProjectCode(command) {
   };
 }
 
+
+async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
+  if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
+      !target.objectKey.startsWith(keyPrefix) || target.objectKey.includes('..') ||
+      !/^[a-zA-Z0-9._/-]+$/.test(target.objectKey)) {
+    throw new Error('A valid Neon artifact upload target under ' + keyPrefix + ' is required.');
+  }
+  const targetUrl = new URL(target.url);
+  const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
+  const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
+  const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+  if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+      pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
+    throw new Error('Neon artifact URL must target the exact object in the configured public capture bucket.');
+  }
+  const uploaded = await fetch(targetUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: bytes,
+    signal: AbortSignal.timeout(45000)
+  });
+  if (!uploaded.ok) throw new Error('Neon artifact upload failed (HTTP ' + uploaded.status + ').');
+  return {
+    stored: true,
+    provider: 'neon-object-storage',
+    bucket: captureBucket,
+    access: 'public_read',
+    objectKey: target.objectKey,
+    mimeType,
+    sizeBytes: bytes.length
+  };
+}
+async function openCodeLabProjectRoute(project, context, page) {
+  await context.addInitScript(({ id, token }) => {
+    localStorage.setItem('codelab_xd_workspace_v4', id);
+    localStorage.setItem('codelab_xd_workspace_token_v1', token);
+  }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+    ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+  const response = await page.goto(baseUrl + '/?projectId=' + encodeURIComponent(project.id), {
+    waitUntil: 'domcontentloaded', timeout: 45000
+  });
+  if (!response || !response.ok()) {
+    throw new Error('CodeLab project route returned HTTP ' + (response?.status() || 'no response'));
+  }
+  await page.waitForFunction(expectedName => {
+    const studio = document.getElementById('studioView');
+    const title = document.getElementById('currentProjectTitle');
+    return !!studio && !studio.classList.contains('hidden') && !!title &&
+      title.textContent.trim() === expectedName;
+  }, project.name, { timeout: 45000 });
+  await page.frameLocator('#previewIframe').locator('body').waitFor({ state: 'visible', timeout: 45000 });
+  return { baseUrl, routeUrl: baseUrl + '/?projectId=' + encodeURIComponent(project.id) };
+}
+async function captureCodeLabProjectPng(project, payload = {}) {
+  if (!project.code?.html || !/<!doctype html>/i.test(project.code.html)) {
+    throw new Error('The saved project has no complete HTML document to capture.');
+  }
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args, executablePath: await chromium.executablePath(),
+      headless: true, timeout: 60000
+    });
+    const width = Number.isInteger(payload.width) ? Math.max(320, Math.min(2560, payload.width)) : 1440;
+    const height = Number.isInteger(payload.height) ? Math.max(240, Math.min(1800, payload.height)) : 1000;
+    const context = await browser.newContext({
+      viewport: { width, height }, deviceScaleFactor: 1, colorScheme: 'dark'
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => {
+      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+    });
+    const route = await openCodeLabProjectRoute(project, context, page);
+    const screenshot = payload.target === 'page'
+      ? await page.screenshot({ type: 'png', fullPage: payload.full_page !== false, animations: 'disabled' })
+      : await page.frameLocator('#previewIframe').locator('body').screenshot({ type: 'png', animations: 'disabled' });
+    if (screenshot.length > 8 * 1024 * 1024) throw new Error('CodeLab PNG exceeds the 8 MiB artifact limit.');
+    let artifact;
+    if (payload.uploadTarget) {
+      artifact = await uploadNativeArtifact(payload.uploadTarget, screenshot, 'image/png', 'codelab/exports/');
+    } else {
+      artifact = { stored: false, mimeType: 'image/png', sizeBytes: screenshot.length, dataBase64: screenshot.toString('base64') };
+    }
+    return {
+      captureMethod: 'playwright-chromium-real-browser',
+      projectId: project.id,
+      revision: payload.revision ?? null,
+      routeUrl: route.routeUrl,
+      viewport: { width, height },
+      pageErrors,
+      passed: pageErrors.length === 0,
+      artifact
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+async function recordCodeLabProjectVideo(project, payload = {}) {
+  if (!project.code?.html || !/<!doctype html>/i.test(project.code.html)) {
+    throw new Error('The saved project has no complete HTML document to record.');
+  }
+  const durationMs = Number.isInteger(payload.duration_ms)
+    ? payload.duration_ms
+    : 5000;
+  if (durationMs < 1000 || durationMs > 30000) throw new Error('CodeLab project video duration must be from 1 to 30 seconds.');
+  const width = Number.isInteger(payload.width) ? Math.max(320, Math.min(1920, payload.width)) : 1280;
+  const height = Number.isInteger(payload.height) ? Math.max(240, Math.min(1080, payload.height)) : 720;
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-project-video-'));
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args, executablePath: await chromium.executablePath(),
+      headless: true, timeout: 60000
+    });
+    const context = await browser.newContext({
+      viewport: { width, height }, deviceScaleFactor: 1,
+      colorScheme: 'dark', recordVideo: { dir: tempDir, size: { width, height } }
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    const consoleErrors = [];
+    page.on('pageerror', error => {
+      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 30) {
+        consoleErrors.push(message.text().slice(0, 300));
+      }
+    });
+    const route = await openCodeLabProjectRoute(project, context, page);
+    await page.waitForTimeout(durationMs);
+    const video = page.video();
+    await page.close();
+    await context.close();
+    const videoPath = await video.path();
+    const stat = fs.statSync(videoPath);
+    if (!stat.isFile() || stat.size < 1000) throw new Error('Chromium did not produce a valid CodeLab project video.');
+    if (stat.size > 24 * 1024 * 1024) throw new Error('CodeLab project video exceeds the 24 MiB artifact limit.');
+    const bytes = fs.readFileSync(videoPath);
+    const artifact = payload.uploadTarget
+      ? await uploadNativeArtifact(payload.uploadTarget, bytes, 'video/webm', 'codelab/exports/')
+      : (bytes.length <= 8 * 1024 * 1024
+        ? { stored: false, mimeType: 'video/webm', sizeBytes: bytes.length, dataBase64: bytes.toString('base64') }
+        : null);
+    if (!artifact) throw new Error('Video exceeds the inline result limit; provide a presigned Neon uploadTarget.');
+    return {
+      captureMethod: 'playwright-chromium-real-browser',
+      projectId: project.id,
+      routeUrl: route.routeUrl,
+      viewport: { width, height },
+      format: 'webm',
+      durationMs,
+      pageErrors,
+      consoleErrors,
+      passed: pageErrors.length === 0 && consoleErrors.length === 0,
+      artifact
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function inspectCodeLabProject(command) {
   const state = await loadAdminWorkspace();
   if (command.payload?.dashboard_test === true) {
@@ -1720,6 +1887,22 @@ async function processCommand(command) {
     case 'codelab_project_update_code':
       await finish(command.command_id, 'succeeded', await updateCodeLabProjectCode(command));
       return;
+    case 'codelab_project_capture_png': {
+      const state = await loadAdminWorkspace();
+      assertCodeLabProjectId(payload.project_id);
+      const project = state.projects.find(item => item && item.id === payload.project_id);
+      if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
+      await finish(command.command_id, 'succeeded', await captureCodeLabProjectPng(project, { ...payload, revision: state.revision }));
+      return;
+    }
+    case 'codelab_project_record_video': {
+      const state = await loadAdminWorkspace();
+      assertCodeLabProjectId(payload.project_id);
+      const project = state.projects.find(item => item && item.id === payload.project_id);
+      if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
+      await finish(command.command_id, 'succeeded', await recordCodeLabProjectVideo(project, payload));
+      return;
+    }
     case 'codelab_project_connect':
       await finish(command.command_id, 'succeeded', await connectCodeLabProject(command));
       return;
@@ -1818,6 +2001,7 @@ async function main() {
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_connect%'
            AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_animation_video%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_update_code%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_record_video%'
       ) THEN
         ALTER TABLE codelab_agent_commands
           DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
@@ -1829,7 +2013,8 @@ async function main() {
             'pixelforge_export_image','pixelforge_capture_interface','pixelforge_export_animation_video',
             'codelab_project_create','codelab_project_convert_to_web',
             'codelab_project_inspect','codelab_project_connect',
-            'codelab_project_get_code','codelab_project_update_code'
+            'codelab_project_get_code','codelab_project_update_code',
+            'codelab_project_capture_png','codelab_project_record_video'
           ]));
       END IF;
     END
