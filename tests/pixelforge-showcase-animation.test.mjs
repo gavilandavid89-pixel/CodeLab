@@ -33,9 +33,9 @@ test('builds a complete 18-frame walk-to-crouch animation with independent raste
   const thirdDetails = animation.getLayerPixels(2, doc.layers[3].id);
   assert.notDeepEqual(firstDetails, thirdDetails, 'lighting/details cel should animate independently');
   const probe = firstCharacter.findIndex(value => value !== 0);
-  const original = firstShip[probe];
-  firstShip[probe] = original ^ 0xff;
-  assert.equal(animation.getLayerPixels(0, doc.layers[3].id)[probe], original,
+  const original = firstCharacter[probe];
+  firstCharacter[probe] = original ^ 0xff;
+  assert.equal(animation.getLayerPixels(0, doc.layers[2].id)[probe], original,
     'returned cel data must be isolated from the saved animation');
 });
 
