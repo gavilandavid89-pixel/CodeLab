@@ -31,7 +31,7 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   page.on('pageerror', e => errors.push(String(e.stack || e.message || e)));
 
   try {
-    await page.goto(visualBase + '/pixelforge/index.html?createDemo=orbital-12&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(visualBase + '/pixelforge/index.html?createDemo=walk-crouch-18&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
     await page.waitForFunction(() => /18 frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
