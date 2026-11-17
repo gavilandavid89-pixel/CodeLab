@@ -42,7 +42,7 @@ export function validateCommandInput(action, payload = {}, ttlMs = 120000) {
 
 export function createAssistantHeadlessClient(options = {}) {
   const connectionString = String(options.connectionString || process.env.DATABASE_URL || '').trim();
-  if (!connectionString) throw new Error('DATABASE_URL is required by the assistant headless client.');
+  if (!options.pool && !connectionString) throw new Error('DATABASE_URL is required by the assistant headless client.');
   const pool = options.pool || new Pool({
     connectionString,
     ssl: options.ssl === false || process.env.CODELAB_DATABASE_SSL === 'disable'
