@@ -17,10 +17,14 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   });
   const page = await context.newPage();
   const errors = [];
+  const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
+  await fs.mkdir(path.join(dataDir, 'sessions'), { recursive: true });
+  const sessionId = 'a'.repeat(48);
+  await fs.writeFile(path.join(dataDir, 'sessions', sessionId + '.json'), JSON.stringify({ id: sessionId, user: { id: 'pixelforge-visual-user', provider: 'github', name: 'PIXELFORGE_VISUAL_TEST', role: 'user' }, createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000 }), { mode: 0o600 });
   page.on('pageerror', e => errors.push(String(e.stack || e.message || e)));
 
   try {
-    await context.addCookies([{ name: 'codelab_sid', value: 'a'.repeat(48), domain: '127.0.0.1', path: '/', httpOnly: true }]);
+    await context.addCookies([{ name: 'codelab_sid', value: sessionId, domain: '127.0.0.1', path: '/', httpOnly: true }]);
     await page.goto(BASE_URL + '/pixelforge/index.html?createDemo=orbital-12&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
