@@ -281,9 +281,8 @@ test('real CodeLab project route renders saved web code and records WebM', {
         { type: 'type', selector: '#searchProjectInput', text: 'Headless' },
         { type: 'open_screen', path: '/?projectId=' + encodeURIComponent(project.id) },
         { type: 'wait_for', selector: '#studioView', state: 'visible' },
-        { type: 'open_panel', selector: 'button[onclick="editCurrentProjectName()"]' },
-        { type: 'wait_for', selector: '#newProjectNameInput', state: 'visible' },
-        { type: 'type', selector: '#newProjectNameInput', text: 'Headless UI temporary name' },
+        { type: 'open_panel', selector: 'button[onclick="toggleConsoleDrawer()"]' },
+        { type: 'wait_for', selector: '#consoleModal', state: 'visible' },
         { type: 'scroll', amount: 450 },
         { type: 'screenshot', selector: '#studioView' },
         { type: 'record_video', duration_ms: 1000 }
@@ -291,16 +290,15 @@ test('real CodeLab project route renders saved web code and records WebM', {
     });
     assert.equal(uiRun.execution_mode, 'browser');
     assert.equal(uiRun.passed, true);
-    assert.equal(uiRun.actionCount, 12);
+    assert.equal(uiRun.actionCount, 11);
     assert.equal(uiRun.ui_actions[0].type, 'open_screen');
     assert.equal(uiRun.ui_actions[3].type, 'type');
     assert.equal(uiRun.ui_actions[5].type, 'wait_for');
     assert.equal(uiRun.ui_actions[6].type, 'open_panel');
     assert.equal(uiRun.ui_actions[7].type, 'wait_for');
-    assert.equal(uiRun.ui_actions[8].type, 'type');
-    assert.equal(uiRun.ui_actions[9].type, 'scroll');
-    assert.equal(uiRun.ui_actions[10].type, 'screenshot');
-    assert.equal(uiRun.ui_actions[11].type, 'record_video');
+    assert.equal(uiRun.ui_actions[8].type, 'scroll');
+    assert.equal(uiRun.ui_actions[9].type, 'screenshot');
+    assert.equal(uiRun.ui_actions[10].type, 'record_video');
     assert.ok(uiRun.screenshots[0].sizeBytes > 1000);
     assert.ok(uiRun.video && uiRun.video.sizeBytes > 1000);
   } finally {
