@@ -1816,6 +1816,8 @@ async function main() {
          WHERE conrelid = 'codelab_agent_commands'::regclass
            AND conname = 'codelab_agent_commands_action_check'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_connect%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_animation_video%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_update_code%'
       ) THEN
         ALTER TABLE codelab_agent_commands
           DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
