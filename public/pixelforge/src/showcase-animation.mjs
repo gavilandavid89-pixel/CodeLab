@@ -134,7 +134,7 @@ function drawPerson(buf,w,h,frame){
 
 
 export function createOrbitalShowcase(){
-  const width=128,height=128;
+  const width=96,height=120;
   const doc=new RasterDocument(width,height,'Person · Walk to Crouch · 24-frame study');
   doc.layers[0].name='Twilight background';
   const ground=doc.addLayer('Ground');
