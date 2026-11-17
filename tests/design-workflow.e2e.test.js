@@ -2001,7 +2001,7 @@ async function waitForPersistedProject(page, projectName) {
     await page.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     await page.waitForFunction(id => document.querySelector('[data-flow-action="' + id + '"]')?.className.includes('border-yellow-300'), flowButtonId, { timeout: 5000 });
     const flowSource = page.locator('[data-flow-source-port="' + flowButtonId + '"]');
-    const flowTarget = page.locator('[data-flow-target-project="' + targetProjectId + '"]:visible').first();
+    const flowTarget = page.locator('[data-flow-target-element][data-flow-target-project="' + targetProjectId + '"]:visible').first();
     await flowSource.waitFor({ state: 'visible' });
     // Use real pointer coordinates: locator.dragTo may trigger HTML drag events
     // without reliably reproducing the editor's pointer-driven connection gesture.
@@ -2022,7 +2022,7 @@ async function waitForPersistedProject(page, projectName) {
     }, { sourceProjectId, flowButtonId, targetProjectId }, { timeout: 10000 });
     // Invalid self-links must be rejected and must not overwrite the valid route.
     const selfSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
-    const selfCard = await page.locator('[data-flow-target-project="' + sourceProjectId + '"]:visible').first().boundingBox();
+    const selfCard = await page.locator('[data-flow-target-element][data-flow-target-project="' + sourceProjectId + '"]:visible').first().boundingBox();
     assert.ok(selfSource && selfCard, 'source port and same-page target bounds must exist for invalid-link test');
     await page.mouse.move(selfSource.x + selfSource.width / 2, selfSource.y + selfSource.height / 2);
     await page.mouse.down();
@@ -2047,7 +2047,7 @@ async function waitForPersistedProject(page, projectName) {
         return !(source?.design?.flowConnections || []).some(connection => connection.sourceElementId === flowButtonId);
       }, { sourceProjectId, flowButtonId }, { timeout: 5000 });
       const repeatSource = await page.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]').boundingBox();
-      const repeatTarget = await page.locator('[data-flow-target-project="' + targetProjectId + '"]:visible').first().boundingBox();
+      const repeatTarget = await page.locator('[data-flow-target-element][data-flow-target-project="' + targetProjectId + '"]:visible').first().boundingBox();
       assert.ok(repeatSource && repeatTarget, 'repeated option cycle ' + cycle + ' must retain source and target controls');
       await page.mouse.move(repeatSource.x + repeatSource.width / 2, repeatSource.y + repeatSource.height / 2);
       await page.mouse.down();
@@ -2083,7 +2083,7 @@ async function waitForPersistedProject(page, projectName) {
     await touchPage.locator('#designFlowChoose').click();
     await touchPage.locator('[data-flow-action="' + flowButtonId + '"][data-flow-source-project="' + sourceProjectId + '"]').click();
     const touchPort = touchPage.locator('[data-flow-source-port="' + flowButtonId + '"][data-flow-project="' + sourceProjectId + '"]');
-    const touchTarget = touchPage.locator('[data-flow-target-project="' + targetProjectId + '"]:visible').first();
+    const touchTarget = touchPage.locator('[data-flow-target-element][data-flow-target-project="' + targetProjectId + '"]:visible').first();
     await touchPort.waitFor({ state: 'visible', timeout: 10000 });
     const touchSourceBox = await touchPort.boundingBox();
     const touchTargetBox = await touchTarget.boundingBox();
