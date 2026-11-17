@@ -54,14 +54,15 @@ export function createAssistantHeadlessClient(options = {}) {
     connectionTimeoutMillis: 10000
   });
   const pollIntervalMs = Number.isInteger(options.pollIntervalMs)
-    ? Math.max(200, Math.min(5000, options.pollIntervalMs))
-    : 700;
+    ? Math.max(100, Math.min(5000, options.pollIntervalMs))
+    : 200;
   const appBaseUrl = String(options.baseUrl || process.env.CODELAB_BASE_URL ||
     'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
   const wakeTimeoutMs = Number.isInteger(options.wakeTimeoutMs)
     ? Math.max(5000, Math.min(120000, options.wakeTimeoutMs))
     : 120000;
   let workspaceIdPromise;
+  let healthCache = null;
 
   async function getWorkspaceId() {
     if (!workspaceIdPromise) {
@@ -81,6 +82,7 @@ export function createAssistantHeadlessClient(options = {}) {
   }
 
   async function wakeWorker() {
+    if (healthCache && Date.now() - healthCache.at < 5000) return healthCache.value;
     const response = await fetch(appBaseUrl + '/api/health', {
       method: 'GET',
       headers: { accept: 'application/json' },
@@ -91,10 +93,13 @@ export function createAssistantHeadlessClient(options = {}) {
     if (!response.ok || health?.ok !== true) {
       throw new Error('CodeLab service did not become healthy before native command submission (HTTP ' + response.status + ').');
     }
-    return { ok: true, version: health.version || null, baseUrl: appBaseUrl };
+    const value = { ok: true, version: health.version || null, baseUrl: appBaseUrl };
+    healthCache = { at: Date.now(), value };
+    return value;
   }
 
   async function submit(action, payload = {}, commandOptions = {}) {
+    const submittedAt = Date.now();
     const ttlMs = commandOptions.ttlMs ?? 120000;
     const normalized = validateCommandInput(action, payload, ttlMs);
     const workspaceId = await getWorkspaceId();
@@ -107,7 +112,8 @@ export function createAssistantHeadlessClient(options = {}) {
       "VALUES ($1, $2, $3, $4::jsonb, 'queued', $5, now(), now())",
       [commandId, workspaceId, normalized.action, JSON.stringify(normalized.payload), expiresAt]
     );
-    return { commandId, workspaceId, action, expiresAt: expiresAt.toISOString() };
+    return { commandId, workspaceId, action, expiresAt: expiresAt.toISOString(), submittedAt };
+  }
   }
 
   async function getCommand(commandId) {
@@ -145,7 +151,11 @@ export function createAssistantHeadlessClient(options = {}) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const command = await getCommand(commandId);
-      if (['succeeded', 'failed', 'rejected', 'expired'].includes(command.status)) return command;
+      if (['succeeded', 'failed', 'rejected', 'expired'].includes(command.status)) {
+        const finishedAt = command.finishedAt ? new Date(command.finishedAt).getTime() : Date.now();
+        const startedAt = command.startedAt ? new Date(command.startedAt).getTime() : null;
+        return { ...command, latency: { totalMs: Math.max(0, finishedAt - (command.createdAt ? new Date(command.createdAt).getTime() : deadline - timeoutMs)), queueMs: startedAt ? Math.max(0, startedAt - new Date(command.createdAt).getTime()) : null, executionMs: startedAt ? Math.max(0, finishedAt - startedAt) : null } };
+      }
       if (command.status === 'awaiting_approval') return command;
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
