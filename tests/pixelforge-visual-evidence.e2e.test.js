@@ -22,7 +22,7 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   try {
     await page.goto(BASE_URL + '/pixelforge/index.html?createDemo=orbital-12', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => /12/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
+    await page.locator('#animation-frames [data-frame-index]').first().waitFor({ state: 'visible', timeout: 30000 });
 
     const layers = await page.locator('#layer-count').innerText();
     const frames = await page.locator('#animation-frames [data-frame-index]').count();
