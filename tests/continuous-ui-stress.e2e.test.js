@@ -206,7 +206,7 @@ async function createProject(page, type, name) {
       assert.ok(await page.locator('#tab-' + tab).isVisible(), 'web editor tab should be reachable: ' + tab);
     }
     await page.locator('#tab-html').click();
-    await page.locator('#editorPanel button[onclick="updatePreview()"]').click();
+    await page.locator('#previewPanel button[onclick="updatePreview()"]').click();
     await page.locator('#previewIframe').waitFor({ state: 'attached' });
     await page.keyboard.press('Control+s');
     await page.waitForTimeout(200);
