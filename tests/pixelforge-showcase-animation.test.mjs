@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
 
-test('builds a complete 24-frame walk-to-crouch animation with independent raster layers', () => {
+test('builds a complete 20-frame walk-to-crouch animation with independent raster layers', () => {
   const { doc, animation, loop } = createOrbitalShowcase();
-  assert.equal(doc.name, 'Person · Walk to Crouch · 24-frame study');
+  assert.equal(doc.name, 'Person · Walk to Crouch · 20-frame study');
   assert.equal(doc.width, 96);
   assert.equal(doc.height, 120);
   assert.equal(doc.layers.length, 4);
@@ -12,12 +12,12 @@ test('builds a complete 24-frame walk-to-crouch animation with independent raste
   assert.equal(doc.dirty, false, 'the freshly generated demo should be ready to save without phantom edits');
   assert.ok(doc.composite().some(value => value !== 0), 'the actual editor canvas should render the generated artwork');
   assert.deepEqual(doc.layers.map(layer => layer.name), ['Twilight background', 'Ground', 'Character', 'Lighting details']);
-  assert.equal(animation.frameCount, 24);
+  assert.equal(animation.frameCount, 20);
   assert.equal(animation.fps, 16);
   assert.equal(loop, true);
   assert.ok(Math.abs(animation.totalDurationMs - 1500) < 0.001, '18 frames at 12 FPS should last 1.5 seconds');
   assert.deepEqual(animation.layerIds, doc.layers.map(layer => layer.id));
-  for (let frame = 0; frame < 24; frame++) {
+  for (let frame = 0; frame < 20; frame++) {
     for (const layer of doc.layers) {
       const cel = animation.getLayerPixels(frame, layer.id);
       assert.equal(cel.length, 96 * 120 * 4);
@@ -27,7 +27,7 @@ test('builds a complete 24-frame walk-to-crouch animation with independent raste
   const checksum = pixels => { let n = 0; for (let i = 0; i < pixels.length; i += 97) n = (n + pixels[i] * (i + 1)) % 1000000007; return n; };
   const firstCharacter = animation.getLayerPixels(0, doc.layers[2].id);
   const secondCharacter = animation.getLayerPixels(1, doc.layers[2].id);
-  const crouchCharacter = animation.getLayerPixels(15, doc.layers[2].id);
+  const crouchCharacter = animation.getLayerPixels(13, doc.layers[2].id);
   assert.notEqual(checksum(firstCharacter), checksum(secondCharacter), 'character cel should move between walk frames');
   assert.notEqual(checksum(secondCharacter), checksum(crouchCharacter), 'character cel should visibly change into the crouch phase');
   const firstDetails = animation.getLayerPixels(0, doc.layers[3].id);
@@ -46,7 +46,7 @@ test('serializes the showcase as a valid editable PixelForge project payload', (
   snapshot.animation = { ...animation.toJSON(), loop };
   assert.equal(snapshot.format, 'pixelforge-project');
   assert.equal(snapshot.animation.format, 'pixelforge-animation');
-  assert.equal(snapshot.animation.frames.length, 24);
+  assert.equal(snapshot.animation.frames.length, 20);
   assert.equal(snapshot.animation.layerIds.length, 4);
   assert.ok(snapshot.layers.every(layer => typeof layer.pixels === 'string'));
   assert.ok(snapshot.animation.frames.every(frame => frame.cels.length === 4));
