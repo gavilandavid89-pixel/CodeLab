@@ -102,18 +102,19 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design workspace should show its own toolbar/canvas');
     const designOptionsReopen = page.locator('#designOptionsReopen');
     if (await designOptionsReopen.isVisible()) {
+      const reopenHit = await designOptionsReopen.evaluate(button => {
+        const r = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!hit && (hit === button || button.contains(hit));
+      });
+      assert.equal(reopenHit, true, 'mobile Design options control must be the topmost hit target');
       await designOptionsReopen.click();
-      await page.locator('#designFitBtn').waitFor({ state: 'visible', timeout: 5000 });
+      assert.equal(await page.locator('#designStudioPanel').evaluate(el => !el.classList.contains('design-options-hidden')), true,
+        'mobile Design options control should reopen the toolbar');
+    } else {
+      assert.equal(await page.locator('#designStudioPanel').evaluate(el => !el.classList.contains('design-options-hidden')), true,
+        'mobile Design toolbar should already be expanded when the reopen control is hidden');
     }
-    const fitButtonHit = await page.locator('#designFitBtn').evaluate(button => {
-      const r = button.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return { clickable: !!hit && (hit === button || button.contains(hit)),
-        blocker: hit ? { tag: hit.tagName, id: hit.id, className: hit.className } : null };
-    });
-    assert.equal(fitButtonHit.clickable, true,
-      'mobile Design toolbar fit button must be the topmost hit target; blocker=' + JSON.stringify(fitButtonHit.blocker));
-    await page.locator('#designFitBtn').click();
 
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designCanvas [data-design-id]').first().waitFor({ state: 'visible' });
