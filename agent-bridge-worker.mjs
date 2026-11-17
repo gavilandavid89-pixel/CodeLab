@@ -7,6 +7,7 @@ import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js';
+import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -1898,6 +1899,25 @@ async function mintNativeAdminHandoff() {
   };
 }
 
+async function executeExplicitCodeLabBrowser(command) {
+  const payload = command.payload || {};
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-browser-actions-'));
+  try {
+    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\\/$/, '');
+    return await executeCodeLabBrowserActions({
+      ...payload,
+      execution_mode: 'browser',
+      baseUrl,
+      workspaceId,
+      workspaceToken: workspaceTokenFor(workspaceId),
+      tempDir
+    });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   if (new Date(command.expires_at).getTime() < Date.now()) {
@@ -1937,6 +1957,9 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await recordCodeLabProjectVideo(project, payload));
       return;
     }
+    case 'codelab_ui_execute':
+      await finish(command.command_id, 'succeeded', await executeExplicitCodeLabBrowser(command));
+      return;
     case 'codelab_project_connect':
       await finish(command.command_id, 'succeeded', await connectCodeLabProject(command));
       return;
@@ -2036,6 +2059,7 @@ async function main() {
            AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_animation_video%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_update_code%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_record_video%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_ui_execute%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_capture_png%'
       ) THEN
         ALTER TABLE codelab_agent_commands
@@ -2049,7 +2073,7 @@ async function main() {
             'codelab_project_create','codelab_project_convert_to_web',
             'codelab_project_inspect','codelab_project_connect',
             'codelab_project_get_code','codelab_project_update_code',
-            'codelab_project_capture_png','codelab_project_record_video'
+            'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute'
           ]));
       END IF;
     END
