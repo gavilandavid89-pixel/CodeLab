@@ -5,7 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { chromium } from 'playwright';
+import chromiumBinary from '@sparticuz/chromium';
+import { chromium } from 'playwright-core';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,7 +58,8 @@ function makeDesignProject(id, name, accent, targetId = null) {
 test('heavy visual evidence: real node graph, web navigation, polished drawing and animation', { timeout: 240000, concurrency: false }, async () => {
   await ensureDir();
   const s = await startCodeLab();
-  const browser = await chromium.launch({ headless: true });
+  chromiumBinary.setGraphicsMode = false;
+  const browser = await chromium.launch({ headless: true, args: chromiumBinary.args, executablePath: await chromiumBinary.executablePath(), timeout: 60000 });
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, recordVideo: { dir: artifactDir, size: { width: 1440, height: 960 }, fps: 24 } });
   const page = await context.newPage();
   const pageErrors = [];
