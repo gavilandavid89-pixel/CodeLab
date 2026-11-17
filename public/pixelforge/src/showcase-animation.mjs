@@ -106,10 +106,10 @@ export function createOrbitalShowcase(){
     // Ground contact and tiny motion accents make the walk readable frame-to-frame.
     if(i<12){
       const foot=i%2?45:42; line(gp,width,height,foot,109,foot+9,109,P.groundHi);
-      if(i%3===0)put(dp,width,height,63,102,P.accent);
+      put(dp,width,height,63 + (i % 3),102,P.accent);
     }else{
       line(gp,width,height,55,99,70,99,P.groundHi);
-      put(dp,width,height,71,96,P.accent);
+      put(dp,width,height,71,96,P.accent); put(dp,width,height,72,97,P.white);
     }
     animation.setLayerPixels(i,doc.layers[0].id,bp);
     animation.setLayerPixels(i,ground.id,gp);
