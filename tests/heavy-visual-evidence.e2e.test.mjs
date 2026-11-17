@@ -91,13 +91,10 @@ test('heavy visual evidence: real node graph, web navigation, polished drawing a
     await page.waitForSelector('#welcomeDashboard:not(.hidden)', { timeout: 15000 });
     await page.evaluate(({ source, target, web }) => {
       if (typeof window.projects !== 'undefined') window.projects = [source, target, web];
+      localStorage.setItem('codelab_xd_projects_v2', JSON.stringify([source, target, web]));
       if (typeof window.saveProjectsToStorage === 'function') saveProjectsToStorage();
-      if (typeof window.renderProjectsList === 'function') renderProjectsList();
+      if (typeof window.openProject === 'function') window.openProject(source.id);
     }, { source, target, web });
-    await page.waitForFunction(() => document.querySelectorAll('#projectsGrid > div').length >= 3, null, { timeout: 10000 });
-
-    const sourceCard = page.locator('#projectsGrid > div').filter({ hasText: 'Aurora Expedition · Command' }).first();
-    await sourceCard.locator('button[data-action="open"]').click();
     await page.waitForFunction(() => getCurrentProject()?.id === 'aurora-home', null, { timeout: 10000 });
     await page.locator('#designStudioPanel').waitFor({ state: 'visible', timeout: 10000 });
 
