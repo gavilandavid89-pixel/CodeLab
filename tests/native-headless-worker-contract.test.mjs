@@ -38,12 +38,15 @@ test('native command mailbox registers direct CodeLab code operations', () => {
 test('animation video export uses real Chromium recording and validates artifacts', () => {
   assert.match(source, /case 'pixelforge_export_animation_video'/);
   assert.match(source, /recordVideo: \{ dir: tempDir, size: \{ width, height \}, fps \}/);
-  assert.match(source, /playwright-chromium-real-browser/);
+  assert.match(source, /playwright-chromium-real-pixelforge-app/);
+  assert.match(source, /\/pixelforge\/index\.html\?projectId=/);
+  assert.match(source, /dataset\.pixelforgeCapture/);
   assert.match(source, /video\/webm/);
   assert.match(source, /NEON_STORAGE_HOST/);
   assert.match(source, /targetUrl\.port !== '' \|\| targetUrl\.username \|\| targetUrl\.password/);
   assert.match(source, /redirect: 'error'/);
-  assert.match(source, /serializedFrameBytes > 16 \* 1024 \* 1024/);
+  assert.match(fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8'), /params\.get\('capture'\) === 'video'/);
+  assert.match(fs.readFileSync(path.join(root, 'public/pixelforge/src/editor.js'), 'utf8'), /startAnimationPlayback\(\)/);
   assert.match(source, /totalDurationMs > 60000/);
   assert.match(source, /pixelforge_export_animation_video/);
 });
