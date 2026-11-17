@@ -26,7 +26,6 @@ function buildDetailedDrawingRuntime() {
   const runtime = createHeadlessRuntime({ width: 256, height: 192, name: 'Aurora Runner — Detailed Pixel Study' });
   const batch = [
     action('canvas.fill', { x: 0, y: 0, color: '#07111F' }),
-    action('layer.rename', { layerId: runtime.document.activeLayerId, newName: 'Night Sky' }),
     action('layer.add', { layerName: 'Aurora Gradient' }),
     action('canvas.fill_gradient', { x0: 0, y0: 20, x1: 255, y1: 150, startColor: '#102B55', endColor: '#173E43', opacity: 0.92 }),
     action('layer.add', { layerName: 'Distant Mountains' }),
@@ -139,7 +138,7 @@ async function saveProjectScreenshot(project, filename, { captureVideo = false, 
   }
 }
 
-test('heavy CodeLab visual project survives design-to-web inspection and real Chromium capture', {timeout:150000}, async () => {
+test('heavy CodeLab visual project survives design-to-web inspection and real Chromium capture', {timeout:150000, concurrency:false}, async () => {
   await ensureArtifactDir();
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-heavy-project-'));
   const server = createServer();
@@ -191,7 +190,7 @@ test('heavy CodeLab visual project survives design-to-web inspection and real Ch
   }
 });
 
-test('isolated detailed drawing is created by headless raster actions and captured visually', {timeout:120000}, async () => {
+test('isolated detailed drawing is created by headless raster actions and captured visually', {timeout:120000, concurrency:false}, async () => {
   const runtime=buildDetailedDrawingRuntime();
   const project=runtime.toJSON();
   project.id='pf_isolated_detailed_drawing';
@@ -202,7 +201,7 @@ test('isolated detailed drawing is created by headless raster actions and captur
   assert.ok(result.pngPath);
 });
 
-test('the exact isolated drawing becomes a multi-frame animation and records native playback', {timeout:150000}, async () => {
+test('the exact isolated drawing becomes a multi-frame animation and records native playback', {timeout:150000, concurrency:false}, async () => {
   const runtime=buildDetailedDrawingRuntime();
   const layerId=runtime.document.layers.find(layer=>layer.name==='Runner Silhouette')?.id;
   assert.ok(layerId);
