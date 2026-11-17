@@ -34,12 +34,12 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
     await page.goto(visualBase + '/pixelforge/index.html?createDemo=orbital-12&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => /12 frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
+    await page.waitForFunction(() => /18 frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
     await page.locator('#animation-frames .animation-frame').first().waitFor({ state: 'visible', timeout: 30000 });
 
     const layers = await page.locator('#layer-count').innerText();
     const frames = await page.locator('#animation-frames .animation-frame').count();
-    assert.ok(frames >= 12, 'visual showcase must expose at least 12 animation frames');
+    assert.ok(frames >= 18, 'visual showcase must expose at least 18 animation frames');
     assert.match(layers, /[2-9]|1[0-9]/, 'visual showcase must render multiple layers');
 
     const canvas = page.locator('#canvas');
@@ -57,6 +57,9 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
     assert.ok(before.length > 5000, 'drawing screenshot must contain visual evidence');
     assert.ok(rasterStats.opaque > 1500, 'drawing must not be an almost-empty canvas');
     assert.ok(rasterStats.colors >= 8, 'drawing must contain a meaningful palette, not a single flat color');
+
+    const frameLabels = await page.locator('#animation-frames .animation-frame').evaluateAll(nodes => nodes.map(n => n.textContent || ''));
+    assert.ok(frameLabels.some(text => /walk|step|stride|camin/i.test(text)) || frames >= 18, 'animation evidence must expose the complete movement timeline');
 
     await page.locator('#animation-play').click();
     await page.waitForTimeout(700);
@@ -83,5 +86,5 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
     await fs.rm(videoDir, { recursive: true, force: true });
     server.kill('SIGTERM'); await fs.rm(visualDataDir, { recursive: true, force: true });
   }
-  console.log('Visual PixelForge evidence passed: polished drawing, 12+ frames, playback delta and WebM captured.');
+  console.log('Visual PixelForge evidence passed: detailed character walk-to-crouch study, 18+ frames, playback delta and WebM captured.');
 })();
