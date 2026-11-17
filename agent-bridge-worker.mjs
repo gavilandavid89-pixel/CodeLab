@@ -1324,11 +1324,13 @@ async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
   const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
   const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
   if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+      targetUrl.port !== '' || targetUrl.username || targetUrl.password ||
       pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
     throw new Error('Neon artifact URL must target the exact object in the configured public capture bucket.');
   }
   const uploaded = await fetch(targetUrl, {
     method: 'PUT',
+    redirect: 'error',
     headers: { 'Content-Type': mimeType },
     body: bytes,
     signal: AbortSignal.timeout(45000)
@@ -1793,7 +1795,8 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       }
       const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
       const targetUrl = new URL(uploadTarget.url);
-      if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost) {
+      if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+          targetUrl.port !== '' || targetUrl.username || targetUrl.password) {
         throw new Error('Animation upload URL host validation failed.');
       }
       const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
@@ -1803,6 +1806,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       }
       const uploaded = await fetch(targetUrl, {
         method: 'PUT',
+        redirect: 'error',
         headers: { 'Content-Type': 'video/webm' },
         body: videoBytes,
         signal: AbortSignal.timeout(45000)
