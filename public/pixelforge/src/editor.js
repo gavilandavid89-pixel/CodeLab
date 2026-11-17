@@ -2386,6 +2386,7 @@ async function boot() {
       if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
       animationLoop = false;
       $('#animation-loop').checked = false;
+      if (animation.activeFrameIndex !== 0) switchAnimationFrame(0, { autosave: false });
       animationPlayback.saveOnStop = false;
       startAnimationPlayback();
       if (!animationPlayback.playing) throw new Error('No se pudo iniciar la reproducción de la animación.');
