@@ -1348,6 +1348,7 @@ async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
 }
 async function openCodeLabProjectRoute(project, context, page) {
   await context.addInitScript(({ id, token }) => {
+    if (window.top !== window) return;
     localStorage.setItem('codelab_xd_workspace_v4', id);
     localStorage.setItem('codelab_xd_workspace_token_v1', token);
   }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
