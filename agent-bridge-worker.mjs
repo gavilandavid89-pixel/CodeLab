@@ -1370,6 +1370,11 @@ async function openCodeLabProjectRoute(project, context, page) {
   await page.frameLocator('#previewIframe').locator('body').waitFor({ state: 'visible', timeout: 45000 });
   return { baseUrl, routeUrl: baseUrl + '/?projectId=' + encodeURIComponent(project.id) };
 }
+function isExpectedSandboxLocalStorageError(error) {
+  return String(error && (error.message || error)).includes(
+    "Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag."
+  );
+}
 async function captureCodeLabProjectPng(project, payload = {}) {
   if (!project.code?.html || !/<!doctype html>/i.test(project.code.html)) {
     throw new Error('The saved project has no complete HTML document to capture.');
@@ -1388,8 +1393,11 @@ async function captureCodeLabProjectPng(project, payload = {}) {
     });
     const page = await context.newPage();
     const pageErrors = [];
+    const warnings = [];
     page.on('pageerror', error => {
-      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+      const message = String(error.message || error).slice(0, 300);
+      const target = isExpectedSandboxLocalStorageError(error) ? warnings : pageErrors;
+      if (target.length < 20) target.push(message);
     });
     const route = await openCodeLabProjectRoute(project, context, page);
     const screenshot = payload.target === 'page'
@@ -1409,6 +1417,7 @@ async function captureCodeLabProjectPng(project, payload = {}) {
       routeUrl: route.routeUrl,
       viewport: { width, height },
       pageErrors,
+      warnings,
       passed: pageErrors.length === 0,
       artifact
     };
@@ -1443,8 +1452,11 @@ async function recordCodeLabProjectVideo(project, payload = {}) {
     const page = await context.newPage();
     const pageErrors = [];
     const consoleErrors = [];
+    const warnings = [];
     page.on('pageerror', error => {
-      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+      const message = String(error.message || error).slice(0, 300);
+      const target = isExpectedSandboxLocalStorageError(error) ? warnings : pageErrors;
+      if (target.length < 20) target.push(message);
     });
     page.on('console', message => {
       if (message.type() === 'error' && consoleErrors.length < 30) {
@@ -1477,6 +1489,7 @@ async function recordCodeLabProjectVideo(project, payload = {}) {
       fps,
       pageErrors,
       consoleErrors,
+      warnings,
       passed: pageErrors.length === 0 && consoleErrors.length === 0,
       artifact
     };
