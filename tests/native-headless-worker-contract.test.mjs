@@ -52,6 +52,7 @@ test('animation video export uses real Chromium recording and validates artifact
 test('assistant headless client validates the supported command contract', () => {
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_update_code'));
   assert.ok(NATIVE_ACTIONS.includes('pixelforge_export_animation_video'));
+  assert.match(fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8'), /capturePixelForgeInterface: \(options = \{\}\) => run\('pixelforge_capture_interface', options\)/);
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_capture_png'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
   const clientSource = fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8');
