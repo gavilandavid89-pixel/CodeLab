@@ -26,6 +26,9 @@ test('native command mailbox registers direct CodeLab code operations', () => {
   assert.match(source, /Only html, css and js fields can be updated/);
   assert.match(source, /500000/);
   assert.match(source, /codelab_project_get_code','codelab_project_update_code/);
+  assert.match(source, /'codelab_project_capture_png','codelab_project_record_video'/);
+  assert.match(source, /pg_get_constraintdef\(oid\) LIKE '%codelab_project_capture_png%'/);
+  assert.match(source, /pg_get_constraintdef\(oid\) LIKE '%codelab_project_record_video%'/);
 });
 
 test('animation video export uses real Chromium recording and validates artifacts', () => {
