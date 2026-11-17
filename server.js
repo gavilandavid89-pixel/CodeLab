@@ -2,6 +2,7 @@
  * CodeLab XD Studio Pro v2.6.7
  * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
  */
+process.env.PLAYWRIGHT_BROWSERS_PATH ||= '0';
 const http = require('http');
 const https = require('https');
 const dns = require('dns').promises;
