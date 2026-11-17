@@ -34,12 +34,12 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
     await page.goto(visualBase + '/pixelforge/index.html?createDemo=walk-crouch-18&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => /18 frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
+    await page.waitForFunction(() => /\d+ frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
     await page.locator('#animation-frames .animation-frame').first().waitFor({ state: 'visible', timeout: 30000 });
 
     const layers = await page.locator('#layer-count').innerText();
     const frames = await page.locator('#animation-frames .animation-frame').count();
-    assert.ok(frames >= 18, 'visual showcase must expose at least 18 animation frames');
+    assert.ok(frames >= 24, 'visual showcase must expose the full 24-frame animation');
     assert.match(layers, /[2-9]|1[0-9]/, 'visual showcase must render multiple layers');
 
     const canvas = page.locator('#canvas');
