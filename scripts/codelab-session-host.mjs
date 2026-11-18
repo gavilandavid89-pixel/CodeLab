@@ -40,6 +40,15 @@ if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_
 const startupWatchdog = setTimeout(() => { console.error('A startup watchdog expired after 180 seconds.'); process.exit(1); }, 180000);
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
+const sessionStoreDir = path.join(dataDir, 'sessions');
+await fs.mkdir(sessionStoreDir, { recursive: true });
+const authSessionId = createHash('sha256').update('pixelforge-headless-auth:' + sessionId).digest('hex').slice(0, 48);
+await fs.writeFile(path.join(sessionStoreDir, authSessionId + '.json'), JSON.stringify({
+  id: authSessionId,
+  user: { id: 'pixelforge-headless-agent', provider: 'github', name: 'CODELAB_HEADLESS_AGENT', role: 'user' },
+  createdAt: Date.now(),
+  expiresAt: Date.now() + maxMinutes * 60000,
+}), { mode: 0o600 });
 const videoDir = process.env.CODELAB_SESSION_VIDEO_DIR || path.join(os.tmpdir(), 'codelab-session-video');
 await fs.mkdir(videoDir, { recursive: true });
 const port = await new Promise((resolve, reject) => {
