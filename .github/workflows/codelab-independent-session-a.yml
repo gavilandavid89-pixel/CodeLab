@@ -1,6 +1,14 @@
 name: CodeLab Independent Session A
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/codelab-independent-session-a.yml"
+      - ".github/workflows/codelab-independent-session-b.yml"
+      - "scripts/codelab-session-host.mjs"
+      - "public/pixelforge/**"
+      - "server.js"
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -11,7 +19,7 @@ permissions:
 
 jobs:
   session-a:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
