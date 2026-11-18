@@ -1,0 +1,35 @@
+name: PixelForge visual animation evidence
+
+on:
+  push:
+    branches: ["feat/native-headless-video-code-api"]
+  workflow_dispatch:
+
+jobs:
+  visual-animation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install runtime and browser dependencies
+        run: npm install --no-save --package-lock=false playwright
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Capture reference-guided soldier animation
+        shell: bash
+        run: |
+          export HEADLESS_VISUAL_ARTIFACT_DIR="$RUNNER_TEMP/codelab-visual-evidence"
+          node tests/pixelforge-visual-evidence.e2e.test.js
+      - name: Upload animation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-guided-soldier-animation
+          path: ${{ runner.temp }}/codelab-visual-evidence
+          if-no-files-found: error
+          retention-days: 14
