@@ -25,38 +25,24 @@ jobs:
           gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO"
           echo "A requested"
 
-      - name: Wait for A mailbox registration
+      - name: Resolve A session id without GitHub comment rendezvous
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          ready=""
+          run_id=""
           for i in $(seq 1 30); do
-            comments="$(gh api "repos/$GH_REPO/issues/492/comments?per_page=100")"
-            ready="$(printf '%s' "$comments" | node -e '
-              const fs=require("node:fs");
-              const a=JSON.parse(fs.readFileSync(0,"utf8"));
-              const now=Date.now();
-              const xs=a.filter(c=>String(c.body||"").startsWith("[CodeLab Session Ready]")).reverse();
-              for (const c of xs) {
-                try {
-                  const x=JSON.parse(String(c.body).slice("[CodeLab Session Ready]".length).trim());
-                  if (x.sessionId && x.token && x.mailbox && Date.parse(x.expiresAt)>now) {
-                    process.stdout.write(JSON.stringify(x)); process.exit(0);
-                  }
-                } catch {}
-              }
-              process.exit(2);
-            ')" || true
-            if [ -n "$ready" ]; then
-              echo "A_READY=$ready" >> "$GITHUB_ENV"
-              echo "$ready"
-              break
-            fi
+            run_id="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session A" --limit 5 --json databaseId,status,headSha --jq '.[] | select(.headSha == env.GITHUB_SHA) | .databaseId' | head -n 1)"
+            if [ -n "$run_id" ]; then break; fi
             sleep 5
           done
-          test -n "$ready" || { echo "A never became ready"; exit 1; }
+          test -n "$run_id"
+          session_id="independent-$run_id"
+          echo "A_RUN_ID=$run_id" >> "$GITHUB_ENV"
+          echo "A_SESSION_ID=$session_id" >> "$GITHUB_ENV"
+          echo "A_MAILBOX=https://codelab-pbw9.onrender.com" >> "$GITHUB_ENV"
+          echo "A session: $session_id"
 
       - name: Launch 5 independent B concurrently
         env:
