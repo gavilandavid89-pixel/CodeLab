@@ -141,12 +141,11 @@ cycle.push({ step: 'B2→A', operation: 'animation.frame.duplicate', nextIndex }
 
 const selected = await send({
   kind: 'pixelforge',
-  operation: 'batch',
+  operation: 'frame_context',
   project_id: created.projectId,
-  summary: 'B→A: select the frame returned by A',
-  actions: [{ name: 'animation.frame.set_active', index: nextIndex }],
+  frame_index: nextIndex,
 });
-if (!selected.context) throw new Error('A did not return context after selecting the new frame.');
+if (!selected.context) throw new Error('A did not return context after querying the new frame.');
 cycle.push({
   step: 'A→context',
   frame: selected.context.frame,
