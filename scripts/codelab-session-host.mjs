@@ -126,6 +126,42 @@ async function executePixelForge(request) {
   if (request.operation === 'list_projects') {
     return { sessionId, execution_mode: 'api', captureMethod: 'codelab-local-headless-runtime', projects: (await listPixelForgeProjects()).projects || [] };
   }
+  if (request.operation === 'create_blank_animation') {
+    const projectId = 'agent_' + sessionId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 70);
+    const layerId = 'layer_' + sessionId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 70);
+    const width = 64, height = 120;
+    const blankPixels = Buffer.alloc(width * height * 4).toString('base64');
+    const project = {
+      format: 'pixelforge-project',
+      version: 1,
+      id: projectId,
+      name: 'Agent feedback cycle',
+      width,
+      height,
+      activeLayerId: layerId,
+      revision: 0,
+      saveVersion: 0,
+      layers: [{ id: layerId, name: 'Agent source layer', visible: true, opacity: 1, locked: false, pixels: blankPixels }],
+    };
+    const saved = await putPixelForgeProject(project);
+    const runtime = HeadlessEditorRuntime.fromJSON({ ...project, serverRevision: saved.serverRevision || 1 });
+    const outcome = runtime.executeBatch([{ name: 'animation.frame.add_from_layer', layerId }]);
+    if (!outcome.ok) throw new Error(outcome.error?.message || 'Initial animation frame creation failed.');
+    const proposal = runtime.createProposal('Create initial agent feedback animation frame');
+    const accepted = runtime.acceptProposal();
+    if (accepted?.status !== 'applied') throw new Error('Initial animation frame proposal was not applied.');
+    const persisted = await putPixelForgeProject(runtime.toJSON());
+    const contextOutcome = runtime.executeBatch([{ name: 'animation.frame.get_context', index: 0, layerId }]);
+    if (!contextOutcome.ok) throw new Error(contextOutcome.error?.message || 'Initial blank frame context failed.');
+    return {
+      sessionId,
+      execution_mode: 'api',
+      captureMethod: 'codelab-local-headless-runtime',
+      projectId,
+      serverRevision: persisted.serverRevision || null,
+      context: contextOutcome.results?.[0]?.result || contextOutcome.result || null,
+    };
+  }
   if (request.operation === 'create_reference_animation') {
     const { doc, animation, workflow } = createSoldierReferenceAnimation();
     const raw = doc.toJSON();
