@@ -150,3 +150,4 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El Inspector completo se puede plegar y volver a abrir desde la barra del editor para liberar el lienzo, por ejemplo al trabajar con diagramas y conexiones de nodos.
 - Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
+<!-- codelab-session-bootstrap -->
