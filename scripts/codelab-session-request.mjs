@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 
 const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const sessionId = String(process.env.CODELAB_SESSION_ID || '');
-const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
 const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex'));
 const requestId = randomUUID();
 const requestJson = String(process.env.CODELAB_SESSION_REQUEST || '{}');
