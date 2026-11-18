@@ -1,0 +1,80 @@
+name: CodeLab Agent Walk Animation
+
+on:
+  push:
+    paths:
+      - "scripts/codelab-b-a-context-cycle.mjs"
+      - ".github/workflows/codelab-agent-walk-animation.yml"
+      - ".github/workflows/codelab-independent-session-a.yml"
+      - ".github/workflows/codelab-independent-session-b.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Start persistent A for the walk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "A_START=$start" >> "$GITHUB_ENV"
+          gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO" -f session_minutes=6
+          echo "Persistent A dispatched"
+
+      - name: Resolve exact A session
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          for i in $(seq 1 36); do
+            run_id="$(gh run list --repo "$GH_REPO" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event,createdAt --jq '.[] | select((.status=="in_progress" or .status=="queued") and .createdAt >= env.A_START) | .databaseId' | head -n 1)"
+            if [ -n "$run_id" ]; then break; fi
+            sleep 5
+          done
+          test -n "$run_id"
+          echo "A_RUN_ID=$run_id" >> "$GITHUB_ENV"
+          echo "A_SESSION_ID=independent-$run_id" >> "$GITHUB_ENV"
+          echo "A_MAILBOX=https://codelab-pbw9.onrender.com" >> "$GITHUB_ENV"
+          echo "Resolved A session independent-$run_id"
+
+      - name: Launch independent B walk request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" \
+            -f mode=walk \
+            -f session_id="$A_SESSION_ID" \
+            -f mailbox_base_url="$A_MAILBOX"
+          echo "B walk request dispatched"
+
+      - name: Wait for B to finish successfully
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 72); do
+            row="$(gh run list --repo "$GH_REPO" --workflow ".github/workflows/codelab-independent-session-b.yml" --limit 20 --json databaseId,status,conclusion,createdAt --jq '.[] | select(.createdAt >= env.A_START) | [.databaseId,.status,.conclusion] | @tsv' | head -n 1)"
+            status="$(printf '%s\n' "$row" | cut -f2)"
+            conclusion="$(printf '%s\n' "$row" | cut -f3)"
+            echo "B walk: status=$status conclusion=$conclusion"
+            if [ "$status" = "completed" ]; then
+              test "$conclusion" = "success"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "B walk did not complete in time"
+          exit 1
