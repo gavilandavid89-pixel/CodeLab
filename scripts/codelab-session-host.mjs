@@ -148,6 +148,33 @@ async function putPixelForgeProject(project) {
   if (result?.project) sessionProjects.set(project.id, { ...project, serverRevision: result.project.serverRevision || project.serverRevision || 1 });
   return result;
 }
+function mapAnimationActionsToRuntimeLayers(runtime, project, actions) {
+  const summaryOutcome = runtime.executeBatch([{ name: 'document.get_summary' }]);
+  if (!summaryOutcome.ok) throw new Error(summaryOutcome.error?.message || 'Could not inspect runtime layers.');
+  const sandboxLayers = summaryOutcome.results?.[0]?.result?.layers || [];
+  const sourceLayers = project.layers || [];
+  const sourceToSandbox = new Map();
+  for (let index = 0; index < Math.min(sourceLayers.length, sandboxLayers.length); index++) {
+    sourceToSandbox.set(sourceLayers[index].id, sandboxLayers[index].id);
+  }
+  return actions.map(action => {
+    if (!action?.layerId || !String(action.name || '').startsWith('animation.')) return action;
+    const mapped = sourceToSandbox.get(action.layerId);
+    if (!mapped) throw new Error('Unknown stable animation layer ID: ' + action.layerId);
+    return { ...action, layerId: mapped };
+  });
+}
+
+function normalizeAnimationContext(context, project) {
+  if (!context || !project?.layers?.length) return context;
+  const stableLayerId = project.activeLayerId || project.layers[0].id;
+  return {
+    ...context,
+    layer: context.layer ? { ...context.layer, id: stableLayerId, name: project.layers.find(layer => layer.id === stableLayerId)?.name || stableLayerId } : context.layer,
+    guidance: context.guidance ? { ...context.guidance, availableLayerIds: project.layers.map(layer => layer.id) } : context.guidance,
+  };
+}
+
 async function executePixelForge(request) {
   if (request.operation === 'list_projects') {
     return { sessionId, execution_mode: 'api', captureMethod: 'codelab-local-headless-runtime', projects: (await listPixelForgeProjects()).projects || [] };
@@ -189,7 +216,7 @@ async function executePixelForge(request) {
       captureMethod: 'codelab-local-headless-runtime',
       projectId,
       serverRevision: persisted.serverRevision || null,
-      context: contextOutcome.results?.[0]?.result || contextOutcome.result || null,
+      context: normalizeAnimationContext(contextOutcome.results?.[0]?.result || contextOutcome.result || null, committedProject),
     };
   }
   if (request.operation === 'create_reference_animation') {
@@ -287,7 +314,8 @@ async function executePixelForge(request) {
     if (!Array.isArray(request.actions) || request.actions.length < 1 || request.actions.length > 500) {
       throw new Error('PixelForge batch requires 1–500 structured actions.');
     }
-    const outcome = runtime.executeBatch(request.actions);
+    const runtimeActions = mapAnimationActionsToRuntimeLayers(runtime, project, request.actions);
+    const outcome = runtime.executeBatch(runtimeActions);
     if (!outcome.ok) throw new Error('PixelForge batch failed at action ' + outcome.failedIndex + ': ' + (outcome.error?.message || 'unknown error'));
     if (runtime.hasPendingChanges) {
       const proposal = runtime.createProposal(String(request.summary || 'Persistent session PixelForge batch'));
@@ -301,7 +329,7 @@ async function executePixelForge(request) {
       if (request.return_context !== false && committedProject.animation?.frames?.length) {
         const activeIndex = committedProject.animation.activeFrameIndex ?? 0;
         const contextOutcome = committedRuntime.executeBatch([{ name: 'animation.frame.get_context', index: activeIndex }]);
-        if (contextOutcome.ok) context = contextOutcome.results?.[0]?.result || contextOutcome.result || null;
+        if (contextOutcome.ok) context = normalizeAnimationContext(contextOutcome.results?.[0]?.result || contextOutcome.result || null, committedProject);
       }
       return {
         sessionId,
