@@ -10,7 +10,7 @@ on:
         required: false
         default: "normal"
         type: choice
-        options: [normal, concurrent, queue, walk]
+        options: [normal, concurrent, queue, walk, walk-step]
       session_id:
         description: "Existing persistent A session ID (preferred for stress runs)"
         required: false
@@ -20,6 +20,16 @@ on:
         description: "Persistent A mailbox base URL"
         required: false
         default: "https://codelab-pbw9.onrender.com"
+        type: string
+      walk_frame_index:
+        description: "Frame to generate when mode=walk-step"
+        required: false
+        default: "1"
+        type: string
+      walk_project_id:
+        description: "Existing PixelForge project ID for supervised walk-step"
+        required: false
+        default: ""
         type: string
       request:
         description: "Structured CodeLab session request JSON"
@@ -84,12 +94,16 @@ jobs:
 
       - name: Run B→A→context→B→A walking animation cycle
         id: walk
-        if: ${{ github.event.inputs.mode == 'walk' }}
+        if: ${{ github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step' }}
         env:
           CODELAB_SESSION_TIMEOUT_MS: "240000"
+          CODELAB_WALK_ONE_STEP: ${{ github.event.inputs.mode == 'walk-step' && '1' || '0' }}
+          CODELAB_WALK_FRAME_INDEX: ${{ github.event.inputs.walk_frame_index || '1' }}
+          CODELAB_WALK_PROJECT_ID: ${{ github.event.inputs.walk_project_id || '' }}
         run: |
-          echo "B mode: walk"
-          node scripts/codelab-b-a-context-cycle.mjs
+          echo "B mode: ${{ github.event.inputs.mode || 'walk' }} frame=${CODELAB_WALK_FRAME_INDEX} project=${CODELAB_WALK_PROJECT_ID:-new}"
+          node scripts/codelab-b-a-context-cycle.mjs 2>&1 | tee walk-result.log
+          grep -o '{\"ok\":true.*' walk-result.log | tail -n 1 > walk-result.json || true
 
 
       - name: Publish B verification result
@@ -99,5 +113,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          status="${{ steps.request.outcome }}"
-          gh issue comment 492 --repo "$GH_REPO" --body "[CodeLab B Result] run=${{ github.run_id }} status=$status session=${CODELAB_SESSION_ID:-unknown}"
+          status="${{ steps.request.outcome || steps.walk.outcome }}"
+          summary=""
+          if [ -s walk-result.json ]; then
+            summary="$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("walk-result.json","utf8")); console.log(JSON.stringify({run:process.env.GITHUB_RUN_ID,ok:j.ok,projectId:j.animation?.projectId,frame:j.animation?.requestedFrame,oneStep:j.animation?.oneStep,proof:j.proof?.lastFrameProof,protocol:j.protocol}))' 2>/dev/null || true)"
+          fi
+          gh issue comment 492 --repo "$GH_REPO" --body "[CodeLab B Result] run=${{ github.run_id }} status=$status session=${CODELAB_SESSION_ID:-unknown} $summary"
