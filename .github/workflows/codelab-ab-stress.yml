@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO"
-          echo "A requested"
+          echo "A requested (persistent B→A rendezvous stress)"
 
       - name: Resolve A session id without GitHub comment rendezvous
         env:
