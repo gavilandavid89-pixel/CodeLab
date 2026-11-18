@@ -9,7 +9,7 @@ import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
-import { createOrbitalShowcase } from './showcase-animation.mjs';
+import { createOrbitalShowcase, createReferenceGuidedSoldierAnimation } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -19,7 +19,7 @@ const previewCanvas = document.createElement('canvas'), previewCtx = previewCanv
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true;
-let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1 };
+let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
 let color = $('#color').value, backgroundColor = '#242632', recentColors = [], brushSize = Number($('#brush-size').value);
@@ -127,6 +127,17 @@ function syncBackgroundColor() {
   const swatch = $('#background-swatch');
   if (swatch) { swatch.style.background = backgroundColor; swatch.title = backgroundColor; }
 }
+function renderAuthenticationRequired() {
+  const accountChip = $('#codelab-account-chip');
+  if (accountChip) accountChip.textContent = 'CodeLab · Inicia sesión';
+  status('PixelForge requiere una sesión de CodeLab para abrir y guardar proyectos personales. Inicia sesión en CodeLab y vuelve a abrir PixelForge.', 'warning');
+  const statusNode = $('#status');
+  if (statusNode) {
+    statusNode.dataset.authRequired = 'true';
+    statusNode.title = 'Inicia sesión en CodeLab para continuar.';
+  }
+}
+
 function status(message, kind = 'neutral') {
   $('#status').textContent = message;
   $('#status').dataset.kind = kind;
@@ -789,14 +800,16 @@ function startAnimationPlayback() {
   $('#animation-play').disabled = true; $('#animation-stop').disabled = false;
   const tick = now => {
     if (!animationPlayback.playing || !animation) return;
-    const elapsed = now - animationPlayback.startedAt;
+    const frameTime = Number.isFinite(now) ? now : performance.now();
+    if (!Number.isFinite(animationPlayback.startedAt)) animationPlayback.startedAt = frameTime;
+    const elapsed = Math.max(0, frameTime - animationPlayback.startedAt);
     const index = animation.frameIndexAtTime(elapsed, { loop: $('#animation-loop').checked });
     if (index !== animationPlayback.lastIndex) {
       switchAnimationFrame(index, { autosave: false });
       animationPlayback.lastIndex = index;
     }
     const finished = !$('#animation-loop').checked && elapsed >= animation.totalDurationMs;
-    if (finished) { stopAnimationPlayback(); return; }
+    if (finished) { stopAnimationPlayback({ save: animationPlayback.saveOnStop !== false }); return; }
     animationPlayback.raf = requestAnimationFrame(tick);
   };
   animationPlayback.raf = requestAnimationFrame(tick);
@@ -2296,6 +2309,10 @@ async function boot() {
       ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
       : await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
+      const appShell = document.querySelector('.app-shell');
+      const authGate = document.getElementById('pixelforgeAuthGate');
+      if (appShell) appShell.remove();
+      if (authGate) authGate.style.display = 'flex';
       status('PixelForge está listo, pero esta instalación requiere iniciar sesión en CodeLab para abrir proyectos personales.', 'warning');
       return;
     }
@@ -2325,17 +2342,17 @@ async function boot() {
     renderUserPalette();
     resizeCanvas();
     const params = new URLSearchParams(window.location.search);
-    if (params.get('createDemo') === 'orbital-12') {
+    if (params.get('createDemo') === 'walk-crouch-24') {
       const existingProjects = await listSavedProjects();
-      const existingDemo = existingProjects.find(project => project.name === 'Orbital · PixelForge 12-frame loop');
+      const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 24 frames');
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
         doc = RasterDocument.fromJSON(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
-        status('Demo Orbital recuperada · 12 fotogramas a 12 FPS', 'success');
+        status('Demo caminata → agacharse recuperada · 24 fotogramas a 12 FPS', 'success');
       } else {
-        const showcase = createOrbitalShowcase();
+        const showcase = createReferenceGuidedSoldierAnimation({ frameCount: 24, fps: 12 });
         doc = showcase.doc;
         animation = showcase.animation;
         animationLoop = showcase.loop;
@@ -2344,7 +2361,7 @@ async function boot() {
         const savedDemo = await saveProject(snapshot);
         if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
         doc.dirty = false;
-        status('Demo Orbital guardada · 12 fotogramas a 12 FPS', 'success');
+        status('Demo caminata → agacharse guardada · 24 fotogramas a 16 FPS', 'success');
       }
       animationFrameHistory.clear();
       animationOrphanCels.clear();
@@ -2382,7 +2399,29 @@ async function boot() {
       }
     }
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
+    if (params.get('capture') === 'video') {
+      if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
+      animationLoop = false;
+      $('#animation-loop').checked = false;
+      if (animation.activeFrameIndex !== 0) switchAnimationFrame(0, { autosave: false });
+      animationPlayback.saveOnStop = false;
+      startAnimationPlayback();
+      if (!animationPlayback.playing) throw new Error('No se pudo iniciar la reproducción de la animación.');
+      document.documentElement.dataset.pixelforgeCapture = 'playing';
+      window.setTimeout(() => {
+        if (animationPlayback.playing) stopAnimationPlayback({ save: false });
+        animationPlayback.saveOnStop = true;
+        document.documentElement.dataset.pixelforgeCapture = 'complete';
+      }, animation.totalDurationMs + 250);
+    }
   } catch (error) {
+    if (error?.status === 401 || error?.code === 'not_authenticated') {
+      document.documentElement.dataset.pixelforgeCapture = 'auth-required';
+      renderAuthenticationRequired();
+      return;
+    }
+    document.documentElement.dataset.pixelforgeCapture = 'error';
+    document.documentElement.dataset.pixelforgeCaptureError = String(error.message || error).slice(0, 300);
     status(`No se pudo iniciar PixelForge: ${error.message}`, 'error');
     const statusNode = $('#status');
     if (statusNode) statusNode.title = 'Comprueba la conexión con CodeLab y vuelve a cargar.';

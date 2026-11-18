@@ -1,0 +1,45 @@
+name: CodeLab Persistent Browser Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'GitHub issue used as the session rendezvous channel'
+        required: true
+        type: string
+      session_id:
+        description: 'Stable session identifier'
+        required: false
+        default: ''
+        type: string
+      minutes:
+        description: 'Session lifetime'
+        required: false
+        default: '10'
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  session-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install real Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Run persistent CodeLab session
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: ${{ inputs.issue_number }}
+          CODELAB_SESSION_ID: ${{ inputs.session_id }}
+          CODELAB_SESSION_MINUTES: ${{ inputs.minutes }}
+        run: node scripts/codelab-session-host.mjs

@@ -53,7 +53,7 @@ async function main() {
       try {
         await page.waitForFunction(() => {
           const status = document.querySelector('#status')?.textContent || '';
-          return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
+          return status.includes('tus proyectos se guardan en tu cuenta CodeLab') || status.includes('Proyecto recuperado correctamente');
         }, null, { timeout: 15000 });
       } catch (error) {
         const diagnostics = await page.evaluate(() => ({
@@ -262,7 +262,7 @@ async function main() {
         await page.reload({ waitUntil: 'networkidle' });
         await page.waitForFunction(() => {
           const status = document.querySelector('#status')?.textContent || '';
-          return status.includes('tus proyectos se guardan') || status.includes('Proyecto recuperado de tu cuenta');
+          return status.includes('tus proyectos se guardan en tu cuenta CodeLab') || status.includes('Proyecto recuperado correctamente');
         }, null, { timeout: 15000 });
         assert.equal(await page.locator('#animation-frames .animation-frame').count(), 3,
           'reopening the saved project must restore both visual frames and the Headless-added third frame');

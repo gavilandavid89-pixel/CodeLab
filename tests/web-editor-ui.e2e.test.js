@@ -51,7 +51,7 @@ async function setCode(page, lang, value) {
     await setCode(page, 'css', css);
     await setCode(page, 'js', js);
     await page.locator('#tab-html').click();
-    await page.locator('#editorPanel button[onclick="updatePreview()"]').click();
+    await page.locator('#previewPanel button[onclick="updatePreview()"]').click();
     const preview = page.frameLocator('#previewIframe');
     await preview.locator('#preview-action').waitFor({ state: 'visible' });
     assert.equal(await preview.locator('#preview-action').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(4, 5, 6)');
@@ -71,7 +71,7 @@ async function setCode(page, lang, value) {
     }, { name, html, css, js }, { timeout: 15000 });
 
     // Create a branch from the real editor, keep main isolated, then merge and undo.
-    await page.locator('#desktopProjectActions button[onclick="duplicateProject()"]').click();
+    await page.locator('button.web-action[onclick="duplicateProject()"]').click();
     await page.waitForFunction(() => document.getElementById('toggleCopyBranchBtn')?.disabled === false,
       null, { timeout: 10000 });
     await page.locator('#toggleCopyBranchBtn').click();
@@ -116,7 +116,7 @@ async function setCode(page, lang, value) {
     await page.waitForFunction(expected => document.getElementById('currentProjectTitle')?.textContent === expected,
       renamed, { timeout: 10000 });
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('#desktopProjectActions button[onclick="downloadProject()"]').click();
+    await page.locator('button.web-action[onclick="downloadProject()"]').click();
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /\.html?$/i, 'project export should download HTML');
 

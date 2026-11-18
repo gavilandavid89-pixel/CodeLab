@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
+const { Pool } = require('pg');
 
 
 async function readZipDownload(download) {
@@ -96,9 +97,21 @@ async function main() {
     id: sessionId,
     user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' },
     createdAt: Date.now(),
-    expiresAt: Date.now() + 60_000
+    expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   const authHeaders = { cookie: 'codelab_sid=' + sessionId, 'x-forwarded-for': '198.51.100.79' };
+  let testSessionPool = null;
+  if (process.env.DATABASE_URL) {
+    testSessionPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false },
+      max: 1
+    });
+    await testSessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'60 seconds\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [sessionId, JSON.stringify({ id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' })]
+    );
+  }
   const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
   assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
   assert.equal((await authenticatedMalformedId.json()).error, 'invalid_project_id', 'malformed project ID should have a stable error code');
@@ -111,7 +124,18 @@ async function main() {
   const coreWorkspace = await coreWorkspaceResponse.json();
   assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
-  assert.ok(fs.existsSync(workspaceFile), 'CodeLab core should own the account workspace used by PixelForge');
+  if (health.persistence === 'postgresql') {
+    const repeatedInit = await fetch(base + '/api/workspace/init', {
+      method: 'POST',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    assert.equal(repeatedInit.status, 200, 'PostgreSQL-backed CodeLab should reopen the same authenticated workspace');
+    assert.equal((await repeatedInit.json()).workspaceId, coreWorkspace.workspaceId, 'workspace identity must remain account-bound in PostgreSQL');
+    assert.equal(fs.existsSync(workspaceFile), false, 'PostgreSQL-backed CodeLab workspaces must not depend on local sidecar files');
+  } else {
+    assert.ok(fs.existsSync(workspaceFile), 'file-backed CodeLab core should own the account workspace used by PixelForge');
+  }
   const pixelForgeStoreFile = workspaceFile + '.pixelforge.json';
   // The database may persist between CI runs; clear only this dedicated test
   // account so the assertions remain repeatable without touching real users.
@@ -356,9 +380,15 @@ async function main() {
   fs.writeFileSync(path.join(sessionsDir, sameAccountSessionId + '.json'), JSON.stringify({
     id: sameAccountSessionId,
     user: { id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' },
-    createdAt: Date.now(), expiresAt: Date.now() + 60_000
+    createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   const sameAccountHeaders = { cookie: 'codelab_sid=' + sameAccountSessionId, 'x-forwarded-for': '198.51.100.82' };
+  if (testSessionPool) {
+    await testSessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'10 minutes\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [sameAccountSessionId, JSON.stringify({ id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST_NEW_SESSION', role: 'user' })]
+    );
+  }
   const sameAccountList = await fetch(base + '/api/pixelforge/projects', { headers: sameAccountHeaders });
   assert.equal(sameAccountList.status, 200);
   assert.ok((await sameAccountList.json()).projects.some(project => project.id === fixture.id),
@@ -369,9 +399,15 @@ async function main() {
     id: secondSessionId,
     user: { id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' },
     createdAt: Date.now(),
-    expiresAt: Date.now() + 60_000
+    expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   const otherHeaders = { cookie: 'codelab_sid=' + secondSessionId, 'x-forwarded-for': '198.51.100.80' };
+  if (testSessionPool) {
+    await testSessionPool.query(
+      'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'10 minutes\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+      [secondSessionId, JSON.stringify({ id: 'pixelforge-other-user', provider: 'google', name: 'PIXELFORGE_OTHER', role: 'user' })]
+    );
+  }
   if (process.env.DATABASE_URL) {
   const ownerUploadId = 'd'.repeat(32);
   const ownerUpload = await fetch(base + '/api/pixelforge/projects/uploads', {
@@ -740,7 +776,7 @@ async function main() {
     accountPage.on('dialog', dialog => dialog.accept());
     await accountPage.locator('#projects-button').click();
     await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
-    await accountPage.locator('.saved-project-open').filter({ hasText: 'Browser account artwork' }).waitFor({ state: 'visible' });
+    await accountPage.locator('.saved-project-open').filter({ hasText: 'Browser account artwork' }).first().waitFor({ state: 'visible' });
     const deleteRow = accountPage.locator('.saved-project').filter({ hasText: 'Browser delete artwork' });
     await deleteRow.locator('.saved-project-delete').click();
     await deleteRow.waitFor({ state: 'detached' });
@@ -867,16 +903,16 @@ async function main() {
       console.log('Skipped PostgreSQL-only chunked upload/resume checks in file-backed mode.');
     }
     const demoPage = await accountContext.newPage();
-    await demoPage.goto(base + '/pixelforge/index.html?createDemo=orbital-12', { waitUntil: 'networkidle' });
-    await demoPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Demo Orbital'),
+    await demoPage.goto(base + '/pixelforge/index.html?createDemo=walk-crouch-18', { waitUntil: 'networkidle' });
+    await demoPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Demo caminata'),
       null, { timeout: 60000 });
     assert.equal(await demoPage.evaluate(() => window.location.search), '',
       'the demo creation query should be removed after the account save succeeds');
     const demoProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
-    const demoMetadata = demoProjects.find(project => project.name === 'Orbital · PixelForge 12-frame loop');
+    const demoMetadata = demoProjects.find(project => project.name === 'Person · Walk to Crouch · 18-frame study');
     assert.ok(demoMetadata, 'the Orbital sample must be saved in the signed-in CodeLab account');
     const savedDemo = (await (await fetch(base + '/api/pixelforge/projects/' + demoMetadata.id, { headers: authHeaders })).json()).project;
-    assert.equal(savedDemo.animation.frames.length, 12, 'the saved sample must contain exactly 12 animation frames');
+    assert.equal(savedDemo.animation.frames.length, 18, 'the saved sample must contain exactly 18 animation frames');
     assert.equal(savedDemo.animation.fps, 12, 'the saved sample must play at 12 FPS');
     assert.equal(savedDemo.layers.length, 4, 'the saved sample must preserve all four independent drawing layers');
     assert.ok(savedDemo.animation.frames.every(frame => frame.cels.length === 4),
@@ -920,6 +956,10 @@ async function main() {
     fs.rmSync(path.join(sessionsDir, sessionId + '.json'), { force: true });
     fs.rmSync(path.join(sessionsDir, sameAccountSessionId + '.json'), { force: true });
     fs.rmSync(path.join(sessionsDir, secondSessionId + '.json'), { force: true });
+    if (testSessionPool) {
+      await testSessionPool.query('DELETE FROM codelab_auth_sessions WHERE session_id = ANY($1::varchar[])', [[sessionId, sameAccountSessionId, secondSessionId]]).catch(() => {});
+      await testSessionPool.end().catch(() => {});
+    }
   }
   console.log('PixelForge account gate, project CRUD/isolation, and authenticated browser save/reload verified.');
 }

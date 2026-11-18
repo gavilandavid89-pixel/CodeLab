@@ -22,7 +22,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
   proposalApprovalRequired: true,
   authenticatedPersistence: true,
   rasterActions: Object.freeze([
-    'document.get_summary', 'document.rename', 'canvas.get_reference', 'canvas.get_pixel',
+    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'canvas.get_pixel',
     'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
     'layer.rename', 'layer.set_opacity', 'layer.set_visibility', 'layer.set_locked',
     'layer.duplicate', 'layer.delete', 'canvas.fill', 'canvas.clear_region',
@@ -39,7 +39,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
     'animation.frame.capture_document', 'animation.frame.duplicate',
     'animation.frame.delete', 'animation.frame.reorder', 'animation.frame.set_duration',
     'animation.frame.set_active', 'animation.set_fps', 'animation.set_loop',
-    'animation.frame.get_cel', 'animation.frame.set_cel',
+    'animation.frame.get_cel', 'animation.frame.get_context', 'animation.frame.set_cel',
     'animation.frame.get_onion_skin', 'animation.frame.get_composite',
   ]),
 });
@@ -231,7 +231,25 @@ export class HeadlessEditorRuntime {
   get hasPendingChanges() { return this.#workspace.hasSandboxChanges || this.#animationDirty; }
   get hasPendingProposal() { return this.#workspace.hasProposal; }
 
+  #layerContext(layerId) {
+    const layers = this.#workspace.sandbox.layers;
+    const index = layerId ? layers.findIndex(layer => layer.id === layerId) : layers.findIndex(layer => layer.id === this.#workspace.sandbox.activeLayerId);
+    if (index < 0) throw new Error('Layer context target was not found.');
+    const current = layers[index];
+    const previous = index > 0 ? layers[index - 1] : null;
+    return {
+      current: { index, id: current.id, name: current.name, width: this.#workspace.sandbox.width, height: this.#workspace.sandbox.height, pixels: encodeBase64(current.pixels) },
+      previous: previous ? { index: index - 1, id: previous.id, name: previous.name, pixels: encodeBase64(previous.pixels) } : null,
+      visual: { format: 'rgba-base64', width: this.#workspace.sandbox.width, height: this.#workspace.sandbox.height },
+      guidance: { rule: 'Use the returned previous layer as authoritative visual context; do not infer hidden pixels or layer contents.', requestMoreContextAction: 'layer.get_context' },
+    };
+  }
+
   execute(action) {
+    if (action?.name === 'layer.get_context') {
+      try { return { ok: true, action: action.name, result: this.#layerContext(action.layerId) }; }
+      catch (error) { return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Layer context failed.' } }; }
+    }
     if (action && typeof action.name === 'string' && action.name.startsWith('animation.')) {
       if (this.#workspace.hasProposal && action.name !== 'animation.get_summary') {
         return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more animation edits.' } };
@@ -264,7 +282,23 @@ export class HeadlessEditorRuntime {
         }
         this.#sandboxAnimation = outcome.timeline;
         this.#animationDirty = this.#animationDiffersFromCommitted();
-        return { ok: true, action: action.name, result: { ...outcome.result, changed } };
+        const contextActions = new Set([
+          'animation.frame.add_from_layer',
+          'animation.frame.capture_composite',
+          'animation.frame.capture_document',
+          'animation.frame.duplicate',
+          'animation.frame.set_cel',
+        ]);
+        const enrichedResult = { ...outcome.result, changed };
+        if (contextActions.has(action.name) && this.#sandboxAnimation.frames.length) {
+          const context = applyAnimationAction(
+            this.#sandboxAnimation,
+            this.#workspace.sandbox,
+            { name: 'animation.frame.get_context', index: outcome.result.index ?? action.index ?? this.#sandboxAnimation.activeFrameIndex, layerId: action.layerId }
+          );
+          enrichedResult.previousFrameContext = context.result;
+        }
+        return { ok: true, action: action.name, result: enrichedResult };
       } catch (error) {
         return { ok: false, action: action.name, error: {
           code: error instanceof RangeError ? 'out_of_bounds_or_limit' : error instanceof TypeError ? 'invalid_arguments' : 'operation_failed',

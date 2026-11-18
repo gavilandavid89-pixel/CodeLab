@@ -1,0 +1,43 @@
+name: Native headless contract tests
+
+on:
+  push:
+    branches:
+      - feat/native-headless-video-code-api
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  native-headless-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install Playwright video encoder
+        run: npx playwright-core install ffmpeg
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+      - name: Run native headless contract tests
+        run: npm run test:native-headless
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+          HEADLESS_VISUAL_ARTIFACT_DIR: artifacts/native-headless-visuals
+      - name: Upload native headless visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-headless-visual-evidence
+          path: artifacts/native-headless-visuals
+          if-no-files-found: error
+          retention-days: 14

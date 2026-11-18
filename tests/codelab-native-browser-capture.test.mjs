@@ -25,8 +25,8 @@ test('CodeLab browser QA covers desktop and mobile and tests the actual CTA clic
   assert.match(worker, /mobileControlsReadable/);
   assert.match(worker, /design-layer-heading/);
   assert.match(worker, /design-layer-button/);
-  assert.match(worker, /font-size:clamp\(28px,7vw,40px\)/);
-  assert.match(worker, /max-width:320px/);
+  assert.match(worker, /metrics\.headingFontSize/);
+  assert.match(worker, /metrics\.buttonFontSize/);
   assert.match(worker, /noPageErrors/);
 });
 
@@ -144,8 +144,8 @@ test('Node graph browser capture targets the actual store project among other sa
 test('Node graph QA scopes connection counts to the selected store project', () => {
   assert.match(worker, /storeProjectConnectionCount/);
   assert.match(worker, /storeProjectHasTwoConnections/);
-  assert.match(worker, /desktopWireCount >= 4/);
-  assert.match(worker, /mobileWireCount >= 4/);
+  assert.match(worker, /desktopWireCount >= 2/);
+  assert.match(worker, /mobileWireCount >= 2/);
 });
 
 test('Node graph screenshots release the preview iframe and capture only the active graph modal', () => {

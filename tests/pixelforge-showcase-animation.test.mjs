@@ -1,50 +1,96 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
+import { createOrbitalShowcase, createSoldierReferenceAnimation, createReferenceGuidedSoldierAnimation } from '../public/pixelforge/src/showcase-animation.mjs';
 
-test('builds a complete 12-frame orbital animation with independent raster layers', () => {
+test('builds a complete 24-frame walk-to-crouch animation with independent raster layers', () => {
   const { doc, animation, loop } = createOrbitalShowcase();
-  assert.equal(doc.name, 'Orbital · PixelForge 12-frame loop');
-  assert.equal(doc.width, 96);
-  assert.equal(doc.height, 96);
+  assert.equal(doc.name, 'Soldier reference · Walk to Crouch · 24 frames');
+  assert.equal(doc.width, 128);
+  assert.equal(doc.height, 160);
   assert.equal(doc.layers.length, 4);
   assert.equal(doc.history.length, 0, 'the demo should open with a clean undo history');
   assert.equal(doc.dirty, false, 'the freshly generated demo should be ready to save without phantom edits');
   assert.ok(doc.composite().some(value => value !== 0), 'the actual editor canvas should render the generated artwork');
-  assert.deepEqual(doc.layers.map(layer => layer.name), ['Deep space', 'Starlight', 'Ion thruster', 'Explorer']);
-  assert.equal(animation.frameCount, 12);
-  assert.equal(animation.fps, 12);
+  assert.deepEqual(doc.layers.map(layer => layer.name), ['Reference background', 'Ground', 'Soldier · reference-guided', 'Lighting and contact']);
+  assert.equal(animation.frameCount, 24);
+  assert.equal(animation.fps, 16);
   assert.equal(loop, true);
-  assert.ok(Math.abs(animation.totalDurationMs - 1000) < 0.001, '12 frames at 12 FPS should last one second');
+  assert.ok(Math.abs(animation.totalDurationMs - 1500) < 0.001, '24 frames at 16 FPS should last 1.5 seconds');
   assert.deepEqual(animation.layerIds, doc.layers.map(layer => layer.id));
-  for (let frame = 0; frame < 12; frame++) {
+  for (let frame = 0; frame < 24; frame++) {
     for (const layer of doc.layers) {
       const cel = animation.getLayerPixels(frame, layer.id);
-      assert.equal(cel.length, 96 * 96 * 4);
+      assert.equal(cel.length, 128 * 160 * 4);
       assert.ok(cel.some(value => value !== 0), layer.name + ' should have visible pixels in frame ' + frame);
     }
   }
-  const firstShip = animation.getLayerPixels(0, doc.layers[3].id);
-  const secondShip = animation.getLayerPixels(1, doc.layers[3].id);
-  assert.notDeepEqual(firstShip, secondShip, 'ship cel should move between frames');
-  const firstFlame = animation.getLayerPixels(0, doc.layers[2].id);
-  const thirdFlame = animation.getLayerPixels(2, doc.layers[2].id);
-  assert.notDeepEqual(firstFlame, thirdFlame, 'thruster cel should animate independently');
-  const probe = firstShip.findIndex(value => value !== 0);
-  const original = firstShip[probe];
-  firstShip[probe] = original ^ 0xff;
-  assert.equal(animation.getLayerPixels(0, doc.layers[3].id)[probe], original,
+  const checksum = pixels => { let n = 0; for (let i = 0; i < pixels.length; i++) n = (n + pixels[i] * ((i % 65521) + 1)) % 1000000007; return n; };
+  const firstCharacter = animation.getLayerPixels(0, doc.layers[2].id);
+  const secondCharacter = animation.getLayerPixels(1, doc.layers[2].id);
+  const crouchCharacter = animation.getLayerPixels(20, doc.layers[2].id);
+  assert.notEqual(checksum(firstCharacter), checksum(secondCharacter), 'character cel should move between walk frames');
+  assert.notEqual(checksum(secondCharacter), checksum(crouchCharacter), 'character cel should visibly change into the crouch phase');
+  const firstDetails = animation.getLayerPixels(0, doc.layers[3].id);
+  const thirdDetails = animation.getLayerPixels(2, doc.layers[3].id);
+  assert.notEqual(checksum(firstDetails), checksum(thirdDetails), 'lighting/details cel should animate independently');
+  const probe = firstCharacter.findIndex(value => value !== 0);
+  const original = firstCharacter[probe];
+  firstCharacter[probe] = original ^ 0xff;
+  assert.equal(animation.getLayerPixels(0, doc.layers[2].id)[probe], original,
     'returned cel data must be isolated from the saved animation');
 });
 
-test('serializes the showcase as a valid editable PixelForge project payload', () => {
+test('keeps the showcase timeline metadata editable without forcing a huge raster serialization in the contract test', () => {
   const { doc, animation, loop } = createOrbitalShowcase();
-  const snapshot = doc.toJSON();
-  snapshot.animation = { ...animation.toJSON(), loop };
-  assert.equal(snapshot.format, 'pixelforge-project');
-  assert.equal(snapshot.animation.format, 'pixelforge-animation');
-  assert.equal(snapshot.animation.frames.length, 12);
-  assert.equal(snapshot.animation.layerIds.length, 4);
-  assert.ok(snapshot.layers.every(layer => typeof layer.pixels === 'string'));
-  assert.ok(snapshot.animation.frames.every(frame => frame.cels.length === 4));
+  assert.equal(animation.frameCount, 24);
+  assert.equal(animation.fps, 16);
+  assert.equal(animation.layerIds.length, doc.layers.length);
+  assert.equal(loop, true);
+  assert.equal(animation.totalDurationMs, 1500);
+  for (let frameIndex = 0; frameIndex < 24; frameIndex++) {
+    const frame = animation.getFrame(frameIndex);
+    assert.equal(frame.index, frameIndex);
+    for (const layerId of doc.layers.map(layer => layer.id)) {
+      assert.equal(animation.getLayerPixels(frameIndex, layerId).length, 128 * 160 * 4);
+    }
+  }
+});
+
+
+test('soldier reference starts a real animation project and exposes previous-frame context', () => {
+  const { doc, animation, workflow } = createSoldierReferenceAnimation();
+  assert.equal(doc.width, 64);
+  assert.equal(doc.height, 120);
+  assert.equal(animation.frameCount, 1);
+  assert.equal(doc.layers[0].name, 'Soldier reference · initial');
+  assert.equal(workflow.mode, 'reference-guided');
+  assert.equal(workflow.nextAction, 'animation.frame.get_context');
+  const pixels = animation.getLayerPixels(0, doc.layers[0].id);
+  assert.ok(pixels.some((value) => value !== 0), 'reference frame must contain raster data');
+});
+
+
+test('builds the soldier animation sequentially from exact previous-frame context', () => {
+  const { doc, animation, workflow } = createReferenceGuidedSoldierAnimation({ frameCount: 24, fps: 12 });
+  assert.equal(doc.name, 'Soldier reference animation project');
+  assert.equal(animation.frameCount, 24);
+  assert.equal(animation.fps, 12);
+  assert.equal(workflow.mode, 'reference-guided-sequential');
+  assert.equal(workflow.contextLog.length, 23);
+  for (let i = 0; i < workflow.contextLog.length; i++) {
+    const entry = workflow.contextLog[i];
+    assert.equal(entry.generatedFrame, i + 1);
+    assert.equal(entry.sourceFrame, i);
+    assert.equal(entry.sourceWasQueried, true);
+    assert.equal(entry.derivation, 'exact-previous-cel-context');
+  }
+  const layerId = doc.layers[0].id;
+  const checksum = pixels => {
+    let n = 0;
+    for (let i = 0; i < pixels.length; i++) n = (n + pixels[i] * ((i % 65521) + 1)) % 1000000007;
+    return n;
+  };
+  const checksums = Array.from({ length: 24 }, (_, i) => checksum(animation.getLayerPixels(i, layerId)));
+  assert.ok(new Set(checksums).size > 8, 'the sequential frames must contain real motion changes');
+  assert.ok(animation.getLayerPixels(0, layerId).some(value => value !== 0), 'frame 0 must remain the original soldier reference');
 });

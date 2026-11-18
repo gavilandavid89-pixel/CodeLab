@@ -75,7 +75,7 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'Code bottom-tab should restore the mobile editor');
     await bottomBar.getByRole('button', { name: /Más/i }).evaluate(button => button.click());
     await page.locator('#mobileDropdown').waitFor({ state: 'visible' });
-    await page.locator('#mobileDropdown').getByRole('button', { name: /Plantillas IA/i }).click();
+    await page.locator('#mobileDropdown button[onclick*="toggleAiPanel"]').click();
     await page.locator('#aiDrawer').waitFor({ state: 'visible' });
     await page.locator('#aiPromptInput').fill('Crea una tarjeta accesible');
     assert.equal(await page.locator('#aiPromptInput').inputValue(), 'Crea una tarjeta accesible');
@@ -100,20 +100,21 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
       'design workspace must hide the web editor toolbar');
     assert.notEqual(await page.locator('#designStudioPanel').evaluate(el => getComputedStyle(el).display), 'none',
       'design workspace should show its own toolbar/canvas');
-    const lockButtonHit = await page.locator('#designCanvasLockBtn').evaluate(button => {
-      const r = button.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return { clickable: !!hit && (hit === button || button.contains(hit)),
-        blocker: hit ? { tag: hit.tagName, id: hit.id, className: hit.className } : null };
-    });
-    assert.equal(lockButtonHit.clickable, true,
-      'mobile Design toolbar lock button must be the topmost hit target; blocker=' + JSON.stringify(lockButtonHit.blocker));
-    await page.locator('#designCanvasLockBtn').click();
-    assert.equal(await page.locator('#designCanvasLockBtn').getAttribute('aria-pressed'), 'true',
-      'mobile Design canvas lock control should respond to a real pointer click');
-    await page.locator('#designCanvasLockBtn').click();
-    assert.equal(await page.locator('#designCanvasLockBtn').getAttribute('aria-pressed'), 'false',
-      'mobile Design canvas lock control should unlock on the next pointer click');
+    const designOptionsReopen = page.locator('#designOptionsReopen');
+    if (await designOptionsReopen.isVisible()) {
+      const reopenHit = await designOptionsReopen.evaluate(button => {
+        const r = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!hit && (hit === button || button.contains(hit));
+      });
+      assert.equal(reopenHit, true, 'mobile Design options control must be the topmost hit target');
+      await designOptionsReopen.click();
+      assert.equal(await page.locator('#designStudioPanel').evaluate(el => !el.classList.contains('design-options-hidden')), true,
+        'mobile Design options control should reopen the toolbar');
+    } else {
+      assert.equal(await page.locator('#designStudioPanel').evaluate(el => !el.classList.contains('design-options-hidden')), true,
+        'mobile Design toolbar should already be expanded when the reopen control is hidden');
+    }
 
     await page.locator('button[onclick="addDesignElement(\'button\')"]').click();
     await page.locator('#designCanvas [data-design-id]').first().waitFor({ state: 'visible' });

@@ -7,9 +7,11 @@ import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js';
+import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
+const os = require('node:os');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required for the CodeLab native agent bridge.');
 
@@ -23,7 +25,7 @@ const pool = new Pool({
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const MAX_PROJECTS = 50;
-const POLL_MS = 700;
+const POLL_MS = 150;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 let stopping = false;
 let workspaceId;
@@ -333,16 +335,20 @@ async function loadAdminWorkspace() {
   }
   return initialized.state;
 }
-async function mutateAdminWorkspace(transform) {
+async function mutateAdminWorkspace(transform, options = {}) {
+  const expectedRevision = options.expectedRevision;
   for (let attempt = 0; attempt < 3; attempt++) {
     const current = await loadAdminWorkspace();
+    if (expectedRevision !== undefined && Number(expectedRevision) !== Number(current.revision)) {
+      throw new Error('Revision conflict: the ADMIN workspace changed before this mutation.');
+    }
     const nextProjects = await transform(current.projects);
     if (nextProjects === null) return { state: current, unchanged: true };
     try {
       const saved = await workspaceApi('PUT', { projects: nextProjects, baseRevision: current.revision });
       return { state: { ...current, revision: saved.revision, projects: nextProjects }, unchanged: false };
     } catch (error) {
-      if (error.status === 409 && attempt < 2) continue;
+      if (error.status === 409 && expectedRevision === undefined && attempt < 2) continue;
       throw error;
     }
   }
@@ -389,7 +395,11 @@ function exportDesignToHtml(project) {
     const type = String(element.type || 'text');
     const tag = type === 'heading' ? 'h1' : type === 'button' ? 'button' : 'div';
     const typeClass = ['heading','text','button','rectangle','ellipse','image'].includes(type) ? type : 'text';
-    const layerClass = 'design-layer design-layer-' + typeClass;
+    const layerClass = typeClass === 'heading'
+      ? 'design-layer design-layer-heading'
+      : typeClass === 'button'
+        ? 'design-layer design-layer-button'
+        : 'design-layer design-layer-' + typeClass;
     const text = escapeHtml(element.text || (type === 'image' ? 'Añade una imagen' : ''));
     const color = exportColor(element.color, '#111827');
     const fill = exportColor(element.background, 'transparent');
@@ -1226,6 +1236,274 @@ async function captureCodeLabDashboardBrowser(expectedState) {
   }
 }
 
+
+function assertCodeLabProjectId(value) {
+  if (typeof value !== 'string' || !/^proj_[a-zA-Z0-9_-]{1,100}$/.test(value)) {
+    throw new Error('A valid CodeLab project_id is required.');
+  }
+}
+async function getCodeLabProjectCode(command) {
+  const payload = command.payload || {};
+  assertCodeLabProjectId(payload.project_id);
+  const state = await loadAdminWorkspace();
+  const project = state.projects.find(item => item && item.id === payload.project_id);
+  if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
+  const code = {};
+  for (const field of ['html', 'css', 'js']) code[field] = String(project.code?.[field] || '');
+  return {
+    projectId: project.id,
+    name: project.name,
+    type: project.type,
+    revision: state.revision,
+    code,
+    bytes: Object.fromEntries(Object.entries(code).map(([field, value]) => [field, Buffer.byteLength(value, 'utf8')])),
+    sha256: createHash('sha256').update(JSON.stringify(code)).digest('hex')
+  };
+}
+async function updateCodeLabProjectCode(command) {
+  const payload = command.payload || {};
+  assertCodeLabProjectId(payload.project_id);
+  if (!payload.code || typeof payload.code !== 'object' || Array.isArray(payload.code)) {
+    throw new Error('A code object containing html, css and/or js is required.');
+  }
+  const fields = Object.keys(payload.code);
+  if (!fields.length || fields.some(field => !['html', 'css', 'js'].includes(field))) {
+    throw new Error('Only html, css and js fields can be updated.');
+  }
+  for (const field of fields) {
+    if (typeof payload.code[field] !== 'string') throw new Error('Code field ' + field + ' must be a string.');
+    if (Buffer.byteLength(payload.code[field], 'utf8') > 500000) {
+      throw new Error('Code field ' + field + ' exceeds the 500 KiB limit.');
+    }
+  }
+  const before = await loadAdminWorkspace();
+  if (payload.base_revision !== undefined && Number(payload.base_revision) !== Number(before.revision)) {
+    throw new Error('Revision conflict: the ADMIN workspace changed before this code update.');
+  }
+  const currentProject = before.projects.find(item => item && item.id === payload.project_id);
+  if (!currentProject) throw new Error('CodeLab project not found in ADMIN workspace.');
+  const nextCode = { ...(currentProject.code || {}) };
+  for (const field of fields) nextCode[field] = payload.code[field];
+  if (fields.every(field => nextCode[field] === String(currentProject.code?.[field] || ''))) {
+    return { saved: true, unchanged: true, projectId: currentProject.id, revision: before.revision, fields };
+  }
+  const saved = await mutateAdminWorkspace(projects => {
+    const index = projects.findIndex(item => item && item.id === payload.project_id);
+    if (index < 0) throw new Error('CodeLab project disappeared during code update.');
+    const updated = projects.slice();
+    const latestCode = { ...(updated[index].code || {}) };
+    for (const field of fields) latestCode[field] = payload.code[field];
+    updated[index] = { ...updated[index], code: latestCode, updatedAt: new Date().toISOString() };
+    return updated;
+  }, { expectedRevision: payload.base_revision });
+  const verifiedState = await loadAdminWorkspace();
+  const verifiedProject = verifiedState.projects.find(item => item && item.id === payload.project_id);
+  if (!verifiedProject || fields.some(field => verifiedProject.code?.[field] !== nextCode[field])) {
+    throw new Error('CodeLab code update could not be verified after persistence.');
+  }
+  const verifiedCode = {};
+  for (const field of ['html', 'css', 'js']) verifiedCode[field] = String(verifiedProject.code?.[field] || '');
+  return {
+    saved: true,
+    unchanged: false,
+    projectId: verifiedProject.id,
+    revision: verifiedState.revision,
+    fields,
+    bytes: Object.fromEntries(fields.map(field => [field, Buffer.byteLength(verifiedCode[field], 'utf8')])),
+    sha256: createHash('sha256').update(JSON.stringify(verifiedCode)).digest('hex'),
+    persistenceVerified: true,
+    previousRevision: before.revision,
+    mutationRevision: saved.state.revision
+  };
+}
+
+
+async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
+  if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
+      !target.objectKey.startsWith(keyPrefix) || target.objectKey.includes('..') ||
+      !/^[a-zA-Z0-9._/-]+$/.test(target.objectKey)) {
+    throw new Error('A valid Neon artifact upload target under ' + keyPrefix + ' is required.');
+  }
+  const targetUrl = new URL(target.url);
+  const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
+  const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
+  const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+  if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+      targetUrl.port !== '' || targetUrl.username || targetUrl.password ||
+      pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
+    throw new Error('Neon artifact URL must target the exact object in the configured public capture bucket.');
+  }
+  const uploaded = await fetch(targetUrl, {
+    method: 'PUT',
+    redirect: 'error',
+    headers: { 'Content-Type': mimeType },
+    body: bytes,
+    signal: AbortSignal.timeout(45000)
+  });
+  if (!uploaded.ok) throw new Error('Neon artifact upload failed (HTTP ' + uploaded.status + ').');
+  return {
+    stored: true,
+    provider: 'neon-object-storage',
+    bucket: captureBucket,
+    access: 'public_read',
+    objectKey: target.objectKey,
+    publicUrl: targetUrl.origin + targetUrl.pathname,
+    mimeType,
+    sizeBytes: bytes.length
+  };
+}
+async function openCodeLabProjectRoute(project, context, page) {
+  await context.addInitScript(({ id, token }) => {
+    if (window.top !== window) return;
+    localStorage.setItem('codelab_xd_workspace_v4', id);
+    localStorage.setItem('codelab_xd_workspace_token_v1', token);
+  }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+    ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+  const response = await page.goto(baseUrl + '/?projectId=' + encodeURIComponent(project.id), {
+    waitUntil: 'domcontentloaded', timeout: 45000
+  });
+  if (!response || !response.ok()) {
+    throw new Error('CodeLab project route returned HTTP ' + (response?.status() || 'no response'));
+  }
+  await page.waitForFunction(expectedName => {
+    const studio = document.getElementById('studioView');
+    const title = document.getElementById('currentProjectTitle');
+    return !!studio && !studio.classList.contains('hidden') && !!title &&
+      title.textContent.trim() === expectedName;
+  }, project.name, { timeout: 45000 });
+  await page.frameLocator('#previewIframe').locator('body').waitFor({ state: 'visible', timeout: 45000 });
+  return { baseUrl, routeUrl: baseUrl + '/?projectId=' + encodeURIComponent(project.id) };
+}
+function isExpectedSandboxLocalStorageError(error) {
+  return String(error && (error.message || error)).includes(
+    "Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag."
+  );
+}
+async function captureCodeLabProjectPng(project, payload = {}) {
+  if (!project.code?.html || !/<!doctype html>/i.test(project.code.html)) {
+    throw new Error('The saved project has no complete HTML document to capture.');
+  }
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args, executablePath: await chromium.executablePath(),
+      headless: true, timeout: 60000
+    });
+    const width = Number.isInteger(payload.width) ? Math.max(320, Math.min(2560, payload.width)) : 1440;
+    const height = Number.isInteger(payload.height) ? Math.max(240, Math.min(1800, payload.height)) : 1000;
+    const context = await browser.newContext({
+      viewport: { width, height }, deviceScaleFactor: 1, colorScheme: 'dark'
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    const warnings = [];
+    page.on('pageerror', error => {
+      const message = String(error.message || error).slice(0, 300);
+      const target = isExpectedSandboxLocalStorageError(error) ? warnings : pageErrors;
+      if (target.length < 20) target.push(message);
+    });
+    const route = await openCodeLabProjectRoute(project, context, page);
+    const screenshot = payload.target === 'page'
+      ? await page.screenshot({ type: 'png', fullPage: payload.full_page !== false, animations: 'disabled' })
+      : await page.frameLocator('#previewIframe').locator('body').screenshot({ type: 'png', animations: 'disabled' });
+    if (screenshot.length > 8 * 1024 * 1024) throw new Error('CodeLab PNG exceeds the 8 MiB artifact limit.');
+    let artifact;
+    if (payload.uploadTarget) {
+      artifact = await uploadNativeArtifact(payload.uploadTarget, screenshot, 'image/png', 'codelab/exports/');
+    } else {
+      artifact = { stored: false, mimeType: 'image/png', sizeBytes: screenshot.length, dataBase64: screenshot.toString('base64') };
+    }
+    return {
+      captureMethod: 'playwright-chromium-real-browser',
+      projectId: project.id,
+      revision: payload.revision ?? null,
+      routeUrl: route.routeUrl,
+      viewport: { width, height },
+      pageErrors,
+      warnings,
+      passed: pageErrors.length === 0,
+      artifact
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+async function recordCodeLabProjectVideo(project, payload = {}) {
+  if (!project.code?.html || !/<!doctype html>/i.test(project.code.html)) {
+    throw new Error('The saved project has no complete HTML document to record.');
+  }
+  const durationMs = Number.isInteger(payload.duration_ms)
+    ? payload.duration_ms
+    : 5000;
+  if (durationMs < 1000 || durationMs > 30000) throw new Error('CodeLab project video duration must be from 1 to 30 seconds.');
+  const width = Number.isInteger(payload.width) ? Math.max(320, Math.min(1920, payload.width)) : 1280;
+  const height = Number.isInteger(payload.height) ? Math.max(240, Math.min(1080, payload.height)) : 720;
+  const fps = Number.isInteger(payload.fps) ? payload.fps : 25;
+  if (fps < 1 || fps > 60) throw new Error('CodeLab project video FPS must be from 1 to 60.');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-project-video-'));
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args, executablePath: await chromium.executablePath(),
+      headless: true, timeout: 60000
+    });
+    const context = await browser.newContext({
+      viewport: { width, height }, deviceScaleFactor: 1,
+      colorScheme: 'dark', recordVideo: { dir: tempDir, size: { width, height }, fps }
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    const consoleErrors = [];
+    const warnings = [];
+    page.on('pageerror', error => {
+      const message = String(error.message || error).slice(0, 300);
+      const target = isExpectedSandboxLocalStorageError(error) ? warnings : pageErrors;
+      if (target.length < 20) target.push(message);
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 30) {
+        consoleErrors.push(message.text().slice(0, 300));
+      }
+    });
+    const route = await openCodeLabProjectRoute(project, context, page);
+    await page.waitForTimeout(durationMs);
+    const video = page.video();
+    await page.close();
+    await context.close();
+    const videoPath = await video.path();
+    const stat = fs.statSync(videoPath);
+    if (!stat.isFile() || stat.size < 1000) throw new Error('Chromium did not produce a valid CodeLab project video.');
+    if (stat.size > 24 * 1024 * 1024) throw new Error('CodeLab project video exceeds the 24 MiB artifact limit.');
+    const bytes = fs.readFileSync(videoPath);
+    const artifact = payload.uploadTarget
+      ? await uploadNativeArtifact(payload.uploadTarget, bytes, 'video/webm', 'codelab/exports/')
+      : (bytes.length <= 8 * 1024 * 1024
+        ? { stored: false, mimeType: 'video/webm', sizeBytes: bytes.length, dataBase64: bytes.toString('base64') }
+        : null);
+    if (!artifact) throw new Error('Video exceeds the inline result limit; provide a presigned Neon uploadTarget.');
+    return {
+      captureMethod: 'playwright-chromium-real-browser',
+      projectId: project.id,
+      routeUrl: route.routeUrl,
+      viewport: { width, height },
+      format: 'webm',
+      durationMs,
+      fps,
+      pageErrors,
+      consoleErrors,
+      warnings,
+      passed: pageErrors.length === 0 && consoleErrors.length === 0,
+      artifact
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function inspectCodeLabProject(command) {
   const state = await loadAdminWorkspace();
   if (command.payload?.dashboard_test === true) {
@@ -1321,6 +1599,10 @@ async function migrateAdminPixelForgeProjectsToGuest() {
 }
 
 async function capturePixelForgeInterface(payload = {}) {
+  if (payload.project_id !== undefined) {
+    assertProjectId(payload.project_id);
+    await loadProject(payload.project_id);
+  }
   const width = Number.isInteger(payload.width) ? Math.max(640, Math.min(2560, payload.width)) : 1440;
   const height = Number.isInteger(payload.height) ? Math.max(480, Math.min(1800, payload.height)) : 1000;
   const zoom = Number.isFinite(payload.zoom) ? Math.max(1, Math.min(3, payload.zoom)) : 1;
@@ -1342,13 +1624,19 @@ async function capturePixelForgeInterface(payload = {}) {
       colorScheme: 'dark',
       reducedMotion: 'reduce'
     });
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
     const page = await context.newPage();
     const consoleErrors = [];
     page.on('pageerror', error => consoleErrors.push(String(error.message || error).slice(0, 300)));
     page.on('console', message => {
       if (message.type() === 'error' && consoleErrors.length < 20) consoleErrors.push(message.text().slice(0, 300));
     });
-    const response = await page.goto(baseUrl + '/pixelforge/index.html?capture=1', {
+    const captureUrl = baseUrl + '/pixelforge/index.html?capture=1' +
+      (payload.project_id ? '&projectId=' + encodeURIComponent(payload.project_id) : '');
+    const response = await page.goto(captureUrl, {
       waitUntil: 'domcontentloaded',
       timeout: 45000
     });
@@ -1395,20 +1683,24 @@ async function capturePixelForgeInterface(payload = {}) {
     if (uploadTargets !== undefined && uploadTargets !== null) {
       const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
       const uploadImage = async (target, bytes, role) => {
-        if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' || !target.objectKey) {
+        if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
+            !target.objectKey.startsWith('pixelforge/captures/') || target.objectKey.includes('..') ||
+            !/^[a-zA-Z0-9._/-]+$/.test(target.objectKey)) {
           throw new Error('Invalid Neon capture upload target for ' + role + '.');
         }
         let targetUrl;
         try { targetUrl = new URL(target.url); } catch { throw new Error('Invalid Neon presigned URL for ' + role + '.'); }
-        if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost) {
+        if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+          targetUrl.port !== '' || targetUrl.username || targetUrl.password) {
           throw new Error('Neon capture upload URL host validation failed for ' + role + '.');
         }
-        const bucketSegment = decodeURIComponent(targetUrl.pathname.split('/').filter(Boolean)[0] || '');
-        if (bucketSegment !== captureBucket) {
+        const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+        if (pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
           throw new Error('Neon capture upload URL does not target the configured public bucket for ' + role + '.');
         }
         const uploaded = await fetch(targetUrl, {
           method: 'PUT',
+          redirect: 'error',
           headers: { 'Content-Type': 'image/png' },
           body: bytes,
           signal: AbortSignal.timeout(30000)
@@ -1416,7 +1708,7 @@ async function capturePixelForgeInterface(payload = {}) {
         if (!uploaded.ok) {
           throw new Error('Neon capture upload failed for ' + role + ' (HTTP ' + uploaded.status + ').');
         }
-        return { role, objectKey: target.objectKey, mimeType: 'image/png', sizeBytes: bytes.length, uploaded: true };
+        return { role, objectKey: target.objectKey, publicUrl: targetUrl.origin + targetUrl.pathname, mimeType: 'image/png', sizeBytes: bytes.length, uploaded: true };
       };
       const [interfaceStored, artworkStored] = await Promise.all([
         uploadImage(uploadTargets.interface, screenshot, 'interface'),
@@ -1455,6 +1747,137 @@ async function capturePixelForgeInterface(payload = {}) {
   }
 }
 
+
+async function exportPixelForgeAnimationVideo(payload = {}) {
+  assertProjectId(payload.project_id);
+  const loaded = await loadProject(payload.project_id);
+  const project = loaded.project;
+  const timeline = project.animation;
+  if (!timeline || !Array.isArray(timeline.frames) || timeline.frames.length < 2) {
+    throw new Error('The PixelForge project needs at least two animation frames to export a video.');
+  }
+  if (timeline.frames.length > 240) throw new Error('Animation export is limited to 240 frames.');
+  const fps = Number.isInteger(payload.fps) ? payload.fps : Number(timeline.fps || 12);
+  if (!Number.isInteger(fps) || fps < 1 || fps > 60) throw new Error('Video FPS must be an integer from 1 to 60.');
+  const frameDurationsMs = timeline.frames.map((frame, index) => {
+    const durationMs = Number(frame.durationMs);
+    if (!Number.isInteger(durationMs) || durationMs < 20 || durationMs > 10000) {
+      throw new Error('Animation frame ' + index + ' has an invalid duration.');
+    }
+    return durationMs;
+  });
+  const totalDurationMs = frameDurationsMs.reduce((sum, duration) => sum + duration, 0);
+  if (totalDurationMs > 60000) throw new Error('Video export is limited to 60 seconds per pass.');
+  const width = Math.max(320, Math.min(1920, Number.isInteger(payload.width) ? payload.width : project.width * 4));
+  const height = Math.max(240, Math.min(1080, Number.isInteger(payload.height) ? payload.height : project.height * 4));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-pixelforge-video-'));
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      timeout: 60000
+    });
+    const context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+      colorScheme: 'dark',
+      recordVideo: { dir: tempDir, size: { width, height }, fps }
+    });
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+    const page = await context.newPage();
+    const pageErrors = [];
+    const consoleErrors = [];
+    page.on('pageerror', error => {
+      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 30) {
+        consoleErrors.push(message.text().slice(0, 300));
+      }
+    });
+    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+    const routeUrl = baseUrl + '/pixelforge/index.html?projectId=' +
+      encodeURIComponent(payload.project_id) + '&capture=video';
+    const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    if (!response || !response.ok()) {
+      throw new Error('PixelForge video route returned HTTP ' + (response?.status() || 'no response'));
+    }
+    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    await page.waitForFunction(() => {
+      const state = document.documentElement.dataset.pixelforgeCapture;
+      return state === 'playing' || state === 'error';
+    }, null, { timeout: 45000 });
+    const startupState = await page.evaluate(() => ({
+      state: document.documentElement.dataset.pixelforgeCapture || '',
+      error: document.documentElement.dataset.pixelforgeCaptureError || ''
+    }));
+    if (startupState.state === 'error') {
+      throw new Error('PixelForge could not start its native animation playback: ' + startupState.error);
+    }
+    await page.waitForFunction(() => {
+      const state = document.documentElement.dataset.pixelforgeCapture;
+      return state === 'complete' || state === 'error';
+    }, null, { timeout: totalDurationMs + 30000 });
+    const finalState = await page.evaluate(() => ({
+      state: document.documentElement.dataset.pixelforgeCapture || '',
+      error: document.documentElement.dataset.pixelforgeCaptureError || ''
+    }));
+    if (finalState.state !== 'complete') {
+      throw new Error('PixelForge animation playback did not complete: ' + finalState.error);
+    }
+    const video = page.video();
+    await page.close();
+    await context.close();
+    const videoPath = await video.path();
+    const stat = fs.statSync(videoPath);
+    if (!stat.isFile() || stat.size < 1000) throw new Error('Chromium did not produce a valid PixelForge animation video.');
+    if (stat.size > 24 * 1024 * 1024) throw new Error('Animation video exceeds the 24 MiB artifact limit.');
+    const videoBytes = fs.readFileSync(videoPath);
+    let artifact;
+    if (payload.uploadTarget !== undefined && payload.uploadTarget !== null) {
+      artifact = await uploadNativeArtifact(payload.uploadTarget, videoBytes, 'video/webm', 'pixelforge/exports/');
+    } else {
+      if (videoBytes.length > 8 * 1024 * 1024) {
+        throw new Error('Video exceeds the inline result limit; provide a presigned Neon uploadTarget.');
+      }
+      artifact = {
+        stored: false,
+        mimeType: 'video/webm',
+        sizeBytes: videoBytes.length,
+        dataBase64: videoBytes.toString('base64')
+      };
+    }
+    return {
+      exportMethod: 'playwright-chromium-real-pixelforge-app',
+      projectId: payload.project_id,
+      serverRevision: loaded.serverRevision,
+      contentSha256: loaded.contentSha256,
+      routeUrl,
+      format: 'webm',
+      timelineFps: fps,
+      width,
+      height,
+      frameCount: timeline.frames.length,
+      frameDurationsMs,
+      durationMs: totalDurationMs,
+      pageErrors,
+      consoleErrors,
+      passed: pageErrors.length === 0 && consoleErrors.length === 0,
+      artifact
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function mintNativeAdminHandoff() {
   const token = workspaceTokenFor(workspaceId);
   const base = 'http://127.0.0.1:' + String(process.env.PORT || 3000);
@@ -1478,6 +1901,25 @@ async function mintNativeAdminHandoff() {
   };
 }
 
+async function executeExplicitCodeLabBrowser(command) {
+  const payload = command.payload || {};
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-browser-actions-'));
+  try {
+    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+    return await executeCodeLabBrowserActions({
+      ...payload,
+      execution_mode: 'browser',
+      baseUrl,
+      workspaceId,
+      workspaceToken: workspaceTokenFor(workspaceId),
+      tempDir
+    });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   if (new Date(command.expires_at).getTime() < Date.now()) {
@@ -1494,6 +1936,31 @@ async function processCommand(command) {
       return;
     case 'codelab_project_inspect':
       await finish(command.command_id, 'succeeded', await inspectCodeLabProject(command));
+      return;
+    case 'codelab_project_get_code':
+      await finish(command.command_id, 'succeeded', await getCodeLabProjectCode(command));
+      return;
+    case 'codelab_project_update_code':
+      await finish(command.command_id, 'succeeded', await updateCodeLabProjectCode(command));
+      return;
+    case 'codelab_project_capture_png': {
+      const state = await loadAdminWorkspace();
+      assertCodeLabProjectId(payload.project_id);
+      const project = state.projects.find(item => item && item.id === payload.project_id);
+      if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
+      await finish(command.command_id, 'succeeded', await captureCodeLabProjectPng(project, { ...payload, revision: state.revision }));
+      return;
+    }
+    case 'codelab_project_record_video': {
+      const state = await loadAdminWorkspace();
+      assertCodeLabProjectId(payload.project_id);
+      const project = state.projects.find(item => item && item.id === payload.project_id);
+      if (!project) throw new Error('CodeLab project not found in ADMIN workspace.');
+      await finish(command.command_id, 'succeeded', await recordCodeLabProjectVideo(project, payload));
+      return;
+    }
+    case 'codelab_ui_execute':
+      await finish(command.command_id, 'succeeded', await executeExplicitCodeLabBrowser(command));
       return;
     case 'codelab_project_connect':
       await finish(command.command_id, 'succeeded', await connectCodeLabProject(command));
@@ -1526,8 +1993,28 @@ async function processCommand(command) {
       });
       return;
     }
+    case 'pixelforge_animation_frame_context': {
+      assertProjectId(payload.project_id);
+      const loaded = await loadProject(payload.project_id);
+      const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
+      const result = runtime.execute({
+        name: 'animation.frame.get_context',
+        index: payload.index,
+        ...(payload.layer_id ? { layerId: payload.layer_id } : {}),
+      });
+      if (!result.ok) throw new Error(result.error?.message || 'Animation frame context failed.');
+      await finish(command.command_id, 'succeeded', {
+        projectId: payload.project_id,
+        serverRevision: loaded.serverRevision,
+        context: result.result,
+      });
+      return;
+    }
     case 'pixelforge_capture_interface':
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
+      return;
+    case 'pixelforge_export_animation_video':
+      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo(payload));
       return;
     case 'pixelforge_export_image': {
       // Backward-compatible mailbox envelope: the primary DB CHECK constraint
@@ -1580,6 +2067,29 @@ async function processCommand(command) {
 }
 async function main() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.codelab_agent_commands (
+      command_id text PRIMARY KEY,
+      workspace_id text NOT NULL,
+      action text NOT NULL,
+      payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','awaiting_approval','succeeded','rejected','failed','expired')),
+      result jsonb,
+      proposal jsonb,
+      proposal_token text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      started_at timestamptz,
+      finished_at timestamptz,
+      expires_at timestamptz NOT NULL DEFAULT (now() + interval '15 minutes'),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CHECK (jsonb_typeof(payload) = 'object')
+    );
+    CREATE INDEX IF NOT EXISTS codelab_agent_commands_queue_idx
+      ON public.codelab_agent_commands (status, created_at)
+      WHERE status = 'queued';
+    CREATE INDEX IF NOT EXISTS codelab_agent_commands_workspace_idx
+      ON public.codelab_agent_commands (workspace_id, created_at DESC);
+  `);
+  await pool.query(`
     DO $codelab_migration$
     BEGIN
       IF NOT EXISTS (
@@ -1588,6 +2098,11 @@ async function main() {
          WHERE conrelid = 'codelab_agent_commands'::regclass
            AND conname = 'codelab_agent_commands_action_check'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_connect%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_animation_video%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_update_code%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_record_video%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_ui_execute%'
+           AND pg_get_constraintdef(oid) LIKE '%codelab_project_capture_png%'
       ) THEN
         ALTER TABLE codelab_agent_commands
           DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
@@ -1595,10 +2110,12 @@ async function main() {
           ADD CONSTRAINT codelab_agent_commands_action_check
           CHECK (action = ANY (ARRAY[
             'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
-            'pixelforge_propose','pixelforge_approve','pixelforge_discard',
-            'pixelforge_export_image','pixelforge_capture_interface',
+            'pixelforge_propose','pixelforge_approve','pixelforge_discard','pixelforge_animation_frame_context',
+            'pixelforge_export_image','pixelforge_capture_interface','pixelforge_export_animation_video',
             'codelab_project_create','codelab_project_convert_to_web',
-            'codelab_project_inspect','codelab_project_connect'
+            'codelab_project_inspect','codelab_project_connect',
+            'codelab_project_get_code','codelab_project_update_code',
+            'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute'
           ]));
       END IF;
     END

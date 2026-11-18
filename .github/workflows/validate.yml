@@ -105,11 +105,21 @@ jobs:
           done
           curl --silent --fail "$CODELAB_E2E_BASE_URL/api/health" >/dev/null
           node tests/pixelforge-integration.test.js
+          export HEADLESS_VISUAL_ARTIFACT_DIR="$RUNNER_TEMP/codelab-visual-evidence"
           node tests/design-workflow.e2e.test.js
+          node tests/pixelforge-visual-evidence.e2e.test.js
           node tests/design-tools-usage.e2e.test.js
           node tests/interface-responsive.e2e.test.js
           node tests/web-editor-ui.e2e.test.js
           node tests/continuous-ui-stress.e2e.test.js
+      - name: Upload deep visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-deep-visual-evidence
+          path: ${{ runner.temp }}/codelab-visual-evidence
+          if-no-files-found: error
+          retention-days: 14
       - name: Test offline save and reconnect recovery
         shell: bash
         run: |

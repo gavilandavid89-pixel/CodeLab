@@ -2,7 +2,7 @@
 // CodeLab XD Studio Pro v2.6.6
 // Persistencia segura, ramas, merge 3 vías, plantillas IA locales
 // ==========================================
-const APP_VERSION = '2.6.6';
+const APP_VERSION = '2.7.0';
 const STORAGE_KEY_PROJECTS = 'codelab_xd_projects_v2';
 const STORAGE_KEY_PROJECTS_RECOVERY = 'codelab_xd_projects_recovery_v1';
 const STORAGE_KEY_PROJECTS_WORKSPACE = 'codelab_xd_projects_workspace_v1';

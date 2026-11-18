@@ -139,7 +139,9 @@ assert.match(dimensionUnitAppSource, /const selected = p\.design\.elements\.filt
   'duplicate must copy every selected design layer instead of only the primary layer');
 assert.match(dimensionUnitAppSource, /p\.design\.elements\.length \+ selected\.length > MAX_DESIGN_ELEMENTS/,
   'multi-layer duplicate must reject the operation before it exceeds the layer limit');
-assert.match(dimensionUnitAppSource, /const duplicateIds = new Map\(selected\.map\(\(el, index\) => \[el\.id, copies\[index\]\.id\]\)\)[\s\S]{0,300}copy\.href = '#' \+ designLayerDomId\(duplicateIds\.get\(internalTarget\.id\)\)/,
+assert.match(dimensionUnitAppSource, /const duplicateIds = new Map\(selected\.map\(\(el, index\) => \[el\.id, copies\[index\]\.id\]\)\)/,
+  'duplicate must build a source-to-copy ID map for selected layers');
+assert.match(dimensionUnitAppSource, /copy\.href = '#' \+ designLayerDomId\(duplicateIds\.get\(internalTarget\.id\)\)/,
   'duplicated internal prototype links must target the duplicated layer when both endpoints are copied');
 assert.match(dimensionUnitAppSource, /selectedDesignElementIds = p\.design\.elements\.map\(item => item\.id\)/,
   'select-all must populate the complete multi-selection so move, duplicate and delete tools can operate on it');
