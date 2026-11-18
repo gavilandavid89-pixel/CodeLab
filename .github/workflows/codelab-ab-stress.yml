@@ -22,6 +22,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "A_START=$start" >> "$GITHUB_ENV"
           gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO"
           echo "A requested (persistent B→A rendezvous stress)"
 
@@ -33,7 +35,7 @@ jobs:
           set -euo pipefail
           run_id=""
           for i in $(seq 1 30); do
-            run_id="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session A" --limit 5 --json databaseId,status,headSha --jq '.[] | select(.headSha == env.GITHUB_SHA) | .databaseId' | head -n 1)"
+            run_id="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session A" --limit 10 --json databaseId,status,createdAt --jq '.[] | select((.status=="in_progress" or .status=="queued") and .createdAt >= env.A_START) | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then break; fi
             sleep 5
           done
