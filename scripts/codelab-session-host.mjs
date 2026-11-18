@@ -144,7 +144,9 @@ async function putPixelForgeProject(project) {
     }
     throw new Error('PixelForge project PUT failed with HTTP ' + r.status + ' ' + detail);
   }
-  return await r.json();
+  const result = await r.json();
+  if (result?.project) sessionProjects.set(project.id, { ...project, serverRevision: result.project.serverRevision || project.serverRevision || 1 });
+  return result;
 }
 async function executePixelForge(request) {
   if (request.operation === 'list_projects') {
