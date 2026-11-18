@@ -12,7 +12,7 @@ const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
 const sessionId = String(process.env.CODELAB_SESSION_ID || randomUUID());
 const maxMinutes = Math.max(1, Math.min(30, Number(process.env.CODELAB_SESSION_MINUTES || 10)));
 const pollMs = 1000;
-const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
 const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex')).slice(0, 64);
 async function mailboxPost(pathname, body) {
   const response = await fetch(mailboxBaseUrl + pathname, { method: 'POST', headers: { 'content-type': 'application/json', 'x-codelab-mailbox-token': mailboxToken }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
