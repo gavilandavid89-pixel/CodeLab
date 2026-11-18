@@ -1736,6 +1736,53 @@ function parseAiJsonContent(content, fallbackCode) {
 
 seedAdminAccountIfConfigured();
 
+
+let headlessMailboxSchemaPromise = null;
+async function ensureHeadlessMailboxSchema() {
+  if (!accountPool) throw new Error('database_not_configured');
+  if (!headlessMailboxSchemaPromise) {
+    headlessMailboxSchemaPromise = accountPool.query(`
+      CREATE TABLE IF NOT EXISTS codelab_headless_sessions (
+        session_id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS codelab_headless_requests (
+        request_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES codelab_headless_sessions(session_id) ON DELETE CASCADE,
+        payload JSONB NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','succeeded','failed','expired')),
+        result JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ,
+        lease_until TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS codelab_headless_requests_session_status_idx
+        ON codelab_headless_requests(session_id, status, created_at);
+      CREATE INDEX IF NOT EXISTS codelab_headless_sessions_expires_idx
+        ON codelab_headless_sessions(expires_at);
+    `);
+  }
+  await headlessMailboxSchemaPromise;
+}
+function headlessMailboxHash(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+function validHeadlessMailboxToken(token) {
+  return typeof token === 'string' && /^[a-f0-9]{64}$/i.test(token);
+}
+async function authorizeHeadlessMailbox(sessionId, token) {
+  if (!/^[a-zA-Z0-9_-]{16,128}$/.test(String(sessionId || '')) || !validHeadlessMailboxToken(token)) return null;
+  await ensureHeadlessMailboxSchema();
+  const row = await accountPool.query(
+    'SELECT session_id, expires_at FROM codelab_headless_sessions WHERE session_id=$1 AND token_hash=$2 AND expires_at > NOW()',
+    [sessionId, headlessMailboxHash(token)]
+  );
+  return row.rowCount ? row.rows[0] : null;
+}
+
 const server = http.createServer(async (req, res) => {
   const ip = clientIp(req);
   let pathname;
@@ -1819,6 +1866,110 @@ const server = http.createServer(async (req, res) => {
           return { key: job.key, bytes: bytes.length };
         }));
         return sendJson(res, 200, { ok: true, bucket: 'codelab-captures-public', objects: copied });
+      }
+
+
+      // Persistent headless A<->B mailbox. The high-entropy mailbox token is the
+      // capability credential; GitHub issue comments are used only for one-time
+      // session discovery, never for request/result polling.
+      if (pathname.startsWith('/api/headless/session/')) {
+        if (!accountPool) return sendJson(res, 503, { error: 'mailbox_database_not_configured' });
+        await ensureHeadlessMailboxSchema();
+        if (req.method === 'POST' && pathname === '/api/headless/session/register') {
+          const body = await readBody(req);
+          const sessionId = String(body.sessionId || '');
+          const token = String(body.token || '');
+          const expiresAt = new Date(String(body.expiresAt || ''));
+          if (!/^[a-zA-Z0-9_-]{16,128}$/.test(sessionId) || !validHeadlessMailboxToken(token) ||
+              Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now() ||
+              expiresAt.getTime() > Date.now() + 60 * 60 * 1000) {
+            return sendJson(res, 400, { error: 'invalid_headless_session' });
+          }
+          await accountPool.query(
+            'INSERT INTO codelab_headless_sessions(session_id,token_hash,expires_at) VALUES($1,$2,$3) ON CONFLICT(session_id) DO UPDATE SET token_hash=EXCLUDED.token_hash, expires_at=EXCLUDED.expires_at',
+            [sessionId, headlessMailboxHash(token), expiresAt.toISOString()]
+          );
+          return sendJson(res, 201, { ok: true, sessionId, expiresAt: expiresAt.toISOString() });
+        }
+
+        const requestUrl = new URL(req.url || '/', 'http://localhost');
+        const sessionId = String(requestUrl.searchParams.get('sessionId') || '');
+        const token = String(req.headers['x-codelab-mailbox-token'] || requestUrl.searchParams.get('token') || '');
+        const session = await authorizeHeadlessMailbox(sessionId, token);
+        if (!session) return sendJson(res, 404, { error: 'headless_session_not_found' });
+
+        if (req.method === 'POST' && pathname === '/api/headless/session/request') {
+          const body = await readBody(req);
+          const requestId = String(body.requestId || '');
+          const payload = body.payload;
+          if (!/^[a-zA-Z0-9_-]{16,128}$/.test(requestId) || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            return sendJson(res, 400, { error: 'invalid_headless_request' });
+          }
+          await accountPool.query(
+            'INSERT INTO codelab_headless_requests(request_id,session_id,payload) VALUES($1,$2,$3::jsonb)',
+            [requestId, sessionId, JSON.stringify(payload)]
+          );
+          return sendJson(res, 202, { ok: true, requestId });
+        }
+
+        if (req.method === 'POST' && pathname === '/api/headless/session/claim') {
+          const client = await accountPool.connect();
+          try {
+            await client.query('BEGIN');
+            await client.query(
+              "UPDATE codelab_headless_requests SET status='expired', finished_at=NOW() WHERE session_id=$1 AND status IN ('queued','running') AND created_at < NOW() - INTERVAL '15 minutes'",
+              [sessionId]
+            );
+            const picked = await client.query(
+              "SELECT request_id,payload FROM codelab_headless_requests WHERE session_id=$1 AND status='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1",
+              [sessionId]
+            );
+            if (!picked.rowCount) {
+              await client.query('COMMIT');
+              return sendJson(res, 204, null);
+            }
+            const row = picked.rows[0];
+            await client.query(
+              "UPDATE codelab_headless_requests SET status='running',started_at=NOW(),lease_until=NOW()+INTERVAL '5 minutes' WHERE request_id=$1",
+              [row.request_id]
+            );
+            await client.query('COMMIT');
+            return sendJson(res, 200, { ok: true, requestId: row.request_id, payload: row.payload });
+          } catch (error) {
+            try { await client.query('ROLLBACK'); } catch {}
+            throw error;
+          } finally {
+            client.release();
+          }
+        }
+
+        if (req.method === 'POST' && pathname === '/api/headless/session/result') {
+          const body = await readBody(req);
+          const requestId = String(body.requestId || '');
+          const status = body.status === 'failed' ? 'failed' : 'succeeded';
+          if (!/^[a-zA-Z0-9_-]{16,128}$/.test(requestId) || body.result === undefined) {
+            return sendJson(res, 400, { error: 'invalid_headless_result' });
+          }
+          const updated = await accountPool.query(
+            'UPDATE codelab_headless_requests SET status=$2,result=$3::jsonb,finished_at=NOW(),lease_until=NULL WHERE request_id=$1 AND session_id=$4 AND status=\'running\' RETURNING request_id',
+            [requestId, status, JSON.stringify(body.result), sessionId]
+          );
+          if (!updated.rowCount) return sendJson(res, 409, { error: 'headless_request_not_running' });
+          return sendJson(res, 200, { ok: true, requestId });
+        }
+
+        if (req.method === 'GET' && pathname === '/api/headless/session/result') {
+          const requestId = String(requestUrl.searchParams.get('requestId') || '');
+          if (!/^[a-zA-Z0-9_-]{16,128}$/.test(requestId)) return sendJson(res, 400, { error: 'invalid_headless_request_id' });
+          const row = await accountPool.query(
+            'SELECT request_id,status,result,created_at,started_at,finished_at FROM codelab_headless_requests WHERE request_id=$1 AND session_id=$2',
+            [requestId, sessionId]
+          );
+          if (!row.rowCount) return sendJson(res, 404, { error: 'headless_request_not_found' });
+          return sendJson(res, 200, row.rows[0]);
+        }
+
+        return sendJson(res, 404, { error: 'headless_mailbox_route_not_found' });
       }
 
       // Health
