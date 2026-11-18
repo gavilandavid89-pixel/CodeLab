@@ -1,0 +1,88 @@
+name: CodeLab A/B persistent animation verification
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  a-and-b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Start A persistent CodeLab session
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: "492"
+          CODELAB_SESSION_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CODELAB_SESSION_MINUTES: "2"
+          CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-ab-video
+        run: |
+          mkdir -p "${{ runner.temp }}/codelab-ab-video"
+          node scripts/codelab-session-host.mjs > "${{ runner.temp }}/codelab-host.log" 2>&1 &
+          echo $! > "${{ runner.temp }}/codelab-host.pid"
+          for i in $(seq 1 60); do
+            if grep -q "\[CodeLab Session Ready\]" "${{ runner.temp }}/codelab-host.log" 2>/dev/null; then
+              echo "A is ready"
+              break
+            fi
+            sleep 1
+          done
+          grep -q "\[CodeLab Session Ready\]" "${{ runner.temp }}/codelab-host.log"
+      - name: B sends animation request into A
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: "492"
+          CODELAB_SESSION_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CODELAB_SESSION_TIMEOUT_MS: "90000"
+          CODELAB_SESSION_REQUEST: >-
+            {"kind":"browser","start_path":"/pixelforge/index.html?createDemo=walk-crouch-24&capture=video","actions":[
+              {"type":"wait_for","selector":"#canvas","state":"visible","timeoutMs":30000},
+              {"type":"wait_for","selector":"#animation-frame-count","state":"visible","timeoutMs":30000},
+              {"type":"click","selector":"#animation-play","timeoutMs":30000},
+              {"type":"wait_for","selector":"#animation-frame-count","state":"visible","timeoutMs":10000},
+              {"type":"record_video","durationMs":5350},
+              {"type":"screenshot","fullPage":false}
+            ]}
+        run: node scripts/codelab-session-request.mjs
+      - name: Stop A cleanly after B returns
+        if: always()
+        run: |
+          if test -f "${{ runner.temp }}/codelab-host.pid"; then
+            kill -TERM "$(cat "${{ runner.temp }}/codelab-host.pid")" || true
+            for i in $(seq 1 20); do
+              if ! kill -0 "$(cat "${{ runner.temp }}/codelab-host.pid")" 2>/dev/null; then break; fi
+              sleep 1
+            done
+          fi
+          cat "${{ runner.temp }}/codelab-host.log" || true
+      - name: Inspect A/B evidence
+        if: always()
+        run: |
+          find "${{ runner.temp }}/codelab-ab-video" -maxdepth 2 -type f -printf '%p %s bytes\n' || true
+      - name: Upload A/B animation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-ab-animation-evidence
+          path: |
+            ${{ runner.temp }}/codelab-ab-video
+            ${{ runner.temp }}/codelab-host.log
+          if-no-files-found: warn
+          retention-days: 14
