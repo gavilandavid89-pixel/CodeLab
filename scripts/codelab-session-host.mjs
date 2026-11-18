@@ -23,12 +23,13 @@ async function mailboxPost(pathname, body) {
 }
 async function registerMailbox(expiresAt) {
   let lastError;
-  for (let attempt = 1; attempt <= 60; attempt++) {
+  for (let attempt = 1; attempt <= 6; attempt++) {
     try {
       return await mailboxPost('/api/headless/session/register', { sessionId, token: mailboxToken, expiresAt });
     } catch (error) {
       lastError = error;
-      await new Promise(r => setTimeout(r, 5000));
+      console.error('headless mailbox register attempt ' + attempt + '/6 failed:', error.message);
+      if (attempt < 6) await new Promise(r => setTimeout(r, 5000));
     }
   }
   throw lastError || new Error('Headless mailbox registration timed out.');
@@ -199,7 +200,7 @@ const sessionPage = await sessionContext.newPage();
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
 await registerMailbox(expiresAt);
-await comment(`[CodeLab Session Ready]\\n\\n` + JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, token: mailboxToken }));
+await comment(`[CodeLab Session Ready]\n\n` + JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, token: mailboxToken }));
 
 let stopping = false;
 process.once('SIGTERM', () => { stopping = true; });
