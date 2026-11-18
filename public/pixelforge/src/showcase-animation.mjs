@@ -105,8 +105,8 @@ function translateRasterFromContext(base64, width, height, dx, dy) {
  * Every new frame consumes the exact previous cel returned by the context
  * contract instead of reconstructing the previous frame from memory.
  */
-export function createReferenceGuidedSoldierAnimation({ frameCount = 24, fps = 12 } = {}) {
-  if (!Number.isInteger(frameCount) || frameCount < 2 || frameCount > 48) {
+export function createReferenceGuidedSoldierAnimation({ frameCount = 60, fps = 12 } = {}) {
+  if (!Number.isInteger(frameCount) || frameCount < 2 || frameCount > 120) {
     throw new RangeError('Reference-guided soldier animation requires 2–48 frames.');
   }
   const { doc, animation, workflow } = createSoldierReferenceAnimation();
@@ -123,13 +123,48 @@ export function createReferenceGuidedSoldierAnimation({ frameCount = 24, fps = 1
       layer: { id: layerId, name: doc.layers[0].name },
       current: { cel: encodeReferencePixels(animation.getLayerPixels(previousIndex, layerId)) },
     };
-    const phase = frameIndex % 12;
-    const wave = phase <= 6 ? phase : 12 - phase;
-    const dx = Math.round((wave - 3) * 1.2);
-    const dy = Math.round(Math.sin((frameIndex / 12) * Math.PI * 2) * 1.2);
-    const nextPixels = translateRasterFromContext(
-      previousContext.current.cel, doc.width, doc.height, dx, dy,
-    );
+    // The pose is evolved from the exact previous cel returned by CodeLab.
+    // Different vertical body zones receive smooth sub-pixel-inspired integer
+    // offsets, producing a readable stride/bob/weapon swing without inventing
+    // pixels from an imagined prior frame.
+    const t = frameIndex / fps;
+    const stride = Math.sin(t * Math.PI * 2 * 1.2);
+    const counter = Math.sin(t * Math.PI * 2 * 2.4 + Math.PI / 3);
+    const source = decodeReferencePixels(previousContext.current.cel);
+    const next = new Uint8ClampedArray(source.length);
+    for (let y = 0; y < doc.height; y++) {
+      const zone = y < 30 ? 0.18 : y < 58 ? 0.35 : y < 88 ? 0.75 : 1.0;
+      const dx = Math.round(stride * (1.0 + zone * 2.0) + counter * (y > 58 ? 1.2 : 0));
+      const dy = Math.round(counter * (y < 58 ? 0.5 : 1.2) + stride * (y > 88 ? 0.8 : 0));
+      for (let x = 0; x < doc.width; x++) {
+        const sx = x - dx, sy = y - dy;
+        if (sx < 0 || sy < 0 || sx >= doc.width || sy >= doc.height) continue;
+        const src = (sy * doc.width + sx) * 4;
+        const dst = (y * doc.width + x) * 4;
+        next[dst] = source[src]; next[dst + 1] = source[src + 1];
+        next[dst + 2] = source[src + 2]; next[dst + 3] = source[src + 3];
+      }
+    }
+    // Small weapon/muzzle accent driven from the previous frame's palette,
+    // not a new external image. It creates a visible action beat every cycle.
+    if (frameIndex % 10 >= 7) {
+      const flash = frameIndex % 10 === 7 || frameIndex % 10 === 8;
+      if (flash) {
+        const fx = 53 + Math.round(stride * 2), fy = 46 + Math.round(counter);
+        for (let yy = -2; yy <= 2; yy++) for (let xx = -3; xx <= 3; xx++) {
+          const d = Math.abs(xx) + Math.abs(yy);
+          if (d <= 3 && fx + xx >= 0 && fy + yy >= 0 && fx + xx < doc.width && fy + yy < doc.height) {
+            const o = ((fy + yy) * doc.width + (fx + xx)) * 4;
+            const base = source[o];
+            next[o] = Math.min(255, base + 90);
+            next[o + 1] = Math.min(255, base + 70);
+            next[o + 2] = Math.min(255, base + 35);
+            next[o + 3] = 255;
+          }
+        }
+      }
+    }
+    const nextPixels = encodeReferencePixels(next);
     animation.addFrame({ duplicate: false, afterIndex: previousIndex, durationMs: 1000 / fps });
     animation.setLayerPixels(frameIndex, layerId, decodeReferencePixels(nextPixels));
     contextLog.push({
