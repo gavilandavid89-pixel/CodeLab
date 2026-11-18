@@ -111,8 +111,29 @@ async function putPixelForgeProject(project) {
 async function executePixelForge(request) {
   if (request.operation === 'create_reference_animation') {
     const { doc, animation, workflow } = createSoldierReferenceAnimation();
-    const project = doc.toJSON();
+    const raw = doc.toJSON();
+    const projectId = 'ref_' + randomUUID().replace(/-/g, '');
+    const project = {
+      format: 'pixelforge-project',
+      version: 1,
+      id: projectId,
+      name: 'Agent reference feedback cycle',
+      width: raw.width,
+      height: raw.height,
+      activeLayerId: raw.activeLayerId,
+      revision: 0,
+      saveVersion: 0,
+      layers: raw.layers.map(layer => ({
+        id: layer.id,
+        name: layer.name,
+        visible: Boolean(layer.visible),
+        opacity: Number(layer.opacity),
+        locked: Boolean(layer.locked),
+        pixels: layer.pixels,
+      })),
+    };
     project.animation = animation.toJSON();
+    project.animation.layerIds = project.layers.map(layer => layer.id);
     const saved = await putPixelForgeProject(project);
     const runtime = HeadlessEditorRuntime.fromJSON(saved);
     const outcome = runtime.executeBatch([{ name: 'animation.frame.get_context', index: 0, layerId: project.layers[0].id }]);
