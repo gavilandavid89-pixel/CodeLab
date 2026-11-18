@@ -11,7 +11,20 @@ const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
 const sessionId = String(process.env.CODELAB_SESSION_ID || randomUUID());
 const maxMinutes = Math.max(1, Math.min(30, Number(process.env.CODELAB_SESSION_MINUTES || 10)));
-const pollMs = 3000;
+const pollMs = 1000;
+const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '')).slice(0, 64);
+async function mailboxPost(pathname, body) {
+  const response = await fetch(mailboxBaseUrl + pathname, { method: 'POST', headers: { 'content-type': 'application/json', 'x-codelab-mailbox-token': mailboxToken }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  if (response.status === 204) return null;
+  let data = null; try { data = await response.json(); } catch {}
+  if (!response.ok) throw new Error('Headless mailbox HTTP ' + response.status + ': ' + JSON.stringify(data));
+  return data;
+}
+async function registerMailbox(expiresAt) {
+  return mailboxPost('/api/headless/session/register', { sessionId, token: mailboxToken, expiresAt });
+}
+
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
@@ -175,30 +188,40 @@ const browser = await chromium.launch({ headless: true });
 const sessionContext = await browser.newContext({ viewport: { width: 1440, height: 960 }, recordVideo: { dir: videoDir, size: { width: 1440, height: 960 }, fps: 24 } });
 const sessionPage = await sessionContext.newPage();
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-await comment(`[CodeLab Session Ready]\\n\\n` + JSON.stringify({ sessionId, port, expiresAt: new Date(Date.now() + maxMinutes * 60000).toISOString() }));
+const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
+await registerMailbox(expiresAt);
+await comment(`[CodeLab Session Ready]\\n\\n` + JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, token: mailboxToken }));
 
-const processed = new Set();
 let stopping = false;
 process.once('SIGTERM', () => { stopping = true; });
 process.once('SIGINT', () => { stopping = true; });
 const deadline = Date.now() + maxMinutes * 60000;
 try {
   while (!stopping && Date.now() < deadline) {
-    const all = await comments();
-    for (const c of all) {
-      const body = String(c.body || '');
-      if (!body.startsWith('[CodeLab Session Request]')) continue;
-      if (processed.has(c.id)) continue;
-      processed.add(c.id);
-      let request;
+    let request = null;
+    try {
+      const claimed = await mailboxPost('/api/headless/session/claim?sessionId=' + encodeURIComponent(sessionId), {});
+      if (claimed?.requestId) request = claimed;
+    } catch (error) {
+      console.error('headless mailbox claim failed:', error.message);
+    }
+    if (request) {
       try {
-        const payload = body.slice('[CodeLab Session Request]'.length).trim().replace(/^\\\\n+/, '').replace(/\\\\n/g, '\\n');
-        request = JSON.parse(payload);
-        if (request.sessionId !== sessionId) continue;
-        const result = request.kind === 'pixelforge' ? await executePixelForge(request) : await executeBrowser(request, sessionPage);
-        await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request.requestId, sessionId, ok: true, result }));
+        const result = request.payload?.kind === 'pixelforge'
+          ? await executePixelForge(request.payload)
+          : await executeBrowser(request.payload, sessionPage);
+        await mailboxPost('/api/headless/session/result?sessionId=' + encodeURIComponent(sessionId), {
+          requestId: request.requestId, status: 'succeeded', result
+        });
       } catch (error) {
-        await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request?.requestId || null, sessionId, ok: false, error: String(error.message || error) }));
+        try {
+          await mailboxPost('/api/headless/session/result?sessionId=' + encodeURIComponent(sessionId), {
+            requestId: request.requestId, status: 'failed',
+            result: { sessionId, error: String(error.message || error) }
+          });
+        } catch (mailboxError) {
+          console.error('headless mailbox result failed:', mailboxError.message);
+        }
       }
     }
     await new Promise(r => setTimeout(r, pollMs));
