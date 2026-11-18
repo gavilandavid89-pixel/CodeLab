@@ -119,16 +119,13 @@ async function executePixelForge(request) {
   throw new Error('Unsupported PixelForge session operation.');
 }
 
-async function executeBrowser(request, browser) {
-  const context = await browser.newContext({
-    viewport: { width: Number(request.width || 1440), height: Number(request.height || 960) },
-    ...(request.recordVideo ? { recordVideo: { dir: path.join(dataDir, 'video'), size: { width: 1440, height: 960 }, fps: 24 } } : {})
-  });
-  const page = await context.newPage();
+async function executeBrowser(request, page) {
   const trace = [];
   const screenshots = [];
-  const startPath = String(request.start_path || '/pixelforge/index.html');
-  await page.goto(`http://127.0.0.1:${port}${startPath.startsWith('/') ? startPath : '/' + startPath}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  if (request.start_path) {
+    const startPath = String(request.start_path);
+    await page.goto(`http://127.0.0.1:${port}${startPath.startsWith('/') ? startPath : '/' + startPath}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  }
   for (const action of request.actions || []) {
     if (!action || typeof action !== 'object' || typeof action.type !== 'string') throw new Error('Invalid structured browser action.');
     const type = action.type;
@@ -166,13 +163,14 @@ async function executeBrowser(request, browser) {
     screenshots,
     passed: true
   };
-  await page.close();
-  await context.close();
   return result;
 }
 
 await waitHealthy();
 const browser = await chromium.launch({ headless: true });
+const sessionContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+const sessionPage = await sessionContext.newPage();
+await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 await comment(`[CodeLab Session Ready]\\n\\n` + JSON.stringify({ sessionId, port, expiresAt: new Date(Date.now() + maxMinutes * 60000).toISOString() }));
 
 const processed = new Set();
@@ -189,7 +187,7 @@ try {
       try {
         request = JSON.parse(body.slice('[CodeLab Session Request]'.length).trim());
         if (request.sessionId !== sessionId) continue;
-        const result = request.kind === 'pixelforge' ? await executePixelForge(request) : await executeBrowser(request, browser);
+        const result = request.kind === 'pixelforge' ? await executePixelForge(request) : await executeBrowser(request, sessionPage);
         await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request.requestId, sessionId, ok: true, result }));
       } catch (error) {
         await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request?.requestId || null, sessionId, ok: false, error: String(error.message || error) }));
@@ -198,6 +196,8 @@ try {
     await new Promise(r => setTimeout(r, pollMs));
   }
 } finally {
+  await sessionPage.close().catch(() => {});
+  await sessionContext.close().catch(() => {});
   await browser.close().catch(() => {});
   server.kill('SIGTERM');
   await fs.rm(dataDir, { recursive: true, force: true });
