@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
 import { chromium } from 'playwright';
+import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
 
 const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
@@ -19,7 +20,6 @@ const port = await new Promise((resolve, reject) => {
   server.listen(0, '127.0.0.1', () => resolve(server.address().port));
   server.on('error', reject);
 });
-const serverProbe = null;
 const server = spawn(process.execPath, ['server.js'], {
   env: { ...process.env, PORT: String(port), CODELAB_DATA_DIR: dataDir, PIXELFORGE_GUEST_MODE: 'true' },
   stdio: ['ignore', 'pipe', 'pipe']
@@ -49,6 +49,74 @@ async function waitHealthy() {
     await new Promise(r => setTimeout(r, 250));
   }
   throw new Error('CodeLab local server did not become healthy.');
+}
+
+async function getPixelForgeProject(projectId) {
+  const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects/${encodeURIComponent(projectId)}`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!r.ok) throw new Error('PixelForge project GET failed with HTTP ' + r.status);
+  return await r.json();
+}
+async function putPixelForgeProject(project) {
+  const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects/${encodeURIComponent(project.id)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(project),
+    signal: AbortSignal.timeout(30000)
+  });
+  if (!r.ok) {
+    let detail = '';
+    try { detail = JSON.stringify(await r.json()); } catch {}
+    throw new Error('PixelForge project PUT failed with HTTP ' + r.status + ' ' + detail);
+  }
+  return await r.json();
+}
+async function executePixelForge(request) {
+  const project = await getPixelForgeProject(request.project_id);
+  const runtime = HeadlessEditorRuntime.fromJSON(project);
+  if (request.operation === 'frame_context') {
+    const outcome = runtime.executeBatch([{
+      name: 'animation.frame.get_context',
+      index: request.frame_index,
+      ...(request.layer_id ? { layerId: request.layer_id } : {})
+    }]);
+    if (!outcome.ok) throw new Error(outcome.error?.message || 'Frame context request failed.');
+    const context = outcome.results?.[0]?.result || outcome.result || null;
+    return {
+      sessionId,
+      execution_mode: 'api',
+      captureMethod: 'codelab-local-headless-runtime',
+      projectId: project.id,
+      serverRevision: project.serverRevision || null,
+      context
+    };
+  }
+  if (request.operation === 'batch') {
+    if (!Array.isArray(request.actions) || request.actions.length < 1 || request.actions.length > 500) {
+      throw new Error('PixelForge batch requires 1–500 structured actions.');
+    }
+    const outcome = runtime.executeBatch(request.actions);
+    if (!outcome.ok) throw new Error('PixelForge batch failed at action ' + outcome.failedIndex + ': ' + (outcome.error?.message || 'unknown error'));
+    if (runtime.hasPendingChanges) {
+      const proposal = runtime.createProposal(String(request.summary || 'Persistent session PixelForge batch'));
+      const accepted = runtime.acceptProposal();
+      if (accepted?.status !== 'applied') throw new Error('PixelForge batch proposal was not applied.');
+      const saved = await putPixelForgeProject(runtime.toJSON());
+      return {
+        sessionId,
+        execution_mode: 'api',
+        captureMethod: 'codelab-local-headless-runtime',
+        projectId: project.id,
+        serverRevision: saved.serverRevision || null,
+        inspection: runtime.inspect(),
+        results: outcome.results
+      };
+    }
+    return { sessionId, execution_mode: 'api', projectId: project.id, serverRevision: project.serverRevision || null, results: outcome.results };
+  }
+  throw new Error('Unsupported PixelForge session operation.');
 }
 
 async function executeBrowser(request, browser) {
@@ -121,7 +189,7 @@ try {
       try {
         request = JSON.parse(body.slice('[CodeLab Session Request]'.length).trim());
         if (request.sessionId !== sessionId) continue;
-        const result = await executeBrowser(request, browser);
+        const result = request.kind === 'pixelforge' ? await executePixelForge(request) : await executeBrowser(request, browser);
         await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request.requestId, sessionId, ok: true, result }));
       } catch (error) {
         await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request?.requestId || null, sessionId, ok: false, error: String(error.message || error) }));
