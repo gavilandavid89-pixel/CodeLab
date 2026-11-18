@@ -15,6 +15,8 @@ const pollMs = 1000;
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
+const videoDir = process.env.CODELAB_SESSION_VIDEO_DIR || path.join(os.tmpdir(), 'codelab-session-video');
+await fs.mkdir(videoDir, { recursive: true });
 const port = await new Promise((resolve, reject) => {
   const server = createServer((req, res) => { res.writeHead(200); res.end('ready'); });
   server.listen(0, '127.0.0.1', () => resolve(server.address().port));
@@ -168,15 +170,18 @@ async function executeBrowser(request, page) {
 
 await waitHealthy();
 const browser = await chromium.launch({ headless: true });
-const sessionContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+const sessionContext = await browser.newContext({ viewport: { width: 1440, height: 960 }, recordVideo: { dir: videoDir, size: { width: 1440, height: 960 }, fps: 24 } });
 const sessionPage = await sessionContext.newPage();
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 await comment(`[CodeLab Session Ready]\\n\\n` + JSON.stringify({ sessionId, port, expiresAt: new Date(Date.now() + maxMinutes * 60000).toISOString() }));
 
 const processed = new Set();
+let stopping = false;
+process.once('SIGTERM', () => { stopping = true; });
+process.once('SIGINT', () => { stopping = true; });
 const deadline = Date.now() + maxMinutes * 60000;
 try {
-  while (Date.now() < deadline) {
+  while (!stopping && Date.now() < deadline) {
     const all = await comments();
     for (const c of all) {
       const body = String(c.body || '');
