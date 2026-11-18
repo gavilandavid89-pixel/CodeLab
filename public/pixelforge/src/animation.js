@@ -210,11 +210,6 @@ export function applyAnimationAction(timeline, document, action) {
   if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.name !== 'string') {
     throw new TypeError('Animation action must have a name.');
   }
-  if (action.name === 'animation.get_context') {
-    if (!next.frames.length) throw new RangeError('Create the first animation frame before requesting frame context.');
-    const model = modelFromTimeline(next);
-    return { timeline, result: frameContext(model, document, action.index, action.layerId), changed: false };
-  }
   if (action.name === 'animation.get_summary') {
     return { timeline, result: summarizeAnimationTimeline(timeline), changed: false };
   }
