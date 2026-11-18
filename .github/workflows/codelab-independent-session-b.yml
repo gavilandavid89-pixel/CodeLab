@@ -43,7 +43,7 @@ jobs:
           node-version: 22
 
       - name: Discover independently running A once
-        if: ${{ github.event.inputs.session_id == '' }}
+        if: ${{ github.event_name == 'issue_comment' || github.event.inputs.session_id == '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -65,7 +65,7 @@ jobs:
             const x=candidates[0];
             if(!x) process.exit(2);
             const v=JSON.parse(String(x.body).slice("[CodeLab Session Ready]".length).trim());
-            process.stdout.write([v.sessionId,v.mailbox || 'https://codelab-pbw9.onrender.com'].join("\\n"));
+            process.stdout.write(v.sessionId + "\n" + (v.mailbox || "https://codelab-pbw9.onrender.com"));
           ')"
           session="$(printf '%s' "$values" | sed -n '1p')"
           mailbox="$(printf '%s' "$values" | sed -n '2p')"
@@ -75,7 +75,7 @@ jobs:
           echo "Connected to A session: $session"
 
       - name: Set supplied A session
-        if: ${{ github.event.inputs.session_id != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.session_id != '' }}
         env:
           SUPPLIED_SESSION_ID: ${{ github.event.inputs.session_id }}
           SUPPLIED_MAILBOX: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
