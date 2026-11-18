@@ -142,6 +142,8 @@ let previousCel=reference64;
 const proof=[];
 const startFrame=ONE_STEP ? REQUESTED_FRAME : 1;
 const endFrame=ONE_STEP ? REQUESTED_FRAME : FRAME_COUNT-1;
+if(ONE_STEP && !suppliedProjectId && REQUESTED_FRAME !== 1) throw new Error('Frame >1 requires CODELAB_WALK_PROJECT_ID so A remains the source of truth.');
+if(ONE_STEP) previousFrame=REQUESTED_FRAME-1;
 for(let i=startFrame;i<=endFrame;i++){
   const duplicated=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: create next walking frame',actions:[{name:'animation.frame.duplicate',index:previousFrame}],return_context:false});
   const nextIndex=Number(duplicated.results?.[0]?.result?.index ?? i);
