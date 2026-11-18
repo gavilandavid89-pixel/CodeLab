@@ -1926,7 +1926,8 @@ const server = http.createServer(async (req, res) => {
             );
             if (!picked.rowCount) {
               await client.query('COMMIT');
-              res.writeHead(204, { 'Cache-Control': 'no-store' });\n              return res.end();
+              res.writeHead(204, { 'Cache-Control': 'no-store' });
+              return res.end();
             }
             const row = picked.rows[0];
             await client.query(
