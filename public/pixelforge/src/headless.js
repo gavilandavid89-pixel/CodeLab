@@ -39,7 +39,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
     'animation.frame.capture_document', 'animation.frame.duplicate',
     'animation.frame.delete', 'animation.frame.reorder', 'animation.frame.set_duration',
     'animation.frame.set_active', 'animation.set_fps', 'animation.set_loop',
-    'animation.frame.get_cel', 'animation.frame.set_cel',
+    'animation.frame.get_cel', 'animation.frame.get_context', 'animation.frame.set_cel',
     'animation.frame.get_onion_skin', 'animation.frame.get_composite',
   ]),
 });
