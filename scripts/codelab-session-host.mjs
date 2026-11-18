@@ -200,7 +200,7 @@ const sessionPage = await sessionContext.newPage();
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
 await registerMailbox(expiresAt);
-await comment(`[CodeLab Session Ready]\n\n` + JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, token: mailboxToken }));
+console.log(JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, status: 'ready' }));
 
 let stopping = false;
 process.once('SIGTERM', () => { stopping = true; });
