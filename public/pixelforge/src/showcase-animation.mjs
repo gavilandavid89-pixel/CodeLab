@@ -1,3 +1,4 @@
+import { SOLDIER_REFERENCE_RASTER } from '../assets/soldier-reference-raster.mjs';
 import { RasterDocument } from './core.js';
 import { PixelForgeAnimation } from './animation.mjs';
 
@@ -39,4 +40,34 @@ export function createOrbitalShowcase(){
   const bg=doc.layers[0].pixels,gb=ground.pixels,sb=soldier.pixels,db=detail.pixels;for(let y=0;y<height;y++){const c=y<104?P.bg:y<132?P.bg2:P.ground;rect(bg,width,height,0,y,width,1,c);}ellipse(bg,width,height,96,26,13,13,[205,213,198,255]);for(const [x,y] of [[10,18],[21,32],[38,13],[73,21],[110,14],[117,42],[14,55],[91,48]])put(bg,width,height,x,y,P.white);rect(gb,width,height,0,132,width,28,P.ground);rect(gb,width,height,0,132,width,2,[55,57,55,255]);
   const animation=PixelForgeAnimation.fromDocument(doc,{fps:16});for(let i=0;i<24;i++){if(i>0)animation.addFrame({duplicate:false,durationMs:62.5});const bgf=new Uint8ClampedArray(bg),g=new Uint8ClampedArray(gb),s=new Uint8ClampedArray(sb),d=new Uint8ClampedArray(db);drawSoldier(s,width,height,i);const stepX=64+Math.round(2*Math.sin(2*Math.PI*i/16));line(g,width,height,stepX-18,137,stepX+18,137,[55,57,55,255]);put(d,width,height,stepX+12,128,P.armorHi);if(i%4===0)put(d,width,height,stepX+13,128,P.white);animation.setLayerPixels(i,doc.layers[0].id,bgf);animation.setLayerPixels(i,ground.id,g);animation.setLayerPixels(i,soldier.id,s);animation.setLayerPixels(i,detail.id,d);}
   animation.setFps(16);animation.setActiveFrame(0);doc.setActiveLayer(soldier.id);doc.revision=1;doc.saveVersion=1;doc.history=[];doc.future=[];doc.historyBytes=0;doc.dirty=false;return {doc,animation,loop:true};
+}
+
+
+export function createSoldierReferenceAnimation() {
+  const width = SOLDIER_REFERENCE_RASTER.width;
+  const height = SOLDIER_REFERENCE_RASTER.height;
+  const doc = new RasterDocument(width, height, 'Soldier reference animation project');
+  doc.layers[0].name = 'Soldier reference · initial';
+  doc.layers[0].pixels.set(SOLDIER_REFERENCE_RASTER.decode());
+  const animation = PixelForgeAnimation.fromDocument(doc, { fps: 12 });
+  animation.setLayerPixels(0, doc.layers[0].id, doc.layers[0].pixels);
+  animation.setActiveFrame(0);
+  doc.setActiveLayer(doc.layers[0].id);
+  doc.revision = 1;
+  doc.saveVersion = 1;
+  doc.history = [];
+  doc.future = [];
+  doc.historyBytes = 0;
+  doc.dirty = false;
+  return {
+    doc,
+    animation,
+    loop: true,
+    workflow: {
+      mode: 'reference-guided',
+      rule: 'Frame 0 is the source of truth. Before drawing each next frame or layer, request animation.frame.get_context and use the returned previous cel/composite as authoritative visual context.',
+      nextAction: 'animation.frame.get_context',
+      frameCount: animation.frameCount,
+    },
+  };
 }
