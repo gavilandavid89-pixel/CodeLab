@@ -294,13 +294,15 @@ async function executePixelForge(request) {
     project = cached;
   }
   if (request.operation === 'frame_context') {
-    const outcome = runtime.executeBatch([{
+    const frameAction = {
       name: 'animation.frame.get_context',
       index: request.frame_index,
       ...(request.layer_id ? { layerId: request.layer_id } : {})
-    }]);
+    };
+    const runtimeActions = request.layer_id ? mapAnimationActionsToRuntimeLayers(runtime, project, [frameAction]) : [frameAction];
+    const outcome = runtime.executeBatch(runtimeActions);
     if (!outcome.ok) throw new Error(outcome.error?.message || 'Frame context request failed.');
-    const context = outcome.results?.[0]?.result || outcome.result || null;
+    const context = normalizeAnimationContext(outcome.results?.[0]?.result || outcome.result || null, project);
     return {
       sessionId,
       execution_mode: 'api',
