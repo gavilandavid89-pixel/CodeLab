@@ -79,7 +79,7 @@ const cycle = [];
 
 const opened = await send({
   kind: 'browser',
-  start_path: '/pixelforge/index.html?createDemo=walk-crouch-24&capture=video',
+  start_path: '/pixelforge/index.html',
   actions: [{ type: 'wait_for', selector: '#canvas', state: 'visible', timeoutMs: 30000 }],
 });
 cycle.push({
@@ -91,17 +91,8 @@ cycle.push({
   },
 });
 
-const projects = await send({ kind: 'pixelforge', operation: 'list_projects' });
-const projectList = Array.isArray(projects.projects) ? projects.projects : [];
-if (!projectList.length) throw new Error('A did not expose a persisted PixelForge project after the real browser open.');
-const createdProject = projectList[0];
-const created = await send({
-  kind: 'pixelforge',
-  operation: 'frame_context',
-  project_id: createdProject.id,
-  frame_index: 0,
-});
-if (!created.projectId || !created.context) throw new Error('A did not return a real persisted project plus initial context.');
+const created = await send({ kind: 'pixelforge', operation: 'create_blank_animation' });
+if (!created.projectId || !created.context) throw new Error('A did not return a real persisted animation project plus initial context.');
 cycle.push({
   step: 'A→context',
   projectId: created.projectId,
@@ -109,6 +100,30 @@ cycle.push({
   layer: created.context.layer,
   sourcePixelsBytes: Buffer.from(created.context.current.cel, 'base64').byteLength,
   guidance: created.context.guidance,
+});
+
+const { SOLDIER_REFERENCE_RASTER } = await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
+const referencePixels = SOLDIER_REFERENCE_RASTER.decode();
+const referenceBase64 = Buffer.from(referencePixels).toString('base64');
+
+const referenceApplied = await send({
+  kind: 'pixelforge',
+  operation: 'batch',
+  project_id: created.projectId,
+  summary: 'B→A: seed the source frame from the authoritative CodeLab reference raster',
+  actions: [{
+    name: 'animation.frame.set_cel',
+    index: 0,
+    layerId: created.context.layer.id,
+    pixels: referenceBase64,
+  }],
+});
+if (!referenceApplied.context) throw new Error('A did not return context after seeding the source reference.');
+cycle.push({
+  step: 'B→A→context',
+  frame: referenceApplied.context.frame,
+  seededFromAuthoritativeReference: true,
+  exactReferenceBytes: referencePixels.byteLength,
 });
 
 const duplicated = await send({
