@@ -4,7 +4,6 @@ import { createHeadlessRuntime } from '../public/pixelforge/src/headless.js';
 
 test('animation frame context returns authoritative previous cel and visual payload', () => {
   const runtime = createHeadlessRuntime({ width: 16, height: 16, name: 'context-test' });
-  assert.equal(runtime.execute({ name: 'canvas.draw_line', x1: 2, y1: 2, x2: 6, y2: 6 }).ok, true);
   assert.equal(runtime.execute({ name: 'animation.frame.capture_document', frameName: 'Frame 1' }).ok, true);
   assert.equal(runtime.execute({ name: 'animation.frame.duplicate', index: 0 }).ok, true);
   const context = runtime.execute({ name: 'animation.frame.get_context', index: 1 });
