@@ -16,7 +16,7 @@ function gh(args) {
     let out = '', err = '';
     p.stdout.on('data', b => out += b);
     p.stderr.on('data', b => err += b);
-    p.on('close', code => code === 0 ? resolve(out) : reject(new Error(err.slice(0, 2000)));
+    p.on('close', code => code === 0 ? resolve(out) : reject(new Error(err.slice(0, 2000))));
   });
 }
 const request = JSON.parse(requestJson);
