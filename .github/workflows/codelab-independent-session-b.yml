@@ -24,4 +24,70 @@ on:
       request:
         description: "Structured CodeLab session request JSON"
         required: false
+        default: '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}'
+        type: string
 
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  request:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent B]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Discover independently running A once
+        if: ${{ github.event.inputs.session_id == '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/492/comments?per_page=100")"
+          values="$(printf '%s' "$comments" | node -e '
+            const fs=require("node:fs");
+            const a=JSON.parse(fs.readFileSync(0,"utf8"));
+            const now=Date.now();
+            const candidates=a.filter(c=>{
+              const b=String(c.body||"");
+              if(!b.startsWith("[CodeLab Session Ready]") || !b.includes("independent-")) return false;
+              try {
+                const x=JSON.parse(b.slice("[CodeLab Session Ready]".length).trim());
+                return x.sessionId && Date.parse(x.expiresAt)>now;
+              } catch { return false; }
+            }).sort((p,q)=>String(q.created_at).localeCompare(String(p.created_at)));
+            const x=candidates[0];
+            if(!x) process.exit(2);
+            const v=JSON.parse(String(x.body).slice("[CodeLab Session Ready]".length).trim());
+            process.stdout.write([v.sessionId,v.mailbox || 'https://codelab-pbw9.onrender.com'].join("\\n"));
+          ')"
+          session="$(printf '%s' "$values" | sed -n '1p')"
+          mailbox="$(printf '%s' "$values" | sed -n '2p')"
+          test -n "$session" && test -n "$mailbox"
+          echo "CODELAB_SESSION_ID=$session" >> "$GITHUB_ENV"
+          echo "CODELAB_MAILBOX_BASE_URL=$mailbox" >> "$GITHUB_ENV"
+          echo "Connected to A session: $session"
+
+      - name: Set supplied A session
+        if: ${{ github.event.inputs.session_id != '' }}
+        env:
+          SUPPLIED_SESSION_ID: ${{ github.event.inputs.session_id }}
+          SUPPLIED_MAILBOX: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
+        run: |
+          echo "CODELAB_SESSION_ID=$SUPPLIED_SESSION_ID" >> "$GITHUB_ENV"
+          echo "CODELAB_MAILBOX_BASE_URL=$SUPPLIED_MAILBOX" >> "$GITHUB_ENV"
+          echo "Connected directly to supplied A session: $SUPPLIED_SESSION_ID"
+
+      - name: Send independent B request to A
+        env:
+          CODELAB_SESSION_TIMEOUT_MS: "120000"
+          CODELAB_SESSION_REQUEST: ${{ github.event.inputs.request || '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}' }}
+        run: |
+          echo "B mode: ${{ github.event.inputs.mode || 'normal' }}"
+          node scripts/codelab-session-request.mjs
