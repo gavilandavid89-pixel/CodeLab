@@ -30,7 +30,20 @@ function gh(args) {
 const request = JSON.parse(requestJson);
 request.requestId = requestId;
 request.sessionId = sessionId;
-await mailbox('/api/headless/session/request?sessionId=' + encodeURIComponent(sessionId), 'POST', { requestId, payload: request });
+let submitted = false;
+let lastSubmitError = null;
+for (let attempt = 1; attempt <= 24; attempt++) {
+  try {
+    await mailbox('/api/headless/session/request?sessionId=' + encodeURIComponent(sessionId), 'POST', { requestId, payload: request });
+    submitted = true;
+    break;
+  } catch (error) {
+    lastSubmitError = error;
+    if (!String(error.message || error).includes('HTTP 404') || attempt === 24) throw error;
+    await new Promise(r => setTimeout(r, 5000));
+  }
+}
+if (!submitted) throw lastSubmitError || new Error('Failed to submit persistent session request.');
 
 const deadline = Date.now() + timeoutMs;
 while (Date.now() < deadline) {
