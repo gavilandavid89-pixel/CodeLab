@@ -1,8 +1,6 @@
 name: CodeLab Independent Session A
 
 on:
-  push:
-    branches: [main]
   issue_comment:
     types: [created]
   workflow_dispatch:
