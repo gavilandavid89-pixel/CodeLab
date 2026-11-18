@@ -47,6 +47,11 @@ test('keeps the showcase timeline metadata editable without forcing a huge raste
   assert.equal(animation.layerIds.length, doc.layers.length);
   assert.equal(loop, true);
   assert.equal(animation.totalDurationMs, 1250);
-  assert.equal(animation.frameCount, 20);
-  assert.ok(animation.frames.every(frame => frame.cels.length === doc.layers.length));
+  for (let frameIndex = 0; frameIndex < 20; frameIndex++) {
+    const frame = animation.getFrame(frameIndex);
+    assert.equal(frame.index, frameIndex);
+    for (const layerId of doc.layers.map(layer => layer.id)) {
+      assert.equal(animation.getLayerPixels(frameIndex, layerId).length, 96 * 120 * 4);
+    }
+  }
 });
