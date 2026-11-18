@@ -1,0 +1,158 @@
+name: CodeLab Independent A-B Stress Matrix
+
+on:
+  push:
+    paths:
+      - ".github/workflows/codelab-ab-stress.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Start one persistent A
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO"
+          echo "A requested"
+
+      - name: Wait for A mailbox registration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for i in ${{seq 1 30}}; do
+            comments="$(gh api "repos/$GH_REPO/issues/492/comments?per_page=100")"
+            ready="$(printf '%s' "$comments" | node -e '
+              const fs=require("node:fs");
+              const a=JSON.parse(fs.readFileSync(0,"utf8"));
+              const now=Date.now();
+              const xs=a.filter(c=>String(c.body||"").startsWith("[CodeLab Session Ready]")).reverse();
+              for (const c of xs) {
+                try {
+                  const x=JSON.parse(String(c.body).slice("[CodeLab Session Ready]".length).trim());
+                  if (x.sessionId && x.token && x.mailbox && Date.parse(x.expiresAt)>now) {
+                    process.stdout.write(JSON.stringify(x)); process.exit(0);
+                  }
+                } catch {}
+              }
+              process.exit(2);
+            ')" && {
+              echo "A_READY=$ready" >> "$GITHUB_ENV"
+              break
+            }
+            sleep 5
+          done
+          test -n "${{ env.A_READY:- }}" || { echo "A never became ready"; exit 1; }
+          echo "$A_READY"
+
+      - name: Launch 5 independent B concurrently
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "B_CONCURRENT_START=$start" >> "$GITHUB_ENV"
+          for n in 1 2 3 4 5; do
+            gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" -f mode=concurrent
+          done
+          echo "5 concurrent B requests dispatched"
+
+      - name: Verify 5 concurrent B results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for i in ${{seq 1 36}}; do
+            rows="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session B" --limit 30 --json databaseId,createdAt,status,conclusion --jq '.[] | select(.createdAt >= env.B_CONCURRENT_START) | [.databaseId,.status,.conclusion] | @tsv')"
+            total="$(printf '%s
+' "$rows" | sed '/^$/d' | wc -l)"
+            done="$(printf '%s
+' "$rows" | awk -F '	' '$2=="completed" {n++} END {print n+0}')"
+            bad="$(printf '%s
+' "$rows" | awk -F '	' '$2=="completed" && $3!="success" {n++} END {print n+0}')"
+            echo "concurrent: total=$total done=$done bad=$bad"
+            if [ "$done" -ge 5 ]; then
+              test "$bad" -eq 0
+              break
+            fi
+            sleep 10
+          done
+          test "$done" -ge 5
+
+      - name: Launch queued batch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "B_QUEUE_START=$start" >> "$GITHUB_ENV"
+          for n in 1 2 3 4 5; do
+            gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" -f mode=queue
+          done
+          echo "5 queued B requests dispatched"
+
+      - name: Verify queued batch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for i in ${{seq 1 36}}; do
+            rows="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session B" --limit 40 --json databaseId,createdAt,status,conclusion --jq '.[] | select(.createdAt >= env.B_QUEUE_START) | [.databaseId,.status,.conclusion] | @tsv')"
+            done="$(printf '%s
+' "$rows" | awk -F '	' '$2=="completed" {n++} END {print n+0}')"
+            bad="$(printf '%s
+' "$rows" | awk -F '	' '$2=="completed" && $3!="success" {n++} END {print n+0}')"
+            echo "queue: done=$done bad=$bad"
+            if [ "$done" -ge 5 ]; then test "$bad" -eq 0; break; fi
+            sleep 10
+          done
+          test "$done" -ge 5
+
+      - name: Normal gated chain B1 -> result -> B2 -> result -> B3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          dispatch_and_wait() {
+            local before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" -f mode=normal
+            for i in ${{seq 1 36}}; do
+              row="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session B" --limit 50 --json databaseId,createdAt,status,conclusion --jq '.[] | select(.createdAt >= env.BEFORE) | [.databaseId,.status,.conclusion] | @tsv' | head -n 1)"
+              if [ -n "$row" ]; then
+                status="$(printf '%s' "$row" | cut -f2)"
+                conclusion="$(printf '%s' "$row" | cut -f3)"
+                echo "normal: run=$(printf '%s' "$row" | cut -f1) status=$status conclusion=$conclusion"
+                if [ "$status" = "completed" ]; then
+                  test "$conclusion" = "success"
+                  return 0
+                fi
+              fi
+              sleep 10
+            done
+            return 1
+          }
+          for n in 1 2 3; do
+            BEFORE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            export BEFORE
+            dispatch_and_wait
+            echo "Normal gated step $n succeeded; next B is now allowed."
+          done
+
+      - name: Final assertion
+        run: echo "A-B stress matrix passed: concurrent=5, queue=5, gated=3"
