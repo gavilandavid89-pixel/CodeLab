@@ -37,7 +37,7 @@ jobs:
                 if(!b.startsWith("[CodeLab Session Ready]") || !b.includes("independent-")) return false;
                 const m=b.match(/"expiresAt":"([^"]+)"/);
                 return m && Date.parse(m[1]) > now;
-              }).sort((p,q)=>{ const pm=String(p.body).match(/independent-(\\d+)/); const qm=String(q.body).match(/independent-(\\d+)/); return Number(qm?.[1]||0)-Number(pm?.[1]||0); });
+              }).sort((p,q)=>{ const pm=String(p.body).match(/independent-(\d+)/); const qm=String(q.body).match(/independent-(\d+)/); return Number(qm?.[1]||0)-Number(pm?.[1]||0); });
               const x=candidates[0];
               if(x){
                 const m=String(x.body).match(/"sessionId":"([^"]+)"/);
