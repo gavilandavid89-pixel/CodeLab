@@ -165,7 +165,7 @@ async function executePixelForge(request) {
     };
     const saved = await putPixelForgeProject(project);
     const runtime = HeadlessEditorRuntime.fromJSON({ ...project, serverRevision: saved.serverRevision || 1 });
-    const outcome = runtime.executeBatch([{ name: 'animation.frame.add_from_layer', layerId }]);
+    const outcome = runtime.executeBatch([{ name: 'animation.frame.add_from_layer' }]);
     if (!outcome.ok) throw new Error(outcome.error?.message || 'Initial animation frame creation failed.');
     const proposal = runtime.createProposal('Create initial agent feedback animation frame');
     const accepted = runtime.acceptProposal();
