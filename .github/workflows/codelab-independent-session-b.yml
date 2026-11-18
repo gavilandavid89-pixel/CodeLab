@@ -19,45 +19,42 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Wait for the independently running A
-        id: wait-a
+      - name: Discover independently running A once
+        id: discover-a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          for i in $(seq 1 180); do
-            comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/492/comments?per_page=100")"
-            session="$(printf '%s' "$comments" | node -e '
-              const fs=require("node:fs");
-              const a=JSON.parse(fs.readFileSync(0,"utf8"));
-              const now=Date.now();
-              const candidates=a.filter(c=>{
-                const b=String(c.body||"");
-                if(!b.startsWith("[CodeLab Session Ready]") || !b.includes("independent-")) return false;
-                const m=b.match(/"expiresAt":"([^"]+)"/);
-                return m && Date.parse(m[1]) > now;
-              }).sort((p,q)=>{ const pm=String(p.body).match(/independent-(\d+)/); const qm=String(q.body).match(/independent-(\d+)/); return Number(qm?.[1]||0)-Number(pm?.[1]||0); });
-              const x=candidates[0];
-              if(x){
-                const m=String(x.body).match(/"sessionId":"([^"]+)"/);
-                if(m) process.stdout.write(m[1]);
-              }
-            ' )"
-            if [ -n "$session" ]; then
-              echo "CODELAB_SESSION_ID=$session" >> "$GITHUB_ENV"
-              echo "Found A session: $session"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "A session did not become ready in time." >&2
-          exit 1
+          comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/492/comments?per_page=100")"
+          values="$(printf '%s' "$comments" | node -e '
+            const fs=require("node:fs");
+            const a=JSON.parse(fs.readFileSync(0,"utf8"));
+            const now=Date.now();
+            const candidates=a.filter(c=>{
+              const b=String(c.body||"");
+              if(!b.startsWith("[CodeLab Session Ready]") || !b.includes("independent-")) return false;
+              try {
+                const x=JSON.parse(b.slice("[CodeLab Session Ready]".length).trim());
+                return x.sessionId && x.token && x.mailbox && Date.parse(x.expiresAt)>now;
+              } catch { return false; }
+            }).sort((p,q)=>String(q.created_at).localeCompare(String(p.created_at)));
+            const x=candidates[0];
+            if(!x) process.exit(2);
+            const v=JSON.parse(String(x.body).slice("[CodeLab Session Ready]".length).trim());
+            process.stdout.write([v.sessionId,v.token,v.mailbox].join("\\n"));
+          ')" 
+          session="$(printf '%s' "$values" | sed -n '1p')"
+          token="$(printf '%s' "$values" | sed -n '2p')"
+          mailbox="$(printf '%s' "$values" | sed -n '3p')"
+          test -n "$session" && test -n "$token" && test -n "$mailbox"
+          echo "CODELAB_SESSION_ID=$session" >> "$GITHUB_ENV"
+          echo "CODELAB_MAILBOX_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "CODELAB_MAILBOX_BASE_URL=$mailbox" >> "$GITHUB_ENV"
+          echo "Connected to A session: $session"
+
       - name: Send independent B request to A
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          CODELAB_SESSION_ISSUE: "492"
           CODELAB_SESSION_TIMEOUT_MS: "120000"
           CODELAB_SESSION_REQUEST: '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}'
         run: node scripts/codelab-session-request.mjs
