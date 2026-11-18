@@ -2352,7 +2352,7 @@ async function boot() {
         animationLoop = existingSnapshot.animation.loop !== false;
         status('Demo caminata → agacharse recuperada · 24 fotogramas a 12 FPS', 'success');
       } else {
-        const showcase = createReferenceGuidedSoldierAnimation({ frameCount: 24, fps: 12 });
+        const showcase = createReferenceGuidedSoldierAnimation({ frameCount: 60, fps: 12 });
         doc = showcase.doc;
         animation = showcase.animation;
         animationLoop = showcase.loop;
