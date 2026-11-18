@@ -11,7 +11,7 @@ test('builds a complete 24-frame walk-to-crouch animation with independent raste
   assert.equal(doc.history.length, 0, 'the demo should open with a clean undo history');
   assert.equal(doc.dirty, false, 'the freshly generated demo should be ready to save without phantom edits');
   assert.ok(doc.composite().some(value => value !== 0), 'the actual editor canvas should render the generated artwork');
-  assert.deepEqual(doc.layers.map(layer => layer.name), ['Twilight background', 'Ground', 'Character', 'Lighting details']);
+  assert.deepEqual(doc.layers.map(layer => layer.name), ['Reference background', 'Ground', 'Soldier · reference-guided', 'Lighting and contact']);
   assert.equal(animation.frameCount, 24);
   assert.equal(animation.fps, 16);
   assert.equal(loop, true);
