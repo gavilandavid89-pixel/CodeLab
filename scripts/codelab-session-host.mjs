@@ -196,6 +196,11 @@ async function executeBrowser(request, page) {
 console.log('A stage: waiting for local CodeLab health');
 await waitHealthy();
 console.log('A stage: local CodeLab healthy');
+const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
+console.log('A stage: registering mailbox before Chromium');
+await registerMailbox(expiresAt);
+console.log('A stage: mailbox registered');
+console.log(JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, status: 'ready' }));
 console.log('A stage: launching Chromium');
 const browser = await chromium.launch({ headless: true });
 console.log('A stage: Chromium launched');
@@ -204,11 +209,6 @@ const sessionPage = await sessionContext.newPage();
 console.log('A stage: opening persistent PixelForge page');
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 console.log('A stage: persistent PixelForge page ready');
-const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
-console.log('A stage: registering mailbox');
-await registerMailbox(expiresAt);
-console.log('A stage: mailbox registered');
-console.log(JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, status: 'ready' }));
 
 let stopping = false;
 process.once('SIGTERM', () => { stopping = true; });
