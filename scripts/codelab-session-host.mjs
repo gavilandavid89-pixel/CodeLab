@@ -13,6 +13,7 @@ const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
 const sessionId = String(process.env.CODELAB_SESSION_ID || randomUUID());
 const maxMinutes = Math.max(1, Math.min(30, Number(process.env.CODELAB_SESSION_MINUTES || 10)));
 const pollMs = 1000;
+const sessionProjects = new Map();
 const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
 const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex')).slice(0, 64);
 async function mailboxPost(pathname, body) {
@@ -98,7 +99,9 @@ async function waitHealthy() {
 async function listPixelForgeProjects() {
   const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error('PixelForge project list failed with HTTP ' + r.status);
-  return await r.json();
+  const result = await r.json();
+  if (result?.project) sessionProjects.set(project.id, { ...project, serverRevision: result.project.serverRevision || project.serverRevision || 1 });
+  return result;
 }
 async function getPixelForgeProject(projectId) {
   const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects/${encodeURIComponent(projectId)}`, {
@@ -121,6 +124,7 @@ async function persistLocalPixelForgeProject(project) {
   records = records.filter(item => item.id !== project.id);
   records.push(record);
   await fs.writeFile(file, JSON.stringify(records), { mode: 0o600 });
+  sessionProjects.set(stored.id, stored);
   return { id: stored.id, name: stored.name, width: stored.width, height: stored.height, updatedAt: now, serverRevision: stored.serverRevision };
 }
 
@@ -164,6 +168,7 @@ async function executePixelForge(request) {
       layers: [{ id: layerId, name: 'Agent source layer', visible: true, opacity: 1, locked: false, pixels: blankPixels }],
     };
     const saved = await putPixelForgeProject(project);
+  sessionProjects.set(project.id, { ...project, serverRevision: saved.serverRevision || project.serverRevision || 1 });
     const runtime = HeadlessEditorRuntime.fromJSON({ ...project, serverRevision: saved.serverRevision || 1 });
     const outcome = runtime.executeBatch([{ name: 'animation.frame.add_from_layer' }]);
     if (!outcome.ok) throw new Error(outcome.error?.message || 'Initial animation frame creation failed.');
@@ -246,8 +251,19 @@ async function executePixelForge(request) {
       context: outcome.results?.[0]?.result || outcome.result || null
     };
   }
-  const project = await getPixelForgeProject(request.project_id);
-  const runtime = HeadlessEditorRuntime.fromJSON(project);
+  let project = await getPixelForgeProject(request.project_id);
+  try {
+    project = project && project.project ? project.project : project;
+  } catch {}
+  let runtime;
+  try {
+    runtime = HeadlessEditorRuntime.fromJSON(project);
+  } catch (error) {
+    const cached = sessionProjects.get(request.project_id);
+    if (!cached) throw error;
+    runtime = HeadlessEditorRuntime.fromJSON(cached);
+    project = cached;
+  }
   if (request.operation === 'frame_context') {
     const outcome = runtime.executeBatch([{
       name: 'animation.frame.get_context',
