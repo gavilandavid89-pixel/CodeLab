@@ -138,15 +138,20 @@ test('real PixelForge editor loads a saved animation and records its native play
     const frameCount = await page.locator('#animation-frame-count').textContent();
     assert.match(frameCount || '', /20 frames/i);
     assert.deepEqual(pageErrors.filter(error => !String(error).includes("Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag.")), []);
-    const png = await page.locator('#canvas').screenshot({ type: 'png' });
+    const visualArtifactDir = process.env.HEADLESS_VISUAL_ARTIFACT_DIR;
+    if (visualArtifactDir) await fs.mkdir(visualArtifactDir, { recursive: true });
+    const pngPath = visualArtifactDir ? path.join(visualArtifactDir, '04-walk-to-crouch-final-frame.png') : null;
+    const png = await page.locator('#canvas').screenshot({ type: 'png', path: pngPath || undefined });
     assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     const video = page.video();
     assert.ok(video);
     await page.close();
     await context.close();
-    const webm = await fs.readFile(await video.path());
+    const webmPath = await video.path();
+    const webm = await fs.readFile(webmPath);
     assert.ok(webm.length > 1000);
     assert.deepEqual([...webm.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3]);
+    if (visualArtifactDir) await fs.copyFile(webmPath, path.join(visualArtifactDir, '04-walk-to-crouch-native-playback.webm'));
 
   } finally {
     if (browser) await browser.close().catch(() => {});
