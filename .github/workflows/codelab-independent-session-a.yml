@@ -29,6 +29,12 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright
           npx playwright install --with-deps chromium
+      - name: Preflight Node and headless imports
+        run: |
+          set -euo pipefail
+          node --version
+          timeout 30s node --input-type=module -e "await import('playwright'); console.log('playwright import ok'); await import('./public/pixelforge/src/headless.js'); console.log('headless runtime import ok')"
+
       - name: Start independent persistent session A
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
