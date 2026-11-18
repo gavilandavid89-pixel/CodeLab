@@ -125,7 +125,7 @@ async function persistLocalPixelForgeProject(project) {
 }
 
 async function putPixelForgeProject(project) {
-  const r = await fetch(`http://127.0.0.1:\${port}/api/pixelforge/projects/\${encodeURIComponent(project.id)}`, {
+  const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects/${encodeURIComponent(project.id)}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify(project),
