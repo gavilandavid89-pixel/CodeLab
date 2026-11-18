@@ -1993,6 +1993,23 @@ async function processCommand(command) {
       });
       return;
     }
+    case 'pixelforge_animation_frame_context': {
+      assertProjectId(payload.project_id);
+      const loaded = await loadProject(payload.project_id);
+      const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
+      const result = runtime.execute({
+        name: 'animation.frame.get_context',
+        index: payload.index,
+        ...(payload.layer_id ? { layerId: payload.layer_id } : {}),
+      });
+      if (!result.ok) throw new Error(result.error?.message || 'Animation frame context failed.');
+      await finish(command.command_id, 'succeeded', {
+        projectId: payload.project_id,
+        serverRevision: loaded.serverRevision,
+        context: result.result,
+      });
+      return;
+    }
     case 'pixelforge_capture_interface':
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
       return;
@@ -2093,7 +2110,7 @@ async function main() {
           ADD CONSTRAINT codelab_agent_commands_action_check
           CHECK (action = ANY (ARRAY[
             'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
-            'pixelforge_propose','pixelforge_approve','pixelforge_discard',
+            'pixelforge_propose','pixelforge_approve','pixelforge_discard','pixelforge_animation_frame_context',
             'pixelforge_export_image','pixelforge_capture_interface','pixelforge_export_animation_video',
             'codelab_project_create','codelab_project_convert_to_web',
             'codelab_project_inspect','codelab_project_connect',
