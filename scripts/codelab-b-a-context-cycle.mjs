@@ -33,7 +33,7 @@ async function send(payload) {
       await mailbox('/api/headless/session/request?sessionId=' + encodeURIComponent(sessionId), 'POST', { requestId, payload: request });
       break;
     } catch (error) {
-      if (!String(error.message || error).includes('HTTP 404') || attempt === 60) throw error;
+      if (!/(HTTP 404|HTTP 502|HTTP 503|HTTP 504)/.test(String(error.message || error)) || attempt === 60) throw error;
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
