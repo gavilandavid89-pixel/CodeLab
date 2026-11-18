@@ -78,3 +78,14 @@ jobs:
         run: |
           echo "B mode: ${{ github.event.inputs.mode || 'normal' }}"
           node scripts/codelab-session-request.mjs
+
+
+      - name: Publish B verification result
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          status="${{ steps.request.outcome }}"
+          gh issue comment 492 --repo "$GH_REPO" --body "[CodeLab B Result] run=${{ github.run_id }} status=$status session=${CODELAB_SESSION_ID:-unknown}"
