@@ -22,7 +22,16 @@ async function mailboxPost(pathname, body) {
   return data;
 }
 async function registerMailbox(expiresAt) {
-  return mailboxPost('/api/headless/session/register', { sessionId, token: mailboxToken, expiresAt });
+  let lastError;
+  for (let attempt = 1; attempt <= 60; attempt++) {
+    try {
+      return await mailboxPost('/api/headless/session/register', { sessionId, token: mailboxToken, expiresAt });
+    } catch (error) {
+      lastError = error;
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+  throw lastError || new Error('Headless mailbox registration timed out.');
 }
 
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
