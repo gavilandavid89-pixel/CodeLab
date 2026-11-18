@@ -34,7 +34,7 @@ jobs:
             comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/492/comments?per_page=100")"
             session="$(node -e '
               const a=JSON.parse(process.argv[1]);
-              const x=a.filter(c=>String(c.body||"").startsWith("[CodeLab Session Ready]") && String(c.body||"").includes("independent-")).sort((p,q)=>(q.id||0)-(p.id||0))[0];
+              const x=a.filter(c=>String(c.body||"").startsWith("[CodeLab Session Ready]") && String(c.body||"").includes("independent-")).sort((p,q)=>{ const pm=String(p.body).match(/independent-(\\d+)/); const qm=String(q.body).match(/independent-(\\d+)/); return Number(qm?.[1]||0)-Number(pm?.[1]||0); })[0];
               if(x){
                 const m=String(x.body).match(/"sessionId":"([^"]+)"/);
                 if(m) process.stdout.write(m[1]);
