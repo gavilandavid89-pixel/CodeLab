@@ -1,8 +1,14 @@
 name: CodeLab Independent Session B
 
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/codelab-independent-session-b.yml"
+      - "scripts/codelab-session-request.mjs"
+      - "scripts/codelab-session-host.mjs"
+      - "public/pixelforge/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,34 +16,44 @@ permissions:
 
 jobs:
   request:
-    if: ${{ github.event.issue.number == 492 && startsWith(github.event.comment.body, '[CodeLab External Request]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Parse external request
-        id: parse
+      - name: Wait for the independently running A
+        id: wait-a
         env:
-          COMMENT_BODY: ${{ github.event.comment.body }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          node --input-type=module <<'NODE'
-          const body = process.env.COMMENT_BODY || '';
-          const line = body.slice('[CodeLab External Request]'.length).trim();
-          const first = line.indexOf(' ');
-          if (first < 1) throw new Error('Missing session id.');
-          const sessionId = line.slice(0, first);
-          const requestJson = line.slice(first + 1).trim();
-          JSON.parse(requestJson);
-          const fs = await import('node:fs');
-          fs.writeFileSync(process.env.GITHUB_ENV, `CODELAB_SESSION_ID=${sessionId}\nCODELAB_SESSION_REQUEST=${JSON.stringify(requestJson)}\n`);
-          NODE
-      - name: Connect B to independent A
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/492/comments?per_page=100")"
+            session="$(node -e '
+              const a=JSON.parse(process.argv[1]);
+              const x=a.filter(c=>String(c.body||"").startsWith("[CodeLab Session Ready]") && String(c.body||"").includes("independent-")).sort((p,q)=>(q.id||0)-(p.id||0))[0];
+              if(x){
+                const m=String(x.body).match(/"sessionId":"([^"]+)"/);
+                if(m) process.stdout.write(m[1]);
+              }
+            ' "$comments")"
+            if [ -n "$session" ]; then
+              echo "CODELAB_SESSION_ID=$session" >> "$GITHUB_ENV"
+              echo "Found A session: $session"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "A session did not become ready in time." >&2
+          exit 1
+      - name: Send independent B request to A
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_SESSION_TIMEOUT_MS: "120000"
+          CODELAB_SESSION_REQUEST: '{"kind":"browser","start_path":"/pixelforge/index.html?createDemo=walk-crouch-24&capture=video","actions":[{"type":"wait_for","selector":"#canvas","state":"visible","timeoutMs":30000},{"type":"click","selector":"#animation-play","timeoutMs":30000},{"type":"wait_for","selector":"#animation-frame-count","state":"visible","timeoutMs":10000},{"type":"screenshot","fullPage":false}]}'
         run: node scripts/codelab-session-request.mjs
