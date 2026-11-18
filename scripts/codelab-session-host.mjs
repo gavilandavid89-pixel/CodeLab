@@ -134,6 +134,28 @@ async function executePixelForge(request) {
     };
     project.animation = animation.toJSON();
     project.animation.layerIds = project.layers.map(layer => layer.id);
+    const pixelBytes = project.width * project.height * 4;
+    const expectedPixelBase64Length = Math.ceil(pixelBytes / 3) * 4;
+    const diagnostics = {
+      id: /^[a-zA-Z0-9_-]{1,100}$/.test(project.id),
+      name: typeof project.name === 'string' && project.name.trim().length > 0 && project.name.length <= 180,
+      dimensions: Number.isInteger(project.width) && Number.isInteger(project.height),
+      revision: Number.isInteger(project.revision) && project.revision >= 0,
+      saveVersion: Number.isInteger(project.saveVersion) && project.saveVersion >= 0,
+      activeLayer: project.layers.some(layer => layer.id === project.activeLayerId),
+      layers: project.layers.map(layer => ({
+        id: typeof layer.id === 'string' && layer.id.length > 0 && layer.id.length <= 180,
+        name: typeof layer.name === 'string' && layer.name.trim().length > 0 && layer.name.length <= 180,
+        visible: typeof layer.visible === 'boolean',
+        opacity: Number.isFinite(layer.opacity) && layer.opacity >= 0 && layer.opacity <= 1,
+        locked: typeof layer.locked === 'boolean',
+        pixels: typeof layer.pixels === 'string' && layer.pixels.length === expectedPixelBase64Length,
+      })),
+      animationLayerIds: project.animation.layerIds.every((id, index) => id === project.layers[index]?.id),
+    };
+    if (Object.values(diagnostics).some(value => value === false) || diagnostics.layers.some(layer => Object.values(layer).some(value => value === false))) {
+      throw new Error('Reference project local validation failed: ' + JSON.stringify(diagnostics));
+    }
     const saved = await putPixelForgeProject(project);
     const runtime = HeadlessEditorRuntime.fromJSON(saved);
     const outcome = runtime.executeBatch([{ name: 'animation.frame.get_context', index: 0, layerId: project.layers[0].id }]);
