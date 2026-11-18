@@ -1,15 +1,15 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const sessionId = String(process.env.CODELAB_SESSION_ID || '');
 const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
-const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || '');
+const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex'));
 const requestId = randomUUID();
 const requestJson = String(process.env.CODELAB_SESSION_REQUEST || '{}');
 const timeoutMs = Math.max(1000, Math.min(10 * 60 * 1000, Number(process.env.CODELAB_SESSION_TIMEOUT_MS || 120000)));
 if (!sessionId) throw new Error('CODELAB_SESSION_ID is required.');
-if (!/^[a-f0-9]{64}$/i.test(mailboxToken)) throw new Error('CODELAB_MAILBOX_TOKEN is required.');
+if (!/^[a-f0-9]{64}$/i.test(mailboxToken)) throw new Error('CODELAB_MAILBOX_TOKEN is invalid.');
 
 async function mailbox(pathname, method='GET', body=null) {
   const response = await fetch(mailboxBaseUrl + pathname, { method, headers: { accept: 'application/json', 'x-codelab-mailbox-token': mailboxToken, ...(body === null ? {} : { 'content-type': 'application/json' }) }, ...(body === null ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000) });
