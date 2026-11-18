@@ -192,7 +192,8 @@ try {
       processed.add(c.id);
       let request;
       try {
-        request = JSON.parse(body.slice('[CodeLab Session Request]'.length).trim());
+        const payload = body.slice('[CodeLab Session Request]'.length).trim().replace(/^\\\\n+/, '').replace(/\\\\n/g, '\\n');
+        request = JSON.parse(payload);
         if (request.sessionId !== sessionId) continue;
         const result = request.kind === 'pixelforge' ? await executePixelForge(request) : await executeBrowser(request, sessionPage);
         await comment('[CodeLab Session Result]\n' + JSON.stringify({ requestId: request.requestId, sessionId, ok: true, result }));
