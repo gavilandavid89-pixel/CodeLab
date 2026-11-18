@@ -28,8 +28,9 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 180); do
             comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/492/comments?per_page=100")"
-            session="$(node -e '
-              const a=JSON.parse(process.argv[1]);
+            session="$(printf '%s' "$comments" | node -e '
+              const fs=require("node:fs");
+              const a=JSON.parse(fs.readFileSync(0,"utf8"));
               const now=Date.now();
               const candidates=a.filter(c=>{
                 const b=String(c.body||"");
@@ -42,7 +43,7 @@ jobs:
                 const m=String(x.body).match(/"sessionId":"([^"]+)"/);
                 if(m) process.stdout.write(m[1]);
               }
-            ' "$comments")"
+            ' )"
             if [ -n "$session" ]; then
               echo "CODELAB_SESSION_ID=$session" >> "$GITHUB_ENV"
               echo "Found A session: $session"
