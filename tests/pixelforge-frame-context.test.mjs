@@ -16,3 +16,16 @@ test('animation frame context returns authoritative previous cel and visual payl
   assert.equal(context.result.guidance.requestMoreContextAction, 'animation.frame.get_context');
   assert.equal(context.result.change.changedPixels, 0);
 });
+
+
+test('layer context returns the previous layer as authoritative visual context', () => {
+  const runtime = createHeadlessRuntime({ width: 8, height: 8, name: 'layer-context-test' });
+  const added = runtime.execute({ name: 'layer.add', name: 'Detail' });
+  assert.equal(added.ok, true);
+  const context = runtime.execute({ name: 'layer.get_context', layerId: added.result.id });
+  assert.equal(context.ok, true);
+  assert.equal(context.result.current.name, 'Detail');
+  assert.equal(context.result.previous.name, 'Layer 1');
+  assert.equal(context.result.visual.format, 'rgba-base64');
+  assert.equal(context.result.guidance.requestMoreContextAction, 'layer.get_context');
+});
