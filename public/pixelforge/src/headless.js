@@ -264,7 +264,23 @@ export class HeadlessEditorRuntime {
         }
         this.#sandboxAnimation = outcome.timeline;
         this.#animationDirty = this.#animationDiffersFromCommitted();
-        return { ok: true, action: action.name, result: { ...outcome.result, changed } };
+        const contextActions = new Set([
+          'animation.frame.add_from_layer',
+          'animation.frame.capture_composite',
+          'animation.frame.capture_document',
+          'animation.frame.duplicate',
+          'animation.frame.set_cel',
+        ]);
+        const enrichedResult = { ...outcome.result, changed };
+        if (contextActions.has(action.name) && this.#sandboxAnimation.frames.length) {
+          const context = applyAnimationAction(
+            this.#sandboxAnimation,
+            this.#workspace.sandbox,
+            { name: 'animation.frame.get_context', index: outcome.result.index ?? action.index ?? this.#sandboxAnimation.activeFrameIndex, layerId: action.layerId }
+          );
+          enrichedResult.previousFrameContext = context.result;
+        }
+        return { ok: true, action: action.name, result: enrichedResult };
       } catch (error) {
         return { ok: false, action: action.name, error: {
           code: error instanceof RangeError ? 'out_of_bounds_or_limit' : error instanceof TypeError ? 'invalid_arguments' : 'operation_failed',
