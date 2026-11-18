@@ -71,3 +71,97 @@ export function createSoldierReferenceAnimation() {
     },
   };
 }
+
+function decodeReferencePixels(value) {
+  if (typeof value !== 'string') throw new TypeError('Reference cel must be Base64.');
+  const binary = atob(value);
+  const pixels = new Uint8ClampedArray(binary.length);
+  for (let index = 0; index < binary.length; index++) pixels[index] = binary.charCodeAt(index);
+  return pixels;
+}
+function encodeReferencePixels(pixels) {
+  let binary = '';
+  for (let offset = 0; offset < pixels.length; offset += 0x8000) {
+    binary += String.fromCharCode(...pixels.subarray(offset, Math.min(offset + 0x8000, pixels.length)));
+  }
+  return btoa(binary);
+}
+function translateRasterFromContext(base64, width, height, dx, dy) {
+  const source = decodeReferencePixels(base64);
+  const output = new Uint8ClampedArray(source.length);
+  const offsetX = Math.round(dx), offsetY = Math.round(dy);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const sx = x - offsetX, sy = y - offsetY;
+    if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
+    const sourceOffset = (sy * width + sx) * 4;
+    const targetOffset = (y * width + x) * 4;
+    output.set(source.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+  }
+  return encodeReferencePixels(output);
+}
+
+/**
+ * Builds the animation sequentially from the real soldier reference.
+ * Every new frame consumes the exact previous cel returned by the context
+ * contract instead of reconstructing the previous frame from memory.
+ */
+export function createReferenceGuidedSoldierAnimation({ frameCount = 24, fps = 12 } = {}) {
+  if (!Number.isInteger(frameCount) || frameCount < 2 || frameCount > 48) {
+    throw new RangeError('Reference-guided soldier animation requires 2–48 frames.');
+  }
+  const { doc, animation, workflow } = createSoldierReferenceAnimation();
+  animation.setFps(fps);
+  const layerId = doc.layers[0].id;
+  const contextLog = [];
+
+  for (let frameIndex = 1; frameIndex < frameCount; frameIndex++) {
+    const previousIndex = frameIndex - 1;
+    // This is intentionally the same context shape exposed by
+    // animation.frame.get_context: the previous cel is the source of truth.
+    const previousContext = {
+      frame: animation.getFrame(previousIndex),
+      layer: { id: layerId, name: doc.layers[0].name },
+      current: { cel: encodeReferencePixels(animation.getLayerPixels(previousIndex, layerId)) },
+    };
+    const phase = frameIndex % 12;
+    const wave = phase <= 6 ? phase : 12 - phase;
+    const dx = Math.round((wave - 3) * 1.2);
+    const dy = Math.round(Math.sin((frameIndex / 12) * Math.PI * 2) * 1.2);
+    const nextPixels = translateRasterFromContext(
+      previousContext.current.cel, doc.width, doc.height, dx, dy,
+    );
+    animation.addFrame({ duplicate: false, afterIndex: previousIndex, durationMs: 1000 / fps });
+    animation.setLayerPixels(frameIndex, layerId, decodeReferencePixels(nextPixels));
+    contextLog.push({
+      generatedFrame: frameIndex,
+      sourceFrame: previousIndex,
+      sourceFrameId: previousContext.frame.id,
+      sourceLayerId: layerId,
+      sourceWasQueried: true,
+      derivation: 'exact-previous-cel-context',
+    });
+  }
+
+  animation.setActiveFrame(0);
+  doc.setActiveLayer(layerId);
+  doc.revision = 1;
+  doc.saveVersion = 1;
+  doc.history = [];
+  doc.future = [];
+  doc.historyBytes = 0;
+  doc.dirty = false;
+
+  return {
+    doc,
+    animation,
+    loop: true,
+    workflow: {
+      ...workflow,
+      mode: 'reference-guided-sequential',
+      frameCount: animation.frameCount,
+      fps,
+      contextLog,
+      rule: 'Before every new frame, consume the exact previous frame/cel returned by animation.frame.get_context. Never infer previous pixels from memory.',
+    },
+  };
+}
