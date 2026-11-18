@@ -39,7 +39,7 @@ for (let attempt = 1; attempt <= 60; attempt++) {
     break;
   } catch (error) {
     lastSubmitError = error;
-    if (!String(error.message || error).includes('HTTP 404') || attempt === 24) throw error;
+    if (!/(HTTP 404|HTTP 502|HTTP 503|HTTP 504)/.test(String(error.message || error)) || attempt === 60) throw error;
     await new Promise(r => setTimeout(r, 5000));
   }
 }
