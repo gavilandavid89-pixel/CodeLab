@@ -1,0 +1,19 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHeadlessRuntime } from '../public/pixelforge/src/headless.js';
+
+test('animation frame context returns authoritative previous cel and visual payload', () => {
+  const runtime = createHeadlessRuntime({ width: 16, height: 16, name: 'context-test' });
+  assert.equal(runtime.execute({ name: 'canvas.draw_line', x1: 2, y1: 2, x2: 6, y2: 6 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.capture_document', frameName: 'Frame 1' }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.duplicate', index: 0 }).ok, true);
+  const context = runtime.execute({ name: 'animation.frame.get_context', index: 1 });
+  assert.equal(context.ok, true);
+  assert.equal(context.result.previous.index, 0);
+  assert.equal(context.result.previous.cel.length, Math.ceil((16 * 16 * 4) / 3) * 4);
+  assert.equal(context.result.visual.format, 'rgba-base64');
+  assert.equal(context.result.visual.width, 16);
+  assert.equal(context.result.visual.height, 16);
+  assert.equal(context.result.guidance.requestMoreContextAction, 'animation.frame.get_context');
+  assert.equal(context.result.change.changedPixels, 0);
+});
