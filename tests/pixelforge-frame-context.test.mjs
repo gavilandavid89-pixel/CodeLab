@@ -22,7 +22,7 @@ test('layer context returns the previous layer as authoritative visual context',
   const runtime = createHeadlessRuntime({ width: 8, height: 8, name: 'layer-context-test' });
   const added = runtime.execute({ name: 'layer.add', name: 'Detail' });
   assert.equal(added.ok, true);
-  const context = runtime.execute({ name: 'layer.get_context', layerId: added.result.id });
+  const context = runtime.execute({ name: 'layer.get_context', layerId: added.result.layerId ?? added.result.id });
   assert.equal(context.ok, true);
   assert.equal(context.result.current.name, 'Detail');
   assert.equal(context.result.previous.name, 'Layer 1');
