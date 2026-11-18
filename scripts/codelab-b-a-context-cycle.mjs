@@ -6,6 +6,8 @@ const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha
 const timeoutMs = Math.max(30000, Math.min(10 * 60 * 1000, Number(process.env.CODELAB_SESSION_TIMEOUT_MS || 240000)));
 const FRAME_COUNT = 48;
 const FPS = 12;
+const ONE_STEP = process.env.CODELAB_WALK_ONE_STEP === '1';
+const REQUESTED_FRAME = Math.max(1, Number(process.env.CODELAB_WALK_FRAME_INDEX || '1'));
 
 if (!sessionId) throw new Error('CODELAB_SESSION_ID is required.');
 
@@ -123,17 +125,24 @@ function changedPixels(a64,b64,w,h){
 }
 
 const opened=await send({kind:'browser',start_path:'/pixelforge/index.html',actions:[{type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000}]});
-const created=await send({kind:'pixelforge',operation:'create_blank_animation'});
-await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
+const suppliedProjectId=String(process.env.CODELAB_WALK_PROJECT_ID || '');
+let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_blank_animation'});
+if(!suppliedProjectId){
+  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
+  const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
+  const reference=SOLDIER_REFERENCE_RASTER.decode();
+  const reference64=encode64(reference);
+  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed walking source from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:reference64}]});
+}
 const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
 const reference=SOLDIER_REFERENCE_RASTER.decode();
 const reference64=encode64(reference);
-await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed walking source from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:reference64}]});
-
 let previousFrame=0;
 let previousCel=reference64;
 const proof=[];
-for(let i=1;i<FRAME_COUNT;i++){
+const startFrame=ONE_STEP ? REQUESTED_FRAME : 1;
+const endFrame=ONE_STEP ? REQUESTED_FRAME : FRAME_COUNT-1;
+for(let i=startFrame;i<=endFrame;i++){
   const duplicated=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: create next walking frame',actions:[{name:'animation.frame.duplicate',index:previousFrame}],return_context:false});
   const nextIndex=Number(duplicated.results?.[0]?.result?.index ?? i);
   const context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
@@ -148,6 +157,7 @@ for(let i=1;i<FRAME_COUNT;i++){
   if(!applied.context) throw new Error('A did not return post-mutation context for frame '+nextIndex);
   proof.push({frame:nextIndex,sourceFrameId:context.context.previous.frame.id,exactPreviousCelBytes:exactPreviousBytes,changedPixels:delta.changed,meanChannelDelta:delta.meanChannelDelta});
   previousFrame=nextIndex; previousCel=nextCel;
+  if(ONE_STEP) break;
 }
 
 const visual=await send({
@@ -164,7 +174,7 @@ const visual=await send({
 console.log(JSON.stringify({
   ok:true,
   protocol:'B→A→context→B→A→context',
-  animation:{projectId:created.projectId,frames:FRAME_COUNT,fps:FPS},
+  animation:{projectId:created.projectId,frames:ONE_STEP ? REQUESTED_FRAME+1 : FRAME_COUNT,fps:FPS,oneStep:ONE_STEP,requestedFrame:REQUESTED_FRAME},
   browser:{finalUrl:visual.finalUrl,captureMethod:visual.captureMethod,uiActions:visual.ui_actions,screenshots:visual.screenshots},
   proof:{
     everyFrameUsedExactPreviousCel:true,
