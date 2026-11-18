@@ -39,7 +39,7 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
 
     const layers = await page.locator('#layer-count').innerText();
     const frames = await page.locator('#animation-frames .animation-frame').count();
-    assert.ok(frames >= 24, 'visual showcase must expose the full 20-frame animation');
+    assert.ok(frames >= 24, 'visual showcase must expose the full 24-frame animation');
     assert.match(layers, /[2-9]|1[0-9]/, 'visual showcase must render multiple layers');
 
     const canvas = page.locator('#canvas');
