@@ -8,14 +8,27 @@ const http = require('node:http');
 
 const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tmpdir(), 'codelab-visual-evidence');
+const EXPECTED_FRAMES = 60;
+const EXPECTED_VIDEO_SECONDS = 5;
 
 (async () => {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true });
-  const probe = http.createServer(); await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve)); const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
+  const probe = http.createServer(); await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
   const visualDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-visual-server-'));
-  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(port), CODELAB_DATA_DIR: visualDataDir, PIXELFORGE_GUEST_MODE: 'true' }, stdio: ['ignore','ignore','pipe'] });
+  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    env: { ...process.env, PORT: String(port), CODELAB_DATA_DIR: visualDataDir, PIXELFORGE_GUEST_MODE: 'true' },
+    stdio: ['ignore','ignore','pipe']
+  });
   const visualBase = 'http://127.0.0.1:' + port;
-  for (let i=0;i<60;i++){ try { const h=await fetch(visualBase+'/api/health'); if(h.ok) break; } catch {} await new Promise(r=>setTimeout(r,100)); }
+  let healthy = false;
+  for (let i=0;i<60;i++) {
+    try { const h=await fetch(visualBase+'/api/health'); if(h.ok){ healthy=true; break; } }
+    catch {}
+    await new Promise(r=>setTimeout(r,100));
+  }
+  assert.ok(healthy, 'visual CodeLab server did not become healthy');
+
   const browser = await chromium.launch({ headless: true });
   const videoDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pixelforge-visual-video-'));
   const context = await browser.newContext({
@@ -27,7 +40,11 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
   const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
   await fs.mkdir(path.join(dataDir, 'sessions'), { recursive: true });
   const sessionId = 'a'.repeat(48);
-  await fs.writeFile(path.join(dataDir, 'sessions', sessionId + '.json'), JSON.stringify({ id: sessionId, user: { id: 'pixelforge-visual-user', provider: 'github', name: 'PIXELFORGE_VISUAL_TEST', role: 'user' }, createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000 }), { mode: 0o600 });
+  await fs.writeFile(path.join(dataDir, 'sessions', sessionId + '.json'), JSON.stringify({
+    id: sessionId,
+    user: { id: 'pixelforge-visual-user', provider: 'github', name: 'PIXELFORGE_VISUAL_TEST', role: 'user' },
+    createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000
+  }), { mode: 0o600 });
   page.on('pageerror', e => errors.push(String(e.stack || e.message || e)));
 
   try {
@@ -39,38 +56,36 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
 
     const layers = await page.locator('#layer-count').innerText();
     const frames = await page.locator('#animation-frames .animation-frame').count();
-    assert.ok(frames >= 24, 'visual showcase must expose the full 24-frame animation');
+    assert.equal(frames, EXPECTED_FRAMES, `visual showcase must expose exactly ${EXPECTED_FRAMES} frames`);
     assert.match(layers, /[2-9]|1[0-9]/, 'visual showcase must render multiple layers');
 
     const canvas = page.locator('#canvas');
     const before = await canvas.screenshot({ type: 'png', path: path.join(ARTIFACT_DIR, 'polished-drawing.png') });
     const rasterStats = await canvas.evaluate(node => {
-      const ctx = node.getContext('2d');
-      const d = ctx.getImageData(0, 0, node.width, node.height).data;
+      const ctx = node.getContext('2d'); const d = ctx.getImageData(0, 0, node.width, node.height).data;
       let opaque = 0, checksum = 0;
       for (let i = 0; i < d.length; i += 4) {
         if (d[i + 3] > 8) opaque++;
         checksum = (checksum + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3]) % 1000000007;
       }
-      const colors = new Set(); for (let i = 0; i < d.length; i += 4) { if (d[i+3] > 8) colors.add(`${d[i]},${d[i+1]},${d[i+2]}`); } return { width: node.width, height: node.height, opaque, checksum, colors: colors.size };
+      const colors = new Set();
+      for (let i = 0; i < d.length; i += 4) if (d[i+3] > 8) colors.add(`${d[i]},${d[i+1]},${d[i+2]}`);
+      return { width: node.width, height: node.height, opaque, checksum, colors: colors.size };
     });
     assert.ok(before.length > 5000, 'drawing screenshot must contain visual evidence');
     assert.ok(rasterStats.opaque > 1500, 'drawing must not be an almost-empty canvas');
     assert.ok(rasterStats.colors >= 8, 'drawing must contain a meaningful palette, not a single flat color');
 
-    const frameLabels = await page.locator('#animation-frames .animation-frame').evaluateAll(nodes => nodes.map(n => n.textContent || ''));
-    assert.ok(frameLabels.some(text => /walk|step|stride|camin/i.test(text)) || frames >= 18, 'animation evidence must expose the complete movement timeline');
-
     await page.locator('#animation-play').click();
-    await page.waitForTimeout(700);
-    await canvas.screenshot({ type: 'png', path: path.join(ARTIFACT_DIR, 'animation-frame-playback.png') });
+    // The capture must contain the actual full playback, not just the 700ms startup.
+    await page.waitForTimeout(EXPECTED_VIDEO_SECONDS * 1000 + 350);
     const afterStats = await canvas.evaluate(node => {
-      const ctx = node.getContext('2d');
-      const d = ctx.getImageData(0, 0, node.width, node.height).data;
+      const ctx = node.getContext('2d'); const d = ctx.getImageData(0, 0, node.width, node.height).data;
       let checksum = 0;
       for (let i = 0; i < d.length; i += 4) checksum = (checksum + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3]) % 1000000007;
       return checksum;
     });
+    await canvas.screenshot({ type: 'png', path: path.join(ARTIFACT_DIR, 'animation-frame-playback.png') });
     assert.notEqual(afterStats, rasterStats.checksum, 'playback must visibly change the rendered frame');
     assert.deepEqual(errors, []);
 
@@ -86,5 +101,5 @@ const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tm
     await fs.rm(videoDir, { recursive: true, force: true });
     server.kill('SIGTERM'); await fs.rm(visualDataDir, { recursive: true, force: true });
   }
-  console.log('Visual PixelForge evidence passed: detailed character walk-to-crouch study, 18+ frames, playback delta and WebM captured.');
+  console.log(`Visual PixelForge evidence passed: ${EXPECTED_FRAMES}-frame reference-guided animation, full ${EXPECTED_VIDEO_SECONDS}s playback and WebM captured.`);
 })();
