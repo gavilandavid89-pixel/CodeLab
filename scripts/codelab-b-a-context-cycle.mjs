@@ -56,35 +56,53 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   const phase=2*Math.PI*frameIndex/24;
   const legL=Math.sin(phase), legR=Math.sin(phase+Math.PI);
   const armL=Math.sin(phase+Math.PI), armR=Math.sin(phase);
-  function sampleInto(dstX,dstY,srcX,srcY){
-    if(dstX<0||dstY<0||dstX>=w||dstY>=h||srcX<0||srcY<0||srcX>=w||srcY>=h)return;
-    const s=(srcY*w+srcX)*4,d=(dstY*w+dstX)*4;
-    out[d]=src[s];out[d+1]=src[s+1];out[d+2]=src[s+2];out[d+3]=src[s+3];
+  // The returned cel itself determines the background colour. We only move
+  // foreground pixels, never rectangular chunks of the background.
+  const counts=new Map();
+  for(let i=0;i<src.length;i+=4){
+    const key=(src[i]<<16)|(src[i+1]<<8)|src[i+2];
+    counts.set(key,(counts.get(key)||0)+1);
   }
-  // Clear only the motion envelopes back to the unchanged source before painting
-  // translated pixels, so the body remains stable instead of becoming a smear.
+  let bgKey=0,bgCount=-1;
+  for(const [key,count] of counts){if(count>bgCount){bgKey=key;bgCount=count;}}
+  const bgR=(bgKey>>16)&255,bgG=(bgKey>>8)&255,bgB=bgKey&255;
   const regions=[
-    {x:0,y:70,w:32,h:50,dx:Math.round(3*legL),dy:Math.round(2*Math.max(0,legL))},
-    {x:32,y:70,w:32,h:50,dx:Math.round(3*legR),dy:Math.round(2*Math.max(0,legR))},
+    {x:0,y:70,w:32,h:50,dx:Math.round(3*legL),dy:Math.round(1*Math.max(0,legL))},
+    {x:32,y:70,w:32,h:50,dx:Math.round(3*legR),dy:Math.round(1*Math.max(0,legR))},
     {x:0,y:35,w:24,h:48,dx:Math.round(2*armL),dy:Math.round(1*armL)},
     {x:40,y:35,w:24,h:48,dx:Math.round(2*armR),dy:Math.round(1*armR)}
   ];
+  const isBg=(o)=>src[o]===bgR&&src[o+1]===bgG&&src[o+2]===bgB&&src[o+3]===255;
   for(const r of regions){
-    for(let y=r.y;y<Math.min(h,r.y+r.h);y++) for(let x=r.x;x<Math.min(w,r.x+r.w);x++){
-      const s=(y*w+x)*4,d=s;
-      out[d]=src[s];out[d+1]=src[s+1];out[d+2]=src[s+2];out[d+3]=src[s+3];
+    const x1=Math.max(0,r.x),x2=Math.min(w,r.x+r.w),y1=Math.max(0,r.y),y2=Math.min(h,r.y+r.h);
+    // Erase only foreground in the moving envelope.
+    for(let y=y1;y<y2;y++) for(let x=x1;x<x2;x++){
+      const o=(y*w+x)*4;
+      if(!isBg(o)){out[o]=bgR;out[o+1]=bgG;out[o+2]=bgB;out[o+3]=255;}
     }
-    for(let y=r.y;y<Math.min(h,r.y+r.h);y++) for(let x=r.x;x<Math.min(w,r.x+r.w);x++){
+    // Repaint that foreground from its exact previous position, translated.
+    for(let y=y1;y<y2;y++) for(let x=x1;x<x2;x++){
       const sx=x-r.dx,sy=y-r.dy;
-      if(sx>=r.x&&sx<Math.min(w,r.x+r.w)&&sy>=r.y&&sy<Math.min(h,r.y+r.h)) sampleInto(x,y,sx,sy);
+      if(sx<x1||sx>=x2||sy<y1||sy>=y2) continue;
+      const s=(sy*w+sx)*4;
+      if(!isBg(s)){
+        const d=(y*w+x)*4;
+        out[d]=src[s];out[d+1]=src[s+1];out[d+2]=src[s+2];out[d+3]=src[s+3];
+      }
     }
   }
-  // A subtle contact/bob motion affects only the lower silhouette; head and torso stay anchored.
-  const bob=Math.round(Math.sin(phase*2)*1);
-  for(let y=84;y<h;y++){
-    for(let x=0;x<w;x++){
+  // A one-pixel contact bob is applied only below the hips and only to
+  // foreground pixels, keeping the torso/head stable.
+  const bob=Math.round(Math.sin(phase*2));
+  if(bob!==0){
+    const y1=88,y2=h;
+    const copy=new Uint8ClampedArray(out);
+    for(let y=y1;y<y2;y++) for(let x=0;x<w;x++){
       const sx=x,sy=y-bob;
-      if(sy>=84&&sy<h) sampleInto(x,y,sx,sy);
+      if(sy<y1||sy>=y2) continue;
+      const s=(sy*w+sx)*4,d=(y*w+x)*4;
+      const bgAtSource=src[s]===bgR&&src[s+1]===bgG&&src[s+2]===bgB&&src[s+3]===255;
+      if(!bgAtSource){out[d]=copy[s];out[d+1]=copy[s+1];out[d+2]=copy[s+2];out[d+3]=copy[s+3];}
     }
   }
   return encode64(out);
