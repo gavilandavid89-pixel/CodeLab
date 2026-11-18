@@ -42,9 +42,12 @@ const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
 const videoDir = process.env.CODELAB_SESSION_VIDEO_DIR || path.join(os.tmpdir(), 'codelab-session-video');
 await fs.mkdir(videoDir, { recursive: true });
 const port = await new Promise((resolve, reject) => {
-  const server = createServer((req, res) => { res.writeHead(200); res.end('ready'); });
-  server.listen(0, '127.0.0.1', () => resolve(server.address().port));
-  server.on('error', reject);
+  const probeServer = createServer((req, res) => { res.writeHead(200); res.end('ready'); });
+  probeServer.listen(0, '127.0.0.1', () => {
+    const selectedPort = probeServer.address().port;
+    probeServer.close(error => error ? reject(error) : resolve(selectedPort));
+  });
+  probeServer.on('error', reject);
 });
 const server = spawn(process.execPath, ['server.js'], {
   env: { ...process.env, PORT: String(port), CODELAB_DATA_DIR: dataDir, PIXELFORGE_GUEST_MODE: 'true' },
