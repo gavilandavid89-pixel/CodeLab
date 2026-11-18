@@ -4,6 +4,18 @@ on:
   issue_comment:
     types: [created]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Stress mode"
+        required: false
+        default: "normal"
+        type: choice
+        options: [normal, concurrent, queue]
+      request:
+        description: "Structured CodeLab session request JSON"
+        required: false
+        default: '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}'
+        type: string
 
 permissions:
   contents: read
@@ -19,8 +31,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Discover independently running A once
-        id: discover-a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -43,7 +55,7 @@ jobs:
             if(!x) process.exit(2);
             const v=JSON.parse(String(x.body).slice("[CodeLab Session Ready]".length).trim());
             process.stdout.write([v.sessionId,v.token,v.mailbox].join("\\n"));
-          ')" 
+          ')"
           session="$(printf '%s' "$values" | sed -n '1p')"
           token="$(printf '%s' "$values" | sed -n '2p')"
           mailbox="$(printf '%s' "$values" | sed -n '3p')"
@@ -56,5 +68,7 @@ jobs:
       - name: Send independent B request to A
         env:
           CODELAB_SESSION_TIMEOUT_MS: "120000"
-          CODELAB_SESSION_REQUEST: '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}'
-        run: node scripts/codelab-session-request.mjs
+          CODELAB_SESSION_REQUEST: ${{ github.event.inputs.request || '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}' }}
+        run: |
+          echo "B mode: ${{ github.event.inputs.mode || 'normal' }}"
+          node scripts/codelab-session-request.mjs
