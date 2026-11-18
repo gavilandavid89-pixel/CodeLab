@@ -2,13 +2,21 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
-const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
 const sessionId = String(process.env.CODELAB_SESSION_ID || '');
+const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\\/+$/, '');
+const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || '');
 const requestId = randomUUID();
 const requestJson = String(process.env.CODELAB_SESSION_REQUEST || '{}');
 const timeoutMs = Math.max(1000, Math.min(10 * 60 * 1000, Number(process.env.CODELAB_SESSION_TIMEOUT_MS || 120000)));
-if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
 if (!sessionId) throw new Error('CODELAB_SESSION_ID is required.');
+if (!/^[a-f0-9]{64}$/i.test(mailboxToken)) throw new Error('CODELAB_MAILBOX_TOKEN is required.');
+
+async function mailbox(pathname, method='GET', body=null) {
+  const response = await fetch(mailboxBaseUrl + pathname, { method, headers: { accept: 'application/json', 'x-codelab-mailbox-token': mailboxToken, ...(body === null ? {} : { 'content-type': 'application/json' }) }, ...(body === null ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000) });
+  let data = null; try { data = await response.json(); } catch {}
+  if (!response.ok) throw new Error('Headless mailbox HTTP ' + response.status + ': ' + JSON.stringify(data));
+  return data;
+}
 
 function gh(args) {
   return new Promise((resolve, reject) => {
@@ -22,22 +30,16 @@ function gh(args) {
 const request = JSON.parse(requestJson);
 request.requestId = requestId;
 request.sessionId = sessionId;
-await gh(['api', '-X', 'POST', `repos/${repo}/issues/${issueNumber}/comments`, '-f', 'body=[CodeLab Session Request]\n' + JSON.stringify(request)]);
+await mailbox('/api/headless/session/request?sessionId=' + encodeURIComponent(sessionId), 'POST', { requestId, payload: request });
 
 const deadline = Date.now() + timeoutMs;
 while (Date.now() < deadline) {
-  const comments = JSON.parse(await gh(['api', `repos/${repo}/issues/${issueNumber}/comments?per_page=100`]));
-  for (const c of comments) {
-    const body = String(c.body || '');
-    if (!body.startsWith('[CodeLab Session Result]')) continue;
-    try {
-      const result = JSON.parse(body.slice('[CodeLab Session Result]'.length).trim());
-      if (result.requestId === requestId && result.sessionId === sessionId) {
-        console.log(JSON.stringify(result));
-        process.exit(result.ok ? 0 : 1);
-      }
-    } catch {}
+  const result = await mailbox('/api/headless/session/result?sessionId=' + encodeURIComponent(sessionId) + '&requestId=' + encodeURIComponent(requestId));
+  if (result.status === 'succeeded' || result.status === 'failed' || result.status === 'expired') {
+    const normalized = { requestId, sessionId, ok: result.status === 'succeeded', result: result.result };
+    console.log(JSON.stringify(normalized));
+    process.exit(normalized.ok ? 0 : 1);
   }
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise(r => setTimeout(r, 5000));
 }
 throw new Error('Timed out waiting for persistent CodeLab session response.');
