@@ -36,6 +36,7 @@ async function registerMailbox(expiresAt) {
 }
 
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
+const startupWatchdog = setTimeout(() => { console.error('A startup watchdog expired after 180 seconds.'); process.exit(1); }, 180000);
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
 const videoDir = process.env.CODELAB_SESSION_VIDEO_DIR || path.join(os.tmpdir(), 'codelab-session-video');
@@ -214,6 +215,7 @@ const sessionPage = await sessionContext.newPage();
 console.log('A stage: opening persistent PixelForge page');
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 console.log('A stage: persistent PixelForge page ready');
+clearTimeout(startupWatchdog);
 
 let stopping = false;
 process.once('SIGTERM', () => { stopping = true; });
