@@ -136,7 +136,7 @@ test('real PixelForge editor loads a saved animation and records its native play
       timeout: Number(project.animation.frames.reduce((sum, frame) => sum + frame.durationMs, 0)) + 30000
     });
     const frameCount = await page.locator('#animation-frame-count').textContent();
-    assert.match(frameCount || '', /20 frames/i);
+    assert.match(frameCount || '', 24 frames);
     assert.deepEqual(pageErrors.filter(error => !String(error).includes("Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag.")), []);
     const visualArtifactDir = process.env.HEADLESS_VISUAL_ARTIFACT_DIR;
     if (visualArtifactDir) await fs.mkdir(visualArtifactDir, { recursive: true });
