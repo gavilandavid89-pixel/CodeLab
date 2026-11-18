@@ -107,14 +107,24 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   }
   return encode64(out);
 }
-function changedPixels(a64,b64){
-  const a=decode64(a64),b=decode64(b64); let changed=0, sum=0;
-  for(let i=0;i<a.length;i+=4){if(a[i]!==b[i]||a[i+1]!==b[i+1]||a[i+2]!==b[i+2]||a[i+3]!==b[i+3])changed++; sum+=Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]);}
-  return {changed,meanChannelDelta:sum/Math.max(1,changed*3)};
+function changedPixels(a64,b64,w,h){
+  const a=decode64(a64),b=decode64(b64); let changed=0, sum=0, bgChanged=0, foregroundChanged=0;
+  const counts=new Map();
+  for(let i=0;i<a.length;i+=4){const key=(a[i]<<16)|(a[i+1]<<8)|a[i+2]; counts.set(key,(counts.get(key)||0)+1);}
+  let bgKey=0,bgCount=-1; for(const [key,count] of counts){if(count>bgCount){bgKey=key;bgCount=count;}}
+  const br=(bgKey>>16)&255,bg=(bgKey>>8)&255,bb=bgKey&255;
+  for(let i=0;i<a.length;i+=4){
+    const diff=a[i]!==b[i]||a[i+1]!==b[i+1]||a[i+2]!==b[i+2]||a[i+3]!==b[i+3];
+    if(diff){changed++; sum+=Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]);
+      if(a[i]===br&&a[i+1]===bg&&a[i+2]===bb&&a[i+3]===255) bgChanged++; else foregroundChanged++;
+    }
+  }
+  return {changed,meanChannelDelta:sum/Math.max(1,changed*3),backgroundChanged:bgChanged,foregroundChanged,backgroundLeakRatio:bgChanged/Math.max(1,w*h)};
 }
 
 const opened=await send({kind:'browser',start_path:'/pixelforge/index.html',actions:[{type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000}]});
 const created=await send({kind:'pixelforge',operation:'create_blank_animation'});
+await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
 const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
 const reference=SOLDIER_REFERENCE_RASTER.decode();
 const reference64=encode64(reference);
@@ -131,8 +141,9 @@ for(let i=1;i<FRAME_COUNT;i++){
   if(!exactPrevious) throw new Error('A did not return the exact previous cel for frame '+nextIndex);
   const exactPreviousBytes=Buffer.from(exactPrevious,'base64').byteLength;
   const nextCel=walkFromExactPrevious(exactPrevious,context.context.visual.width,context.context.visual.height,i);
-  const delta=changedPixels(exactPrevious,nextCel);
+  const delta=changedPixels(exactPrevious,nextCel,context.context.visual.width,context.context.visual.height);
   if(delta.changed<40) throw new Error('Frame '+nextIndex+' changed too little: '+JSON.stringify(delta));
+  if(delta.backgroundLeakRatio>0.012) throw new Error('Frame '+nextIndex+' moved too much background: '+JSON.stringify(delta));
   const applied=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: apply walking pose derived only from exact previous cel',actions:[{name:'animation.frame.set_cel',index:nextIndex,layerId:context.context.layer.id,pixels:nextCel}]});
   if(!applied.context) throw new Error('A did not return post-mutation context for frame '+nextIndex);
   proof.push({frame:nextIndex,sourceFrameId:context.context.previous.frame.id,exactPreviousCelBytes:exactPreviousBytes,changedPixels:delta.changed,meanChannelDelta:delta.meanChannelDelta});
@@ -145,6 +156,8 @@ const visual=await send({
   actions:[
     {type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000},
     {type:'wait_for',selector:'#animation-frame-count',state:'visible',timeoutMs:30000},
+    {type:'click',selector:'#animation-play'},
+    {type:'record_video',durationMs:4200},
     {type:'screenshot'}
   ]
 });
