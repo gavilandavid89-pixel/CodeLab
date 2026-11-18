@@ -22,7 +22,7 @@ function gh(args) {
 const request = JSON.parse(requestJson);
 request.requestId = requestId;
 request.sessionId = sessionId;
-await gh(['api', '-X', 'POST', `repos/${repo}/issues/${issueNumber}/comments`, '-f', 'body=[CodeLab Session Request]\\n' + JSON.stringify(request)]);
+await gh(['api', '-X', 'POST', `repos/${repo}/issues/${issueNumber}/comments`, '-f', 'body=[CodeLab Session Request]\n' + JSON.stringify(request)]);
 
 const deadline = Date.now() + timeoutMs;
 while (Date.now() < deadline) {
