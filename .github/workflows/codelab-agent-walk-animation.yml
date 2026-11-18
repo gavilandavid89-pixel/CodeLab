@@ -78,3 +78,12 @@ jobs:
           done
           echo "B walk did not complete in time"
           exit 1
+
+
+      - name: Publish walk result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment 492 --repo "$GH_REPO" --body "[CodeLab Walk Animation] workflow=${{ github.run_id }} conclusion=${{ job.status }} A=${A_SESSION_ID:-unknown}"
