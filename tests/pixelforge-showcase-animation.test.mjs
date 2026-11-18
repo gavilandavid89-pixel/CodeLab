@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
+import { createOrbitalShowcase, createSoldierReferenceAnimation } from '../public/pixelforge/src/showcase-animation.mjs';
 
 test('builds a complete 24-frame walk-to-crouch animation with independent raster layers', () => {
   const { doc, animation, loop } = createOrbitalShowcase();
@@ -54,4 +54,17 @@ test('keeps the showcase timeline metadata editable without forcing a huge raste
       assert.equal(animation.getLayerPixels(frameIndex, layerId).length, 128 * 160 * 4);
     }
   }
+});
+
+
+test('soldier reference starts a real animation project and exposes previous-frame context', () => {
+  const { doc, animation, workflow } = createSoldierReferenceAnimation();
+  assert.equal(doc.width, 64);
+  assert.equal(doc.height, 120);
+  assert.equal(animation.frameCount, 1);
+  assert.equal(doc.layers[0].name, 'Soldier reference · initial');
+  assert.equal(workflow.mode, 'reference-guided');
+  assert.equal(workflow.nextAction, 'animation.frame.get_context');
+  const pixels = animation.getLayerPixels(0, doc.layers[0].id);
+  assert.ok(pixels.some((value) => value !== 0), 'reference frame must contain raster data');
 });
