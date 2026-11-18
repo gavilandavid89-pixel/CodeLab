@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createServer } from 'node:http';
 import { chromium } from 'playwright';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
+import { createSoldierReferenceAnimation } from '../public/pixelforge/src/showcase-animation.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
@@ -108,6 +109,24 @@ async function putPixelForgeProject(project) {
   return await r.json();
 }
 async function executePixelForge(request) {
+  if (request.operation === 'create_reference_animation') {
+    const { doc, animation, workflow } = createSoldierReferenceAnimation();
+    const project = doc.toJSON();
+    project.animation = animation.toJSON();
+    const saved = await putPixelForgeProject(project);
+    const runtime = HeadlessEditorRuntime.fromJSON(saved);
+    const outcome = runtime.executeBatch([{ name: 'animation.frame.get_context', index: 0, layerId: project.layers[0].id }]);
+    if (!outcome.ok) throw new Error(outcome.error?.message || 'Initial reference context request failed.');
+    return {
+      sessionId,
+      execution_mode: 'api',
+      captureMethod: 'codelab-local-headless-runtime',
+      projectId: saved.id,
+      serverRevision: saved.serverRevision || null,
+      workflow,
+      context: outcome.results?.[0]?.result || outcome.result || null
+    };
+  }
   const project = await getPixelForgeProject(request.project_id);
   const runtime = HeadlessEditorRuntime.fromJSON(project);
   if (request.operation === 'frame_context') {
@@ -138,6 +157,13 @@ async function executePixelForge(request) {
       const accepted = runtime.acceptProposal();
       if (accepted?.status !== 'applied') throw new Error('PixelForge batch proposal was not applied.');
       const saved = await putPixelForgeProject(runtime.toJSON());
+      let context = null;
+      if (request.return_context !== false && runtime.toJSON().animation?.frames?.length) {
+        const activeIndex = runtime.toJSON().animation.activeFrameIndex ?? 0;
+        const activeLayerId = runtime.toJSON().activeLayerId;
+        const contextOutcome = runtime.executeBatch([{ name: 'animation.frame.get_context', index: activeIndex, ...(activeLayerId ? { layerId: activeLayerId } : {}) }]);
+        if (contextOutcome.ok) context = contextOutcome.results?.[0]?.result || contextOutcome.result || null;
+      }
       return {
         sessionId,
         execution_mode: 'api',
@@ -145,7 +171,8 @@ async function executePixelForge(request) {
         projectId: project.id,
         serverRevision: saved.serverRevision || null,
         inspection: runtime.inspect(),
-        results: outcome.results
+        results: outcome.results,
+        ...(context ? { context } : {})
       };
     }
     return { sessionId, execution_mode: 'api', projectId: project.id, serverRevision: project.serverRevision || null, results: outcome.results };
