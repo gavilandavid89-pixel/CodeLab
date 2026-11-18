@@ -86,6 +86,11 @@ async function waitHealthy() {
   throw new Error('CodeLab local server did not become healthy within 10 seconds. Server logs: ' + logs.slice(-20).join(' | '));
 }
 
+async function listPixelForgeProjects() {
+  const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error('PixelForge project list failed with HTTP ' + r.status);
+  return await r.json();
+}
 async function getPixelForgeProject(projectId) {
   const r = await fetch(`http://127.0.0.1:${port}/api/pixelforge/projects/${encodeURIComponent(projectId)}`, {
     headers: { accept: 'application/json' },
@@ -109,6 +114,9 @@ async function putPixelForgeProject(project) {
   return await r.json();
 }
 async function executePixelForge(request) {
+  if (request.operation === 'list_projects') {
+    return { sessionId, execution_mode: 'api', captureMethod: 'codelab-local-headless-runtime', projects: (await listPixelForgeProjects()).projects || [] };
+  }
   if (request.operation === 'create_reference_animation') {
     const { doc, animation, workflow } = createSoldierReferenceAnimation();
     const raw = doc.toJSON();
