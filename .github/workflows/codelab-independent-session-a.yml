@@ -2,7 +2,7 @@ name: CodeLab Independent Session A
 
 on:
   push:
-    paths: ['scripts/codelab-session-kickoff.flag', '.github/workflows/codelab-independent-session-a.yml']
+    branches: [main]
   issue_comment:
     types: [created]
   workflow_dispatch:
