@@ -1,0 +1,43 @@
+name: CodeLab Independent Session B
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  request:
+    if: ${{ github.event.issue.number == 492 && startsWith(github.event.comment.body, '[CodeLab External Request]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Parse external request
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          node --input-type=module <<'NODE'
+          const body = process.env.COMMENT_BODY || '';
+          const line = body.slice('[CodeLab External Request]'.length).trim();
+          const first = line.indexOf(' ');
+          if (first < 1) throw new Error('Missing session id.');
+          const sessionId = line.slice(0, first);
+          const requestJson = line.slice(first + 1).trim();
+          JSON.parse(requestJson);
+          const fs = await import('node:fs');
+          fs.writeFileSync(process.env.GITHUB_ENV, `CODELAB_SESSION_ID=${sessionId}\nCODELAB_SESSION_REQUEST=${JSON.stringify(requestJson)}\n`);
+          NODE
+      - name: Connect B to independent A
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: "492"
+          CODELAB_SESSION_TIMEOUT_MS: "120000"
+        run: node scripts/codelab-session-request.mjs
