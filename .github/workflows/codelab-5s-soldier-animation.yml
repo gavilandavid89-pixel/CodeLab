@@ -1,0 +1,51 @@
+name: CodeLab 5s soldier animation
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  soldier-animation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install runtime and Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Capture 5-second reference-guided animation
+        env:
+          HEADLESS_VISUAL_ARTIFACT_DIR: ${{ runner.temp }}/codelab-5s-animation
+        run: node tests/pixelforge-visual-evidence.e2e.test.js
+      - name: Validate WebM duration and frame count
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/codelab-5s-animation
+        run: |
+          test -s "$ARTIFACT_DIR/polished-animation.webm"
+          python - <<'PY'
+          import os, subprocess, json
+          p=os.path.join(os.environ["ARTIFACT_DIR"],"polished-animation.webm")
+          out=subprocess.check_output(["ffprobe","-v","error","-show_entries","format=duration","-of","json",p],text=True)
+          d=float(json.loads(out)["format"]["duration"])
+          print(f"duration={d:.3f}s")
+          if not (4.8 <= d <= 5.2):
+              raise SystemExit(f"unexpected duration: {d}")
+          PY
+      - name: Upload 5-second animation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-5s-soldier-animation
+          path: ${{ runner.temp }}/codelab-5s-animation
+          if-no-files-found: error
+          retention-days: 14
