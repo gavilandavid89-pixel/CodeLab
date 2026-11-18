@@ -205,6 +205,12 @@ export function createAssistantHeadlessClient(options = {}) {
     listPixelForgeProjects: () => run('pixelforge_list'),
     inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
     capturePixelForgeInterface: (options = {}) => run('pixelforge_capture_interface', options),
+    getPixelForgeAnimationFrameContext: (projectId, index, layerId, options = {}) => run('pixelforge_animation_frame_context', {
+      project_id: projectId,
+      index,
+      ...(layerId ? { layer_id: layerId } : {}),
+      ...options
+    }),
     exportAnimationVideo: (projectId, options = {}) => run('pixelforge_export_animation_video', {
       project_id: projectId, ...options
     }, { ttlMs: options.ttlMs ?? 180000, timeoutMs: options.timeoutMs ?? 185000 }),
