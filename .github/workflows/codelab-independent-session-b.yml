@@ -10,7 +10,7 @@ on:
         required: false
         default: "normal"
         type: choice
-        options: [normal, concurrent, queue]
+        options: [normal, concurrent, queue, walk]
       session_id:
         description: "Existing persistent A session ID (preferred for stress runs)"
         required: false
@@ -74,12 +74,22 @@ jobs:
 
       - name: Send independent B request to A
         id: request
+        if: ${{ github.event.inputs.mode != 'walk' }}
         env:
           CODELAB_SESSION_TIMEOUT_MS: "120000"
           CODELAB_SESSION_REQUEST: ${{ github.event.inputs.request || '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}' }}
         run: |
           echo "B mode: ${{ github.event.inputs.mode || 'normal' }}"
           node scripts/codelab-session-request.mjs
+
+      - name: Run B→A→context→B→A walking animation cycle
+        id: walk
+        if: ${{ github.event.inputs.mode == 'walk' }}
+        env:
+          CODELAB_SESSION_TIMEOUT_MS: "240000"
+        run: |
+          echo "B mode: walk"
+          node scripts/codelab-b-a-context-cycle.mjs
 
 
       - name: Publish B verification result
