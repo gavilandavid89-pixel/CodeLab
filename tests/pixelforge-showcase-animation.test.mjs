@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOrbitalShowcase, createSoldierReferenceAnimation } from '../public/pixelforge/src/showcase-animation.mjs';
+import { createOrbitalShowcase, createSoldierReferenceAnimation, createReferenceGuidedSoldierAnimation } from '../public/pixelforge/src/showcase-animation.mjs';
 
 test('builds a complete 24-frame walk-to-crouch animation with independent raster layers', () => {
   const { doc, animation, loop } = createOrbitalShowcase();
@@ -67,4 +67,30 @@ test('soldier reference starts a real animation project and exposes previous-fra
   assert.equal(workflow.nextAction, 'animation.frame.get_context');
   const pixels = animation.getLayerPixels(0, doc.layers[0].id);
   assert.ok(pixels.some((value) => value !== 0), 'reference frame must contain raster data');
+});
+
+
+test('builds the soldier animation sequentially from exact previous-frame context', () => {
+  const { doc, animation, workflow } = createReferenceGuidedSoldierAnimation({ frameCount: 24, fps: 12 });
+  assert.equal(doc.name, 'Soldier reference animation project');
+  assert.equal(animation.frameCount, 24);
+  assert.equal(animation.fps, 12);
+  assert.equal(workflow.mode, 'reference-guided-sequential');
+  assert.equal(workflow.contextLog.length, 23);
+  for (let i = 0; i < workflow.contextLog.length; i++) {
+    const entry = workflow.contextLog[i];
+    assert.equal(entry.generatedFrame, i + 1);
+    assert.equal(entry.sourceFrame, i);
+    assert.equal(entry.sourceWasQueried, true);
+    assert.equal(entry.derivation, 'exact-previous-cel-context');
+  }
+  const layerId = doc.layers[0].id;
+  const checksum = pixels => {
+    let n = 0;
+    for (let i = 0; i < pixels.length; i++) n = (n + pixels[i] * ((i % 65521) + 1)) % 1000000007;
+    return n;
+  };
+  const checksums = Array.from({ length: 24 }, (_, i) => checksum(animation.getLayerPixels(i, layerId)));
+  assert.ok(new Set(checksums).size > 8, 'the sequential frames must contain real motion changes');
+  assert.ok(animation.getLayerPixels(0, layerId).some(value => value !== 0), 'frame 0 must remain the original soldier reference');
 });
