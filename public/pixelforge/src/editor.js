@@ -9,7 +9,7 @@ import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
-import { createOrbitalShowcase } from './showcase-animation.mjs';
+import { createOrbitalShowcase, createReferenceGuidedSoldierAnimation } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 
 const $ = selector => document.querySelector(selector);
