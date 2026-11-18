@@ -210,7 +210,12 @@ export function applyAnimationAction(timeline, document, action) {
   if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.name !== 'string') {
     throw new TypeError('Animation action must have a name.');
   }
-  if (action.name === 'animation.get_context') {\n    if (!next.frames.length) throw new RangeError('Create the first animation frame before requesting frame context.');\n    const model = modelFromTimeline(next);\n    return { timeline, result: frameContext(model, document, action.index, action.layerId), changed: false };\n  }\n  if (action.name === 'animation.get_summary') {
+  if (action.name === 'animation.get_context') {
+    if (!next.frames.length) throw new RangeError('Create the first animation frame before requesting frame context.');
+    const model = modelFromTimeline(next);
+    return { timeline, result: frameContext(model, document, action.index, action.layerId), changed: false };
+  }
+  if (action.name === 'animation.get_summary') {
     return { timeline, result: summarizeAnimationTimeline(timeline), changed: false };
   }
   const next = clone(timeline);
@@ -311,7 +316,11 @@ export function applyAnimationAction(timeline, document, action) {
       loop = action.loop;
       result = { loop };
       break;
-    case 'animation.frame.get_context': {\n      result = frameContext(model, document, action.index, action.layerId);\n      break;\n    }\n    case 'animation.frame.get_cel': {
+    case 'animation.frame.get_context': {
+      result = frameContext(model, document, action.index, action.layerId);
+      break;
+    }
+    case 'animation.frame.get_cel': {
       const index = action.index ?? model.activeFrameIndex;
       const pixels = model.getLayerPixels(index, action.layerId);
       result = { frameId: model.getFrame(index).id, layerId: action.layerId, width: model.width, height: model.height, pixels: encodeBase64(pixels) };
