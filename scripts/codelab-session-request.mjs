@@ -32,7 +32,7 @@ request.requestId = requestId;
 request.sessionId = sessionId;
 let submitted = false;
 let lastSubmitError = null;
-for (let attempt = 1; attempt <= 24; attempt++) {
+for (let attempt = 1; attempt <= 60; attempt++) {
   try {
     await mailbox('/api/headless/session/request?sessionId=' + encodeURIComponent(sessionId), 'POST', { requestId, payload: request });
     submitted = true;
