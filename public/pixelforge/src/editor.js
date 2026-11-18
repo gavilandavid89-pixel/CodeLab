@@ -2350,9 +2350,9 @@ async function boot() {
         doc = RasterDocument.fromJSON(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
-        status('Demo caminata → agacharse recuperada · 24 fotogramas a 16 FPS', 'success');
+        status('Demo caminata → agacharse recuperada · 24 fotogramas a 12 FPS', 'success');
       } else {
-        const showcase = createOrbitalShowcase();
+        const showcase = createReferenceGuidedSoldierAnimation({ frameCount: 24, fps: 12 });
         doc = showcase.doc;
         animation = showcase.animation;
         animationLoop = showcase.loop;
