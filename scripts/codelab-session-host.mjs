@@ -73,7 +73,7 @@ async function comments() {
   return JSON.parse(await gh(['api', `repos/${repo}/issues/${issueNumber}/comments?per_page=100`]));
 }
 async function waitHealthy() {
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1000) });
       if (r.ok) return;
@@ -82,7 +82,7 @@ async function waitHealthy() {
     }
     await new Promise(r => setTimeout(r, 250));
   }
-  throw new Error('CodeLab local server did not become healthy within 25 seconds.');
+  throw new Error('CodeLab local server did not become healthy within 10 seconds. Server logs: ' + logs.slice(-20).join(' | '));
 }
 
 async function getPixelForgeProject(projectId) {
