@@ -1,3 +1,41 @@
 name: CodeLab Independent Session A
 
 on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  session-a:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Start independent persistent session A
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: "492"
+          CODELAB_SESSION_ID: "independent-${{ github.run_id }}"
+          CODELAB_SESSION_MINUTES: "10"
+          CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-independent-a-video
+        run: node scripts/codelab-session-host.mjs
+      - name: Upload A evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-independent-a-${{ github.run_id }}
+          path: ${{ runner.temp }}/codelab-independent-a-video
+          if-no-files-found: warn
