@@ -48,13 +48,13 @@ jobs:
               if(!b.startsWith("[CodeLab Session Ready]") || !b.includes("independent-")) return false;
               try {
                 const x=JSON.parse(b.slice("[CodeLab Session Ready]".length).trim());
-                return x.sessionId && x.token && x.mailbox && Date.parse(x.expiresAt)>now;
+                return x.sessionId && Date.parse(x.expiresAt)>now;
               } catch { return false; }
             }).sort((p,q)=>String(q.created_at).localeCompare(String(p.created_at)));
             const x=candidates[0];
             if(!x) process.exit(2);
             const v=JSON.parse(String(x.body).slice("[CodeLab Session Ready]".length).trim());
-            process.stdout.write([v.sessionId,v.token,v.mailbox].join("\\n"));
+            process.stdout.write([v.sessionId,v.mailbox || 'https://codelab-pbw9.onrender.com'].join("\\n"));
           ')"
           session="$(printf '%s' "$values" | sed -n '1p')"
           token="$(printf '%s' "$values" | sed -n '2p')"
