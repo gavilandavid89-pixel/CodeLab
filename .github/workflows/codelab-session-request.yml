@@ -1,0 +1,45 @@
+name: CodeLab Ephemeral Session Request
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'GitHub issue used as the session rendezvous channel'
+        required: true
+        type: string
+      session_id:
+        description: 'Persistent CodeLab session id'
+        required: true
+        type: string
+      request_json:
+        description: 'Structured request JSON'
+        required: true
+        type: string
+      timeout_ms:
+        description: 'Maximum wait for the persistent session'
+        required: false
+        default: '120000'
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Send one request to the persistent session
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: ${{ inputs.issue_number }}
+          CODELAB_SESSION_ID: ${{ inputs.session_id }}
+          CODELAB_SESSION_REQUEST: ${{ inputs.request_json }}
+          CODELAB_SESSION_TIMEOUT_MS: ${{ inputs.timeout_ms }}
+        run: node scripts/codelab-session-request.mjs
