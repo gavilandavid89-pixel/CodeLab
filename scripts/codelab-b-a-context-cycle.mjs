@@ -76,10 +76,34 @@ function translateFromExactPrevious(base64, width, height, dx, dy) {
 }
 
 const cycle = [];
-const created = await send({ kind: 'pixelforge', operation: 'create_reference_animation' });
-if (!created.projectId || !created.context) throw new Error('A did not return a reference project plus real initial context.');
+
+const opened = await send({
+  kind: 'browser',
+  start_path: '/pixelforge/index.html?createDemo=walk-crouch-24&capture=video',
+  actions: [{ type: 'wait_for', selector: '#canvas', state: 'visible', timeoutMs: 30000 }],
+});
 cycle.push({
   step: 'B1→A→context',
+  browser: {
+    finalUrl: opened.finalUrl,
+    captureMethod: opened.captureMethod,
+    uiActions: opened.ui_actions,
+  },
+});
+
+const projects = await send({ kind: 'pixelforge', operation: 'list_projects' });
+const projectList = Array.isArray(projects.projects) ? projects.projects : [];
+if (!projectList.length) throw new Error('A did not expose a persisted PixelForge project after the real browser open.');
+const createdProject = projectList[0];
+const created = await send({
+  kind: 'pixelforge',
+  operation: 'frame_context',
+  project_id: createdProject.id,
+  frame_index: 0,
+});
+if (!created.projectId || !created.context) throw new Error('A did not return a real persisted project plus initial context.');
+cycle.push({
+  step: 'A→context',
   projectId: created.projectId,
   frame: created.context.frame,
   layer: created.context.layer,
