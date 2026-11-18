@@ -161,6 +161,8 @@ async function executeBrowser(request, page) {
     execution_mode: 'browser',
     captureMethod: 'playwright-chromium-real-codelab-session',
     finalUrl: page.url(),
+    title: await page.title().catch(() => ''),
+    bodyText: (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).slice(0, 4000),
     ui_actions: trace,
     screenshots,
     passed: true
