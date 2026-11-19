@@ -27,7 +27,7 @@ jobs:
   session-a:
     if: ${{ (github.event_name == 'push' && github.event.head_commit.message == 'start persistent CodeLab session A') || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,7 +49,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_SESSION_ID: "independent-${{ github.run_id }}"
-          CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || '30' }}
+          CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || '10' }}
           CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-independent-a-video
         run: node scripts/codelab-session-host.mjs
       - name: Upload A evidence
