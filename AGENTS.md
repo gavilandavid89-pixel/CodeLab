@@ -1,6 +1,6 @@
 # 🚨🚨 POLÍTICA N.º 1 — SUPERVISIÓN A/B 🚨🚨
 
-**MÁXIMA PRIORIDAD:** supervisar A y cada B durante hasta **10 minutos**, comprobando cada **30 segundos**. Si responden antes, detener la espera, inspeccionar el resultado y decidir el siguiente paso. Cada nuevo B reinicia su ciclo independiente de 10 min / 30 s.
+**MÁXIMA PRIORIDAD:** los **10 minutos NO son un límite de ejecución para A ni para B**. Son únicamente la ventana máxima de **supervisión del agente IA** por ciclo, comprobando cada **30 segundos**. A y B pueden seguir ejecutándose más allá de esa ventana; el agente IA decide el siguiente ciclo sin matar, cancelar ni imponer un timeout al proceso solo por llegar a 10 minutos. Si responden antes, detener la espera inmediatamente, inspeccionar el resultado y decidir el siguiente paso. Cada nuevo B reinicia su ciclo independiente de supervisión de 10 min / 30 s.
 
 **Esta regla está por encima de las demás reglas operativas.**
 
@@ -13,7 +13,7 @@
 - **Solo el usuario puede iniciar una nueva ejecución del agente IA.**
 - **B es un puente; no es otro agente IA ni toma decisiones.**
 - **A es la sesión persistente y la fuente de verdad del estado real de CodeLab.**
-- Cada B tiene una espera máxima independiente de **10 minutos**; A se monitoriza durante **10 minutos**, cada **30 segundos**.
+- Cada B tiene una **ventana máxima de supervisión del agente IA** de **10 minutos**, con comprobación cada **30 segundos**; A se supervisa con la misma regla. **Esto no limita la duración de ejecución de A/B.**
 - La evidencia estructurada y visual debe verificarse realmente antes de aceptar un resultado.
 - Un `success`, workflow verde o API aceptada **no equivale** a tarea terminada.
 - En dibujo/animación se debe seguir: **objetivo → referencia/contexto real → acción estructurada → render → inspección visual → evaluación → corrección**.
