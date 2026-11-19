@@ -1,3 +1,11 @@
+# 🚨 POLÍTICA DEL AGENTE IA — ENTRADA OBLIGATORIA
+
+> **Antes de cualquier trabajo sobre CodeLab, el agente debe leer `AGENTS.md`.** Ese archivo lleva a la política completa de `docs/agent-ai-bridge-policy.md` y resume las reglas que deben respetarse durante toda la sesión.
+>
+> **Solo el usuario puede iniciar al agente IA.** B es puente, A es sesión persistente y fuente de verdad. La evidencia visual debe inspeccionarse realmente. En dibujo/animación, las referencias pueden buscarse dinámicamente en Internet; no se debe depender de una imagen implantada como fuente obligatoria.
+
+**[Abrir la política completa →](docs/agent-ai-bridge-policy.md)**
+
 # CodeLab XD Studio Pro v2.6.6
 
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
