@@ -10,6 +10,8 @@ La regla central es:
 
 Nunca se debe saltar el ciclo para tomar decisiones basadas en suposiciones.
 
+> **Protocolo de autonomía y comunicación:** para animación, también es obligatorio seguir [ANIMATION-AUTONOMOUS-WORKFLOW.md](ANIMATION-AUTONOMOUS-WORKFLOW.md). El agente debe conducir el ciclo completo durante la sesión activa (ordenar, esperar, verificar, inspeccionar, corregir y continuar), sin mantenerse activo 24/7 y sin enviar informes de progreso. El usuario recibe el informe final, salvo que exista un bloqueo real que requiera su intervención.
+
 ## Qué representa cada parte
 
 - **B**: agente/cliente que razona sobre la tarea y decide cuál debe ser el siguiente paso.
