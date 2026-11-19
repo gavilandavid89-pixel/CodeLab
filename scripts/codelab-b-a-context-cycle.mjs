@@ -134,7 +134,7 @@ function changedPixels(a64,b64,w,h){
 const opened=await send({kind:'browser',start_path:'/pixelforge/index.html',actions:[{type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000}]});
 const {createOrbitalShowcase}=await import('../public/pixelforge/src/showcase-animation.mjs');
 const suppliedProjectId=String(process.env.CODELAB_WALK_PROJECT_ID || '');
-let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_reference_animation'});
+let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_blank_animation'});
 if(!suppliedProjectId){
   await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
   const proceduralSeed=createOrbitalShowcase({frameCount:60,fps:FPS,walkOnly:true});
