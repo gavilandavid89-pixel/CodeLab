@@ -119,6 +119,12 @@ export function normalizeIllustrationScene(scene) {
     lighting: clone(scene.lighting || {}),
     palette: clone(scene.palette || {}),
     constraints: clone(scene.constraints || {}),
+    references: Array.isArray(scene.references) ? scene.references.map((ref, i) => ({
+      id: String(ref.id || 'reference-' + i),
+      url: String(ref.url || ''),
+      role: String(ref.role || 'general'),
+      notes: String(ref.notes || '').slice(0, 1000),
+    })) : [],
     pose: clone(scene.pose || {}),
   };
 }
@@ -126,6 +132,10 @@ export function normalizeIllustrationScene(scene) {
 export function validateIllustrationScene(scene) {
   const normalized = normalizeIllustrationScene(scene);
   const errors = [];
+
+  for (const ref of normalized.references) {
+    if (!/^https?:\\/\\//.test(ref.url)) errors.push('Reference URL must use http(s): ' + ref.id);
+  }
 
   const bodyNodes = normalized.nodes.filter(n => n.type === 'body' || n.type === 'head' || n.type === 'limb');
   if (bodyNodes.length === 0) errors.push('Scene has no anatomical/body structure.');
