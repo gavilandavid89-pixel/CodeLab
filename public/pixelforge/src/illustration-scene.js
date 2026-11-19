@@ -134,7 +134,7 @@ export function validateIllustrationScene(scene) {
   const errors = [];
 
   for (const ref of normalized.references) {
-    if (!/^https?:\\/\\//.test(ref.url)) errors.push('Reference URL must use http(s): ' + ref.id);
+    if (!/^https?:\/\//.test(ref.url)) errors.push('Reference URL must use http(s): ' + ref.id);
   }
 
   const bodyNodes = normalized.nodes.filter(n => n.type === 'body' || n.type === 'head' || n.type === 'limb');
