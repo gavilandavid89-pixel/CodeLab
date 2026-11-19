@@ -2347,13 +2347,13 @@ async function boot() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('createDemo') === 'walk-crouch-24') {
       const existingProjects = await listSavedProjects();
-      const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 24 frames');
+      const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 60 frames');
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
         doc = RasterDocument.fromJSON(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
-        status('Demo caminata → agacharse recuperada · 24 fotogramas a 12 FPS', 'success');
+        status('Demo caminata → agacharse recuperada · 60 fotogramas a 12 FPS', 'success');
       } else {
         const showcase = createReferenceGuidedSoldierAnimation({ frameCount: 60, fps: 12 });
         doc = showcase.doc;
@@ -2361,10 +2361,12 @@ async function boot() {
         animationLoop = showcase.loop;
         const snapshot = doc.toJSON();
         snapshot.animation = { ...animation.toJSON(), loop: animationLoop };
-        const savedDemo = await saveProject(snapshot);
-        if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
+        if (!guestMode || params.get('capture') !== 'video') {
+          const savedDemo = await saveProject(snapshot);
+          if (Number.isInteger(savedDemo?.serverRevision)) doc.serverRevision = savedDemo.serverRevision;
+        }
         doc.dirty = false;
-        status('Demo caminata → agacharse guardada · 24 fotogramas a 16 FPS', 'success');
+        status('Demo caminata → agacharse preparada · 60 fotogramas a 12 FPS', 'success');
       }
       animationFrameHistory.clear();
       animationOrphanCels.clear();
