@@ -132,18 +132,18 @@ function changedPixels(a64,b64,w,h){
 }
 
 const opened=await send({kind:'browser',start_path:'/pixelforge/index.html',actions:[{type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000}]});
+const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
 const suppliedProjectId=String(process.env.CODELAB_WALK_PROJECT_ID || '');
 let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_blank_animation'});
 if(!suppliedProjectId){
   await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
-  const reference=SOLDIER_REFERENCE_RASTER.decode();
-  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed frame 0 from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(reference)}]});
+  const seedReferencePixels=SOLDIER_REFERENCE_RASTER.decode();
+  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed frame 0 from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(seedReferencePixels)}]});
   const seeded=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:0});
-  if(!seeded.context?.current?.cel || Buffer.from(seeded.context.current.cel,'base64').compare(Buffer.from(encode64(reference),'base64'))!==0){
+  if(!seeded.context?.current?.cel || Buffer.from(seeded.context.current.cel,'base64').compare(Buffer.from(encode64(seedReferencePixels),'base64'))!==0){
     throw new Error('A did not persist the authoritative soldier reference into frame 0.');
   }
 }
-const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
 const reference=SOLDIER_REFERENCE_RASTER.decode();
 const reference64=encode64(reference);
 let previousFrame=0;
