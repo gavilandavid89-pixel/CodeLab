@@ -1,4 +1,4 @@
-name: CodeLab start supervised A
+name: CodeLab start persistent A
 
 on:
   push:
@@ -14,11 +14,11 @@ jobs:
   dispatch-a:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch persistent A with the mandatory 10-minute window
+      - name: Dispatch persistent A
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run .github/workflows/codelab-independent-session-a.yml --repo "$GH_REPO" --ref main -f session_minutes=10
-          echo "Dispatched supervised CodeLab Session A for 10 minutes."
+          gh workflow run .github/workflows/codelab-independent-session-a.yml --repo "$GH_REPO" --ref main -f session_minutes=360
+          echo "Dispatched persistent CodeLab Session A."
