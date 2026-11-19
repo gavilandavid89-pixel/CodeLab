@@ -1320,13 +1320,15 @@ async function updateCodeLabProjectCode(command) {
 
 function isAnimationMutationCommand(command) {
   if (!command || !String(command.action || '').startsWith('pixelforge_')) return false;
-  if (command.action === 'pixelforge_animation_frame_context') return true;
   if (command.action === 'pixelforge_export_animation_video') return false;
-  if (command.action !== 'pixelforge_propose' && command.action !== 'pixelforge_approve') return false;
-  const actions = command.payload?.actions;
-  return Array.isArray(actions) && actions.some(action =>
-    action && typeof action.name === 'string' && action.name.startsWith('animation.')
-  );
+  if (command.action === 'pixelforge_animation_frame_context') return true;
+  if (command.action === 'pixelforge_propose' || command.action === 'pixelforge_approve') {
+    const actions = command.payload?.actions;
+    return Array.isArray(actions) && actions.some(action =>
+      action && typeof action.name === 'string' && action.name.startsWith('animation.')
+    );
+  }
+  return false;
 }
 
 async function startAutomaticAnimationCapture(command) {
