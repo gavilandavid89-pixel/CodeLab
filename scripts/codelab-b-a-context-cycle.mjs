@@ -154,9 +154,22 @@ if(ONE_STEP) previousFrame=REQUESTED_FRAME-1;
 for(let i=startFrame;i<=endFrame;i++){
   const duplicated=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: create next walking frame',actions:[{name:'animation.frame.duplicate',index:previousFrame}],return_context:false});
   const nextIndex=Number(duplicated.results?.[0]?.result?.index ?? i);
-  const context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
-  const exactPrevious=context.context?.previous?.cel;
+  let context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
+  let exactPrevious=context.context?.previous?.cel;
   if(!exactPrevious) throw new Error('A did not return the exact previous cel for frame '+nextIndex);
+  if(previousFrame===0){
+    const previousBytes=decode64(exactPrevious);
+    const unique=new Set();
+    for(let p=0;p<previousBytes.length;p+=4){unique.add((previousBytes[p]<<24)|(previousBytes[p+1]<<16)|(previousBytes[p+2]<<8)|previousBytes[p+3]); if(unique.size>4) break;}
+    if(unique.size<=1){
+      const reference=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
+      const refPixels=reference.SOLDIER_REFERENCE_RASTER.decode();
+      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:context.context.previous.layer.id,pixels:encode64(refPixels)}]});
+      context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
+      exactPrevious=context.context?.previous?.cel;
+      if(!exactPrevious) throw new Error('A did not return repaired exact previous cel for frame '+nextIndex);
+    }
+  }
   const exactPreviousBytes=Buffer.from(exactPrevious,'base64').byteLength;
   const nextCel=walkFromExactPrevious(exactPrevious,context.context.visual.width,context.context.visual.height,i);
   const delta=changedPixels(exactPrevious,nextCel,context.context.visual.width,context.context.visual.height);
