@@ -105,7 +105,8 @@ export class DrawingWorkflow {
   getState() {
     return clone(this.#state);
   }
-\n  setScene(scene) {
+
+  setScene(scene) {
     if (!scene || typeof scene !== 'object') throw new TypeError('scene is required.');
     this.#state.scene = clone(scene);
     this.#state.history.push({
