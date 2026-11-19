@@ -173,7 +173,7 @@ for(let i=startFrame;i<=endFrame;i++){
       const proceduralRepairLayer=proceduralRepair.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
       if(!proceduralRepairLayer) throw new Error('Procedural soldier repair layer was not created.');
       const refPixels=proceduralRepairLayer.pixels;
-      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:context.context.previous.layer.id,pixels:encode64(refPixels)}]});
+      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(refPixels)}]});
       context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
       exactPrevious=context.context?.previous?.cel;
       if(!exactPrevious) throw new Error('A did not return repaired exact previous cel for frame '+nextIndex);
