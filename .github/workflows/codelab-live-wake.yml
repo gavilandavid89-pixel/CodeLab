@@ -1,0 +1,24 @@
+name: CodeLab live wake
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  wake-on-demand:
+    if: github.event.issue.number == 492 && startsWith(github.event.comment.body, '[CodeLab Live]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: One-shot live touch
+        env:
+          CODELAB_URL: https://codelab-pbw9.onrender.com/
+        run: |
+          set -euo pipefail
+          echo "Waking CodeLab live service with one request..."
+          curl --fail --silent --show-error --location             --max-time 60             --retry 2 --retry-delay 2             -H 'Cache-Control: no-cache'             "$CODELAB_URL" >/tmp/codelab-live-response.txt
+          echo "Live touch completed: $(wc -c </tmp/codelab-live-response.txt) bytes"
