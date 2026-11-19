@@ -1,4 +1,5 @@
 import { AIWorkspace } from './workspaces.js';
+import { DrawingWorkflow } from './drawing-workflow.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -78,6 +79,7 @@ function strokeToWithSymmetry(doc, stroke, x, y, mode) {
 export class AICommandSession {
   #workspace;
   #clipboard = null;
+  #drawingWorkflow = null;
 
   constructor(workspace) {
     if (!(workspace instanceof AIWorkspace)) throw new TypeError('Expected an AIWorkspace.');
@@ -100,6 +102,52 @@ export class AICommandSession {
       const doc = this.#workspace.sandbox;
       let result;
       switch (action.name) {
+        case 'drawing.workflow.start': {
+          const workflowId = typeof action.workflowId === 'string' && action.workflowId ? action.workflowId : crypto.randomUUID();
+          this.#drawingWorkflow = new DrawingWorkflow({
+            workflowId,
+            projectId: action.projectId ?? null,
+            stage: action.stage ?? 'sketch',
+          });
+          result = this.#drawingWorkflow.getState();
+          break;
+        }
+        case 'drawing.workflow.get_state':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.getState();
+          break;
+        case 'drawing.workflow.record_action':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.recordAction(action.action);
+          break;
+        case 'drawing.workflow.visual_feedback':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.attachVisualFeedback({
+            snapshotId: action.snapshotId,
+            summary: action.summary,
+            metrics: action.metrics,
+          });
+          break;
+        case 'drawing.workflow.pause':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.pause(action.reason);
+          break;
+        case 'drawing.workflow.resume':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.resume();
+          break;
+        case 'drawing.workflow.correct':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.correct({
+            stage: action.stage,
+            reason: action.reason,
+            actions: action.actions,
+          });
+          break;
+        case 'drawing.workflow.advance':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.advanceStage({ feedbackRequired: action.feedbackRequired === true });
+          break;
         case 'document.get_summary':
           result = {
             name: doc.name, width: doc.width, height: doc.height,
