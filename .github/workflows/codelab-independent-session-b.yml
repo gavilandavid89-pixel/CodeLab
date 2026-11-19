@@ -115,7 +115,7 @@ jobs:
 
       - name: Send independent B request to A
         id: request
-        if: ${{ github.event_name != 'push' && github.event.inputs.mode != 'walk' && github.event.inputs.mode != 'walk-step' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'walk' && github.event.inputs.mode != 'walk-step' }}
         env:
           CODELAB_SESSION_TIMEOUT_MS: "120000"
           CODELAB_SESSION_REQUEST: ${{ github.event.inputs.request || '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}' }}
