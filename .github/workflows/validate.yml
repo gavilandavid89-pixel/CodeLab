@@ -211,6 +211,7 @@ jobs:
           export PORT=3191
           export DATABASE_URL="postgres://codelab:codelab_test@127.0.0.1:5432/codelab_test"
           export CODELAB_DATABASE_SSL=disable
+          export CODELAB_AGENT_BRIDGE_ENABLED=0
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-15-codelab-core-postgres.sql
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-pixelforge-postgres-data"
