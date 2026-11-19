@@ -87,7 +87,7 @@ jobs:
           fi
           run_id=""
           for i in $(seq 1 24); do
-            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event,createdAt --jq '.[] | select(.status=="in_progress" and (.event=="workflow_dispatch" or .event=="issue_comment" or .event=="push")) | .databaseId' | head -n 1)"
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event,createdAt --jq '[.[] | select(.status=="in_progress" and (.event=="workflow_dispatch" or .event=="issue_comment" or .event=="push"))] | sort_by(.createdAt) | last | .databaseId')"
             if [ -n "$run_id" ]; then break; fi
             sleep 5
           done
