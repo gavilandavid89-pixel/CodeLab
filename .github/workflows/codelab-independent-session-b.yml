@@ -80,7 +80,7 @@ jobs:
           while IFS= read -r line; do echo "$line" >> "$GITHUB_ENV"; done < "$RUNNER_TEMP/codelab-request.env"
           echo "Loaded supervised request: $request_file"
 
-      - name: Discover independently running A once
+      - name: Discover READY A session
         if: ${{ github.event_name == 'push' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && github.event.inputs.session_id == '') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -91,17 +91,27 @@ jobs:
             echo "Using supplied supervised A session: $CODELAB_SESSION_ID"
             exit 0
           fi
-          run_id=""
-          for i in $(seq 1 24); do
-            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event,createdAt --jq '[.[] | select(.status=="in_progress" and (.event=="workflow_dispatch" or .event=="issue_comment" or .event=="push"))] | sort_by(.createdAt) | last | .databaseId')"
-            if [ -n "$run_id" ]; then break; fi
+          ready_run=""
+          ready_session=""
+          for i in $(seq 1 120); do
+            latest="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab Session Ready]"))] | last | .body' || true)"
+            candidate_run="$(printf '%s' "$latest" | sed -n 's/.*run=\([0-9][0-9]*\).*/\1/p')"
+            candidate_session="$(printf '%s' "$latest" | sed -n 's/.*session=\([^ ]*\).*/\1/p')"
+            if [ -n "$candidate_run" ] && [ -n "$candidate_session" ]; then
+              status="$(gh run view "$candidate_run" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
+              if [ "$status" = "in_progress" ]; then
+                ready_run="$candidate_run"
+                ready_session="$candidate_session"
+                break
+              fi
+            fi
+            echo "Waiting for live READY A ($i/120)..."
             sleep 5
           done
-          test -n "$run_id"
-          session="independent-$run_id"
-          echo "CODELAB_SESSION_ID=$session" >> "$GITHUB_ENV"
+          test -n "$ready_run"
+          echo "CODELAB_SESSION_ID=$ready_session" >> "$GITHUB_ENV"
           echo "CODELAB_MAILBOX_BASE_URL=https://codelab-pbw9.onrender.com" >> "$GITHUB_ENV"
-          echo "Connected to active A session: $session"
+          echo "Connected to READY A: run=$ready_run session=$ready_session"
 
       - name: Set supplied A session
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.session_id != '' }}
@@ -127,7 +137,7 @@ jobs:
         id: walk
         if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '[Start Independent B walk]')) }}
         env:
-          CODELAB_SESSION_TIMEOUT_MS: "540000"
+          CODELAB_SESSION_TIMEOUT_MS: "1800000"
           CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || 'relay' }}
           CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
         run: |
