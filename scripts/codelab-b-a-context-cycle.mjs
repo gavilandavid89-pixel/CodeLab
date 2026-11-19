@@ -1,10 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 const sessionId = String(process.env.CODELAB_SESSION_ID || '');
-const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
+const mailboxTransport = String(process.env.CODELAB_MAILBOX_TRANSPORT || 'relay').toLowerCase();
+if (!['relay','custom'].includes(mailboxTransport)) throw new Error('Unsupported CODELAB_MAILBOX_TRANSPORT: ' + mailboxTransport);
+const defaultMailboxBaseUrl = mailboxTransport === 'relay' ? 'https://codelab-pbw9.onrender.com' : '';
+const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || defaultMailboxBaseUrl).replace(/\/+$/, '');
+if (!mailboxBaseUrl) throw new Error('CODELAB_MAILBOX_BASE_URL is required for custom mailbox transport.');
 const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex')).slice(0, 64);
 const timeoutMs = Math.max(30000, Math.min(10 * 60 * 1000, Number(process.env.CODELAB_SESSION_TIMEOUT_MS || 240000)));
-const FRAME_COUNT = 48;
+const FRAME_COUNT = 60;
 const FPS = 12;
 const ONE_STEP = process.env.CODELAB_WALK_ONE_STEP === '1';
 const REQUESTED_FRAME = Math.max(1, Number(process.env.CODELAB_WALK_FRAME_INDEX || '1'));
