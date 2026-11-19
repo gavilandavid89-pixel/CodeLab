@@ -182,7 +182,7 @@ async function executePixelForge(request) {
   if (request.operation === 'create_blank_animation') {
     const projectId = 'agent_' + sessionId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 70);
     const layerId = 'layer_' + sessionId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 70);
-    const width = 64, height = 120;
+    const width = 128, height = 160;
     const blankPixels = Buffer.alloc(width * height * 4).toString('base64');
     const project = {
       format: 'pixelforge-project',
