@@ -40,11 +40,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - name: A startup sentinel
-        if: ${{ github.event_name == 'issue_comment' && github.event.issue.number == 492 }}
+      - name: Reject duplicate A session before boot
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh issue comment 492 --repo "$GITHUB_REPOSITORY" --body "[CodeLab A Started] run=${GITHUB_RUN_ID}"
+        run: |
+          set -euo pipefail
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab Session Ready]"))] | last | .body' || true)"
+          ready_run="$(printf '%s' "$latest" | sed -n 's/.*run=\([0-9][0-9]*\).*/\1/p')"
+          if [ -n "$ready_run" ]; then
+            ready_status="$(gh run view "$ready_run" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
+            if [ "$ready_status" = "in_progress" ]; then
+              echo "A already READY and alive: run=$ready_run. Exiting duplicate A."
+              exit 0
+            fi
+          fi
+          gh issue comment 492 --repo "$GITHUB_REPOSITORY" --body "[CodeLab A Started] run=${GITHUB_RUN_ID}"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
