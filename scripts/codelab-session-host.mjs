@@ -17,7 +17,7 @@ const sessionProjects = new Map();
 const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
 const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex')).slice(0, 64);
 async function mailboxPost(pathname, body) {
-  const response = await fetch(mailboxBaseUrl + pathname, { method: 'POST', headers: { 'content-type': 'application/json', 'x-codelab-mailbox-token': mailboxToken }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  const response = await fetch(mailboxBaseUrl + pathname, { method: 'POST', headers: { 'content-type': 'application/json', 'x-codelab-mailbox-token': mailboxToken }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   if (response.status === 204) return null;
   let data = null; try { data = await response.json(); } catch {}
   if (!response.ok) throw new Error('Headless mailbox HTTP ' + response.status + ': ' + JSON.stringify(data));
@@ -25,20 +25,20 @@ async function mailboxPost(pathname, body) {
 }
 async function registerMailbox(expiresAt) {
   let lastError;
-  for (let attempt = 1; attempt <= 6; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     try {
       return await mailboxPost('/api/headless/session/register', { sessionId, token: mailboxToken, expiresAt });
     } catch (error) {
       lastError = error;
       console.error('headless mailbox register attempt ' + attempt + '/6 failed:', error.message);
-      if (attempt < 6) await new Promise(r => setTimeout(r, 5000));
+      if (attempt < 8) await new Promise(r => setTimeout(r, 5000));
     }
   }
   throw lastError || new Error('Headless mailbox registration timed out.');
 }
 
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
-const startupWatchdog = setTimeout(() => { console.error('A startup watchdog expired after 180 seconds.'); process.exit(1); }, 180000);
+const startupWatchdog = setTimeout(() => { console.error('A startup watchdog expired after 300 seconds.'); process.exit(1); }, 300000);
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
 const sessionStoreDir = path.join(dataDir, 'sessions');
@@ -401,14 +401,17 @@ async function executeBrowser(request, page) {
 console.log('A stage: waiting for local CodeLab health');
 await waitHealthy();
 console.log('A stage: local CodeLab healthy');
+await comment('[CodeLab A Stage] local CodeLab healthy run=' + process.env.GITHUB_RUN_ID);
 // The mailbox service currently accepts short-lived leases; this is independent from A's execution lifetime.
 const mailboxLeaseMinutes = Math.min(maxMinutes, 10);
 const expiresAt = new Date(Date.now() + mailboxLeaseMinutes * 60000).toISOString();
 console.log('A stage: registering mailbox before Chromium');
 await registerMailbox(expiresAt);
 console.log('A stage: mailbox registered');
+await comment('[CodeLab A Stage] mailbox registered run=' + process.env.GITHUB_RUN_ID);
 console.log('[CodeLab Session Ready]');
 console.log(JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, status: 'ready' }));
+await comment('[CodeLab Session Ready] run=' + process.env.GITHUB_RUN_ID + ' session=' + sessionId + ' expiresAt=' + expiresAt);
 console.log('A stage: launching Chromium');
 const browser = await chromium.launch({ headless: true });
 console.log('A stage: Chromium launched');
