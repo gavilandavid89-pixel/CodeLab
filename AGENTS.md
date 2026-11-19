@@ -8,6 +8,8 @@
 
 **Entrada obligatoria del agente:** [docs/agent-ai-bridge-policy.md](docs/agent-ai-bridge-policy.md)
 
+**Protocolo adicional obligatorio para dibujo y animación:** [docs/ANIMATION-AUTONOMOUS-WORKFLOW.md](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md). Define que el agente conduce el ciclo completo de órdenes, espera, verificación, inspección y corrección durante la sesión activa; no funciona 24/7 ni envía informes intermedios, y comunica el resultado final. Este protocolo complementa —no reemplaza— la supervisión A/B descrita arriba.
+
 **Reglas críticas de un vistazo**
 - **Usuario → Agente IA → B → A → B → Agente IA.**
 - **Solo el usuario puede iniciar una nueva ejecución del agente IA.**
@@ -15,7 +17,7 @@
 - **A es la sesión persistente y la fuente de verdad del estado real de CodeLab.**
 - Cada B tiene una **ventana máxima de supervisión del agente IA** de **10 minutos**, con comprobación cada **30 segundos**; A se supervisa con la misma regla. **Esto no limita la duración de ejecución de A/B.**
 - La evidencia estructurada y visual debe verificarse realmente antes de aceptar un resultado.
-- Un `success`, workflow verde o API aceptada **no equivale** a tarea terminada.
+- Un "success", workflow verde o API aceptada **no equivale** a tarea terminada.
 - En dibujo/animación se debe seguir: **objetivo → referencia/contexto real → acción estructurada → render → inspección visual → evaluación → corrección**.
 - Cuando se use una referencia externa, **la referencia es evidencia, no el artwork final**.
 - En animación, el frame anterior debe consultarse desde el estado real de CodeLab/A; **no se puede inventar ni reconstruir de memoria**.
@@ -40,5 +42,3 @@ Para animación, las referencias externas pueden orientar la pose y el movimient
 La política detallada y sus controles se encuentran en:
 
 **[docs/agent-ai-bridge-policy.md](docs/agent-ai-bridge-policy.md)**
-
-Este archivo existe para que la política sea visible de inmediato al entrar al repositorio; no sustituye el documento completo.
