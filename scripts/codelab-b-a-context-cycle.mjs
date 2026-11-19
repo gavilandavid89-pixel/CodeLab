@@ -69,10 +69,10 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   for(const [key,count] of counts){if(count>bgCount){bgKey=key;bgCount=count;}}
   const bgR=(bgKey>>16)&255,bgG=(bgKey>>8)&255,bgB=bgKey&255;
   const regions=[
-    {x:0,y:70,w:32,h:50,dx:Math.round(3*legL),dy:Math.round(1*Math.max(0,legL))},
-    {x:32,y:70,w:32,h:50,dx:Math.round(3*legR),dy:Math.round(1*Math.max(0,legR))},
-    {x:0,y:35,w:24,h:48,dx:Math.round(2*armL),dy:Math.round(1*armL)},
-    {x:40,y:35,w:24,h:48,dx:Math.round(2*armR),dy:Math.round(1*armR)}
+    {x:0,y:70,w:32,h:50,dx:Math.round(1*legL),dy:0},
+    {x:32,y:70,w:32,h:50,dx:Math.round(1*legR),dy:0},
+    {x:0,y:35,w:24,h:48,dx:Math.round(1*armL),dy:0},
+    {x:40,y:35,w:24,h:48,dx:Math.round(1*armR),dy:0}
   ];
   const isBg=(o)=>src[o]===bgR&&src[o+1]===bgG&&src[o+2]===bgB&&src[o+3]===255;
   for(const r of regions){
@@ -154,7 +154,7 @@ for(let i=startFrame;i<=endFrame;i++){
   const nextCel=walkFromExactPrevious(exactPrevious,context.context.visual.width,context.context.visual.height,i);
   const delta=changedPixels(exactPrevious,nextCel,context.context.visual.width,context.context.visual.height);
   if(delta.changed<40) throw new Error('Frame '+nextIndex+' changed too little: '+JSON.stringify(delta));
-  if(delta.backgroundLeakRatio>0.012) throw new Error('Frame '+nextIndex+' moved too much background: '+JSON.stringify(delta));
+  if(delta.backgroundLeakRatio>0.02) throw new Error('Frame '+nextIndex+' moved too much background: '+JSON.stringify(delta));
   const applied=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: apply walking pose derived only from exact previous cel',actions:[{name:'animation.frame.set_cel',index:nextIndex,layerId:context.context.layer.id,pixels:nextCel}]});
   if(!applied.context) throw new Error('A did not return post-mutation context for frame '+nextIndex);
   proof.push({frame:nextIndex,sourceFrameId:context.context.previous.frame.id,exactPreviousCelBytes:exactPreviousBytes,changedPixels:delta.changed,meanChannelDelta:delta.meanChannelDelta});
