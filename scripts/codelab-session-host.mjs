@@ -14,7 +14,11 @@ const sessionId = String(process.env.CODELAB_SESSION_ID || randomUUID());
 const maxMinutes = Math.max(1, Math.min(360, Number(process.env.CODELAB_SESSION_MINUTES || 360)));
 const pollMs = 1000;
 const sessionProjects = new Map();
-const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || 'https://codelab-pbw9.onrender.com').replace(/\/+$/, '');
+const mailboxTransport = String(process.env.CODELAB_MAILBOX_TRANSPORT || 'relay').toLowerCase();
+if (!['relay','custom'].includes(mailboxTransport)) throw new Error('Unsupported CODELAB_MAILBOX_TRANSPORT: ' + mailboxTransport);
+const defaultMailboxBaseUrl = mailboxTransport === 'relay' ? 'https://codelab-pbw9.onrender.com' : '';
+const mailboxBaseUrl = String(process.env.CODELAB_MAILBOX_BASE_URL || defaultMailboxBaseUrl).replace(/\/+$/, '');
+if (!mailboxBaseUrl) throw new Error('CODELAB_MAILBOX_BASE_URL is required for custom mailbox transport.');
 const mailboxToken = String(process.env.CODELAB_MAILBOX_TOKEN || createHash('sha256').update('codelab-headless-mailbox:v1:' + sessionId).digest('hex')).slice(0, 64);
 async function mailboxPost(pathname, body) {
   const response = await fetch(mailboxBaseUrl + pathname, { method: 'POST', headers: { 'content-type': 'application/json', 'x-codelab-mailbox-token': mailboxToken }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
@@ -405,6 +409,7 @@ await comment('[CodeLab A Stage] local CodeLab healthy run=' + process.env.GITHU
 // The mailbox service currently accepts short-lived leases; this is independent from A's execution lifetime.
 const mailboxLeaseMinutes = Math.min(maxMinutes, 10);
 const expiresAt = new Date(Date.now() + mailboxLeaseMinutes * 60000).toISOString();
+console.log('A stage: mailbox transport=' + mailboxTransport + ' base=' + mailboxBaseUrl);
 console.log('A stage: registering mailbox before Chromium');
 await registerMailbox(expiresAt);
 console.log('A stage: mailbox registered');
