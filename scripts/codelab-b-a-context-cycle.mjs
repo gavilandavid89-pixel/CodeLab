@@ -132,12 +132,15 @@ function changedPixels(a64,b64,w,h){
 }
 
 const opened=await send({kind:'browser',start_path:'/pixelforge/index.html',actions:[{type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000}]});
-const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
+const {createOrbitalShowcase}=await import('../public/pixelforge/src/showcase-animation.mjs');
 const suppliedProjectId=String(process.env.CODELAB_WALK_PROJECT_ID || '');
 let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_blank_animation'});
 if(!suppliedProjectId){
   await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
-  const seedReferencePixels=SOLDIER_REFERENCE_RASTER.decode();
+  const proceduralSeed=createOrbitalShowcase({frameCount:60,fps:FPS,walkOnly:true});
+  const proceduralSeedLayer=proceduralSeed.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
+  if(!proceduralSeedLayer) throw new Error('Procedural soldier seed layer was not created.');
+  const seedReferencePixels=proceduralSeedLayer.pixels;
   await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed frame 0 from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(seedReferencePixels)}]});
   const seeded=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:0});
   if(!seeded.context?.current?.cel || Buffer.from(seeded.context.current.cel,'base64').compare(Buffer.from(encode64(seedReferencePixels),'base64'))!==0){
@@ -164,8 +167,10 @@ for(let i=startFrame;i<=endFrame;i++){
     const unique=new Set();
     for(let p=0;p<previousBytes.length;p+=4){unique.add((previousBytes[p]<<24)|(previousBytes[p+1]<<16)|(previousBytes[p+2]<<8)|previousBytes[p+3]); if(unique.size>4) break;}
     if(unique.size<=1){
-      const reference=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
-      const refPixels=reference.SOLDIER_REFERENCE_RASTER.decode();
+      const proceduralRepair=createOrbitalShowcase({frameCount:60,fps:FPS,walkOnly:true});
+      const proceduralRepairLayer=proceduralRepair.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
+      if(!proceduralRepairLayer) throw new Error('Procedural soldier repair layer was not created.');
+      const refPixels=proceduralRepairLayer.pixels;
       await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:context.context.previous.layer.id,pixels:encode64(refPixels)}]});
       context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
       exactPrevious=context.context?.previous?.cel;
