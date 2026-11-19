@@ -11,6 +11,16 @@
 Flujo obligatorio:
 **Usuario → Agente IA → B → A → B → Agente IA → siguiente B → A → ...**
 
+## Activación exclusiva por el usuario
+
+CodeLab, A, B, workers, workflows, webhooks y procesos auxiliares **no pueden invocar, despertar, llamar ni crear una nueva ejecución de ChatGPT**.
+
+La existencia de una tarea, un cambio de estado, un resultado, un timeout, un error, un evento de GitHub o una señal de A/B nunca debe convertirse por sí sola en una nueva petición al agente IA.
+
+**Solo un mensaje/petición explícita del usuario puede iniciar el trabajo del agente IA.**
+
+A y B pueden permanecer activos, conservar estado, completar trabajo previamente solicitado y devolver resultados, pero no pueden iniciar una nueva intervención del agente IA.
+
 ## Monitoreo de A
 
 Al comenzar una sesión A, el agente IA debe monitorizarla durante **10 minutos**, comprobando su estado **cada 30 segundos**.
