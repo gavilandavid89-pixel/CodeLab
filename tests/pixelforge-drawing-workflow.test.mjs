@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DrawingWorkflow, DRAWING_STAGES } from '../public/pixelforge/src/drawing-workflow.js';
+import { DrawingWorkflow, DRAWING_STAGES, isDrawingQualityAcceptable } from '../public/pixelforge/src/drawing-workflow.js';
+
+const goodQuality = {
+  score: 0.9,
+  metrics: {
+    silhouette: 0.92,
+    anatomy: 0.88,
+    pose: 0.91,
+    motion: 0.9,
+    consistency: 0.89,
+    detail: 0.87,
+    presentation: 0.9,
+  },
+  decision: 'accept',
+  inspectedVisualEvidence: true,
+  notes: 'Inspected representative video frames and final render.',
+};
 
 test('drawing workflow follows staged editable visual-feedback loop', () => {
   const workflow = new DrawingWorkflow({ workflowId: 'wf-1', projectId: 'p-1' });
@@ -44,6 +60,58 @@ test('visual checkpoint can gate stage transitions', () => {
   const workflow = new DrawingWorkflow({ workflowId: 'wf-2' });
   assert.throws(() => workflow.advanceStage({ feedbackRequired: true }), /feedback checkpoint/);
   workflow.attachVisualFeedback({ snapshotId: 'vision-2' });
+  workflow.advanceStage({ feedbackRequired: true });
+  assert.equal(workflow.getState().stage, 'lineart');
+});
+
+test('quality gate rejects artwork that was not visually inspected or is below threshold', () => {
+  const workflow = new DrawingWorkflow({
+    workflowId: 'wf-quality-reject',
+    qualityGate: { enabled: true, minScore: 0.8 },
+  });
+
+  workflow.attachVisualFeedback({
+    snapshotId: 'bad-video',
+    summary: 'Movement resembles dancing and the figure loses definition.',
+    metrics: { motion: 0.3 },
+    quality: {
+      score: 0.5,
+      metrics: {
+        silhouette: 0.5,
+        anatomy: 0.5,
+        pose: 0.4,
+        motion: 0.3,
+        consistency: 0.5,
+        detail: 0.4,
+        presentation: 0.4,
+      },
+      decision: 'correct',
+      inspectedVisualEvidence: true,
+      notes: 'Rejected after video inspection.',
+    },
+  });
+
+  assert.equal(isDrawingQualityAcceptable(workflow.getState().checkpoint.feedback.quality), false);
+  assert.throws(
+    () => workflow.advanceStage({ feedbackRequired: true }),
+    /quality gate rejected/
+  );
+});
+
+test('quality gate accepts only inspected, explicitly accepted, high-quality evidence', () => {
+  const workflow = new DrawingWorkflow({
+    workflowId: 'wf-quality-accept',
+    qualityGate: { enabled: true, minScore: 0.8 },
+  });
+
+  workflow.attachVisualFeedback({
+    snapshotId: 'good-video',
+    summary: 'Clear silhouette, stable anatomy and coherent walking cycle.',
+    metrics: { visualQuality: 0.9 },
+    quality: goodQuality,
+  });
+
+  assert.equal(isDrawingQualityAcceptable(goodQuality), true);
   workflow.advanceStage({ feedbackRequired: true });
   assert.equal(workflow.getState().stage, 'lineart');
 });
