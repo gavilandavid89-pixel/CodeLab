@@ -133,13 +133,9 @@ function changedPixels(a64,b64,w,h){
 
 const opened=await send({kind:'browser',start_path:'/pixelforge/index.html',actions:[{type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000}]});
 const suppliedProjectId=String(process.env.CODELAB_WALK_PROJECT_ID || '');
-let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_blank_animation'});
+let created=suppliedProjectId ? {projectId:suppliedProjectId} : await send({kind:'pixelforge',operation:'create_reference_animation'});
 if(!suppliedProjectId){
-  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
-  const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
-  const reference=SOLDIER_REFERENCE_RASTER.decode();
-  const reference64=encode64(reference);
-  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed walking source from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:reference64}]});
+  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: configure walking playback from authoritative reference animation',actions:[{name:'animation.set_fps',fps:FPS},{name:'animation.set_loop',loop:true}]});
 }
 const {SOLDIER_REFERENCE_RASTER}=await import('../public/pixelforge/assets/soldier-reference-raster.mjs');
 const reference=SOLDIER_REFERENCE_RASTER.decode();
