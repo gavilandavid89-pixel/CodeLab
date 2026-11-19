@@ -187,4 +187,4 @@ console.log(JSON.stringify({
     lastFrameProof:proof[proof.length-1],
     frameSamples:proof.filter((_,i)=>i%8===0)
   }
-},null,2));
+}));
