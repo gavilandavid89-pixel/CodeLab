@@ -54,7 +54,7 @@ jobs:
   request:
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent B]')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
