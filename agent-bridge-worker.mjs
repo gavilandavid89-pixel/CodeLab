@@ -1318,6 +1318,136 @@ async function updateCodeLabProjectCode(command) {
 }
 
 
+function isAnimationMutationCommand(command) {
+  if (!command || !String(command.action || '').startsWith('pixelforge_')) return false;
+  if (command.action === 'pixelforge_animation_frame_context') return true;
+  if (command.action === 'pixelforge_export_animation_video') return false;
+  if (command.action !== 'pixelforge_propose' && command.action !== 'pixelforge_approve') return false;
+  const actions = command.payload?.actions;
+  return Array.isArray(actions) && actions.some(action =>
+    action && typeof action.name === 'string' && action.name.startsWith('animation.')
+  );
+}
+
+async function startAutomaticAnimationCapture(command) {
+  if (!isAnimationMutationCommand(command)) return null;
+  const projectId = command.payload?.project_id || command.payload?.proposal?.projectId;
+  if (typeof projectId !== 'string') return null;
+  assertProjectId(projectId);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-animation-auto-'));
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      timeout: 60000
+    });
+    const width = Number.isInteger(command.payload?.capture_width)
+      ? Math.max(640, Math.min(1920, command.payload.capture_width)) : 1280;
+    const height = Number.isInteger(command.payload?.capture_height)
+      ? Math.max(480, Math.min(1080, command.payload.capture_height)) : 720;
+    const fps = Number.isInteger(command.payload?.capture_fps)
+      ? Math.max(1, Math.min(30, command.payload.capture_fps)) : 12;
+    const context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+      colorScheme: 'dark',
+      recordVideo: { dir: tempDir, size: { width, height }, fps }
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    const consoleErrors = [];
+    page.on('pageerror', error => {
+      if (pageErrors.length < 10) pageErrors.push(String(error.message || error).slice(0, 300));
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 10) {
+        consoleErrors.push(message.text().slice(0, 300));
+      }
+    });
+    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(//$/, '');
+    await context.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+    const routeUrl = baseUrl + '/pixelforge/index.html?projectId=' + encodeURIComponent(projectId) + '&capture=video';
+    const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    if (!response || !response.ok()) throw new Error('Automatic animation capture route returned HTTP ' + (response?.status() || 'no response'));
+    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    await page.waitForTimeout(250);
+    return {
+      projectId,
+      tempDir,
+      browser,
+      context,
+      page,
+      video: page.video(),
+      routeUrl,
+      width,
+      height,
+      fps,
+      pageErrors,
+      consoleErrors
+    };
+  } catch (error) {
+    if (browser) await browser.close().catch(() => {});
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function finishAutomaticAnimationCapture(capture, command) {
+  if (!capture) return null;
+  const { browser, context, page, video, tempDir, projectId } = capture;
+  try {
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
+    const videoPath = await video.path();
+    const stat = fs.statSync(videoPath);
+    if (!stat.isFile() || stat.size < 1000) throw new Error('Automatic animation recorder produced an invalid video.');
+    if (stat.size > 24 * 1024 * 1024) throw new Error('Automatic animation video exceeds the 24 MiB artifact limit.');
+    const bytes = fs.readFileSync(videoPath);
+    let artifact;
+    if (command.payload?.uploadTarget) {
+      artifact = await uploadNativeArtifact(command.payload.uploadTarget, bytes, 'video/webm', 'codelab/exports/');
+    } else if (bytes.length <= 8 * 1024 * 1024) {
+      artifact = {
+        stored: false,
+        mimeType: 'video/webm',
+        sizeBytes: bytes.length,
+        dataBase64: bytes.toString('base64')
+      };
+    } else {
+      throw new Error('Automatic animation video exceeds the inline result limit; provide uploadTarget.');
+    }
+    return {
+      automaticCapture: {
+        enabled: true,
+        projectId,
+        routeUrl: capture.routeUrl,
+        format: 'webm',
+        sizeBytes: bytes.length,
+        viewport: { width: capture.width, height: capture.height },
+        fps: capture.fps,
+        postActionDelayMs: 1000,
+        artifact,
+        pageErrors: capture.pageErrors,
+        consoleErrors: capture.consoleErrors,
+        passed: capture.pageErrors.length === 0 && capture.consoleErrors.length === 0
+      }
+    };
+  } finally {
+    await browser.close().catch(() => {});
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
   if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
       !target.objectKey.startsWith(keyPrefix) || target.objectKey.includes('..') ||
@@ -2142,8 +2272,33 @@ async function main() {
         ).catch(error => console.error('[CodeLab Native Bridge] heartbeat failed:', command.command_id, error.message));
       }, 30000);
       heartbeatTimer.unref?.();
+      let automaticAnimationCapture = null;
       try {
+        automaticAnimationCapture = await startAutomaticAnimationCapture(command).catch(error => {
+          console.error('[CodeLab Native Bridge] automatic animation capture start failed:', command.command_id, error.message);
+          return { startupError: String(error.message || 'Automatic animation capture failed.').slice(0, 500) };
+        });
         await processCommand(command);
+        if (automaticAnimationCapture && !automaticAnimationCapture.startupError) {
+          try {
+            const captureResult = await finishAutomaticAnimationCapture(automaticAnimationCapture, command);
+            await pool.query(
+              "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
+              [command.command_id, JSON.stringify(captureResult), workspaceId]
+            );
+          } catch (captureError) {
+            await pool.query(
+              "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
+              [command.command_id, JSON.stringify({ automaticCapture: { enabled: true, error: String(captureError.message || captureError).slice(0, 500) } }), workspaceId]
+            ).catch(() => {});
+            console.error('[CodeLab Native Bridge] automatic animation capture finish failed:', command.command_id, captureError.message);
+          }
+        } else if (automaticAnimationCapture?.startupError) {
+          await pool.query(
+            "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
+            [command.command_id, JSON.stringify({ automaticCapture: { enabled: true, error: automaticAnimationCapture.startupError } }), workspaceId]
+          ).catch(() => {});
+        }
       } catch (error) {
         console.error('[CodeLab Native Bridge] command failed:', command.command_id, error.message);
         await finish(command.command_id, 'failed', {
