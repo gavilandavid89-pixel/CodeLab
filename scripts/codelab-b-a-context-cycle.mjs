@@ -77,10 +77,10 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   if(maxX<minX||maxY<minY) return encode64(out);
   const bw=maxX-minX+1,bh=maxY-minY+1,midX=minX+Math.floor(bw/2);
   const regions=[
-    {x:minX,y:minY+Math.floor(bh*0.58),w:Math.max(1,midX-minX+1),h:Math.ceil(bh*0.42),dx:Math.round(1*legL),dy:0},
-    {x:midX+1,y:minY+Math.floor(bh*0.58),w:Math.max(1,maxX-midX),h:Math.ceil(bh*0.42),dx:Math.round(1*legR),dy:0},
-    {x:minX,y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.floor(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(1*armL),dy:0},
-    {x:minX+Math.floor(bw*0.62),y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.ceil(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(1*armR),dy:0}
+    {x:minX,y:minY+Math.floor(bh*0.58),w:Math.max(1,midX-minX+1),h:Math.ceil(bh*0.42),dx:Math.round(2*legL),dy:0},
+    {x:midX+1,y:minY+Math.floor(bh*0.58),w:Math.max(1,maxX-midX),h:Math.ceil(bh*0.42),dx:Math.round(2*legR),dy:0},
+    {x:minX,y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.floor(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(2*armL),dy:0},
+    {x:minX+Math.floor(bw*0.62),y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.ceil(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(2*armR),dy:0}
   ];
   for(const r of regions){
     const x1=Math.max(0,r.x),x2=Math.min(w,r.x+r.w),y1=Math.max(0,r.y),y2=Math.min(h,r.y+r.h);
