@@ -2365,9 +2365,14 @@ async function boot() {
         animationLoop = existingSnapshot.animation.loop !== false;
         status('Demo caminata → agacharse recuperada · 60 fotogramas a 12 FPS', 'success');
       } else {
-        const showcase = guestMode && params.get('capture') === 'video'
-          ? createOrbitalShowcase({ frameCount: 60, fps: 12, walkOnly: true })
-          : (await import('./showcase-animation-reference.mjs')).createReferenceGuidedSoldierAnimation({ frameCount: 60, fps: 12 });
+        // Keep the browser demo on the browser-safe procedural renderer.
+        // The legacy reference-raster module imports Node-only zlib code and
+        // cannot be loaded as a native browser ES module.
+        const showcase = createOrbitalShowcase({
+          frameCount: 60,
+          fps: 12,
+          walkOnly: guestMode && params.get('capture') === 'video'
+        });
         doc = showcase.doc;
         animation = showcase.animation;
         animationLoop = showcase.loop;
