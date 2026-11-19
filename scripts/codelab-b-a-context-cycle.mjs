@@ -141,16 +141,16 @@ if(!suppliedProjectId){
   const proceduralSeedLayer=proceduralSeed.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
   if(!proceduralSeedLayer) throw new Error('Procedural soldier seed layer was not created.');
   const seedReferencePixels=proceduralSeedLayer.pixels;
-  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed frame 0 from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(seedReferencePixels)}]});
+  await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: seed frame 0 from authoritative soldier reference',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:seedReferencePixels}]});
   const seeded=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:0});
-  if(!seeded.context?.current?.cel || Buffer.from(seeded.context.current.cel,'base64').compare(Buffer.from(encode64(seedReferencePixels),'base64'))!==0){
+  if(!seeded.context?.current?.cel || Buffer.from(seeded.context.current.cel,'base64').compare(Buffer.from(seedReferencePixels,'base64'))!==0){
     throw new Error('A did not persist the authoritative soldier reference into frame 0.');
   }
 }
 const authoritativeSeed=createOrbitalShowcase({frameCount:60,fps:FPS,walkOnly:true});
 const authoritativeLayer=authoritativeSeed.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
 if(!authoritativeLayer) throw new Error('Authoritative procedural soldier layer was not created.');
-const reference64=encode64(authoritativeLayer.pixels);
+const reference64=authoritativeLayer.pixels;
 let previousFrame=0;
 let previousCel=reference64;
 const proof=[];
@@ -173,7 +173,7 @@ for(let i=startFrame;i<=endFrame;i++){
       const proceduralRepairLayer=proceduralRepair.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
       if(!proceduralRepairLayer) throw new Error('Procedural soldier repair layer was not created.');
       const refPixels=proceduralRepairLayer.pixels;
-      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:context.context.previous.layer.id,pixels:encode64(refPixels)}]});
+      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:context.context.previous.layer.id,pixels:refPixels}]});
       context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
       exactPrevious=context.context?.previous?.cel;
       if(!exactPrevious) throw new Error('A did not return repaired exact previous cel for frame '+nextIndex);
