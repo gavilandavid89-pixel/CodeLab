@@ -903,16 +903,16 @@ async function main() {
       console.log('Skipped PostgreSQL-only chunked upload/resume checks in file-backed mode.');
     }
     const demoPage = await accountContext.newPage();
-    await demoPage.goto(base + '/pixelforge/index.html?createDemo=walk-crouch-18', { waitUntil: 'networkidle' });
+    await demoPage.goto(base + '/pixelforge/index.html?createDemo=walk-crouch-24', { waitUntil: 'networkidle' });
     await demoPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Demo caminata'),
       null, { timeout: 60000 });
     assert.equal(await demoPage.evaluate(() => window.location.search), '',
       'the demo creation query should be removed after the account save succeeds');
     const demoProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
-    const demoMetadata = demoProjects.find(project => project.name === 'Person · Walk to Crouch · 18-frame study');
+    const demoMetadata = demoProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 60 frames');
     assert.ok(demoMetadata, 'the Orbital sample must be saved in the signed-in CodeLab account');
     const savedDemo = (await (await fetch(base + '/api/pixelforge/projects/' + demoMetadata.id, { headers: authHeaders })).json()).project;
-    assert.equal(savedDemo.animation.frames.length, 18, 'the saved sample must contain exactly 18 animation frames');
+    assert.equal(savedDemo.animation.frames.length, 60, 'the saved sample must contain exactly 60 animation frames');
     assert.equal(savedDemo.animation.fps, 12, 'the saved sample must play at 12 FPS');
     assert.equal(savedDemo.layers.length, 4, 'the saved sample must preserve all four independent drawing layers');
     assert.ok(savedDemo.animation.frames.every(frame => frame.cels.length === 4),
