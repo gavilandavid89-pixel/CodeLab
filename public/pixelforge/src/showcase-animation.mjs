@@ -60,6 +60,18 @@ function drawSoldier(b,w,h,frame,{walkOnly=false}={}){
   rect(b,w,h,58,32,2,1,P.eye);rect(b,w,h,68,32,2,1,P.eye);
   line(b,w,h,60,38,67,38,P.skinShade);put(b,w,h,64,39,P.skinShade);
 
+  // Secondary volume pass: shoulder plates, facial planes and fabric folds keep the silhouette readable at 128x160.
+  poly(b,w,h,[[47,54],[52,50],[57,54],[55,61],[50,62]],P.armorShade);
+  poly(b,w,h,[[71,54],[76,50],[81,54],[78,62],[73,61]],P.armorHi);
+  line(b,w,h,55,57,58,65,P.clothHi);line(b,w,h,73,57,70,65,P.armorHi);
+  line(b,w,h,57,76,61,80,P.clothHi);line(b,w,h,67,80,71,76,P.armorShade);
+  line(b,w,h,59,55,60,58,P.armorHi);line(b,w,h,69,55,68,58,P.armorShade);
+  poly(b,w,h,[[53,27],[58,20],[64,19],[61,28]],P.armorShade);
+  line(b,w,h,57,33,60,35,P.skinHi);line(b,w,h,69,33,71,35,P.skinShade);
+  rect(b,w,h,56,36,2,1,P.skinHi);rect(b,w,h,69,36,2,1,P.skinShade);
+  line(b,w,h,lFoot[0]-3,lFoot[1]-1,lFoot[0]+4,lFoot[1]-1,P.bootHi);
+  line(b,w,h,rFoot[0]-2,rFoot[1]-1,rFoot[0]+5,rFoot[1]-1,P.bootHi);
+
   // Tactical harness, straps and pouches.
   line(b,w,h,55,55,60,82,P.armorHi);line(b,w,h,73,55,68,82,P.armorHi);
   rect(b,w,h,52,58,4,6,P.armorShade);rect(b,w,h,72,58,4,6,P.armorShade);
