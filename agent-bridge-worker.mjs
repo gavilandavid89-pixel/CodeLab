@@ -1369,7 +1369,7 @@ async function startAutomaticAnimationCapture(command) {
       }
     });
     const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
-      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(//$/, '');
+      ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
     await context.addInitScript(({ id, token }) => {
       localStorage.setItem('codelab_xd_workspace_v4', id);
       localStorage.setItem('codelab_xd_workspace_token_v1', token);
