@@ -1,4 +1,8 @@
-# 🚨 POLÍTICA PRINCIPAL DEL AGENTE — LEER ANTES DE TRABAJAR
+# 🚨🚨 POLÍTICA N.º 1 — SUPERVISIÓN A/B 🚨🚨
+
+**MÁXIMA PRIORIDAD:** supervisar A y cada B durante hasta **10 minutos**, comprobando cada **30 segundos**. Si responden antes, detener la espera, inspeccionar el resultado y decidir el siguiente paso. Cada nuevo B reinicia su ciclo independiente de 10 min / 30 s.
+
+**Esta regla está por encima de las demás reglas operativas.**
 
 > **Esta es una política operativa obligatoria.** El agente IA debe consultarla **antes de comenzar cualquier trabajo sobre CodeLab**. No debe tratarse como documentación opcional.
 
