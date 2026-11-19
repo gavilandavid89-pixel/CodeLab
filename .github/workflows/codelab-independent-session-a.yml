@@ -25,10 +25,14 @@ permissions:
 
 jobs:
   session-a:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      - name: A startup sentinel
+        if: ${{ github.event_name == 'issue_comment' && github.event.issue.number == 492 }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh issue comment 492 --repo "$GITHUB_REPOSITORY" --body "[CodeLab A Started] run=${GITHUB_RUN_ID}"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
