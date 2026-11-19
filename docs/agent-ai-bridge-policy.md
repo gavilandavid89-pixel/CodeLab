@@ -1,3 +1,40 @@
+# 🚨🚨 POLÍTICA N.º 1 — SUPERVISIÓN OBLIGATORIA DE A Y CADA B 🚨🚨
+
+> **ESTA ES LA REGLA OPERATIVA DE MÁXIMA PRIORIDAD. DEBE CUMPLIRSE ANTES DE DAR POR TERMINADA, ABANDONAR O CAMBIAR UNA EJECUCIÓN.**
+>
+> **A y cada B tienen un ciclo independiente de hasta 10 minutos, con comprobación cada 30 segundos. Si el resultado llega antes, la espera termina inmediatamente, se inspecciona el resultado y se decide el siguiente paso.**
+>
+> **No se puede declarar terminado un trabajo únicamente por timeout, estado verde, `success`, ausencia de errores aparentes o porque haya pasado parte del tiempo de espera.**
+
+## Ciclo obligatorio de supervisión
+
+### A — sesión persistente
+Al iniciar A, el agente IA debe supervisar A durante un máximo de **10 minutos**, comprobando cada **30 segundos**: 0:00, 0:30, 1:00, 1:30, 2:00, 2:30, 3:00, 3:30, 4:00, 4:30, 5:00, 5:30, 6:00, 6:30, 7:00, 7:30, 8:00, 8:30, 9:00, 9:30 y 10:00.
+Si A arranca o responde antes de completar los 10 minutos, **la espera de A termina en ese momento**. El agente inspecciona el estado/evidencia disponible y pasa a supervisar el B correspondiente. Si A falla, pierde la sesión o no llega a estar disponible dentro del ciclo, el agente inspecciona la causa antes de decidir corregir/reintentar.
+
+### Cada B — ciclo independiente
+Cada petición enviada por el puente B debe tener su propio ciclo de supervisión: **0:00 → 0:30 → 1:00 → ... → 9:30 → 10:00.**
+El agente IA debe esperar el resultado de **ese B** hasta un máximo de **10 minutos**, comprobando cada **30 segundos**.
+
+Si B devuelve el resultado antes:
+1. **se anula inmediatamente la espera restante**;
+2. se inspecciona la respuesta;
+3. se inspecciona la evidencia disponible;
+4. se valida contra la petición original;
+5. se decide el siguiente paso.
+
+Si B no responde al llegar a 10:00, se clasifica como timeout y el agente debe inspeccionar la causa y decidir si corregir, reintentar o continuar.
+
+### Cada nuevo B reinicia su propio ciclo
+Cuando el agente lance otro B, **no reutiliza el tiempo del B anterior**. Cada B recibe nuevamente **10 minutos máximos + comprobación cada 30 segundos**.
+
+Ejemplo: **A → B1 (10 min / 30 s) → resultado → inspección → B2 (10 min / 30 s) → resultado → inspección → B3 (10 min / 30 s) → ...**
+
+### Regla de inspección
+**Resultado recibido no significa resultado aceptado.** Un `success`, workflow verde, API aceptada o respuesta aparentemente correcta no sustituye la inspección. Cuando exista evidencia visual, debe inspeccionarse realmente antes de aceptar el resultado.
+
+---
+
 # 🚨 POLÍTICA OBLIGATORIA DEL AGENTE IA, PUENTE B Y SESIÓN A
 
 > **LEER Y APLICAR ANTES DE CADA SESIÓN DE TRABAJO.**
