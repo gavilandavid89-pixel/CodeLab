@@ -14,6 +14,17 @@ on:
         required: false
         default: "360"
         type: string
+      mailbox_transport:
+        description: "Mailbox transport. relay keeps the Render relay available for free-transfer periods."
+        required: false
+        default: "relay"
+        type: choice
+        options: [relay, custom]
+      mailbox_base_url:
+        description: "Mailbox base URL (used by relay or custom transport)"
+        required: false
+        default: "https://codelab-pbw9.onrender.com"
+        type: string
 
 concurrency:
   group: codelab-independent-session-a
@@ -56,6 +67,8 @@ jobs:
           CODELAB_SESSION_ID: "independent-${{ github.run_id }}"
           CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || '360' }}
           CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-independent-a-video
+          CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || 'relay' }}
+          CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
         run: node scripts/codelab-session-host.mjs
       - name: Upload A evidence
         if: always()
