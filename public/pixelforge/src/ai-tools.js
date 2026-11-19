@@ -1,5 +1,6 @@
 import { AIWorkspace } from './workspaces.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
+import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -114,6 +115,19 @@ export class AICommandSession {
             },
           });
           result = this.#drawingWorkflow.getState();
+          break;
+        }
+        case 'drawing.scene.normalize': {
+          result = normalizeIllustrationScene(action.scene);
+          break;
+        }
+        case 'drawing.scene.validate': {
+          const validation = validateIllustrationScene(action.scene);
+          result = { ok: validation.ok, errors: validation.errors, scene: validation.scene };
+          break;
+        }
+        case 'drawing.scene.compile': {
+          result = compileIllustrationScene(action.scene);
           break;
         }
         case 'drawing.workflow.get_state':
