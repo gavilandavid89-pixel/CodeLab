@@ -41,6 +41,10 @@ on:
         default: '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}'
         type: string
 
+concurrency:
+  group: codelab-independent-session-b
+  cancel-in-progress: true
+
 permissions:
   actions: read
   contents: read
