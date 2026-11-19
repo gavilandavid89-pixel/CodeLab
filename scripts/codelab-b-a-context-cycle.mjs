@@ -147,8 +147,10 @@ if(!suppliedProjectId){
     throw new Error('A did not persist the authoritative soldier reference into frame 0.');
   }
 }
-const reference=SOLDIER_REFERENCE_RASTER.decode();
-const reference64=encode64(reference);
+const authoritativeSeed=createOrbitalShowcase({frameCount:60,fps:FPS,walkOnly:true});
+const authoritativeLayer=authoritativeSeed.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
+if(!authoritativeLayer) throw new Error('Authoritative procedural soldier layer was not created.');
+const reference64=encode64(authoritativeLayer.pixels);
 let previousFrame=0;
 let previousCel=reference64;
 const proof=[];
