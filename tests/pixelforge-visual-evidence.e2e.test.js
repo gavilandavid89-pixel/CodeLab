@@ -37,6 +37,8 @@ const EXPECTED_VIDEO_SECONDS = 5;
   });
   const page = await context.newPage();
   const errors = [];
+  const consoleErrors = [];
+  const requestFailures = [];
   const dataDir = process.env.CODELAB_DATA_DIR || path.join(__dirname, '..', 'data');
   await fs.mkdir(path.join(dataDir, 'sessions'), { recursive: true });
   const sessionId = 'a'.repeat(48);
@@ -46,6 +48,8 @@ const EXPECTED_VIDEO_SECONDS = 5;
     createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000
   }), { mode: 0o600 });
   page.on('pageerror', e => errors.push(String(e.stack || e.message || e)));
+  page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  page.on('requestfailed', req => requestFailures.push(`${req.method()} ${req.url()} :: ${req.failure()?.errorText || 'failed'}`));
 
   try {
     await page.goto(visualBase + '/pixelforge/index.html?createDemo=walk-crouch-24&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -60,7 +64,7 @@ const EXPECTED_VIDEO_SECONDS = 5;
         captureState: document.documentElement.dataset.pixelforgeCapture || '',
         captureError: document.documentElement.dataset.pixelforgeCaptureError || '',
       }));
-      throw new Error(`animation boot did not expose a frame count: ${JSON.stringify(diagnostic)}; pageErrors=${JSON.stringify(errors)}; cause=${error.message}`);
+      throw new Error(`animation boot did not expose a frame count: ${JSON.stringify(diagnostic)}; pageErrors=${JSON.stringify(errors)}; consoleErrors=${JSON.stringify(consoleErrors)}; requestFailures=${JSON.stringify(requestFailures)}; cause=${error.message}`);
     }
     await page.locator('#animation-frames .animation-frame').first().waitFor({ state: 'visible', timeout: 30000 });
 
