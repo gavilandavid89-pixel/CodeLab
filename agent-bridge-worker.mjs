@@ -1404,7 +1404,6 @@ async function finishAutomaticAnimationCapture(capture, command) {
   if (!capture) return null;
   const { browser, context, page, video, tempDir, projectId } = capture;
   try {
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
     await page.waitForTimeout(1000);
     await page.close().catch(() => {});
     await context.close().catch(() => {});
