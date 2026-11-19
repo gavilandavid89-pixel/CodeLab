@@ -1,6 +1,10 @@
 {
   "kind": "walk",
   "CODELAB_WALK_ONE_STEP": "1",
-  "CODELAB_WALK_FRAME_INDEX": "1",
-  "humanWalkTest": "20261119-17"
+  "CODELAB_WALK_FRAME_INDEX": "59",
+  "CODELAB_WALK_PROJECT_ID": "agent_independent-44582533808",
+  "CODELAB_SESSION_ID": "independent-44582533808",
+  "CODELAB_MAILBOX_TRANSPORT": "relay",
+  "CODELAB_MAILBOX_BASE_URL": "https://codelab-pbw9.onrender.com",
+  "humanWalkTest": "20261119-18-refine-existing-project"
 }
