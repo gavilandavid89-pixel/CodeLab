@@ -2356,7 +2356,7 @@ async function boot() {
         status('Demo caminata → agacharse recuperada · 60 fotogramas a 12 FPS', 'success');
       } else {
         const showcase = guestMode && params.get('capture') === 'video'
-          ? createOrbitalShowcase()
+          ? createOrbitalShowcase({ frameCount: 60, fps: 12, walkOnly: true })
           : createReferenceGuidedSoldierAnimation({ frameCount: 60, fps: 12 });
         doc = showcase.doc;
         animation = showcase.animation;
