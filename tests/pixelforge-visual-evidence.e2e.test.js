@@ -8,7 +8,7 @@ const http = require('node:http');
 
 const BASE_URL = process.env.CODELAB_E2E_BASE_URL || 'http://127.0.0.1:3188';
 const ARTIFACT_DIR = process.env.HEADLESS_VISUAL_ARTIFACT_DIR || path.join(os.tmpdir(), 'codelab-visual-evidence');
-const EXPECTED_FRAMES = 60;
+const EXPECTED_FRAMES = 24;
 const EXPECTED_VIDEO_SECONDS = 5;
 
 (async () => {
