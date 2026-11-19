@@ -34,7 +34,7 @@ async function send(payload) {
       await mailbox('/api/headless/session/request?sessionId='+encodeURIComponent(sessionId),'POST',{requestId,payload:request});
       break;
     } catch(error) {
-      if(!/(HTTP 404|HTTP 502|HTTP 503|HTTP 504|TimeoutError|timed out|aborted)/i.test(String(error.message||error))||attempt===60) throw error;
+      if(!/(HTTP 404|HTTP 429|HTTP 502|HTTP 503|HTTP 504|TimeoutError|timed out|aborted)/i.test(String(error.message||error))||attempt===60) throw error;
       await new Promise(r=>setTimeout(r,3000));
     }
   }
@@ -46,8 +46,8 @@ async function send(payload) {
         result=await mailbox('/api/headless/session/result?sessionId='+encodeURIComponent(sessionId)+'&requestId='+encodeURIComponent(requestId));
         break;
       }catch(error){
-        if(!/(HTTP 502|HTTP 503|HTTP 504|TimeoutError|timed out|aborted)/i.test(String(error.message||error)) || attempt===5) throw error;
-        await new Promise(r=>setTimeout(r,2000));
+        if(!/(HTTP 429|HTTP 502|HTTP 503|HTTP 504|TimeoutError|timed out|aborted)/i.test(String(error.message||error)) || attempt===5) throw error;
+        await new Promise(r=>setTimeout(r,5000));
       }
     }
     if(result?.status==='succeeded') return result.result;
