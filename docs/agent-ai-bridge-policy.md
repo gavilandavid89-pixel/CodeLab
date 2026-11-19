@@ -58,6 +58,75 @@ El agente IA debe decidir el siguiente paso usando la evidencia real devuelta po
 
 La evidencia estructurada y la evidencia visual deben evaluarse conjuntamente. Un resultado técnicamente válido no se considera automáticamente bueno si la evidencia visual demuestra lo contrario.
 
+## Inspección visual obligatoria
+
+Cuando B entregue al agente IA una **imagen, captura, frame, secuencia de imágenes, GIF, vídeo, WebM u otra evidencia visual**, el agente IA debe **inspeccionarla realmente antes de aceptar el resultado**.
+
+En especial, los vídeos deben analizarse como vídeo: no basta con comprobar que el archivo existe, que tiene duración válida, que el workflow está verde o que el tamaño del archivo es razonable. El agente IA debe inspeccionar frames representativos y, cuando la calidad dependa del movimiento, comparar frames a lo largo de la secuencia.
+
+Para animación se debe comprobar como mínimo:
+
+- legibilidad de la figura y su silueta;
+- anatomía y proporciones consistentes;
+- pose y dirección del movimiento;
+- continuidad entre frames;
+- coherencia de pies, manos, cabeza, torso y extremidades;
+- ausencia de saltos, deformaciones o movimientos accidentales;
+- que el movimiento solicitado sea realmente el movimiento observado;
+- que el dibujo tenga suficiente definición y no sea simplemente un conjunto de bloques/píxeles confusos;
+- que la calidad visual cumpla el nivel solicitado por el usuario.
+
+Si la evidencia visual no cumple, **el agente IA debe rechazar el resultado aunque la prueba automatizada sea verde** y ejecutar correcciones mediante un nuevo ciclo B → A.
+
+## Política de calidad para dibujo y animación
+
+El agente IA no debe limitarse a producir una imagen técnicamente válida. Debe trabajar con un ciclo de calidad:
+
+**objetivo → referencia/contexto real → acción estructurada → render → inspección visual → evaluación → corrección → nuevo render → nueva inspección.**
+
+Para cada etapa visual relevante debe conservarse contexto estructurado y editable: capas, frames, cels, strokes, dimensiones, referencias y estado anterior cuando esté disponible.
+
+Antes de avanzar de una etapa de dibujo a la siguiente, el agente IA debe comprobar al menos:
+
+- **silueta:** figura reconocible a primera vista;
+- **anatomía:** proporciones y articulaciones coherentes;
+- **pose:** postura intencional y no accidental;
+- **movimiento:** trayectoria y cambios entre frames coherentes con la acción solicitada;
+- **consistencia:** la figura no cambia arbitrariamente de forma, tamaño o posición;
+- **detalle:** los elementos importantes siguen siendo legibles;
+- **presentación:** la imagen no depende de una estética pixelada cuando el usuario pidió una persona definida;
+- **continuidad:** cada frame se deriva del estado real anterior cuando el flujo sea secuencial.
+
+La evaluación debe producir una decisión explícita: **aceptar**, **corregir** o **rechazar/reconstruir**.
+
+No se debe aprobar una animación simplemente porque “se mueve”. Si el movimiento parece baile, temblor, deriva de extremidades, deformación o una acción distinta de la solicitada, debe clasificarse como fallo visual y corregirse.
+
+## Referencias y estado previo
+
+Cuando se utilice una referencia visual o una animación existente, el agente IA debe pedir a A/B el estado real necesario para continuar. No debe inventar el contenido del frame anterior ni reconstruirlo desde memoria.
+
+Para animación secuencial, el siguiente frame debe poder trazarse al contexto real del frame anterior: frame ID, layer ID, cel/raster/strokes y, cuando sea necesario, evidencia visual del estado.
+
+## Controles de dibujo
+
+Las operaciones de dibujo deben favorecer controles editables y verificables sobre operaciones irreversibles o ambiguas.
+
+El agente IA debe poder separar y corregir, cuando corresponda:
+
+- pose;
+- silueta;
+- proporciones;
+- extremidades;
+- cabeza;
+- torso;
+- manos/pies;
+- profundidad/posición;
+- detalles;
+- timing y duración del frame;
+- trayectoria del movimiento.
+
+Las correcciones deben registrarse como acciones estructuradas y no depender únicamente de una modificación visual opaca.
+
 ## Verificación
 
 Una petición no está terminada solo porque B devuelva success, un workflow termine en verde o una API acepte la operación.
@@ -80,7 +149,9 @@ Cuando esté disponible, conservar:
 - duración de espera;
 - errores/timeouts;
 - evidencia de CodeLab;
-- decisión posterior del agente IA.
+- evaluación visual;
+- decisión posterior del agente IA;
+- correcciones realizadas.
 
 Nunca registrar contraseñas, cookies, tokens ni secretos.
 
