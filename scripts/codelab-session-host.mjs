@@ -12,7 +12,7 @@ const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
 const sessionId = String(process.env.CODELAB_SESSION_ID || randomUUID());
 const maxMinutes = Math.max(1, Math.min(360, Number(process.env.CODELAB_SESSION_MINUTES || 360)));
-const pollMs = 1000;
+const pollMs = 3000;
 const sessionProjects = new Map();
 const mailboxTransport = String(process.env.CODELAB_MAILBOX_TRANSPORT || 'relay').toLowerCase();
 if (!['relay','custom'].includes(mailboxTransport)) throw new Error('Unsupported CODELAB_MAILBOX_TRANSPORT: ' + mailboxTransport);
