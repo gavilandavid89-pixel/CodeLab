@@ -189,7 +189,7 @@ const visual=await send({
     {type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000},
     {type:'wait_for',selector:'#animation-frame-count',state:'visible',timeoutMs:30000},
     {type:'screenshot'},
-    {type:'record_video',durationMs:1200}
+    {type:'record_video',durationMs:4200}
   ]
 });
 console.log(JSON.stringify({
