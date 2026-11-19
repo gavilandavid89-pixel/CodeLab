@@ -68,6 +68,7 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   let bgKey=0,bgCount=-1;
   for(const [key,count] of counts){if(count>bgCount){bgKey=key;bgCount=count;}}
   const bgR=(bgKey>>16)&255,bgG=(bgKey>>8)&255,bgB=bgKey&255;
+  const isBg=(o)=>src[o]===bgR&&src[o+1]===bgG&&src[o+2]===bgB&&src[o+3]===255;
   let minX=w,maxX=-1,minY=h,maxY=-1;
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     const o=(y*w+x)*4;
@@ -81,7 +82,6 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
     {x:minX,y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.floor(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(1*armL),dy:0},
     {x:minX+Math.floor(bw*0.62),y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.ceil(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(1*armR),dy:0}
   ];
-  const isBg=(o)=>src[o]===bgR&&src[o+1]===bgG&&src[o+2]===bgB&&src[o+3]===255;
   for(const r of regions){
     const x1=Math.max(0,r.x),x2=Math.min(w,r.x+r.w),y1=Math.max(0,r.y),y2=Math.min(h,r.y+r.h);
     // Erase only foreground in the moving envelope.
