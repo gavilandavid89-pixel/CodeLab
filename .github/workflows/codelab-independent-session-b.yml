@@ -121,7 +121,6 @@ jobs:
         id: walk
         if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step' }}
         env:
-        env:
           CODELAB_SESSION_TIMEOUT_MS: "240000"
         run: |
           if [ -z "${CODELAB_WALK_ONE_STEP:-}" ]; then CODELAB_WALK_ONE_STEP="${{ github.event_name == 'push' && '1' || (github.event.inputs.mode == 'walk-step' && '1' || '0') }}"; export CODELAB_WALK_ONE_STEP; fi
