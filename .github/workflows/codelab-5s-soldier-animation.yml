@@ -25,6 +25,12 @@ jobs:
           npx playwright install --with-deps chromium
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
+      - name: Preflight PixelForge module syntax
+        run: |
+          node --check public/pixelforge/src/editor.js
+          node --check public/pixelforge/src/showcase-animation.mjs
+          node --check public/pixelforge/src/animation.mjs
+          node --check public/pixelforge/src/core.js
       - name: Capture 5-second reference-guided animation
         env:
           HEADLESS_VISUAL_ARTIFACT_DIR: ${{ runner.temp }}/codelab-5s-animation
