@@ -8,7 +8,8 @@
     "dev": "node server.js",
     "test:native-headless": "node --test --test-concurrency=1 tests/native-headless-worker-contract.test.mjs tests/native-headless-video-runtime.test.mjs tests/pixelforge-frame-context.test.mjs tests/heavy-headless-visual-e2e.test.mjs",
     "postinstall": "node scripts/install-playwright-ffmpeg.mjs",
-    "test:heavy-visual": "node --test --test-concurrency=1 tests/heavy-visual-evidence.e2e.test.mjs"
+    "test:heavy-visual": "node --test --test-concurrency=1 tests/heavy-visual-evidence.e2e.test.mjs",
+    "test:pixelforge-illustration": "node --test tests/pixelforge-illustration-scene.test.mjs tests/pixelforge-drawing-workflow.test.mjs"
   },
   "engines": {
     "node": ">=22.17.0"
