@@ -409,6 +409,15 @@ console.log('A stage: registering mailbox before Chromium');
 await registerMailbox(expiresAt);
 console.log('A stage: mailbox registered');
 await comment('[CodeLab A Stage] mailbox registered run=' + process.env.GITHUB_RUN_ID);
+const mailboxHeartbeat = setInterval(async () => {
+  try {
+    const refreshedExpiresAt = new Date(Date.now() + mailboxLeaseMinutes * 60000).toISOString();
+    await registerMailbox(refreshedExpiresAt);
+    console.log('[CodeLab mailbox heartbeat] lease refreshed until ' + refreshedExpiresAt);
+  } catch (error) {
+    console.error('[CodeLab mailbox heartbeat] refresh failed:', error.message);
+  }
+}, 5 * 60 * 1000);
 console.log('[CodeLab Session Ready]');
 console.log(JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, status: 'ready' }));
 await comment('[CodeLab Session Ready] run=' + process.env.GITHUB_RUN_ID + ' session=' + sessionId + ' expiresAt=' + expiresAt);
@@ -459,6 +468,7 @@ try {
 } finally {
   await sessionPage.close().catch(() => {});
   await sessionContext.close().catch(() => {});
+  clearInterval(mailboxHeartbeat);
   await browser.close().catch(() => {});
   server.kill('SIGTERM');
   await fs.rm(dataDir, { recursive: true, force: true });
