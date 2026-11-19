@@ -63,19 +63,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Load explicit supervised request
-        if: ${{ github.event_name == 'push' }}
-        run: |
-          set -euo pipefail
-          request_file="${GITHUB_WORKSPACE}/.codelab/requests/${{ github.event.head_commit.id }}.json"
-          if [ ! -f "$request_file" ]; then
-            request_file="$(find .codelab/requests -maxdepth 1 -type f -name '*.json' -print | sort | tail -n 1)"
-          fi
-          test -n "$request_file"
-          node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); for (const [k,v] of Object.entries(j)) { if (v !== undefined && v !== null) console.log(`${k}=${typeof v === "string" ? v : JSON.stringify(v)}`); }' "$request_file" > "$RUNNER_TEMP/codelab-request.env"
-          while IFS= read -r line; do echo "$line" >> "$GITHUB_ENV"; done < "$RUNNER_TEMP/codelab-request.env"
-          echo "Loaded supervised request: $request_file"
-
       - name: Discover READY A session
         if: ${{ github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && github.event.inputs.session_id == '') }}
         env:
@@ -137,7 +124,7 @@ jobs:
           CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || 'relay' }}
           CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
         run: |
-          if [ -z "${CODELAB_WALK_ONE_STEP:-}" ]; then CODELAB_WALK_ONE_STEP="${{ github.event_name == 'push' && '1' || (github.event.inputs.mode == 'walk-step' && '1' || (github.event_name == 'issue_comment' && '0' || '0')) }}"; export CODELAB_WALK_ONE_STEP; fi
+          if [ -z "${CODELAB_WALK_ONE_STEP:-}" ]; then CODELAB_WALK_ONE_STEP="${{ github.event.inputs.mode == 'walk-step' && '1' || '0' }}"; export CODELAB_WALK_ONE_STEP; fi
           if [ -z "${CODELAB_WALK_FRAME_INDEX:-}" ]; then CODELAB_WALK_FRAME_INDEX="${{ github.event.inputs.walk_frame_index || '1' }}"; export CODELAB_WALK_FRAME_INDEX; fi
           if [ -z "${CODELAB_WALK_PROJECT_ID:-}" ]; then CODELAB_WALK_PROJECT_ID="${{ github.event.inputs.walk_project_id || '' }}"; export CODELAB_WALK_PROJECT_ID; fi
           echo "B transport: ${CODELAB_MAILBOX_TRANSPORT:-relay} base=${CODELAB_MAILBOX_BASE_URL:-https://codelab-pbw9.onrender.com}"
