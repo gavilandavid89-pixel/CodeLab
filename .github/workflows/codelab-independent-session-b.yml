@@ -20,8 +20,14 @@ on:
         required: false
         default: ""
         type: string
+      mailbox_transport:
+        description: "Mailbox transport. relay uses the Render relay and remains available for free-transfer periods."
+        required: false
+        default: "relay"
+        type: choice
+        options: [relay, custom]
       mailbox_base_url:
-        description: "Persistent A mailbox base URL"
+        description: "Persistent A mailbox base URL (used by relay or custom transport)"
         required: false
         default: "https://codelab-pbw9.onrender.com"
         type: string
@@ -121,11 +127,14 @@ jobs:
         id: walk
         if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '[Start Independent B walk]')) }}
         env:
-          CODELAB_SESSION_TIMEOUT_MS: "240000"
+          CODELAB_SESSION_TIMEOUT_MS: "540000"
+          CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || 'relay' }}
+          CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
         run: |
           if [ -z "${CODELAB_WALK_ONE_STEP:-}" ]; then CODELAB_WALK_ONE_STEP="${{ github.event_name == 'push' && '1' || (github.event.inputs.mode == 'walk-step' && '1' || (github.event_name == 'issue_comment' && '0' || '0')) }}"; export CODELAB_WALK_ONE_STEP; fi
           if [ -z "${CODELAB_WALK_FRAME_INDEX:-}" ]; then CODELAB_WALK_FRAME_INDEX="${{ github.event.inputs.walk_frame_index || '1' }}"; export CODELAB_WALK_FRAME_INDEX; fi
           if [ -z "${CODELAB_WALK_PROJECT_ID:-}" ]; then CODELAB_WALK_PROJECT_ID="${{ github.event.inputs.walk_project_id || '' }}"; export CODELAB_WALK_PROJECT_ID; fi
+          echo "B transport: ${CODELAB_MAILBOX_TRANSPORT:-relay} base=${CODELAB_MAILBOX_BASE_URL:-https://codelab-pbw9.onrender.com}"
           echo "B mode: walk frame=${CODELAB_WALK_FRAME_INDEX} project=${CODELAB_WALK_PROJECT_ID:-new}"
           node scripts/codelab-b-a-context-cycle.mjs 2>&1 | tee walk-result.log
           grep -o '{\"ok\":true.*' walk-result.log | tail -n 1 > walk-result.json || true
