@@ -121,12 +121,13 @@ jobs:
         id: walk
         if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step' }}
         env:
+        env:
           CODELAB_SESSION_TIMEOUT_MS: "240000"
-          CODELAB_WALK_ONE_STEP: ${{ github.event_name == 'push' && '1' || (github.event.inputs.mode == 'walk-step' && '1' || '0') }}
-          CODELAB_WALK_FRAME_INDEX: ${{ github.event.inputs.walk_frame_index || '1' }}
-          CODELAB_WALK_PROJECT_ID: ${{ github.event.inputs.walk_project_id || '' }}
         run: |
-          echo "B mode: ${{ github.event.inputs.mode || 'walk' }} frame=${CODELAB_WALK_FRAME_INDEX} project=${CODELAB_WALK_PROJECT_ID:-new}"
+          if [ -z "${CODELAB_WALK_ONE_STEP:-}" ]; then CODELAB_WALK_ONE_STEP="${{ github.event_name == 'push' && '1' || (github.event.inputs.mode == 'walk-step' && '1' || '0') }}"; export CODELAB_WALK_ONE_STEP; fi
+          if [ -z "${CODELAB_WALK_FRAME_INDEX:-}" ]; then CODELAB_WALK_FRAME_INDEX="${{ github.event.inputs.walk_frame_index || '1' }}"; export CODELAB_WALK_FRAME_INDEX; fi
+          if [ -z "${CODELAB_WALK_PROJECT_ID:-}" ]; then CODELAB_WALK_PROJECT_ID="${{ github.event.inputs.walk_project_id || '' }}"; export CODELAB_WALK_PROJECT_ID; fi
+          echo "B mode: walk frame=${CODELAB_WALK_FRAME_INDEX} project=${CODELAB_WALK_PROJECT_ID:-new}"
           node scripts/codelab-b-a-context-cycle.mjs 2>&1 | tee walk-result.log
           grep -o '{\"ok\":true.*' walk-result.log | tail -n 1 > walk-result.json || true
 
