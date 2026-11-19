@@ -177,7 +177,7 @@ for(let i=startFrame;i<=endFrame;i++){
   if(delta.backgroundLeakRatio>0.02) throw new Error('Frame '+nextIndex+' moved too much background: '+JSON.stringify(delta));
   const applied=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: apply walking pose derived only from exact previous cel',actions:[{name:'animation.frame.set_cel',index:nextIndex,layerId:context.context.layer.id,pixels:nextCel}]});
   if(!applied.context) throw new Error('A did not return post-mutation context for frame '+nextIndex);
-  proof.push({frame:nextIndex,sourceFrameId:context.context.previous.frame.id,exactPreviousCelBytes:exactPreviousBytes,changedPixels:delta.changed,meanChannelDelta:delta.meanChannelDelta});
+  proof.push({frame:nextIndex,sourceFrameId:context.context.previous?.id || context.context.frame?.id || `frame-${previousFrame}`,exactPreviousCelBytes:exactPreviousBytes,changedPixels:delta.changed,meanChannelDelta:delta.meanChannelDelta});
   previousFrame=nextIndex; previousCel=nextCel;
   if(ONE_STEP) break;
 }
