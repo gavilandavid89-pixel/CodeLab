@@ -405,6 +405,7 @@ const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
 console.log('A stage: registering mailbox before Chromium');
 await registerMailbox(expiresAt);
 console.log('A stage: mailbox registered');
+console.log('[CodeLab Session Ready]');
 console.log(JSON.stringify({ sessionId, expiresAt, mailbox: mailboxBaseUrl, status: 'ready' }));
 console.log('A stage: launching Chromium');
 const browser = await chromium.launch({ headless: true });
