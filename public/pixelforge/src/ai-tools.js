@@ -130,6 +130,17 @@ export class AICommandSession {
           result = compileIllustrationScene(action.scene);
           break;
         }
+        case 'drawing.workflow.set_scene': {
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          const validation = validateIllustrationScene(action.scene);
+          if (!validation.ok) throw new Error('Invalid illustration scene: ' + validation.errors.join(' '));
+          result = this.#drawingWorkflow.setScene(validation.scene);
+          break;
+        }
+        case 'drawing.workflow.get_scene':
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          result = this.#drawingWorkflow.getScene();
+          break;
         case 'drawing.workflow.get_state':
           if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
           result = this.#drawingWorkflow.getState();
