@@ -1774,7 +1774,7 @@ async function capturePixelForgeInterface(payload = {}) {
       timeout: 45000
     });
     if (!response || !response.ok()) throw new Error('PixelForge page returned HTTP ' + (response?.status() || 'no response'));
-    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
     await page.waitForTimeout(1600);
     if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
     await page.waitForTimeout(250);
