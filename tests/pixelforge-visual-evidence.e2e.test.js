@@ -51,7 +51,17 @@ const EXPECTED_VIDEO_SECONDS = 5;
     await page.goto(visualBase + '/pixelforge/index.html?createDemo=walk-crouch-24&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => /\d+ frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
+    try {
+      await page.waitForFunction(() => /\d+ frames/.test(document.getElementById('animation-frame-count')?.textContent || ''), null, { timeout: 30000 });
+    } catch (error) {
+      const diagnostic = await page.evaluate(() => ({
+        frameCountText: document.getElementById('animation-frame-count')?.textContent || '',
+        status: document.getElementById('status')?.textContent || '',
+        captureState: document.documentElement.dataset.pixelforgeCapture || '',
+        captureError: document.documentElement.dataset.pixelforgeCaptureError || '',
+      }));
+      throw new Error(`animation boot did not expose a frame count: ${JSON.stringify(diagnostic)}; pageErrors=${JSON.stringify(errors)}; cause=${error.message}`);
+    }
     await page.locator('#animation-frames .animation-frame').first().waitFor({ state: 'visible', timeout: 30000 });
 
     const layers = await page.locator('#layer-count').innerText();
