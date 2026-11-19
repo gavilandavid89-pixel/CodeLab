@@ -68,11 +68,18 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   let bgKey=0,bgCount=-1;
   for(const [key,count] of counts){if(count>bgCount){bgKey=key;bgCount=count;}}
   const bgR=(bgKey>>16)&255,bgG=(bgKey>>8)&255,bgB=bgKey&255;
+  let minX=w,maxX=-1,minY=h,maxY=-1;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const o=(y*w+x)*4;
+    if(!isBg(o)){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
+  }
+  if(maxX<minX||maxY<minY) return encode64(out);
+  const bw=maxX-minX+1,bh=maxY-minY+1,midX=minX+Math.floor(bw/2);
   const regions=[
-    {x:0,y:70,w:32,h:50,dx:Math.round(1*legL),dy:0},
-    {x:32,y:70,w:32,h:50,dx:Math.round(1*legR),dy:0},
-    {x:0,y:35,w:24,h:48,dx:Math.round(1*armL),dy:0},
-    {x:40,y:35,w:24,h:48,dx:Math.round(1*armR),dy:0}
+    {x:minX,y:minY+Math.floor(bh*0.58),w:Math.max(1,midX-minX+1),h:Math.ceil(bh*0.42),dx:Math.round(1*legL),dy:0},
+    {x:midX+1,y:minY+Math.floor(bh*0.58),w:Math.max(1,maxX-midX),h:Math.ceil(bh*0.42),dx:Math.round(1*legR),dy:0},
+    {x:minX,y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.floor(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(1*armL),dy:0},
+    {x:minX+Math.floor(bw*0.62),y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.ceil(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(1*armR),dy:0}
   ];
   const isBg=(o)=>src[o]===bgR&&src[o+1]===bgG&&src[o+2]===bgB&&src[o+3]===255;
   for(const r of regions){
