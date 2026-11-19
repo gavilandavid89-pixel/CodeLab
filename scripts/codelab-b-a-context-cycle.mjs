@@ -165,19 +165,25 @@ for(let i=startFrame;i<=endFrame;i++){
   let exactPrevious=context.context?.previous?.cel;
   if(!exactPrevious) throw new Error('A did not return the exact previous cel for frame '+nextIndex);
   if(previousFrame===0){
-    const previousBytes=decode64(exactPrevious);
+    // Re-read frame 0 from A as the authoritative previous cel. This avoids
+    // relying on duplicate-frame context if the animation runtime does not
+    // expose the copied cel through the generic previous slot.
+    const frameZero=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:0});
+    let authoritativePrevious=frameZero.context?.current?.cel;
+    if(!authoritativePrevious) throw new Error('A did not return authoritative frame 0 cel.');
+    const bytes=decode64(authoritativePrevious);
     const unique=new Set();
-    for(let p=0;p<previousBytes.length;p+=4){unique.add((previousBytes[p]<<24)|(previousBytes[p+1]<<16)|(previousBytes[p+2]<<8)|previousBytes[p+3]); if(unique.size>4) break;}
+    for(let p=0;p<bytes.length;p+=4){unique.add((bytes[p]<<24)|(bytes[p+1]<<16)|(bytes[p+2]<<8)|bytes[p+3]); if(unique.size>4) break;}
     if(unique.size<=1){
       const proceduralRepair=createOrbitalShowcase({frameCount:60,fps:FPS,walkOnly:true});
       const proceduralRepairLayer=proceduralRepair.doc.layers.find(layer=>layer.name==='Soldier · reference-guided');
       if(!proceduralRepairLayer) throw new Error('Procedural soldier repair layer was not created.');
-      const refPixels=proceduralRepairLayer.pixels;
-      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(refPixels)}]});
-      context=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:nextIndex});
-      exactPrevious=context.context?.previous?.cel;
-      if(!exactPrevious) throw new Error('A did not return repaired exact previous cel for frame '+nextIndex);
+      await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: repair authoritative frame 0 before deriving next frame',actions:[{name:'animation.frame.set_cel',index:0,layerId:created.context.layer.id,pixels:encode64(proceduralRepairLayer.pixels)}]});
+      const repaired=await send({kind:'pixelforge',operation:'frame_context',project_id:created.projectId,frame_index:0});
+      authoritativePrevious=repaired.context?.current?.cel;
+      if(!authoritativePrevious) throw new Error('A did not return repaired authoritative frame 0 cel.');
     }
+    exactPrevious=authoritativePrevious;
   }
   const exactPreviousBytes=Buffer.from(exactPrevious,'base64').byteLength;
   const nextCel=walkFromExactPrevious(exactPrevious,context.context.visual.width,context.context.visual.height,i);
