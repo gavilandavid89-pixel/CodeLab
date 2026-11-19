@@ -2346,7 +2346,7 @@ async function boot() {
     resizeCanvas();
     const params = new URLSearchParams(window.location.search);
     if (params.get('createDemo') === 'walk-crouch-24') {
-      const existingProjects = await listSavedProjects();
+      const existingProjects = guestMode && params.get('capture') === 'video' ? [] : await listSavedProjects();
       const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 60 frames');
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
