@@ -1942,7 +1942,8 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     if (!response || !response.ok()) {
       throw new Error('PixelForge video route returned HTTP ' + (response?.status() || 'no response'));
     }
-    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    // Capture/export routes may render the PixelForge surface asynchronously; the capture state below is the authoritative readiness signal.
+    await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
     await page.waitForFunction(() => {
       const state = document.documentElement.dataset.pixelforgeCapture;
       return state === 'playing' || state === 'error';
