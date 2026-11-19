@@ -9,12 +9,12 @@ const DENIED_ACTIONS = new Set([
 ]);
 
 function integer(value, label) {
-  if (!Number.isInteger(value)) throw new TypeError(`${label} must be an integer.`);
+  if (!Number.isInteger(value)) throw new TypeError(label + ' must be an integer.');
   return value;
 }
 
 function color(value, label = 'color') {
-  if (typeof value !== 'string' || !COLOR.test(value)) throw new TypeError(`${label} must use #RRGGBB format.`);
+  if (typeof value !== 'string' || !COLOR.test(value)) throw new TypeError(label + ' must use #RRGGBB format.');
   return value.toUpperCase();
 }
 
@@ -108,6 +108,10 @@ export class AICommandSession {
             workflowId,
             projectId: action.projectId ?? null,
             stage: action.stage ?? 'sketch',
+            qualityGate: {
+              enabled: true,
+              minScore: action.minQualityScore ?? 0.8,
+            },
           });
           result = this.#drawingWorkflow.getState();
           break;
@@ -126,6 +130,7 @@ export class AICommandSession {
             snapshotId: action.snapshotId,
             summary: action.summary,
             metrics: action.metrics,
+            quality: action.quality,
           });
           break;
         case 'drawing.workflow.pause':
@@ -133,7 +138,7 @@ export class AICommandSession {
           result = this.#drawingWorkflow.pause(action.reason);
           break;
         case 'drawing.workflow.resume':
-          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
+          if (!this.#drawingWorkflow) throw new Error('No drawing workflow is paused.');
           result = this.#drawingWorkflow.resume();
           break;
         case 'drawing.workflow.correct':
@@ -146,7 +151,10 @@ export class AICommandSession {
           break;
         case 'drawing.workflow.advance':
           if (!this.#drawingWorkflow) throw new Error('No drawing workflow is active.');
-          result = this.#drawingWorkflow.advanceStage({ feedbackRequired: action.feedbackRequired === true });
+          result = this.#drawingWorkflow.advanceStage({
+            feedbackRequired: action.feedbackRequired !== false,
+            qualityRequired: true,
+          });
           break;
         case 'document.get_summary':
           result = {
@@ -527,7 +535,7 @@ export class AICommandSession {
           result = { changed: doc.redo() };
           break;
         default:
-          return { ok: false, error: { code: 'unknown_action', message: `Unsupported AI action: ${action.name}` } };
+          return { ok: false, error: { code: 'unknown_action', message: 'Unsupported AI action: ' + action.name } };
       }
       return { ok: true, action: action.name, result: plainResult(result) };
     } catch (error) {
