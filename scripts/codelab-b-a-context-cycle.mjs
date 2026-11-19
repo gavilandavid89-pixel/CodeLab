@@ -188,9 +188,8 @@ const visual=await send({
   actions:[
     {type:'wait_for',selector:'#canvas',state:'visible',timeoutMs:30000},
     {type:'wait_for',selector:'#animation-frame-count',state:'visible',timeoutMs:30000},
-    {type:'click',selector:'#animation-play'},
-    {type:'record_video',durationMs:4200},
-    {type:'screenshot'}
+    {type:'screenshot'},
+    {type:'record_video',durationMs:1200}
   ]
 });
 console.log(JSON.stringify({
