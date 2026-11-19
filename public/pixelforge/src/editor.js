@@ -306,7 +306,10 @@ function render() {
       }
       doc.clearCompositeDirtyTiles();
     }
-    ctx.imageSmoothingEnabled = false;
+    // Animation playback is a presentation view: keep editable raster data intact,
+    // but use browser interpolation while playing so the walking person reads as a
+    // clean, defined figure instead of a blocky nearest-neighbour enlargement.
+    ctx.imageSmoothingEnabled = Boolean(animation && animationPlayback.playing);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#20232d';
     ctx.fillRect(panX - 1, panY - 1, doc.width * zoom + 2, doc.height * zoom + 2);
