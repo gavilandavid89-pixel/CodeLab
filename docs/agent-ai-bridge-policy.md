@@ -1,4 +1,12 @@
-# Política obligatoria del agente IA, puente B y sesión A
+# 🚨 POLÍTICA OBLIGATORIA DEL AGENTE IA, PUENTE B Y SESIÓN A
+
+> **LEER Y APLICAR ANTES DE CADA SESIÓN DE TRABAJO.**
+>
+> Esta política es de cumplimiento obligatorio. El archivo de entrada del agente es **[AGENTS.md](../AGENTS.md)** y apunta aquí como documento completo. Si existe conflicto entre una implementación y esta política, la implementación debe adaptarse a la política.
+>
+> **Regla central:** **Usuario → Agente IA → B → A → B → Agente IA → siguiente B → A → ...**
+>
+> **Solo una petición explícita del usuario puede iniciar una nueva ejecución del agente IA.**
 
 ## Roles
 
@@ -100,6 +108,38 @@ Antes de avanzar de una etapa de dibujo a la siguiente, el agente IA debe compro
 La evaluación debe producir una decisión explícita: **aceptar**, **corregir** o **rechazar/reconstruir**.
 
 No se debe aprobar una animación simplemente porque “se mueve”. Si el movimiento parece baile, temblor, deriva de extremidades, deformación o una acción distinta de la solicitada, debe clasificarse como fallo visual y corregirse.
+
+## 🔎 Referencias visuales dinámicas — OBLIGATORIO CUANDO APLIQUE
+
+**El agente IA NO debe depender de una imagen implantada/bundled en el sistema como fuente obligatoria del dibujo.**
+
+Cuando una tarea visual necesite referencias, el agente IA puede y debe buscar referencias útiles en Internet durante la tarea, por ejemplo para:
+
+- anatomía;
+- pose y movimiento;
+- ropa y detalles;
+- iluminación y sombras;
+- composición;
+- objetos/props;
+- perspectiva;
+- estilo visual.
+
+La referencia externa es **evidencia para razonar**, no el artwork final.
+
+### Reglas de uso
+
+1. **Buscar en el momento:** la referencia puede obtenerse durante la tarea según la intención concreta del usuario.
+2. **Registrar contexto:** cada referencia utilizada debe conservar URL, función/rol y notas en el contexto estructurado de la escena.
+3. **Separar referencia y resultado:** la imagen externa no se convierte automáticamente en el dibujo ni en una dependencia permanente del proyecto.
+4. **Crear desde la intención:** el resultado editable debe construirse mediante escena semántica, capas, strokes y demás estructuras de CodeLab.
+5. **Actualizar referencias:** si una referencia deja de ser útil, puede sustituirse sin romper el proyecto.
+6. **Verificar visualmente:** la referencia orienta el trabajo, pero el resultado final debe pasar la inspección visual de esta política.
+7. **Animación:** las referencias externas pueden orientar pose/movimiento; aun así, la continuidad entre frames debe derivarse del **estado real del frame anterior en CodeLab/A**, nunca de una suposición del agente.
+
+**Resumen operativo:**
+**intención del usuario → búsqueda de referencias → inspección de referencias → escena semántica → dibujo editable → render → inspección → corrección → resultado.**
+
+No se debe introducir una imagen fija del sistema como sustituto de este proceso ni tratar una referencia externa como el resultado final.
 
 ## Referencias y estado previo
 
