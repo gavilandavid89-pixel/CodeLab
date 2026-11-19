@@ -1,12 +1,6 @@
 name: CodeLab Agent Walk Animation
 
 on:
-  push:
-    paths:
-      - "scripts/codelab-b-a-context-cycle.mjs"
-      - ".github/workflows/codelab-agent-walk-animation.yml"
-      - ".github/workflows/codelab-independent-session-a.yml"
-      - ".github/workflows/codelab-independent-session-b.yml"
   workflow_dispatch:
   issue_comment:
     types: [created]
