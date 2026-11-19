@@ -9,7 +9,7 @@ import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
-import { createOrbitalShowcase, createReferenceGuidedSoldierAnimation } from './showcase-animation.mjs';
+import { createOrbitalShowcase } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -2367,7 +2367,7 @@ async function boot() {
       } else {
         const showcase = guestMode && params.get('capture') === 'video'
           ? createOrbitalShowcase({ frameCount: 60, fps: 12, walkOnly: true })
-          : createReferenceGuidedSoldierAnimation({ frameCount: 60, fps: 12 });
+          : (await import('./showcase-animation-reference.mjs')).createReferenceGuidedSoldierAnimation({ frameCount: 60, fps: 12 });
         doc = showcase.doc;
         animation = showcase.animation;
         animationLoop = showcase.loop;
