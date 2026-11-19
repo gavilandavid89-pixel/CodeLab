@@ -36,9 +36,18 @@ async function send(payload) {
   }
   const deadline=Date.now()+timeoutMs;
   while(Date.now()<deadline){
-    const result=await mailbox('/api/headless/session/result?sessionId='+encodeURIComponent(sessionId)+'&requestId='+encodeURIComponent(requestId));
-    if(result.status==='succeeded') return result.result;
-    if(result.status==='failed'||result.status==='expired') throw new Error('A rejected request '+requestId+': '+JSON.stringify(result.result));
+    let result=null;
+    for(let attempt=1;attempt<=5;attempt++){
+      try{
+        result=await mailbox('/api/headless/session/result?sessionId='+encodeURIComponent(sessionId)+'&requestId='+encodeURIComponent(requestId));
+        break;
+      }catch(error){
+        if(!/(HTTP 502|HTTP 503|HTTP 504|TimeoutError|timed out|aborted)/i.test(String(error.message||error)) || attempt===5) throw error;
+        await new Promise(r=>setTimeout(r,2000));
+      }
+    }
+    if(result?.status==='succeeded') return result.result;
+    if(result?.status==='failed'||result?.status==='expired') throw new Error('A rejected request '+requestId+': '+JSON.stringify(result.result));
     await new Promise(r=>setTimeout(r,500));
   }
   throw new Error('Timed out waiting for A request '+requestId);
