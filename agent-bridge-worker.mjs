@@ -1377,7 +1377,9 @@ async function startAutomaticAnimationCapture(command) {
     const routeUrl = baseUrl + '/pixelforge/index.html?projectId=' + encodeURIComponent(projectId) + '&capture=video';
     const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     if (!response || !response.ok()) throw new Error('Automatic animation capture route returned HTTP ' + (response?.status() || 'no response'));
-    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 45000 });
+    // The PixelForge capture route can render its canvas asynchronously or via a non-canvas surface.
+    // Do not block the command for 45s waiting for a specific DOM node: the recorder itself is the evidence.
+    await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
     await page.waitForTimeout(250);
     return {
       projectId,
