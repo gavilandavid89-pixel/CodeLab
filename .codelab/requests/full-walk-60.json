@@ -1,9 +1,10 @@
 {
   "kind": "browser",
-  "CODELAB_SESSION_ID": "independent-44470090243",
+  "CODELAB_SESSION_ID": "independent-44474308457",
   "CODELAB_MAILBOX_BASE_URL": "https://codelab-pbw9.onrender.com",
+  "CODELAB_MAILBOX_TRANSPORT": "relay",
   "CODELAB_WALK_ONE_STEP": "0",
   "CODELAB_WALK_FRAME_INDEX": "59",
   "CODELAB_WALK_PROJECT_ID": "",
-  "nonce": "60-frame-final-1795068785046"
+  "nonce": "relay-60-1795070895851"
 }
