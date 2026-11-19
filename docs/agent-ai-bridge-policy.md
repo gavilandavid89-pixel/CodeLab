@@ -9,21 +9,26 @@
 ## Ciclo obligatorio de supervisión
 
 ### A — sesión persistente
-Al iniciar A, el agente IA debe supervisar A durante un máximo de **10 minutos**, comprobando cada **30 segundos**: 0:00, 0:30, 1:00, 1:30, 2:00, 2:30, 3:00, 3:30, 4:00, 4:30, 5:00, 5:30, 6:00, 6:30, 7:00, 7:30, 8:00, 8:30, 9:00, 9:30 y 10:00.
-Si A arranca o responde antes de completar los 10 minutos, **la espera de A termina en ese momento**. El agente inspecciona el estado/evidencia disponible y pasa a supervisar el B correspondiente. Si A falla, pierde la sesión o no llega a estar disponible dentro del ciclo, el agente inspecciona la causa antes de decidir corregir/reintentar.
+Al iniciar A, el agente IA abre una **ventana de supervisión de hasta 10 minutos**, comprobando cada **30 segundos**: 0:00, 0:30, 1:00, 1:30, 2:00, 2:30, 3:00, 3:30, 4:00, 4:30, 5:00, 5:30, 6:00, 6:30, 7:00, 7:30, 8:00, 8:30, 9:00, 9:30 y 10:00.
+
+**Importante:** estos 10 minutos son tiempo de **trabajo/supervisión del agente IA**, no un límite de ejecución de A. A es una sesión persistente y puede continuar ejecutándose indefinidamente o durante el tiempo que requiera la tarea, salvo que exista una política técnica independiente que indique lo contrario. Al llegar a 10:00, el agente IA termina ese ciclo de supervisión y decide el siguiente ciclo/acción; **no debe matar, cancelar ni configurar un timeout de A únicamente por alcanzar los 10 minutos**.
+
+Si A arranca o responde antes de completar la ventana, la espera termina inmediatamente. El agente inspecciona el estado/evidencia disponible y pasa al siguiente paso. Si A falla, pierde la sesión o no llega a estar disponible durante la ventana, el agente inspecciona la causa antes de decidir corregir/reintentar.
 
 ### Cada B — ciclo independiente
-Cada petición enviada por el puente B debe tener su propio ciclo de supervisión: **0:00 → 0:30 → 1:00 → ... → 9:30 → 10:00.**
-El agente IA debe esperar el resultado de **ese B** hasta un máximo de **10 minutos**, comprobando cada **30 segundos**.
+Cada petición enviada por el puente B debe tener su propio ciclo de supervisión del agente IA: **0:00 → 0:30 → 1:00 → ... → 9:30 → 10:00.**
+El agente IA supervisa ese B durante un máximo de **10 minutos**, comprobando cada **30 segundos**.
+
+**Importante:** los 10 minutos son una ventana de **supervisión del agente IA**, no un timeout ni un límite de ejecución para B. B puede seguir ejecutándose después de los 10 minutos si la tarea aún está en curso. Al terminar la ventana, el agente IA inspecciona la situación y decide el siguiente ciclo/acción; **no debe cancelar ni matar B únicamente porque hayan transcurrido 10 minutos**.
 
 Si B devuelve el resultado antes:
-1. **se anula inmediatamente la espera restante**;
+1. **se anula inmediatamente la supervisión restante**;
 2. se inspecciona la respuesta;
 3. se inspecciona la evidencia disponible;
 4. se valida contra la petición original;
 5. se decide el siguiente paso.
 
-Si B no responde al llegar a 10:00, se clasifica como timeout y el agente debe inspeccionar la causa y decidir si corregir, reintentar o continuar.
+Si al llegar a 10:00 B todavía no ha respondido, **no se debe declarar automáticamente que B falló ni que su ejecución terminó**. Se registra que terminó la ventana de supervisión del agente IA, se inspecciona el estado real de B/A y se decide cómo continuar. Un timeout técnico solo existe si el propio sistema de ejecución informa un timeout real.
 
 ### Cada nuevo B reinicia su propio ciclo
 Cuando el agente lance otro B, **no reutiliza el tiempo del B anterior**. Cada B recibe nuevamente **10 minutos máximos + comprobación cada 30 segundos**.
@@ -83,9 +88,9 @@ Cada vez que el agente IA lance un B:
 2. El agente IA debe esperar el resultado de **ese B hasta 10 minutos**.
 3. Debe conservar y analizar la respuesta y la evidencia recibidas.
 4. Si B responde antes, el análisis comienza inmediatamente.
-5. Si B no responde al llegar a 10 minutos, esa ejecución se considera timeout; el agente IA debe inspeccionar la causa y decidir si corregir, reintentar o continuar con otro B.
+5. Si B no responde al llegar a 10 minutos, **solo termina la ventana de supervisión del agente IA**. El agente debe inspeccionar el estado real de B/A y decidir si continuar supervisando, lanzar otra acción, corregir o reintentar. No debe confundir esta ventana con un timeout técnico de B.
 
-El límite de 10 minutos es **independiente para cada B**. No se descuenta el tiempo utilizado por un B anterior.
+Los **10 minutos de supervisión** son **independientes para cada B**. No se descuenta el tiempo utilizado por un B anterior. Esto no crea un límite acumulado ni de ejecución para B.
 
 ## Repetición
 
