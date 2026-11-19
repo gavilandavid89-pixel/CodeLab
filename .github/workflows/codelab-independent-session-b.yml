@@ -77,9 +77,13 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          if [ -n "${CODELAB_SESSION_ID:-}" ]; then
+            echo "Using supplied supervised A session: $CODELAB_SESSION_ID"
+            exit 0
+          fi
           run_id=""
           for i in $(seq 1 24); do
-            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event,createdAt --jq '.[] | select((.status=="in_progress" or .status=="queued") and (.event=="workflow_dispatch" or .event=="issue_comment")) | .databaseId' | head -n 1)"
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event,createdAt --jq '.[] | select(.status=="in_progress" and (.event=="workflow_dispatch" or .event=="issue_comment" or .event=="push")) | .databaseId' | head -n 1)"
             if [ -n "$run_id" ]; then break; fi
             sleep 5
           done
@@ -130,7 +134,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          status="${{ steps.walk.outcome || steps.request.outcome || 'success' }}"
+          if [ -s walk-result.json ]; then status="success"; else status="failure"; fi
           summary=""
           if [ -s walk-result.json ]; then
             summary="$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("walk-result.json","utf8")); console.log(JSON.stringify({run:process.env.GITHUB_RUN_ID,ok:j.ok,projectId:j.animation?.projectId,frame:j.animation?.requestedFrame,oneStep:j.animation?.oneStep,proof:j.proof?.lastFrameProof,protocol:j.protocol}))' 2>/dev/null || true)"
