@@ -119,6 +119,7 @@ export function normalizeIllustrationScene(scene) {
     lighting: clone(scene.lighting || {}),
     palette: clone(scene.palette || {}),
     constraints: clone(scene.constraints || {}),
+    pose: clone(scene.pose || {}),
   };
 }
 
@@ -133,6 +134,16 @@ export function validateIllustrationScene(scene) {
   const hasTorso = normalized.nodes.some(n => n.metadata?.bodyPart === 'torso');
   if (!hasHead) errors.push('Scene has no head anchor.');
   if (!hasTorso) errors.push('Scene has no torso anchor.');
+
+  const pose = normalized.pose;
+  if (pose && typeof pose === 'object' && pose.anchors) {
+    for (const [part, value] of Object.entries(pose.anchors)) {
+      if (!BODY_PARTS.includes(part)) errors.push('Unknown pose anchor: ' + part);
+      else {
+        try { point(value, 'pose.anchors.' + part); } catch (error) { errors.push(error.message); }
+      }
+    }
+  }
 
   const motion = normalized.constraints?.motion;
   if (motion && typeof motion === 'object') {
