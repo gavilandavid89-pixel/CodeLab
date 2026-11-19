@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createServer } from 'node:http';
 import { chromium } from 'playwright';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
-import { createSoldierReferenceAnimation } from '../public/pixelforge/src/showcase-animation.mjs';
+import { createSoldierReferenceAnimation } from '../public/pixelforge/src/showcase-animation-reference.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE);
