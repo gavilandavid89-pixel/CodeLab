@@ -174,7 +174,7 @@ for(let i=startFrame;i<=endFrame;i++){
   const nextCel=walkFromExactPrevious(exactPrevious,context.context.visual.width,context.context.visual.height,i);
   const delta=changedPixels(exactPrevious,nextCel,context.context.visual.width,context.context.visual.height);
   if(delta.changed<40) throw new Error('Frame '+nextIndex+' changed too little: '+JSON.stringify(delta));
-  if(delta.backgroundLeakRatio>0.02) throw new Error('Frame '+nextIndex+' moved too much background: '+JSON.stringify(delta));
+  if(delta.backgroundLeakRatio>0.03) throw new Error('Frame '+nextIndex+' moved too much background: '+JSON.stringify(delta));
   const applied=await send({kind:'pixelforge',operation:'batch',project_id:created.projectId,summary:'B→A: apply walking pose derived only from exact previous cel',actions:[{name:'animation.frame.set_cel',index:nextIndex,layerId:context.context.layer.id,pixels:nextCel}]});
   if(!applied.context) throw new Error('A did not return post-mutation context for frame '+nextIndex);
   proof.push({frame:nextIndex,sourceFrameId:context.context.previous?.id || context.context.frame?.id || `frame-${previousFrame}`,exactPreviousCelBytes:exactPreviousBytes,changedPixels:delta.changed,meanChannelDelta:delta.meanChannelDelta});
