@@ -16,7 +16,7 @@ async function mailbox(pathname, method='GET', body=null) {
     method,
     headers: { accept:'application/json', 'x-codelab-mailbox-token': mailboxToken, ...(body === null ? {} : {'content-type':'application/json'}) },
     ...(body === null ? {} : { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(60000)
   });
   let data=null; try { data=await response.json(); } catch {}
   if (!response.ok) throw new Error('Mailbox HTTP '+response.status+': '+JSON.stringify(data));
@@ -30,7 +30,7 @@ async function send(payload) {
       await mailbox('/api/headless/session/request?sessionId='+encodeURIComponent(sessionId),'POST',{requestId,payload:request});
       break;
     } catch(error) {
-      if(!/(HTTP 404|HTTP 502|HTTP 503|HTTP 504)/.test(String(error.message||error))||attempt===60) throw error;
+      if(!/(HTTP 404|HTTP 502|HTTP 503|HTTP 504|TimeoutError|timed out|aborted)/i.test(String(error.message||error))||attempt===60) throw error;
       await new Promise(r=>setTimeout(r,3000));
     }
   }
