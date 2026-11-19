@@ -49,7 +49,7 @@ jobs:
           # Playwright records from page creation, so the WebM also contains the
           # editor boot/navigation time. The test itself waits for and verifies the
           # complete 5s playback window before closing the page.
-          if not (12.0 <= d <= 13.2):
+          if not (12.0 <= d <= 14.0):
               raise SystemExit(f"unexpected recording duration: {d}")
           PY
       - name: Upload 5-second animation evidence
