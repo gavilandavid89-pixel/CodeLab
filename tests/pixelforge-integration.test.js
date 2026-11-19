@@ -903,9 +903,22 @@ async function main() {
       console.log('Skipped PostgreSQL-only chunked upload/resume checks in file-backed mode.');
     }
     const demoPage = await accountContext.newPage();
+    const demoBrowserErrors = [];
+    demoPage.on('pageerror', error => demoBrowserErrors.push(error.message));
+    demoPage.on('console', message => { if (message.type() === 'error') demoBrowserErrors.push(message.text()); });
     await demoPage.goto(base + '/pixelforge/index.html?createDemo=walk-crouch-24', { waitUntil: 'networkidle' });
-    await demoPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Demo caminata'),
-      null, { timeout: 60000 });
+    try {
+      await demoPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Demo caminata'),
+        null, { timeout: 20000 });
+    } catch (error) {
+      const state = await demoPage.evaluate(() => ({
+        status: document.querySelector('#status')?.textContent || null,
+        url: window.location.href,
+        title: document.title
+      }));
+      throw new Error('PixelForge soldier demo did not finish initialization: ' + JSON.stringify(state) +
+        '; browserErrors=' + JSON.stringify(demoBrowserErrors) + '; cause=' + error.message);
+    }
     assert.equal(await demoPage.evaluate(() => window.location.search), '',
       'the demo creation query should be removed after the account save succeeds');
     const demoProjects = (await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json()).projects;
