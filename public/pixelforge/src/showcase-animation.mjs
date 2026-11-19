@@ -17,7 +17,6 @@ function ellipse(b,w,h,cx,cy,rx,ry,c){for(let y=-ry;y<=ry;y++)for(let x=-rx;x<=r
 function capsule(b,w,h,a,bb,r,c){const steps=Math.max(2,Math.ceil(Math.hypot(bb[0]-a[0],bb[1]-a[1])/2));for(let i=0;i<=steps;i++){const t=i/steps;ellipse(b,w,h,Math.round(a[0]+(bb[0]-a[0])*t),Math.round(a[1]+(bb[1]-a[1])*t),r,r,c);}}
 function outlineCapsule(b,w,h,a,bb,r,c){capsule(b,w,h,a,bb,r+2,P.outline);capsule(b,w,h,a,bb,r,c);}
 function joint(b,w,h,p,r,c=P.armorHi){ellipse(b,w,h,p[0],p[1],r+2,r+2,P.outline);ellipse(b,w,h,p[0],p[1],r,r,c);}
-function poly(b,w,h,pts,c){const minY=Math.max(0,Math.floor(Math.min(...pts.map(p=>p[1])))),maxY=Math.min(h-1,Math.ceil(Math.max(...pts.map(p=>p[1]))));for(let y=minY;y<=maxY;y++){const xs=[];for(let i=0;i<pts.length;i++){const a=pts[i],bb=pts[(i+1)%pts.length];if((a[1]<=y&&bb[1]>y)||(bb[1]<=y&&a[1]>y))xs.push(a[0]+(y-a[1])*(bb[0]-a[0])/(bb[1]-a[1]));}xs.sort((a,bb)=>a-bb);for(let i=0;i+1<xs.length;i+=2)for(let x=Math.ceil(xs[i]);x<=Math.floor(xs[i+1]);x++)put(b,w,h,x,y,c);}}
 function drawSoldier(b,w,h,frame,{walkOnly=false}={}){
   const phase=2*Math.PI*frame/16,gait=Math.sin(phase),opp=-gait,bob=Math.round(0.8*Math.sin(phase*2));
   const sx=64,headY=33+bob,neckY=47+bob,shoulderY=53+bob,hipY=91+bob;
