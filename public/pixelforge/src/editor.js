@@ -139,8 +139,10 @@ function renderAuthenticationRequired() {
 }
 
 function status(message, kind = 'neutral') {
-  $('#status').textContent = message;
-  $('#status').dataset.kind = kind;
+  const statusNode = $('#status');
+  if (!statusNode) return;
+  statusNode.textContent = message;
+  statusNode.dataset.kind = kind;
 }
 function updateAIWorkspaceUI() {
   const state = $('#ai-workspace-state');
@@ -156,22 +158,22 @@ function updateAIWorkspaceUI() {
     $('#ai-accept-proposal').disabled = sourceStale || summary.sandboxStale;
     $('#ai-discard-proposal').disabled = false;
     $('#ai-discard-proposal').textContent = '× Discard proposal';
-    state.textContent = sourceStale ? 'Proposal is out of date' : summary.sandboxStale ? 'Proposal snapshot changed' : 'Proposal ready for review';
-    dot.dataset.kind = sourceStale || summary.sandboxStale ? 'warning' : 'success';
+    if (state) state.textContent = sourceStale ? 'Proposal is out of date' : summary.sandboxStale ? 'Proposal snapshot changed' : 'Proposal ready for review';
+    if (dot) dot.dataset.kind = sourceStale || summary.sandboxStale ? 'warning' : 'success';
   } else if (aiWorkspace.hasSandboxChanges) {
     $('#ai-proposal-summary').textContent = 'The isolated AI canvas contains edits that have not been captured as a proposal. Keep working or discard this draft before syncing.';
     $('#ai-accept-proposal').disabled = true;
     $('#ai-discard-proposal').disabled = false;
     $('#ai-discard-proposal').textContent = '× Discard AI draft';
-    state.textContent = 'AI draft needs review';
-    dot.dataset.kind = 'warning';
+    if (state) state.textContent = 'AI draft needs review';
+    if (dot) dot.dataset.kind = 'warning';
   } else {
     $('#ai-proposal-summary').textContent = 'No proposal to review yet.';
     $('#ai-accept-proposal').disabled = true;
     $('#ai-discard-proposal').disabled = true;
     $('#ai-discard-proposal').textContent = '× Discard proposal';
-    state.textContent = 'Mirroring your canvas';
-    dot.dataset.kind = 'success';
+    if (state) state.textContent = 'Mirroring your canvas';
+    if (dot) dot.dataset.kind = 'success';
   }
   $('#ai-preview-size').textContent = aiWorkspace.sandbox.width + ' × ' + aiWorkspace.sandbox.height + ' px';
 }
@@ -1113,7 +1115,8 @@ function updateDrawHoldUI() {
   drawHoldButton.setAttribute('aria-pressed', String(drawHeld));
   drawHoldButton.disabled = cursorMode || !['draw', 'erase'].includes(tool) || Boolean(doc.activeLayer?.locked);
   drawHoldButton.style.display = cursorMode ? 'none' : '';
-  drawHoldButton.querySelector('small').textContent = cursorMode ? 'Cursor active' : tool === 'erase' ? 'Hold to erase' : tool === 'pan' ? 'Pan selected' : tool === 'select' ? 'Select area' : tool === 'fill' ? 'Fill selected' : tool === 'eyedropper' ? 'Sample color' : 'Hold to draw';
+  const drawHoldLabel = drawHoldButton?.querySelector('small');
+  if (drawHoldLabel) drawHoldLabel.textContent = cursorMode ? 'Cursor active' : tool === 'erase' ? 'Hold to erase' : tool === 'pan' ? 'Pan selected' : tool === 'select' ? 'Select area' : tool === 'fill' ? 'Fill selected' : tool === 'eyedropper' ? 'Sample color' : 'Hold to draw';
 }
 drawHoldButton?.addEventListener('pointerdown', event => {
   if (!['draw', 'erase'].includes(tool) || flushInProgress || drawHeld) { event.preventDefault(); return; }
