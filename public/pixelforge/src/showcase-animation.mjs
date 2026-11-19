@@ -84,4 +84,4 @@ export function createOrbitalShowcase({ frameCount = 60, fps = 12, walkOnly = fa
   animation.setFps(fps);animation.setActiveFrame(0);doc.setActiveLayer(soldier.id);doc.revision=1;doc.saveVersion=1;doc.history=[];doc.future=[];doc.historyBytes=0;doc.dirty=false;return {doc,animation,loop:true};
 }
 
-
+// CI retrigger marker: rerun the complete PixelForge visual evidence from a fresh commit.
