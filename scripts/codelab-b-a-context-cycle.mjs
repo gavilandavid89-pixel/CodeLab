@@ -84,19 +84,17 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   ];
   for(const r of regions){
     const x1=Math.max(0,r.x),x2=Math.min(w,r.x+r.w),y1=Math.max(0,r.y),y2=Math.min(h,r.y+r.h);
-    // Erase only foreground in the moving envelope.
-    for(let y=y1;y<y2;y++) for(let x=x1;x<x2;x++){
-      const o=(y*w+x)*4;
-      if(!isBg(o)){out[o]=bgR;out[o+1]=bgG;out[o+2]=bgB;out[o+3]=255;}
-    }
-    // Repaint that foreground from its exact previous position, translated.
-    for(let y=y1;y<y2;y++) for(let x=x1;x<x2;x++){
-      const sx=x-r.dx,sy=y-r.dy;
-      if(sx<x1||sx>=x2||sy<y1||sy>=y2) continue;
-      const s=(sy*w+sx)*4;
-      if(!isBg(s)){
-        const d=(y*w+x)*4;
-        out[d]=src[s];out[d+1]=src[s+1];out[d+2]=src[s+2];out[d+3]=src[s+3];
+    const shift=r.dx===0 ? 0 : (r.dx>0 ? 1 : -1);
+    if(shift===0) continue;
+    for(let y=y1;y<y2;y++){
+      const xs=[];
+      for(let x=x1;x<x2;x++){const o=(y*w+x)*4;if(!isBg(o)) xs.push(x);}
+      if(xs.length<2) continue;
+      const colors=xs.map(x=>{const o=(y*w+x)*4;return [src[o],src[o+1],src[o+2],src[o+3]];});
+      for(let i=0;i<xs.length;i++){
+        const from=(i-shift+xs.length)%xs.length;
+        const d=(y*w+xs[i])*4,c=colors[from];
+        out[d]=c[0];out[d+1]=c[1];out[d+2]=c[2];out[d+3]=c[3];
       }
     }
   }
