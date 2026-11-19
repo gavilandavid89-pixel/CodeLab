@@ -17,10 +17,19 @@ function ellipse(b,w,h,cx,cy,rx,ry,c){for(let y=-ry;y<=ry;y++)for(let x=-rx;x<=r
 function limb(b,w,h,a,bb,c,th=2){line(b,w,h,a[0],a[1],bb[0],bb[1],P.outline);if(th>1)line(b,w,h,a[0]+1,a[1],bb[0]+1,bb[1],P.outline);line(b,w,h,a[0],a[1],bb[0],bb[1],c);if(th>1)line(b,w,h,a[0]+1,a[1],bb[0]+1,bb[1],c);}
 function drawSoldier(b,w,h,frame,{walkOnly=false}={}){
   const walk=walkOnly ? frame : Math.min(frame,15),phase=2*Math.PI*walk/16,crouch=walkOnly ? 0 : Math.max(0,(frame-15)/8);
-  const sx=64+Math.round(2*Math.sin(phase)),bob=Math.round(1.5*Math.sin(phase*2));
+  const gait=Math.sin(phase), opposite=-gait;
+  const sx=64,bob=walkOnly ? 0 : Math.round(1.5*Math.sin(phase*2));
   const hipY=94+bob+Math.round(12*crouch),shoulderY=55+bob+Math.round(9*crouch),headY=35+bob+Math.round(8*crouch),torsoTop=48+bob+Math.round(6*crouch);
-  const lHip=[sx-6,hipY],rHip=[sx+6,hipY],lKnee=[sx-10-Math.round(7*Math.sin(phase)),hipY+18+Math.round(3*crouch)],rKnee=[sx+10+Math.round(7*Math.sin(phase)),hipY+18-Math.round(3*crouch)],lFoot=[sx-14-Math.round(5*Math.sin(phase)),126+Math.round(5*crouch)],rFoot=[sx+14+Math.round(5*Math.sin(phase)),126+Math.round(5*crouch)];
-  const lSh=[sx-16,shoulderY+2],rSh=[sx+16,shoulderY+2],lEl=[sx-25-Math.round(8*Math.sin(phase)),shoulderY+14],rEl=[sx+25+Math.round(8*Math.sin(phase)),shoulderY+14],lHand=[sx-20-Math.round(7*Math.sin(phase)),shoulderY+26],rHand=[sx+20+Math.round(7*Math.sin(phase)),shoulderY+26];
+  const lHip=[sx-6,hipY],rHip=[sx+6,hipY];
+  const lFoot=[sx-13+Math.round(9*gait),126-Math.round(4*Math.max(0,gait))+Math.round(5*crouch)];
+  const rFoot=[sx+13+Math.round(9*opposite),126-Math.round(4*Math.max(0,opposite))+Math.round(5*crouch)];
+  const lKnee=[sx-8+Math.round(4*gait),hipY+17+Math.round(2*crouch)];
+  const rKnee=[sx+8+Math.round(4*opposite),hipY+17+Math.round(2*crouch)];
+  const lSh=[sx-16,shoulderY+2],rSh=[sx+16,shoulderY+2];
+  const lEl=walkOnly ? [sx-17,shoulderY+16] : [sx-25-Math.round(8*Math.sin(phase)),shoulderY+14];
+  const rEl=walkOnly ? [sx+17,shoulderY+16] : [sx+25+Math.round(8*Math.sin(phase)),shoulderY+14];
+  const lHand=walkOnly ? [sx-10,shoulderY+24] : [sx-20-Math.round(7*Math.sin(phase)),shoulderY+26];
+  const rHand=walkOnly ? [sx+10,shoulderY+24] : [sx+20+Math.round(7*Math.sin(phase)),shoulderY+26];
   limb(b,w,h,lHip,lKnee,P.cloth,3);limb(b,w,h,lKnee,lFoot,P.clothHi,3);limb(b,w,h,rHip,rKnee,P.clothHi,3);limb(b,w,h,rKnee,rFoot,P.cloth,3);
   ellipse(b,w,h,lKnee[0],lKnee[1],5,5,P.outline);ellipse(b,w,h,lKnee[0],lKnee[1],3,3,P.armorHi);ellipse(b,w,h,rKnee[0],rKnee[1],5,5,P.outline);ellipse(b,w,h,rKnee[0],rKnee[1],3,3,P.armorHi);
   poly(b,w,h,[[lFoot[0]-5,lFoot[1]-2],[lFoot[0]+5,lFoot[1]-3],[lFoot[0]+8,lFoot[1]+3],[lFoot[0]+4,lFoot[1]+6],[lFoot[0]-7,lFoot[1]+5]],P.boot);poly(b,w,h,[[rFoot[0]-4,rFoot[1]-3],[rFoot[0]+6,rFoot[1]-2],[rFoot[0]+9,rFoot[1]+4],[rFoot[0]+3,rFoot[1]+6],[rFoot[0]-7,rFoot[1]+5]],P.boot);
@@ -35,7 +44,7 @@ function drawSoldier(b,w,h,frame,{walkOnly=false}={}){
   rect(b,w,h,sx-18,hipY-12,6,7,P.armorShade);rect(b,w,h,sx+12,hipY-12,6,7,P.armorShade);line(b,w,h,sx-11,shoulderY+2,sx+10,hipY-9,P.outline);line(b,w,h,sx-10,shoulderY+2,sx+9,hipY-10,P.armorHi);ellipse(b,w,h,sx,134,20,2,P.shadow);
 }
 export function createOrbitalShowcase({ frameCount = 60, fps = 12, walkOnly = false } = {}){
-  const width=128,height=160,doc=new RasterDocument(width,height,'Soldier reference · Walk to Crouch · 24 frames');doc.layers[0].name='Reference background';const ground=doc.addLayer('Ground'),soldier=doc.addLayer('Soldier · reference-guided'),detail=doc.addLayer('Lighting and contact');
+  const width=128,height=160,doc=new RasterDocument(width,height,walkOnly ? 'Soldier reference · Clean walking cycle · 60 frames' : 'Soldier reference · Walk to Crouch · 60 frames');doc.layers[0].name='Reference background';const ground=doc.addLayer('Ground'),soldier=doc.addLayer('Soldier · reference-guided'),detail=doc.addLayer('Lighting and contact');
   const bg=doc.layers[0].pixels,gb=ground.pixels,sb=soldier.pixels,db=detail.pixels;for(let y=0;y<height;y++){const c=y<104?P.bg:y<132?P.bg2:P.ground;rect(bg,width,height,0,y,width,1,c);}ellipse(bg,width,height,96,26,13,13,[205,213,198,255]);for(const [x,y] of [[10,18],[21,32],[38,13],[73,21],[110,14],[117,42],[14,55],[91,48]])put(bg,width,height,x,y,P.white);rect(gb,width,height,0,132,width,28,P.ground);rect(gb,width,height,0,132,width,2,[55,57,55,255]);
   const animation=PixelForgeAnimation.fromDocument(doc,{fps});for(let i=0;i<frameCount;i++){if(i>0)animation.addFrame({duplicate:false,durationMs:1000/fps});const bgf=new Uint8ClampedArray(bg),g=new Uint8ClampedArray(gb),s=new Uint8ClampedArray(sb),d=new Uint8ClampedArray(db);drawSoldier(s,width,height,i,{walkOnly});const stepX=64+Math.round(2*Math.sin(2*Math.PI*i/16));line(g,width,height,stepX-18,137,stepX+18,137,[55,57,55,255]);put(d,width,height,stepX+12,128,P.armorHi);if(i%4===0)put(d,width,height,stepX+13,128,P.white);animation.setLayerPixels(i,doc.layers[0].id,bgf);animation.setLayerPixels(i,ground.id,g);animation.setLayerPixels(i,soldier.id,s);animation.setLayerPixels(i,detail.id,d);}
   animation.setFps(fps);animation.setActiveFrame(0);doc.setActiveLayer(soldier.id);doc.revision=1;doc.saveVersion=1;doc.history=[];doc.future=[];doc.historyBytes=0;doc.dirty=false;return {doc,animation,loop:true};
