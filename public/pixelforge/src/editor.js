@@ -2300,13 +2300,24 @@ window.addEventListener('blur', () => {
 });
 async function boot() {
   try {
-    const modeResponse = await fetch('/api/pixelforge/mode', {
-      credentials: 'same-origin',
-      headers: { accept: 'application/json' },
-      cache: 'no-store'
-    });
-    if (!modeResponse.ok) throw new Error('No se pudo comprobar el modo de PixelForge.');
-    const pixelForgeMode = await modeResponse.json();
+    const params = new URLSearchParams(window.location.search);
+    let pixelForgeMode = { guestMode: false };
+    try {
+      const modeResponse = await fetch('/api/pixelforge/mode', {
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!modeResponse.ok) throw new Error('No se pudo comprobar el modo de PixelForge.');
+      pixelForgeMode = await modeResponse.json();
+    } catch (error) {
+      // The visual capture runner is intentionally guest-only. If its mode
+      // endpoint is unavailable, keep the capture deterministic instead of
+      // blocking the editor bootstrap; normal sessions still fail closed.
+      if (params.get('capture') !== 'video') throw error;
+      pixelForgeMode = { guestMode: true };
+    }
     const guestMode = pixelForgeMode.guestMode === true;
     const auth = guestMode
       ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
@@ -2344,7 +2355,6 @@ async function boot() {
     userPalette = loadUserPalette();
     renderUserPalette();
     resizeCanvas();
-    const params = new URLSearchParams(window.location.search);
     if (params.get('createDemo') === 'walk-crouch-24') {
       const existingProjects = guestMode && params.get('capture') === 'video' ? [] : await listSavedProjects();
       const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 60 frames');
