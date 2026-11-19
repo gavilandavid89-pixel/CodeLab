@@ -98,12 +98,29 @@ export class DrawingWorkflow {
         minScore,
       },
       history: [],
+      scene: null,
     };
   }
 
   getState() {
     return clone(this.#state);
   }
+\n  setScene(scene) {
+    if (!scene || typeof scene !== 'object') throw new TypeError('scene is required.');
+    this.#state.scene = clone(scene);
+    this.#state.history.push({
+      revision: ++this.#state.revision,
+      type: 'scene-set',
+      nodeCount: Array.isArray(scene.nodes) ? scene.nodes.length : 0,
+      sceneVersion: scene.version ?? null,
+    });
+    return this.getState();
+  }
+
+  getScene() {
+    return clone(this.#state.scene);
+  }
+
 
   recordAction(action) {
     if (!action || typeof action !== 'object' || typeof action.name !== 'string') {
