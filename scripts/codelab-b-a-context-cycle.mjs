@@ -81,7 +81,8 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
     {x:minX,y:minY+Math.floor(bh*0.58),w:Math.max(1,midX-minX+1),h:Math.ceil(bh*0.42),dx:Math.round(2*legL),dy:0},
     {x:midX+1,y:minY+Math.floor(bh*0.58),w:Math.max(1,maxX-midX),h:Math.ceil(bh*0.42),dx:Math.round(2*legR),dy:0},
     {x:minX,y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.floor(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(2*armL),dy:0},
-    {x:minX+Math.floor(bw*0.62),y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.ceil(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(2*armR),dy:0}
+    {x:minX+Math.floor(bw*0.62),y:minY+Math.floor(bh*0.22),w:Math.max(1,Math.ceil(bw*0.38)),h:Math.ceil(bh*0.40),dx:Math.round(2*armR),dy:0},
+    {x:minX+Math.floor(bw*0.34),y:minY+Math.floor(bh*0.30),w:Math.max(1,Math.floor(bw*0.32)),h:Math.max(1,Math.floor(bh*0.26)),dx:frameIndex%2===0?1:-1,dy:0}
   ];
   for(const r of regions){
     const x1=Math.max(0,r.x),x2=Math.min(w,r.x+r.w),y1=Math.max(0,r.y),y2=Math.min(h,r.y+r.h);
