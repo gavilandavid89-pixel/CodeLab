@@ -54,3 +54,5 @@ jobs:
           path: ${{ runner.temp }}/codelab-5s-animation
           if-no-files-found: error
           retention-days: 14
+
+# Policy gate: every new run must be visually inspected before acceptance.
