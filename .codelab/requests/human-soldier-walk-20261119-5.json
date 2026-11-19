@@ -1,0 +1,37 @@
+{
+  "kind": "browser",
+  "start_path": "/pixelforge/index.html?createDemo=walk-crouch-24&capture=video",
+  "actions": [
+    {
+      "type": "wait_for",
+      "selector": "#canvas",
+      "state": "visible",
+      "timeoutMs": 30000
+    },
+    {
+      "type": "wait_for",
+      "selector": "#animation-frame-count",
+      "state": "visible",
+      "timeoutMs": 30000
+    },
+    {
+      "type": "screenshot"
+    },
+    {
+      "type": "click",
+      "selector": "[data-action=\"animation-play\"]",
+      "timeoutMs": 10000
+    },
+    {
+      "type": "wait_for",
+      "selector": "#animation-frame-count",
+      "state": "visible",
+      "timeoutMs": 30000
+    },
+    {
+      "type": "screenshot"
+    }
+  ],
+  "humanWalkTest": "20261119-5",
+  "note": "smoke browser request against newly ready A"
+}
