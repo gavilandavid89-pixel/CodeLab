@@ -401,7 +401,9 @@ async function executeBrowser(request, page) {
 console.log('A stage: waiting for local CodeLab health');
 await waitHealthy();
 console.log('A stage: local CodeLab healthy');
-const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
+// The mailbox service currently accepts short-lived leases; this is independent from A's execution lifetime.
+const mailboxLeaseMinutes = Math.min(maxMinutes, 30);
+const expiresAt = new Date(Date.now() + mailboxLeaseMinutes * 60000).toISOString();
 console.log('A stage: registering mailbox before Chromium');
 await registerMailbox(expiresAt);
 console.log('A stage: mailbox registered');
