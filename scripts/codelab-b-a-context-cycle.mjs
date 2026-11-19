@@ -56,8 +56,9 @@ function walkFromExactPrevious(base64,w,h,frameIndex){
   const src=decode64(base64), out=new Uint8ClampedArray(src.length);
   out.set(src);
   const phase=2*Math.PI*frameIndex/24;
-  const legL=Math.sin(phase), legR=Math.sin(phase+Math.PI);
-  const armL=Math.sin(phase+Math.PI), armR=Math.sin(phase);
+  const gaitBias=(frameIndex%2===0?0.55:-0.55);
+  const legL=Math.sin(phase)+gaitBias, legR=Math.sin(phase+Math.PI)-gaitBias;
+  const armL=Math.sin(phase+Math.PI)-gaitBias, armR=Math.sin(phase)+gaitBias;
   // The returned cel itself determines the background colour. We only move
   // foreground pixels, never rectangular chunks of the background.
   const counts=new Map();
