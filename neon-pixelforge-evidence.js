@@ -33,7 +33,8 @@ function presignCloudflareEvidenceObject({ objectKey, contentType, expiresInSeco
     headers: { 'content-type': type },
     expiresAt: new Date(expires * 1000).toISOString(),
     bucket: 'cloudflare-r2',
-    objectKey
+    objectKey,
+    publicUrl: CLOUDFLARE_EVIDENCE_BASE_URL + '/evidence/' + objectKey.split('/').map(encodePath).join('/')
   };
 }
 
