@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { Pool } = require('pg');
+const { Pool, Client } = require('pg');
 const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
@@ -68,7 +68,8 @@ let agentBridgeWakeClient = null;
 
 async function ensureAgentBridgeWakeListener() {
   if (!accountPool || agentBridgeWakeClient) return;
-  const client = await accountPool.connect();
+  const client = new Client({ connectionString: DATABASE_URL, ssl: DATABASE_SSL, application_name: 'codelab-agent-bridge-wake-listener' });
+  await client.connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.codelab_agent_commands (
@@ -157,7 +158,7 @@ async function ensureAgentBridgeWakeListener() {
     agentBridgeWakeClient = client;
     console.log('[CodeLab Native Bridge] Neon wake listener armed; no polling/interval is used to wake the bridge.');
   } catch (error) {
-    try { client.release(); } catch (_) {}
+    try { await client.end(); } catch (_) {}
     throw error;
   }
 }
@@ -3291,7 +3292,7 @@ async function shutdown() {
   await emitAgentBridgeShutdownSignal();
   stopAgentBridge();
   if (agentBridgeWakeClient) {
-    try { agentBridgeWakeClient.release(); } catch (_) {}
+    try { await agentBridgeWakeClient.end(); } catch (_) {}
     agentBridgeWakeClient = null;
   }
   server.close(() => process.exit(0));
