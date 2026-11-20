@@ -243,7 +243,7 @@ export class AICommandSession {
         case 'drawing.reference.create': {
           const project = doc.toJSON();
           const current = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
-          const entry = action.entry || buildReferenceFromProject({ projectId: project.id, project, name: action.name || 'Drawing reference' });
+          const entry = action.entry || buildReferenceFromProject({ projectId: project.id, project, name: action.referenceName || 'Drawing reference' });
           const next = registerReferenceEntry(current, entry);
           doc.setDrawingModel(next);
           result = { reference: getReferenceEntry(next, entry.id || next.referenceCenter.activeEntryId), referenceCenter: next.referenceCenter };
