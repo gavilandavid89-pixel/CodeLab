@@ -2,6 +2,7 @@ import { RasterDocument } from './core.js';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
+import { analyzeMotion, deserializePixels as deserializeDrawingPixels } from './drawing-intelligence.js';
 
 const MAX_ANIMATION_HISTORY_STEPS = 100;
 
@@ -22,7 +23,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
   proposalApprovalRequired: true,
   authenticatedPersistence: true,
   rasterActions: Object.freeze([
-    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'drawing.model.get', 'drawing.sheet.get', 'drawing.sheet.configure', 'drawing.palette.get', 'drawing.object.select_at', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.reference.extract_line_guide', 'drawing.reference.create', 'drawing.reference.list', 'drawing.reference.get', 'drawing.reference.apply', 'drawing.reference.remove', 'canvas.get_pixel',
+    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'drawing.model.get', 'drawing.sheet.get', 'drawing.sheet.configure', 'drawing.palette.get', 'drawing.object.select_at', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.reference.extract_line_guide', 'drawing.motion.analyze', 'drawing.reference.create', 'drawing.reference.list', 'drawing.reference.get', 'drawing.reference.apply', 'drawing.reference.remove', 'canvas.get_pixel',
     'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
     'layer.rename', 'layer.set_opacity', 'layer.set_visibility', 'layer.set_locked',
     'layer.duplicate', 'layer.delete', 'canvas.fill', 'canvas.clear_region',
@@ -249,6 +250,26 @@ export class HeadlessEditorRuntime {
     if (action?.name === 'layer.get_context') {
       try { return { ok: true, action: action.name, result: this.#layerContext(action.layerId) }; }
       catch (error) { return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Layer context failed.' } }; }
+    }
+    if (action?.name === 'drawing.motion.analyze') {
+      try {
+        const beforeIndex = action.beforeIndex;
+        const afterIndex = action.afterIndex;
+        const beforeAction = { name: action.layerId ? 'animation.frame.get_cel' : 'animation.frame.get_composite', index: beforeIndex, ...(action.layerId ? { layerId: action.layerId } : {}) };
+        const afterAction = { name: action.layerId ? 'animation.frame.get_cel' : 'animation.frame.get_composite', index: afterIndex, ...(action.layerId ? { layerId: action.layerId } : {}) };
+        const beforeResult = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, beforeAction);
+        const afterResult = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, afterAction);
+        const result = analyzeMotion({
+          beforePixels: deserializeDrawingPixels(beforeResult.result.pixels),
+          afterPixels: deserializeDrawingPixels(afterResult.result.pixels),
+          width: this.#workspace.sandbox.width,
+          height: this.#workspace.sandbox.height,
+          gridStep: action.gridStep ?? 8,
+        });
+        return { ok: true, action: action.name, result: { beforeIndex, afterIndex, ...result } };
+      } catch (error) {
+        return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Motion analysis failed.' } };
+      }
     }
     if (action && typeof action.name === 'string' && action.name.startsWith('animation.')) {
       if (this.#workspace.hasProposal && action.name !== 'animation.get_summary') {
