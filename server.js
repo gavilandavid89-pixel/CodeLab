@@ -66,9 +66,23 @@ let agentBridgeWorker = null;
 let agentBridgeStopping = false;
 let agentBridgeWakeClient = null;
 
+function databaseUrlForWakeListener() {
+  if (!DATABASE_URL) return '';
+  try {
+    const url = new URL(DATABASE_URL);
+    // Neon pooled endpoints are intended for request traffic; LISTEN/NOTIFY
+    // needs a stable backend connection, so prefer the matching direct Neon
+    // hostname when the configured URL is a Neon -pooler endpoint.
+    if (url.hostname.includes('-pooler.')) url.hostname = url.hostname.replace('-pooler.', '.');
+    return url.toString();
+  } catch {
+    return DATABASE_URL;
+  }
+}
+
 async function ensureAgentBridgeWakeListener() {
   if (!accountPool || agentBridgeWakeClient) return;
-  const client = new Client({ connectionString: DATABASE_URL, ssl: DATABASE_SSL, application_name: 'codelab-agent-bridge-wake-listener' });
+  const client = new Client({ connectionString: databaseUrlForWakeListener(), ssl: DATABASE_SSL, application_name: 'codelab-agent-bridge-wake-listener' });
   await client.connect();
   try {
     await client.query(`
