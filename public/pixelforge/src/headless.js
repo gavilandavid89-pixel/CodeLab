@@ -251,6 +251,69 @@ export class HeadlessEditorRuntime {
       try { return { ok: true, action: action.name, result: this.#layerContext(action.layerId) }; }
       catch (error) { return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Layer context failed.' } }; }
     }
+    if (action?.name === 'drawing.reference.package_current') {
+      try {
+        const sourceProject = this.#workspace.sandbox.toJSON();
+        sourceProject.animation = JSON.parse(JSON.stringify(this.#sandboxAnimation));
+        const currentModel = normalizeDrawingModel(this.#workspace.sandbox.getDrawingModel(), {
+          width: this.#workspace.sandbox.width,
+          height: this.#workspace.sandbox.height,
+        });
+        const entry = buildReferenceFromProject({
+          projectId: sourceProject.id,
+          project: sourceProject,
+          name: action.referenceName || 'Drawing reference',
+        });
+        const nextModel = registerReferenceEntry(currentModel, entry);
+        this.#workspace.sandbox.setDrawingModel(nextModel);
+
+        const cleanLayer = this.#workspace.sandbox.layers[0];
+        const blank = new Uint8Array(this.#workspace.sandbox.width * this.#workspace.sandbox.height * 4);
+        this.#workspace.sandbox.setLayerPixels(cleanLayer.id, blank);
+        this.#workspace.sandbox.renameLayer(cleanLayer.id, String(action.cleanLayerName || 'Layer 1').slice(0, 180));
+        for (const layer of [...this.#workspace.sandbox.layers].slice(1)) this.#workspace.sandbox.deleteLayer(layer.id);
+        this.#workspace.sandbox.setLayerVisibility(cleanLayer.id, true);
+        this.#workspace.sandbox.setLayerLocked(cleanLayer.id, false);
+        this.#workspace.sandbox.setLayerOpacity(cleanLayer.id, 1);
+        this.#workspace.sandbox.setActiveLayer(cleanLayer.id);
+
+        this.#sandboxAnimation = {
+          format: 'pixelforge-animation',
+          version: 1,
+          width: this.#workspace.sandbox.width,
+          height: this.#workspace.sandbox.height,
+          layerIds: [cleanLayer.id],
+          fps: this.#sandboxAnimation.fps || 12,
+          loop: this.#sandboxAnimation.loop !== false,
+          activeFrameIndex: 0,
+          frames: [],
+        };
+        this.#animationDirty = this.#animationDiffersFromCommitted();
+        return {
+          ok: true,
+          action: action.name,
+          result: {
+            packaged: true,
+            referenceId: entry.id,
+            sourceRevision: sourceProject.serverRevision ?? sourceProject.revision ?? 0,
+            source: {
+              canvas: { width: sourceProject.width, height: sourceProject.height },
+              layerCount: sourceProject.layers?.length || 0,
+              frameCount: sourceProject.animation?.frames?.length || 0,
+            },
+            cleanEditor: {
+              canvas: { width: this.#workspace.sandbox.width, height: this.#workspace.sandbox.height },
+              layerCount: this.#workspace.sandbox.layers.length,
+              layers: this.#workspace.sandbox.layers.map(layer => ({ id: layer.id, name: layer.name })),
+              frameCount: this.#sandboxAnimation.frames.length,
+            },
+            referenceCenter: { entryId: entry.id, immutableSnapshot: true },
+          },
+        };
+      } catch (error) {
+        return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Reference packaging failed.' } };
+      }
+    }
     if (action?.name === 'drawing.motion.analyze') {
       try {
         const beforeIndex = action.beforeIndex;
