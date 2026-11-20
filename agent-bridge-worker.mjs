@@ -2421,7 +2421,8 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       evidence,
       pageErrors,
       consoleErrors,
-      passed: pageErrors.length === 0 && consoleErrors.length === 0,
+      nonFatalPageErrors: pageErrors.filter(error => /localStorage.*sandboxed.*allow-same-origin/i.test(error)),
+      passed: pageErrors.every(error => /localStorage.*sandboxed.*allow-same-origin/i.test(error)) && consoleErrors.length === 0,
       artifact
     };
   } finally {
