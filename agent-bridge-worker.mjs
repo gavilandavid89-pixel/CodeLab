@@ -1586,6 +1586,7 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
       await page.waitForFunction(() => document.documentElement.dataset.pixelforgeCapture === 'complete',
         null, { timeout: 70000 });
     }
+    captureState = 'complete';
     video = page.video();
     await page.close().catch(() => {});
     await context.close().catch(() => {});
@@ -1653,9 +1654,7 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
         } : {}),
         pageErrors,
         consoleErrors,
-        passed: captureState === 'playing' || captureState === 'complete'
-          ? pageErrors.length === 0 && consoleErrors.length === 0
-          : false
+        passed: captureState === 'complete' && pageErrors.length === 0 && consoleErrors.length === 0
       }
     };
   } finally {
@@ -1994,10 +1993,6 @@ async function capturePixelForgeInterface(payload = {}) {
       colorScheme: 'dark',
       reducedMotion: 'reduce'
     });
-    await context.addInitScript(({ id, token }) => {
-      localStorage.setItem('codelab_xd_workspace_v4', id);
-      localStorage.setItem('codelab_xd_workspace_token_v1', token);
-    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
     const page = await context.newPage();
     const consoleErrors = [];
     page.on('pageerror', error => consoleErrors.push(String(error.message || error).slice(0, 300)));
