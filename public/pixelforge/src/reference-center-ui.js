@@ -4,6 +4,7 @@ export function createReferenceCenterUI({
   getDocument,
   getAnimation,
   save,
+  setAnimation = null,
   render,
   renderLayers,
   status,
@@ -95,18 +96,10 @@ export function createReferenceCenterUI({
     d.setActiveLayer(clean.id);
 
     if (currentAnimation) {
-      const cleanTimeline = {
-        format: 'pixelforge-animation',
-        version: 1,
-        width: d.width,
-        height: d.height,
-        layerIds: [clean.id],
-        fps: currentAnimation.fps || 12,
-        loop: currentAnimation.loop !== false,
-        activeFrameIndex: 0,
-        frames: [],
-      };
-      animation().replace?.(cleanTimeline);
+      // The current timeline belongs to the packaged snapshot. A reference
+      // center transfer deliberately leaves the editor without animation.
+      // A later copy-frame operation creates a fresh editable timeline.
+      setAnimation?.(null);
     }
 
     d.dirty = true;
