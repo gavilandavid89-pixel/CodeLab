@@ -2,7 +2,7 @@
 
 > **Antes de cualquier trabajo sobre CodeLab, el agente debe leer `AGENTS.md`.** Ese archivo lleva a la política completa de `docs/agent-ai-bridge-policy.md` y resume las reglas que deben respetarse durante toda la sesión.
 >
-> **Solo el usuario puede iniciar al agente IA.** B es puente, A es sesión persistente y fuente de verdad. La evidencia visual debe inspeccionarse realmente. En dibujo/animación, las referencias pueden buscarse dinámicamente en Internet; no se debe depender de una imagen implantada como fuente obligatoria.
+> **Solo el usuario puede iniciar al agente IA.** La evidencia visual debe inspeccionarse realmente. En dibujo/animación, las referencias pueden buscarse dinámicamente en Internet; no se debe depender de una imagen implantada como fuente obligatoria.
 
 **[Abrir la política completa →](docs/agent-ai-bridge-policy.md)**
 
@@ -12,22 +12,139 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 
 Cero dependencias npm — solo Node.js nativo.
 
+## 🧠 Arquitectura principal: agente → Neon → Cloudflare → CodeLab → evidencia → Neon → agente
+
+**Esta es la arquitectura de ejecución que debe considerarse la fuente de verdad del sistema. No debe sustituirse por un flujo basado en clics, deslizamientos, commits intermedios o intervención manual del navegador.**
+
+El ciclo completo funciona así:
+
+```text
+AGENTE
+  │
+  │ 1. crea una petición/trabajo
+  ▼
+NEON
+  │
+  │ 2. guarda la orden, estado, proyecto,
+  │    revisión y contexto
+  ▼
+CLOUDFLARE
+  │
+  │ 3. transporta la petición mediante el
+  │    puente de conexión
+  ▼
+CODELAB
+  │
+  │ 4. recibe la orden y la ejecuta directamente
+  │    mediante sus interfaces de servidor
+  │    sin deslizar, clickear ni usar la UI
+  │    como mecanismo de automatización
+  ▼
+CODELAB
+  │
+  │ 5. termina el trabajo
+  │
+  ├── trabajo normal ───────────────► resultado
+  │
+  └── dibujo/animación
+          │
+          │ 6. renderiza y genera evidencia
+          │    visual (vídeo y/o imágenes)
+          ▼
+CLOUDFLARE
+  │
+  │ 7. empaqueta/transfiere la evidencia
+  │    por el mismo puente
+  ▼
+NEON
+  │
+  │ 8. guarda la confirmación, resultado,
+  │    revisión y referencia al vídeo
+  │
+  │ 9. notifica al agente si sigue conectado
+  ▼
+AGENTE
+  │
+  │ 10. obtiene e inspecciona realmente
+  │     el vídeo/evidencia
+  │
+  │ 11. toma la siguiente decisión
+  └──────────────────────────────────────►
+                    repetir
+```
+
+### Reglas de este flujo
+
+1. **Neon es el punto de coordinación y persistencia del trabajo.**
+2. **Cloudflare es el puente de transporte rápido entre Neon y CodeLab y el canal para la evidencia binaria.**
+3. **CodeLab ejecuta trabajos de forma programática.** La automatización no debe depender de que un agente humano abra la web, deslice, pulse botones o confirme manualmente.
+4. **Una animación no se considera terminada solo porque el código terminó.** Debe producir evidencia visual que permita comprobar el resultado.
+5. **El vídeo es feedback del agente.** Después de recibir la confirmación, el agente debe inspeccionarlo y decidir si hace otra modificación.
+6. **El ciclo puede repetirse tantas veces como sea necesario** hasta alcanzar el resultado correcto.
+7. **La desconexión del agente no debe perder el trabajo.** Neon conserva el estado y la evidencia para que el agente pueda continuar cuando vuelva.
+8. **Cada trabajo y cada evidencia deben estar correlacionados** mediante un identificador de trabajo/proyecto/revisión, evitando mezclar resultados de ejecuciones distintas.
+9. **Los estados del trabajo deben ser explícitos**, por ejemplo: `queued → dispatched → running → rendering → uploading → completed/failed`.
+10. **GitHub no es el transporte de cada cambio visual.** Los commits pueden servir para versionado del código, pero no deben ser un requisito para que una petición llegue a CodeLab o para entregar cada vídeo al agente.
+
+### Arquitectura de persistencia y evidencia
+
+- **Neon Postgres:** estado canónico del proyecto y de los trabajos, órdenes, revisiones, resultados, metadatos y referencias a evidencias.
+- **Cloudflare Worker:** puente de transporte y punto de entrada/salida rápido para las operaciones del flujo.
+- **Cloudflare R2:** almacenamiento de vídeos/imágenes y otros artefactos binarios de evidencia.
+- **CodeLab:** ejecutor que modifica y procesa los proyectos.
+- **Agente:** controlador del ciclo; analiza los resultados y decide las siguientes operaciones.
+- **GitHub:** repositorio y versionado del software, no mecanismo obligatorio de transporte de cada trabajo.
+
+> **Importante:** Neon Realtime es una posible vía de notificación en tiempo real, pero el sistema no debe depender exclusivamente de él. Si la infraestructura disponible no soporta Realtime, el estado persistido en Neon debe seguir permitiendo recuperar y continuar los trabajos.
+
+### Flujo de una animación
+
+Para una animación, la unidad completa de trabajo es:
+
+```text
+petición
+  ↓
+Neon registra job
+  ↓
+Cloudflare entrega job
+  ↓
+CodeLab modifica proyecto
+  ↓
+CodeLab ejecuta/renderiza animación
+  ↓
+genera vídeo
+  ↓
+Cloudflare transporta/almacena evidencia
+  ↓
+Neon registra completion + vídeo + revisión
+  ↓
+agente recibe aviso
+  ↓
+agente inspecciona vídeo
+  ↓
+decisión
+  ↓
+nueva petición si hace falta
+```
+
+**Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
+
 ## Login OAuth (recomendado en Render)
 
 Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así puedes abrir la app desde cualquier dispositivo y recuperar tus proyectos.
 
 ### 1. GitHub
 
-1. GitHub → Settings → Developer settings → **OAuth Apps** → New OAuth App  
-2. Homepage URL: `https://TU-APP.onrender.com`  
-3. Authorization callback URL: `https://TU-APP.onrender.com/api/auth/github/callback`  
-4. Copia Client ID y Client Secret  
+1. GitHub → Settings → Developer settings → **OAuth Apps** → New OAuth App
+2. Homepage URL: `https://TU-APP.onrender.com`
+3. Authorization callback URL: `https://TU-APP.onrender.com/api/auth/github/callback`
+4. Copia Client ID y Client Secret
 
 ### 2. Google
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → OAuth 2.0 Client ID (Web)  
-2. Authorized redirect URI: `https://TU-APP.onrender.com/api/auth/google/callback`  
-3. Copia Client ID y Client Secret  
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → OAuth 2.0 Client ID (Web)
+2. Authorized redirect URI: `https://TU-APP.onrender.com/api/auth/google/callback`
+3. Copia Client ID y Client Secret
 
 ### 3. Variables en Render
 
@@ -58,13 +175,13 @@ Todas las pruebas, proyectos auxiliares y cambios de proyecto deben ejecutarse d
 
 ## Seguridad
 
-- OAuth con `state` anti-CSRF  
-- Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)  
-- Workspace por usuario: `ws_{provider}_{id}`  
-- Acceso por token HMAC **o** sesión dueña del workspace  
-- Rate limit con saltos de proxy confiables configurables; se rechazan cadenas X-Forwarded-For malformadas para evitar desplazar la selección de IP confiable  
-- Validación de payload, límites de tamaño y path traversal bloqueado  
-- Preview en iframe sandbox + CSP  
+- OAuth con `state` anti-CSRF
+- Sesión en cookie **HttpOnly** + `SameSite=Lax` (+ `Secure` en producción)
+- Workspace por usuario: `ws_{provider}_{id}`
+- Acceso por token HMAC **o** sesión dueña del workspace
+- Rate limit con saltos de proxy confiables configurables; se rechazan cadenas X-Forwarded-For malformadas para evitar desplazar la selección de IP confiable
+- Validación de payload, límites de tamaño y path traversal bloqueado
+- Preview en iframe sandbox + CSP
 
 ## Copiloto IA
 
@@ -89,22 +206,6 @@ Comprobar: `GET /api/ai/status` → `{ "serverKey": true, ... }`
 # Opcional: exporta GITHUB_* / GOOGLE_* y OAUTH_PUBLIC_URL=http://localhost:3000
 node server.js
 ```
-
-## Changelog v2.6.1.0
-
-- Login real GitHub y Google (OAuth 2.0)  
-- Workspaces ligados a la cuenta del usuario  
-- Cookie de sesión HttpOnly  
-- Fallback demo si OAuth no está configurado  
-- Móvil, dashboard de conexiones, asistente IA local/API (v2.5)  
-
-
-## Changelog v2.6.2
-
-- Proxy copiloto `POST /api/ai/complete` + `GET /api/ai/status`
-- Modo Auto / API / Local; key de servidor o del usuario
-- Rate limit dedicado para IA
-
 
 ## Laboratorio de diseño visual
 
@@ -149,7 +250,6 @@ La acción **Convertir a web** conserva las capas de imagen incrustadas, las eli
 
 Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML autónomas: navegación, hero de landing, tarjetas de características, métricas, precios, formulario de contacto, panel de proyecto y pie de página. Permite buscar y filtrar por categoría, previsualizar el HTML en un iframe aislado, copiar el fragmento, exportar una página HTML adaptable e insertar el fragmento seleccionado en el HTML del proyecto web activo. Los componentes incluyen sus estilos en un bloque local para funcionar sin una librería CSS externa. La inserción conserva el HTML existente y solo está disponible desde proyectos web, no desde proyectos de diseño.
 
-
 ## Editor visual: interacción táctil y organización
 
 - El zoom del lienzo es independiente del zoom de la interfaz. Usa el control de porcentaje para un ajuste preciso o pellizca con dos dedos sobre el área del lienzo en dispositivos táctiles.
@@ -158,3 +258,11 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El Inspector completo se puede plegar y volver a abrir desde la barra del editor para liberar el lienzo, por ejemplo al trabajar con diagramas y conexiones de nodos.
 - Las operaciones de ramas y merge pertenecen al editor web, no al espacio de diseño.
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
+
+## Changelog
+
+### v2.6.6
+
+- Flujo de trabajo del agente IA documentado como ciclo persistente Neon → Cloudflare → CodeLab → evidencia → Neon → agente.
+- La evidencia visual de animaciones forma parte del cierre de cada trabajo.
+- El agente puede inspeccionar el resultado y encadenar nuevas decisiones sin depender de commits como mecanismo de transporte.
