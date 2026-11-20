@@ -2545,8 +2545,8 @@ const server = http.createServer(async (req, res) => {
             contentType: body.kind === 'image' ? 'image/png' : 'video/webm',
             expiresInSeconds: 900
           });
-          const endpoint = process.env.NEON_STORAGE_ENDPOINT.replace(/\/$/, '');
-          const publicUrl = endpoint + '/' + signed.bucket + '/' + key;
+          const publicUrl = signed.publicUrl ||
+            ((process.env.NEON_STORAGE_ENDPOINT || '').replace(/\/$/, '') + '/' + signed.bucket + '/' + key);
           return sendJson(res, 200, { ok: true, eventId, kind: body.kind, key, upload: signed, publicUrl });
         } catch (error) {
           return sendJson(res, 503, { error: error.message === 'neon_storage_credentials_missing' ? error.message : 'neon_storage_presign_failed' });
