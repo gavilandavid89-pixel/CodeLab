@@ -2066,12 +2066,17 @@ const server = http.createServer(async (req, res) => {
 
       // Agent-controlled bridge lifecycle. Starting the bridge is an explicit operation:
       // no cron, interval, heartbeat or automatic timer is used to wake the worker.
-      if (req.method === 'POST' && pathname === '/api/agent/bridge/ensure') {
-        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
+      if ((req.method === 'POST' || req.method === 'GET') && pathname === '/api/agent/bridge/ensure') {
+        // POST is the canonical agent operation. GET is intentionally supported
+        // as a transport fallback for agent runtimes that cannot set headers;
+        // the token is still required and the response is never cached.
+        const queryToken = url.searchParams.get('token') || '';
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || queryToken);
         if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
           return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
         }
         try {
+          res.setHeader('Cache-Control', 'no-store');
           return sendJson(res, 200, {
             ok: true,
             operation: 'ensure_bridge',
