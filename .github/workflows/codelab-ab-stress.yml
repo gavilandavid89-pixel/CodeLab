@@ -25,7 +25,7 @@ jobs:
           start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "A_START=$start" >> "$GITHUB_ENV"
           gh api "repos/$GH_REPO/dispatches" --input - <<JSON
-{"event_type":"codelab-session-a","client_payload":{"session_minutes":"360","mailbox_transport":"relay","mailbox_base_url":"https://codelab-pbw9.onrender.com"}}
+          {"event_type":"codelab-session-a","client_payload":{"session_minutes":"360","mailbox_transport":"relay","mailbox_base_url":"https://codelab-pbw9.onrender.com"}}
           JSON
           echo "A requested (persistent B→A rendezvous stress)"
 
@@ -58,7 +58,7 @@ jobs:
           echo "B_CONCURRENT_START=$start" >> "$GITHUB_ENV"
           for n in $(seq 1 5); do
             gh api "repos/$GH_REPO/dispatches" --input - <<JSON
-{"event_type":"codelab-session-b","client_payload":{"mode":"concurrent","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
+          {"event_type":"codelab-session-b","client_payload":{"mode":"concurrent","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
           JSON
           done
           echo "5 concurrent B requests dispatched"
@@ -95,7 +95,7 @@ jobs:
           echo "B_QUEUE_START=$start" >> "$GITHUB_ENV"
           for n in $(seq 1 5); do
             gh api "repos/$GH_REPO/dispatches" --input - <<JSON
-{"event_type":"codelab-session-b","client_payload":{"mode":"queue","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
+          {"event_type":"codelab-session-b","client_payload":{"mode":"queue","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
           JSON
           done
           echo "5 queued B requests dispatched"
@@ -130,7 +130,7 @@ jobs:
           set -euo pipefail
           dispatch_and_wait() {
             gh api "repos/$GH_REPO/dispatches" --input - <<JSON
-{"event_type":"codelab-session-b","client_payload":{"mode":"normal","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
+          {"event_type":"codelab-session-b","client_payload":{"mode":"normal","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
           JSON
             local before="$BEFORE"
             for i in $(seq 1 36); do
