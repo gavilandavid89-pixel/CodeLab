@@ -52,9 +52,20 @@ async function ensureEvidenceSchema(pool) {
       video_url TEXT,
       status TEXT NOT NULL DEFAULT 'awaiting-evidence',
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      image_data BYTEA,
+      video_data BYTEA,
+      image_mime_type TEXT,
+      video_mime_type TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE codelab_pixelforge_change_events
+      ADD COLUMN IF NOT EXISTS image_data BYTEA,
+      ADD COLUMN IF NOT EXISTS video_data BYTEA,
+      ADD COLUMN IF NOT EXISTS image_mime_type TEXT,
+      ADD COLUMN IF NOT EXISTS video_mime_type TEXT
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS codelab_pixelforge_events_project_idx
@@ -151,16 +162,19 @@ function presignStorageObject({ bucket = DEFAULT_BUCKET, objectKey, contentType,
   };
 }
 
-async function attachEvidence(pool, { workspaceId, eventId, kind, objectKey, publicUrl }) {
+async function attachEvidence(pool, { workspaceId, eventId, kind, objectKey = null, publicUrl = null, data = null, mimeType = null }) {
   const column = kind === 'image' ? 'image_key' : 'video_key';
   const urlColumn = kind === 'image' ? 'image_url' : 'video_url';
+  const dataColumn = kind === 'image' ? 'image_data' : 'video_data';
+  const mimeColumn = kind === 'image' ? 'image_mime_type' : 'video_mime_type';
   const status = kind === 'video' ? 'complete' : 'awaiting-video';
   const result = await pool.query(
     `UPDATE codelab_pixelforge_change_events
-     SET ${column} = $3, ${urlColumn} = $4, status = $5, updated_at = NOW()
+     SET ${column} = $3, ${urlColumn} = $4, ${dataColumn} = $5, ${mimeColumn} = $6, status = $7, updated_at = NOW()
      WHERE workspace_id = $1 AND event_id = $2
-     RETURNING event_id AS "eventId", status, ${column} AS "objectKey", ${urlColumn} AS url`,
-    [workspaceId, eventId, objectKey, publicUrl || null, status]
+     RETURNING event_id AS "eventId", status, ${column} AS "objectKey", ${urlColumn} AS url,
+               octet_length(${dataColumn}) AS "inlineBytes"`,
+    [workspaceId, eventId, objectKey, publicUrl || null, data, mimeType || null, status]
   );
   return result.rows[0] || null;
 }
