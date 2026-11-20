@@ -2,6 +2,7 @@ import { AIWorkspace } from './workspaces.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
+import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -95,7 +96,7 @@ export class AICommandSession {
     if (DENIED_ACTIONS.has(action.name)) {
       return { ok: false, error: { code: 'permission_denied', message: 'AI tools cannot delete, export, upload, or publish a project.' } };
     }
-    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_reference', 'canvas.get_pixel', 'canvas.get_region', 'canvas.preview_transform_region']);
+    const readOnlyActions = new Set(['document.get_summary', 'canvas.get_reference', 'canvas.get_pixel', 'canvas.get_region', 'canvas.preview_transform_region', 'drawing.model.get', 'drawing.sheet.get', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.palette.get', 'drawing.reference.list', 'drawing.reference.get']);
     if (this.#workspace.hasProposal && !readOnlyActions.has(action.name)) {
       return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more sandbox edits.' } };
     }
@@ -181,6 +182,91 @@ export class AICommandSession {
             qualityRequired: true,
           });
           break;
+        case 'drawing.model.get':
+          result = doc.getDrawingModel() || createDrawingModel({ sheet: { width: doc.width, height: doc.height } });
+          break;
+        case 'drawing.sheet.get': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          result = { sheet: model.sheet, presets: DRAWING_SHEET_PRESETS, palette: model.palette };
+          break;
+        }
+        case 'drawing.sheet.configure': {
+          const current = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const next = normalizeDrawingModel({ ...current, sheet: { ...current.sheet, ...(action.sheet || {}) } }, { width: doc.width, height: doc.height });
+          if (next.sheet.width !== doc.width || next.sheet.height !== doc.height) throw new Error('Drawing sheet metadata cannot change raster canvas dimensions; resize the document first.');
+          doc.setDrawingModel(next);
+          result = { sheet: next.sheet };
+          break;
+        }
+        case 'drawing.palette.get':
+          result = { palette: SEMANTIC_PALETTE, active: normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height }).palette };
+          break;
+        case 'drawing.object.inspect': {
+          const layer = action.layerId ? doc.layers.find(item => item.id === action.layerId) : doc.activeLayer;
+          if (!layer) throw new Error('Target layer was not found.');
+          const pixels = action.merged ? doc.composite() : layer.pixels;
+          result = inspectRasterObject({ pixels, width: doc.width, height: doc.height, objectId: action.objectId || null, x: action.x == null ? null : integer(action.x, 'x'), y: action.y == null ? null : integer(action.y, 'y'), gridStep: action.gridStep ?? 8 });
+          break;
+        }
+        case 'drawing.layer.inspect': {
+          const layer = action.layerId ? doc.layers.find(item => item.id === action.layerId) : doc.activeLayer;
+          if (!layer) throw new Error('Target layer was not found.');
+          result = inspectLayerPixels(layer, doc.width, doc.height, { gridStep: action.gridStep ?? 8, objectId: action.objectId || null });
+          break;
+        }
+        case 'drawing.reference.extract_line_guide': {
+          const source = deserializePixels(action.pixels);
+          const width = integer(action.width, 'width'), height = integer(action.height, 'height');
+          if (width !== doc.width || height !== doc.height) throw new Error('Line-guide dimensions must match the current canvas.');
+          const guide = extractLineGuide({ pixels: source, width, height, threshold: action.threshold ?? 28, detail: action.detail ?? 1, invert: action.invert === true });
+          const layer = doc.addLayer(String(action.layerName || 'Reference Guide').slice(0, 180));
+          layer.opacity = Math.max(0, Math.min(1, Number(action.opacity ?? 0.35)));
+          layer.visible = action.visible !== false;
+          layer.locked = true;
+          doc.setLayerPixels(layer.id, guide.pixels);
+          result = { layerId: layer.id, name: layer.name, opacity: layer.opacity, width, height, threshold: guide.threshold, detail: guide.detail };
+          break;
+        }
+        case 'drawing.reference.create': {
+          const project = doc.toJSON();
+          const current = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const entry = action.entry || buildReferenceFromProject({ projectId: project.id, project, name: action.name || 'Drawing reference' });
+          const next = registerReferenceEntry(current, entry);
+          doc.setDrawingModel(next);
+          result = { reference: getReferenceEntry(next, entry.id || next.referenceCenter.activeEntryId), referenceCenter: next.referenceCenter };
+          break;
+        }
+        case 'drawing.reference.list': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          result = { entries: model.referenceCenter.entries, activeEntryId: model.referenceCenter.activeEntryId };
+          break;
+        }
+        case 'drawing.reference.get': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const entry = getReferenceEntry(model, action.referenceId);
+          if (!entry) throw new Error('Reference entry was not found.');
+          result = { reference: entry };
+          break;
+        }
+        case 'drawing.reference.apply': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const entry = getReferenceEntry(model, action.referenceId);
+          if (!entry) throw new Error('Reference entry was not found.');
+          const next = applyReferenceToDrawingModel(model, entry);
+          doc.setDrawingModel(next);
+          result = { applied: true, referenceId: entry.id, sheet: next.sheet, objects: next.objects };
+          break;
+        }
+        case 'drawing.reference.remove': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const entries = model.referenceCenter.entries.filter(entry => entry.id !== action.referenceId);
+          if (entries.length === model.referenceCenter.entries.length) throw new Error('Reference entry was not found.');
+          model.referenceCenter.entries = entries;
+          model.referenceCenter.activeEntryId = entries.at(-1)?.id || null;
+          doc.setDrawingModel(model);
+          result = { removed: true, referenceId: action.referenceId, activeEntryId: model.referenceCenter.activeEntryId };
+          break;
+        }
         case 'document.get_summary':
           result = {
             name: doc.name, width: doc.width, height: doc.height,
