@@ -184,6 +184,36 @@ export function normalizeDrawingModel(model, { width = 128, height = 128 } = {})
   };
 }
 
+export function createAlphaComponentSelection({ pixels, width, height, x, y } = {}) {
+  if (!(pixels instanceof Uint8Array || pixels instanceof Uint8ClampedArray) || pixels.length !== width * height * 4) throw new TypeError('RGBA pixels must match width × height × 4.');
+  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= width || y >= height) throw new RangeError('Selection point is outside canvas bounds.');
+  const mask = new Uint8Array(width * height);
+  const seed = (y * width + x) * 4;
+  if (!pixels[seed + 3]) return { mask, selectedPixels: 0, bounds: null };
+  const queue = new Int32Array(width * height);
+  let head = 0, tail = 0, selectedPixels = 0;
+  queue[tail++] = y * width + x; mask[y * width + x] = 1;
+  let minX = width, minY = height, maxX = -1, maxY = -1;
+  while (head < tail) {
+    const p = queue[head++], px = p % width, py = Math.floor(p / width);
+    if (!pixels[p * 4 + 3]) continue;
+    selectedPixels++; minX=Math.min(minX,px); minY=Math.min(minY,py); maxX=Math.max(maxX,px); maxY=Math.max(maxY,py);
+    const add = next => {
+      if (next < 0 || next >= mask.length || mask[next] || !pixels[next * 4 + 3]) return;
+      mask[next] = 1; queue[tail++] = next;
+    };
+    if (px > 0) add(p - 1);
+    if (px + 1 < width) add(p + 1);
+    if (py > 0) add(p - width);
+    if (py + 1 < height) add(p + width);
+  }
+  return {
+    mask,
+    selectedPixels,
+    bounds: maxX < 0 ? null : { x:minX, y:minY, width:maxX-minX+1, height:maxY-minY+1 },
+  };
+}
+
 export function inspectRasterObject({ pixels, width, height, objectId = null, x = null, y = null, gridStep = 8 } = {}) {
   if (!((pixels instanceof Uint8Array || pixels instanceof Uint8ClampedArray)) || pixels.length !== width * height * 4) throw new TypeError('RGBA pixels must match width × height × 4.');
   const component = x !== null && y !== null ? connectedComponent(pixels, width, height, x, y) : pixelBounds(pixels, width, height);
