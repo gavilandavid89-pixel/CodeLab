@@ -2421,6 +2421,43 @@ async function processCommand(command) {
       });
       return;
     }
+    case 'pixelforge_intelligence': {
+      assertProjectId(payload.project_id);
+      const loaded = await loadProject(payload.project_id);
+      const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
+      const operation = String(payload.operation || 'model');
+      const actionByOperation = {
+        model: { name: 'drawing.model.get' },
+        sheet: { name: 'drawing.sheet.get' },
+        object: {
+          name: 'drawing.object.inspect',
+          layerId: payload.layer_id,
+          x: payload.x,
+          y: payload.y,
+          includeCoordinates: payload.include_coordinates !== false,
+          gridStep: payload.grid_step ?? 8,
+        },
+        layer: {
+          name: 'drawing.layer.inspect',
+          layerId: payload.layer_id,
+          includeCoordinates: payload.include_coordinates !== false,
+          gridStep: payload.grid_step ?? 8,
+        },
+        references: { name: 'drawing.reference.list' },
+        reference: { name: 'drawing.reference.get', referenceId: payload.reference_id },
+      };
+      const action = actionByOperation[operation];
+      if (!action) throw new Error('Unsupported intelligence operation.');
+      const result = runtime.execute(action);
+      if (!result.ok) throw new Error(result.error?.message || 'PixelForge intelligence operation failed.');
+      await finish(command.command_id, 'succeeded', {
+        projectId: payload.project_id,
+        serverRevision: loaded.serverRevision,
+        operation,
+        result: result.result,
+      });
+      return;
+    }
     case 'pixelforge_animation_frame_context': {
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id);
