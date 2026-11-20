@@ -275,6 +275,35 @@ export function extractLineGuide({ pixels, width, height, threshold = 28, detail
   return { pixels: out, width, height, threshold, detail: scale, mimeType: 'image/line-guide' };
 }
 
+export function analyzeMotion({ beforePixels, afterPixels, width, height, gridStep = 8 } = {}) {
+  if (!(beforePixels instanceof Uint8Array || beforePixels instanceof Uint8ClampedArray) ||
+      !(afterPixels instanceof Uint8Array || afterPixels instanceof Uint8ClampedArray) ||
+      beforePixels.length !== width * height * 4 || afterPixels.length !== width * height * 4) {
+    throw new TypeError('Motion frames must contain matching RGBA pixel buffers.');
+  }
+  const before = inspectRasterObject({ pixels: beforePixels, width, height, gridStep });
+  const after = inspectRasterObject({ pixels: afterPixels, width, height, gridStep });
+  if (!before.found || !after.found) return { found: false, reason: 'one_or_both_frames_have_no_opaque_pixels' };
+  const dx = after.centroid.x - before.centroid.x, dy = after.centroid.y - before.centroid.y;
+  return {
+    found: true,
+    displacement: { dx, dy, distance: Math.hypot(dx, dy), direction: Math.atan2(dy, dx) * 180 / Math.PI },
+    before: { bounds: before.bounds, centroid: before.centroid, proportions: before.proportions },
+    after: { bounds: after.bounds, centroid: after.centroid, proportions: after.proportions },
+    delta: {
+      width: after.bounds.width - before.bounds.width,
+      height: after.bounds.height - before.bounds.height,
+      widthRatio: after.proportions.canvas.widthRatio - before.proportions.canvas.widthRatio,
+      heightRatio: after.proportions.canvas.heightRatio - before.proportions.canvas.heightRatio,
+    },
+    interpretation: {
+      translated: Math.hypot(dx, dy) > 0,
+      grew: after.bounds.width > before.bounds.width || after.bounds.height > before.bounds.height,
+      shrank: after.bounds.width < before.bounds.width || after.bounds.height < before.bounds.height,
+    },
+  };
+}
+
 export function registerReferenceEntry(model, entry) {
   const normalized = {
     id: String(entry.id || crypto.randomUUID()),
