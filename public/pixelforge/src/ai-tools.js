@@ -231,8 +231,8 @@ export class AICommandSession {
           const layer = doc.addLayer(String(action.layerName || 'Reference Guide').slice(0, 180));
           layer.opacity = Math.max(0, Math.min(1, Number(action.opacity ?? 0.35)));
           layer.visible = action.visible !== false;
-          layer.locked = true;
           doc.setLayerPixels(layer.id, guide.pixels);
+          layer.locked = true;
           result = { layerId: layer.id, name: layer.name, opacity: layer.opacity, width, height, threshold: guide.threshold, detail: guide.detail };
           break;
         }
