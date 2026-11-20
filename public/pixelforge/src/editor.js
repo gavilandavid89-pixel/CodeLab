@@ -2136,7 +2136,7 @@ $('#import-file').addEventListener('change', async event => {
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
     doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
-    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); status('Import complete and saved to your CodeLab account', 'success');
+    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 });
