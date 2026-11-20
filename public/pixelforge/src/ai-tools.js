@@ -276,6 +276,34 @@ export class AICommandSession {
           result = { copied: true, referenceId: entry.id, partId: part.id, sourceLayerId: part.layerId, targetLayerId: target.id, targetLayerName: target.name, source: 'reference-center' };
           break;
         }
+        case 'drawing.reference.copy_frame': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const entry = getReferenceEntry(model, action.referenceId);
+          if (!entry) throw new Error('Reference entry was not found.');
+          const frame = entry.frames.find(item => item.index === integer(action.frameIndex, 'frameIndex'));
+          if (!frame) throw new Error('Reference frame was not found.');
+          const targets = [];
+          for (const source of frame.layers || []) {
+            if (typeof source.pixels !== 'string') continue;
+            const target = doc.addLayer(String(action.layerNamePrefix || entry.name).slice(0, 150) + ' · ' + String(source.layerId).slice(0, 24));
+            doc.setLayerPixels(target.id, deserializePixels(source.pixels));
+            targets.push({ sourceLayerId: source.layerId, targetLayerId: target.id, targetLayerName: target.name });
+          }
+          if (!targets.length) throw new Error('Reference frame has no packaged raster layers.');
+          result = { copied: true, referenceId: entry.id, frameIndex: frame.index, targets, source: 'reference-center' };
+          break;
+        }
+        case 'drawing.layer.context.set': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const previousOpacity = Math.max(0, Math.min(1, Number(action.previousOpacity ?? 0.25)));
+          const nextOpacity = Math.max(0, Math.min(1, Number(action.nextOpacity ?? 0.15)));
+          const previousCount = Math.max(0, Math.min(32, integer(action.previousCount ?? 1, 'previousCount')));
+          const nextCount = Math.max(0, Math.min(32, integer(action.nextCount ?? 1, 'nextCount')));
+          model.referenceCenter.viewContext = { previousOpacity, nextOpacity, previousCount, nextCount };
+          doc.setDrawingModel(model);
+          result = { viewContext: model.referenceCenter.viewContext, activeLayerId: doc.activeLayerId, rule: 'active layer remains at full visual emphasis; surrounding layers use contextual opacity' };
+          break;
+        }
         case 'drawing.reference.copy_frame_layer': {
           const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
           const entry = getReferenceEntry(model, action.referenceId);
