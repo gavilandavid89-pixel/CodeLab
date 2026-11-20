@@ -264,13 +264,27 @@ export class AICommandSession {
           const entry = getReferenceEntry(model, action.referenceId);
           if (!entry) throw new Error('Reference entry was not found.');
           const part = entry.parts.find(item => item.id === action.partId || item.name === action.partName);
-          if (!part || !part.layerId) throw new Error('Reference part does not point to a source layer.');
-          const source = doc.layers.find(layer => layer.id === part.layerId);
-          if (!source) throw new Error('Reference source layer is no longer present in this project.');
-          const duplicate = doc.duplicateLayer(source.id, action.layerName || source.name + ' copy');
-          if (action.opacity !== undefined) doc.setLayerOpacity(duplicate.id, Number(action.opacity));
-          if (action.locked !== undefined) doc.setLayerLocked(duplicate.id, Boolean(action.locked));
-          result = { copied: true, referenceId: entry.id, partId: part.id, sourceLayerId: source.id, targetLayerId: duplicate.id, targetLayerName: duplicate.name };
+          if (!part) throw new Error('Reference part was not found.');
+          if (typeof part.pixels !== 'string') throw new Error('Reference part has no packaged raster data.');
+          const targetName = String(action.layerName || part.name || 'Reference part').slice(0, 180);
+          const target = doc.addLayer(targetName);
+          doc.setLayerPixels(target.id, deserializePixels(part.pixels));
+          if (action.opacity !== undefined) doc.setLayerOpacity(target.id, Number(action.opacity));
+          if (action.locked !== undefined) doc.setLayerLocked(target.id, Boolean(action.locked));
+          result = { copied: true, referenceId: entry.id, partId: part.id, sourceLayerId: part.layerId, targetLayerId: target.id, targetLayerName: target.name, source: 'reference-center' };
+          break;
+        }
+        case 'drawing.reference.copy_frame_layer': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const entry = getReferenceEntry(model, action.referenceId);
+          if (!entry) throw new Error('Reference entry was not found.');
+          const frame = entry.frames.find(item => item.index === integer(action.frameIndex, 'frameIndex'));
+          if (!frame) throw new Error('Reference frame was not found.');
+          const source = frame.layers.find(item => item.layerId === action.layerId || item.name === action.layerName);
+          if (!source || typeof source.pixels !== 'string') throw new Error('Reference frame layer has no packaged raster data.');
+          const target = doc.addLayer(String(action.targetLayerName || action.layerName || action.layerId || 'Reference frame layer').slice(0, 180));
+          doc.setLayerPixels(target.id, deserializePixels(source.pixels));
+          result = { copied: true, referenceId: entry.id, frameIndex: frame.index, sourceLayerId: source.layerId, targetLayerId: target.id, targetLayerName: target.name, source: 'reference-center' };
           break;
         }
         case 'drawing.reference.apply': {
