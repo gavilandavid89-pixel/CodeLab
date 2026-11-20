@@ -128,7 +128,27 @@ nueva petición si hace falta
 ```
 
 **Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
-### Puesta en marcha bajo demanda del bridge
+### Puesta en marcha bajo demanda del bridge### Señal final de apagado del bridge
+
+El consumidor nativo mantiene en Neon la tabla `codelab_agent_bridge_state` y emite una **última señal persistente antes de apagarse**. La señal usa `state=sleeping`, `wake_required=true`, `wake_reason` y un `signal_version` monotónico. Así el agente puede consultar el estado antes de crear la siguiente orden y, si `wake_required=true`, incluir `wake:true` en el payload de esa orden.
+
+El servidor también escucha las inserciones/transiciones a `queued` de `codelab_agent_commands`. Cuando llega una orden, puede levantar el bridge bajo demanda; no se utiliza un temporizador para mantenerlo despierto. Al arrancar, el bridge marca `wake_required=false` y vuelve a estado `running`.
+
+El orden recomendado queda:
+
+```text
+CodeLab → señal final en Neon (sleeping + wake_required=true)
+       ↓
+Agente consulta estado
+       ↓
+Nueva orden Neon (+ wake:true si corresponde)
+       ↓
+Neon → CodeLab wake → ejecución
+       ↓
+CodeLab → resultado/evidencia → Neon
+```
+
+La señal es de coordinación, no reemplaza el estado persistente de proyectos ni convierte el vídeo de evidencia en fuente de verdad.
 
 El consumidor `agent-bridge-worker.mjs` **no se levanta por intervalo ni por cron**. El servidor expone una operación controlada para que el agente lo inicie únicamente cuando vaya a enviar/ejecutar trabajos por Neon:
 
