@@ -128,6 +128,16 @@ nueva petición si hace falta
 ```
 
 **Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
+### Puesta en marcha bajo demanda del bridge
+
+El consumidor `agent-bridge-worker.mjs` **no se levanta por intervalo ni por cron**. El servidor expone una operación controlada para que el agente lo inicie únicamente cuando vaya a enviar/ejecutar trabajos por Neon:
+
+`POST /api/agent/bridge/ensure`
+
+Requiere el header `x-codelab-agent-bridge-token` con `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`. Si ya está activo, la operación no crea otro proceso; devuelve su estado. Si el proceso termina, no se relanza mediante un temporizador: el siguiente `ensure` solicitado por el agente vuelve a levantarlo.
+
+Esto mantiene separado el **control de ciclo de vida** del consumidor de cualquier polling de aplicación. No hay una pulsación periódica del agente para mantenerlo despierto.
+
 
 ## Login OAuth (recomendado en Render)
 
@@ -161,6 +171,7 @@ Con OAuth, cada usuario obtiene un **workspace fijo** ligado a su cuenta. Así p
 | `CODELAB_MAX_BODY_BYTES` | Tamaño máximo de solicitud JSON en bytes (default 10 MiB) |
 | `CODELAB_MAX_PROJECTS` | Máximo de proyectos por workspace (default 50) |
 | `CODELAB_UPSTREAM_TIMEOUT_MS` | Tiempo máximo de inactividad para llamadas HTTPS a proveedores (default 60000; entre 1000 y 300000 ms) |
+| `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` | Secreto que autoriza al agente a ejecutar la operación explícita `POST /api/agent/bridge/ensure` para levantar el consumidor Neon → CodeLab bajo demanda |
 | `NODE_ENV` | `production` |
 
 Si no configuras OAuth, la UI ofrece **perfil demo local** (sin login real).
