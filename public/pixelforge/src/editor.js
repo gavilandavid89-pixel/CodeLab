@@ -11,6 +11,7 @@ import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
+import { createReferenceCenterUI } from './reference-center-ui.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -32,6 +33,22 @@ let shapeGesture = null, gradientGesture = null, symmetryMode = 0;
 let cursorMode = false, cursorGesturePointerId = null, cursorGestureLast = null, cursorGestureOrigin = null, cursorGestureStartedOnControl = false, cursorGestureControlTarget = null, cursorGestureSuppressClick = false, cursorDrawPointerId = null;
 let virtualCursorPointerId = null, virtualCursorScreen = null, virtualCursorPoint = null, virtualCursorVisible = false, virtualCursorCanDraw = false;
 let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = Promise.resolve(), flushInProgress = false, flushPromise = null, renderQueued = false, previewReady = false;
+
+let referenceCenterUI = null;
+function initReferenceCenterUI() {
+  if (referenceCenterUI) return referenceCenterUI;
+  referenceCenterUI = createReferenceCenterUI({
+    getDocument: () => doc,
+    getAnimation: () => animation,
+    setAnimation: value => { animation = value; animationLoop = value?.loop !== false; renderAnimationTimeline(); },
+    save: () => saveProject(doc.toJSON()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
+    render: () => render(),
+    renderLayers: () => renderLayers(),
+    status: (message, kind) => status(message, kind),
+    onDocumentChanged: () => { updateTitle(); fitCanvas(); }
+  });
+  return referenceCenterUI;
+}
 
 // Palette preferences are local to this browser but namespaced by the authenticated
 // CodeLab identity, so switching accounts on a shared device cannot expose another
@@ -2303,6 +2320,7 @@ window.addEventListener('blur', () => {
 });
 async function boot() {
   try {
+    initReferenceCenterUI();
     const params = new URLSearchParams(window.location.search);
     let pixelForgeMode = { guestMode: false };
     try {
