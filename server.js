@@ -622,7 +622,13 @@ async function ensurePixelForgeTable() {
     ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
   `);
   await pixelForgeUploads.ensureSchema(accountPool);
-  await neonEvidence.ensureEvidenceSchema(accountPool);
+  // Evidence is an auxiliary capability: a storage/schema issue must not take
+  // the PixelForge editor itself offline. Saves remain durable in PostgreSQL.
+  try {
+    await neonEvidence.ensureEvidenceSchema(accountPool);
+  } catch (error) {
+    console.warn('PixelForge Neon evidence schema unavailable; continuing without evidence events:', error.message);
+  }
   pixelForgeTableReady = true;
 }
 
