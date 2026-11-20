@@ -121,6 +121,21 @@ async function ensureAgentBridgeWakeListener() {
       FOR EACH ROW EXECUTE FUNCTION public.codelab_agent_bridge_wake()
     `);
     await client.query('LISTEN codelab_agent_bridge_wake');
+    // LISTEN has an intentional startup race: a notification committed while the
+    // listener is being registered may be missed. Reconcile durable queued state
+    // once after LISTEN is active, then rely only on notifications afterward.
+    const pendingWake = await client.query(
+      "SELECT command_id, workspace_id FROM public.codelab_agent_commands WHERE status='queued' AND expires_at > now() AND COALESCE((payload->>'wake')::boolean, false) = true ORDER BY created_at LIMIT 1"
+    );
+    if (pendingWake.rowCount) {
+      console.log('[CodeLab Native Bridge] durable wake state found at listener startup:', pendingWake.rows[0].command_id);
+      try {
+        const status = startAgentBridge();
+        console.log('[CodeLab Native Bridge] startup reconciliation bridge state:', status);
+      } catch (error) {
+        console.error('[CodeLab Native Bridge] startup wake reconciliation failed:', error.message);
+      }
+    }
     client.on('notification', message => {
       if (message.channel !== 'codelab_agent_bridge_wake' || agentBridgeStopping) return;
       try {
