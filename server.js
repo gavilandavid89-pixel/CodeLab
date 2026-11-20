@@ -2808,7 +2808,7 @@ const server = http.createServer(async (req, res) => {
       // Stream the actual persisted video bytes (not only the evidence metadata).
       // Normal requests use the user's session; the temporary debug header is enabled
       // only during an internal verification and should be unset afterwards.
-      const neonEvidenceVideoMatch = pathname.match(/^\\/api\\/pixelforge\\/evidence\\/([0-9a-f-]{36})\\/video$/i);
+      const neonEvidenceVideoMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})\/video$/i);
       if (neonEvidenceVideoMatch && ['GET', 'HEAD'].includes(req.method)) {
         const user = await getSessionUser(req);
         const suppliedDebugToken = String(req.headers['x-codelab-evidence-debug-token'] || '');
