@@ -2118,14 +2118,17 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
   const eventId = String(payload.event_id || '');
   if (!/^[0-9a-f-]{36}$/i.test(eventId)) throw new Error('A valid evidence event_id is required.');
   const result = await pool.query(
-    'SELECT video_data, video_mime_type, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
+    'SELECT video_mime_type, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
     [workspaceId, eventId]
   );
   const evidence = result.rows[0];
-  if (!evidence || !evidence.video_data) throw new Error('Video evidence bytes were not found in Neon.');
-  const videoBytes = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-evidence-preview-'));
+  if (!evidence) throw new Error('Video evidence metadata was not found in Neon.');
+
+  const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
+    ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
+  const streamUrl = baseUrl + '/api/pixelforge/evidence/' + encodeURIComponent(eventId) + '/video';
   let browser;
+  let context;
   try {
     chromium.setGraphicsMode = false;
     browser = await playwrightChromium.launch({
@@ -2134,9 +2137,29 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
       headless: true,
       timeout: 60000
     });
-    const page = await browser.newPage({ viewport: { width: 640, height: 480 }, deviceScaleFactor: 1 });
+    context = await browser.newContext({ viewport: { width: 640, height: 480 }, deviceScaleFactor: 1 });
+    const authPage = await context.newPage();
+    const handoff = await mintNativeAdminHandoff();
+    const handoffResponse = await authPage.goto(handoff.handoffUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (!handoffResponse || !handoffResponse.ok()) {
+      throw new Error('Evidence preview ADMIN handoff returned HTTP ' + (handoffResponse?.status() || 'no response'));
+    }
+    await authPage.close().catch(() => {});
+
+    // Fetch the actual authenticated streaming endpoint, not the database BYTEA
+    // column. This verifies the same route that a signed-in user opens.
+    const page = await context.newPage();
+    const streamResponse = await page.goto(streamUrl, { waitUntil: 'commit', timeout: 30000 });
+    if (!streamResponse || !streamResponse.ok()) {
+      throw new Error('Authenticated video stream returned HTTP ' + (streamResponse?.status() || 'no response'));
+    }
+    const videoBytes = await streamResponse.body();
+    if (!Buffer.isBuffer(videoBytes) || videoBytes.length < 1000) {
+      throw new Error('Authenticated video stream returned an empty or invalid body.');
+    }
+    const sourceMimeType = String(streamResponse.headers()['content-type'] || evidence.video_mime_type || 'video/webm');
     await page.setContent('<!doctype html><html><body style="margin:0;background:#111;display:grid;place-items:center;width:640px;height:480px"><video id="evidence" muted playsinline style="width:640px;height:480px;object-fit:contain"></video></body></html>');
-    const dataUrl = 'data:' + (evidence.video_mime_type || 'video/webm') + ';base64,' + videoBytes.toString('base64');
+    const dataUrl = 'data:' + sourceMimeType + ';base64,' + videoBytes.toString('base64');
     await page.evaluate(src => {
       const video = document.getElementById('evidence');
       video.src = src;
@@ -2174,17 +2197,19 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
       eventId,
       projectId: evidence.project_id,
       revision: evidence.revision,
-      sourceMimeType: evidence.video_mime_type || 'video/webm',
-      sourceBytes: videoBytes.length,
+      streamUrl,
+      streamStatus: streamResponse.status(),
+      streamContentType: sourceMimeType,
+      streamBytes: videoBytes.length,
       sourceSha256: createHash('sha256').update(videoBytes).digest('hex'),
-      decodedBy: 'Playwright Chromium HTMLVideoElement',
+      decodedBy: 'authenticated HTTP stream → Playwright Chromium HTMLVideoElement',
       videoInfo,
       decodedFrameCount: frames.length,
       frames
     };
   } finally {
+    if (context) await context.close().catch(() => {});
     if (browser) await browser.close().catch(() => {});
-    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
