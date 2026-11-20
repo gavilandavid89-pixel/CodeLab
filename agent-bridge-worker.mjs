@@ -2084,9 +2084,7 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
   const eventId = String(payload.event_id || '');
   if (!/^[0-9a-f-]{36}$/i.test(eventId)) throw new Error('A valid evidence event_id is required.');
   const result = await pool.query(
-    \`SELECT video_data, video_mime_type, project_id, revision
-     FROM codelab_pixelforge_change_events
-     WHERE workspace_id = $1 AND event_id = $2\`,
+    'SELECT video_data, video_mime_type, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
     [workspaceId, eventId]
   );
   const evidence = result.rows[0];
@@ -2113,7 +2111,7 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
     await page.waitForFunction(() => {
       const video = document.getElementById('evidence');
       return video && video.readyState >= 2 && Number.isFinite(video.duration) && video.videoWidth > 0;
-    }, { timeout: 30000 });
+    }, null, { timeout: 30000 });
     const videoInfo = await page.evaluate(() => {
       const video = document.getElementById('evidence');
       return { duration: video.duration, width: video.videoWidth, height: video.videoHeight, readyState: video.readyState };
