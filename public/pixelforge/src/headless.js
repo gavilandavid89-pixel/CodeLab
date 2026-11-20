@@ -22,7 +22,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
   proposalApprovalRequired: true,
   authenticatedPersistence: true,
   rasterActions: Object.freeze([
-    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'canvas.get_pixel',
+    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'drawing.model.get', 'drawing.sheet.get', 'drawing.sheet.configure', 'drawing.palette.get', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.reference.extract_line_guide', 'drawing.reference.create', 'drawing.reference.list', 'drawing.reference.get', 'drawing.reference.apply', 'drawing.reference.remove', 'canvas.get_pixel',
     'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
     'layer.rename', 'layer.set_opacity', 'layer.set_visibility', 'layer.set_locked',
     'layer.duplicate', 'layer.delete', 'canvas.fill', 'canvas.clear_region',
