@@ -2521,7 +2521,7 @@ async function main() {
             }), workspaceId]
           ).catch(() => {});
         }
-      }      } finally {
+      } finally {
         clearInterval(heartbeatTimer);
       }
     } catch (error) {
