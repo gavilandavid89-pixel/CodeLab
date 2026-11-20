@@ -476,8 +476,63 @@ export class AICommandSession {
           }), pattern, scale };
           break;
         }
-        case 'canvas.clear_region':
+        case 'canvas.erase_pixel': {
+          coordinate(doc, action.x, action.y);
+          const size = action.size ?? 1;
+          integer(size, 'size');
+          if (size < 1 || size > 128) throw new RangeError('Erase size must be between 1 and 128 pixels.');
+          const stroke = doc.beginStroke({ size, opacity: action.opacity ?? 1, hardness: action.hardness ?? 1, shape: action.shape ?? 'square', mode: 'erase' });
+          try {
+            doc.strokeTo(stroke, action.x, action.y);
+            result = { changed: doc.endStroke(stroke), mode: 'pixel', x: action.x, y: action.y, size };
+          } catch (error) {
+            doc.endStroke(stroke, { commit: false });
+            throw error;
+          }
+          break;
+        }
+        case 'canvas.erase_line': {
+          coordinate(doc, action.x0, action.y0); coordinate(doc, action.x1, action.y1);
+          const size = action.size ?? 1;
+          integer(size, 'size');
+          if (size < 1 || size > 128) throw new RangeError('Erase size must be between 1 and 128 pixels.');
+          const stroke = doc.beginStroke({ size, opacity: action.opacity ?? 1, hardness: action.hardness ?? 1, shape: action.shape ?? 'square', mode: 'erase' });
+          try {
+            doc.strokeTo(stroke, action.x0, action.y0);
+            doc.strokeTo(stroke, action.x1, action.y1);
+            result = { changed: doc.endStroke(stroke), mode: 'line', bounds: { x: Math.min(action.x0, action.x1), y: Math.min(action.y0, action.y1), width: Math.abs(action.x1 - action.x0) + 1, height: Math.abs(action.y1 - action.y0) + 1 } };
+          } catch (error) {
+            doc.endStroke(stroke, { commit: false });
+            throw error;
+          }
+          break;
+        }
+        case 'canvas.erase_direction': {
+          coordinate(doc, action.x, action.y);
+          const length = integer(action.length, 'length');
+          const angle = Number(action.angleDeg ?? 0) * Math.PI / 180;
+          const endX = Math.round(action.x + Math.cos(angle) * Math.max(0, length - 1));
+          const endY = Math.round(action.y + Math.sin(angle) * Math.max(0, length - 1));
+          coordinate(doc, endX, endY);
+          const size = action.size ?? 1;
+          integer(size, 'size');
+          if (size < 1 || size > 128) throw new RangeError('Erase size must be between 1 and 128 pixels.');
+          const stroke = doc.beginStroke({ size, opacity: action.opacity ?? 1, hardness: action.hardness ?? 1, shape: action.shape ?? 'square', mode: 'erase' });
+          try {
+            doc.strokeTo(stroke, action.x, action.y);
+            doc.strokeTo(stroke, endX, endY);
+            result = { changed: doc.endStroke(stroke), mode: 'direction', start: { x: action.x, y: action.y }, end: { x: endX, y: endY }, angleDeg: Number(action.angleDeg ?? 0), length };
+          } catch (error) {
+            doc.endStroke(stroke, { commit: false });
+            throw error;
+          }
+          break;
+        }
+        case 'canvas.erase_region':
           rectangle(doc, action.x, action.y, action.width, action.height);
+          result = { changedPixels: doc.clearRect(action.x, action.y, action.width, action.height), mode: 'region' };
+          break;
+                  rectangle(doc, action.x, action.y, action.width, action.height);
           result = { changedPixels: doc.clearRect(action.x, action.y, action.width, action.height) };
           break;
         case 'canvas.copy_region': {
