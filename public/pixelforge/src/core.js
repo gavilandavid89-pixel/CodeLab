@@ -713,6 +713,9 @@ export class RasterDocument {
     this.layers = snapshot.layers.map(cloneLayer);
     this.activeLayerId = snapshot.activeLayerId;
     if (typeof snapshot.name === 'string') this.name = snapshot.name;
+    this.drawingModel = snapshot.drawingModel === null || snapshot.drawingModel === undefined
+      ? null
+      : JSON.parse(JSON.stringify(snapshot.drawingModel));
     this.selectionMask = null;
     this.compositeCache = new Uint8ClampedArray(this.width * this.height * 4);
     this.compositeDirtyTiles = new Set();
@@ -728,10 +731,12 @@ export class RasterDocument {
     const before = {
       width: this.width, height: this.height, name: this.name,
       activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer),
+      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
     };
     const after = {
       width: candidate.width, height: candidate.height, name: candidate.name,
       activeLayerId: candidate.activeLayerId, layers: candidate.layers.map(cloneLayer),
+      drawingModel: candidate.drawingModel === null ? null : JSON.parse(JSON.stringify(candidate.drawingModel)),
     };
     const beforeById = new Map(before.layers.map(layer => [layer.id, layer]));
     const afterById = new Map(after.layers.map(layer => [layer.id, layer]));
@@ -774,7 +779,8 @@ export class RasterDocument {
     }
     const structuralChanges = before.width !== after.width || before.height !== after.height ||
       before.layers.length !== after.layers.length || before.layers.some((layer, index) => after.layers[index]?.id !== layer.id);
-    const stateChanged = changedLayers > 0 || changedPixels > 0 || before.name !== after.name ||
+    const drawingModelChanged = JSON.stringify(before.drawingModel) !== JSON.stringify(after.drawingModel);
+    const stateChanged = changedLayers > 0 || changedPixels > 0 || drawingModelChanged || before.name !== after.name ||
       before.activeLayerId !== after.activeLayerId;
     if (!stateChanged) return { changedPixels: 0, changedLayers: 0, structuralChanges: false };
 
