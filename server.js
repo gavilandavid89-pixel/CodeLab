@@ -103,6 +103,31 @@ async function ensureAgentBridgeWakeListener() {
       )
     `);
     await client.query(`
+      DO $
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'public.codelab_agent_commands'::regclass
+            AND conname = 'codelab_agent_commands_action_check'
+        ) THEN
+          ALTER TABLE public.codelab_agent_commands DROP CONSTRAINT codelab_agent_commands_action_check;
+        END IF;
+        ALTER TABLE public.codelab_agent_commands
+          ADD CONSTRAINT codelab_agent_commands_action_check
+          CHECK (action = ANY (ARRAY[
+            'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
+            'pixelforge_propose','pixelforge_approve','pixelforge_discard',
+            'pixelforge_animation_frame_context','pixelforge_export_image',
+            'pixelforge_capture_interface','pixelforge_export_animation_video',
+            'pixelforge_intelligence','codelab_project_create',
+            'codelab_project_convert_to_web','codelab_project_inspect',
+            'codelab_project_connect','codelab_project_get_code',
+            'codelab_project_update_code','codelab_project_capture_png',
+            'codelab_project_record_video','codelab_ui_execute'
+          ]));
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $`);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS public.codelab_agent_bridge_state (
         state_id text PRIMARY KEY,
         workspace_id text NOT NULL,
