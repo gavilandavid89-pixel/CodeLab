@@ -71,3 +71,23 @@ test('headless drawing metadata survives proposal acceptance and project reload'
   assert.equal(listed.ok, true);
   assert.equal(listed.result.entries[0].name, 'Soldier Center');
 });
+
+test('headless tools support line-guide layers and frame motion analysis', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 8, height: 8, name: 'Guide and motion' });
+  const source = new Uint8Array(8 * 8 * 4);
+  for (let y = 2; y < 6; y++) for (let x = 2; x < 6; x++) {
+    const i = (y * 8 + x) * 4; source[i] = source[i + 1] = source[i + 2] = 255; source[i + 3] = 255;
+  }
+  const b64 = Buffer.from(source).toString('base64');
+  const guide = runtime.execute({ name: 'drawing.reference.extract_line_guide', pixels: b64, width: 8, height: 8, threshold: 10 });
+  assert.equal(guide.ok, true);
+  assert.equal(guide.result.name, 'Reference Guide');
+
+  assert.equal(runtime.execute({ name: 'animation.frame.capture_document', frameName: 'A' }).ok, true);
+  assert.equal(runtime.execute({ name: 'canvas.draw_stroke', points: [{ x: 5, y: 2 }, { x: 7, y: 2 }], color: '#FFFFFF', size: 1 }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.capture_document', frameName: 'B' }).ok, true);
+  const motion = runtime.execute({ name: 'drawing.motion.analyze', beforeIndex: 0, afterIndex: 1 });
+  assert.equal(motion.ok, true);
+  assert.equal(motion.result.found, true);
+  assert.ok(Number.isFinite(motion.result.displacement.dx));
+});
