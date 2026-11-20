@@ -238,6 +238,8 @@ export class AICommandSession {
           result = { layerId: layer.id, name: layer.name, opacity: layer.opacity, locked: layer.locked, width, height, threshold: guide.threshold, detail: guide.detail };
           break;
         }
+        case 'drawing.reference.package_current':
+          throw new Error('drawing.reference.package_current is available only in the headless project runtime.');
         case 'drawing.reference.create': {
           const project = doc.toJSON();
           const current = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
