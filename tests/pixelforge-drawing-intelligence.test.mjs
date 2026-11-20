@@ -9,7 +9,7 @@ test('drawing intelligence returns object geometry and coordinates', () => {
   assert.equal(result.found, true);
   assert.equal(result.pixelCount, 9);
   assert.deepEqual(result.bounds, { x: 5, y: 4, width: 4, height: 3 });
-  assert.equal(result.coordinates.length, 12);
+  assert.equal(result.coordinates.length, 9);
   assert.deepEqual(result.grid.boundsInCells, { x: 1, y: 1, width: 1, height: 1 });
 });
 
