@@ -2811,7 +2811,7 @@ const server = http.createServer(async (req, res) => {
       const neonEvidenceVideoMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})\/video$/i);
       if (neonEvidenceVideoMatch && ['GET', 'HEAD'].includes(req.method)) {
         const user = await getSessionUser(req);
-        const suppliedDebugToken = String(req.headers['x-codelab-evidence-debug-token'] || '');
+        const suppliedDebugToken = String(req.headers['x-codelab-evidence-debug-token'] || url.searchParams.get('token') || '');
         const configuredDebugToken = String(process.env.CODELAB_EVIDENCE_DEBUG_TOKEN || '');
         const debugAuthorized = Boolean(configuredDebugToken && suppliedDebugToken &&
           Buffer.byteLength(configuredDebugToken) === Buffer.byteLength(suppliedDebugToken) &&
