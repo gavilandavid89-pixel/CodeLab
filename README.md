@@ -129,6 +129,18 @@ nueva petición si hace falta
 
 **Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
 ### Puesta en marcha bajo demanda del bridge### Señal final de apagado del bridge
+### Snapshot vital para el agente
+
+El agente dispone de una instantánea consolidada en `GET /api/agent/bridge/state` (protegida con el mismo token de control). Devuelve el estado de vida del bridge, `wake_required`, motivo y versión de señal, runtime, las últimas órdenes y resultados, los proyectos PixelForge persistidos (ID, revisión y SHA) y las últimas evidencias visuales. Así el agente no necesita reconstruir el contexto desde un vídeo.
+
+La regla de decisión es:
+
+- `wake_required=false`: enviar la orden normalmente.
+- `wake_required=true`: incluir `wake:true` y el `signalVersion` observado para dejar trazabilidad.
+- Para continuar un proyecto existente, usar siempre `project_id` + su última `server_revision`; la evidencia visual es diagnóstico/auditoría, no la fuente de verdad.
+- Antes de corregir una tarea antigua, consultar el snapshot y recuperar el proyecto persistido más reciente.
+
+El snapshot también conserva el último comando ejecutado y un resumen de su resultado, incluyendo error, revisión y `evidenceEventId` cuando estén disponibles.
 
 El consumidor nativo mantiene en Neon la tabla `codelab_agent_bridge_state` y emite una **última señal persistente antes de apagarse**. La señal usa `state=sleeping`, `wake_required=true`, `wake_reason` y un `signal_version` monotónico. Así el agente puede consultar el estado antes de crear la siguiente orden y, si `wake_required=true`, incluir `wake:true` en el payload de esa orden.
 
