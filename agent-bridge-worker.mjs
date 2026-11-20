@@ -2199,11 +2199,13 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
   const fps = Number.isInteger(payload.fps) ? payload.fps : Number(timeline.fps || 12);
   if (!Number.isInteger(fps) || fps < 1 || fps > 60) throw new Error('Video FPS must be an integer from 1 to 60.');
   const frameDurationsMs = timeline.frames.map((frame, index) => {
-    const durationMs = Number(frame.durationMs);
-    if (!Number.isInteger(durationMs) || durationMs < 20 || durationMs > 10000) {
+    const rawDurationMs = Number(frame.durationMs);
+    if (!Number.isFinite(rawDurationMs) || rawDurationMs < 20 || rawDurationMs > 10000) {
       throw new Error('Animation frame ' + index + ' has an invalid duration.');
     }
-    return durationMs;
+    // FPS-derived durations can be fractional (e.g. 1000 / 3). Quantize to
+    // integer milliseconds for the browser recorder without rejecting them.
+    return Math.round(rawDurationMs);
   });
   const totalDurationMs = frameDurationsMs.reduce((sum, duration) => sum + duration, 0);
   if (totalDurationMs > 60000) throw new Error('Video export is limited to 60 seconds per pass.');
