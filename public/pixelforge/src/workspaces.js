@@ -15,6 +15,7 @@ export function cloneRasterDocument(source, { name = source.name } = {}) {
   }));
   const layerMap = new Map(source.layers.map((layer, i) => [layer.id, copy.layers[i].id]));
   copy.activeLayerId = layerMap.get(source.activeLayerId) ?? copy.layers[0].id;
+  copy.drawingModel = source.drawingModel === null ? null : JSON.parse(JSON.stringify(source.drawingModel));
   copy.compositeCache = new Uint8ClampedArray(source.width * source.height * 4);
   copy.revision = source.revision;
   copy.saveVersion = source.saveVersion;
