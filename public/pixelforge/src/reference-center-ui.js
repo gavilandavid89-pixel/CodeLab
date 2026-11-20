@@ -1,0 +1,211 @@
+import { buildReferenceFromProject, normalizeDrawingModel, getReferenceEntry, normalizeSemanticPart } from './drawing-intelligence.js';
+
+export function createReferenceCenterUI({
+  getDocument,
+  getAnimation,
+  save,
+  render,
+  renderLayers,
+  status,
+  onDocumentChanged = () => {},
+} = {}) {
+  const doc = () => getDocument();
+  const animation = () => getAnimation();
+
+  const host = document.createElement('section');
+  host.className = 'inspector-section reference-center-section';
+  host.innerHTML = `
+    <div class="section-heading"><span class="section-icon">◎</span><h2>Reference Center</h2><span class="tiny-tag">ASSETS</span></div>
+    <p class="small-note">Immutable visual assets. Copying creates an editable instance; the original reference never changes.</p>
+    <div class="reference-center-actions">
+      <button id="reference-package-current" class="file-button" type="button">＋ Package current</button>
+      <button id="reference-refresh" class="file-button" type="button">↻ Refresh</button>
+    </div>
+    <div class="reference-center-context">
+      <label>Previous layers <input id="reference-prev-opacity" type="range" min="0" max="100" value="25"></label>
+      <span id="reference-prev-opacity-value">25%</span>
+      <label>Next layers <input id="reference-next-opacity" type="range" min="0" max="100" value="15"></label>
+      <span id="reference-next-opacity-value">15%</span>
+    </div>
+    <div id="reference-center-list" class="reference-center-list"></div>
+  `;
+  const layerSection = document.querySelector('.layer-section');
+  layerSection?.after(host);
+
+  const list = host.querySelector('#reference-center-list');
+  const prevRange = host.querySelector('#reference-prev-opacity');
+  const nextRange = host.querySelector('#reference-next-opacity');
+  const prevValue = host.querySelector('#reference-prev-opacity-value');
+  const nextValue = host.querySelector('#reference-next-opacity-value');
+
+  function contextOpacity() {
+    const d = doc();
+    const active = d.layers.findIndex(layer => layer.id === d.activeLayerId);
+    if (active < 0) return;
+    const previous = Number(prevRange.value) / 100;
+    const next = Number(nextRange.value) / 100;
+    d.layers.forEach((layer, index) => {
+      const distance = index - active;
+      if (distance === 0) layer.opacity = 1;
+      else if (distance < 0) layer.opacity = previous;
+      else layer.opacity = next;
+    });
+    d.dirty = true;
+    d.saveVersion++;
+    prevValue.textContent = Math.round(previous * 100) + '%';
+    nextValue.textContent = Math.round(next * 100) + '%';
+    render();
+    renderLayers();
+    onDocumentChanged();
+  }
+
+  prevRange.addEventListener('input', contextOpacity);
+  nextRange.addEventListener('input', contextOpacity);
+
+  function packageCurrent() {
+    const d = doc();
+    const currentAnimation = animation();
+    const snapshot = d.toJSON();
+    if (currentAnimation) snapshot.animation = JSON.parse(JSON.stringify(currentAnimation.toJSON()));
+    const model = normalizeDrawingModel(d.getDrawingModel(), { width: d.width, height: d.height });
+    const name = window.prompt('Reference name', d.name || 'Drawing reference');
+    if (!name?.trim()) return;
+    const entry = buildReferenceFromProject({ projectId: d.id, project: snapshot, name: name.trim() });
+    entry.type = 'asset';
+    entry.category = /dust|powder|smoke|fire|spark|particle/i.test(name) ? 'effect'
+      : /character|soldier|robot|person|hero/i.test(name) ? 'character'
+      : /scene|background|forest|building|environment/i.test(name) ? 'scene' : 'object';
+    entry.parts = entry.parts.map((part, index) => normalizeSemanticPart({
+      ...part,
+      role: index === 0 ? 'background' : 'component',
+      name: part.name || `Part ${index + 1}`,
+      anchors: { center: null },
+    }));
+    model.referenceCenter.entries.push(entry);
+    model.referenceCenter.activeEntryId = entry.id;
+    d.setDrawingModel(model);
+
+    const clean = d.layers[0];
+    d.setLayerPixels(clean.id, new Uint8Array(d.width * d.height * 4));
+    d.renameLayer(clean.id, 'Layer 1');
+    for (const layer of [...d.layers].slice(1)) d.deleteLayer(layer.id);
+    d.setLayerVisibility(clean.id, true);
+    d.setLayerLocked(clean.id, false);
+    d.setLayerOpacity(clean.id, 1);
+    d.setActiveLayer(clean.id);
+
+    if (currentAnimation) {
+      const cleanTimeline = {
+        format: 'pixelforge-animation',
+        version: 1,
+        width: d.width,
+        height: d.height,
+        layerIds: [clean.id],
+        fps: currentAnimation.fps || 12,
+        loop: currentAnimation.loop !== false,
+        activeFrameIndex: 0,
+        frames: [],
+      };
+      animation().replace?.(cleanTimeline);
+    }
+
+    d.dirty = true;
+    status(`Packaged “${entry.name}” into Reference Center · editor cleaned`, 'success');
+    render();
+    renderLayers();
+    onDocumentChanged();
+    refresh();
+    void save();
+  }
+
+  function copyPart(entry, part) {
+    const d = doc();
+    const layer = d.addLayer(`${entry.name} · ${part.name}`);
+    const pixels = part.pixels ? Uint8Array.from(atob(part.pixels), c => c.charCodeAt(0)) : null;
+    if (pixels && pixels.length === layer.pixels.length) d.setLayerPixels(layer.id, pixels);
+    else if (part.layerId) {
+      const source = entry.layerSnapshot?.find(item => item.id === part.layerId);
+      if (source?.pixels) d.setLayerPixels(layer.id, Uint8Array.from(atob(source.pixels), c => c.charCodeAt(0)));
+    }
+    d.setActiveLayer(layer.id);
+    d.dirty = true;
+    status(`Copied “${part.name}” as editable layer`, 'success');
+    render(); renderLayers(); onDocumentChanged(); void save();
+  }
+
+  function copyFrame(entry, frameIndex) {
+    const frame = entry.frames?.find(item => Number(item.index) === Number(frameIndex));
+    if (!frame) return;
+    const d = doc();
+    for (const layer of [...d.layers]) if (layer.id !== d.layers[0].id) d.deleteLayer(layer.id);
+    const base = d.layers[0];
+    d.setLayerPixels(base.id, new Uint8Array(d.width * d.height * 4));
+    d.renameLayer(base.id, `${entry.name} · ${frameIndex + 1}`);
+    for (const item of frame.layers || []) {
+      const layer = d.layers[0].id === item.layerId ? d.layers[0] : d.addLayer(`${entry.name} · ${item.layerId}`);
+      if (item.pixels) {
+        const pixels = Uint8Array.from(atob(item.pixels), c => c.charCodeAt(0));
+        if (pixels.length === layer.pixels.length) d.setLayerPixels(layer.id, pixels);
+      }
+    }
+    d.dirty = true;
+    status(`Copied frame ${Number(frameIndex) + 1} from “${entry.name}” as editable artwork`, 'success');
+    render(); renderLayers(); onDocumentChanged(); void save();
+  }
+
+  function refresh() {
+    const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
+    list.replaceChildren();
+    if (!model.referenceCenter.entries.length) {
+      const empty = document.createElement('p');
+      empty.className = 'small-note';
+      empty.textContent = 'No references yet. Package a character, object, effect, scene or any layered artwork.';
+      list.append(empty);
+      return;
+    }
+    for (const entry of [...model.referenceCenter.entries].reverse()) {
+      const card = document.createElement('article');
+      card.className = 'reference-card';
+      const header = document.createElement('div');
+      header.className = 'reference-card-header';
+      header.innerHTML = `<strong></strong><span class="tiny-tag"></span>`;
+      header.querySelector('strong').textContent = entry.name;
+      header.querySelector('.tiny-tag').textContent = entry.category || entry.type || 'asset';
+      card.append(header);
+      const meta = document.createElement('p');
+      meta.className = 'small-note';
+      meta.textContent = `${entry.parts?.length || 0} parts · ${entry.frames?.length || 0} frames · ${entry.geometry?.canvas?.width || doc().width}×${entry.geometry?.canvas?.height || doc().height}`;
+      card.append(meta);
+      const parts = document.createElement('div');
+      parts.className = 'reference-parts';
+      for (const part of entry.parts || []) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'file-button';
+        button.textContent = '↳ ' + part.name;
+        button.addEventListener('click', () => copyPart(entry, part));
+        parts.append(button);
+      }
+      card.append(parts);
+      if ((entry.frames || []).length) {
+        const frames = document.createElement('div');
+        frames.className = 'reference-parts';
+        entry.frames.slice(0, 8).forEach(frame => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'file-button';
+          button.textContent = `Frame ${Number(frame.index) + 1}`;
+          button.addEventListener('click', () => copyFrame(entry, frame.index));
+          frames.append(button);
+        });
+        card.append(frames);
+      }
+      list.append(card);
+    }
+  }
+
+  host.querySelector('#reference-package-current').addEventListener('click', packageCurrent);
+  host.querySelector('#reference-refresh').addEventListener('click', refresh);
+  refresh();
+  return { refresh, contextOpacity };
+}
