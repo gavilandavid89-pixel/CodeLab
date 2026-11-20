@@ -2211,24 +2211,42 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
     const routeUrl = baseUrl + '/pixelforge/index.html?projectId=' +
       encodeURIComponent(payload.project_id) + '&capture=video';
+    const captureStartedAt = new Date().toISOString();
+
+    // The browser recorder must have a real ADMIN session. A workspace token in
+    // localStorage authorizes workspace APIs but does not authenticate the UI.
+    const handoff = await mintNativeAdminHandoff();
+    const handoffResponse = await page.goto(handoff.handoffUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (!handoffResponse || !handoffResponse.ok()) {
+      throw new Error('Native ADMIN browser handoff returned HTTP ' + (handoffResponse?.status() || 'no response'));
+    }
+
     const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     if (!response || !response.ok()) {
       throw new Error('PixelForge video route returned HTTP ' + (response?.status() || 'no response'));
     }
-    // The recorder is the authoritative evidence path. Do not depend on a DOM
-    // readiness flag that can be absent on deployed builds: that flag caused the
-    // previous 45s waitForFunction timeout and contaminated transport benchmarks.
-    const captureStartedAt = new Date().toISOString();
-    await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
+
+    // Wait for PixelForge itself to report that the requested project animation
+    // is playing or complete. A visible body alone can be the login/error screen.
+    await page.waitForFunction(() => {
+      const state = document.documentElement.dataset.pixelforgeCapture || '';
+      return ['playing', 'complete', 'error', 'auth-required'].includes(state);
+    }, null, { timeout: 45000 });
     const startupState = await page.evaluate(() => ({
       state: document.documentElement.dataset.pixelforgeCapture || '',
       error: document.documentElement.dataset.pixelforgeCaptureError || ''
     }));
+    if (startupState.state === 'auth-required') {
+      throw new Error('PixelForge capture still requires authentication after the native ADMIN handoff.');
+    }
+    if (startupState.state === 'error') {
+      throw new Error('PixelForge could not start the saved animation: ' + (startupState.error || 'unknown capture error'));
+    }
     const playbackReadyAt = new Date().toISOString();
-    // The timeline duration is the authoritative capture window. The recorder
-    // itself is the evidence source; do not require the optional DOM "complete"
-    // flag because deployed builds may omit it even when a valid video is produced.
-    await page.waitForTimeout(totalDurationMs);
+    if (startupState.state !== 'complete') {
+      await page.waitForFunction(() => document.documentElement.dataset.pixelforgeCapture === 'complete',
+        null, { timeout: Math.min(70000, Math.max(15000, totalDurationMs + 15000)) });
+    }
     const playbackCompletedAt = new Date().toISOString();
     const video = page.video();
     await page.close();
@@ -2343,6 +2361,8 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     };
     return {
       exportMethod: 'playwright-chromium-real-pixelforge-app',
+      captureState: startupState.state,
+      captureError: startupState.error || null,
       projectId: payload.project_id,
       serverRevision: loaded.serverRevision,
       contentSha256: loaded.contentSha256,
