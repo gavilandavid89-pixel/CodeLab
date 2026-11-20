@@ -1527,16 +1527,26 @@ async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
   if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
       !target.objectKey.startsWith(keyPrefix) || target.objectKey.includes('..') ||
       !/^[a-zA-Z0-9._/-]+$/.test(target.objectKey)) {
-    throw new Error('A valid Neon artifact upload target under ' + keyPrefix + ' is required.');
+    throw new Error('A valid artifact upload target under ' + keyPrefix + ' is required.');
   }
   const targetUrl = new URL(target.url);
-  const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
-  const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
-  const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
-  if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
-      targetUrl.port !== '' || targetUrl.username || targetUrl.password ||
-      pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
-    throw new Error('Neon artifact URL must target the exact object in the configured public capture bucket.');
+  if (target.bucket === 'cloudflare-r2') {
+    const expectedBase = String(process.env.CLOUDFLARE_EVIDENCE_BASE_URL || '').replace(/\/$/, '');
+    if (!expectedBase) throw new Error('Cloudflare evidence base URL is not configured.');
+    const expected = new URL(expectedBase);
+    if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expected.hostname ||
+        targetUrl.port !== expected.port || targetUrl.username || targetUrl.password) {
+      throw new Error('Cloudflare evidence upload URL host validation failed.');
+    }
+  } else {
+    const expectedHost = process.env.NEON_STORAGE_HOST || 'br-misty-sea-b5qkh03f.storage.c-7.us-east-2.aws.neon.tech';
+    const captureBucket = String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public');
+    const pathSegments = targetUrl.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+    if (targetUrl.protocol !== 'https:' || targetUrl.hostname !== expectedHost ||
+        targetUrl.port !== '' || targetUrl.username || targetUrl.password ||
+        pathSegments[0] !== captureBucket || pathSegments.slice(1).join('/') !== target.objectKey) {
+      throw new Error('Neon artifact URL must target the exact object in the configured public capture bucket.');
+    }
   }
   const uploaded = await fetch(targetUrl, {
     method: 'PUT',
@@ -1545,14 +1555,14 @@ async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
     body: bytes,
     signal: AbortSignal.timeout(45000)
   });
-  if (!uploaded.ok) throw new Error('Neon artifact upload failed (HTTP ' + uploaded.status + ').');
+  if (!uploaded.ok) throw new Error((target.bucket === 'cloudflare-r2' ? 'Cloudflare' : 'Neon') + ' artifact upload failed (HTTP ' + uploaded.status + ').');
   return {
     stored: true,
-    provider: 'neon-object-storage',
-    bucket: captureBucket,
+    provider: target.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-object-storage',
+    bucket: target.bucket || String(process.env.NEON_CAPTURE_BUCKET || 'codelab-captures-public'),
     access: 'public_read',
     objectKey: target.objectKey,
-    publicUrl: targetUrl.origin + targetUrl.pathname,
+    publicUrl: target.publicUrl || targetUrl.origin + targetUrl.pathname,
     mimeType,
     sizeBytes: bytes.length
   };
