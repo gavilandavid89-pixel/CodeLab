@@ -2414,6 +2414,28 @@ async function processCommand(command) {
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id);
       const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
+      if (payload.operation) {
+        const operation = String(payload.operation);
+        const actionByOperation = {
+          model: { name: 'drawing.model.get' },
+          sheet: { name: 'drawing.sheet.get' },
+          object: { name: 'drawing.object.inspect', layerId: payload.layer_id, x: payload.x, y: payload.y, includeCoordinates: payload.include_coordinates !== false, gridStep: payload.grid_step ?? 8 },
+          layer: { name: 'drawing.layer.inspect', layerId: payload.layer_id, includeCoordinates: payload.include_coordinates !== false, gridStep: payload.grid_step ?? 8 },
+          references: { name: 'drawing.reference.list' },
+          reference: { name: 'drawing.reference.get', referenceId: payload.reference_id },
+        };
+        const action = actionByOperation[operation];
+        if (!action) throw new Error('Unsupported intelligence operation.');
+        const intelligence = runtime.execute(action);
+        if (!intelligence.ok) throw new Error(intelligence.error?.message || 'PixelForge intelligence operation failed.');
+        await finish(command.command_id, 'succeeded', {
+          inspection: compactInspection(runtime.inspect()),
+          serverRevision: loaded.serverRevision,
+          contentSha256: loaded.contentSha256,
+          intelligence: { operation, result: intelligence.result },
+        });
+        return;
+      }
       await finish(command.command_id, 'succeeded', {
         inspection: compactInspection(runtime.inspect()),
         serverRevision: loaded.serverRevision,
