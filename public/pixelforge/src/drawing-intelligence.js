@@ -377,31 +377,60 @@ export function normalizeSemanticPart(part) {
 
 export function buildReferenceFromProject({ projectId, project, name = 'Drawing reference' } = {}) {
   if (!project || typeof project !== 'object') throw new TypeError('project is required.');
+  const sourceLayers = Array.isArray(project.layers) ? project.layers : [];
   const frames = Array.isArray(project.animation?.frames)
-    ? project.animation.frames.map((frame, index) => normalizeReferenceFrame({ index, durationMs: frame.durationMs, layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixelBytes: typeof cel.pixels === 'string' ? cel.pixels.length : 0 })) }))
+    ? project.animation.frames.map((frame, index) => normalizeReferenceFrame({
+      index,
+      durationMs: frame.durationMs,
+      layers: frame.cels.map(cel => ({
+        layerId: cel.layerId,
+        pixels: typeof cel.pixels === 'string' ? cel.pixels : null,
+        pixelBytes: typeof cel.pixels === 'string' ? Math.floor(cel.pixels.length * 3 / 4) : 0,
+      })),
+    }))
     : [];
-  const parts = project.layers.map((layer, index) => normalizeSemanticPart({
+  const parts = sourceLayers.map((layer, index) => normalizeSemanticPart({
     id: layer.id, name: layer.name, role: index === 0 ? 'background' : 'drawing-part',
     layerId: layer.id, frameIndex: null,
-    proportions: { layerIndex: index / Math.max(1, project.layers.length - 1) },
+    bounds: null,
+    proportions: { layerIndex: index / Math.max(1, sourceLayers.length - 1) },
     z: index,
   }));
   return {
     id: crypto.randomUUID(),
     name,
     type: 'project-reference',
+    version: 2,
     sourceProjectId: projectId || project.id || null,
+    sourceRevision: project.serverRevision ?? project.revision ?? 0,
     createdAt: new Date().toISOString(),
+    immutableSnapshot: true,
     frames,
-    parts,
+    parts: parts.map(part => ({
+      ...part,
+      pixels: sourceLayers.find(layer => layer.id === part.layerId)?.pixels || null,
+    })),
     geometry: {
       canvas: { width: project.width, height: project.height },
       sheet: project.drawingModel?.sheet || null,
       objectCount: parts.length,
     },
+    animation: project.animation ? {
+      width: project.animation.width || project.width,
+      height: project.animation.height || project.height,
+      fps: project.animation.fps || 12,
+      loop: project.animation.loop !== false,
+      layerIds: Array.isArray(project.animation.layerIds) ? [...project.animation.layerIds] : sourceLayers.map(layer => layer.id),
+    } : null,
     palette: project.drawingModel?.palette || SEMANTIC_PALETTE,
-    layerSnapshot: project.layers.map((layer, index) => ({ id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked })),
-    frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({ index, frameId: frame.id, layers: frame.cels.map(cel => ({ layerId: cel.layerId })) })) : [],
+    layerSnapshot: sourceLayers.map((layer, index) => ({
+      id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked,
+      pixels: layer.pixels || null,
+    })),
+    frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({
+      index, frameId: frame.id, durationMs: frame.durationMs,
+      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null })),
+    })) : [],
   };
 }
 
@@ -410,6 +439,7 @@ export function applyReferenceToDrawingModel(model, entry) {
   const next = clone(model);
   next.objects = Array.isArray(entry.parts) ? entry.parts.map(part => normalizeSemanticPart(part)) : [];
   next.sheet = normalizeSheet({ ...next.sheet, ...(entry.geometry?.sheet || {}) });
+  next.referenceCenter.activeEntryId = entry.id;
   return next;
 }
 
