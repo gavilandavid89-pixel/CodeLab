@@ -70,98 +70,43 @@ async function ensureAgentBridgeWakeListener() {
   if (!accountPool || agentBridgeWakeClient) return;
   const client = await accountPool.connect();
   try {
-    await client.query(\
-      `CREATE TABLE IF NOT EXISTS public.codelab_agent_commands (\
-        command_id text PRIMARY KEY, workspace_id text NOT NULL, action text NOT NULL,\
-        payload jsonb NOT NULL DEFAULT '{}'::jsonb, status text NOT NULL DEFAULT 'queued',\
-        result jsonb, proposal jsonb, proposal_token text, created_at timestamptz NOT NULL DEFAULT now(),\
-        started_at timestamptz, finished_at timestamptz, expires_at timestamptz NOT NULL DEFAULT (now() + interval '15 minutes'),\
-        updated_at timestamptz NOT NULL DEFAULT now()\
-      )`\
-    );
-    await client.query(\
-      `CREATE OR REPLACE FUNCTION public.codelab_agent_bridge_wake() RETURNS trigger\
-       LANGUAGE plpgsql AS $fn$\
-       BEGIN\
-         IF NEW.status = 'queued' THEN\
-           PERFORM pg_notify('codelab_agent_bridge_wake',\
-             json_build_object('commandId', NEW.command_id, 'workspaceId', NEW.workspace_id)::text);\
-         END IF;\
-         RETURN NEW;\
-       END;\
-       $fn/**
- * CodeLab XD Studio Pro v2.6.7
- * HTTP nativo + OAuth GitHub/Google + workspaces por usuario + rate limit
- */
-process.env.PLAYWRIGHT_BROWSERS_PATH ||= '0';
-const http = require('http');
-const https = require('https');
-const dns = require('dns').promises;
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
-const { spawn } = require('child_process');
-const { Pool } = require('pg');
-const net = require('net');
-const { URL } = require('url');
-const designTools = require('./public/design-tools.js');
-const pixelForgeUploads = require('./pixelforge-upload-store.js');
-const neonEvidence = require('./neon-pixelforge-evidence.js');
-
-const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
-const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
-const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
-const PUBLIC_DIR = path.join(__dirname, 'public');
-const PUBLIC_REAL_DIR = fs.realpathSync(PUBLIC_DIR);
-const SECRET_FILE = path.join(DATA_DIR, '.workspace-secret');
-const configuredMaxBodyBytes = Number.parseInt(process.env.CODELAB_MAX_BODY_BYTES || '', 10);
-const MAX_BODY_BYTES = Number.isInteger(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
-  ? Math.min(50 * 1024 * 1024, Math.max(1024, configuredMaxBodyBytes))
-  : 10 * 1024 * 1024;
-const configuredMaxProjects = Number.parseInt(process.env.CODELAB_MAX_PROJECTS || '', 10);
-const MAX_PROJECTS = Number.isInteger(configuredMaxProjects) && configuredMaxProjects > 0
-  ? Math.min(500, configuredMaxProjects)
-  : 50;
-// PixelForge has a dedicated high-resolution asset budget. Keep these limits
-// scoped to its project API; do not inflate unrelated CodeLab request bodies.
-// Keep individual JSON requests bounded; larger project payloads are uploaded as 6 MiB chunks.
-const PIXELFORGE_MAX_BODY_BYTES = 32 * 1024 * 1024;
-const PIXELFORGE_MAX_CHUNK_BODY_BYTES = 9 * 1024 * 1024;
-const PIXELFORGE_MAX_PROJECT_BYTES = 96 * 1024 * 1024;
-// Keep the server-side raster allocation ceiling identical to the editor's
-// MAX_DOCUMENT_BYTES. This is the aggregate raw RGBA budget across all layers.
-const PIXELFORGE_MAX_RASTER_BYTES = 64 * 1024 * 1024;
-const PIXELFORGE_MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
-// Account-backed PixelForge is the default. Temporary guest mode is opt-in for isolated demos/tests.
-const PIXELFORGE_GUEST_MODE = String(process.env.PIXELFORGE_GUEST_MODE || 'false').toLowerCase() === 'true';
-const PIXELFORGE_GUEST_WORKSPACE_ID = 'ws_pixelforge_guest';
-const configuredUpstreamTimeout = Number.parseInt(process.env.CODELAB_UPSTREAM_TIMEOUT_MS || '60000', 10);
-const UPSTREAM_TIMEOUT_MS = Number.isInteger(configuredUpstreamTimeout)
-  ? Math.min(300000, Math.max(1000, configuredUpstreamTimeout))
-  : 60000;
-const RATE_WINDOW_MS = 60 * 1000;
-const RATE_MAX_REQUESTS = 120;
-const APP_VERSION = '2.7.0';
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const configuredSessionCleanupInterval = Number.parseInt(process.env.CODELAB_SESSION_CLEANUP_INTERVAL_MS || '', 10);
-const SESSION_CLEANUP_INTERVAL_MS = Number.isInteger(configuredSessionCleanupInterval) && configuredSessionCleanupInterval > 0
-  ? Math.min(60 * 60 * 1000, Math.max(1000, configuredSessionCleanupInterval))
-  : 15 * 60 * 1000;
-const COOKIE_NAME = 'codelab_sid';
-const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
-const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
-const DATABASE_URL = process.env.DATABASE_URL || ''; 
-const AGENT_BRIDGE_CONTROL_SECRET = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '').trim();
-let agentBridgeWorker = null;
-\
-    );
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.codelab_agent_commands (
+        command_id text PRIMARY KEY,
+        workspace_id text NOT NULL,
+        action text NOT NULL,
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        status text NOT NULL DEFAULT 'queued',
+        result jsonb,
+        proposal jsonb,
+        proposal_token text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        started_at timestamptz,
+        finished_at timestamptz,
+        expires_at timestamptz NOT NULL DEFAULT (now() + interval '15 minutes'),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE OR REPLACE FUNCTION public.codelab_agent_bridge_wake() RETURNS trigger
+      LANGUAGE plpgsql AS $fn$
+      BEGIN
+        IF NEW.status = 'queued' THEN
+          PERFORM pg_notify(
+            'codelab_agent_bridge_wake',
+            json_build_object('commandId', NEW.command_id, 'workspaceId', NEW.workspace_id)::text
+          );
+        END IF;
+        RETURN NEW;
+      END;
+      $fn$
+    `);
     await client.query('DROP TRIGGER IF EXISTS codelab_agent_bridge_wake_trigger ON public.codelab_agent_commands');
-    await client.query(\
-      `CREATE TRIGGER codelab_agent_bridge_wake_trigger\
-       AFTER INSERT ON public.codelab_agent_commands\
-       FOR EACH ROW EXECUTE FUNCTION public.codelab_agent_bridge_wake()`\
-    );
+    await client.query(`
+      CREATE TRIGGER codelab_agent_bridge_wake_trigger
+      AFTER INSERT ON public.codelab_agent_commands
+      FOR EACH ROW EXECUTE FUNCTION public.codelab_agent_bridge_wake()
+    `);
     await client.query('LISTEN codelab_agent_bridge_wake');
     client.on('notification', message => {
       if (message.channel !== 'codelab_agent_bridge_wake' || agentBridgeStopping) return;
@@ -180,9 +125,6 @@ let agentBridgeWorker = null;
     });
     client.on('error', error => {
       console.error('[CodeLab Native Bridge] Neon wake listener error:', error.message);
-      try { client.release(); } catch (_) {}
-      agentBridgeWakeClient = null;
-      setTimeout(() => ensureAgentBridgeWakeListener().catch(err => console.error('[CodeLab Native Bridge] wake listener restart failed:', err.message)), 1000).unref();
     });
     agentBridgeWakeClient = client;
     console.log('[CodeLab Native Bridge] Neon wake listener armed; no polling/interval is used to wake the bridge.');
