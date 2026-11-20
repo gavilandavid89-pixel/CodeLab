@@ -1219,10 +1219,6 @@ async function captureCodeLabDashboardBrowser(expectedState) {
       colorScheme: 'dark',
       reducedMotion: 'reduce'
     });
-    await context.addInitScript(({ id, token }) => {
-      localStorage.setItem('codelab_xd_workspace_v4', id);
-      localStorage.setItem('codelab_xd_workspace_token_v1', token);
-    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
     const page = await context.newPage();
     const pageErrors = [];
     const sandboxWarnings = [];
@@ -1399,23 +1395,35 @@ async function updateCodeLabProjectCode(command) {
 }
 
 
-function isAnimationMutationCommand(command) {
-  if (!command || !String(command.action || '').startsWith('pixelforge_')) return false;
-  if (command.action === 'pixelforge_export_animation_video') return false;
-  if (command.action === 'pixelforge_animation_frame_context') return true;
-  if (command.action === 'pixelforge_propose' || command.action === 'pixelforge_approve') {
-    const actions = command.payload?.actions;
-    return Array.isArray(actions) && actions.some(action =>
-      action && typeof action.name === 'string' && action.name.startsWith('animation.')
-    );
+async function resolveAnimationCaptureProjectId(command) {
+  if (!command || !String(command.action || '').startsWith('pixelforge_')) return null;
+  if (command.action === 'pixelforge_export_animation_video') return null;
+  if (command.action === 'pixelforge_animation_frame_context') {
+    return typeof command.payload?.project_id === 'string' ? command.payload.project_id : null;
   }
-  return false;
+  // A proposal is isolated and has not changed the saved project yet. Capture
+  // only after its explicit approval, by reading the original proposal payload.
+  if (command.action === 'pixelforge_propose') return null;
+  if (command.action === 'pixelforge_approve') {
+    const proposalCommandId = String(command.payload?.proposal_command_id || '');
+    if (!proposalCommandId) return null;
+    const proposal = await pool.query(
+      'SELECT payload FROM public.codelab_agent_commands WHERE workspace_id=$1 AND command_id=$2',
+      [workspaceId, proposalCommandId]
+    );
+    const proposalPayload = proposal.rows[0]?.payload || {};
+    const actions = proposalPayload.actions;
+    if (!Array.isArray(actions) || !actions.some(action =>
+      action && typeof action.name === 'string' && action.name.startsWith('animation.')
+    )) return null;
+    return typeof proposalPayload.project_id === 'string' ? proposalPayload.project_id : null;
+  }
+  return null;
 }
 
 async function startAutomaticAnimationCapture(command) {
-  if (!isAnimationMutationCommand(command)) return null;
-  const projectId = command.payload?.project_id || command.payload?.proposal?.projectId;
-  if (typeof projectId !== 'string') return null;
+  const projectId = await resolveAnimationCaptureProjectId(command);
+  if (!projectId) return null;
   assertProjectId(projectId);
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-animation-auto-'));
@@ -1440,43 +1448,27 @@ async function startAutomaticAnimationCapture(command) {
       colorScheme: 'dark',
       recordVideo: { dir: tempDir, size: { width, height }, fps }
     });
-    const page = await context.newPage();
-    const pageErrors = [];
-    const consoleErrors = [];
-    page.on('pageerror', error => {
-      if (pageErrors.length < 10) pageErrors.push(String(error.message || error).slice(0, 300));
-    });
-    page.on('console', message => {
-      if (message.type() === 'error' && consoleErrors.length < 10) {
-        consoleErrors.push(message.text().slice(0, 300));
-      }
-    });
+    // Authenticate before the post-approval recording page is created. The
+    // recorder page itself is created only after the project has been saved.
+    const authPage = await context.newPage();
     const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL ||
       ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
-    await context.addInitScript(({ id, token }) => {
-      localStorage.setItem('codelab_xd_workspace_v4', id);
-      localStorage.setItem('codelab_xd_workspace_token_v1', token);
-    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
-    const routeUrl = baseUrl + '/pixelforge/index.html?projectId=' + encodeURIComponent(projectId) + '&capture=video';
-    const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    if (!response || !response.ok()) throw new Error('Automatic animation capture route returned HTTP ' + (response?.status() || 'no response'));
-    // The PixelForge capture route can render its canvas asynchronously or via a non-canvas surface.
-    // Do not block the command for 45s waiting for a specific DOM node: the recorder itself is the evidence.
-    await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
-    await page.waitForTimeout(250);
+    const handoff = await mintNativeAdminHandoff();
+    const handoffResponse = await authPage.goto(handoff.handoffUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (!handoffResponse || !handoffResponse.ok()) {
+      throw new Error('Automatic capture ADMIN handoff returned HTTP ' + (handoffResponse?.status() || 'no response'));
+    }
+    await authPage.close().catch(() => {});
     return {
       projectId,
       tempDir,
       browser,
       context,
-      page,
-      video: page.video(),
-      routeUrl,
+      baseUrl,
+      routeUrl: baseUrl + '/pixelforge/index.html?projectId=' + encodeURIComponent(projectId) + '&capture=video',
       width,
       height,
-      fps,
-      pageErrors,
-      consoleErrors
+      fps
     };
   } catch (error) {
     if (browser) await browser.close().catch(() => {});
@@ -1549,9 +1541,52 @@ async function attachAnimationEvidence(evidence) {
 
 async function finishAutomaticAnimationCapture(capture, command, evidence = null) {
   if (!capture) return null;
-  const { browser, context, page, video, tempDir, projectId } = capture;
+  const { browser, context, tempDir, projectId } = capture;
+  let page;
+  let video;
+  const pageErrors = [];
+  const consoleErrors = [];
+  let captureState = '';
   try {
-    await page.waitForTimeout(1000);
+    // This page is created after the approved command has been persisted, so
+    // it loads the new server revision rather than the pre-approval document.
+    page = await context.newPage();
+    page.on('pageerror', error => {
+      if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300));
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && consoleErrors.length < 20) {
+        consoleErrors.push(message.text().slice(0, 300));
+      }
+    });
+    await page.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+    const response = await page.goto(capture.routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    if (!response || !response.ok()) {
+      throw new Error('Automatic animation capture route returned HTTP ' + (response?.status() || 'no response'));
+    }
+    await page.waitForFunction(() => {
+      const state = document.documentElement.dataset.pixelforgeCapture || '';
+      return ['playing', 'complete', 'error', 'auth-required'].includes(state);
+    }, null, { timeout: 45000 });
+    const startup = await page.evaluate(() => ({
+      state: document.documentElement.dataset.pixelforgeCapture || '',
+      error: document.documentElement.dataset.pixelforgeCaptureError || ''
+    }));
+    captureState = startup.state;
+    if (startup.state === 'auth-required') {
+      throw new Error('Automatic animation capture still requires authentication after ADMIN handoff.');
+    }
+    if (startup.state === 'error') {
+      throw new Error('Automatic animation capture could not start: ' + (startup.error || 'unknown capture error'));
+    }
+    if (startup.state !== 'complete') {
+      await page.waitForFunction(() => document.documentElement.dataset.pixelforgeCapture === 'complete',
+        null, { timeout: 70000 });
+    }
+    video = page.video();
     await page.close().catch(() => {});
     await context.close().catch(() => {});
     const videoPath = await video.path();
@@ -1602,7 +1637,8 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
         sizeBytes: bytes.length,
         viewport: { width: capture.width, height: capture.height },
         fps: capture.fps,
-        postActionDelayMs: 1000,
+        captureState,
+        evidenceState: 'playback-complete',
         artifact,
         ...(evidence ? {
           evidence: {
@@ -1615,9 +1651,11 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
             status: 'complete'
           }
         } : {}),
-        pageErrors: capture.pageErrors,
-        consoleErrors: capture.consoleErrors,
-        passed: capture.pageErrors.length === 0 && capture.consoleErrors.length === 0
+        pageErrors,
+        consoleErrors,
+        passed: captureState === 'playing' || captureState === 'complete'
+          ? pageErrors.length === 0 && consoleErrors.length === 0
+          : false
       }
     };
   } finally {
@@ -2116,7 +2154,7 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
       const video = document.getElementById('evidence');
       return { duration: video.duration, width: video.videoWidth, height: video.videoHeight, readyState: video.readyState };
     });
-    const times = [...new Set([0.02, videoInfo.duration / 2, Math.max(0, videoInfo.duration - 0.02)]
+    const times = [...new Set([0.02, videoInfo.duration - 1.1, videoInfo.duration - 0.8, videoInfo.duration - 0.5, videoInfo.duration - 0.2, videoInfo.duration - 0.02]
       .map(time => Math.min(Math.max(0, time), Math.max(0, videoInfo.duration - 0.001))))];
     const frames = [];
     for (let index = 0; index < times.length; index += 1) {
@@ -2220,6 +2258,12 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     if (!handoffResponse || !handoffResponse.ok()) {
       throw new Error('Native ADMIN browser handoff returned HTTP ' + (handoffResponse?.status() || 'no response'));
     }
+    pageErrors.length = 0;
+    consoleErrors.length = 0;
+    await page.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
 
     const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     if (!response || !response.ok()) {
