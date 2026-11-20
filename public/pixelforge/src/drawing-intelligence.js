@@ -185,7 +185,7 @@ export function normalizeDrawingModel(model, { width = 128, height = 128 } = {})
 }
 
 export function inspectRasterObject({ pixels, width, height, objectId = null, x = null, y = null, gridStep = 8 } = {}) {
-  if (!(pixels instanceof Uint8Array) || pixels.length !== width * height * 4) throw new TypeError('RGBA pixels must match width × height × 4.');
+  if (!((pixels instanceof Uint8Array || pixels instanceof Uint8ClampedArray)) || pixels.length !== width * height * 4) throw new TypeError('RGBA pixels must match width × height × 4.');
   const component = x !== null && y !== null ? connectedComponent(pixels, width, height, x, y) : pixelBounds(pixels, width, height);
   if (!component) return { found: false };
   const bounds = component.bounds;
@@ -238,7 +238,7 @@ export function extractLineGuide({ pixels, width, height, threshold = 28, detail
       gx += r-l; gy += b-t;
     }
     const edge=Math.min(255, Math.round(Math.hypot(gx,gy)));
-    const value = invert ? (edge >= threshold ? 0 : 255) : (edge >= threshold ? 0 : 255);
+    const value = invert ? (edge >= threshold ? 255 : 0) : (edge >= threshold ? 0 : 255);
     const alpha = edge >= threshold ? 255 : 0;
     out[i]=value; out[i+1]=value; out[i+2]=value; out[i+3]=alpha;
   }
