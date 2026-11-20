@@ -104,7 +104,7 @@ async function ensureAgentBridgeWakeListener() {
         created_at timestamptz NOT NULL DEFAULT now(),
         started_at timestamptz,
         finished_at timestamptz,
-        expires_at timestamptz NOT NULL DEFAULT (now() + interval '15 minutes'),
+        expires_at timestamptz NOT NULL DEFAULT (now() + interval '30 minutes'),
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
@@ -168,8 +168,12 @@ async function ensureAgentBridgeWakeListener() {
     `);
     await client.query('LISTEN codelab_agent_bridge_wake');
     // LISTEN has an intentional startup race: a notification committed while the
-    // listener is being registered may be missed. Reconcile durable queued state
-    // once after LISTEN is active, then rely only on notifications afterward.
+    // listener is being registered may be missed. Wake commands are durable state,
+    // so give an expired-but-explicit wake command a fresh lease on startup. This
+    // covers Render cold starts/restarts that can take longer than the original TTL.
+    await client.query(
+      "UPDATE public.codelab_agent_commands SET expires_at=now()+interval '30 minutes', updated_at=now() WHERE status='queued' AND COALESCE((payload->>'wake')::boolean, false) = true AND expires_at <= now()"
+    );
     const pendingWake = await client.query(
       "SELECT command_id, workspace_id FROM public.codelab_agent_commands WHERE status='queued' AND expires_at > now() AND COALESCE((payload->>'wake')::boolean, false) = true ORDER BY created_at LIMIT 1"
     );
@@ -897,8 +901,7 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
       'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size), 0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id <> $2',
       [workspaceId, project.id]
     );
-    const existing = await client.query(
-      'SELECT project, server_revision, content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
+    const existing = await client.query(      'SELECT project, server_revision, content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
       [workspaceId, project.id]
     );
     const count = Number(usage.rows[0].count);
@@ -1797,8 +1800,7 @@ async function proxyChatCompletions({ apiKey, baseUrl, model, messages, temperat
     const errMsg = String((parsed.error && parsed.error.message) || '');
     if (/response_format|json_object|unknown/i.test(errMsg) || res.status === 400) {
       ({ res, parsed, modelId } = await attempt(useModel, false));
-    }
-  }
+    }  }
 
   // Model not found / no access → try Groq fallbacks
   if (res.status >= 400) {
@@ -2697,8 +2699,7 @@ const server = http.createServer(async (req, res) => {
           '; Path=/api/auth/github/callback; HttpOnly; SameSite=Lax; Max-Age=600' + (isSecureRequest(req) ? '; Secure' : '');
         const url =
           'https://github.com/login/oauth/authorize?client_id=' +
-          encodeURIComponent(GITHUB_CLIENT_ID) +
-          '&redirect_uri=' + encodeURIComponent(redirectUri) +
+          encodeURIComponent(GITHUB_CLIENT_ID) +          '&redirect_uri=' + encodeURIComponent(redirectUri) +
           '&scope=' + encodeURIComponent('read:user user:email') +
           '&state=' + encodeURIComponent(state);
         return redirect(res, url, { 'Set-Cookie': stateCookie });
@@ -3339,34 +3340,3 @@ async function emitAgentBridgeShutdownSignal() {
         updated_at timestamptz NOT NULL DEFAULT now(),
         metadata jsonb NOT NULL DEFAULT '{}'::jsonb
       )`
-    );
-    await accountPool.query(
-      `INSERT INTO public.codelab_agent_bridge_state
-        (state_id, workspace_id, state, wake_required, wake_reason, signal_version, last_signal_at, updated_at, metadata)
-       VALUES ($1,$2,'sleeping',true,'server_shutdown',1,now(),now(),$3::jsonb)
-       ON CONFLICT (state_id) DO UPDATE SET
-         state='sleeping', wake_required=true, wake_reason='server_shutdown',
-         signal_version=public.codelab_agent_bridge_state.signal_version+1,
-         last_signal_at=now(), updated_at=now(), metadata=$3::jsonb`,
-      ['native-bridge:' + workspaceId, workspaceId, JSON.stringify({ pid: process.pid, source: 'server-shutdown' })]
-    );
-    console.log('[CodeLab Native Bridge] final Neon shutdown signal emitted by server.');
-  } catch (error) {
-    console.error('[CodeLab Native Bridge] final Neon shutdown signal failed:', error.message);
-  }
-}
-async function shutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log('Shutting down…');
-  await emitAgentBridgeShutdownSignal();
-  stopAgentBridge();
-  if (agentBridgeWakeClient) {
-    try { await agentBridgeWakeClient.end(); } catch (_) {}
-    agentBridgeWakeClient = null;
-  }
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
-}
-process.on('SIGTERM', () => { void shutdown(); });
-process.on('SIGINT', () => { void shutdown(); });
