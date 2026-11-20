@@ -2805,6 +2805,39 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, settings: settings });
       }
 
+      // Stream the actual persisted video bytes (not only the evidence metadata).
+      // Normal requests use the user's session; the temporary debug header is enabled
+      // only during an internal verification and should be unset afterwards.
+      const neonEvidenceVideoMatch = pathname.match(/^\\/api\\/pixelforge\\/evidence\\/([0-9a-f-]{36})\\/video$/i);
+      if (neonEvidenceVideoMatch && ['GET', 'HEAD'].includes(req.method)) {
+        const user = await getSessionUser(req);
+        const suppliedDebugToken = String(req.headers['x-codelab-evidence-debug-token'] || '');
+        const configuredDebugToken = String(process.env.CODELAB_EVIDENCE_DEBUG_TOKEN || '');
+        const debugAuthorized = Boolean(configuredDebugToken && suppliedDebugToken &&
+          Buffer.byteLength(configuredDebugToken) === Buffer.byteLength(suppliedDebugToken) &&
+          crypto.timingSafeEqual(Buffer.from(configuredDebugToken), Buffer.from(suppliedDebugToken)));
+        if (!PIXELFORGE_GUEST_MODE && !user && !debugAuthorized) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        const workspaceId = debugAuthorized ? 'ws_local_admin' : (PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user));
+        const result = await accountPool.query(
+          `SELECT video_data, video_mime_type, project_id, revision
+           FROM codelab_pixelforge_change_events
+           WHERE workspace_id = $1 AND event_id = $2`,
+          [workspaceId, neonEvidenceVideoMatch[1]]
+        );
+        const evidence = result.rows[0];
+        if (!evidence || !evidence.video_data) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+        const video = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
+        res.writeHead(200, {
+          'Content-Type': evidence.video_mime_type || 'video/webm',
+          'Content-Length': video.length,
+          'Content-Disposition': 'inline; filename="pixelforge-evidence-r' + evidence.revision + '.webm"',
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff'
+        });
+        return req.method === 'HEAD' ? res.end() : res.end(video);
+      }
+
       // Neon evidence API: each saved revision receives an event, and the browser can
       // upload the corresponding PNG/video directly to Neon Object Storage via a short-lived signed URL.
       const neonEvidenceMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})$/i);
