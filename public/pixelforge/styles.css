@@ -214,3 +214,18 @@
 .animation-frame .frame-duration{position:absolute;right:4px;top:3px;font-size:8px;opacity:.75}
 @media(max-width:760px){.animation-panel{grid-column:2;grid-row:2;padding:8px 9px;max-height:150px;gap:6px}.animation-toolbar{align-items:flex-start}.animation-title{display:none}.animation-actions{justify-content:flex-start;gap:4px}.animation-actions button{min-height:29px;padding:4px 6px;font-size:9px}.animation-number,.animation-check{font-size:9px}.animation-number input{width:40px;min-height:27px}.animation-number input#animation-duration{width:48px}.animation-frames{min-height:62px}.animation-frame{flex-basis:58px;min-width:58px;padding:4px}.animation-frame canvas{width:36px;height:36px}}
 @media(max-width:420px){.animation-panel{padding:7px 6px}.animation-actions button{padding:3px 5px}.animation-check{gap:2px}.animation-frame{flex-basis:52px;min-width:52px}}
+
+/* Layered Reference Center */
+.reference-center-section{max-height:430px;overflow:auto}
+.reference-center-actions{display:flex;gap:6px;margin:8px 0}
+.reference-center-actions .file-button,.reference-parts .file-button{flex:1;min-width:0}
+.reference-center-list{display:flex;flex-direction:column;gap:8px}
+.reference-card{border:1px solid var(--line);border-radius:8px;background:#15171e;padding:9px}
+.reference-card-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.reference-card-header strong{font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reference-parts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:7px}
+.reference-parts .file-button{font-size:9px;min-height:26px;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reference-center-context{display:grid;grid-template-columns:1fr auto;gap:5px 8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px;margin:8px 0}
+.reference-center-context label{font-size:9px;color:var(--muted)}
+.reference-center-context input{display:block;width:100%}
+.reference-center-context span{font-size:9px;color:var(--text)}
