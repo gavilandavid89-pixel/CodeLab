@@ -103,7 +103,7 @@ async function ensureAgentBridgeWakeListener() {
       )
     `);
     await client.query(`
-      DO $
+      DO $$
       BEGIN
         IF EXISTS (
           SELECT 1 FROM pg_constraint
@@ -126,7 +126,7 @@ async function ensureAgentBridgeWakeListener() {
             'codelab_project_record_video','codelab_ui_execute'
           ]));
       EXCEPTION WHEN duplicate_object THEN NULL;
-      END $`);
+      END $$`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.codelab_agent_bridge_state (
         state_id text PRIMARY KEY,
