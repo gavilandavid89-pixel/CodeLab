@@ -15,6 +15,7 @@ const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const pixelForgeUploads = require('./pixelforge-upload-store.js');
+const neonEvidence = require('./neon-pixelforge-evidence.js');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.CODELAB_DATA_DIR || path.join(__dirname, 'data');
@@ -621,6 +622,7 @@ async function ensurePixelForgeTable() {
     ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
   `);
   await pixelForgeUploads.ensureSchema(accountPool);
+  await neonEvidence.ensureEvidenceSchema(accountPool);
   pixelForgeTableReady = true;
 }
 
@@ -720,7 +722,18 @@ async function savePixelForgeProjectToDatabase(workspaceId, project, projectByte
         serializedDocument, storedDocumentBytes, storedDocument.serverRevision, contentSha256]
     );
     await client.query('COMMIT');
-    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision, contentSha256 };
+    let evidenceEvent = null;
+    try {
+      evidenceEvent = await neonEvidence.createChangeEvent(accountPool, {
+        workspaceId, projectId: project.id, revision: storedDocument.serverRevision,
+        changeKind: 'project-save',
+        metadata: { contentSha256, width: project.width, height: project.height }
+      });
+    } catch (evidenceError) {
+      console.error('PixelForge Neon evidence event failed:', evidenceError.message);
+    }
+    return { status: existing.rowCount ? 200 : 201, now, serverRevision: storedDocument.serverRevision, contentSha256,
+      ...(evidenceEvent ? { evidenceEvent } : {}) };
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     throw error;
@@ -2498,6 +2511,55 @@ const server = http.createServer(async (req, res) => {
         const settings = designTools.sanitizeSettings(input);
         writeDesignSystem(id, settings);
         return sendJson(res, 200, { ok: true, settings: settings });
+      }
+
+      // Neon evidence API: each saved revision receives an event, and the browser can
+      // upload the corresponding PNG/video directly to Neon Object Storage via a short-lived signed URL.
+      const neonEvidenceMatch = pathname.match(/^\\/api\\/pixelforge\\/evidence\\/([0-9a-f-]{36})$/i);
+      if (neonEvidenceMatch && ['GET', 'POST'].includes(req.method)) {
+        const user = await getSessionUser(req);
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
+        const eventId = neonEvidenceMatch[1];
+        if (req.method === 'GET') {
+          const event = await neonEvidence.getChangeEvent(accountPool, workspaceId, eventId);
+          return event ? sendJson(res, 200, { event }) : sendJson(res, 404, { error: 'evidence_event_not_found' });
+        }
+        const body = await readBody(req, 1024 * 1024);
+        if (!body || !['image', 'video'].includes(body.kind)) return sendJson(res, 400, { error: 'evidence_kind_required' });
+        const event = await neonEvidence.getChangeEvent(accountPool, workspaceId, eventId);
+        if (!event) return sendJson(res, 404, { error: 'evidence_event_not_found' });
+        if (!neonEvidence.storageConfigured()) return sendJson(res, 503, { error: 'neon_storage_not_configured' });
+        const ext = body.kind === 'image' ? 'png' : 'webm';
+        const key = 'pixelforge/' + workspaceId + '/' + event.projectId + '/r' + event.revision + '/' + eventId + '.' + ext;
+        try {
+          const signed = neonEvidence.presignStorageObject({
+            objectKey: key,
+            contentType: body.kind === 'image' ? 'image/png' : 'video/webm',
+            expiresInSeconds: 900
+          });
+          const endpoint = process.env.NEON_STORAGE_ENDPOINT.replace(/\\/$/, '');
+          const publicUrl = endpoint + '/' + signed.bucket + '/' + key;
+          return sendJson(res, 200, { ok: true, eventId, kind: body.kind, key, upload: signed, publicUrl });
+        } catch (error) {
+          return sendJson(res, 503, { error: error.message === 'neon_storage_credentials_missing' ? error.message : 'neon_storage_presign_failed' });
+        }
+      }
+
+      const neonEvidenceCompleteMatch = pathname.match(/^\\/api\\/pixelforge\\/evidence\\/([0-9a-f-]{36})\\/complete$/i);
+      if (req.method === 'POST' && neonEvidenceCompleteMatch) {
+        const user = await getSessionUser(req);
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
+        const body = await readBody(req, 1024 * 1024);
+        if (!body || !['image', 'video'].includes(body.kind) || typeof body.key !== 'string') return sendJson(res, 400, { error: 'invalid_evidence_completion' });
+        const attached = await neonEvidence.attachEvidence(accountPool, {
+          workspaceId, eventId: neonEvidenceCompleteMatch[1], kind: body.kind,
+          objectKey: body.key, publicUrl: typeof body.publicUrl === 'string' ? body.publicUrl : null
+        });
+        return attached ? sendJson(res, 200, { ok: true, evidence: attached }) : sendJson(res, 404, { error: 'evidence_event_not_found' });
       }
 
       if (req.method === 'GET' && pathname === '/api/pixelforge/mode') {
