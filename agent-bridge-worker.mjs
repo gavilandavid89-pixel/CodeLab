@@ -161,6 +161,25 @@ async function finish(commandId, status, result, proposal = null, token = null) 
     'UPDATE codelab_agent_commands SET status=$2, result=$3::jsonb, proposal=$4::jsonb, proposal_token=$5, finished_at=CASE WHEN $2 IN (\'succeeded\',\'rejected\',\'failed\',\'expired\') THEN now() ELSE NULL END, updated_at=now() WHERE command_id=$1',
     [commandId, status, JSON.stringify(result ?? null), proposal === null ? null : JSON.stringify(proposal), token]
   );
+  await writeBridgeSignal(status === 'failed' ? 'error' : 'running', {
+    wakeRequired: false,
+    reason: 'command_' + status,
+    metadata: {
+      pid: process.pid,
+      hostname: os.hostname(),
+      source: 'agent-bridge-worker',
+      commandId,
+      commandStatus: status,
+      resultSummary: result && typeof result === 'object' ? {
+        error: result.error || null,
+        message: result.message || null,
+        projectId: result.projectId || result.project_id || null,
+        revision: result.revision ?? result.serverRevision ?? null,
+        evidenceEventId: result.eventId || result.evidence?.eventId || null
+      } : null,
+      commandFinishedAt: new Date().toISOString()
+    }
+  });
 }
 async function loadProject(projectId) {
   const result = await pool.query(
@@ -2318,6 +2337,19 @@ async function executeExplicitCodeLabBrowser(command) {
 
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
+  await writeBridgeSignal('running', {
+    wakeRequired: false,
+    reason: 'command_started',
+    metadata: {
+      pid: process.pid,
+      hostname: os.hostname(),
+      source: 'agent-bridge-worker',
+      commandId: command.command_id,
+      action: command.action,
+      projectId: command.payload?.project_id || null,
+      commandStartedAt: new Date().toISOString()
+    }
+  });
   if (new Date(command.expires_at).getTime() < Date.now()) {
     await finish(command.command_id, 'expired', { error: 'command_expired' });
     return;
