@@ -2,7 +2,7 @@ import { RasterDocument } from './core.js';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
-import { analyzeMotion, deserializePixels as deserializeDrawingPixels } from './drawing-intelligence.js';
+import { analyzeMotion, deserializePixels as deserializeDrawingPixels, buildReferenceFromProject, registerReferenceEntry, normalizeDrawingModel } from './drawing-intelligence.js';
 
 const MAX_ANIMATION_HISTORY_STEPS = 100;
 
@@ -23,7 +23,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
   proposalApprovalRequired: true,
   authenticatedPersistence: true,
   rasterActions: Object.freeze([
-    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'drawing.model.get', 'drawing.sheet.get', 'drawing.sheet.configure', 'drawing.palette.get', 'drawing.object.select_at', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.reference.extract_line_guide', 'drawing.motion.analyze', 'drawing.reference.create', 'drawing.reference.list', 'drawing.reference.get', 'drawing.reference.apply', 'drawing.reference.copy_part', 'drawing.reference.remove', 'canvas.get_pixel',
+    'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'drawing.model.get', 'drawing.sheet.get', 'drawing.sheet.configure', 'drawing.palette.get', 'drawing.object.select_at', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.reference.extract_line_guide', 'drawing.motion.analyze', 'drawing.reference.create', 'drawing.reference.package_current', 'drawing.reference.list', 'drawing.reference.get', 'drawing.reference.apply', 'drawing.reference.copy_part', 'drawing.reference.remove', 'canvas.get_pixel',
     'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
     'layer.rename', 'layer.set_opacity', 'layer.set_visibility', 'layer.set_locked',
     'layer.duplicate', 'layer.delete', 'canvas.fill', 'canvas.clear_region',
@@ -417,7 +417,7 @@ export class HeadlessEditorRuntime {
     const result = this.#workspace.acceptProposal();
     if (result.status === 'applied') {
       this.#animation = committedAnimation;
-      if (hadAnimationChanges && this.#animation.frames.length) this.#hasAnimation = true;
+      if (hadAnimationChanges) this.#hasAnimation = this.#animation.frames.length > 0;
       const nextSandboxLayerIds = this.#workspace.mapSourceLayerIdsToSandbox(this.#animation.layerIds);
       this.#sandboxAnimation = remapAnimationLayerIds(this.#animation, nextSandboxLayerIds);
       this.#animationDirty = false;
