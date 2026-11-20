@@ -966,6 +966,26 @@ export class RasterDocument {
     }
     return changedPixels;
   }
+  setLayerPixels(id, pixels) {
+    const layer = this.layers.find(item => item.id === id);
+    if (!layer) throw new Error('Unknown layer ID.');
+    if (layer.locked) throw new Error('The target layer is locked.');
+    if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) throw new TypeError('Layer pixels must be a typed RGBA buffer.');
+    if (pixels.length !== this.width * this.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
+    const tilesBefore = new Map();
+    for (let y = 0; y < this.height; y += TILE_SIZE) for (let x = 0; x < this.width; x += TILE_SIZE) {
+      const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
+      tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
+    }
+    layer.pixels.set(pixels);
+    this.#markAllCompositeDirty();
+    const tiles = [...tilesBefore.entries()].map(([key, before]) => {
+      const [tileX, tileY] = key.split(':').map(Number);
+      return { tileX, tileY, before, after: this.#captureTile(layer, tileX, tileY) };
+    });
+    this.#record({ type: 'pixels', layerId: layer.id, tiles });
+    return { layerId: layer.id, changed: true, pixelBytes: pixels.length };
+  }
   sampleColorAt(x, y, { merged = true } = {}) {
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.width || y >= this.height) {
       throw new RangeError('Sample coordinates are outside the document bounds.');
