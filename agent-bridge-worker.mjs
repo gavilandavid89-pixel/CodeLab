@@ -2080,6 +2080,82 @@ async function capturePixelForgeInterface(payload = {}) {
 }
 
 
+async function previewPixelForgeEvidenceVideo(payload = {}) {
+  const eventId = String(payload.event_id || '');
+  if (!/^[0-9a-f-]{36}$/i.test(eventId)) throw new Error('A valid evidence event_id is required.');
+  const result = await pool.query(
+    \`SELECT video_data, video_mime_type, project_id, revision
+     FROM codelab_pixelforge_change_events
+     WHERE workspace_id = $1 AND event_id = $2\`,
+    [workspaceId, eventId]
+  );
+  const evidence = result.rows[0];
+  if (!evidence || !evidence.video_data) throw new Error('Video evidence bytes were not found in Neon.');
+  const videoBytes = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-evidence-preview-'));
+  let browser;
+  try {
+    chromium.setGraphicsMode = false;
+    browser = await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      timeout: 60000
+    });
+    const page = await browser.newPage({ viewport: { width: 640, height: 480 }, deviceScaleFactor: 1 });
+    await page.setContent('<!doctype html><html><body style="margin:0;background:#111;display:grid;place-items:center;width:640px;height:480px"><video id="evidence" muted playsinline style="width:640px;height:480px;object-fit:contain"></video></body></html>');
+    const dataUrl = 'data:' + (evidence.video_mime_type || 'video/webm') + ';base64,' + videoBytes.toString('base64');
+    await page.evaluate(src => {
+      const video = document.getElementById('evidence');
+      video.src = src;
+      video.load();
+    }, dataUrl);
+    await page.waitForFunction(() => {
+      const video = document.getElementById('evidence');
+      return video && video.readyState >= 2 && Number.isFinite(video.duration) && video.videoWidth > 0;
+    }, { timeout: 30000 });
+    const videoInfo = await page.evaluate(() => {
+      const video = document.getElementById('evidence');
+      return { duration: video.duration, width: video.videoWidth, height: video.videoHeight, readyState: video.readyState };
+    });
+    const times = [...new Set([0.02, videoInfo.duration / 2, Math.max(0, videoInfo.duration - 0.02)]
+      .map(time => Math.min(Math.max(0, time), Math.max(0, videoInfo.duration - 0.001))))];
+    const frames = [];
+    for (let index = 0; index < times.length; index += 1) {
+      await page.evaluate(time => new Promise((resolve, reject) => {
+        const video = document.getElementById('evidence');
+        const onSeeked = () => resolve();
+        video.addEventListener('seeked', onSeeked, { once: true });
+        video.currentTime = time;
+        setTimeout(() => reject(new Error('Timed out decoding video frame at ' + time)), 10000);
+      }), times[index]);
+      const png = await page.locator('#evidence').screenshot({ type: 'png' });
+      frames.push({
+        index,
+        timeSeconds: times[index],
+        pngBase64: png.toString('base64'),
+        sha256: createHash('sha256').update(png).digest('hex'),
+        bytes: png.length
+      });
+    }
+    return {
+      eventId,
+      projectId: evidence.project_id,
+      revision: evidence.revision,
+      sourceMimeType: evidence.video_mime_type || 'video/webm',
+      sourceBytes: videoBytes.length,
+      sourceSha256: createHash('sha256').update(videoBytes).digest('hex'),
+      decodedBy: 'Playwright Chromium HTMLVideoElement',
+      videoInfo,
+      decodedFrameCount: frames.length,
+      frames
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function exportPixelForgeAnimationVideo(payload = {}) {
   assertProjectId(payload.project_id);
   const loaded = await loadProject(payload.project_id);
@@ -2502,6 +2578,9 @@ async function processCommand(command) {
       return;
     case 'pixelforge_export_animation_video':
       await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo({ ...payload, command_id: command.command_id }));
+      return;
+    case 'pixelforge_preview_evidence_video':
+      await finish(command.command_id, 'succeeded', await previewPixelForgeEvidenceVideo(payload));
       return;
     case 'pixelforge_export_image': {
       // Backward-compatible mailbox envelope: the primary DB CHECK constraint
