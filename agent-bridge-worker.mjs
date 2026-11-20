@@ -2485,6 +2485,10 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await listProjects());
       return;
     case 'pixelforge_inspect': {
+      if (payload.operation === 'preview_video') {
+        await finish(command.command_id, 'succeeded', await previewPixelForgeEvidenceVideo(payload));
+        return;
+      }
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id);
       const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
