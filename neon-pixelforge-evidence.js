@@ -7,8 +7,34 @@ const STORAGE_REGION = process.env.NEON_STORAGE_REGION || 'us-east-2';
 const STORAGE_ACCESS_KEY = process.env.NEON_STORAGE_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || '';
 const STORAGE_SECRET_KEY = process.env.NEON_STORAGE_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || '';
 
+const CLOUDFLARE_EVIDENCE_BASE_URL = (process.env.CLOUDFLARE_EVIDENCE_BASE_URL || '').replace(/\/$/, '');
+const CLOUDFLARE_EVIDENCE_SECRET = process.env.CLOUDFLARE_EVIDENCE_SIGNING_SECRET || '';
+
+function cloudflareEvidenceConfigured() {
+  return !!(CLOUDFLARE_EVIDENCE_BASE_URL && CLOUDFLARE_EVIDENCE_SECRET);
+}
+
 function storageConfigured() {
-  return !!(STORAGE_ENDPOINT && STORAGE_ACCESS_KEY && STORAGE_SECRET_KEY);
+  return cloudflareEvidenceConfigured() || !!(STORAGE_ENDPOINT && STORAGE_ACCESS_KEY && STORAGE_SECRET_KEY);
+}
+
+function presignCloudflareEvidenceObject({ objectKey, contentType, expiresInSeconds = 900 }) {
+  if (!cloudflareEvidenceConfigured()) throw new Error('cloudflare_evidence_config_missing');
+  if (!objectKey || objectKey.includes('..') || objectKey.startsWith('/')) throw new Error('invalid_object_key');
+  const now = Math.floor(Date.now() / 1000);
+  const expires = now + Math.min(604800, Math.max(1, Number(expiresInSeconds) || 900));
+  const type = String(contentType || 'application/octet-stream');
+  const payload = ['PUT', objectKey, String(expires), type].join('\n');
+  const signature = hmac(CLOUDFLARE_EVIDENCE_SECRET, payload, 'hex');
+  return {
+    method: 'PUT',
+    url: CLOUDFLARE_EVIDENCE_BASE_URL + '/evidence/' + objectKey.split('/').map(encodePath).join('/') +
+      '?expires=' + expires + '&sig=' + signature,
+    headers: { 'content-type': type },
+    expiresAt: new Date(expires * 1000).toISOString(),
+    bucket: 'cloudflare-r2',
+    objectKey
+  };
 }
 
 async function ensureEvidenceSchema(pool) {
@@ -88,6 +114,7 @@ function canonicalQuery(params) {
 }
 
 function presignStorageObject({ bucket = DEFAULT_BUCKET, objectKey, contentType, expiresInSeconds = 900 }) {
+  if (cloudflareEvidenceConfigured()) return presignCloudflareEvidenceObject({ objectKey, contentType, expiresInSeconds });
   if (!storageConfigured()) throw new Error('neon_storage_credentials_missing');
   if (!objectKey || objectKey.includes('..') || objectKey.startsWith('/')) throw new Error('invalid_object_key');
 
@@ -140,6 +167,7 @@ async function attachEvidence(pool, { workspaceId, eventId, kind, objectKey, pub
 module.exports = {
   DEFAULT_BUCKET,
   storageConfigured,
+  cloudflareEvidenceConfigured,
   ensureEvidenceSchema,
   createChangeEvent,
   getChangeEvent,
