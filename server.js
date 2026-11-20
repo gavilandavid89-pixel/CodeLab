@@ -3210,8 +3210,46 @@ seedAdminAccountIfConfigured().then(async () => {
   process.exit(1);
 });
 
-function shutdown() {
+let shuttingDown = false;
+async function emitAgentBridgeShutdownSignal() {
+  if (!accountPool) return;
+  try {
+    const admin = await accountPool.query("SELECT id FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1");
+    if (!admin.rowCount) return;
+    const workspaceId = 'ws_local_' + String(admin.rows[0].id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    await accountPool.query(
+      `CREATE TABLE IF NOT EXISTS public.codelab_agent_bridge_state (
+        state_id text PRIMARY KEY,
+        workspace_id text NOT NULL,
+        state text NOT NULL CHECK (state IN ('starting','running','sleeping','stopping','error')),
+        wake_required boolean NOT NULL DEFAULT false,
+        wake_reason text,
+        signal_version bigint NOT NULL DEFAULT 0,
+        last_signal_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+      )`
+    );
+    await accountPool.query(
+      `INSERT INTO public.codelab_agent_bridge_state
+        (state_id, workspace_id, state, wake_required, wake_reason, signal_version, last_signal_at, updated_at, metadata)
+       VALUES ($1,$2,'sleeping',true,'server_shutdown',1,now(),now(),$3::jsonb)
+       ON CONFLICT (state_id) DO UPDATE SET
+         state='sleeping', wake_required=true, wake_reason='server_shutdown',
+         signal_version=public.codelab_agent_bridge_state.signal_version+1,
+         last_signal_at=now(), updated_at=now(), metadata=$3::jsonb`,
+      ['native-bridge:' + workspaceId, workspaceId, JSON.stringify({ pid: process.pid, source: 'server-shutdown' })]
+    );
+    console.log('[CodeLab Native Bridge] final Neon shutdown signal emitted by server.');
+  } catch (error) {
+    console.error('[CodeLab Native Bridge] final Neon shutdown signal failed:', error.message);
+  }
+}
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log('Shutting down…');
+  await emitAgentBridgeShutdownSignal();
   stopAgentBridge();
   if (agentBridgeWakeClient) {
     try { agentBridgeWakeClient.release(); } catch (_) {}
@@ -3220,5 +3258,5 @@ function shutdown() {
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000).unref();
 }
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => { void shutdown(); });
+process.on('SIGINT', () => { void shutdown(); });
