@@ -258,6 +258,16 @@ export class RasterDocument {
     this.historyBytes = 0;
     this.dirty = false;
     this.selectionMask = null;
+    this.drawingModel = null;
+  }
+  setDrawingModel(model) {
+    if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Drawing model must be an object or null.');
+    this.drawingModel = model === null ? null : JSON.parse(JSON.stringify(model));
+    this.dirty = true;
+    this.saveVersion++;
+  }
+  getDrawingModel() {
+    return this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel));
   }
   setSelectionMask(mask) {
     if (mask === null) { this.selectionMask = null; return; }
@@ -1036,7 +1046,8 @@ export class RasterDocument {
       throw new RangeError('Project JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
     return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
-      layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })) };
+      layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })),
+      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)) };
   }
   static fromJSON(data, { newIdentity = false } = {}) {
     if (!data || data.format !== 'pixelforge-project' || data.version !== 1 || !Array.isArray(data.layers)) throw new TypeError('Unsupported or invalid PixelForge project file.');
@@ -1072,6 +1083,8 @@ export class RasterDocument {
     if (data.saveVersion !== undefined && (!Number.isInteger(data.saveVersion) || data.saveVersion < 0)) throw new RangeError('Save version must be a non-negative integer.');
     if (data.serverRevision !== undefined && (!Number.isInteger(data.serverRevision) || data.serverRevision < 0)) throw new RangeError('Server revision must be a non-negative integer.');
     doc.activeLayerId = data.activeLayerId === undefined ? doc.layers[0].id : (newIdentity ? layerIdMap.get(data.activeLayerId) : data.activeLayerId);
+    doc.drawingModel = data.drawingModel && typeof data.drawingModel === 'object' && !Array.isArray(data.drawingModel)
+      ? JSON.parse(JSON.stringify(data.drawingModel)) : null;
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
     doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
