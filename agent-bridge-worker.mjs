@@ -1831,7 +1831,20 @@ async function migrateAdminPixelForgeProjectsToGuest() {
       (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256)
      SELECT $1, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256
        FROM codelab_pixelforge_projects WHERE workspace_id=$2
-     ON CONFLICT (workspace_id, project_id) DO NOTHING`,
+     ON CONFLICT (workspace_id, project_id) DO UPDATE SET
+       name=EXCLUDED.name,
+       width=EXCLUDED.width,
+       height=EXCLUDED.height,
+       updated_at=EXCLUDED.updated_at,
+       last_opened_at=EXCLUDED.last_opened_at,
+       project=EXCLUDED.project,
+       byte_size=EXCLUDED.byte_size,
+       server_revision=EXCLUDED.server_revision,
+       content_sha256=EXCLUDED.content_sha256
+     WHERE EXCLUDED.server_revision > codelab_pixelforge_projects.server_revision
+        OR (EXCLUDED.server_revision = codelab_pixelforge_projects.server_revision
+            AND EXCLUDED.content_sha256 IS DISTINCT FROM codelab_pixelforge_projects.content_sha256
+            AND EXCLUDED.updated_at > codelab_pixelforge_projects.updated_at)`,
     [pixelForgeWorkspaceId, workspaceId]
   );
   console.log('[PixelForge] temporary guest workspace ready; copied projects:', copied.rowCount);
@@ -2094,7 +2107,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
           action: 'pixelforge_export_animation_video',
           contentSha256: loaded.contentSha256,
           capture: 'explicit-video-export',
-          transport: neonEvidence.cloudflareEvidenceConfigured() ? 'cloudflare-r2' : 'neon-object-storage',
+          transport: neonEvidence.cloudflareEvidenceConfigured() ? 'cloudflare-r2' : (neonEvidence.storageConfigured() ? 'neon-object-storage' : 'neon-postgres-bytea'),
           videoDurationMs: totalDurationMs
         }
       });
@@ -2336,7 +2349,7 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
       return;
     case 'pixelforge_export_animation_video':
-      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo(payload));
+      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo({ ...payload, command_id: command.command_id }));
       return;
     case 'pixelforge_export_image': {
       // Backward-compatible mailbox envelope: the primary DB CHECK constraint
