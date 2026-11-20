@@ -24,7 +24,9 @@ jobs:
           set -euo pipefail
           start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "A_START=$start" >> "$GITHUB_ENV"
-          gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO"
+          gh api "repos/$GH_REPO/dispatches" --input - <<JSON
+{"event_type":"codelab-session-a","client_payload":{"session_minutes":"360","mailbox_transport":"relay","mailbox_base_url":"https://codelab-pbw9.onrender.com"}}
+JSON
           echo "A requested (persistent B→A rendezvous stress)"
 
       - name: Resolve A session id without GitHub comment rendezvous
@@ -55,7 +57,9 @@ jobs:
           start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "B_CONCURRENT_START=$start" >> "$GITHUB_ENV"
           for n in $(seq 1 5); do
-            gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" -f mode=concurrent -f session_id="$A_SESSION_ID" -f mailbox_base_url="$A_MAILBOX"
+            gh api "repos/$GH_REPO/dispatches" --input - <<JSON
+{"event_type":"codelab-session-b","client_payload":{"mode":"concurrent","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
+JSON
           done
           echo "5 concurrent B requests dispatched"
 
@@ -90,7 +94,9 @@ jobs:
           start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "B_QUEUE_START=$start" >> "$GITHUB_ENV"
           for n in $(seq 1 5); do
-            gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" -f mode=queue -f session_id="$A_SESSION_ID" -f mailbox_base_url="$A_MAILBOX"
+            gh api "repos/$GH_REPO/dispatches" --input - <<JSON
+{"event_type":"codelab-session-b","client_payload":{"mode":"queue","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
+JSON
           done
           echo "5 queued B requests dispatched"
 
@@ -123,7 +129,9 @@ jobs:
         run: |
           set -euo pipefail
           dispatch_and_wait() {
-            gh workflow run "CodeLab Independent Session B" --repo "$GH_REPO" -f mode=normal -f session_id="$A_SESSION_ID" -f mailbox_base_url="$A_MAILBOX"
+            gh api "repos/$GH_REPO/dispatches" --input - <<JSON
+{"event_type":"codelab-session-b","client_payload":{"mode":"normal","session_id":"$A_SESSION_ID","mailbox_base_url":"$A_MAILBOX"}}
+JSON
             local before="$BEFORE"
             for i in $(seq 1 36); do
               row="$(gh run list --repo "$GH_REPO" --workflow "CodeLab Independent Session B" --limit 50 --json databaseId,createdAt,status,conclusion --jq '.[] | select(.createdAt >= env.BEFORE) | [.databaseId,.status,.conclusion] | @tsv' | head -n 1)"
