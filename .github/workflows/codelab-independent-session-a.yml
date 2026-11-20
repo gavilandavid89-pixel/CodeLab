@@ -7,6 +7,8 @@ on:
       - '.codelab/session-a/**'
   issue_comment:
     types: [created]
+  repository_dispatch:
+    types: [codelab-session-a]
   workflow_dispatch:
     inputs:
       session_minutes:
@@ -36,7 +38,7 @@ permissions:
 
 jobs:
   session-a:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'repository_dispatch' && github.event.action == 'codelab-session-a') || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -75,10 +77,10 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_SESSION_ID: "independent-${{ github.run_id }}"
-          CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || '360' }}
+          CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || github.event.client_payload.session_minutes || '360' }}
           CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-independent-a-video
-          CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || 'relay' }}
-          CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
+          CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || github.event.client_payload.mailbox_transport || 'relay' }}
+          CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || github.event.client_payload.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
         run: node scripts/codelab-session-host.mjs
       - name: Upload A evidence
         if: always()
