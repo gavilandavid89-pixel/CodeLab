@@ -79,6 +79,26 @@ function centroid(pixels, width, height) {
   return weight ? { x: sx / weight, y: sy / weight } : null;
 }
 
+function coordinateRuns(coordinates) {
+  const rows = new Map();
+  for (const point of coordinates) {
+    if (!rows.has(point.y)) rows.set(point.y, []);
+    rows.get(point.y).push(point.x);
+  }
+  const runs = [];
+  for (const [y, xs] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
+    xs.sort((a, b) => a - b);
+    let start = xs[0], previous = xs[0];
+    for (let i = 1; i < xs.length; i++) {
+      if (xs[i] === previous + 1) { previous = xs[i]; continue; }
+      runs.push({ y, x: start, length: previous - start + 1 });
+      start = previous = xs[i];
+    }
+    runs.push({ y, x: start, length: previous - start + 1 });
+  }
+  return runs;
+}
+
 function boundaryRuns(pixels, width, height) {
   const rows = [];
   for (let y = 0; y < height; y++) {
@@ -312,7 +332,7 @@ export function registerReferenceEntry(model, entry) {
     createdAt: entry.createdAt || new Date().toISOString(),
     sourceProjectId: entry.sourceProjectId || null,
     frames: Array.isArray(entry.frames) ? clone(entry.frames) : [],
-    parts: Array.isArray(entry.parts) ? clone(entry.parts) : [],
+    parts: Array.isArray(entry.parts) ? clone(entry.parts) : [],\n    layerSnapshot: Array.isArray(entry.layerSnapshot) ? clone(entry.layerSnapshot) : [],\n    frameLayerMap: Array.isArray(entry.frameLayerMap) ? clone(entry.frameLayerMap) : [],
     geometry: clone(entry.geometry || {}),
     palette: clone(entry.palette || model.palette),
     preview: clone(entry.preview || null),
@@ -377,7 +397,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
       sheet: project.drawingModel?.sheet || null,
       objectCount: parts.length,
     },
-    palette: project.drawingModel?.palette || SEMANTIC_PALETTE,
+    palette: project.drawingModel?.palette || SEMANTIC_PALETTE,\n    layerSnapshot: project.layers.map((layer, index) => ({ id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked })),\n    frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({ index, frameId: frame.id, layers: frame.cels.map(cel => ({ layerId: cel.layerId })) })) : [],
   };
 }
 
