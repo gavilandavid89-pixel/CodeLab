@@ -29,8 +29,69 @@ const MAX_PROJECTS = 50;
 const POLL_MS = 150;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 let stopping = false;
+let shutdownSignalPromise = null;
 let workspaceId;
 let pixelForgeWorkspaceId = 'ws_pixelforge_guest';
+
+async function ensureBridgeSignalSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS public.codelab_agent_bridge_state (
+      state_id text PRIMARY KEY,
+      workspace_id text NOT NULL,
+      state text NOT NULL CHECK (state IN ('starting','running','sleeping','stopping','error')),
+      wake_required boolean NOT NULL DEFAULT false,
+      wake_reason text,
+      signal_version bigint NOT NULL DEFAULT 0,
+      last_signal_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    )`
+  );
+}
+
+async function writeBridgeSignal(state, { wakeRequired, reason, metadata = {} } = {}) {
+  if (!workspaceId) return null;
+  await ensureBridgeSignalSchema();
+  const result = await pool.query(
+    `INSERT INTO public.codelab_agent_bridge_state
+      (state_id, workspace_id, state, wake_required, wake_reason, signal_version, last_signal_at, updated_at, metadata)
+     VALUES ($1,$2,$3,$4,$5,1,now(),now(),$6::jsonb)
+     ON CONFLICT (state_id) DO UPDATE SET
+       workspace_id=EXCLUDED.workspace_id,
+       state=EXCLUDED.state,
+       wake_required=EXCLUDED.wake_required,
+       wake_reason=EXCLUDED.wake_reason,
+       signal_version=codelab_agent_bridge_state.signal_version+1,
+       last_signal_at=now(),
+       updated_at=now(),
+       metadata=EXCLUDED.metadata
+     RETURNING state_id, workspace_id, state, wake_required, wake_reason, signal_version, last_signal_at, updated_at, metadata`,
+    ['native-bridge:' + workspaceId, workspaceId, state, !!wakeRequired, reason || null, JSON.stringify(metadata)]
+  );
+  return result.rows[0] || null;
+}
+
+async function emitShutdownSignal(reason = 'shutdown') {
+  if (shutdownSignalPromise) return shutdownSignalPromise;
+  shutdownSignalPromise = (async () => {
+    try {
+      const signal = await writeBridgeSignal('sleeping', {
+        wakeRequired: true,
+        reason,
+        metadata: { pid: process.pid, hostname: os.hostname(), source: 'agent-bridge-worker' }
+      });
+      console.log('[CodeLab Native Bridge] final Neon shutdown signal emitted:', {
+        workspaceId: signal?.workspace_id,
+        wakeRequired: signal?.wake_required,
+        signalVersion: signal?.signal_version,
+        reason: signal?.wake_reason
+      });
+    } catch (error) {
+      console.error('[CodeLab Native Bridge] final Neon shutdown signal failed:', error.message);
+    }
+  })();
+  return shutdownSignalPromise;
+}
 
 function safeJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -2457,6 +2518,12 @@ async function main() {
     $codelab_migration$;
   `);
   workspaceId = await resolveAdminWorkspace();
+  await ensureBridgeSignalSchema();
+  await writeBridgeSignal('running', {
+    wakeRequired: false,
+    reason: 'bridge_started',
+    metadata: { pid: process.pid, hostname: os.hostname(), source: 'agent-bridge-worker' }
+  });
   if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
     pixelForgeWorkspaceId = workspaceId;
   } else {
@@ -2543,9 +2610,20 @@ async function main() {
     }
   }
 }
-process.on('SIGTERM', () => { stopping = true; pool.end().catch(() => {}); });
-process.on('SIGINT', () => { stopping = true; pool.end().catch(() => {}); });
-main().catch(error => {
+async function shutdown(reason) {
+  stopping = true;
+  await emitShutdownSignal(reason);
+  await pool.end().catch(() => {});
+}
+process.once('SIGTERM', () => { void shutdown('sigterm'); });
+process.once('SIGINT', () => { void shutdown('sigint'); });
+main().catch(async error => {
   console.error('[CodeLab Native Bridge] fatal:', error);
+  try {
+    if (!workspaceId) workspaceId = await resolveAdminWorkspace().catch(() => workspaceId);
+    await emitShutdownSignal('fatal');
+  } finally {
+    await pool.end().catch(() => {});
+  }
   process.exitCode = 1;
 });
