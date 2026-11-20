@@ -2185,6 +2185,45 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      if (req.method === 'GET' && pathname === '/api/agent/bridge/state') {
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || url.searchParams.get('token') || '');
+        if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
+          return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
+        }
+        if (!accountPool) return sendJson(res, 503, { error: 'database_not_configured' });
+        try {
+          const admin = await accountPool.query("SELECT id FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1");
+          if (!admin.rowCount) return sendJson(res, 503, { error: 'admin_workspace_not_configured' });
+          const workspaceId = 'ws_local_' + String(admin.rows[0].id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+          const [bridge, commands, projects, evidence] = await Promise.all([
+            accountPool.query('SELECT state_id,workspace_id,state,wake_required,wake_reason,signal_version,last_signal_at,updated_at,metadata FROM public.codelab_agent_bridge_state WHERE state_id=$1', ['native-bridge:' + workspaceId]),
+            accountPool.query('SELECT command_id,action,status,payload,result,created_at,started_at,finished_at,expires_at,updated_at FROM public.codelab_agent_commands WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 20', [workspaceId]),
+            accountPool.query('SELECT project_id,name,width,height,updated_at,last_opened_at,server_revision,content_sha256 FROM public.codelab_pixelforge_projects WHERE workspace_id=$1 ORDER BY updated_at DESC LIMIT 20', [workspaceId]),
+            accountPool.query('SELECT event_id,project_id,revision,change_kind,status,image_key,video_key,image_url,video_url,metadata,created_at,updated_at FROM public.codelab_pixelforge_change_events WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 20', [workspaceId]).catch(() => ({ rows: [] }))
+          ]);
+          const bridgeState = bridge.rows[0] || { state:'unknown', wake_required:true, wake_reason:'missing_bridge_state' };
+          return sendJson(res, 200, {
+            ok:true,
+            operation:'bridge_state_snapshot',
+            generatedAt:new Date().toISOString(),
+            workspaceId,
+            bridge:bridgeState,
+            wake:{
+              required:!!bridgeState.wake_required,
+              includeWakeCommand:!!bridgeState.wake_required,
+              reason:bridgeState.wake_reason || null,
+              signalVersion:bridgeState.signal_version ?? null
+            },
+            runtime:agentBridgeStatus(),
+            commands:commands.rows,
+            projects:projects.rows,
+            evidence:evidence.rows
+          });
+        } catch (error) {
+          return sendJson(res, 503, { error:'agent_bridge_state_unavailable', message:String(error.message || error) });
+        }
+      }
+
       if (req.method === 'GET' && pathname === '/api/agent/bridge/status') {
         const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
         if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
