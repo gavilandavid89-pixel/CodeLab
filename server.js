@@ -2515,7 +2515,7 @@ const server = http.createServer(async (req, res) => {
 
       // Neon evidence API: each saved revision receives an event, and the browser can
       // upload the corresponding PNG/video directly to Neon Object Storage via a short-lived signed URL.
-      const neonEvidenceMatch = pathname.match(/^\\/api\\/pixelforge\\/evidence\\/([0-9a-f-]{36})$/i);
+      const neonEvidenceMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})$/i);
       if (neonEvidenceMatch && ['GET', 'POST'].includes(req.method)) {
         const user = await getSessionUser(req);
         if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
@@ -2539,7 +2539,7 @@ const server = http.createServer(async (req, res) => {
             contentType: body.kind === 'image' ? 'image/png' : 'video/webm',
             expiresInSeconds: 900
           });
-          const endpoint = process.env.NEON_STORAGE_ENDPOINT.replace(/\\/$/, '');
+          const endpoint = process.env.NEON_STORAGE_ENDPOINT.replace(/\/$/, '');
           const publicUrl = endpoint + '/' + signed.bucket + '/' + key;
           return sendJson(res, 200, { ok: true, eventId, kind: body.kind, key, upload: signed, publicUrl });
         } catch (error) {
@@ -2547,7 +2547,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const neonEvidenceCompleteMatch = pathname.match(/^\\/api\\/pixelforge\\/evidence\\/([0-9a-f-]{36})\\/complete$/i);
+      const neonEvidenceCompleteMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})\/complete$/i);
       if (req.method === 'POST' && neonEvidenceCompleteMatch) {
         const user = await getSessionUser(req);
         if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
