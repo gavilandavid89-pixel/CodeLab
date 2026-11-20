@@ -1409,10 +1409,11 @@ async function prepareAnimationEvidence(command) {
   const projectId = command.payload?.project_id;
   if (typeof projectId !== 'string') return null;
   const commandRow = await pool.query(
-    'SELECT result FROM codelab_agent_commands WHERE command_id=$1 AND workspace_id=$2 AND status=\'succeeded\'',
+    'SELECT status, result FROM codelab_agent_commands WHERE command_id=$1 AND workspace_id=$2',
     [command.command_id, workspaceId]
   );
   const result = commandRow.rows[0]?.result || {};
+  const commandStatus = commandRow.rows[0]?.status || 'unknown';
   let revision = Number(result.serverRevision || result.revision || 0);
   let contentSha256 = result.contentSha256 || null;
   if (!revision) {
@@ -1430,36 +1431,40 @@ async function prepareAnimationEvidence(command) {
       action: command.action,
       contentSha256,
       capture: 'automatic-video',
-      transport: neonEvidence.cloudflareEvidenceConfigured() ? 'cloudflare-r2' : 'neon-object-storage'
+      commandStatus,
+      commandError: result?.message || result?.error || null,
+      transport: neonEvidence.cloudflareEvidenceConfigured() ? 'cloudflare-r2' : 'neon-postgres-bytea'
     }
   });
   const objectKey = 'pixelforge/' + pixelForgeWorkspaceId + '/' + projectId +
     '/r' + revision + '/' + event.eventId + '.webm';
-  const upload = neonEvidence.presignStorageObject({
-    objectKey,
-    contentType: 'video/webm',
-    expiresInSeconds: 900
-  });
+  let upload = null;
+  if (neonEvidence.storageConfigured()) {
+    upload = neonEvidence.presignStorageObject({
+      objectKey,
+      contentType: 'video/webm',
+      expiresInSeconds: 900
+    });
+  }
   return {
     eventId: event.eventId,
     projectId,
     revision,
     objectKey,
     upload,
-    publicUrl: upload.publicUrl || null
+    publicUrl: upload?.publicUrl || null
   };
 }
 
 async function attachAnimationEvidence(evidence) {
   if (!evidence) return null;
-  const attached = await neonEvidence.attachEvidence(pool, {
+  return neonEvidence.attachEvidence(pool, {
     workspaceId: pixelForgeWorkspaceId,
     eventId: evidence.eventId,
     kind: 'video',
     objectKey: evidence.objectKey,
     publicUrl: evidence.publicUrl
   });
-  return attached;
 }
 
 async function finishAutomaticAnimationCapture(capture, command, evidence = null) {
@@ -1478,6 +1483,24 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
     if (evidence?.upload) {
       artifact = await uploadNativeArtifact(evidence.upload, bytes, 'video/webm', 'pixelforge/');
       await attachAnimationEvidence(evidence);
+    } else if (evidence) {
+      await neonEvidence.attachEvidence(pool, {
+        workspaceId: pixelForgeWorkspaceId,
+        eventId: evidence.eventId,
+        kind: 'video',
+        objectKey: evidence.objectKey,
+        publicUrl: null,
+        data: bytes,
+        mimeType: 'video/webm'
+      });
+      artifact = {
+        stored: true,
+        provider: 'neon-postgres-bytea',
+        access: 'neon-row',
+        objectKey: evidence.objectKey,
+        mimeType: 'video/webm',
+        sizeBytes: bytes.length
+      };
     } else if (command.payload?.uploadTarget) {
       artifact = await uploadNativeArtifact(command.payload.uploadTarget, bytes, 'video/webm', 'codelab/exports/');
     } else if (bytes.length <= 8 * 1024 * 1024) {
@@ -1508,7 +1531,7 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
             revision: evidence.revision,
             objectKey: evidence.objectKey,
             publicUrl: evidence.publicUrl,
-            provider: evidence.upload.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-object-storage',
+            provider: evidence.upload?.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-postgres-bytea',
             status: 'complete'
           }
         } : {}),
@@ -1522,6 +1545,7 @@ async function finishAutomaticAnimationCapture(capture, command, evidence = null
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
+
 
 async function uploadNativeArtifact(target, bytes, mimeType, keyPrefix) {
   if (!target || typeof target.url !== 'string' || typeof target.objectKey !== 'string' ||
@@ -2033,9 +2057,6 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       state: document.documentElement.dataset.pixelforgeCapture || '',
       error: document.documentElement.dataset.pixelforgeCaptureError || ''
     }));
-    if (startupState.state === 'error') {
-      throw new Error('PixelForge could not start its native animation playback: ' + startupState.error);
-    }
     const playbackReadyAt = new Date().toISOString();
     // The timeline duration is the authoritative capture window. The recorder
     // itself is the evidence source; do not require the optional DOM "complete"
@@ -2079,27 +2100,50 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       });
       const objectKey = 'pixelforge/' + pixelForgeWorkspaceId + '/' + payload.project_id +
         '/r' + loaded.serverRevision + '/' + evidence.eventId + '.webm';
-      const upload = neonEvidence.presignStorageObject({
-        objectKey,
-        contentType: 'video/webm',
-        expiresInSeconds: 900
-      });
+      let upload = null;
+      if (neonEvidence.storageConfigured()) {
+        upload = neonEvidence.presignStorageObject({
+          objectKey,
+          contentType: 'video/webm',
+          expiresInSeconds: 900
+        });
+      }
       uploadStartedAt = new Date().toISOString();
-      artifact = await uploadNativeArtifact(upload, videoBytes, 'video/webm', 'pixelforge/');
+      if (upload) {
+        artifact = await uploadNativeArtifact(upload, videoBytes, 'video/webm', 'pixelforge/');
+        await neonEvidence.attachEvidence(pool, {
+          workspaceId: pixelForgeWorkspaceId,
+          eventId: evidence.eventId,
+          kind: 'video',
+          objectKey,
+          publicUrl: upload.publicUrl || null
+        });
+      } else {
+        await neonEvidence.attachEvidence(pool, {
+          workspaceId: pixelForgeWorkspaceId,
+          eventId: evidence.eventId,
+          kind: 'video',
+          objectKey,
+          publicUrl: null,
+          data: videoBytes,
+          mimeType: 'video/webm'
+        });
+        artifact = {
+          stored: true,
+          provider: 'neon-postgres-bytea',
+          access: 'neon-row',
+          objectKey,
+          mimeType: 'video/webm',
+          sizeBytes: videoBytes.length
+        };
+      }
       uploadCompletedAt = new Date().toISOString();
-      await neonEvidence.attachEvidence(pool, {
-        workspaceId: pixelForgeWorkspaceId,
-        eventId: evidence.eventId,
-        kind: 'video',
-        objectKey,
-        publicUrl: upload.publicUrl || null
-      });
       neonEvidenceAttachedAt = new Date().toISOString();
       evidence = {
         eventId: evidence.eventId,
         objectKey,
-        publicUrl: upload.publicUrl || null,
-        provider: upload.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-object-storage',
+        publicUrl: upload?.publicUrl || null,
+        provider: upload?.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-postgres-bytea',
         status: 'complete'
       };
     } else {
@@ -2421,12 +2465,25 @@ async function main() {
       }, 30000);
       heartbeatTimer.unref?.();
       let automaticAnimationCapture = null;
+      let commandError = null;
       try {
         automaticAnimationCapture = await startAutomaticAnimationCapture(command).catch(error => {
           console.error('[CodeLab Native Bridge] automatic animation capture start failed:', command.command_id, error.message);
           return { startupError: String(error.message || 'Automatic animation capture failed.').slice(0, 500) };
         });
-        await processCommand(command);
+        try {
+          await processCommand(command);
+        } catch (error) {
+          commandError = error;
+          console.error('[CodeLab Native Bridge] command failed:', command.command_id, error.message);
+          await finish(command.command_id, 'failed', {
+            error: 'command_failed',
+            message: String(error.message || 'Unknown bridge error').slice(0, 1000),
+          }).catch(() => {});
+        }
+
+        // Evidence is independent from command success. A failed/partial operation
+        // still produces the visual state that the agent needs for diagnosis.
         let animationEvidence = null;
         if (automaticAnimationCapture && !automaticAnimationCapture.startupError) {
           try {
@@ -2440,7 +2497,10 @@ async function main() {
             if (animationEvidence) {
               await pool.query(
                 "UPDATE codelab_pixelforge_change_events SET status='failed', metadata=metadata || $2::jsonb, updated_at=now() WHERE workspace_id=$1 AND event_id=$3",
-                [pixelForgeWorkspaceId, JSON.stringify({ captureError: String(captureError.message || captureError).slice(0, 500) }), animationEvidence.eventId]
+                [pixelForgeWorkspaceId, JSON.stringify({
+                  captureError: String(captureError.message || captureError).slice(0, 500),
+                  commandError: commandError ? String(commandError.message || commandError).slice(0, 500) : null
+                }), animationEvidence.eventId]
               ).catch(() => {});
             }
             await pool.query(
@@ -2452,16 +2512,16 @@ async function main() {
         } else if (automaticAnimationCapture?.startupError) {
           await pool.query(
             "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
-            [command.command_id, JSON.stringify({ automaticCapture: { enabled: true, error: automaticAnimationCapture.startupError } }), workspaceId]
+            [command.command_id, JSON.stringify({
+              automaticCapture: {
+                enabled: true,
+                error: automaticAnimationCapture.startupError,
+                commandError: commandError ? String(commandError.message || commandError).slice(0, 500) : null
+              }
+            }), workspaceId]
           ).catch(() => {});
         }
-      } catch (error) {
-        console.error('[CodeLab Native Bridge] command failed:', command.command_id, error.message);
-        await finish(command.command_id, 'failed', {
-          error: 'command_failed',
-          message: String(error.message || 'Unknown bridge error').slice(0, 1000),
-        }).catch(() => {});
-      } finally {
+      }      } finally {
         clearInterval(heartbeatTimer);
       }
     } catch (error) {
