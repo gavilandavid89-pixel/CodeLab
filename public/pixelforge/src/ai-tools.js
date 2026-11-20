@@ -228,12 +228,14 @@ export class AICommandSession {
           const width = integer(action.width, 'width'), height = integer(action.height, 'height');
           if (width !== doc.width || height !== doc.height) throw new Error('Line-guide dimensions must match the current canvas.');
           const guide = extractLineGuide({ pixels: source, width, height, threshold: action.threshold ?? 28, detail: action.detail ?? 1, invert: action.invert === true });
+          const previousActiveLayerId = doc.activeLayerId;
           const layer = doc.addLayer(String(action.layerName || 'Reference Guide').slice(0, 180));
           layer.opacity = Math.max(0, Math.min(1, Number(action.opacity ?? 0.35)));
           layer.visible = action.visible !== false;
           doc.setLayerPixels(layer.id, guide.pixels);
-          layer.locked = true;
-          result = { layerId: layer.id, name: layer.name, opacity: layer.opacity, width, height, threshold: guide.threshold, detail: guide.detail };
+          layer.locked = action.locked !== false;
+          doc.setActiveLayer(previousActiveLayerId);
+          result = { layerId: layer.id, name: layer.name, opacity: layer.opacity, locked: layer.locked, width, height, threshold: guide.threshold, detail: guide.detail };
           break;
         }
         case 'drawing.reference.create': {
