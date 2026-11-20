@@ -61,6 +61,47 @@ const COOKIE_NAME = 'codelab_sid';
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
 const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '';
 const DATABASE_URL = process.env.DATABASE_URL || ''; 
+const AGENT_BRIDGE_CONTROL_SECRET = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '').trim();
+let agentBridgeWorker = null;
+let agentBridgeStopping = false;
+
+function agentBridgeStatus() {
+  return {
+    enabled: !!DATABASE_URL && process.env.CODELAB_AGENT_BRIDGE_ENABLED !== '0',
+    running: !!agentBridgeWorker,
+    pid: agentBridgeWorker?.pid ?? null
+  };
+}
+
+function startAgentBridge() {
+  if (!DATABASE_URL) throw new Error('database_not_configured');
+  if (process.env.CODELAB_AGENT_BRIDGE_ENABLED === '0') throw new Error('agent_bridge_disabled');
+  if (agentBridgeWorker) return agentBridgeStatus();
+
+  const workerPath = path.join(__dirname, 'agent-bridge-worker.mjs');
+  agentBridgeStopping = false;
+  agentBridgeWorker = spawn(process.execPath, [workerPath], {
+    cwd: __dirname,
+    env: process.env,
+    stdio: ['ignore', 'inherit', 'inherit']
+  });
+  agentBridgeWorker.on('error', error => {
+    console.error('[CodeLab Native Bridge] worker launch failed:', error.message);
+  });
+  agentBridgeWorker.on('exit', (code, signal) => {
+    console.error('[CodeLab Native Bridge] worker exited:', { code, signal });
+    agentBridgeWorker = null;
+  });
+  return agentBridgeStatus();
+}
+
+function stopAgentBridge() {
+  agentBridgeStopping = true;
+  if (agentBridgeWorker) {
+    agentBridgeWorker.kill('SIGTERM');
+    agentBridgeWorker = null;
+  }
+}
 // Production uses TLS by default; local PostgreSQL integration tests can opt out explicitly.
 const DATABASE_SSL = process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false };
 const accountPool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: DATABASE_SSL, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 }) : null;
@@ -2017,6 +2058,33 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, body);
       }
 
+      // Agent-controlled bridge lifecycle. Starting the bridge is an explicit operation:
+      // no cron, interval, heartbeat or automatic timer is used to wake the worker.
+      if (req.method === 'POST' && pathname === '/api/agent/bridge/ensure') {
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
+        if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
+          return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
+        }
+        try {
+          return sendJson(res, 200, {
+            ok: true,
+            operation: 'ensure_bridge',
+            message: agentBridgeWorker ? 'bridge_already_running' : 'bridge_started',
+            bridge: startAgentBridge()
+          });
+        } catch (error) {
+          return sendJson(res, 503, { error: String(error.message || error) });
+        }
+      }
+
+      if (req.method === 'GET' && pathname === '/api/agent/bridge/status') {
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
+        if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
+          return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
+        }
+        return sendJson(res, 200, { ok: true, operation: 'bridge_status', bridge: agentBridgeStatus() });
+      }
+
       // Native CodeLab account login. Public registration is intentionally disabled.
       if (req.method === 'POST' && pathname === '/api/auth/login') {
         const body = await readBody(req);
@@ -3002,41 +3070,7 @@ seedAdminAccountIfConfigured().then(async () => {
     console.error('PixelForge database initialization failed; studio API will return 503:', error.message);
   }
   server.listen(PORT, () => {
-  if (DATABASE_URL && process.env.CODELAB_AGENT_BRIDGE_ENABLED !== '0') {
-    const workerPath = path.join(__dirname, 'agent-bridge-worker.mjs');
-    let bridgeWorker = null;
-    let bridgeRestartTimer = null;
-    let bridgeStopping = false;
-    const launchBridgeWorker = () => {
-      if (bridgeStopping || bridgeWorker) return;
-      bridgeWorker = spawn(process.execPath, [workerPath], {
-        cwd: __dirname,
-        env: process.env,
-        stdio: ['ignore', 'inherit', 'inherit']
-      });
-      bridgeWorker.on('error', error => {
-        console.error('[CodeLab Native Bridge] worker launch failed:', error.message);
-      });
-      bridgeWorker.on('exit', (code, signal) => {
-        bridgeWorker = null;
-        if (bridgeStopping) return;
-        console.error('[CodeLab Native Bridge] worker exited:', { code, signal });
-        bridgeRestartTimer = setTimeout(launchBridgeWorker, 5000);
-        if (bridgeRestartTimer.unref) bridgeRestartTimer.unref();
-      });
-    };
-    launchBridgeWorker();
-    process.on('SIGTERM', () => {
-      bridgeStopping = true;
-      if (bridgeRestartTimer) clearTimeout(bridgeRestartTimer);
-      if (bridgeWorker) bridgeWorker.kill('SIGTERM');
-    });
-    process.on('SIGINT', () => {
-      bridgeStopping = true;
-      if (bridgeRestartTimer) clearTimeout(bridgeRestartTimer);
-      if (bridgeWorker) bridgeWorker.kill('SIGINT');
-    });
-  }
+  console.log('[CodeLab Native Bridge] bridge lazy-start enabled; the agent must call /api/agent/bridge/ensure when work requires the Neon command consumer.');
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
@@ -3065,6 +3099,7 @@ seedAdminAccountIfConfigured().then(async () => {
 
 function shutdown() {
   console.log('Shutting down…');
+  stopAgentBridge();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000).unref();
 }
