@@ -260,7 +260,7 @@ export class HeadlessEditorRuntime {
           height: this.#workspace.sandbox.height,
         });
         const entry = buildReferenceFromProject({
-          projectId: sourceProject.id,
+          projectId: this.#document.id,
           project: sourceProject,
           name: action.referenceName || 'Drawing reference',
         });
