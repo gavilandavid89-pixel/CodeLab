@@ -2814,9 +2814,7 @@ const server = http.createServer(async (req, res) => {
         if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
         const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
         const result = await accountPool.query(
-          \`SELECT video_data, video_mime_type, project_id, revision
-           FROM codelab_pixelforge_change_events
-           WHERE workspace_id = $1 AND event_id = $2\`,
+          'SELECT video_data, video_mime_type, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
           [workspaceId, neonEvidenceVideoMatch[1]]
         );
         const evidence = result.rows[0];
