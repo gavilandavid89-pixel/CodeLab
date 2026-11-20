@@ -49,6 +49,9 @@ test('headless drawing metadata survives proposal acceptance and project reload'
     size: 2,
   });
   assert.equal(draw.ok, true);
+  const selected = runtime.execute({ name: 'drawing.object.select_at', layerId: runtime.sandbox.activeLayerId, x: 5, y: 5 });
+  assert.equal(selected.ok, true);
+  assert.ok(selected.result.selectedPixels > 0);
   const object = runtime.execute({ name: 'drawing.object.inspect', layerId: runtime.sandbox.activeLayerId, x: 5, y: 5, gridStep: 4 });
   assert.equal(object.ok, true);
   assert.equal(object.result.found, true);
