@@ -332,7 +332,9 @@ export function registerReferenceEntry(model, entry) {
     createdAt: entry.createdAt || new Date().toISOString(),
     sourceProjectId: entry.sourceProjectId || null,
     frames: Array.isArray(entry.frames) ? clone(entry.frames) : [],
-    parts: Array.isArray(entry.parts) ? clone(entry.parts) : [],\n    layerSnapshot: Array.isArray(entry.layerSnapshot) ? clone(entry.layerSnapshot) : [],\n    frameLayerMap: Array.isArray(entry.frameLayerMap) ? clone(entry.frameLayerMap) : [],
+    parts: Array.isArray(entry.parts) ? clone(entry.parts) : [],
+    layerSnapshot: Array.isArray(entry.layerSnapshot) ? clone(entry.layerSnapshot) : [],
+    frameLayerMap: Array.isArray(entry.frameLayerMap) ? clone(entry.frameLayerMap) : [],
     geometry: clone(entry.geometry || {}),
     palette: clone(entry.palette || model.palette),
     preview: clone(entry.preview || null),
@@ -397,7 +399,9 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
       sheet: project.drawingModel?.sheet || null,
       objectCount: parts.length,
     },
-    palette: project.drawingModel?.palette || SEMANTIC_PALETTE,\n    layerSnapshot: project.layers.map((layer, index) => ({ id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked })),\n    frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({ index, frameId: frame.id, layers: frame.cels.map(cel => ({ layerId: cel.layerId })) })) : [],
+    palette: project.drawingModel?.palette || SEMANTIC_PALETTE,
+    layerSnapshot: project.layers.map((layer, index) => ({ id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked })),
+    frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({ index, frameId: frame.id, layers: frame.cels.map(cel => ({ layerId: cel.layerId })) })) : [],
   };
 }
 
