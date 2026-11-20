@@ -18,13 +18,16 @@ function capsule(b,w,h,a,bb,r,c){const steps=Math.max(2,Math.ceil(Math.hypot(bb[
 function outlineCapsule(b,w,h,a,bb,r,c){capsule(b,w,h,a,bb,r+2,P.outline);capsule(b,w,h,a,bb,r,c);}
 function joint(b,w,h,p,r,c=P.armorHi){ellipse(b,w,h,p[0],p[1],r+2,r+2,P.outline);ellipse(b,w,h,p[0],p[1],r,r,c);}
 function drawSoldier(b,w,h,frame,{walkOnly=false}={}){
-  const phase=2*Math.PI*frame/16,gait=Math.sin(phase),opp=-gait,bob=Math.round(0.8*Math.sin(phase*2));
-  const sx=64,headY=33+bob,neckY=47+bob,shoulderY=53+bob,hipY=91+bob;
-  const lHip=[57,hipY],rHip=[71,hipY],lK=[53+Math.round(3*gait),108+Math.round(2*gait)],rK=[75+Math.round(3*opp),108+Math.round(2*opp)];
-  const lFoot=[48+Math.round(10*gait),127-Math.round(3*Math.max(0,gait))],rFoot=[80+Math.round(10*opp),127-Math.round(3*Math.max(0,opp))];
-  const lSh=[48,shoulderY+2],rSh=[80,shoulderY+2];
-  const lEl=[43-Math.round(5*gait),68+bob],rEl=[85+Math.round(5*gait),68+bob];
-  const lHand=[45-Math.round(6*gait),82+bob],rHand=[83+Math.round(6*gait),82+bob];
+  // Twenty-frame gait: feet trade support/flight phases while the head and torso stay visually anchored.
+  const phase=2*Math.PI*frame/20,gait=Math.sin(phase),opp=-gait;
+  const liftL=Math.max(0,Math.sin(phase+Math.PI/2)),liftR=Math.max(0,Math.sin(phase+Math.PI*1.5));
+  const bob=Math.round(0.6*Math.sin(phase*2)),sway=Math.round(0.5*Math.sin(phase));
+  const sx=64+sway,headY=33+bob,neckY=47+bob,shoulderY=53+bob,hipY=91+bob;
+  const lHip=[57,hipY],rHip=[71,hipY],lK=[53+Math.round(3*gait),108-Math.round(3*liftL)+Math.round(2*gait)],rK=[75+Math.round(3*opp),108-Math.round(3*liftR)+Math.round(2*opp)];
+  const lFoot=[48+Math.round(10*gait),127-Math.round(4*liftL)],rFoot=[80+Math.round(10*opp),127-Math.round(4*liftR)];
+  const lSh=[48+sway,shoulderY+2],rSh=[80+sway,shoulderY+2];
+  const lEl=[43-Math.round(5*gait),68+bob],rEl=[85-Math.round(5*opp),68+bob];
+  const lHand=[45-Math.round(6*gait),82+bob],rHand=[83-Math.round(6*opp),82+bob];
 
   // Boots and grounded feet.
   poly(b,w,h,[[lFoot[0]-6,lFoot[1]-3],[lFoot[0]+3,lFoot[1]-4],[lFoot[0]+8,lFoot[1]+2],[lFoot[0]+6,lFoot[1]+6],[lFoot[0]-8,lFoot[1]+5]],P.boot);
