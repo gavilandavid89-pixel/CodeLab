@@ -88,6 +88,19 @@ async function ensureAgentBridgeWakeListener() {
       )
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS public.codelab_agent_bridge_state (
+        state_id text PRIMARY KEY,
+        workspace_id text NOT NULL,
+        state text NOT NULL CHECK (state IN ('starting','running','sleeping','stopping','error')),
+        wake_required boolean NOT NULL DEFAULT false,
+        wake_reason text,
+        signal_version bigint NOT NULL DEFAULT 0,
+        last_signal_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+      )
+    `);
+    await client.query(`
       CREATE OR REPLACE FUNCTION public.codelab_agent_bridge_wake() RETURNS trigger
       LANGUAGE plpgsql AS $fn$
       BEGIN
@@ -104,7 +117,7 @@ async function ensureAgentBridgeWakeListener() {
     await client.query('DROP TRIGGER IF EXISTS codelab_agent_bridge_wake_trigger ON public.codelab_agent_commands');
     await client.query(`
       CREATE TRIGGER codelab_agent_bridge_wake_trigger
-      AFTER INSERT ON public.codelab_agent_commands
+      AFTER INSERT OR UPDATE OF status ON public.codelab_agent_commands
       FOR EACH ROW EXECUTE FUNCTION public.codelab_agent_bridge_wake()
     `);
     await client.query('LISTEN codelab_agent_bridge_wake');
