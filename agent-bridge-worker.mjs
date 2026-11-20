@@ -11,6 +11,7 @@ import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
+const neonEvidence = require('./neon-pixelforge-evidence.js');
 const os = require('node:os');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required for the CodeLab native agent bridge.');
@@ -1404,7 +1405,64 @@ async function startAutomaticAnimationCapture(command) {
   }
 }
 
-async function finishAutomaticAnimationCapture(capture, command) {
+async function prepareAnimationEvidence(command) {
+  const projectId = command.payload?.project_id;
+  if (typeof projectId !== 'string') return null;
+  const commandRow = await pool.query(
+    'SELECT result FROM codelab_agent_commands WHERE command_id=$1 AND workspace_id=$2 AND status=\'succeeded\'',
+    [command.command_id, workspaceId]
+  );
+  const result = commandRow.rows[0]?.result || {};
+  let revision = Number(result.serverRevision || result.revision || 0);
+  let contentSha256 = result.contentSha256 || null;
+  if (!revision) {
+    const loaded = await loadProject(projectId);
+    revision = loaded.serverRevision;
+    contentSha256 = loaded.contentSha256;
+  }
+  const event = await neonEvidence.createChangeEvent(pool, {
+    workspaceId: pixelForgeWorkspaceId,
+    projectId,
+    revision,
+    changeKind: 'animation-evidence',
+    metadata: {
+      commandId: command.command_id,
+      action: command.action,
+      contentSha256,
+      capture: 'automatic-video',
+      transport: neonEvidence.cloudflareEvidenceConfigured() ? 'cloudflare-r2' : 'neon-object-storage'
+    }
+  });
+  const objectKey = 'pixelforge/' + pixelForgeWorkspaceId + '/' + projectId +
+    '/r' + revision + '/' + event.eventId + '.webm';
+  const upload = neonEvidence.presignStorageObject({
+    objectKey,
+    contentType: 'video/webm',
+    expiresInSeconds: 900
+  });
+  return {
+    eventId: event.eventId,
+    projectId,
+    revision,
+    objectKey,
+    upload,
+    publicUrl: upload.publicUrl || null
+  };
+}
+
+async function attachAnimationEvidence(evidence) {
+  if (!evidence) return null;
+  const attached = await neonEvidence.attachEvidence(pool, {
+    workspaceId: pixelForgeWorkspaceId,
+    eventId: evidence.eventId,
+    kind: 'video',
+    objectKey: evidence.objectKey,
+    publicUrl: evidence.publicUrl
+  });
+  return attached;
+}
+
+async function finishAutomaticAnimationCapture(capture, command, evidence = null) {
   if (!capture) return null;
   const { browser, context, page, video, tempDir, projectId } = capture;
   try {
@@ -1417,7 +1475,10 @@ async function finishAutomaticAnimationCapture(capture, command) {
     if (stat.size > 24 * 1024 * 1024) throw new Error('Automatic animation video exceeds the 24 MiB artifact limit.');
     const bytes = fs.readFileSync(videoPath);
     let artifact;
-    if (command.payload?.uploadTarget) {
+    if (evidence?.upload) {
+      artifact = await uploadNativeArtifact(evidence.upload, bytes, 'video/webm', 'pixelforge/');
+      await attachAnimationEvidence(evidence);
+    } else if (command.payload?.uploadTarget) {
       artifact = await uploadNativeArtifact(command.payload.uploadTarget, bytes, 'video/webm', 'codelab/exports/');
     } else if (bytes.length <= 8 * 1024 * 1024) {
       artifact = {
@@ -1440,6 +1501,17 @@ async function finishAutomaticAnimationCapture(capture, command) {
         fps: capture.fps,
         postActionDelayMs: 1000,
         artifact,
+        ...(evidence ? {
+          evidence: {
+            eventId: evidence.eventId,
+            projectId: evidence.projectId,
+            revision: evidence.revision,
+            objectKey: evidence.objectKey,
+            publicUrl: evidence.publicUrl,
+            provider: evidence.upload.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-object-storage',
+            status: 'complete'
+          }
+        } : {}),
         pageErrors: capture.pageErrors,
         consoleErrors: capture.consoleErrors,
         passed: capture.pageErrors.length === 0 && capture.consoleErrors.length === 0
@@ -2283,14 +2355,22 @@ async function main() {
           return { startupError: String(error.message || 'Automatic animation capture failed.').slice(0, 500) };
         });
         await processCommand(command);
+        let animationEvidence = null;
         if (automaticAnimationCapture && !automaticAnimationCapture.startupError) {
           try {
-            const captureResult = await finishAutomaticAnimationCapture(automaticAnimationCapture, command);
+            animationEvidence = await prepareAnimationEvidence(command);
+            const captureResult = await finishAutomaticAnimationCapture(automaticAnimationCapture, command, animationEvidence);
             await pool.query(
               "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
               [command.command_id, JSON.stringify(captureResult), workspaceId]
             );
           } catch (captureError) {
+            if (animationEvidence) {
+              await pool.query(
+                "UPDATE codelab_pixelforge_change_events SET status='failed', metadata=metadata || $2::jsonb, updated_at=now() WHERE workspace_id=$1 AND event_id=$3",
+                [pixelForgeWorkspaceId, JSON.stringify({ captureError: String(captureError.message || captureError).slice(0, 500) }), animationEvidence.eventId]
+              ).catch(() => {});
+            }
             await pool.query(
               "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
               [command.command_id, JSON.stringify({ automaticCapture: { enabled: true, error: String(captureError.message || captureError).slice(0, 500) } }), workspaceId]
