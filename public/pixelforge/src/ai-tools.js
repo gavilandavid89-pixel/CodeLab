@@ -2,7 +2,7 @@ import { AIWorkspace } from './workspaces.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
+import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -201,6 +201,15 @@ export class AICommandSession {
         case 'drawing.palette.get':
           result = { palette: SEMANTIC_PALETTE, active: normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height }).palette };
           break;
+        case 'drawing.object.select_at': {
+          const layer = action.layerId ? doc.layers.find(item => item.id === action.layerId) : doc.activeLayer;
+          if (!layer) throw new Error('Target layer was not found.');
+          const pixels = action.merged ? doc.composite() : layer.pixels;
+          const selection = createAlphaComponentSelection({ pixels, width: doc.width, height: doc.height, x: integer(action.x, 'x'), y: integer(action.y, 'y') });
+          doc.setSelectionMask(selection.mask);
+          result = { selectedPixels: selection.selectedPixels, bounds: selection.bounds, layerId: layer.id, merged: action.merged === true };
+          break;
+        }
         case 'drawing.object.inspect': {
           const layer = action.layerId ? doc.layers.find(item => item.id === action.layerId) : doc.activeLayer;
           if (!layer) throw new Error('Target layer was not found.');
