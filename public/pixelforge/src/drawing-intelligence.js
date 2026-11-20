@@ -180,9 +180,10 @@ export function createDrawingModel({ sheet = {}, palette = SEMANTIC_PALETTE } = 
     palette: clone(palette),
     objects: [],
     referenceCenter: {
-      version: 1,
+      version: 2,
       entries: [],
       activeEntryId: null,
+      viewContext: { previousOpacity: 0.25, nextOpacity: 0.15, previousCount: 1, nextCount: 1 },
     },
   };
 }
@@ -200,6 +201,7 @@ export function normalizeDrawingModel(model, { width = 128, height = 128 } = {})
       ...base.referenceCenter,
       ...(input.referenceCenter || {}),
       entries: Array.isArray(input.referenceCenter?.entries) ? clone(input.referenceCenter.entries) : [],
+      viewContext: { ...base.referenceCenter.viewContext, ...(input.referenceCenter?.viewContext || {}) },
     },
   };
 }
@@ -324,11 +326,21 @@ export function analyzeMotion({ beforePixels, afterPixels, width, height, gridSt
   };
 }
 
+export function inferReferenceCategory(name = '', type = '') {
+  const value = String(name + ' ' + type).toLowerCase();
+  if (/dust|powder|smoke|fire|spark|particle|effect|vfx|explosion/.test(value)) return 'effect';
+  if (/character|soldier|robot|person|hero|enemy|npc|creature/.test(value)) return 'character';
+  if (/scene|background|environment|forest|building|room|landscape/.test(value)) return 'scene';
+  if (/part|piece|arm|head|hand|leg|weapon|rifle|sword|object|prop/.test(value)) return 'part';
+  return 'object';
+}
+
 export function registerReferenceEntry(model, entry) {
   const normalized = {
     id: String(entry.id || crypto.randomUUID()),
     name: String(entry.name || 'Reference').slice(0, 120),
     type: String(entry.type || 'drawing'),
+    category: String(entry.category || inferReferenceCategory(entry.name, entry.type)),
     version: Number(entry.version || 1),
     immutableSnapshot: entry.immutableSnapshot !== false,
     createdAt: entry.createdAt || new Date().toISOString(),
@@ -404,6 +416,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     id: crypto.randomUUID(),
     name,
     type: 'project-reference',
+    category: inferReferenceCategory(name, 'project-reference'),
     version: 2,
     sourceProjectId: projectId || project.id || null,
     sourceRevision: project.serverRevision ?? project.revision ?? 0,
