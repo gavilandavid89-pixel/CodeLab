@@ -2024,12 +2024,11 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     if (!response || !response.ok()) {
       throw new Error('PixelForge video route returned HTTP ' + (response?.status() || 'no response'));
     }
-    // Capture/export routes may render the PixelForge surface asynchronously; the capture state below is the authoritative readiness signal.
+    // The recorder is the authoritative evidence path. Do not depend on a DOM
+    // readiness flag that can be absent on deployed builds: that flag caused the
+    // previous 45s waitForFunction timeout and contaminated transport benchmarks.
+    const captureStartedAt = new Date().toISOString();
     await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
-    await page.waitForFunction(() => {
-      const state = document.documentElement.dataset.pixelforgeCapture;
-      return state === 'playing' || state === 'error';
-    }, null, { timeout: 45000 });
     const startupState = await page.evaluate(() => ({
       state: document.documentElement.dataset.pixelforgeCapture || '',
       error: document.documentElement.dataset.pixelforgeCaptureError || ''
@@ -2037,10 +2036,12 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     if (startupState.state === 'error') {
       throw new Error('PixelForge could not start its native animation playback: ' + startupState.error);
     }
-    await page.waitForFunction(() => {
-      const state = document.documentElement.dataset.pixelforgeCapture;
-      return state === 'complete' || state === 'error';
-    }, null, { timeout: totalDurationMs + 30000 });
+    const playbackReadyAt = new Date().toISOString();
+    // Give the app one event-loop turn to start playback, then let Playwright's
+    // recorder run for the exact timeline duration. No 45s readiness gate.
+    await page.waitForTimeout(Math.min(500, Math.max(0, totalDurationMs)));
+    await page.waitForTimeout(totalDurationMs);
+    const playbackCompletedAt = new Date().toISOString();
     const finalState = await page.evaluate(() => ({
       state: document.documentElement.dataset.pixelforgeCapture || '',
       error: document.documentElement.dataset.pixelforgeCaptureError || ''
@@ -2056,9 +2057,58 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     if (!stat.isFile() || stat.size < 1000) throw new Error('Chromium did not produce a valid PixelForge animation video.');
     if (stat.size > 24 * 1024 * 1024) throw new Error('Animation video exceeds the 24 MiB artifact limit.');
     const videoBytes = fs.readFileSync(videoPath);
+    const renderCompletedAt = new Date().toISOString();
     let artifact;
+    let evidence = null;
+    let uploadStartedAt = null;
+    let uploadCompletedAt = null;
+    let neonEvidenceAttachedAt = null;
     if (payload.uploadTarget !== undefined && payload.uploadTarget !== null) {
+      uploadStartedAt = new Date().toISOString();
       artifact = await uploadNativeArtifact(payload.uploadTarget, videoBytes, 'video/webm', 'pixelforge/exports/');
+      uploadCompletedAt = new Date().toISOString();
+    } else if (payload.persist_evidence !== false) {
+      // Create the Neon event before uploading so the event itself measures the
+      // handoff path instead of hiding the upload behind a command result.
+      evidence = await neonEvidence.createChangeEvent(pool, {
+        workspaceId: pixelForgeWorkspaceId,
+        projectId: payload.project_id,
+        revision: loaded.serverRevision,
+        changeKind: 'animation-evidence',
+        metadata: {
+          commandId: payload.command_id || null,
+          action: 'pixelforge_export_animation_video',
+          contentSha256: loaded.contentSha256,
+          capture: 'explicit-video-export',
+          transport: neonEvidence.cloudflareEvidenceConfigured() ? 'cloudflare-r2' : 'neon-object-storage',
+          videoDurationMs: totalDurationMs
+        }
+      });
+      const objectKey = 'pixelforge/' + pixelForgeWorkspaceId + '/' + payload.project_id +
+        '/r' + loaded.serverRevision + '/' + evidence.eventId + '.webm';
+      const upload = neonEvidence.presignStorageObject({
+        objectKey,
+        contentType: 'video/webm',
+        expiresInSeconds: 900
+      });
+      uploadStartedAt = new Date().toISOString();
+      artifact = await uploadNativeArtifact(upload, videoBytes, 'video/webm', 'pixelforge/');
+      uploadCompletedAt = new Date().toISOString();
+      await neonEvidence.attachEvidence(pool, {
+        workspaceId: pixelForgeWorkspaceId,
+        eventId: evidence.eventId,
+        kind: 'video',
+        objectKey,
+        publicUrl: upload.publicUrl || null
+      });
+      neonEvidenceAttachedAt = new Date().toISOString();
+      evidence = {
+        eventId: evidence.eventId,
+        objectKey,
+        publicUrl: upload.publicUrl || null,
+        provider: upload.bucket === 'cloudflare-r2' ? 'cloudflare-r2' : 'neon-object-storage',
+        status: 'complete'
+      };
     } else {
       if (videoBytes.length > 8 * 1024 * 1024) {
         throw new Error('Video exceeds the inline result limit; provide a presigned Neon uploadTarget.');
@@ -2070,6 +2120,23 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
         dataBase64: videoBytes.toString('base64')
       };
     }
+    const timing = {
+      captureStartedAt,
+      playbackReadyAt,
+      playbackCompletedAt,
+      renderCompletedAt,
+      uploadStartedAt,
+      uploadCompletedAt,
+      neonEvidenceAttachedAt,
+      renderToUploadMs: uploadStartedAt ? Date.parse(uploadStartedAt) - Date.parse(renderCompletedAt) : null,
+      uploadMs: uploadStartedAt && uploadCompletedAt ? Date.parse(uploadCompletedAt) - Date.parse(uploadStartedAt) : null,
+      renderDurationMs: Date.parse(renderCompletedAt) - Date.parse(captureStartedAt),
+      totalToNeonEvidenceMs: neonEvidenceAttachedAt ? Date.parse(neonEvidenceAttachedAt) - Date.parse(captureStartedAt) : null,
+      videoDurationMs: totalDurationMs,
+      secondsPerVideoSecond: neonEvidenceAttachedAt
+        ? ((Date.parse(neonEvidenceAttachedAt) - Date.parse(captureStartedAt)) / 1000) / (totalDurationMs / 1000)
+        : null
+    };
     return {
       exportMethod: 'playwright-chromium-real-pixelforge-app',
       projectId: payload.project_id,
@@ -2083,6 +2150,8 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       frameCount: timeline.frames.length,
       frameDurationsMs,
       durationMs: totalDurationMs,
+      timing,
+      evidence,
       pageErrors,
       consoleErrors,
       passed: pageErrors.length === 0 && consoleErrors.length === 0,
