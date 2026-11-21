@@ -1,4 +1,5 @@
 import { parsePixelForgeVideoPackage } from './src/video-composer-core.mjs';
+import { getCaptureDimensions, drawContentComposition } from './src/video-capture-layout.mjs';
 
 const $ = selector => document.querySelector(selector);
 const ui = {
@@ -15,6 +16,9 @@ let playbackTimer = 0;
 let activeImport = 0;
 let exportBusy = false;
 let cancelRequested = false;
+let studioRecorder = null;
+let studioStream = null;
+let studioChunks = [];
 
 function formatTime(ms) {
   const value = Math.max(0, Number(ms) || 0);
@@ -39,6 +43,133 @@ function refreshExportSummary() {
   const repeats = $('#vc-loop-export').checked ? 2 : 1;
   $('#vc-export-duration').textContent = (totalDuration() * repeats / 1000).toFixed(2) + ' s';
 }
+function outputDimensions() {
+  if (!packageData) return { width: 0, height: 0 };
+  return getCaptureDimensions($('#vc-resolution').value, $('#vc-aspect').value,
+    packageData.manifest.width, packageData.manifest.height);
+}
+function refreshOutputDimensions() {
+  if (!packageData) return;
+  const { width, height } = outputDimensions();
+  $('#vc-export-dimensions').textContent = width + ' × ' + height;
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+async function makeTimelineThumbnails() {
+  if (!packageData) return [];
+  const count = Math.min(12, packageData.frames.length);
+  const indices = Array.from({ length: count }, (_, index) =>
+    count === 1 ? 0 : Math.round(index * (packageData.frames.length - 1) / (count - 1)));
+  const result = [];
+  for (const index of indices) {
+    result.push({ index, bitmap: await createImageBitmap(packageData.frames[index].blob) });
+  }
+  return result;
+}
+function closeTimelineThumbnails(items) {
+  for (const item of items) item.bitmap.close?.();
+}
+async function captureContentPng() {
+  if (!packageData || exportBusy) return;
+  const dimensions = outputDimensions();
+  const canvas = document.createElement('canvas');
+  canvas.width = dimensions.width; canvas.height = dimensions.height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('No se pudo crear la captura.');
+  const bitmap = await createImageBitmap(packageData.frames[currentIndex].blob);
+  const thumbnails = await makeTimelineThumbnails();
+  try {
+    drawContentComposition(context, bitmap, currentIndex, dimensions, thumbnails, {
+      sourceWidth: packageData.manifest.width, sourceHeight: packageData.manifest.height,
+      frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
+      background: $('#vc-solid-bg').checked ? '#101116' : '#20232d'
+    });
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('El navegador no pudo generar el PNG.');
+    downloadBlob(blob, safeName($('#vc-project-name').textContent) + '-contenido.png');
+    setStatus('Captura de contenido PNG generada en ' + dimensions.width + ' × ' + dimensions.height + '.', 'success');
+  } finally {
+    bitmap.close?.(); closeTimelineThumbnails(thumbnails);
+  }
+}
+async function captureStudioPng() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    setStatus('Este navegador no permite capturar una pestaña. Usa Chrome/Edge actualizado.', 'error'); return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
+    const video = document.createElement('video');
+    video.muted = true; video.srcObject = stream;
+    await new Promise((resolve, reject) => {
+      if (video.readyState >= 1) return resolve();
+      video.addEventListener('loadedmetadata', resolve, { once: true });
+      video.addEventListener('error', () => reject(new Error('No se pudo leer la pestaña capturada.')), { once: true });
+    });
+    await video.play();
+    if (video.requestVideoFrameCallback) {
+      await new Promise(resolve => video.requestVideoFrameCallback(() => resolve()));
+    } else {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+    const track = stream.getVideoTracks()[0];
+    const settings = track.getSettings();
+    const canvas = document.createElement('canvas');
+    canvas.width = settings.width || video.videoWidth || 1280;
+    canvas.height = settings.height || video.videoHeight || 720;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('No se pudo generar la captura del estudio.');
+    downloadBlob(blob, 'pixelforge-estudio.png');
+    setStatus('Captura completa del estudio guardada. Asegúrate de haber elegido la pestaña del editor en el selector del navegador.', 'success');
+  } catch (error) {
+    if (error.name !== 'NotAllowedError') setStatus('No se pudo capturar el estudio: ' + error.message, 'error');
+  } finally {
+    stream?.getTracks().forEach(track => track.stop());
+  }
+}
+async function startStudioRecording() {
+  if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
+    setStatus('La grabación de pestaña requiere un navegador compatible con captura de pantalla y MediaRecorder.', 'error'); return;
+  }
+  if (studioRecorder) return;
+  try {
+    studioStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: Number($('#vc-output-fps').value) || 30 }, audio: false });
+    const mimeType = recorderMime();
+    if (!mimeType) throw new Error('No hay un formato de vídeo compatible.');
+    studioChunks = [];
+    studioRecorder = new MediaRecorder(studioStream, { mimeType });
+    studioRecorder.addEventListener('dataavailable', event => { if (event.data?.size) studioChunks.push(event.data); });
+    studioRecorder.addEventListener('stop', () => {
+      const blob = new Blob(studioChunks, { type: mimeType });
+      if (blob.size) downloadBlob(blob, 'pixelforge-estudio.' + (mimeType.includes('mp4') ? 'mp4' : 'webm'));
+      studioStream?.getTracks().forEach(track => track.stop());
+      studioRecorder = null; studioStream = null; studioChunks = [];
+      $('#vc-stop-studio').hidden = true;
+      $('#vc-record-studio').hidden = false;
+      setStatus(blob.size ? 'Grabación completa del estudio guardada.' : 'La grabación no produjo datos.', blob.size ? 'success' : 'error');
+    }, { once: true });
+    studioStream.getVideoTracks()[0].addEventListener('ended', () => {
+      if (studioRecorder?.state === 'recording') studioRecorder.stop();
+    }, { once: true });
+    studioRecorder.start(500);
+    $('#vc-record-studio').hidden = true;
+    $('#vc-stop-studio').hidden = false;
+    setStatus('Grabando la pestaña elegida. Cambia al editor de PixelForge; vuelve aquí y pulsa Detener cuando termines.', 'success');
+  } catch (error) {
+    studioStream?.getTracks().forEach(track => track.stop());
+    studioRecorder = null; studioStream = null;
+    setStatus('No se pudo iniciar la grabación del estudio: ' + error.message, 'error');
+  }
+}
+
 function frameStart(index) {
   return packageData.frames.slice(0, index).reduce((sum, frame) => sum + frame.durationMs, 0);
 }
@@ -49,7 +180,7 @@ function setEnabled(enabled) {
   ui.export.disabled = !enabled || exportBusy;
   ui.exportTop.disabled = !enabled || exportBusy;
   $('#vc-loop-export').disabled = !enabled;
-  $('#vc-scale').disabled = !enabled;
+  $('#vc-capture-content').disabled = !enabled || exportBusy;
   $('#vc-output-fps').disabled = !enabled;
   $('#vc-format').disabled = !enabled;
   $('#vc-solid-bg').disabled = !enabled;
@@ -179,7 +310,7 @@ async function importPackage(file) {
     $('#vc-preview-resolution').textContent = parsed.manifest.width + ' × ' + parsed.manifest.height;
     $('#vc-total-time').textContent = formatTime(parsed.manifest.totalDurationMs);
     refreshExportSummary();
-    $('#vc-export-dimensions').textContent = parsed.manifest.width * Number($('#vc-scale').value) + ' × ' + parsed.manifest.height * Number($('#vc-scale').value);
+    refreshOutputDimensions();
     $('#vc-timeline-count').textContent = parsed.frames.length + ' fotogramas';
     $('#vc-audio-status').textContent = parsed.manifest.audio?.length ? 'Pista de audio incluida en el paquete' : 'Este paquete no contiene audio';
     $('#vc-loop').checked = parsed.manifest.loop !== false;
@@ -233,7 +364,7 @@ function startPlayback() {
   else { playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback(); }
 }
 function recorderMime() {
-  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return '';
+  if (!window.MediaRecorder) return '';
   const choice = $('#vc-format').value;
   const candidates = choice === 'mp4' ? ['video/mp4'] :
     choice === 'webm-vp9' ? ['video/webm;codecs=vp9'] :
@@ -268,12 +399,10 @@ async function exportVideo() {
   stopPlayback();
   refreshFormatSupport();
   ui.export.textContent = 'Preparando vídeo…';
-  const scale = Number($('#vc-scale').value) || 1;
   const outputFps = Number($('#vc-output-fps').value) || packageData.manifest.fps;
   const repeatCount = $('#vc-loop-export').checked ? 2 : 1;
   const solidBackground = $('#vc-solid-bg').checked;
-  const width = packageData.manifest.width * scale;
-  const height = packageData.manifest.height * scale;
+  const { width, height } = outputDimensions();
   if (width > 8192 || height > 8192 || width * height > 16_777_216) {
     exportBusy = false; refreshFormatSupport();
     setStatus('La escala seleccionada supera el límite seguro de 16 megapíxeles. Reduce la escala de salida.', 'error');
@@ -308,7 +437,9 @@ async function exportVideo() {
   const total = totalDuration() * repeatCount;
   let elapsed = 0;
   const startTime = performance.now();
+  let thumbnails = [];
   try {
+    thumbnails = await makeTimelineThumbnails();
     recorder.start();
     for (let repeat = 0; repeat < repeatCount; repeat++) {
       for (let index = 0; index < packageData.frames.length; index++) {
@@ -317,7 +448,11 @@ async function exportVideo() {
         const bitmap = await createImageBitmap(frame.blob);
         context.clearRect(0, 0, width, height);
         if (solidBackground) { context.fillStyle = '#101116'; context.fillRect(0, 0, width, height); }
-        context.drawImage(bitmap, 0, 0, width, height);
+        drawContentComposition(context, bitmap, index, { width, height }, thumbnails, {
+          sourceWidth: packageData.manifest.width, sourceHeight: packageData.manifest.height,
+          frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
+          background: solidBackground ? '#101116' : '#20232d'
+        });
         bitmap.close?.();
         await delay(frame.durationMs);
         if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
@@ -347,6 +482,7 @@ async function exportVideo() {
     if (error.name === 'AbortError') setStatus('Exportación cancelada. Puedes ajustar la salida e intentarlo de nuevo.', 'info');
     else setStatus('La exportación falló: ' + error.message, 'error');
   } finally {
+    closeTimelineThumbnails(thumbnails);
     stream.getTracks().forEach(track => track.stop());
     exportBusy = false;
     $('#vc-cancel-export').hidden = true;
@@ -380,10 +516,12 @@ $('#vc-checker').addEventListener('click', event => {
   event.currentTarget.setAttribute('aria-pressed', String(!enabled));
   ui.stage.classList.toggle('solid-bg', enabled);
 });
-$('#vc-scale').addEventListener('change', () => {
-  if (!packageData) return;
-  $('#vc-export-dimensions').textContent = packageData.manifest.width * Number($('#vc-scale').value) + ' × ' + packageData.manifest.height * Number($('#vc-scale').value);
-});
+$('#vc-resolution').addEventListener('change', refreshOutputDimensions);
+$('#vc-aspect').addEventListener('change', refreshOutputDimensions);
+$('#vc-capture-content').addEventListener('click', () => captureContentPng().catch(error => setStatus(error.message, 'error')));
+$('#vc-capture-studio').addEventListener('click', captureStudioPng);
+$('#vc-record-studio').addEventListener('click', startStudioRecording);
+$('#vc-stop-studio').addEventListener('click', () => { if (studioRecorder?.state === 'recording') studioRecorder.stop(); });
 $('#vc-format').addEventListener('change', refreshFormatSupport);
 $('#vc-loop-export').addEventListener('change', refreshExportSummary);
 $('#vc-export').addEventListener('click', exportVideo);
