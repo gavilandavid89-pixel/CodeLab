@@ -2397,6 +2397,7 @@ async function boot() {
         doc = RasterDocument.fromJSON(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
+        animationPlaybackSpeed = existingSnapshot.animation.playbackSpeed ?? 1;
         status('Demo caminata → agacharse recuperada · 60 fotogramas a 12 FPS', 'success');
       } else {
         // Keep the browser demo on the browser-safe procedural renderer.
@@ -2444,6 +2445,7 @@ async function boot() {
         doc = RasterDocument.fromJSON(saved);
         animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
         animationLoop = saved.animation?.loop !== false;
+        animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1;
         animationFrameHistory.clear();
         animationOrphanCels.clear();
         clearSelectionState();
