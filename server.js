@@ -2208,7 +2208,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Health
-      if ((req.method === 'GET' || req.method === 'HEAD') && /^\\/api\\/agent-commands\\/[A-Za-z0-9_-]+\\/video$/.test(pathname)) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && /^\/api\/agent-commands\/[A-Za-z0-9_-]+\/video$/.test(pathname)) {
         const commandId = pathname.split('/')[3];
         const row = await accountPool.query(
           "SELECT result->'video'->>'dataBase64' AS data_base64 FROM public.codelab_agent_commands WHERE command_id=$1 AND status='succeeded'",
