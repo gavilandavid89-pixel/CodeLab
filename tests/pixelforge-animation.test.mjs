@@ -145,7 +145,7 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
   assert.deepEqual(timeline.layerIds, ['ink', 'shadow']);
   timeline.removeLayer('shadow');
   assert.deepEqual(timeline.layerIds, ['ink']);
-  assert.throws(() => timeline.removeLayer('ink'), /environment layer/);
+  assert.throws(() => timeline.removeLayer('ink'), /at least one raster layer/);
 });
 
 test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', t => {
