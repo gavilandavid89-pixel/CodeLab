@@ -77,6 +77,15 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   assert.equal(await page.locator('#vc-export').isDisabled(), !encoderStatus.startsWith('Disponible'),
     'export must be enabled only when the browser can capture and encode video');
   assert.equal(await page.locator('#vc-preview').isVisible(), true);
+  assert.equal(await page.locator('#vc-resolution').inputValue(), '1080');
+  assert.equal(await page.locator('#vc-aspect').inputValue(), '16:9');
+  assert.equal(await page.locator('#vc-export-dimensions').textContent(), '1920 × 1080');
+  assert.equal(await page.locator('#vc-capture-content').isDisabled(), false);
+  await page.locator('#vc-aspect').selectOption('9:16');
+  assert.equal(await page.locator('#vc-export-dimensions').textContent(), '1080 × 1920',
+    'portrait export must fill a mobile-friendly frame without cropping the source');
+  await page.locator('#vc-aspect').selectOption('16:9');
+
   if (!(await page.locator('#vc-export').isDisabled())) {
     const videoDownloadPromise = page.waitForEvent('download', { timeout: 15000 });
     await page.locator('#vc-export').click();

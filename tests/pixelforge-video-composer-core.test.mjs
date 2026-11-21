@@ -53,3 +53,24 @@ test('Video Composer web interface wires every referenced control and includes a
   assert.match(js, /MediaRecorder/);
   assert.match(js, /captureStream/);
 });
+
+test('HD capture presets preserve aspect ratio and fit the full artwork without cropping', async () => {
+  const { getCaptureDimensions, containRect } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  assert.deepEqual(getCaptureDimensions('1080', '16:9', 128, 128), { width: 1920, height: 1080 });
+  assert.deepEqual(getCaptureDimensions('720', '9:16', 128, 160), { width: 720, height: 1280 });
+  assert.deepEqual(getCaptureDimensions('1080', '1:1', 128, 128), { width: 1080, height: 1080 });
+  const rect = containRect(128, 160, 0, 0, 1000, 500);
+  assert.equal(rect.width / rect.height, 128 / 160);
+  assert.ok(rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= 1000 && rect.y + rect.height <= 500);
+});
+
+test('content capture includes a frame strip and keeps pixel-art rendering unsmoothed', () => {
+  const html = fs.readFileSync(new URL('../public/pixelforge/video-composer.html', import.meta.url), 'utf8');
+  const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  assert.match(html, /id="vc-capture-content"/);
+  assert.match(html, /id="vc-capture-studio"/);
+  assert.match(html, /id="vc-record-studio"/);
+  assert.match(js, /drawContentComposition/);
+  assert.match(js, /imageSmoothingEnabled = false/);
+  assert.match(js, /getDisplayMedia/);
+});

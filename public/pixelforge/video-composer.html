@@ -101,9 +101,26 @@
         <select id="vc-output-fps"><option value="12">12 FPS · Pixel art</option><option value="24">24 FPS · Cine</option><option value="30" selected>30 FPS · Estándar</option><option value="60">60 FPS · Fluido</option></select>
       </div>
       <div class="vc-form-group">
+        <label for="vc-resolution">Resolución del vídeo</label>
+        <select id="vc-resolution"><option value="720">720p · móvil y redes</option><option value="1080" selected>1080p · alta calidad</option></select>
+      </div>
+      <div class="vc-form-group">
+        <label for="vc-aspect">Formato de pantalla</label>
+        <select id="vc-aspect"><option value="16:9" selected>Horizontal · 16:9</option><option value="9:16">Vertical · 9:16</option><option value="1:1">Cuadrado · 1:1</option><option value="auto">Adaptar al lienzo</option></select>
+      </div>
+      <div class="vc-capture-mode">
+        <strong>Qué quieres capturar</strong>
+        <p><b>Contenido:</b> lienzo grande y tira de fotogramas, sin herramientas.</p>
+        <p><b>Estudio:</b> captura la pestaña completa del editor, con herramientas y paneles. El navegador pedirá permiso.</p>
+        <button class="vc-export-button" id="vc-capture-content" type="button" disabled>Capturar contenido · PNG</button>
+        <button class="vc-export-button vc-secondary-button" id="vc-capture-studio" type="button">Capturar estudio · PNG</button>
+        <button class="vc-export-button vc-secondary-button" id="vc-record-studio" type="button">Grabar estudio · vídeo</button>
+        <button class="vc-export-button vc-stop-button" id="vc-stop-studio" type="button" hidden>Detener grabación</button>
+      </div>
+      <div class="vc-form-group">
         <label for="vc-scale">Escala de imagen</label>
-        <select id="vc-scale"><option value="1">Original · 1×</option><option value="2" selected>Grande · 2×</option><option value="3">3×</option><option value="4">4×</option></select>
-        <small>Se conserva el borde nítido del pixel art.</small>
+        <select id="vc-scale"><option value="1">Original · 1× (solo referencia)</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+        <small>La resolución final se define arriba; el pixel art se amplía sin suavizado ni recortes.</small>
       </div>
       <div class="vc-export-options">
         <label><input id="vc-loop-export" type="checkbox"> Duplicar secuencia (2 vueltas)</label>
