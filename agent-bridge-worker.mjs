@@ -2038,7 +2038,6 @@ async function capturePixelForgeInterface(payload = {}) {
       timeout: 45000
     });
     if (!response || !response.ok()) throw new Error('PixelForge page returned HTTP ' + (response?.status() || 'no response'));
-    await page.waitForSelector('#canvas', { state: 'visible', timeout: 30000 });
     await page.waitForFunction(() => {
       const root = document.documentElement;
       return root.dataset.pixelforgeReady === 'true' ||
@@ -2055,6 +2054,7 @@ async function capturePixelForgeInterface(payload = {}) {
     if (!bootState.ready) {
       throw new Error('PixelForge editor did not become capture-ready: ' + JSON.stringify(bootState));
     }
+    await page.locator('#canvas').waitFor({ state: 'visible', timeout: 15000 });
     if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
     await page.waitForTimeout(250);
     const screenshot = await page.screenshot({
