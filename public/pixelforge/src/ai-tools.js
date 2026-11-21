@@ -270,7 +270,7 @@ export class AICommandSession {
           const next = recordEnvironmentHistory(model, {
             ...action,
             sourceRevision: action.sourceRevision ?? doc.saveVersion,
-            environmentLayerIds: action.environmentLayerIds ?? Object.entries(next?.layerRoles || model.layerRoles).filter(([, meta]) => meta?.role === 'environment').map(([id]) => id),
+            environmentLayerIds: action.environmentLayerIds ?? Object.entries(model.layerRoles).filter(([, meta]) => meta?.role === 'environment').map(([id]) => id),
           });
           doc.setDrawingModel(next);
           result = { entry: getEnvironmentHistoryEntry(next, action.id || null), history: next.environmentHistory };
