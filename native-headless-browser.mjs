@@ -154,7 +154,7 @@ export async function executeCodeLabBrowserActions(options = {}) {
         '.editor-root',
         'main[data-screen*="editor"]'
       ];
-    const looksLikeEditorUrl = url => /(?:^|\\/)(?:editor|pixelforge|studio|design)(?:[\\/?#]|$)/i.test(new URL(url).pathname);
+    const looksLikeEditorUrl = url => /(?:^|\/)(?:editor|pixelforge|studio|design)(?:[\/?#]|$)/i.test(new URL(url).pathname);
     const contextForRecording = () => ({
       ...baseContextOptions,
       recordVideo: {
