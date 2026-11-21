@@ -815,6 +815,66 @@ export class AICommandSession {
         case 'history.redo':
           result = { changed: doc.redo() };
           break;
+        case 'vector.model.get': {
+          result = plainResult(doc.getVectorModel() || { version: 1, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] });
+          break;
+        }
+        case 'vector.object.create': {
+          const model = doc.getVectorModel() || { version: 1, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
+          if (!action.object || typeof action.object !== 'object' || Array.isArray(action.object)) throw new TypeError('Vector object must be an object.');
+          const object = plainResult(action.object);
+          object.id = typeof object.id === 'string' && object.id ? object.id : crypto.randomUUID();
+          const allowed = ['rect','ellipse','line','path','text'];
+          if (!allowed.includes(object.type)) throw new TypeError('Unsupported vector object type.');
+          model.objects.push(object); doc.setVectorModel(model);
+          result = { object: plainResult(object), objectCount: model.objects.length };
+          break;
+        }
+        case 'vector.object.update': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const index = model.objects.findIndex(item => item.id === action.id);
+          if (index < 0) throw new Error('Vector object not found.');
+          if (!action.patch || typeof action.patch !== 'object' || Array.isArray(action.patch)) throw new TypeError('Vector patch must be an object.');
+          model.objects[index] = { ...model.objects[index], ...plainResult(action.patch), id: model.objects[index].id };
+          doc.setVectorModel(model); result = { object: plainResult(model.objects[index]) };
+          break;
+        }
+        case 'vector.object.delete': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const before = model.objects.length;
+          model.objects = model.objects.filter(item => item.id !== action.id);
+          if (model.objects.length === before) throw new Error('Vector object not found.');
+          doc.setVectorModel(model); result = { deleted: action.id, objectCount: model.objects.length };
+          break;
+        }
+        case 'vector.align': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [];
+          const objects = model.objects.filter(item => ids.includes(item.id));
+          if (objects.length < 2) throw new Error('At least two vector objects are required.');
+          const b = o => o.type === 'line'
+            ? { x: Math.min(o.x1,o.x2), y: Math.min(o.y1,o.y2), width: Math.abs(o.x2-o.x1), height: Math.abs(o.y2-o.y1) }
+            : { x:o.x||0, y:o.y||0, width:o.width||0, height:o.height||0 };
+          const boxes = objects.map(b);
+          const left=Math.min(...boxes.map(v=>v.x)), top=Math.min(...boxes.map(v=>v.y));
+          const right=Math.max(...boxes.map(v=>v.x+v.width)), bottom=Math.max(...boxes.map(v=>v.y+v.height));
+          for (const o of objects) {
+            const q=b(o);
+            if (action.axis==='left') o.x=left;
+            else if (action.axis==='center') o.x=left+(right-left-q.width)/2;
+            else if (action.axis==='right') o.x=right-q.width;
+            else if (action.axis==='top') o.y=top;
+            else if (action.axis==='middle') o.y=top+(bottom-top-q.height)/2;
+            else if (action.axis==='bottom') o.y=bottom-q.height;
+            else throw new TypeError('axis must be left, center, right, top, middle, or bottom.');
+          }
+          doc.setVectorModel(model); result = { aligned: ids, axis: action.axis };
+          break;
+        }
+
         default:
           return { ok: false, error: { code: 'unknown_action', message: 'Unsupported AI action: ' + action.name } };
       }
@@ -837,3 +897,5 @@ export class AICommandSession {
     return this.#workspace.createProposal(summary);
   }
 }
+
+
