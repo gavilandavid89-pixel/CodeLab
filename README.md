@@ -6,11 +6,11 @@
 
 **[Abrir la política completa →](docs/agent-ai-bridge-policy.md)**
 
-# CodeLab XD Studio Pro v2.6.6
+# CodeLab XD Studio Pro v2.7.0
 
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
 
-Cero dependencias npm — solo Node.js nativo.
+**Runtime:** Node.js 22.17.0 o superior. El servidor utiliza `pg`, `@sparticuz/chromium` y `playwright-core`. Ejecuta `npm install` para instalar las dependencias y su postinstall de navegador; después inicia con `npm start`.
 
 ## 🧠 Arquitectura principal: agente → Neon → Cloudflare → CodeLab → evidencia → Neon → agente
 
@@ -128,7 +128,10 @@ nueva petición si hace falta
 ```
 
 **Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
-### Puesta en marcha bajo demanda del bridge### Señal final de apagado del bridge
+### Puesta en marcha bajo demanda del bridge
+
+### Señal final de apagado del bridge
+
 ### Snapshot vital para el agente
 
 El agente dispone de una instantánea consolidada en `GET /api/agent/bridge/state` (protegida con el mismo token de control). Devuelve el estado de vida del bridge, `wake_required`, motivo y versión de señal, runtime, las últimas órdenes y resultados, los proyectos PixelForge persistidos (ID, revisión y SHA) y las últimas evidencias visuales. Así el agente no necesita reconstruir el contexto desde un vídeo.
@@ -214,7 +217,7 @@ Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, 
 
 ## Cuenta ADMIN y persistencia de pruebas
 
-Todas las pruebas, proyectos auxiliares y cambios de proyecto deben ejecutarse dentro de la cuenta real **ADMIN** del usuario. No se permite usar perfiles demo, invitados ni sesiones anónimas. Antes de operar se verifica la identidad y el workspace; después se confirma la sincronización y se vuelve a leer el proyecto desde el servidor. Si no se puede confirmar la cuenta ADMIN, la operación se detiene. Consulta la [política obligatoria de cuenta y persistencia](docs/account-admin-and-persistence-policy.md).
+Las operaciones sobre proyectos reales del usuario deben conservar la identidad y el workspace **ADMIN** que CodeLab resuelve mediante la configuración y autenticación existentes. Las pruebas aisladas pueden utilizar sesiones locales/headless y directorios temporales; estas sesiones son útiles para automatización, pero no se deben presentar como persistencia en el workspace real. Antes de declarar un cambio del usuario como guardado, verifica la sincronización y vuelve a leer el proyecto desde el servidor. Consulta la [política de cuenta y persistencia](docs/account-admin-and-persistence-policy.md).
 
 ## Seguridad
 
@@ -303,6 +306,12 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
 
 ## Changelog
+
+### v2.7.0
+
+- Se sincroniza la documentación de versión y dependencias con `package.json`.
+- Se actualiza CI a Node.js 22.17.0, acorde con el mínimo declarado por el proyecto.
+- Se aclara la separación entre el flujo actual Neon/bridge y los antiguos workflows A/B.
 
 ### v2.6.6
 

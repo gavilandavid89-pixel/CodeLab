@@ -1,240 +1,99 @@
-# 🚨🚨 POLÍTICA N.º 1 — SUPERVISIÓN OBLIGATORIA DE A Y CADA B 🚨🚨
+# Política operativa del agente IA y del bridge de CodeLab
 
-> **ESTA ES LA REGLA OPERATIVA DE MÁXIMA PRIORIDAD. DEBE CUMPLIRSE ANTES DE DAR POR TERMINADA, ABANDONAR O CAMBIAR UNA EJECUCIÓN.**
->
-> **A y cada B tienen un ciclo independiente de hasta 10 minutos, con comprobación cada 30 segundos. Si el resultado llega antes, la espera termina inmediatamente, se inspecciona el resultado y se decide el siguiente paso.**
->
-> **No se puede declarar terminado un trabajo únicamente por timeout, estado verde, `success`, ausencia de errores aparentes o porque haya pasado parte del tiempo de espera.**
+**Estado: vigente.** Esta política describe el flujo actual Neon → bridge/worker → CodeLab. Los workflows A/B descritos en versiones anteriores son históricos y no forman parte de la ejecución normal.
 
-## Ciclo obligatorio de supervisión
+## 1. Arquitectura y responsabilidades
 
-### A — sesión persistente
-Al iniciar A, el agente IA abre una **ventana de supervisión de hasta 10 minutos**, comprobando cada **30 segundos**: 0:00, 0:30, 1:00, 1:30, 2:00, 2:30, 3:00, 3:30, 4:00, 4:30, 5:00, 5:30, 6:00, 6:30, 7:00, 7:30, 8:00, 8:30, 9:00, 9:30 y 10:00.
+Flujo canónico:
 
-**Importante:** estos 10 minutos son tiempo de **trabajo/supervisión del agente IA**, no un límite de ejecución de A. A es una sesión persistente y puede continuar ejecutándose indefinidamente o durante el tiempo que requiera la tarea, salvo que exista una política técnica independiente que indique lo contrario. Al llegar a 10:00, el agente IA termina ese ciclo de supervisión y decide el siguiente ciclo/acción; **no debe matar, cancelar ni configurar un timeout de A únicamente por alcanzar los 10 minutos**.
+```text
+Usuario
+  ↓ petición explícita
+Agente IA
+  ↓ registra/consulta trabajo
+Neon (órdenes, estado, proyecto, revisión)
+  ↓ bridge/worker
+CodeLab (ejecución programática)
+  ↓ resultado y, cuando corresponda, evidencia visual
+Neon (resultado persistido y referencias)
+  ↓
+Agente IA (inspección y siguiente decisión)
+```
 
-Si A arranca o responde antes de completar la ventana, la espera termina inmediatamente. El agente inspecciona el estado/evidencia disponible y pasa al siguiente paso. Si A falla, pierde la sesión o no llega a estar disponible durante la ventana, el agente inspecciona la causa antes de decidir corregir/reintentar.
+- **Agente IA:** interpreta la petición, decide las operaciones, inspecciona resultados y determina si corresponde corregir o continuar.
+- **Neon:** fuente de verdad persistente para órdenes, estado de trabajos, proyectos, revisiones y referencias a evidencias.
+- **Bridge/worker:** transporte y consumidor de órdenes. No es un segundo agente y no decide objetivos ni inicia tareas nuevas por su cuenta.
+- **CodeLab:** ejecuta operaciones mediante interfaces programáticas.
+- **Cloudflare:** facilita el transporte y la transferencia de evidencias cuando está configurado.
+- **R2:** almacena artefactos binarios cuando el flujo lo utiliza.
 
-### Cada B — ciclo independiente
-Cada petición enviada por el puente B debe tener su propio ciclo de supervisión del agente IA: **0:00 → 0:30 → 1:00 → ... → 9:30 → 10:00.**
-El agente IA supervisa ese B durante un máximo de **10 minutos**, comprobando cada **30 segundos**.
+No conviertas commits de GitHub en el transporte de cada modificación de proyecto. GitHub versiona el software; Neon y el bridge transportan los trabajos del flujo actual.
 
-**Importante:** los 10 minutos son una ventana de **supervisión del agente IA**, no un timeout ni un límite de ejecución para B. B puede seguir ejecutándose después de los 10 minutos si la tarea aún está en curso. Al terminar la ventana, el agente IA inspecciona la situación y decide el siguiente ciclo/acción; **no debe cancelar ni matar B únicamente porque hayan transcurrido 10 minutos**.
+## 2. Inicio, activación y límites
 
-Si B devuelve el resultado antes:
-1. **se anula inmediatamente la supervisión restante**;
-2. se inspecciona la respuesta;
-3. se inspecciona la evidencia disponible;
-4. se valida contra la petición original;
-5. se decide el siguiente paso.
+- Solo una petición explícita del usuario puede iniciar una nueva tarea del agente IA.
+- Un worker puede terminar una orden que ya fue autorizada, pero un resultado, webhook, cron, error o señal de bridge no debe iniciar por sí solo una nueva ejecución del agente.
+- Si el estado persistido indica que el bridge está dormido y requiere activación, usa la operación explícita de ensure/wake documentada por el endpoint actual. Incluye la versión de señal observada cuando el protocolo lo requiera.
+- No mantengas el servicio despierto con pings periódicos, bucles de keep-alive o cron artificiales. La activación debe ser bajo demanda.
+- No confundas la ventana de supervisión del agente con un timeout del worker. Respeta los límites técnicos reales declarados por la operación; no mates procesos solo porque el agente dejó de esperar o la sesión de conversación se interrumpió.
 
-Si al llegar a 10:00 B todavía no ha respondido, **no se debe declarar automáticamente que B falló ni que su ejecución terminó**. Se registra que terminó la ventana de supervisión del agente IA, se inspecciona el estado real de B/A y se decide cómo continuar. Un timeout técnico solo existe si el propio sistema de ejecución informa un timeout real.
+## 3. Identidad, cuenta y sesiones locales
 
-### Cada nuevo B reinicia su propio ciclo
-Cuando el agente lance otro B, **no reutiliza el tiempo del B anterior**. Cada B recibe nuevamente **10 minutos máximos + comprobación cada 30 segundos**.
+- Para proyectos del usuario, utiliza el contexto de identidad/workspace que proporciona el sistema mediante la configuración y autenticación existentes. No inventes usuarios ni reemplaces ese contexto con una identidad genérica.
+- Las sesiones locales/headless son una herramienta auxiliar válida para ejecutar y probar CodeLab de forma aislada. No deben eliminarse por el mero hecho de ser locales.
+- Una sesión local aislada no equivale a la sesión autenticada del usuario. No afirmes que un cambio local quedó persistido en el workspace real sin verificarlo mediante la lectura de vuelta del servidor/Neon.
+- Las pruebas aisladas pueden utilizar su propio directorio de datos y fixtures. Deben mantenerse separadas de los proyectos y datos reales del usuario.
+- No registres ni expongas credenciales, cookies, tokens o secretos.
 
-Ejemplo: **A → B1 (10 min / 30 s) → resultado → inspección → B2 (10 min / 30 s) → resultado → inspección → B3 (10 min / 30 s) → ...**
+## 4. Ciclo de trabajo y recuperación
 
-### Regla de inspección
-**Resultado recibido no significa resultado aceptado.** Un `success`, workflow verde, API aceptada o respuesta aparentemente correcta no sustituye la inspección. Cuando exista evidencia visual, debe inspeccionarse realmente antes de aceptar el resultado.
+Antes de enviar una orden:
 
----
+1. Consulta el estado del bridge y las órdenes recientes.
+2. Identifica el proyecto y su última `server_revision`.
+3. Comprueba si ya existe una orden equivalente activa.
+4. Reutiliza el estado de una orden activa; no la dupliques.
+5. Envía la operación con los identificadores de correlación requeridos.
 
-# 🚨 POLÍTICA OBLIGATORIA DEL AGENTE IA, PUENTE B Y SESIÓN A
+Después de enviarla:
 
-> **LEER Y APLICAR ANTES DE CADA SESIÓN DE TRABAJO.**
->
-> Esta política es de cumplimiento obligatorio. El archivo de entrada del agente es **[AGENTS.md](../AGENTS.md)** y apunta aquí como documento completo. Si existe conflicto entre una implementación y esta política, la implementación debe adaptarse a la política.
->
-> **Regla central:** **Usuario → Agente IA → B → A → B → Agente IA → siguiente B → A → ...**
->
-> **Solo una petición explícita del usuario puede iniciar una nueva ejecución del agente IA.**
+1. Espera el resultado real de esa orden.
+2. Comprueba su estado persistido en Neon.
+3. Verifica la revisión y los cambios esperados.
+4. Si corresponde, recupera e inspecciona la evidencia visual.
+5. Decide si el trabajo está terminado o necesita otra operación.
 
-## Roles
+Estados habituales pueden incluir `queued → dispatched → running → rendering → uploading → completed/failed`; usa los estados que realmente devuelva la implementación, no los supongas si el endpoint utiliza otros.
 
-**Agente IA:** ChatGPT es el agente responsable de las peticiones del usuario sobre CodeLab. El agente IA razona, decide qué hacer, lanza B, interpreta sus resultados, corrige problemas y determina el siguiente paso.
+Si la sesión del agente se interrumpe:
 
-**B — puente:** B es únicamente el puente entre el agente IA y A. Transporta la solicitud hacia A, espera su resultado y devuelve la respuesta/evidencia al agente IA. B no es otro agente IA y no toma decisiones de producto ni sustituye al agente IA.
+- Recupera el snapshot del bridge, la orden, el proyecto y la revisión desde Neon.
+- Si la orden sigue activa, continúa consultándola en lugar de crear otra.
+- Si terminó, inspecciona resultado/evidencia antes de continuar.
+- Si falló, diagnostica el error y reanuda desde la última revisión válida.
+- No reconstruyas un proyecto desde memoria, capturas o vídeos.
+- No reutilices tokens de propuestas expirados.
 
-**A — sesión persistente:** A es la sesión persistente que ejecuta las operaciones reales de CodeLab y conserva el estado de sesión/browser cuando corresponda.
+Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.md).
 
-Flujo obligatorio:
-**Usuario → Agente IA → B → A → B → Agente IA → siguiente B → A → ...**
+## 5. Ejecución programática y verificación visual
 
-## Activación exclusiva por el usuario
+- Las modificaciones principales deben utilizar las interfaces programáticas de CodeLab; la UI es para inspección y validación visual, no el mecanismo principal de automatización.
+- Una respuesta HTTP exitosa, `success: true`, un workflow verde o una orden aceptada no demuestran por sí solos que el resultado sea correcto.
+- Verifica persistencia y lectura de vuelta desde la fuente correspondiente.
+- Para dibujo y animación, genera evidencia visual real. Inspecciona continuidad, composición, silueta, movimiento, frames, duración y exportación según el objetivo.
+- Las referencias externas sirven para orientar el trabajo; no sustituyen el resultado editable ni el estado real del proyecto.
+- Si el resultado es defectuoso, corrige y repite el ciclo sin pedir confirmaciones rutinarias entre pasos.
 
-CodeLab, A, B, workers, workflows, webhooks y procesos auxiliares **no pueden invocar, despertar, llamar ni crear una nueva ejecución de ChatGPT**.
+## 6. Workflows A/B históricos
 
-La existencia de una tarea, un cambio de estado, un resultado, un timeout, un error, un evento de GitHub o una señal de A/B nunca debe convertirse por sí sola en una nueva petición al agente IA.
+Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instancia/sesión de la web y B se conectaba a ella para enviar solicitudes. Ese esquema ya no es el flujo operativo vigente.
 
-**Solo un mensaje/petición explícita del usuario puede iniciar el trabajo del agente IA.**
+- No iniciar A/B como requisito para trabajar con CodeLab.
+- No aplicar la antigua regla de ventanas independientes de 10 minutos/30 segundos como límite del flujo actual.
+- Los workflows y scripts antiguos pueden conservarse para reproducibilidad o pruebas históricas hasta que se decida retirarlos; su presencia en el repositorio no los convierte en la arquitectura actual.
+- El flujo vigente es el bridge/worker con coordinación y recuperación persistentes en Neon.
 
-A y B pueden permanecer activos, conservar estado, completar trabajo previamente solicitado y devolver resultados, pero no pueden iniciar una nueva intervención del agente IA.
+## 7. Principio de cierre
 
-## Monitoreo de A
-
-Al comenzar una sesión A, el agente IA debe monitorizarla durante **10 minutos**, comprobando su estado **cada 30 segundos**.
-
-Cadencia:
-**0:00, 0:30, 1:00, 1:30, 2:00, 2:30, 3:00, 3:30, 4:00, 4:30, 5:00, 5:30, 6:00, 6:30, 7:00, 7:30, 8:00, 8:30, 9:00, 9:30 y 10:00.**
-
-Durante la monitorización se deben detectar finalización, fallo, pérdida de sesión, errores o ausencia de actividad. No se debe asumir que A está correcta solo porque siga viva.
-
-## Espera de cada B
-
-Cada vez que el agente IA lance un B:
-
-1. B envía la solicitud a A.
-2. El agente IA debe esperar el resultado de **ese B hasta 10 minutos**.
-3. Debe conservar y analizar la respuesta y la evidencia recibidas.
-4. Si B responde antes, el análisis comienza inmediatamente.
-5. Si B no responde al llegar a 10 minutos, **solo termina la ventana de supervisión del agente IA**. El agente debe inspeccionar el estado real de B/A y decidir si continuar supervisando, lanzar otra acción, corregir o reintentar. No debe confundir esta ventana con un timeout técnico de B.
-
-Los **10 minutos de supervisión** son **independientes para cada B**. No se descuenta el tiempo utilizado por un B anterior. Esto no crea un límite acumulado ni de ejecución para B.
-
-## Repetición
-
-El ciclo se repite por cada B lanzado:
-
-**Agente IA → B → A → respuesta de B → análisis del Agente IA → nuevo B → A → ...**
-
-B no puede considerarse el responsable de la tarea. El responsable siempre es el agente IA.
-
-## Fuente de verdad
-
-Para proyectos, diseños, frames, capas, animaciones y demás estado de CodeLab, la fuente de verdad es el estado real de CodeLab/A.
-
-El agente IA debe decidir el siguiente paso usando la evidencia real devuelta por A. Cuando una operación dependa de un estado anterior, debe consultarse ese estado; no debe reconstruirse ni inferirse de memoria.
-
-La evidencia estructurada y la evidencia visual deben evaluarse conjuntamente. Un resultado técnicamente válido no se considera automáticamente bueno si la evidencia visual demuestra lo contrario.
-
-## Inspección visual obligatoria
-
-Cuando B entregue al agente IA una **imagen, captura, frame, secuencia de imágenes, GIF, vídeo, WebM u otra evidencia visual**, el agente IA debe **inspeccionarla realmente antes de aceptar el resultado**.
-
-En especial, los vídeos deben analizarse como vídeo: no basta con comprobar que el archivo existe, que tiene duración válida, que el workflow está verde o que el tamaño del archivo es razonable. El agente IA debe inspeccionar frames representativos y, cuando la calidad dependa del movimiento, comparar frames a lo largo de la secuencia.
-
-Para animación se debe comprobar como mínimo:
-
-- legibilidad de la figura y su silueta;
-- anatomía y proporciones consistentes;
-- pose y dirección del movimiento;
-- continuidad entre frames;
-- coherencia de pies, manos, cabeza, torso y extremidades;
-- ausencia de saltos, deformaciones o movimientos accidentales;
-- que el movimiento solicitado sea realmente el movimiento observado;
-- que el dibujo tenga suficiente definición y no sea simplemente un conjunto de bloques/píxeles confusos;
-- que la calidad visual cumpla el nivel solicitado por el usuario.
-
-Si la evidencia visual no cumple, **el agente IA debe rechazar el resultado aunque la prueba automatizada sea verde** y ejecutar correcciones mediante un nuevo ciclo B → A.
-
-## Política de calidad para dibujo y animación
-
-El agente IA no debe limitarse a producir una imagen técnicamente válida. Debe trabajar con un ciclo de calidad:
-
-**objetivo → referencia/contexto real → acción estructurada → render → inspección visual → evaluación → corrección → nuevo render → nueva inspección.**
-
-Para cada etapa visual relevante debe conservarse contexto estructurado y editable: capas, frames, cels, strokes, dimensiones, referencias y estado anterior cuando esté disponible.
-
-Antes de avanzar de una etapa de dibujo a la siguiente, el agente IA debe comprobar al menos:
-
-- **silueta:** figura reconocible a primera vista;
-- **anatomía:** proporciones y articulaciones coherentes;
-- **pose:** postura intencional y no accidental;
-- **movimiento:** trayectoria y cambios entre frames coherentes con la acción solicitada;
-- **consistencia:** la figura no cambia arbitrariamente de forma, tamaño o posición;
-- **detalle:** los elementos importantes siguen siendo legibles;
-- **presentación:** la imagen no depende de una estética pixelada cuando el usuario pidió una persona definida;
-- **continuidad:** cada frame se deriva del estado real anterior cuando el flujo sea secuencial.
-
-La evaluación debe producir una decisión explícita: **aceptar**, **corregir** o **rechazar/reconstruir**.
-
-No se debe aprobar una animación simplemente porque “se mueve”. Si el movimiento parece baile, temblor, deriva de extremidades, deformación o una acción distinta de la solicitada, debe clasificarse como fallo visual y corregirse.
-
-## 🔎 Referencias visuales dinámicas — OBLIGATORIO CUANDO APLIQUE
-
-**El agente IA NO debe depender de una imagen implantada/bundled en el sistema como fuente obligatoria del dibujo.**
-
-Cuando una tarea visual necesite referencias, el agente IA puede y debe buscar referencias útiles en Internet durante la tarea, por ejemplo para:
-
-- anatomía;
-- pose y movimiento;
-- ropa y detalles;
-- iluminación y sombras;
-- composición;
-- objetos/props;
-- perspectiva;
-- estilo visual.
-
-La referencia externa es **evidencia para razonar**, no el artwork final.
-
-### Reglas de uso
-
-1. **Buscar en el momento:** la referencia puede obtenerse durante la tarea según la intención concreta del usuario.
-2. **Registrar contexto:** cada referencia utilizada debe conservar URL, función/rol y notas en el contexto estructurado de la escena.
-3. **Separar referencia y resultado:** la imagen externa no se convierte automáticamente en el dibujo ni en una dependencia permanente del proyecto.
-4. **Crear desde la intención:** el resultado editable debe construirse mediante escena semántica, capas, strokes y demás estructuras de CodeLab.
-5. **Actualizar referencias:** si una referencia deja de ser útil, puede sustituirse sin romper el proyecto.
-6. **Verificar visualmente:** la referencia orienta el trabajo, pero el resultado final debe pasar la inspección visual de esta política.
-7. **Animación:** las referencias externas pueden orientar pose/movimiento; aun así, la continuidad entre frames debe derivarse del **estado real del frame anterior en CodeLab/A**, nunca de una suposición del agente.
-
-**Resumen operativo:**
-**intención del usuario → búsqueda de referencias → inspección de referencias → escena semántica → dibujo editable → render → inspección → corrección → resultado.**
-
-No se debe introducir una imagen fija del sistema como sustituto de este proceso ni tratar una referencia externa como el resultado final.
-
-## Referencias y estado previo
-
-Cuando se utilice una referencia visual o una animación existente, el agente IA debe pedir a A/B el estado real necesario para continuar. No debe inventar el contenido del frame anterior ni reconstruirlo desde memoria.
-
-Para animación secuencial, el siguiente frame debe poder trazarse al contexto real del frame anterior: frame ID, layer ID, cel/raster/strokes y, cuando sea necesario, evidencia visual del estado.
-
-## Controles de dibujo
-
-Las operaciones de dibujo deben favorecer controles editables y verificables sobre operaciones irreversibles o ambiguas.
-
-El agente IA debe poder separar y corregir, cuando corresponda:
-
-- pose;
-- silueta;
-- proporciones;
-- extremidades;
-- cabeza;
-- torso;
-- manos/pies;
-- profundidad/posición;
-- detalles;
-- timing y duración del frame;
-- trayectoria del movimiento.
-
-Las correcciones deben registrarse como acciones estructuradas y no depender únicamente de una modificación visual opaca.
-
-## Verificación
-
-Una petición no está terminada solo porque B devuelva success, un workflow termine en verde o una API acepte la operación.
-
-El agente IA debe verificar el resultado contra la petición original y, cuando corresponda, contra:
-- estado persistido;
-- lectura de vuelta desde CodeLab;
-- evidencia visual;
-- comportamiento real de la aplicación.
-
-Si no cumple, el agente IA debe corregir y repetir el ciclo.
-
-## Auditoría
-
-Cuando esté disponible, conservar:
-- ID de sesión A;
-- ID de cada B;
-- timestamps;
-- solicitud y respuesta;
-- duración de espera;
-- errores/timeouts;
-- evidencia de CodeLab;
-- evaluación visual;
-- decisión posterior del agente IA;
-- correcciones realizadas.
-
-Nunca registrar contraseñas, cookies, tokens ni secretos.
-
-Esta política complementa la política de cuenta ADMIN y persistencia de CodeLab y no amplía el alcance autorizado sobre otros repositorios o servicios de Render.
+Un trabajo solo se declara terminado cuando el resultado esperado está verificado en el estado persistido y, si el tipo de tarea lo requiere, su evidencia visual fue inspeccionada. Si algo no pudo probarse —por ejemplo, producción/Render— debe indicarse expresamente como no verificado.

@@ -20,12 +20,16 @@ test('animation frame context returns authoritative previous cel and visual payl
 
 test('layer context returns the previous layer as authoritative visual context', () => {
   const runtime = createHeadlessRuntime({ width: 8, height: 8, name: 'layer-context-test' });
-  const added = runtime.execute({ name: 'layer.add', name: 'Detail' });
+  const added = runtime.execute({ name: 'layer.add', layerName: 'Detail' });
   assert.equal(added.ok, true);
-  const context = runtime.execute({ name: 'layer.get_context', layerId: added.result.layerId ?? added.result.id });
-  assert.equal(context.ok, true);
+  const activeLayerId = runtime.sandbox.activeLayerId;
+  assert.ok(runtime.sandbox.layers.some(layer => layer.id === activeLayerId && layer.name === 'Detail'));
+  const context = runtime.execute({ name: 'layer.get_context', layerId: activeLayerId });
+  assert.equal(context.ok, true, JSON.stringify({ added, activeLayerId, layers: runtime.sandbox.layers.map(layer => ({ id: layer.id, name: layer.name })), context }));
   assert.equal(context.result.current.name, 'Detail');
   assert.equal(context.result.previous.name, 'Layer 1');
   assert.equal(context.result.visual.format, 'rgba-base64');
+  assert.equal(Buffer.from(context.result.current.pixels, 'base64').length, 8 * 8 * 4);
+  assert.equal(Buffer.from(context.result.previous.pixels, 'base64').length, 8 * 8 * 4);
   assert.equal(context.result.guidance.requestMoreContextAction, 'layer.get_context');
 });

@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '22.17.0'
       - name: Install runtime dependencies for server tests
         run: npm install --no-save --package-lock=false
       - name: Check JavaScript syntax
@@ -94,10 +94,12 @@ jobs:
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3188"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-e2e-data"
           export CODELAB_WORKSPACE_SECRET="test-only-e2e-secret"
-          # This E2E intentionally runs without external PostgreSQL. Keep PixelForge in
-          # isolated guest/file mode here; the dedicated PostgreSQL job below validates
-          # the durable account-backed storage contract separately.
-          export PIXELFORGE_GUEST_MODE=true
+          # This E2E runs without external PostgreSQL but still exercises isolated
+          # authenticated CodeLab accounts against file-backed test persistence.
+          # Guest mode would bypass the anonymous-access 401 checks below.
+          unset PIXELFORGE_GUEST_MODE
+          # Force this explicitly file-backed E2E to ignore any runner-level hosted/DB environment.
+          unset DATABASE_URL NODE_ENV RENDER RENDER_SERVICE_ID
           node server.js > "$RUNNER_TEMP/codelab-e2e.log" 2>&1 &
           SERVER_PID=$!
           trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab E2E server log ====="; cat "$RUNNER_TEMP/codelab-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
@@ -206,7 +208,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '22.17.0'
       - name: Install runtime and browser test dependencies
         run: npm install --no-save --package-lock=false playwright
       - name: Install Chromium

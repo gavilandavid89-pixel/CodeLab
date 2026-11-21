@@ -1,46 +1,47 @@
-# 🚨🚨 POLÍTICA N.º 1 — SUPERVISIÓN A/B 🚨🚨
+# CodeLab — instrucciones obligatorias para agentes
 
-**MÁXIMA PRIORIDAD:** los **10 minutos NO son un límite de ejecución para A ni para B**. Son únicamente la ventana máxima de **supervisión del agente IA** por ciclo, comprobando cada **30 segundos**. A y B pueden seguir ejecutándose más allá de esa ventana; el agente IA decide el siguiente ciclo sin matar, cancelar ni imponer un timeout al proceso solo por llegar a 10 minutos. Si responden antes, detener la espera inmediatamente, inspeccionar el resultado y decidir el siguiente paso. Cada nuevo B reinicia su ciclo independiente de supervisión de 10 min / 30 s.
+Antes de trabajar en el repositorio, lee esta entrada y la política completa:
+[docs/agent-ai-bridge-policy.md](docs/agent-ai-bridge-policy.md).
 
-**Esta regla está por encima de las demás reglas operativas.**
+## Fuente de verdad operativa
 
-> **Esta es una política operativa obligatoria.** El agente IA debe consultarla **antes de comenzar cualquier trabajo sobre CodeLab**. No debe tratarse como documentación opcional.
+El flujo actual de trabajo es:
 
-**Entrada obligatoria del agente:** [docs/agent-ai-bridge-policy.md](docs/agent-ai-bridge-policy.md)
+`usuario → agente → Neon (trabajo/estado) → bridge/worker → CodeLab → resultado/evidencia → Neon → agente`.
 
-**Protocolo adicional obligatorio para dibujo y animación:** [docs/ANIMATION-AUTONOMOUS-WORKFLOW.md](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md). Define que el agente conduce el ciclo completo de órdenes, espera, verificación, inspección y corrección durante la sesión activa; no funciona 24/7 ni envía informes intermedios, y comunica el resultado final. Este protocolo complementa —no reemplaza— la supervisión A/B descrita arriba.
+- Neon conserva el estado canónico de órdenes, proyectos, revisiones, resultados y referencias a evidencias.
+- El bridge/worker entrega las órdenes a CodeLab; no es un segundo agente y no toma decisiones de producto.
+- CodeLab ejecuta operaciones mediante sus interfaces programáticas. No automatices el trabajo principal simulando clics o gestos de la interfaz.
+- El agente inspecciona el resultado persistido y la evidencia visual cuando corresponda antes de decidir la siguiente operación.
+- La recuperación debe consultar el estado real antes de reintentar. Nunca dupliques una orden que siga activa.
 
-**Protocolo de recuperación por expiración de sesión:** [docs/SESSION-EXPIRATION-RECOVERY.md](docs/SESSION-EXPIRATION-RECOVERY.md). Define cómo recuperar el estado desde Neon, decidir si hacer wake, evitar duplicar trabajos, recuperar propuestas pendientes y continuar desde la última revisión válida.
+## A/B y workflows históricos
 
-**Reglas críticas de un vistazo**
-- **Usuario → Agente IA → B → A → B → Agente IA.**
-- **Solo el usuario puede iniciar una nueva ejecución del agente IA.**
-- **B es un puente; no es otro agente IA ni toma decisiones.**
-- **A es la sesión persistente y la fuente de verdad del estado real de CodeLab.**
-- Cada B tiene una **ventana máxima de supervisión del agente IA** de **10 minutos**, con comprobación cada **30 segundos**; A se supervisa con la misma regla. **Esto no limita la duración de ejecución de A/B.**
-- La evidencia estructurada y visual debe verificarse realmente antes de aceptar un resultado.
-- Un "success", workflow verde o API aceptada **no equivale** a tarea terminada.
-- En dibujo/animación se debe seguir: **objetivo → referencia/contexto real → acción estructurada → render → inspección visual → evaluación → corrección**.
-- Cuando se use una referencia externa, **la referencia es evidencia, no el artwork final**.
-- En animación, el frame anterior debe consultarse desde el estado real de CodeLab/A; **no se puede inventar ni reconstruir de memoria**.
-- **No registrar secretos, cookies, tokens ni contraseñas.**
+Los workflows A/B (un workflow que alojaba una sesión y otro que se conectaba a ella) pertenecen a una arquitectura anterior. **No forman parte del flujo operativo actual ni son un requisito para ejecutar CodeLab.** Sus archivos pueden permanecer en el repositorio como herramientas históricas/de pruebas; no los invoques como camino normal ni describas su supervisión de 10 minutos como política vigente.
 
-## Referencias visuales dinámicas
+El flujo actual usa el bridge y el estado persistido en Neon, con activación bajo demanda cuando el bridge informa que está dormido. No mantengas pings periódicos, cron de keep-alive ni procesos artificiales para simular actividad.
 
-El agente puede buscar referencias visuales actuales en Internet durante una tarea cuando sean útiles para comprender anatomía, pose, ropa, iluminación, composición, objetos, movimiento o estilo.
+## Identidad y sesiones locales
 
-Las referencias externas deben:
-1. registrarse en el contexto estructurado de la escena con su URL, función y notas;
-2. utilizarse como evidencia para razonar y construir el dibujo;
-3. mantenerse separadas del resultado editable de CodeLab;
-4. poder sustituirse o actualizarse sin convertir una imagen concreta en una dependencia fija del sistema.
+- Para operar sobre proyectos del usuario, conserva el contexto de cuenta/workspace que el sistema obtiene mediante la configuración y autenticación existentes del repositorio. No inventes, sustituyas ni hardcodees una identidad.
+- Las sesiones locales/headless son útiles como entorno auxiliar aislado para pruebas y automatización. No las elimines por considerarlas cuentas demo.
+- Una sesión local aislada no debe confundirse con una sesión autenticada del usuario ni utilizarse para afirmar que un cambio quedó guardado en su workspace real.
+- Distingue siempre entre persistencia local, persistencia en Neon/servidor y lectura de vuelta del proyecto del usuario.
 
-**No se debe depender de una imagen implantada/bundled como fuente obligatoria del dibujo.** El sistema debe poder crear una escena desde la intención del usuario y referencias obtenidas durante la tarea.
+## Reglas de ejecución
 
-Para animación, las referencias externas pueden orientar la pose y el movimiento, pero **el estado real del frame anterior en CodeLab/A sigue siendo la fuente de verdad para la continuidad entre frames**.
+1. Solo una petición explícita del usuario inicia una nueva tarea del agente. Los workers pueden completar órdenes ya autorizadas, pero no iniciar nuevas tareas autónomas del agente.
+2. Antes de actuar, consulta proyecto, revisión y órdenes activas.
+3. Usa `project_id` y la última `server_revision` para continuar proyectos existentes.
+4. No uses screenshots o vídeos como fuente canónica del proyecto; son evidencia de inspección.
+5. En dibujo/animación, genera evidencia visual y revísala realmente. Un `success` no basta.
+6. No registres secretos, cookies, tokens ni contraseñas.
+7. No cambies ni despliegues servicios ajenos al alcance solicitado.
+8. No declares que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
 
-## Documento completo
+## Documentos relacionados
 
-La política detallada y sus controles se encuentran en:
-
-**[docs/agent-ai-bridge-policy.md](docs/agent-ai-bridge-policy.md)**
+- [Política del agente y bridge](docs/agent-ai-bridge-policy.md)
+- [Flujo autónomo de dibujo y animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
+- [Recuperación de expiración de sesión](docs/SESSION-EXPIRATION-RECOVERY.md)
+- [Cuenta y persistencia](docs/account-admin-and-persistence-policy.md)
