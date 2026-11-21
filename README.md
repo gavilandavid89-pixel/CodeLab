@@ -217,7 +217,7 @@ Monta un disco en `/var/data` y define `CODELAB_DATA_DIR=/var/data`. Sin disco, 
 
 ## Cuenta ADMIN y persistencia de pruebas
 
-Todas las pruebas, proyectos auxiliares y cambios de proyecto deben ejecutarse dentro de la cuenta real **ADMIN** del usuario. No se permite usar perfiles demo, invitados ni sesiones anónimas. Antes de operar se verifica la identidad y el workspace; después se confirma la sincronización y se vuelve a leer el proyecto desde el servidor. Si no se puede confirmar la cuenta ADMIN, la operación se detiene. Consulta la [política obligatoria de cuenta y persistencia](docs/account-admin-and-persistence-policy.md).
+Las operaciones sobre proyectos reales del usuario deben conservar la identidad y el workspace **ADMIN** que CodeLab resuelve mediante la configuración y autenticación existentes. Las pruebas aisladas pueden utilizar sesiones locales/headless y directorios temporales; estas sesiones son útiles para automatización, pero no se deben presentar como persistencia en el workspace real. Antes de declarar un cambio del usuario como guardado, verifica la sincronización y vuelve a leer el proyecto desde el servidor. Consulta la [política de cuenta y persistencia](docs/account-admin-and-persistence-policy.md).
 
 ## Seguridad
 
