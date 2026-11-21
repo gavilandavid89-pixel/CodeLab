@@ -1,4 +1,4 @@
-import { buildReferenceFromProject, normalizeDrawingModel, getReferenceEntry, normalizeSemanticPart } from './drawing-intelligence.js';
+import { buildReferenceFromProject, normalizeDrawingModel, getReferenceEntry, normalizeSemanticPart, setCurrentState, recordEnvironmentHistory } from './drawing-intelligence.js';
 
 export function createReferenceCenterUI({
   getDocument,
@@ -20,6 +20,8 @@ export function createReferenceCenterUI({
     <p class="small-note">Immutable visual assets. Copying creates an editable instance; the original reference never changes.</p>
     <div class="reference-center-actions">
       <button id="reference-package-current" class="file-button" type="button">＋ Package current</button>
+      <button id="reference-save-state" class="file-button" type="button">◉ Save current state</button>
+      <button id="reference-record-environment" class="file-button" type="button">🌎 Record environment</button>
       <button id="reference-refresh" class="file-button" type="button">↻ Refresh</button>
     </div>
     <div class="reference-center-context">
@@ -146,6 +148,50 @@ export function createReferenceCenterUI({
     render(); renderLayers(); onDocumentChanged(); void save();
   }
 
+  function saveCurrentState() {
+    const d = doc();
+    const model = normalizeDrawingModel(d.getDrawingModel(), { width: d.width, height: d.height });
+    const activeLayer = d.activeLayer;
+    const name = window.prompt('Current state name', activeLayer?.name || d.name || 'Current state');
+    if (!name?.trim()) return;
+    const next = setCurrentState(model, {
+      entityId: activeLayer?.id || d.id,
+      name: name.trim(),
+      scope: 'element',
+      sourceRevision: d.saveVersion,
+      frameIndex: animation()?.activeFrameIndex ?? null,
+      layerIds: activeLayer ? [activeLayer.id] : [],
+      appearance: { visible: activeLayer?.visible !== false, opacity: activeLayer?.opacity ?? 1 },
+      transform: { x: 0, y: 0, orientation: 'current' },
+      notes: 'Saved from the current PixelForge editor state.',
+    });
+    d.setDrawingModel(next);
+    d.dirty = true;
+    status('Current State saved without altering the Master Reference', 'success');
+    onDocumentChanged(); refresh(); void save();
+  }
+
+  function recordEnvironment() {
+    const d = doc();
+    const model = normalizeDrawingModel(d.getDrawingModel(), { width: d.width, height: d.height });
+    const environmentLayerIds = Object.entries(model.layerRoles).filter(([, meta]) => meta?.role === 'environment').map(([id]) => id);
+    if (!environmentLayerIds.length) {
+      status('Mark at least one layer as Environment before recording the environment history.', 'warning');
+      return;
+    }
+    const frameIndex = animation()?.activeFrameIndex ?? null;
+    const next = recordEnvironmentHistory(model, {
+      sourceRevision: d.saveVersion,
+      frameIndex,
+      animationId: animation()?.id || null,
+      environmentLayerIds,
+      label: 'Environment · frame ' + (frameIndex === null ? 1 : frameIndex + 1),
+    });
+    d.setDrawingModel(next);
+    d.dirty = true;
+    status('Environment state recorded; it was not added to Reference Center', 'success');
+    onDocumentChanged(); refresh(); void save();
+  }
   function refresh() {
     const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
     list.replaceChildren();
@@ -198,6 +244,8 @@ export function createReferenceCenterUI({
   }
 
   host.querySelector('#reference-package-current').addEventListener('click', packageCurrent);
+  host.querySelector('#reference-save-state').addEventListener('click', saveCurrentState);
+  host.querySelector('#reference-record-environment').addEventListener('click', recordEnvironment);
   host.querySelector('#reference-refresh').addEventListener('click', refresh);
   refresh();
   return { refresh, contextOpacity };
