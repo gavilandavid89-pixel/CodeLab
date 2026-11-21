@@ -242,7 +242,7 @@ export class AICommandSession {
           throw new Error('drawing.reference.package_current is available only in the headless project runtime.');
         case 'drawing.layer.role.set': {
           const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
-          const layer = doc.layers.find(item => item.id === action.layerId);
+          const layer = doc.layers.find(item => item.id === action.layerId || (action.layerName && item.name === String(action.layerName)));
           if (!layer) throw new Error('Layer was not found.');
           const next = setDrawingLayerRole(model, action);
           doc.setDrawingModel(next);
