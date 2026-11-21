@@ -2381,6 +2381,9 @@ async function boot() {
       ? { user: { provider: 'guest', id: 'shared', name: 'Modo temporal' } }
       : await window.CodeLabStudioCore.getCodeLabSession();
     if (!auth.user) {
+      if (params.get('capture') === '1' || params.get('capture') === 'video') {
+        document.documentElement.dataset.pixelforgeCapture = 'auth-required';
+      }
       const appShell = document.querySelector('.app-shell');
       const authGate = document.getElementById('pixelforgeAuthGate');
       if (appShell) appShell.remove();
