@@ -98,6 +98,8 @@ jobs:
           # authenticated CodeLab accounts against file-backed test persistence.
           # Guest mode would bypass the anonymous-access 401 checks below.
           unset PIXELFORGE_GUEST_MODE
+          # Force this explicitly file-backed E2E to ignore any runner-level hosted/DB environment.
+          unset DATABASE_URL NODE_ENV RENDER RENDER_SERVICE_ID
           node server.js > "$RUNNER_TEMP/codelab-e2e.log" 2>&1 &
           SERVER_PID=$!
           trap 'status=$?; if [ "$status" -ne 0 ]; then echo "===== CodeLab E2E server log ====="; cat "$RUNNER_TEMP/codelab-e2e.log" 2>/dev/null || true; fi; kill "$SERVER_PID" 2>/dev/null || true' EXIT
