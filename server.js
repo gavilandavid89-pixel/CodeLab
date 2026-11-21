@@ -2208,6 +2208,26 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Health
+      if ((req.method === 'GET' || req.method === 'HEAD') && /^\\/api\\/agent-commands\\/[A-Za-z0-9_-]+\\/video$/.test(pathname)) {
+        const commandId = pathname.split('/')[3];
+        const row = await accountPool.query(
+          "SELECT result->'video'->>'dataBase64' AS data_base64 FROM public.codelab_agent_commands WHERE command_id=$1 AND status='succeeded'",
+          [commandId]
+        );
+        const base64 = row.rows[0]?.data_base64;
+        if (!base64) return sendJson(res, 404, { error: 'video_not_found' });
+        const bytes = Buffer.from(base64, 'base64');
+        setSecurityHeaders(res);
+        res.writeHead(200, {
+          'Content-Type': 'video/webm',
+          'Content-Length': String(bytes.length),
+          'Content-Disposition': 'inline; filename="codelab-evidence.webm"',
+          'Cache-Control': 'private, max-age=3600'
+        });
+        if (req.method === 'HEAD') return res.end();
+        return res.end(bytes);
+      }
+
       if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/health') {
         const cfg = oauthConfigured();
         const body = {
