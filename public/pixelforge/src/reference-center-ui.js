@@ -31,6 +31,14 @@ export function createReferenceCenterUI({
       <span id="reference-next-opacity-value">15%</span>
     </div>
     <div id="reference-state-summary" class="reference-center-context"></div>
+    <div class="reference-environment-history">
+      <div class="reference-center-actions">
+        <button id="reference-environment-preview" class="file-button" type="button">▶ Preview environment</button>
+        <button id="reference-environment-stop" class="file-button" type="button" disabled>■ Stop</button>
+      </div>
+      <canvas id="reference-environment-canvas" class="reference-environment-canvas" aria-label="Environment-only history preview"></canvas>
+      <div id="reference-environment-list" class="reference-parts"></div>
+    </div>
     <div id="reference-center-list" class="reference-center-list"></div>
   `;
   const layerSection = document.querySelector('.layer-section');
@@ -38,6 +46,13 @@ export function createReferenceCenterUI({
 
   const list = host.querySelector('#reference-center-list');
   const stateSummary = host.querySelector('#reference-state-summary');
+  const environmentCanvas = host.querySelector('#reference-environment-canvas');
+  const environmentList = host.querySelector('#reference-environment-list');
+  const environmentPreviewButton = host.querySelector('#reference-environment-preview');
+  const environmentStopButton = host.querySelector('#reference-environment-stop');
+  let environmentPreviewTimer = null;
+  let environmentPreviewEntries = [];
+  let environmentPreviewIndex = 0;
   const prevRange = host.querySelector('#reference-prev-opacity');
   const nextRange = host.querySelector('#reference-next-opacity');
   const prevValue = host.querySelector('#reference-prev-opacity-value');
@@ -194,10 +209,68 @@ export function createReferenceCenterUI({
     status('Environment state recorded; it was not added to Reference Center', 'success');
     onDocumentChanged(); refresh(); void save();
   }
+  function stopEnvironmentPreview() {
+    if (environmentPreviewTimer) window.clearInterval(environmentPreviewTimer);
+    environmentPreviewTimer = null;
+    environmentPreviewButton.disabled = false;
+    environmentStopButton.disabled = true;
+  }
+
+  function renderEnvironmentEntry(entry) {
+    const d = doc();
+    const currentAnimation = animation();
+    if (!currentAnimation || !entry || !Array.isArray(entry.environmentLayerIds) || entry.frameIndex === null) {
+      status('This environment history entry has no animation frame available to replay.', 'warning');
+      return false;
+    }
+    const layers = d.layers.map(layer => ({
+      id: layer.id,
+      visible: entry.environmentLayerIds.includes(layer.id),
+      opacity: 1,
+    }));
+    const pixels = currentAnimation.compositeFrame(entry.frameIndex, layers);
+    const width = currentAnimation.width || d.width;
+    const height = currentAnimation.height || d.height;
+    environmentCanvas.width = width;
+    environmentCanvas.height = height;
+    const previewContext = environmentCanvas.getContext('2d');
+    if (!previewContext) return false;
+    previewContext.clearRect(0, 0, width, height);
+    previewContext.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0);
+    environmentCanvas.style.imageRendering = 'pixelated';
+    return true;
+  }
+
+  function previewEnvironmentHistory() {
+    stopEnvironmentPreview();
+    const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
+    environmentPreviewEntries = model.environmentHistory.entries
+      .filter(entry => entry.replayable !== false && entry.frameIndex !== null)
+      .sort((a, b) => (a.frameIndex ?? 0) - (b.frameIndex ?? 0));
+    if (!environmentPreviewEntries.length) {
+      status('No replayable environment history is available for the current animation.', 'warning');
+      return;
+    }
+    environmentPreviewIndex = 0;
+    renderEnvironmentEntry(environmentPreviewEntries[0]);
+    environmentPreviewButton.disabled = true;
+    environmentStopButton.disabled = false;
+    environmentPreviewTimer = window.setInterval(() => {
+      environmentPreviewIndex++;
+      if (environmentPreviewIndex >= environmentPreviewEntries.length) {
+        stopEnvironmentPreview();
+        return;
+      }
+      renderEnvironmentEntry(environmentPreviewEntries[environmentPreviewIndex]);
+    }, Math.max(80, Math.round(1000 / Math.max(1, animation()?.fps || 12))));
+  }
+
   function refresh() {
     const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
     list.replaceChildren();
     stateSummary.replaceChildren();
+    environmentList.replaceChildren();
+    stopEnvironmentPreview();
     const stateInfo = document.createElement('p');
     stateInfo.className = 'small-note';
     stateInfo.textContent = 'Current State: ' + model.currentState.entries.length + ' · Environment History: ' + model.environmentHistory.entries.length;
@@ -215,6 +288,14 @@ export function createReferenceCenterUI({
       envNote.className = 'small-note';
       envNote.textContent = 'Último entorno: ' + env.label + ' · ' + env.environmentLayerIds.length + ' environment layers';
       stateSummary.append(envNote);
+    }
+    for (const entry of [...model.environmentHistory.entries].reverse().slice(0, 24)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'file-button';
+      button.textContent = '🌎 ' + entry.label;
+      button.addEventListener('click', () => renderEnvironmentEntry(entry));
+      environmentList.append(button);
     }
     if (!model.referenceCenter.entries.length) {
       const empty = document.createElement('p');
@@ -264,6 +345,8 @@ export function createReferenceCenterUI({
     }
   }
 
+  environmentPreviewButton.addEventListener('click', previewEnvironmentHistory);
+  environmentStopButton.addEventListener('click', stopEnvironmentPreview);
   host.querySelector('#reference-package-current').addEventListener('click', packageCurrent);
   host.querySelector('#reference-save-state').addEventListener('click', saveCurrentState);
   host.querySelector('#reference-record-environment').addEventListener('click', recordEnvironment);
