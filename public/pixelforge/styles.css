@@ -203,7 +203,7 @@
 .animation-actions #animation-play{color:#69dfbb}
 .animation-number,.animation-check{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:10px;white-space:nowrap}
 .animation-number input{width:48px;min-height:26px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;background:#11131a;color:var(--text);font:inherit}
-.animation-number input#animation-duration{width:58px}
+.animation-number input#animation-duration{width:58px}.animation-number select{min-height:26px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;background:#11131a;color:var(--text);font:inherit}.animation-number select:focus{outline:1px solid #7770ba;outline-offset:1px}
 .animation-check input{accent-color:#9b8afb}
 .animation-frames{display:flex;gap:7px;align-items:stretch;min-height:66px;overflow-x:auto;overflow-y:hidden;padding:2px 1px 5px;scrollbar-width:thin}
 .animation-empty{margin:0;color:var(--muted);font-size:11px;align-self:center}
