@@ -12,6 +12,7 @@ import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 import { createReferenceCenterUI } from './reference-center-ui.js';
+import { VectorStudio } from './vector-studio.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -35,6 +36,28 @@ let virtualCursorPointerId = null, virtualCursorScreen = null, virtualCursorPoin
 let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = Promise.resolve(), flushInProgress = false, flushPromise = null, renderQueued = false, previewReady = false;
 
 let referenceCenterUI = null;
+let vectorStudio = null;
+function initVectorStudio() {
+  if (vectorStudio) return vectorStudio;
+  const toggle = $('#vector-mode-toggle');
+  if (!toggle) return null;
+  vectorStudio = new VectorStudio({
+    host: workArea,
+    getDocument: () => doc,
+    getModel: () => doc.getVectorModel(),
+    setModel: model => doc.setVectorModel(model),
+    onChanged: () => { updateTitle(); scheduleAutosave(); },
+    status,
+  });
+  toggle.addEventListener('click', () => {
+    const enabled = vectorStudio.toggle();
+    toggle.classList.toggle('active', enabled);
+    toggle.setAttribute('aria-pressed', String(enabled));
+    toggle.textContent = enabled ? 'Vector: On' : 'Vector: Off';
+    if (enabled) fitCanvas();
+  });
+  return vectorStudio;
+}
 function initReferenceCenterUI() {
   if (referenceCenterUI) return referenceCenterUI;
   referenceCenterUI = createReferenceCenterUI({
@@ -1427,6 +1450,7 @@ function scrollInspectorTo(selector) {
 }
 $('#properties-tab').addEventListener('click', () => {
   setInspectorPanel('properties');
+initVectorStudio();
   if (!mobileInspector.matches) scrollInspectorTo('.inspector-section');
 });
 $('#layers-tab').addEventListener('click', () => {
@@ -2522,3 +2546,6 @@ async function boot() {
   }
 }
 boot();
+
+
+
