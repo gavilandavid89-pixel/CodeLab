@@ -10,9 +10,7 @@
 
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
 
-**Runtime:** Node.js 22.17.0 o superior. Instala las dependencias con `npm install` y arranca el servidor con `npm start`.
-
-Requiere **Node.js >=22.17.0**. El runtime usa `pg`, `@sparticuz/chromium` y `playwright-core`; `npm install` instala las dependencias declaradas y ejecuta el postinstall del runtime de navegador.
+**Runtime:** Node.js 22.17.0 o superior. El servidor utiliza `pg`, `@sparticuz/chromium` y `playwright-core`. Ejecuta `npm install` para instalar las dependencias y su postinstall de navegador; después inicia con `npm start`.
 
 ## 🧠 Arquitectura principal: agente → Neon → Cloudflare → CodeLab → evidencia → Neon → agente
 
@@ -130,7 +128,10 @@ nueva petición si hace falta
 ```
 
 **Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
-### Puesta en marcha bajo demanda del bridge### Señal final de apagado del bridge
+### Puesta en marcha bajo demanda del bridge
+
+### Señal final de apagado del bridge
+
 ### Snapshot vital para el agente
 
 El agente dispone de una instantánea consolidada en `GET /api/agent/bridge/state` (protegida con el mismo token de control). Devuelve el estado de vida del bridge, `wake_required`, motivo y versión de señal, runtime, las últimas órdenes y resultados, los proyectos PixelForge persistidos (ID, revisión y SHA) y las últimas evidencias visuales. Así el agente no necesita reconstruir el contexto desde un vídeo.
