@@ -216,7 +216,9 @@ export function synchronizeAnimationLayers(timeline, document) {
     if (!model.layerIds.includes(layer.id)) model.addLayer(layer.id);
   }
   model.reorderLayers(currentIds);
-  return serializeModel(model, next.loop, names);
+  const synchronized = serializeModel(model, next.loop, names);
+  synchronized.playbackSpeed = next.playbackSpeed ?? 1;
+  return synchronized;
 }
 
 export function applyAnimationAction(timeline, document, action) {
