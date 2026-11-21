@@ -81,6 +81,16 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   assert.equal(await page.locator('#vc-aspect').inputValue(), '16:9');
   assert.equal(await page.locator('#vc-export-dimensions').textContent(), '1920 × 1080');
   assert.equal(await page.locator('#vc-capture-content').isDisabled(), false);
+  const contentPngDownloadPromise = page.waitForEvent('download', { timeout: 15000 });
+  await page.locator('#vc-capture-content').click();
+  const contentPngDownload = await contentPngDownloadPromise;
+  assert.match(contentPngDownload.suggestedFilename(), /-contenido\\.png$/);
+  const contentPngPath = await contentPngDownload.path();
+  const contentPng = fs.readFileSync(contentPngPath);
+  assert.deepEqual([...contentPng.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10],
+    'content capture must produce a valid PNG image');
+  assert.equal(contentPng.readUInt32BE(16), 1920, 'default capture should produce a full HD width');
+  assert.equal(contentPng.readUInt32BE(20), 1080, 'default capture should produce a full HD height');
   await page.locator('#vc-aspect').selectOption('9:16');
   assert.equal(await page.locator('#vc-export-dimensions').textContent(), '1080 × 1920',
     'portrait export must fill a mobile-friendly frame without cropping the source');
