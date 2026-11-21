@@ -53,7 +53,10 @@ async function executeAction(page, action, index) {
     }
     case 'open_panel': {
       const locator = locatorFor(page, action.selector);
-      await locator.click({ timeout: Number.isInteger(action.timeout_ms) ? Math.min(30000, Math.max(100, action.timeout_ms)) : 10000 });
+      await locator.click({
+        timeout: Number.isInteger(action.timeout_ms) ? Math.min(30000, Math.max(100, action.timeout_ms)) : 10000,
+        force: action.force === true
+      });
       return { type, selector: action.selector, opened: true };
     }
     case 'click': {
