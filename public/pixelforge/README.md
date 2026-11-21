@@ -14,6 +14,20 @@ PixelForge is a first-party CodeLab studio. Its editor engine and UI stay encaps
 - **Provider credentials:** reuse CodeLab's existing AI-settings contract instead of creating a second PixelForge credential store. Never attach provider keys to artwork documents or persist them in PixelForge project records; any settings persistence remains owned by CodeLab's shared settings implementation.
 - **Recent projects:** opening a saved project updates its persistent recency timestamp, so project lists reflect actual use.
 
+## Layer convention for environment and artwork
+
+PixelForge uses a fixed semantic convention for scene/environment history and layered animation:
+
+- **The first raster layer is always the environment/background layer.** Its stable layer identity is the source of truth for the environment of a scene.
+- **Every raster layer added above the first layer is treated as non-environment artwork**: character, object, effect, foreground detail, or other scene content.
+- Agents and history/scene tooling must **not infer or guess which layer is the environment from the pixels, names, visual appearance, or drawing content**. Use the layer order and stable layer ID instead.
+- Creating a new layer must preserve this convention: the environment remains layer index 0, while new content layers are inserted above it.
+- For animation, the convention applies to every frame because each frame stores an independent cel for every raster layer. The environment cel remains separate from character/object cels on the same frame and across the timeline.
+- A character can therefore be drawn or changed on its own layer without painting over the environment. The same principle applies when creating animation across multiple frames: keep the environment in the first layer and animate the character/content layers independently.
+- Scene/environment history must report and restore these layers by their stable identities. It must never merge a character or other upper-layer artwork into the environment merely because both appear in the same composite frame.
+
+This convention is required for reliable history reconstruction, agent drawing, animation editing, and verification videos: **layer 0 = environment; layers 1+ = everything else**.
+
 ## Evolving the studio
 
 PixelForge is maintained directly in this CodeLab repository. No upstream repository sync step is part of the architecture. Make engine/UI changes inside this module and update the CodeLab-specific persistence adapter and integration tests when their contracts change. Avoid spreading raster-editor concerns into unrelated CodeLab modules.
