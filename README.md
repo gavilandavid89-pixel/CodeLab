@@ -6,11 +6,13 @@
 
 **[Abrir la política completa →](docs/agent-ai-bridge-policy.md)**
 
-# CodeLab XD Studio Pro v2.6.6
+# CodeLab XD Studio Pro v2.7.0
 
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
 
-Cero dependencias npm — solo Node.js nativo.
+**Runtime:** Node.js 22.17.0 o superior. Instala las dependencias con `npm install` y arranca el servidor con `npm start`.
+
+Requiere **Node.js >=22.17.0**. El runtime usa `pg`, `@sparticuz/chromium` y `playwright-core`; `npm install` instala las dependencias declaradas y ejecuta el postinstall del runtime de navegador.
 
 ## 🧠 Arquitectura principal: agente → Neon → Cloudflare → CodeLab → evidencia → Neon → agente
 
@@ -303,6 +305,12 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 - El panel separado de «Propiedades» y su botón se eliminaron; sus controles viven dentro del Inspector.
 
 ## Changelog
+
+### v2.7.0
+
+- Se sincroniza la documentación de versión y dependencias con `package.json`.
+- Se actualiza CI a Node.js 22.17.0, acorde con el mínimo declarado por el proyecto.
+- Se aclara la separación entre el flujo actual Neon/bridge y los antiguos workflows A/B.
 
 ### v2.6.6
 
