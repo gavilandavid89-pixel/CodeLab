@@ -1,4 +1,19 @@
-export const VECTOR_MODEL_VERSION = 1;
+export const VECTOR_MODEL_VERSION = 2;
+
+// Agent-native vector diagnostics: deterministic, machine-readable quality checks.
+export function auditVectorModel(model, {tolerance=2, viewport=true}={}) {
+  const issues=[]; const objects=model?.objects||[];
+  const b=o=>bounds(o); const names=new Set();
+  for(const o of objects){
+    if(!o.id) issues.push({code:'missing_id',severity:'error',message:'Vector object has no id.'});
+    if(o.name){if(names.has(o.name))issues.push({code:'duplicate_name',severity:'warning',objectId:o.id,message:'Duplicate vector object name.'});names.add(o.name);}
+    const q=b(o); if(!Number.isFinite(q.x+q.y+q.width+q.height))issues.push({code:'invalid_geometry',severity:'error',objectId:o.id,message:'Geometry contains non-finite values.'});
+    if(viewport&&(q.x < -tolerance || q.y < -tolerance || q.x+q.width > model.width+tolerance || q.y+q.height > model.height+tolerance))issues.push({code:'out_of_bounds',severity:'warning',objectId:o.id,message:'Object extends outside the document bounds.'});
+    if(o.type==='path'&&(!o.points||o.points.length<2))issues.push({code:'empty_path',severity:'error',objectId:o.id,message:'Path needs at least two points.'});
+  }
+  for(let i=0;i<objects.length;i++)for(let j=i+1;j<objects.length;j++){const a=b(objects[i]),d=b(objects[j]);if(a.width&&a.height&&d.width&&d.height&&a.x<d.x+d.width&&a.x+a.width>d.x&&a.y<d.y+d.height&&a.y+a.height>d.y)issues.push({code:'bbox_overlap',severity:'info',objects:[objects[i].id,objects[j].id],message:'Bounding boxes overlap; verify intentional layering.'});}
+  return {ok:!issues.some(i=>i.severity==='error'),score:Math.max(0,100-issues.filter(i=>i.severity==='error').length*20-issues.filter(i=>i.severity==='warning').length*5),objectCount:objects.length,issues};
+}
 
 const NS = 'http://www.w3.org/2000/svg';
 const clone = v => JSON.parse(JSON.stringify(v));
@@ -13,7 +28,8 @@ export function createVectorModel(width, height, existing = null) {
     grid: Number(m.grid) || 8,
     snap: m.snap !== false,
     objects: Array.isArray(m.objects) ? m.objects : [],
-    frames: Array.isArray(m.frames) ? m.frames : []
+    frames: Array.isArray(m.frames) ? m.frames : [],
+    metadata: m.metadata && typeof m.metadata === 'object' ? m.metadata : {intent:'',tags:[]}
   };
 }
 
@@ -25,10 +41,11 @@ function bounds(o) {
 }
 function pathD(o) { const p=o.points||[]; return p.length ? 'M '+p.map((q,i)=>(i?'L ':'')+q.x+' '+q.y).join(' ') + (o.closed?' Z':'') : ''; }
 function style(o) { return {fill:o.fill??'none',stroke:o.stroke??'#E8EAF2','stroke-width':o.strokeWidth??1,opacity:o.opacity??1}; }
+function defsFor(model){const gs=(model.objects||[]).filter(o=>o.gradient).map(o=>{const g=o.gradient;const id='g-'+o.id;const stops=(g.stops||[]).map(s=>`<stop offset="${s.offset}" stop-color="${s.color}" stop-opacity="${s.opacity??1}"/>`).join('');return `<linearGradient id="${id}" x1="0%" y1="0%" x2="100%" y2="0%">${stops}</linearGradient>`;}).join('');return gs?`<defs>${gs}</defs>`:'';}
 
 export function vectorModelToSVG(model) {
-  const body=(model.objects||[]).map(o=>{
-    const s=style(o), a=Object.entries(s).map(([k,v])=>`${k}="${String(v).replaceAll('"','&quot;')}"`).join(' ');
+  const body=(model.objects||[]).filter(o=>!o.hidden).map(o=>{
+    const s=style(o); if(o.gradient)s.fill=`url(#g-${o.id})`; const a=Object.entries(s).map(([k,v])=>`${k}="${String(v).replaceAll('"','&quot;')}"`).join(' ');
     if(o.type==='rect')return `<rect x="${o.x}" y="${o.y}" width="${o.width}" height="${o.height}" rx="${o.rx||0}" ${a}/>`;
     if(o.type==='ellipse')return `<ellipse cx="${o.x+o.width/2}" cy="${o.y+o.height/2}" rx="${o.width/2}" ry="${o.height/2}" ${a}/>`;
     if(o.type==='line')return `<line x1="${o.x1}" y1="${o.y1}" x2="${o.x2}" y2="${o.y2}" ${a}/>`;
@@ -36,7 +53,7 @@ export function vectorModelToSVG(model) {
     if(o.type==='text')return `<text x="${o.x}" y="${o.y}" font-size="${o.fontSize||16}" font-family="${o.fontFamily||'sans-serif'}" fill="${o.fill||'#E8EAF2}">${String(o.text||'').replaceAll('&','&amp;').replaceAll('<','&lt;')}</text>`;
     return '';
   }).join('');
-  return `<svg xmlns="${NS}" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}">${body}</svg>`;
+  return `<svg xmlns="${NS}" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}">${defsFor(model)}${body}</svg>`;
 }
 
 export class VectorStudio {
