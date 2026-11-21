@@ -136,14 +136,16 @@ test('keeps animation cels synchronized with layer add, duplicate, delete, and r
   assert.equal(timeline.getLayerPixels(1, 'ink-copy')[0], 33);
   assert.equal(timeline.removeLayer('color'), 3);
   assert.deepEqual(timeline.layerIds, ['ink', 'shadow', 'ink-copy']);
-  assert.equal(timeline.reorderLayers(['ink-copy', 'ink', 'shadow']), true);
-  assert.deepEqual(timeline.layerIds, ['ink-copy', 'ink', 'shadow']);
+  assert.throws(() => timeline.reorderLayers(['ink-copy', 'ink', 'shadow']), /environment layer/);
+  assert.equal(timeline.reorderLayers(['ink', 'ink-copy', 'shadow']), true);
+  assert.deepEqual(timeline.layerIds, ['ink', 'ink-copy', 'shadow']);
   assert.equal(timeline.getLayerPixels(0, 'ink')[0], 33);
-  timeline.removeLayer('ink');
-  assert.deepEqual(timeline.layerIds, ['ink-copy', 'shadow']);
+  assert.throws(() => timeline.removeLayer('ink'), /environment layer/);
   timeline.removeLayer('ink-copy');
-  assert.deepEqual(timeline.layerIds, ['shadow']);
-  assert.throws(() => timeline.removeLayer('shadow'), /at least one raster layer/);
+  assert.deepEqual(timeline.layerIds, ['ink', 'shadow']);
+  timeline.removeLayer('shadow');
+  assert.deepEqual(timeline.layerIds, ['ink']);
+  assert.throws(() => timeline.removeLayer('ink'), /environment layer/);
 });
 
 test('isolates every frame/layer cel and stays responsive at 64 layers across the full 240-frame timeline', t => {
@@ -191,10 +193,15 @@ test('isolates every frame/layer cel and stays responsive at 64 layers across th
   assert.equal(timeline.compositeThumbnail(136, null, 48).pixels[3], 0,
     'thumbnail caching must preserve frame isolation');
 
-  timeline.reorderLayers([...layerIds].reverse());
+  assert.throws(() => timeline.reorderLayers([...layerIds].reverse()), /environment layer/);
   assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [90, 80, 70, 255],
-    'reordering the layer stack must not reassign pixel data to another layer');
-  assert.equal(timeline.removeLayer('layer-0'), 63);
+    'rejected environment reordering must not reassign pixel data');
+  const contentReordered = ['layer-0', ...layerIds.slice(1).reverse()];
+  timeline.reorderLayers(contentReordered);
+  assert.deepEqual([...timeline.getLayerPixels(137, 'layer-63').slice(0, 4)], [90, 80, 70, 255],
+    'reordering content layers must not reassign pixel data to another layer');
+  assert.throws(() => timeline.removeLayer('layer-0'), /environment layer/);
+  timeline.removeLayer('layer-63');
   assert.equal(timeline.addLayer('layer-extra'), 64);
   assert.equal(timeline.getLayerPixels(137, 'layer-extra')[3], 0);
   assert.throws(() => timeline.addLayer('layer-overflow'), /up to 64 raster layers/);
