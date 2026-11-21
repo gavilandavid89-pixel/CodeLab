@@ -20,7 +20,7 @@ test('animation frame context returns authoritative previous cel and visual payl
 
 test('layer context returns the previous layer as authoritative visual context', () => {
   const runtime = createHeadlessRuntime({ width: 8, height: 8, name: 'layer-context-test' });
-  const added = runtime.execute({ name: 'layer.add', name: 'Detail' });
+  const added = runtime.execute({ name: 'layer.add', layerName: 'Detail' });
   assert.equal(added.ok, true);
   const context = runtime.execute({ name: 'layer.get_context', layerId: added.result.layerId ?? added.result.id });
   assert.equal(context.ok, true);
