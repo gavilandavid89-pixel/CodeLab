@@ -273,7 +273,7 @@ export class RasterDocument {
   setVectorModel(model) {
     if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Vector model must be an object or null.');
     this.vectorModel = model === null ? null : JSON.parse(JSON.stringify(model));
-    this.dirty = true; this.saveVersion++;
+    this.revision++; this.dirty = true; this.saveVersion++;
   }
   getVectorModel() {
     return this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel));
