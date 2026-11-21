@@ -815,6 +815,25 @@ export class AICommandSession {
         case 'history.redo':
           result = { changed: doc.redo() };
           break;
+        case 'vector.audit': {
+          const model = doc.getVectorModel() || { version: 2, width: doc.width, height: doc.height, objects: [] };
+          const issues = [];
+          const objects = model.objects || [];
+          const bounds = o => o.type === 'line'
+            ? { x: Math.min(o.x1,o.x2), y: Math.min(o.y1,o.y2), width: Math.abs(o.x2-o.x1), height: Math.abs(o.y2-o.y1) }
+            : { x:o.x||0, y:o.y||0, width:o.width||0, height:o.height||0 };
+          for (const o of objects) {
+            const b = bounds(o);
+            if (!o.id) issues.push({code:'missing_id',severity:'error',message:'Object has no id.'});
+            if (![b.x,b.y,b.width,b.height].every(Number.isFinite)) issues.push({code:'invalid_geometry',severity:'error',objectId:o.id,message:'Non-finite geometry.'});
+            if (b.x < -2 || b.y < -2 || b.x+b.width > model.width+2 || b.y+b.height > model.height+2)
+              issues.push({code:'out_of_bounds',severity:'warning',objectId:o.id,message:'Object exceeds document bounds.'});
+            if (o.type === 'path' && (!o.points || o.points.length < 2))
+              issues.push({code:'empty_path',severity:'error',objectId:o.id,message:'Path needs at least two points.'});
+          }
+          result = {ok:!issues.some(i=>i.severity==='error'),score:Math.max(0,100-issues.filter(i=>i.severity==='error').length*20-issues.filter(i=>i.severity==='warning').length*5),objectCount:objects.length,issues};
+          break;
+        }
         case 'vector.model.get': {
           result = plainResult(doc.getVectorModel() || { version: 1, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] });
           break;
