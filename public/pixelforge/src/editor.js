@@ -19,7 +19,7 @@ const workArea = $('#work-area');
 const previewCanvas = document.createElement('canvas'), previewCtx = previewCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
-let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true;
+let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
@@ -40,7 +40,7 @@ function initReferenceCenterUI() {
   referenceCenterUI = createReferenceCenterUI({
     getDocument: () => doc,
     getAnimation: () => animation,
-    setAnimation: value => { animation = value; animationLoop = value?.loop !== false; renderAnimationTimeline(); },
+    setAnimation: value => { animation = value; animationLoop = value?.loop !== false; animationPlaybackSpeed = value?.playbackSpeed ?? 1; renderAnimationTimeline(); },
     save: () => saveProject(doc.toJSON()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
     render: () => render(),
     renderLayers: () => renderLayers(),
@@ -727,7 +727,7 @@ function ensureAnimation() {
 function buildProjectSnapshot(targetDoc = doc) {
   if (targetDoc === doc && animation) captureAnimationFrame();
   const snapshot = targetDoc.toJSON();
-  if (targetDoc === doc && animation) { snapshot.animation = { ...animation.toJSON(), loop: animationLoop }; }
+  if (targetDoc === doc && animation) { snapshot.animation = { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed }; }
   return snapshot;
 }
 function drawOnionSkinOverlay() {
@@ -754,7 +754,7 @@ function drawOnionSkinOverlay() {
 function renderAnimationTimeline() {
   const host = $('#animation-frames');
   if (!host) return;
-  const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-loop','animation-onion','animation-export-sheet','animation-export-zip'];
+  const controls = ['animation-play','animation-stop','animation-add-frame','animation-duplicate-frame','animation-delete-frame','animation-frame-left','animation-frame-right','animation-fps','animation-duration','animation-playback-speed','animation-loop','animation-onion','animation-export-sheet','animation-export-zip'];
   const enabled = Boolean(animation);
   $('#crop-preview').disabled = enabled;
   $('#crop-preview').title = enabled ? 'Canvas crop is temporarily unavailable while a multi-frame timeline is active' : 'Preview crop for the current canvas';
@@ -778,6 +778,7 @@ function renderAnimationTimeline() {
   $('#animation-fps').value = String(animation.fps);
   $('#animation-duration').value = String(animation.activeFrame.durationMs);
   $('#animation-loop').checked = animationLoop;
+  $('#animation-playback-speed').value = String(animationPlaybackSpeed);
   host.replaceChildren();
   for (let index = 0; index < animation.frameCount; index++) {
     const frame = animation.getFrame(index);
@@ -825,12 +826,13 @@ function startAnimationPlayback() {
     const frameTime = Number.isFinite(now) ? now : performance.now();
     if (!Number.isFinite(animationPlayback.startedAt)) animationPlayback.startedAt = frameTime;
     const elapsed = Math.max(0, frameTime - animationPlayback.startedAt);
-    const index = animation.frameIndexAtTime(elapsed, { loop: $('#animation-loop').checked });
+    const playbackElapsed = elapsed * animationPlaybackSpeed;
+    const index = animation.frameIndexAtTime(playbackElapsed, { loop: $('#animation-loop').checked });
     if (index !== animationPlayback.lastIndex) {
       switchAnimationFrame(index, { autosave: false });
       animationPlayback.lastIndex = index;
     }
-    const finished = !$('#animation-loop').checked && elapsed >= animation.totalDurationMs;
+    const finished = !$('#animation-loop').checked && playbackElapsed >= animation.totalDurationMs;
     if (finished) { stopAnimationPlayback({ save: animationPlayback.saveOnStop !== false }); return; }
     animationPlayback.raf = requestAnimationFrame(tick);
   };
@@ -1807,6 +1809,16 @@ $('#animation-frame-right').addEventListener('click', () => {
 });
 $('#animation-play').addEventListener('click', startAnimationPlayback);
 $('#animation-stop').addEventListener('click', () => stopAnimationPlayback());
+$('#animation-playback-speed').addEventListener('change', event => {
+  try {
+    ensureAnimation();
+    const speed = Number(event.target.value);
+    if (!Number.isFinite(speed) || speed < 0.1 || speed > 4) throw new RangeError('Playback speed must be between 0.1× and 4×.');
+    animationPlaybackSpeed = Math.round(speed * 100) / 100;
+    markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
+    status(`Playback speed set to ${animationPlaybackSpeed}×`, 'success');
+  } catch (error) { status(error.message, 'error'); renderAnimationTimeline(); }
+});
 $('#animation-fps').addEventListener('change', event => {
   try {
     ensureAnimation(); animation.setFps(Number(event.target.value));
@@ -1965,7 +1977,8 @@ async function renderProjects() {
         const saved = await loadProjectById(project.id);
         if (!saved) throw new Error('That saved project no longer exists.');
         stopAnimationPlayback({ save: false });
-        doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+        doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
+        animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
         $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
       } catch (error) { status(`Could not open project: ${error.message}`, 'error'); }
@@ -2419,6 +2432,7 @@ async function boot() {
       doc = RasterDocument.fromJSON(snapshot);
       animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
+      animationPlaybackSpeed = snapshot.animation?.playbackSpeed ?? 1;
       animationFrameHistory.clear();
       animationOrphanCels.clear();
       clearSelectionState();
@@ -2455,7 +2469,7 @@ async function boot() {
         if (animationPlayback.playing) stopAnimationPlayback({ save: false });
         animationPlayback.saveOnStop = true;
         document.documentElement.dataset.pixelforgeCapture = 'complete';
-      }, animation.totalDurationMs + 250);
+      }, (animation.totalDurationMs / animationPlaybackSpeed) + 250);
     }
   } catch (error) {
     if (error?.status === 401 || error?.code === 'not_authenticated') {
