@@ -218,7 +218,20 @@ export async function executeCodeLabBrowserActions(options = {}) {
       }
     });
 
-    const startPath = options.start_path || '/';
+    let startPath = options.start_path || '/';
+    if (options.native_admin_handoff === true) {
+      const handoff = await fetch(baseUrl + '/api/auth/native-handoff/mint', {
+        method: 'POST',
+        headers: { 'x-workspace-token': token, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      let handoffData = {};
+      try { handoffData = await handoff.json(); } catch {}
+      if (!handoff.ok || handoffData.ok !== true || typeof handoffData.ticket !== 'string') {
+        throw new Error('Native ADMIN handoff mint failed with HTTP ' + handoff.status + '.');
+      }
+      startPath = '/api/auth/native-handoff?ticket=' + encodeURIComponent(handoffData.ticket);
+    }
     assertPath(startPath);
     const initialUrl = new URL(startPath, origin).href;
     await page.goto(initialUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
