@@ -10,7 +10,7 @@ El agente IA **no debe mantenerse activo 24/7**, ni crear un proceso permanente 
 
 La responsabilidad es distinta: cuando el usuario solicita una tarea y el agente inicia su ejecución, el agente debe permanecer involucrado durante el trabajo que pueda realizar dentro de esa sesión: enviar órdenes, esperar sus resultados, inspeccionarlos, corregir errores y continuar con los siguientes pasos.
 
-Los workers o servicios de CodeLab pueden ejecutar una orden ya solicitada conforme a su diseño, pero eso no autoriza a crear un agente IA siempre activo ni a iniciar nuevas tareas por su cuenta. Solo una petición explícita del usuario inicia una nueva ejecución del agente IA, conforme a la política del puente A/B.
+Los workers o servicios de CodeLab pueden ejecutar una orden ya solicitada conforme a su diseño, pero eso no autoriza a crear un agente IA siempre activo ni a iniciar nuevas tareas por su cuenta. Solo una petición explícita del usuario inicia una nueva ejecución del agente IA, conforme a la política actual del agente y del bridge.
 
 Si la sesión del agente se interrumpe o termina, el agente no debe afirmar que siguió trabajando en segundo plano. Al reanudarse mediante una nueva petición del usuario, debe recuperar el estado real y continuar desde allí, sin repetir operaciones ya completadas.
 
@@ -44,7 +44,7 @@ El agente no debe detenerse después de enviar una única orden ni trasladar al 
 
 ## 4. Espera, supervisión y servicios auxiliares
 
-Este protocolo **no elimina ni reemplaza** las ventanas y cadencias de supervisión ya definidas en AGENTS.md y docs/agent-ai-bridge-policy.md. Deben respetarse sus límites por ciclo y sus comprobaciones, sin confundir una ventana de supervisión con un timeout real del proceso.
+Este protocolo complementa la política vigente Neon/bridge de AGENTS.md y docs/agent-ai-bridge-policy.md. No depende de los antiguos workflows A/B ni de sus ventanas de supervisión.
 
 La supervisión debe estar vinculada a una tarea iniciada por el usuario; no debe convertirse en vigilancia permanente 24/7. Si una orden sigue en cola o un worker no responde:
 
