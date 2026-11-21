@@ -84,7 +84,7 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   const contentPngDownloadPromise = page.waitForEvent('download', { timeout: 15000 });
   await page.locator('#vc-capture-content').click();
   const contentPngDownload = await contentPngDownloadPromise;
-  assert.match(contentPngDownload.suggestedFilename(), /-contenido\\.png$/);
+  assert.match(contentPngDownload.suggestedFilename(), /-contenido\.png$/);
   const contentPngPath = await contentPngDownload.path();
   const contentPng = fs.readFileSync(contentPngPath);
   assert.deepEqual([...contentPng.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10],
