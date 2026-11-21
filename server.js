@@ -2805,6 +2805,30 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, settings: settings });
       }
 
+      // Temporary share URL for generated evidence videos. The token is stored only in the
+      // event metadata and is required; this does not expose the general evidence API.
+      const neonEvidenceVideoShareMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})\/video\/share$/i);
+      if (neonEvidenceVideoShareMatch && req.method === 'GET') {
+        if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        const shareToken = String(url.searchParams.get('token') || '');
+        if (!/^[a-f0-9]{48,128}$/i.test(shareToken)) return sendJson(res, 401, { error: 'invalid_video_share_token' });
+        const result = await accountPool.query(
+          'SELECT video_data, video_mime_type, revision FROM codelab_pixelforge_change_events WHERE event_id = $1 AND metadata->>\'videoShareToken\' = $2',
+          [neonEvidenceVideoShareMatch[1], shareToken]
+        );
+        const evidence = result.rows[0];
+        if (!evidence || !evidence.video_data) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+        const video = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
+        res.writeHead(200, {
+          'Content-Type': evidence.video_mime_type || 'video/webm',
+          'Content-Length': video.length,
+          'Content-Disposition': 'inline; filename="pixelforge-evidence-r' + evidence.revision + '.webm"',
+          'Cache-Control': 'private, max-age=300',
+          'X-Content-Type-Options': 'nosniff'
+        });
+        return res.end(video);
+      }
+
       // Stream the actual persisted video bytes (not only the evidence metadata).
       // Downloads require the same authenticated workspace session as evidence metadata.
       const neonEvidenceVideoMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})\/video$/i);
