@@ -124,6 +124,25 @@ Reference Center trata las referencias como estructuras editables, no como una i
 - Panel Reference Center con navegación y restauración.
 - Las instancias copiadas continúan siendo raster editable normal.
 
+### Estado actual y capas semánticas — IMPLEMENTADO
+- Cada elemento importante puede tener un `Current State` separado de su referencia maestra.
+- Master Reference permanece inmutable; Current State describe cómo debe considerarse el elemento ahora.
+- Current State puede conservar orientación, pose, apariencia, transformaciones, cambios observados, accesorios y detalles que no estén visibles en el frame actual.
+- Working State continúa reservado para propuestas/cambios todavía no confirmados.
+- Las capas raster pueden recibir un rol semántico: `environment`, `character`, `object`, `effect`, `guide` o `detail`.
+- Una capa de personaje/objeto funciona como una hoja independiente sobre el entorno: modificarla no exige reconstruir ni recordar los píxeles del fondo.
+- La posición y la identidad de las capas se conservan para que el agente pueda modificar una entidad sin tocar capas no relacionadas.
+
+### Environment History — IMPLEMENTADO
+- El entorno usado por una animación se registra como historial temporal independiente del Reference Center.
+- El historial puede registrar estado por frame, revisión, animación y conjunto de capas de entorno.
+- Los escenarios temporales no se convierten automáticamente en referencias permanentes.
+- Solo los entornos que realmente sean importantes/reutilizables deben promocionarse manualmente al Reference Center.
+- El historial conserva referencias a las capas/frames del proyecto en lugar de duplicar innecesariamente todos los píxeles.
+- Los estados de entorno son reproducibles seleccionando el frame y las capas de entorno correspondientes, sin mostrar personajes u objetos ajenos.
+- Permite continuar una animación desde el último estado conocido del mundo sin volver a empaquetar el escenario como referencia.
+- Límite actual del historial: hasta 240 entradas de metadata por proyecto.
+
 ## 7. Inteligencia de dibujo / AI
 ### Inspección
 - Modelo estructural del dibujo.
@@ -169,6 +188,9 @@ Reference Center trata las referencias como estructuras editables, no como una i
 - `drawing.reference.remove`.
 - `drawing.layer.context.set`.
 - `drawing.reference.extract_line_guide`.
+- `drawing.layer.role.set`.
+- `drawing.current_state.set` / `get`.
+- `drawing.environment_history.record` / `get` / `list`.
 
 ### Workflow / escena
 - `drawing.workflow.start`.
@@ -280,7 +302,7 @@ Ejemplo: `walk: F1 → F2 → F3 → F4 → F5 → F6 → loop → F1`.
 - `public/pixelforge/src/animation.js` — timeline, validación, acciones y exportaciones.
 - `public/pixelforge/src/core.js` — documento raster, capas, dibujo, selección e historial.
 - `public/pixelforge/src/reference-center-ui.js` — UI Reference Center.
-- `public/pixelforge/src/drawing-intelligence.js` — inteligencia/contexto.
+- `public/pixelforge/src/drawing-intelligence.js` — inteligencia/contexto, Current State, roles semánticos y Environment History.
 - `public/pixelforge/src/ai-tools.js` — herramientas AI/automatización.
 - `public/pixelforge/src/headless.js` — runtime headless y capacidades.
 - `public/pixelforge/src/headless-bridge.js` — puente headless.
