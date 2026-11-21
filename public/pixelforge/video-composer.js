@@ -181,7 +181,6 @@ function setEnabled(enabled) {
   ui.exportTop.disabled = !enabled || exportBusy;
   $('#vc-loop-export').disabled = !enabled;
   $('#vc-capture-content').disabled = !enabled || exportBusy;
-  $('#vc-scale').disabled = !enabled;
   $('#vc-output-fps').disabled = !enabled;
   $('#vc-format').disabled = !enabled;
   $('#vc-solid-bg').disabled = !enabled;
@@ -523,10 +522,6 @@ $('#vc-capture-content').addEventListener('click', () => captureContentPng().cat
 $('#vc-capture-studio').addEventListener('click', captureStudioPng);
 $('#vc-record-studio').addEventListener('click', startStudioRecording);
 $('#vc-stop-studio').addEventListener('click', () => { if (studioRecorder?.state === 'recording') studioRecorder.stop(); });
-$('#vc-scale').addEventListener('change', () => {
-  if (!packageData) return;
-  refreshOutputDimensions();
-});
 $('#vc-format').addEventListener('change', refreshFormatSupport);
 $('#vc-loop-export').addEventListener('change', refreshExportSummary);
 $('#vc-export').addEventListener('click', exportVideo);
