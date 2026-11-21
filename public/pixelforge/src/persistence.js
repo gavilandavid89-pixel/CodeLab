@@ -1,7 +1,10 @@
 const { codeLabRequest } = window.CodeLabStudioCore;
 
 const API = '/api/pixelforge/projects';
-const DIRECT_SAVE_BYTES = 24 * 1024 * 1024;
+// Keep direct JSON saves below the server's 32 MiB request cap. This also lets
+// the 60-frame showcase persist in file-backed E2E; larger documents use the
+// PostgreSQL-backed resumable chunk protocol.
+const DIRECT_SAVE_BYTES = 30 * 1024 * 1024;
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const UPLOAD_CHUNK_BYTES = 6 * 1024 * 1024;
 const pendingUploads = new Map();
