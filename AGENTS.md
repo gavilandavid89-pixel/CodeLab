@@ -10,6 +10,8 @@
 
 **Protocolo adicional obligatorio para dibujo y animación:** [docs/ANIMATION-AUTONOMOUS-WORKFLOW.md](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md). Define que el agente conduce el ciclo completo de órdenes, espera, verificación, inspección y corrección durante la sesión activa; no funciona 24/7 ni envía informes intermedios, y comunica el resultado final. Este protocolo complementa —no reemplaza— la supervisión A/B descrita arriba.
 
+**Protocolo de recuperación por expiración de sesión:** [docs/SESSION-EXPIRATION-RECOVERY.md](docs/SESSION-EXPIRATION-RECOVERY.md). Define cómo recuperar el estado desde Neon, decidir si hacer wake, evitar duplicar trabajos, recuperar propuestas pendientes y continuar desde la última revisión válida.
+
 **Reglas críticas de un vistazo**
 - **Usuario → Agente IA → B → A → B → Agente IA.**
 - **Solo el usuario puede iniciar una nueva ejecución del agente IA.**
