@@ -2826,7 +2826,7 @@ const server = http.createServer(async (req, res) => {
         if (!evidence.video_data) {
           let objectUrl = typeof evidence.video_url === 'string' ? evidence.video_url.trim() : '';
           if (!objectUrl && evidence.video_key && process.env.CLOUDFLARE_EVIDENCE_BASE_URL) {
-            const base = String(process.env.CLOUDFLARE_EVIDENCE_BASE_URL).replace(/\\/$/, '');
+            const base = String(process.env.CLOUDFLARE_EVIDENCE_BASE_URL).replace(/\/+$/, '');
             objectUrl = base + '/evidence/' + String(evidence.video_key).split('/').map(encodeURIComponent).join('/');
           }
           if (!objectUrl) return sendJson(res, 404, { error: 'video_evidence_not_found' });
