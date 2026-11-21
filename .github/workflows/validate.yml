@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '22.17.0'
       - name: Install runtime dependencies for server tests
         run: npm install --no-save --package-lock=false
       - name: Check JavaScript syntax
@@ -206,7 +206,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '22.17.0'
       - name: Install runtime and browser test dependencies
         run: npm install --no-save --package-lock=false playwright
       - name: Install Chromium
