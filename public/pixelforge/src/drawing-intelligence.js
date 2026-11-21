@@ -185,6 +185,9 @@ export function createDrawingModel({ sheet = {}, palette = SEMANTIC_PALETTE } = 
       activeEntryId: null,
       viewContext: { previousOpacity: 0.25, nextOpacity: 0.15, previousCount: 1, nextCount: 1 },
     },
+    currentState: { version: 1, entries: [], activeEntryId: null },
+    environmentHistory: { version: 1, entries: [], activeEntryId: null },
+    layerRoles: {},
   };
 }
 
@@ -203,7 +206,77 @@ export function normalizeDrawingModel(model, { width = 128, height = 128 } = {})
       entries: Array.isArray(input.referenceCenter?.entries) ? clone(input.referenceCenter.entries) : [],
       viewContext: { ...base.referenceCenter.viewContext, ...(input.referenceCenter?.viewContext || {}) },
     },
+    currentState: {
+      ...base.currentState,
+      ...(input.currentState || {}),
+      entries: Array.isArray(input.currentState?.entries) ? clone(input.currentState.entries) : [],
+    },
+    environmentHistory: {
+      ...base.environmentHistory,
+      ...(input.environmentHistory || {}),
+      entries: Array.isArray(input.environmentHistory?.entries) ? clone(input.environmentHistory.entries) : [],
+    },
+    layerRoles: input.layerRoles && typeof input.layerRoles === 'object' ? clone(input.layerRoles) : {},
   };
+}
+
+export function setDrawingLayerRole(model, { layerId, role = 'detail', entityId = null, entityName = null } = {}) {
+  if (!layerId || typeof layerId !== 'string') throw new TypeError('layerId is required.');
+  const next = normalizeDrawingModel(model);
+  const allowed = new Set(['environment', 'character', 'object', 'effect', 'guide', 'detail']);
+  if (!allowed.has(String(role))) throw new TypeError('Unsupported layer role.');
+  next.layerRoles[layerId] = { role: String(role), entityId: entityId ? String(entityId) : null, entityName: entityName ? String(entityName).slice(0, 120) : null, updatedAt: new Date().toISOString() };
+  return next;
+}
+
+export function getCurrentState(model, entityId = null) {
+  const normalized = normalizeDrawingModel(model);
+  if (entityId) return normalized.currentState.entries.find(entry => entry.id === entityId || entry.entityId === entityId) || null;
+  return normalized.currentState.activeEntryId ? normalized.currentState.entries.find(entry => entry.id === normalized.currentState.activeEntryId) || null : null;
+}
+
+export function setCurrentState(model, state = {}) {
+  const normalized = normalizeDrawingModel(model);
+  const id = String(state.id || state.entityId || crypto.randomUUID());
+  const entry = {
+    id, entityId: state.entityId ? String(state.entityId) : id,
+    name: String(state.name || state.entityId || 'Current state').slice(0, 120),
+    scope: String(state.scope || 'element'), sourceRevision: Number(state.sourceRevision || 0),
+    frameIndex: Number.isInteger(state.frameIndex) ? state.frameIndex : null,
+    layerIds: Array.isArray(state.layerIds) ? [...new Set(state.layerIds.map(String))] : [],
+    appearance: clone(state.appearance || {}), transform: clone(state.transform || {}),
+    observedChanges: Array.isArray(state.observedChanges) ? clone(state.observedChanges) : [],
+    attachments: Array.isArray(state.attachments) ? clone(state.attachments) : [],
+    notes: String(state.notes || '').slice(0, 2000), updatedAt: new Date().toISOString(),
+  };
+  const existing = normalized.currentState.entries.findIndex(item => item.id === entry.id);
+  if (existing >= 0) normalized.currentState.entries[existing] = entry; else normalized.currentState.entries.push(entry);
+  normalized.currentState.activeEntryId = entry.id;
+  return normalized;
+}
+
+export function recordEnvironmentHistory(model, snapshot = {}) {
+  const normalized = normalizeDrawingModel(model);
+  const entry = {
+    id: String(snapshot.id || crypto.randomUUID()), sourceRevision: Number(snapshot.sourceRevision || 0),
+    animationId: snapshot.animationId ? String(snapshot.animationId) : null,
+    frameIndex: Number.isInteger(snapshot.frameIndex) ? snapshot.frameIndex : null,
+    label: String(snapshot.label || 'Environment ' + (Number.isInteger(snapshot.frameIndex) ? snapshot.frameIndex + 1 : normalized.environmentHistory.entries.length + 1)).slice(0, 120),
+    environmentLayerIds: Array.isArray(snapshot.environmentLayerIds) ? [...new Set(snapshot.environmentLayerIds.map(String))] : Object.entries(normalized.layerRoles).filter(([, meta]) => meta?.role === 'environment').map(([id]) => id),
+    source: String(snapshot.source || 'animation'), replayable: snapshot.replayable !== false,
+    createdAt: snapshot.createdAt || new Date().toISOString(),
+  };
+  normalized.environmentHistory.entries.push(entry);
+  if (normalized.environmentHistory.entries.length > 240) normalized.environmentHistory.entries.splice(0, normalized.environmentHistory.entries.length - 240);
+  normalized.environmentHistory.activeEntryId = entry.id;
+  return normalized;
+}
+
+export function getEnvironmentHistoryEntry(model, id = null) {
+  const normalized = normalizeDrawingModel(model);
+  return id ? normalized.environmentHistory.entries.find(entry => entry.id === id) || null
+    : normalized.environmentHistory.activeEntryId ? normalized.environmentHistory.entries.find(entry => entry.id === normalized.environmentHistory.activeEntryId) || null
+    : normalized.environmentHistory.entries.at(-1) || null;
 }
 
 export function createAlphaComponentSelection({ pixels, width, height, x, y } = {}) {
