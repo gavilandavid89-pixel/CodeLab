@@ -107,8 +107,17 @@ async function captureStudioPng() {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 1 }, audio: false });
     const video = document.createElement('video');
     video.muted = true; video.srcObject = stream;
+    await new Promise((resolve, reject) => {
+      if (video.readyState >= 1) return resolve();
+      video.addEventListener('loadedmetadata', resolve, { once: true });
+      video.addEventListener('error', () => reject(new Error('No se pudo leer la pestaña capturada.')), { once: true });
+    });
     await video.play();
-    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (video.requestVideoFrameCallback) {
+      await new Promise(resolve => video.requestVideoFrameCallback(() => resolve()));
+    } else {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
     const track = stream.getVideoTracks()[0];
     const settings = track.getSettings();
     const canvas = document.createElement('canvas');
@@ -356,7 +365,7 @@ function startPlayback() {
   else { playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback(); }
 }
 function recorderMime() {
-  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return '';
+  if (!window.MediaRecorder) return '';
   const choice = $('#vc-format').value;
   const candidates = choice === 'mp4' ? ['video/mp4'] :
     choice === 'webm-vp9' ? ['video/webm;codecs=vp9'] :
@@ -429,8 +438,9 @@ async function exportVideo() {
   const total = totalDuration() * repeatCount;
   let elapsed = 0;
   const startTime = performance.now();
-  const thumbnails = await makeTimelineThumbnails();
+  let thumbnails = [];
   try {
+    thumbnails = await makeTimelineThumbnails();
     recorder.start();
     for (let repeat = 0; repeat < repeatCount; repeat++) {
       for (let index = 0; index < packageData.frames.length; index++) {
