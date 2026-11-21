@@ -41,6 +41,7 @@ El flujo actual usa el bridge y el estado persistido en Neon, con activación ba
 
 ## Documentos relacionados
 
+- [Comunicación CodeLab ↔ Neon de extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)
 - [Política del agente y bridge](docs/agent-ai-bridge-policy.md)
 - [Flujo autónomo de dibujo y animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
 - [Recuperación de expiración de sesión](docs/SESSION-EXPIRATION-RECOVERY.md)
