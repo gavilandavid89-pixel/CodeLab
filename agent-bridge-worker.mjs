@@ -2020,6 +2020,17 @@ async function capturePixelForgeInterface(payload = {}) {
     page.on('console', message => {
       if (message.type() === 'error' && consoleErrors.length < 20) consoleErrors.push(message.text().slice(0, 300));
     });
+    // PixelForge's personal-project mode requires a CodeLab session. Establish
+    // the same short-lived ADMIN handoff used by the trusted video recorder
+    // before opening the capture route, otherwise the auth gate replaces #canvas.
+    const handoff = await mintNativeAdminHandoff();
+    const handoffResponse = await page.goto(handoff.handoffUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
+    });
+    if (!handoffResponse || !handoffResponse.ok()) {
+      throw new Error('PixelForge capture ADMIN handoff returned HTTP ' + (handoffResponse?.status() || 'no response'));
+    }
     const captureUrl = baseUrl + '/pixelforge/index.html?capture=1' +
       (payload.project_id ? '&projectId=' + encodeURIComponent(payload.project_id) : '');
     const response = await page.goto(captureUrl, {
@@ -2027,8 +2038,23 @@ async function capturePixelForgeInterface(payload = {}) {
       timeout: 45000
     });
     if (!response || !response.ok()) throw new Error('PixelForge page returned HTTP ' + (response?.status() || 'no response'));
-    await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
-    await page.waitForTimeout(1600);
+    await page.waitForSelector('#canvas', { state: 'visible', timeout: 30000 });
+    await page.waitForFunction(() => {
+      const root = document.documentElement;
+      return root.dataset.pixelforgeReady === 'true' ||
+        root.dataset.pixelforgeCapture === 'auth-required' ||
+        root.dataset.pixelforgeCapture === 'error';
+    }, null, { timeout: 45000 });
+    const bootState = await page.evaluate(() => ({
+      ready: document.documentElement.dataset.pixelforgeReady === 'true',
+      layout: document.documentElement.dataset.pixelforgeCaptureLayout || 'not-set',
+      capture: document.documentElement.dataset.pixelforgeCapture || 'idle',
+      error: document.documentElement.dataset.pixelforgeCaptureError || '',
+      status: document.querySelector('#status')?.textContent || ''
+    }));
+    if (!bootState.ready) {
+      throw new Error('PixelForge editor did not become capture-ready: ' + JSON.stringify(bootState));
+    }
     if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
     await page.waitForTimeout(250);
     const screenshot = await page.screenshot({
