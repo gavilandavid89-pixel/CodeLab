@@ -93,6 +93,26 @@ async function emitShutdownSignal(reason = 'shutdown') {
   return shutdownSignalPromise;
 }
 
+const NEON_FUNCTIONS_URL = String(process.env.NEON_FUNCTIONS_URL || '').trim();
+const NEON_FUNCTIONS_EXEC_SECRET = String(process.env.NEON_FUNCTIONS_EXEC_SECRET || '');
+async function invokeNeonFunction(payload = {}) {
+  if (String(process.env.NEON_FUNCTIONS_ENABLED || '').toLowerCase() !== 'true') throw new Error('Neon Functions execution is disabled.');
+  if (!NEON_FUNCTIONS_URL || !NEON_FUNCTIONS_EXEC_SECRET) throw new Error('NEON_FUNCTIONS_URL and NEON_FUNCTIONS_EXEC_SECRET are required.');
+  const target = new URL(NEON_FUNCTIONS_URL);
+  if (target.protocol !== 'https:' || target.hostname !== 'br-misty-sea-b5qkh03f-codelabfn.compute.c-7.us-east-2.aws.neon.tech' || target.pathname !== '/') throw new Error('Neon Function target is not in the approved CodeLab allowlist.');
+  if (payload.function !== 'codelabfn' || payload.operation !== 'health') throw new Error('Only the approved codelabfn health operation is currently enabled.');
+  const response = await fetch(target, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-secret': NEON_FUNCTIONS_EXEC_SECRET },
+    body: JSON.stringify({ operation: payload.operation }),
+    redirect: 'manual',
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok !== true) throw new Error('Neon Function invocation failed with HTTP ' + response.status + '.');
+  return { function: 'codelabfn', operation: 'health', result: data };
+}
+
 function safeJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -2493,6 +2513,9 @@ async function processCommand(command) {
   }
   const payload = command.payload || {};
   switch (command.action) {
+    case 'neon_function_invoke':
+      await finish(command.command_id, 'succeeded', await invokeNeonFunction(payload));
+      return;
     case 'codelab_project_create':
       await finish(command.command_id, 'succeeded', await createCodeLabProject(command));
       return;
@@ -2733,6 +2756,7 @@ async function main() {
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_update_code%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_record_video%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_ui_execute%'
+           AND pg_get_constraintdef(oid) LIKE '%neon_function_invoke%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_capture_png%'
       ) THEN
         ALTER TABLE codelab_agent_commands
@@ -2746,7 +2770,7 @@ async function main() {
             'codelab_project_create','codelab_project_convert_to_web',
             'codelab_project_inspect','codelab_project_connect',
             'codelab_project_get_code','codelab_project_update_code',
-            'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute'
+            'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute','neon_function_invoke'
           ]));
       END IF;
     END
