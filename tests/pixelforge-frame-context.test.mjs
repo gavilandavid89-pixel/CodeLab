@@ -29,5 +29,7 @@ test('layer context returns the previous layer as authoritative visual context',
   assert.equal(context.result.current.name, 'Detail');
   assert.equal(context.result.previous.name, 'Layer 1');
   assert.equal(context.result.visual.format, 'rgba-base64');
+  assert.equal(Buffer.from(context.result.current.pixels, 'base64').length, 8 * 8 * 4);
+  assert.equal(Buffer.from(context.result.previous.pixels, 'base64').length, 8 * 8 * 4);
   assert.equal(context.result.guidance.requestMoreContextAction, 'layer.get_context');
 });
