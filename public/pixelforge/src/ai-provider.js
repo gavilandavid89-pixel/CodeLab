@@ -14,6 +14,7 @@ export const AI_ACTION_CONTRACT = Object.freeze([
   { name: 'selection.clear', description: 'Clear the current selection mask.', parameters: {} },
   { name: 'history.undo', description: 'Undo one sandbox edit.', parameters: {} },
   { name: 'history.redo', description: 'Redo one sandbox edit.', parameters: {} },
+  { name: 'vector.audit', description: 'Run deterministic quality checks over the editable vector scene and return machine-readable issues and score.', parameters: { tolerance: 'number' } },
   { name: 'vector.model.get', description: 'Read the editable vector object model.', parameters: {} },
   { name: 'vector.object.create', description: 'Create an editable SVG-like vector object.', parameters: { object: 'object' } },
   { name: 'vector.object.update', description: 'Update one editable vector object.', parameters: { id: 'string', patch: 'object' } },
