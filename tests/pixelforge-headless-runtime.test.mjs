@@ -279,7 +279,7 @@ test('Headless keeps independent animation cels aligned with layer add, reorder,
   assert.equal(saved.animation.frames[0].cels.find(item => item.layerId === shadowId).pixels.length, 1368);
   const refreshedInkLayerId = runtime.sandbox.layers.find(layer => layer.name === 'Ink').id;
   const deleteResult = runtime.execute({ name: 'layer.delete', layerId: refreshedInkLayerId });
-  assert.equal(deleteResult.ok, true, JSON.stringify({ refreshedBaseLayerId, fixtureLayerName: fixture.layers[0].name, sandboxLayers: runtime.sandbox.layers.map(layer => ({ id: layer.id, name: layer.name })), deleteResult }));
+  assert.equal(deleteResult.ok, true, JSON.stringify({ refreshedInkLayerId, fixtureLayerName: fixture.layers[0].name, sandboxLayers: runtime.sandbox.layers.map(layer => ({ id: layer.id, name: layer.name })), deleteResult }));
   runtime.createProposal('Delete a layer and its animation cels together');
   assert.equal(runtime.acceptProposal().status, 'applied');
   saved = runtime.toJSON();
