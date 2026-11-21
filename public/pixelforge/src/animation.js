@@ -26,10 +26,18 @@ function decodeBase64(value, expectedBytes) {
   return pixels;
 }
 function layerIdsFrom(document) { return document.layers.map(layer => layer.id); }
-function emptyTimeline(width, height, layerIds, fps = 12, loop = true) {
+const MIN_PLAYBACK_SPEED = 0.1;
+const MAX_PLAYBACK_SPEED = 4;
+function assertPlaybackSpeed(speed) {
+  if (!Number.isFinite(speed) || speed < MIN_PLAYBACK_SPEED || speed > MAX_PLAYBACK_SPEED) {
+    throw new RangeError(`Animation playback speed must be between ${MIN_PLAYBACK_SPEED}× and ${MAX_PLAYBACK_SPEED}×.`);
+  }
+}
+function emptyTimeline(width, height, layerIds, fps = 12, loop = true, playbackSpeed = 1) {
+  assertPlaybackSpeed(playbackSpeed);
   return {
     format: FORMAT, version: VERSION, width, height, layerIds: [...layerIds],
-    fps, loop, activeFrameIndex: 0, frames: [],
+    fps, loop, playbackSpeed, activeFrameIndex: 0, frames: [],
   };
 }
 function modelFromTimeline(timeline) {
@@ -118,11 +126,12 @@ function validateFrameIndex(index, frameCount) {
   }
 }
 
-export function createAnimationTimeline({ fps = 12, loop = true } = {}) {
+export function createAnimationTimeline({ fps = 12, loop = true, playbackSpeed = 1 } = {}) {
   if (!Number.isInteger(fps) || fps < 1 || fps > 60 || typeof loop !== 'boolean') {
     throw new TypeError('Animation FPS must be 1–60 and loop must be boolean.');
   }
-  return emptyTimeline(1, 1, ['layer-1'], fps, loop);
+  assertPlaybackSpeed(playbackSpeed);
+  return emptyTimeline(1, 1, ['layer-1'], fps, loop, playbackSpeed);
 }
 
 export function validateAnimationTimeline(value, width, height, documentLayers = null) {
@@ -140,6 +149,7 @@ export function validateAnimationTimeline(value, width, height, documentLayers =
       typeof (value.loop ?? true) !== 'boolean') {
     throw new TypeError('Animation FPS or loop setting is invalid.');
   }
+  assertPlaybackSpeed(value.playbackSpeed ?? 1);
   if (!Array.isArray(value.frames) || value.frames.length > MAX_ANIMATION_FRAMES) {
     throw new RangeError('Animation must contain at most ' + MAX_ANIMATION_FRAMES + ' frames.');
   }
@@ -153,7 +163,7 @@ export function validateAnimationTimeline(value, width, height, documentLayers =
     throw new TypeError('Saved animation layer IDs/order do not match the project layer stack.');
   }
   if (!value.frames.length) {
-    return emptyTimeline(width, height, value.layerIds, value.fps, value.loop !== false);
+    return emptyTimeline(width, height, value.layerIds, value.fps, value.loop !== false, value.playbackSpeed ?? 1);
   }
   for (const frame of value.frames) {
     if (frame.name !== undefined && (typeof frame.name !== 'string' || frame.name.length > 120)) {
@@ -167,13 +177,16 @@ export function validateAnimationTimeline(value, width, height, documentLayers =
     frames: value.frames,
   });
   const names = new Map(value.frames.map((frame, index) => [frame.id, frame.name || 'Frame ' + (index + 1)]));
-  return serializeModel(model, value.loop !== false, names);
+  const normalized = serializeModel(model, value.loop !== false, names);
+  normalized.playbackSpeed = value.playbackSpeed ?? 1;
+  return normalized;
 }
 
 export function summarizeAnimationTimeline(timeline) {
   return {
     fps: timeline.fps,
     loop: timeline.loop !== false,
+    playbackSpeed: timeline.playbackSpeed ?? 1,
     frameCount: timeline.frames.length,
     layerCount: timeline.layerIds.length,
     layerIds: [...timeline.layerIds],
@@ -215,10 +228,17 @@ export function applyAnimationAction(timeline, document, action) {
   }
   const next = clone(timeline);
   let loop = next.loop !== false;
+  let playbackSpeed = next.playbackSpeed ?? 1;
+  assertPlaybackSpeed(playbackSpeed);
   if (!next.frames.length && action.name === 'animation.set_loop') {
     if (typeof action.loop !== 'boolean') throw new TypeError('loop must be a boolean.');
     const updated = { ...next, loop: action.loop };
     return { timeline: updated, result: { loop: action.loop }, changed: updated.loop !== timeline.loop };
+  }
+  if (!next.frames.length && action.name === 'animation.set_playback_speed') {
+    assertPlaybackSpeed(action.speed);
+    const updated = { ...next, playbackSpeed: action.speed };
+    return { timeline: updated, result: { playbackSpeed: action.speed }, changed: updated.playbackSpeed !== (timeline.playbackSpeed ?? 1) };
   }
   if (!next.frames.length && action.name === 'animation.set_fps') {
     if (!Number.isInteger(action.fps) || action.fps < 1 || action.fps > 60) {
@@ -311,6 +331,11 @@ export function applyAnimationAction(timeline, document, action) {
       loop = action.loop;
       result = { loop };
       break;
+    case 'animation.set_playback_speed':
+      assertPlaybackSpeed(action.speed);
+      playbackSpeed = action.speed;
+      result = { playbackSpeed };
+      break;
     case 'animation.frame.get_context': {
       result = frameContext(model, document, action.index, action.layerId);
       break;
@@ -343,6 +368,7 @@ export function applyAnimationAction(timeline, document, action) {
   }
 
   const updated = serializeModel(model, loop, names);
+  updated.playbackSpeed = playbackSpeed;
   return { timeline: validateAnimationTimeline(updated, document.width, document.height, document.layers), result, changed: JSON.stringify(next) !== JSON.stringify(updated) };
 }
 
@@ -350,7 +376,7 @@ export function frameAtAnimationTime(timeline, timeMs) {
   if (!timeline.frames.length) return null;
   const model = modelFromTimeline(timeline);
   const index = model.frameIndexAtTime(timeMs, { loop: timeline.loop !== false });
-  return { index, frame: timeline.frames[index], elapsedMs: timeMs };
+  return { index, frame: timeline.frames[index], elapsedMs: timeMs, playbackSpeed: timeline.playbackSpeed ?? 1 };
 }
 
 export async function exportAnimationSpriteSheet(timeline, width, height, { columns = Math.ceil(Math.sqrt(timeline.frames.length)), padding = 1, layers = null } = {}) {
