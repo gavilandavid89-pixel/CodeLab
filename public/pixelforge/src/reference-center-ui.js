@@ -30,12 +30,14 @@ export function createReferenceCenterUI({
       <label>Next layers <input id="reference-next-opacity" type="range" min="0" max="100" value="15"></label>
       <span id="reference-next-opacity-value">15%</span>
     </div>
+    <div id="reference-state-summary" class="reference-center-context"></div>
     <div id="reference-center-list" class="reference-center-list"></div>
   `;
   const layerSection = document.querySelector('.layer-section');
   layerSection?.after(host);
 
   const list = host.querySelector('#reference-center-list');
+  const stateSummary = host.querySelector('#reference-state-summary');
   const prevRange = host.querySelector('#reference-prev-opacity');
   const nextRange = host.querySelector('#reference-next-opacity');
   const prevValue = host.querySelector('#reference-prev-opacity-value');
@@ -195,6 +197,25 @@ export function createReferenceCenterUI({
   function refresh() {
     const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
     list.replaceChildren();
+    stateSummary.replaceChildren();
+    const stateInfo = document.createElement('p');
+    stateInfo.className = 'small-note';
+    stateInfo.textContent = 'Current State: ' + model.currentState.entries.length + ' · Environment History: ' + model.environmentHistory.entries.length;
+    stateSummary.append(stateInfo);
+    if (model.currentState.entries.length) {
+      const current = model.currentState.entries.at(-1);
+      const currentNote = document.createElement('p');
+      currentNote.className = 'small-note';
+      currentNote.textContent = 'Último estado: ' + current.name + (current.frameIndex === null ? '' : ' · frame ' + (current.frameIndex + 1));
+      stateSummary.append(currentNote);
+    }
+    if (model.environmentHistory.entries.length) {
+      const env = model.environmentHistory.entries.at(-1);
+      const envNote = document.createElement('p');
+      envNote.className = 'small-note';
+      envNote.textContent = 'Último entorno: ' + env.label + ' · ' + env.environmentLayerIds.length + ' environment layers';
+      stateSummary.append(envNote);
+    }
     if (!model.referenceCenter.entries.length) {
       const empty = document.createElement('p');
       empty.className = 'small-note';
