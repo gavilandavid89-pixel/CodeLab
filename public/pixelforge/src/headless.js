@@ -39,7 +39,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
     'animation.frame.add_from_layer', 'animation.frame.capture_composite',
     'animation.frame.capture_document', 'animation.frame.duplicate',
     'animation.frame.delete', 'animation.frame.reorder', 'animation.frame.set_duration',
-    'animation.frame.set_active', 'animation.set_fps', 'animation.set_loop',
+    'animation.frame.set_active', 'animation.set_fps', 'animation.set_loop', 'animation.set_playback_speed',
     'animation.frame.get_cel', 'animation.frame.get_context', 'animation.frame.set_cel',
     'animation.frame.get_onion_skin', 'animation.frame.get_composite',
   ]),
@@ -149,6 +149,7 @@ function diffAnimationTimelines(before, after) {
   const settingsChanged = [];
   if (before.fps !== after.fps) settingsChanged.push('fps');
   if (before.loop !== after.loop) settingsChanged.push('loop');
+  if ((before.playbackSpeed ?? 1) !== (after.playbackSpeed ?? 1)) settingsChanged.push('playbackSpeed');
   if (before.activeFrameIndex !== after.activeFrameIndex) settingsChanged.push('activeFrameIndex');
   return {
     changedFrameCount: frames.length,
