@@ -140,6 +140,7 @@ Reference Center trata las referencias como estructuras editables, no como una i
 - Solo los entornos que realmente sean importantes/reutilizables deben promocionarse manualmente al Reference Center.
 - El historial conserva referencias a las capas/frames del proyecto en lugar de duplicar innecesariamente todos los píxeles.
 - Los estados de entorno son reproducibles seleccionando el frame y las capas de entorno correspondientes, sin mostrar personajes u objetos ajenos.
+- El Reference Center incluye una previsualización/reproducción del Environment History que compone exclusivamente las capas marcadas como `environment`.
 - Permite continuar una animación desde el último estado conocido del mundo sin volver a empaquetar el escenario como referencia.
 - Límite actual del historial: hasta 240 entradas de metadata por proyecto.
 
