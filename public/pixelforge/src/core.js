@@ -259,6 +259,7 @@ export class RasterDocument {
     this.dirty = false;
     this.selectionMask = null;
     this.drawingModel = null;
+    this.vectorModel = null;
   }
   setDrawingModel(model) {
     if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Drawing model must be an object or null.');
@@ -268,6 +269,14 @@ export class RasterDocument {
   }
   getDrawingModel() {
     return this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel));
+  }
+  setVectorModel(model) {
+    if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Vector model must be an object or null.');
+    this.vectorModel = model === null ? null : JSON.parse(JSON.stringify(model));
+    this.dirty = true; this.saveVersion++;
+  }
+  getVectorModel() {
+    return this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel));
   }
   setSelectionMask(mask) {
     if (mask === null) { this.selectionMask = null; return; }
@@ -1073,7 +1082,8 @@ export class RasterDocument {
     }
     return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
       layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })),
-      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)) };
+      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
+      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)) };
   }
   static fromJSON(data, { newIdentity = false } = {}) {
     if (!data || data.format !== 'pixelforge-project' || data.version !== 1 || !Array.isArray(data.layers)) throw new TypeError('Unsupported or invalid PixelForge project file.');
@@ -1111,6 +1121,8 @@ export class RasterDocument {
     doc.activeLayerId = data.activeLayerId === undefined ? doc.layers[0].id : (newIdentity ? layerIdMap.get(data.activeLayerId) : data.activeLayerId);
     doc.drawingModel = data.drawingModel && typeof data.drawingModel === 'object' && !Array.isArray(data.drawingModel)
       ? JSON.parse(JSON.stringify(data.drawingModel)) : null;
+    doc.vectorModel = data.vectorModel && typeof data.vectorModel === 'object' && !Array.isArray(data.vectorModel)
+      ? JSON.parse(JSON.stringify(data.vectorModel)) : null;
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
     doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
