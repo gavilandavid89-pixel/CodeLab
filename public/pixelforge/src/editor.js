@@ -264,6 +264,29 @@ function fitCanvas() {
   panY = (rect.height - doc.height * zoom) / 2;
   render();
 }
+function fitArtworkForCapture() {
+  const pixels = doc.composite();
+  let minX = doc.width, minY = doc.height, maxX = -1, maxY = -1;
+  for (let y = 0; y < doc.height; y++) {
+    for (let x = 0; x < doc.width; x++) {
+      if (pixels[(y * doc.width + x) * 4 + 3] <= 8) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < minX || maxY < minY) { fitCanvas(); return { centered: false, reason: 'empty-artwork' }; }
+  const rect = workArea.getBoundingClientRect();
+  const boundsWidth = maxX - minX + 1, boundsHeight = maxY - minY + 1;
+  const availableWidth = Math.max(1, rect.width - 120), availableHeight = Math.max(1, rect.height - 120);
+  const scale = Math.min(availableWidth / boundsWidth, availableHeight / boundsHeight, 24);
+  zoom = Math.max(.01, Math.floor(scale * 100) / 100);
+  panX = (rect.width - boundsWidth * zoom) / 2 - minX * zoom;
+  panY = (rect.height - boundsHeight * zoom) / 2 - minY * zoom;
+  render();
+  return { centered: true, bounds: { x: minX, y: minY, width: boundsWidth, height: boundsHeight }, zoom };
+}
 function zoomAt(point, targetZoom) {
   const before = { x: (point.x - panX) / zoom, y: (point.y - panY) / zoom };
   zoom = Math.max(.01, Math.min(24, targetZoom));
@@ -2458,7 +2481,10 @@ async function boot() {
           : 'Listo · tus proyectos se guardan en tu cuenta CodeLab', 'success');
       }
     }
-    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
+    fitCanvas();
+    const captureLayout = params.get('capture') === '1' || params.get('capture') === 'video'
+      ? fitArtworkForCapture() : null;
+    updateTitle(); renderLayers(); renderAnimationTimeline();
     if (params.get('capture') === 'video') {
       if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
       animationLoop = false;
@@ -2474,6 +2500,11 @@ async function boot() {
         document.documentElement.dataset.pixelforgeCapture = 'complete';
       }, (animation.totalDurationMs / animationPlaybackSpeed) + 250);
     }
+    if (captureLayout) {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      document.documentElement.dataset.pixelforgeCaptureLayout = captureLayout.centered ? 'centered' : 'empty';
+    }
+    document.documentElement.dataset.pixelforgeReady = 'true';
   } catch (error) {
     if (error?.status === 401 || error?.code === 'not_authenticated') {
       document.documentElement.dataset.pixelforgeCapture = 'auth-required';
