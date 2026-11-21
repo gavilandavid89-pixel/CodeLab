@@ -133,7 +133,7 @@ export async function executeCodeLabBrowserActions(options = {}) {
       headless: true,
       timeout: 60000
     });
-    const contextOptions = {
+    const baseContextOptions = {
       viewport: {
         width: Number.isInteger(options.width) ? Math.max(320, Math.min(2560, options.width)) : 1440,
         height: Number.isInteger(options.height) ? Math.max(240, Math.min(1800, options.height)) : 1000
@@ -142,17 +142,66 @@ export async function executeCodeLabBrowserActions(options = {}) {
       colorScheme: 'dark',
       reducedMotion: 'reduce'
     };
-    if (wantsVideo && tempDir) {
-      contextOptions.recordVideo = {
+    let recordingStarted = false;
+    let recordingVideo = null;
+    const editorEntrySelectors = Array.isArray(options.editor_entry_selectors)
+      ? options.editor_entry_selectors.filter(value => typeof value === 'string' && value.trim()).slice(0, 20)
+      : [
+        '[data-editor-root]',
+        '[data-editor]',
+        '.pixelforge-editor',
+        '.editor-shell',
+        '.editor-root',
+        'main[data-screen*="editor"]'
+      ];
+    const looksLikeEditorUrl = url => /(?:^|\\/)(?:editor|pixelforge|studio|design)(?:[\\/?#]|$)/i.test(new URL(url).pathname);
+    const contextForRecording = () => ({
+      ...baseContextOptions,
+      recordVideo: {
         dir: tempDir,
         size: {
           width: Number.isInteger(options.width) ? Math.max(320, Math.min(1920, options.width)) : 1280,
           height: Number.isInteger(options.height) ? Math.max(240, Math.min(1080, options.height)) : 720
         }
-      };
-    }
-    context = await browser.newContext(contextOptions);
-    const page = await context.newPage();
+      }
+    });
+    const restartIntoRecording = async currentUrl => {
+      if (!wantsVideo || recordingStarted || !tempDir) return false;
+      const editorByUrl = looksLikeEditorUrl(currentUrl);
+      let editorByDom = false;
+      if (!editorByUrl) {
+        for (const selector of editorEntrySelectors) {
+          try {
+            if (await page.locator(selector).first().isVisible({ timeout: 250 })) {
+              editorByDom = true;
+              break;
+            }
+          } catch {}
+        }
+      }
+      if (!editorByUrl && !editorByDom) return false;
+      const url = currentUrl;
+      try { await page.close(); } catch {}
+      try { await context.close(); } catch {}
+      try { await browser.close(); } catch {}
+      browser = await playwrightChromium.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: true,
+        timeout: 60000
+      });
+      context = await browser.newContext(contextForRecording());
+      page = await context.newPage();
+      await page.addInitScript(({ id, token }) => {
+        localStorage.setItem('codelab_xd_workspace_v4', id);
+        localStorage.setItem('codelab_xd_workspace_token_v1', token);
+      }, { id: options.workspaceId, token });
+      recordingStarted = true;
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      return true;
+    };
+    context = await browser.newContext(baseContextOptions);
+    let page = await context.newPage();
     await context.addInitScript(({ id, token }) => {
       localStorage.setItem('codelab_xd_workspace_v4', id);
       localStorage.setItem('codelab_xd_workspace_token_v1', token);
@@ -182,9 +231,37 @@ export async function executeCodeLabBrowserActions(options = {}) {
       const result = await executeAction(page, action, index);
       trace.push({ index, ...result });
       if (result.artifact) screenshots.push({ index, ...result.artifact });
+      if (wantsVideo && !recordingStarted) {
+        await restartIntoRecording(page.url());
+      }
     }
 
     if (wantsVideo) {
+      if (!recordingStarted) {
+        // Backward-compatible fallback: if no editor was entered, start the
+        // recording at the first explicit record_video action's point.
+        if (options.start_recording_if_no_editor !== false && tempDir) {
+          const url = page.url();
+          try { await page.close(); } catch {}
+          try { await context.close(); } catch {}
+          try { await browser.close(); } catch {}
+          browser = await playwrightChromium.launch({
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+            headless: true,
+            timeout: 60000
+          });
+          context = await browser.newContext(contextForRecording());
+          page = await context.newPage();
+          await page.addInitScript(({ id, token }) => {
+            localStorage.setItem('codelab_xd_workspace_v4', id);
+            localStorage.setItem('codelab_xd_workspace_token_v1', token);
+          }, { id: options.workspaceId, token });
+          recordingStarted = true;
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          await page.waitForTimeout(250);
+        }
+      }
       const video = page.video();
       await page.close();
       await context.close();
