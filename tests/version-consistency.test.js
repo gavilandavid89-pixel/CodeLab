@@ -19,9 +19,13 @@ assert.ok(server.includes("const APP_VERSION = '" + expected + "';"),
   'Server APP_VERSION should match package.json version');
 assert.ok(readme.includes('# CodeLab XD Studio Pro v' + expected),
   'README heading should match package.json version');
-assert.match(readme, /Node\\.js 22\\.17\\.0 o superior/,
+assert.match(readme, /Node\.js 22\.17\.0 o superior/,
   'README should document the minimum supported Node.js version');
-assert.match(workflow, /node-version:\\s*["']?22\\.17\\.0/,
+assert.match(workflow, /node-version:\s*["']?22\.17\.0/,
   'Main validation workflow should use the declared minimum Node.js version');
+assert.equal(pkg.engines.node, '>=22.17.0',
+  'package.json should declare the documented minimum Node.js version');
+assert.ok(!readme.includes('Cero dependencias npm'),
+  'README must not claim the project has zero npm dependencies');
 
 console.log('Version consistency passed: package, page title, client, and server all use v' + expected + '.');
