@@ -2,11 +2,11 @@
 
 **Cuenta propietaria de trabajo y pruebas: `ADMIN`.**
 
-Esta política aplica a cualquier agente, asistente, automatización, prueba manual o ejecución de navegador que trabaje sobre CodeLab. El puente de GitHub Actions aplica esta regla a **todos** sus comandos, incluidos los de solo lectura.
+Esta política aplica a operaciones que leen o modifican proyectos y datos reales del usuario. El contexto de cuenta/workspace debe obtenerse del mecanismo de identidad y autenticación ya configurado para CodeLab; no se debe inventar ni sustituir esa identidad. Los workflows auxiliares antiguos pueden tener contratos propios y no definen por sí solos el flujo operativo actual.
 
 ## Regla principal
 
-Todas las operaciones sobre proyectos deben realizarse dentro de la cuenta real de CodeLab del usuario, cuyo nombre de cuenta es **ADMIN**. No se debe usar una cuenta temporal, invitado, demo local, perfil inventado ni una sesión anónima para crear, editar, guardar, importar, duplicar o probar proyectos.
+Las operaciones sobre proyectos reales del usuario deben realizarse dentro de su cuenta/workspace autenticado (la cuenta propietaria identificada como **ADMIN** en el entorno configurado). No se debe reemplazar esa identidad por una cuenta demo ni por un usuario inventado.
 
 El objetivo es que el usuario pueda entrar posteriormente en CodeLab con su cuenta ADMIN y encontrar los proyectos, diseños, capas, cambios y resultados de las pruebas.
 
@@ -18,13 +18,16 @@ El objetivo es que el usuario pueda entrar posteriormente en CodeLab con su cuen
 4. Si no se puede autenticar o verificar la identidad/workspace, detener cualquier operación que cree o modifique proyectos. No recurrir silenciosamente al modo demo ni a una sesión anónima.
 5. Nunca solicitar, imprimir, registrar en comentarios, ni incluir en commits contraseñas, cookies, tokens o secretos de autenticación.
 
-## Automatización y pruebas con GitHub Actions
+## Automatización, sesiones locales y pruebas
 
-- Para **todos** los comandos del puente de CodeLab, usar obligatoriamente `use_admin_session: true`; el validador rechaza cualquier comando que no lo indique.
+- El flujo vigente debe conservar la identidad y el workspace que el sistema obtiene de la configuración/autenticación del repositorio y del servidor.
+- Las sesiones locales/headless son útiles para ejecutar pruebas y automatización en un entorno aislado. Se pueden usar con un directorio de datos temporal y fixtures propios; no deben eliminarse por el mero hecho de no ser la sesión de producción.
+- Una sesión local aislada no puede utilizarse para afirmar que se leyó o modificó el workspace real de ADMIN. Para esa afirmación se requiere autenticación real y lectura de vuelta del servidor.
+- El puente GitHub Actions heredado conserva su contrato específico: para sus comandos que operan sobre el workspace real, `use_admin_session: true` es obligatorio.
 - Los secretos `CODELAB_ADMIN_USERNAME` y `CODELAB_ADMIN_PASSWORD` deben corresponder a las credenciales de la cuenta CodeLab **ADMIN**. El valor esperado de `CODELAB_ADMIN_USERNAME` es `ADMIN`.
 - El puente exige que `CODELAB_ADMIN_USERNAME` sea exactamente `ADMIN`, comprueba que `/api/auth/login` devuelva el nombre exacto `ADMIN` con proveedor `local` e ID de usuario, y rechaza la ejecución si no coincide. No basta con que el login responda correctamente o que el rol sea administrador.
 - Después de cargar la aplicación, comprobar `/api/auth/status` y verificar que la sesión activa sigue siendo `ADMIN`, con el mismo ID de usuario y el mismo `workspaceId` que devolvió el login. Si identidad o workspace no coinciden, la ejecución se detiene antes de operar.
-- No usar el fallback demo de la interfaz para pruebas automatizadas.
+- No usar el fallback demo para operar sobre proyectos reales del usuario. Los tests aislados pueden usar su propia sesión local/headless si no acceden a datos reales y si el resultado se etiqueta como prueba aislada.
 - Las pruebas de lectura sin cambios también deben usar la cuenta ADMIN cuando inspeccionen proyectos privados del usuario.
 
 ## Guardado y verificación
@@ -43,7 +46,7 @@ Los resultados exitosos del puente incluyen `diagnostics.account_context` con cu
 
 ## Proyectos auxiliares de QA
 
-- Los proyectos auxiliares y fixtures de pruebas también se crean dentro de la cuenta ADMIN.
+- Los proyectos auxiliares que deban quedar disponibles para el usuario se crean dentro de su cuenta ADMIN. Los fixtures efímeros de CI/headless pueden permanecer en un directorio de datos aislado y no se presentan como proyectos persistidos de ADMIN.
 - Usar nombres claramente identificables, por ejemplo `QA — ...`, y evitar sobrescribir proyectos reales del usuario.
 - No borrar, archivar, renombrar ni modificar proyectos del usuario para limpiar pruebas sin autorización expresa.
 - Informar al usuario del nombre y propósito de cada proyecto auxiliar creado para que pueda reconocerlo en su lista.
