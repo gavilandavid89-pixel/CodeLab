@@ -1858,6 +1858,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
       height: doc.height,
       fps: animation?.fps ?? 1,
       loop: animationLoop,
+      playbackSpeed: animationPlaybackSpeed,
       frameCount: animation?.frameCount ?? 1,
       frames: [],
       audio: [],
