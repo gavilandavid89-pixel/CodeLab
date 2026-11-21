@@ -398,6 +398,9 @@ export class PixelForgeAnimation {
   removeLayer(layerId) {
     if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
     if (this.#layerIds.length <= 1) throw new RangeError('An animation must keep at least one raster layer.');
+    if (layerId === this.#layerIds[0]) {
+      throw new RangeError('The environment layer (index 0) cannot be removed.');
+    }
     this.#layerIds = this.#layerIds.filter(id => id !== layerId);
     this.#thumbnailCache.clear();
     this.#thumbnailCacheBytes = 0;
@@ -409,6 +412,9 @@ export class PixelForgeAnimation {
     assertLayerIds(layerIds);
     if (layerIds.length !== this.#layerIds.length || this.#layerIds.some(id => !layerIds.includes(id))) {
       throw new TypeError('Layer reordering must preserve the existing animation layer IDs.');
+    }
+    if (layerIds[0] !== this.#layerIds[0]) {
+      throw new RangeError('The environment layer (index 0) must remain first.');
     }
     if (layerIds.every((id, index) => id === this.#layerIds[index])) return false;
     for (const frame of this.#frames) frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
