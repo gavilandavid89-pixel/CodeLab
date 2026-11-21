@@ -2,7 +2,7 @@ import { AIWorkspace } from './workspaces.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
+import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -240,6 +240,52 @@ export class AICommandSession {
         }
         case 'drawing.reference.package_current':
           throw new Error('drawing.reference.package_current is available only in the headless project runtime.');
+        case 'drawing.layer.role.set': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const layer = doc.layers.find(item => item.id === action.layerId);
+          if (!layer) throw new Error('Layer was not found.');
+          const next = setDrawingLayerRole(model, action);
+          doc.setDrawingModel(next);
+          result = { layerId: layer.id, layerName: layer.name, role: next.layerRoles[layer.id] };
+          break;
+        }
+        case 'drawing.current_state.set': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const next = setCurrentState(model, {
+            ...action.state,
+            sourceRevision: action.state?.sourceRevision ?? doc.saveVersion,
+            layerIds: action.state?.layerIds ?? [doc.activeLayerId],
+          });
+          doc.setDrawingModel(next);
+          result = { state: getCurrentState(next, action.state?.entityId || action.state?.id) };
+          break;
+        }
+        case 'drawing.current_state.get': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          result = { state: getCurrentState(model, action.entityId || null), currentState: model.currentState };
+          break;
+        }
+        case 'drawing.environment_history.record': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          const next = recordEnvironmentHistory(model, {
+            ...action,
+            sourceRevision: action.sourceRevision ?? doc.saveVersion,
+            environmentLayerIds: action.environmentLayerIds ?? Object.entries(next?.layerRoles || model.layerRoles).filter(([, meta]) => meta?.role === 'environment').map(([id]) => id),
+          });
+          doc.setDrawingModel(next);
+          result = { entry: getEnvironmentHistoryEntry(next, action.id || null), history: next.environmentHistory };
+          break;
+        }
+        case 'drawing.environment_history.get': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          result = { entry: getEnvironmentHistoryEntry(model, action.id || null), history: model.environmentHistory };
+          break;
+        }
+        case 'drawing.environment_history.list': {
+          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
+          result = { entries: model.environmentHistory.entries, activeEntryId: model.environmentHistory.activeEntryId };
+          break;
+        }
         case 'drawing.reference.create': {
           const project = doc.toJSON();
           const current = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
