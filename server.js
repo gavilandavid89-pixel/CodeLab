@@ -2814,11 +2814,35 @@ const server = http.createServer(async (req, res) => {
         if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
         const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
         const result = await accountPool.query(
-          'SELECT video_data, video_mime_type, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
+          'SELECT video_data, video_mime_type, video_url, video_key, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
           [workspaceId, neonEvidenceVideoMatch[1]]
         );
         const evidence = result.rows[0];
-        if (!evidence || !evidence.video_data) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+        if (!evidence) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+
+        // Canonical delivery path: prefer the persisted inline bytes when present.
+        // If the evidence was stored in Cloudflare/R2, transparently hand the client
+        // the persisted object URL instead of forcing callers to know the storage layout.
+        if (!evidence.video_data) {
+          let objectUrl = typeof evidence.video_url === 'string' ? evidence.video_url.trim() : '';
+          if (!objectUrl && evidence.video_key && process.env.CLOUDFLARE_EVIDENCE_BASE_URL) {
+            const base = String(process.env.CLOUDFLARE_EVIDENCE_BASE_URL).replace(/\\/$/, '');
+            objectUrl = base + '/evidence/' + String(evidence.video_key).split('/').map(encodeURIComponent).join('/');
+          }
+          if (!objectUrl) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+
+          // HEAD remains a metadata probe; GET redirects to the immutable evidence
+          // object. This keeps one stable CodeLab URL for every future video.
+          if (req.method === 'HEAD') {
+            return res.writeHead(302, { Location: objectUrl, 'Cache-Control': 'no-store' }).end();
+          }
+          return res.writeHead(302, {
+            Location: objectUrl,
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff'
+          }).end();
+        }
+
         const video = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
         res.writeHead(200, {
           'Content-Type': evidence.video_mime_type || 'video/webm',
