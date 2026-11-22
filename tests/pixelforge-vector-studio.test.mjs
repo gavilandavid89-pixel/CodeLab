@@ -155,7 +155,7 @@ test('allowlisted PixelForge vector commands cover editing operations through th
   assert.equal(workspace.sandbox.getVectorModel().objects.length, 3);
   const copies = workspace.sandbox.getVectorModel().objects.filter(item => item.id !== 'a' && item.id !== 'b');
   assert.equal(copies[0].x, 14);
-  run({ name: 'vector.group.create', ids: ['a', 'b'], name: 'Pair' });
+  run({ name: 'vector.group.create', ids: ['a', 'b'], group_name: 'Pair' });
   const grouped = workspace.sandbox.getVectorModel().objects.find(item => item.type === 'group');
   assert.equal(grouped.children.length, 2);
   run({ name: 'vector.group.ungroup', id: grouped.id });
