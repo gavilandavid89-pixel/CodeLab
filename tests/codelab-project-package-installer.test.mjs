@@ -19,7 +19,7 @@ function fixture() {
     ['frames/0002/base.rgba', rgbaC], ['frames/0002/detail.rgba', rgbaD],
     ['assets/reference.txt', Buffer.from('reference')],
     ['scenes/intro.json', Buffer.from('{}')],
-    ['custom-data/readme.txt', Buffer.from('extra')],
+    ['custom-data/readme.txt', Buffer.from('extra')],\n    ['reference/moodboard/character.png', Buffer.from('image')],\n    ['audio/theme.ogg', Buffer.from('audio')],\n    ['ui/button.css', Buffer.from('css')],\n    ['unknown.blob', Buffer.from('opaque')],
   ]);
   const manifest = {
     format: 'codelab', version: 1, editor: 'pixelforge', projectType: 'pixelforge', entry: 'project.json',
@@ -53,7 +53,7 @@ test('installs declared frame cels into native PixelForge animation and routes p
   assert.equal(Buffer.from(project.animation.frames[1].cels[1].pixels, 'base64').toString('hex'),
     'ffff00ff00000000');
   assert.deepEqual(result.destinations.map(item => item.destination).sort(),
-    ['assets', 'frames', 'frames', 'frames', 'frames', 'project-files', 'scenes'].sort());
+    ['assets', 'frames', 'frames', 'frames', 'frames', 'documents', 'reference-center', 'audio', 'styles', 'project-files', 'scenes'].sort());
 });
 
 test('does not guess that arbitrary images are frames without manifest animation mapping', () => {
@@ -111,4 +111,40 @@ test('decodes PNG cels to the exact RGBA bytes expected by the PixelForge timeli
   const result = installCodeLabPackage({ manifest, project, files });
   assert.equal(result.installed.animationCels, 4);
   assert.deepEqual(Buffer.from(project.animation.frames[0].cels[0].pixels, 'base64'), expected);
+});
+
+test('routes extra folders by semantic folder names and file types into usable destinations', () => {
+  const project = { format: 'pixelforge-project', width: 1, height: 1, layers: [{ id: 'layer-1' }] };
+  const files = new Map([
+    ['reference/character/pose.png', Buffer.from('x')],
+    ['guides/visual-brief.pdf', Buffer.from('x')],
+    ['sounds/hit.wav', Buffer.from('x')],
+    ['typography/display.woff2', Buffer.from('x')],
+    ['models/prop.glb', Buffer.from('x')],
+    ['styles/theme.css', Buffer.from('x')],
+    ['components/button.json', Buffer.from('x')],
+    ['unknown.custom', Buffer.from('x')],
+  ]);
+  const result = installCodeLabPackage({ manifest: { editor: 'web' }, project, files });
+  const byPath = Object.fromEntries(result.destinations.map(item => [item.path, item]));
+  assert.equal(byPath['reference/character/pose.png'].destination, 'reference-center');
+  assert.equal(byPath['reference/character/pose.png'].destinationPath, 'reference-center/character/pose.png');
+  assert.equal(byPath['guides/visual-brief.pdf'].destination, 'documents');
+  assert.equal(byPath['sounds/hit.wav'].destination, 'audio');
+  assert.equal(byPath['typography/display.woff2'].destination, 'fonts');
+  assert.equal(byPath['models/prop.glb'].destination, 'models');
+  assert.equal(byPath['styles/theme.css'].destination, 'styles');
+  assert.equal(byPath['components/button.json'].destination, 'components');
+  assert.equal(byPath['unknown.custom'].destination, 'project-files');
+});
+
+test('manifest resource declarations override inferred folder and extension destinations', () => {
+  const project = { format: 'pixelforge-project', width: 1, height: 1, layers: [{ id: 'layer-1' }] };
+  const files = new Map([['misc/pose.png', Buffer.from('x')]]);
+  const result = installCodeLabPackage({
+    manifest: { editor: 'web', resources: [{ path: 'misc/pose.png', destination: 'reference-center' }] },
+    project, files,
+  });
+  assert.equal(result.destinations[0].destination, 'reference-center');
+  assert.equal(result.destinations[0].destinationPath, 'reference-center/misc/pose.png');
 });
