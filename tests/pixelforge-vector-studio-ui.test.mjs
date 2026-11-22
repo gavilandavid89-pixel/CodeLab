@@ -64,6 +64,8 @@ function createStudio(seed = {}) {
     getModel: () => ({ width: 100, height: 100, snap: false, ...seed }),
     setModel: model => saved.push(structuredClone(model)),
     onChanged() {},
+    onUndo: seed.onUndo,
+    onRedo: seed.onRedo,
     status() {},
   });
   return {
@@ -234,4 +236,17 @@ test('SVG import parses editable shapes and path coordinates', async () => {
     if (previousWindow !== undefined) globalThis.window = previousWindow;
     if (previousDOMParser !== undefined) globalThis.DOMParser = previousDOMParser;
   }
+});
+
+
+test('vector undo and redo controls delegate to the shared document history', () => {
+  let undoCalls = 0;
+  let redoCalls = 0;
+  const env = createStudio({ onUndo: () => { undoCalls++; return true; }, onRedo: () => { redoCalls++; return true; } });
+  try {
+    env.studio.toolAction('undo');
+    env.studio.toolAction('redo');
+    assert.equal(undoCalls, 1);
+    assert.equal(redoCalls, 1);
+  } finally { env.restore(); }
 });
