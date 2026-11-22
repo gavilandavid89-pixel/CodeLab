@@ -937,8 +937,15 @@ export class AICommandSession {
           result = { changed: doc.redo() };
           break;
         case 'pixelforge.validate': {\n          const project = action.project || doc.toJSON();\n          result = validatePixelForgeProject(project, { tolerance: action.tolerance ?? 2 });\n          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);\n          break;\n        }\n        case 'vector.validate': {\n          const model = action.model || doc.getVectorModel();\n          result = validateVectorModel(model, { width: doc.width, height: doc.height, tolerance: action.tolerance ?? 2 });\n          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);\n          break;\n        }\n        case 'vector.audit': {
-          const model = doc.getVectorModel() || { version: 2, width: doc.width, height: doc.height, objects: [] };
+          const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, objects: [], precision: { tolerance: 0.001, constraints: [] } };
           const issues = [];
+          const precisionAudit = model.precision?.constraints?.length
+            ? constraintAudit(model.objects || [], model.precision.constraints, action.tolerance ?? model.precision?.tolerance ?? 0.001)
+            : { ok: true, counts: {}, diagnostics: [] };
+          for (const item of precisionAudit.diagnostics || []) {
+            if (item.status === 'unsatisfied') issues.push({ code: 'constraint_unsatisfied', severity: 'error', message: 'Precision constraint is unsatisfied.', constraint: item.constraint });
+            if (item.status === 'missing_reference') issues.push({ code: 'constraint_missing_reference', severity: 'error', message: 'Precision constraint references missing geometry.', constraint: item.constraint });
+          }
           const objects = model.objects || [];
           const bounds = o => o.type === 'line'
             ? { x: Math.min(o.x1,o.x2), y: Math.min(o.y1,o.y2), width: Math.abs(o.x2-o.x1), height: Math.abs(o.y2-o.y1) }
@@ -1032,6 +1039,39 @@ export class AICommandSession {
         }
         case 'agent.tools.list': {
           result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog()] };
+          break;
+        }
+        case 'geometry.precision.get': {
+          const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, objects: [], precision: { tolerance: 0.001, anchors: [], guides: [], constraints: [], constructionGraph: { version: 1, nodes: [], edges: [] } } };
+          result = plainResult(model.precision || {});
+          break;
+        }
+        case 'geometry.precision.set': {
+          const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
+          model.precision = {
+            tolerance: Number.isFinite(Number(action.tolerance)) ? Number(action.tolerance) : 0.001,
+            anchors: Array.isArray(action.anchors) ? plainResult(action.anchors) : (model.precision?.anchors || []),
+            guides: Array.isArray(action.guides) ? plainResult(action.guides) : (model.precision?.guides || []),
+            constraints: Array.isArray(action.constraints) ? plainResult(action.constraints) : (model.precision?.constraints || []),
+            constructionGraph: action.constructionGraph && typeof action.constructionGraph === 'object'
+              ? plainResult(action.constructionGraph)
+              : (model.precision?.constructionGraph || { version: 1, nodes: [], edges: [] }),
+          };
+          doc.setVectorModel(model);
+          result = { precision: plainResult(model.precision) };
+          break;
+        }
+        case 'geometry.precision.solve': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const solved = solveConstraints(model.objects || [], model.precision?.constraints || [], {
+            tolerance: action.tolerance ?? model.precision?.tolerance ?? 0.001,
+            maxIterations: action.maxIterations ?? 24,
+          });
+          model.objects = solved.objects;
+          model.precision = { ...(model.precision || {}), constraints: plainResult(model.precision?.constraints || []) };
+          doc.setVectorModel(model);
+          result = { objects: plainResult(model.objects), diagnostics: plainResult(solved.diagnostics), iterations: solved.iterations };
           break;
         }
         case 'vector.model.get': {
