@@ -27,11 +27,20 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
-export function assertCodelabArtifactFilename(filename) {
-  if (typeof filename !== 'string' || !filename.trim() ||
-      path.basename(filename) !== filename ||
-      !filename.toLowerCase().endsWith('.codelab')) {
-    throw new Error('Only .codelab project packages can be imported. Generic ZIP files are not supported.');
+export function assertCodelabPackageEntries(entries) {
+  if (!Array.isArray(entries)) throw new Error('Invalid CodeLab package entry list.');
+  const normalizedEntries = new Set();
+  for (const entry of entries) {
+    if (!assertSafePath(entry)) throw new Error(`Unsafe path in CodeLab package: ${entry}`);
+    const normalized = entry.replace(/\\\\/g, '/').replace(/\\/$/, '');
+    if (normalizedEntries.has(normalized)) throw new Error(`Duplicate entry in CodeLab package: ${entry}`);
+    normalizedEntries.add(normalized);
+  }
+  if (!normalizedEntries.has('project.codelab')) {
+    throw new Error('Not a CodeLab project: root project.codelab marker is missing.');
+  }
+  if (!normalizedEntries.has('manifest.json') || !normalizedEntries.has('project.json')) {
+    throw new Error('Invalid CodeLab project: root manifest.json and project.json are required.');
   }
   return true;
 }
@@ -78,24 +87,7 @@ async function extractCodelabArchive(buffer, tempRoot) {
 
   const { stdout } = await execFileAsync('unzip', ['-Z1', archive], { timeout: 30_000 });
   const entries = stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
-  const seen = new Set();
-  for (const entry of entries) {
-    if (!assertSafePath(entry)) throw new Error(`Unsafe path in .codelab archive: ${entry}`);
-    const normalized = entry.replace(/\\\\/g, '/');
-    if (seen.has(normalized)) throw new Error(`Duplicate entry in .codelab archive: ${entry}`);
-    seen.add(normalized);
-    const allowed = normalized === 'manifest.json' ||
-      normalized === 'project.json' ||
-      normalized === 'assets' || normalized.startsWith('assets/') ||
-      normalized === 'scenes' || normalized.startsWith('scenes/') ||
-      normalized === 'animations' || normalized.startsWith('animations/');
-    if (!allowed) {
-      throw new Error(`Unsupported file outside the declared .codelab package areas: ${entry}`);
-    }
-  }
-  if (!seen.has('manifest.json') || !seen.has('project.json')) {
-    throw new Error('Invalid .codelab package: root manifest.json and project.json are required.');
-  }
+  assertCodelabPackageEntries(entries);
 
   await execFileAsync('unzip', ['-oq', archive, '-d', extractDir], { timeout: 30_000 });
   return extractDir;
@@ -103,27 +95,19 @@ async function extractCodelabArchive(buffer, tempRoot) {
 
 async function collectProjectFiles(root) {
   const files = [];
-  for (const area of ['assets', 'scenes', 'animations']) {
-    const areaRoot = path.join(root, area);
-    try {
-      await fs.access(areaRoot);
-    } catch {
-      continue;
-    }
-
-    const stack = [areaRoot];
-    while (stack.length) {
-      const current = stack.pop();
-      const entries = await fs.readdir(current, { withFileTypes: true });
-      for (const entry of entries) {
-        const absolute = path.join(current, entry.name);
-        const relative = path.relative(root, absolute).replace(/\\/g, '/');
-        if (!assertSafePath(relative)) throw new Error(`Unsafe extracted path: ${relative}`);
-        if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not allowed in .codelab files: ${relative}`);
-        if (entry.isDirectory()) stack.push(absolute);
-        else if (entry.isFile()) files.push({ absolute, relative });
-        else throw new Error(`Unsupported filesystem entry in .codelab package: ${relative}`);
-      }
+  const stack = [root];
+  while (stack.length) {
+    const current = stack.pop();
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const absolute = path.join(current, entry.name);
+      const relative = path.relative(root, absolute).replace(/\\\\/g, '/');
+      if (!assertSafePath(relative)) throw new Error(`Unsafe extracted path: ${relative}`);
+      if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not allowed in CodeLab packages: ${relative}`);
+      if (entry.isDirectory()) stack.push(absolute);
+      else if (entry.isFile() && !['project.codelab', 'manifest.json', 'project.json'].includes(relative)) {
+        files.push({ absolute, relative });
+      } else if (!entry.isFile()) throw new Error(`Unsupported filesystem entry in CodeLab package: ${relative}`);
     }
   }
   return files;
@@ -163,7 +147,6 @@ export async function importCodeLabArtifact(pool, {
   artifactContentType = 'application/zip',
 }) {
   if (!importRequestId) throw new Error('import_request_id is required.');
-  if (artifactBase64) assertCodelabArtifactFilename(artifactFilename);
 
   const requestResult = await queryChecked(pool, 'import_sql', 
     'SELECT import_request_id, workspace_id, editor_id, source_project_id, source_sha256, manifest, status, confirmation_required, confirmation_received, work_score FROM public.codelab_project_import_requests WHERE import_request_id=$1',
@@ -215,7 +198,6 @@ export async function importCodeLabArtifact(pool, {
   if (!artifactResult.rowCount) throw new Error('No uploaded .codelab artifact is attached to import request ' + importRequestId);
 
   const artifact = artifactResult.rows[0];
-  assertCodelabArtifactFilename(artifact.filename);
   const buffer = artifact.artifact;
   if (buffer.length > MAX_CODELAB_ARTIFACT_BYTES) throw new Error(`Artifact exceeds maximum supported size of ${MAX_CODELAB_ARTIFACT_BYTES} bytes.`);
   if (Number(artifact.byte_size) !== buffer.length) throw new Error('Artifact byte size mismatch.');
