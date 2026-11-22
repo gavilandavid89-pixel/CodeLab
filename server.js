@@ -660,6 +660,15 @@ function userWorkspaceId(user) {
   return safeId('ws_' + user.provider + '_' + user.id);
 }
 
+async function resolveAdminAgentWorkspace() {
+  if (!accountPool) throw new Error('database_not_configured');
+  const result = await accountPool.query(
+    "SELECT id FROM codelab_accounts WHERE username = 'ADMIN' AND role = 'admin' LIMIT 1"
+  );
+  if (!result.rowCount) throw new Error('CodeLab ADMIN account is not configured.');
+  return 'ws_local_' + String(result.rows[0].id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+}
+
 const PIXELFORGE_MAX_ANIMATION_BYTES = 64 * 1024 * 1024;
 
 function hasBase64CharactersAndPadding(value, expectedPadding = '') {
@@ -2208,14 +2217,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Health
-      if ((req.method === 'GET' || req.method === 'HEAD') && /^\/api\/agent-commands\/[A-Za-z0-9_-]+\/video$/.test(pathname)) {
-        const commandId = pathname.split('/')[3];
-        const row = await accountPool.query(
-          "SELECT result->'video'->>'dataBase64' AS data_base64 FROM public.codelab_agent_commands WHERE command_id=$1 AND status='succeeded'",
-          [commandId]
-        );
-        const base64 = row.rows[0]?.data_base64;
-        if (!base64) return sendJson(res, 404, { error: 'video_not_found' });
+      if ((req.method === 'GET' || req.method === 'HEAD') && /^\/api\/agent-commands\/[A-Za-z0-9_-]+\/video$/.test(pathname)) {\n        const user = await getSessionUser(req);\n        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });\n        const targetWorkspace = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);\n        const commandId = pathname.split('/')[3];\n        const adminWorkspace = await resolveAdminAgentWorkspace();\n        const row = await accountPool.query(\n          "SELECT COALESCE(result->'video'->>'dataBase64', result->'artifact'->>'dataBase64') AS data_base64, payload->>'target_workspace_id' AS target_workspace_id FROM public.codelab_agent_commands WHERE command_id=$1 AND workspace_id=$2 AND status='succeeded'",\n          [commandId, adminWorkspace]\n        );\n        if (!row.rowCount || row.rows[0].target_workspace_id !== targetWorkspace) return sendJson(res, 404, { error: 'video_not_found' });\n        const base64 = row.rows[0]?.data_base64;\n        if (!base64) return sendJson(res, 404, { error: 'video_not_found' });
         const bytes = Buffer.from(base64, 'base64');
         setSecurityHeaders(res);
         res.writeHead(200, {
@@ -2980,15 +2982,7 @@ const server = http.createServer(async (req, res) => {
         return attached ? sendJson(res, 200, { ok: true, evidence: attached }) : sendJson(res, 404, { error: 'evidence_event_not_found' });
       }
 
-      if (req.method === 'GET' && pathname === '/api/pixelforge/mode') {
-        return sendJson(res, 200, {
-          guestMode: PIXELFORGE_GUEST_MODE,
-          workspace: PIXELFORGE_GUEST_MODE ? 'temporary-shared' : 'account',
-          accountsAvailableForPixelForge: !PIXELFORGE_GUEST_MODE
-        });
-      }
-
-      // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
+      if (req.method === 'GET' && pathname === '/api/pixelforge/mode') {\n        return sendJson(res, 200, {\n          guestMode: PIXELFORGE_GUEST_MODE,\n          workspace: PIXELFORGE_GUEST_MODE ? 'temporary-shared' : 'account',\n          accountsAvailableForPixelForge: !PIXELFORGE_GUEST_MODE\n        });\n      }\n\n      // Native capture commands are issued from the authenticated user's workspace\n      // but execute through the trusted ADMIN bridge mailbox.\n      const pixelforgeCaptureMatch = pathname.match(/^\/api\/pixelforge\/capture(?:\/([A-Za-z0-9_-]+))?$/);\n      if (pixelforgeCaptureMatch && (req.method === 'POST' || req.method === 'GET')) {\n        const user = await getSessionUser(req);\n        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });\n        if (!accountPool) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });\n        const targetWorkspace = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);\n\n        if (req.method === 'POST') {\n          const body = await readBody(req, 1024 * 1024);\n          const projectId = decodePixelForgeProjectId(body?.project_id);\n          const kind = body?.kind === 'video' ? 'video' : body?.kind === 'image' ? 'image' : null;\n          if (!projectId || !kind) return sendJson(res, 400, { error: 'invalid_pixelforge_capture_request' });\n          const project = await loadPixelForgeProjectFromDatabase(targetWorkspace, projectId);\n          if (!project) return sendJson(res, 404, { error: 'project_not_found' });\n          if (kind === 'video' && (!project.animation || !Array.isArray(project.animation.frames) || project.animation.frames.length < 2)) {\n            return sendJson(res, 422, { error: 'pixelforge_animation_required' });\n          }\n\n          const adminWorkspace = await resolveAdminAgentWorkspace();\n          const commandId = crypto.randomUUID();\n          const action = kind === 'video' ? 'pixelforge_export_animation_video' : 'pixelforge_capture_interface';\n          const payload = {\n            project_id: projectId,\n            target_workspace_id: targetWorkspace,\n            wake: true,\n            ...(kind === 'video'\n              ? {\n                  ...(Number.isInteger(body.width) ? { width: body.width } : {}),\n                  ...(Number.isInteger(body.height) ? { height: body.height } : {}),\n                  ...(Number.isInteger(body.fps) ? { fps: body.fps } : {}),\n                  persist_evidence: true\n                }\n              : {\n                  width: Number.isInteger(body.width) ? body.width : 1440,\n                  height: Number.isInteger(body.height) ? body.height : 1000,\n                  full_page: body.full_page !== false,\n                  returnImagesInline: true\n                })\n          };\n\n          await accountPool.query(\n            'INSERT INTO public.codelab_agent_commands (command_id, workspace_id, action, payload, status, expires_at, updated_at) VALUES ($1,$2,$3,$4::jsonb,\'queued\',NOW()+INTERVAL \'15 minutes\',NOW())',\n            [commandId, adminWorkspace, action, JSON.stringify(payload)]\n          );\n          return sendJson(res, 202, { ok: true, commandId, status: 'queued', kind, projectId, workspaceId: targetWorkspace });\n        }\n\n        const commandId = pixelforgeCaptureMatch[1];\n        if (!commandId) return sendJson(res, 400, { error: 'capture_command_id_required' });\n        const adminWorkspace = await resolveAdminAgentWorkspace();\n        const row = await accountPool.query(\n          "SELECT command_id, action, status, result, created_at, started_at, finished_at, expires_at, payload->>'target_workspace_id' AS target_workspace_id FROM public.codelab_agent_commands WHERE command_id=$1 AND workspace_id=$2",\n          [commandId, adminWorkspace]\n        );\n        if (!row.rowCount || row.rows[0].target_workspace_id !== targetWorkspace) return sendJson(res, 404, { error: 'capture_command_not_found' });\n        const result = row.rows[0];\n        return sendJson(res, 200, { commandId: result.command_id, action: result.action, status: result.status, result: result.result, createdAt: result.created_at, startedAt: result.started_at, finishedAt: result.finished_at, expiresAt: result.expires_at });\n      }\n\n      // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
       // Large PixelForge projects use authenticated, idempotent PostgreSQL chunks.
       const pixelForgeUploadBegin = pathname === '/api/pixelforge/projects/uploads' && req.method === 'POST';
       const pixelForgeUploadChunk = req.method === 'PUT'
