@@ -24,13 +24,36 @@ class FakeElement {
 function createStudio(seed = {}) {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
+  const previousDOMParser = globalThis.DOMParser;
   globalThis.document = {
-    createElement: tag => new FakeElement(tag),
+    createElement: tag => {
+      const element = new FakeElement(tag);
+      if (tag === 'input') element.click = () => {
+        element.files = [{ text: async () => '<svg><rect x="1" y="2" width="3" height="4"/><ellipse cx="8" cy="9" rx="2" ry="3"/><line x1="1" y1="2" x2="3" y2="4"/><text x="5" y="6">Hello</text><path d="M 1 2 L 3 4"/></svg>' }];
+        return element.onchange?.();
+      };
+      return element;
+    },
     createElementNS: (_ns, tag) => new FakeElement(tag),
   };
   globalThis.window = {
     addEventListener() {},
     prompt: () => 'Vector label',
+  };
+  globalThis.DOMParser = class {
+    parseFromString() {
+      const node = (tagName, attrs = {}, textContent = '') => ({ tagName, textContent, getAttribute: name => attrs[name] ?? null });
+      return {
+        querySelector: () => null,
+        querySelectorAll: () => [
+          node('rect', { x: '1', y: '2', width: '3', height: '4' }),
+          node('ellipse', { cx: '8', cy: '9', rx: '2', ry: '3' }),
+          node('line', { x1: '1', y1: '2', x2: '3', y2: '4' }),
+          node('text', { x: '5', y: '6' }, 'Hello'),
+          node('path', { d: 'M 1 2 L 3 4' }),
+        ],
+      };
+    }
   };
   const host = new FakeElement('host');
   const doc = { width: 100, height: 100, name: 'Test' };
@@ -50,6 +73,8 @@ function createStudio(seed = {}) {
       else globalThis.document = previousDocument;
       if (previousWindow === undefined) delete globalThis.window;
       else globalThis.window = previousWindow;
+      if (previousDOMParser === undefined) delete globalThis.DOMParser;
+      else globalThis.DOMParser = previousDOMParser;
     },
   };
 }
@@ -184,4 +209,29 @@ test('gradient, transforms, keyframes, snapping and animation frame application 
     studio.toolAction('grid');
     assert.equal(studio.model.snap, false);
   } finally { env.restore(); }
+});
+
+
+test('SVG import parses editable shapes and path coordinates', async () => {
+  let resolveSaved;
+  const savedModel = new Promise(resolve => { resolveSaved = resolve; });
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousDOMParser = globalThis.DOMParser;
+  const env = createStudio();
+  try {
+    const { studio } = env;
+    const originalSetModel = studio.setModel;
+    studio.setModel = model => { originalSetModel?.(model); resolveSaved(model); };
+    studio.importSVG();
+    const imported = await savedModel;
+    assert.deepEqual(imported.objects.map(object => object.type), ['rect', 'ellipse', 'line', 'text', 'path']);
+    assert.deepEqual(imported.objects.at(-1).points, [{ x: 1, y: 2 }, { x: 3, y: 4 }]);
+    assert.equal(imported.objects[3].text, 'Hello');
+  } finally {
+    env.restore();
+    if (previousDocument !== undefined) globalThis.document = previousDocument;
+    if (previousWindow !== undefined) globalThis.window = previousWindow;
+    if (previousDOMParser !== undefined) globalThis.DOMParser = previousDOMParser;
+  }
 });
