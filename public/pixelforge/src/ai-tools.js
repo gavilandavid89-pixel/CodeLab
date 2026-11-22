@@ -106,10 +106,6 @@ export class AICommandSession {
       const doc = this.#workspace.sandbox;
       let result;
       switch (action.name) {
-        case 'agent.tools.list': {
-          result = { tools: buildAgentToolCatalog() };
-          break;
-        }
         case 'geometry.point': {
           result = { point: { x: Number(action.x), y: Number(action.y) } };
           break;
