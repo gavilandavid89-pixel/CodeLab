@@ -144,7 +144,7 @@ export async function importCodeLabArtifact(pool, {
          content_sha256=EXCLUDED.content_sha256,
          work_score=EXCLUDED.work_score,
          updated_at=now()`,
-      [request.workspace_id, projectId, request.editor_id, name, serialized, workScore]
+      [request.workspace_id, projectId, request.editor_id, name, serialized, contentSha, workScore]
     );
 
     if (request.editor_id === 'pixelforge') {
