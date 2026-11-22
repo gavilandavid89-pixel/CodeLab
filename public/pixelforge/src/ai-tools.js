@@ -1,4 +1,4 @@
-import { AIWorkspace } from './workspaces.js';
+import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
@@ -815,7 +815,7 @@ export class AICommandSession {
         case 'history.redo':
           result = { changed: doc.redo() };
           break;
-        case 'vector.audit': {
+        case 'pixelforge.validate': {\n          const project = action.project || doc.toJSON();\n          result = validatePixelForgeProject(project, { tolerance: action.tolerance ?? 2 });\n          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);\n          break;\n        }\n        case 'vector.validate': {\n          const model = action.model || doc.getVectorModel();\n          result = validateVectorModel(model, { width: doc.width, height: doc.height, tolerance: action.tolerance ?? 2 });\n          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);\n          break;\n        }\n        case 'vector.audit': {
           const model = doc.getVectorModel() || { version: 2, width: doc.width, height: doc.height, objects: [] };
           const issues = [];
           const objects = model.objects || [];
