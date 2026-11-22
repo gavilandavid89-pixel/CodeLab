@@ -27,6 +27,15 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+export function assertCodelabArtifactFilename(filename) {
+  if (typeof filename !== 'string' || !filename.trim() ||
+      path.basename(filename) !== filename ||
+      !filename.toLowerCase().endsWith('.codelab')) {
+    throw new Error('Only .codelab project packages can be imported. Generic ZIP files are not supported.');
+  }
+  return true;
+}
+
 async function assertZipArchive(buffer, tempRoot) {
   const archive = path.join(tempRoot, 'integrity-check.codelab');
   await fs.writeFile(archive, buffer);
@@ -147,6 +156,7 @@ export async function importCodeLabArtifact(pool, {
   artifactContentType = 'application/zip',
 }) {
   if (!importRequestId) throw new Error('import_request_id is required.');
+  if (artifactBase64) assertCodelabArtifactFilename(artifactFilename);
 
   const requestResult = await queryChecked(pool, 'import_sql', 
     'SELECT import_request_id, workspace_id, editor_id, source_project_id, source_sha256, manifest, status, confirmation_required, confirmation_received, work_score FROM public.codelab_project_import_requests WHERE import_request_id=$1',
@@ -198,6 +208,7 @@ export async function importCodeLabArtifact(pool, {
   if (!artifactResult.rowCount) throw new Error('No uploaded .codelab artifact is attached to import request ' + importRequestId);
 
   const artifact = artifactResult.rows[0];
+  assertCodelabArtifactFilename(artifact.filename);
   const buffer = artifact.artifact;
   if (buffer.length > MAX_CODELAB_ARTIFACT_BYTES) throw new Error(`Artifact exceeds maximum supported size of ${MAX_CODELAB_ARTIFACT_BYTES} bytes.`);
   if (Number(artifact.byte_size) !== buffer.length) throw new Error('Artifact byte size mismatch.');
