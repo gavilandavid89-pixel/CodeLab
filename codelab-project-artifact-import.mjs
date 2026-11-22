@@ -57,7 +57,7 @@ export async function importCodeLabArtifact(pool, {
   if (!importRequestId) throw new Error('import_request_id is required.');
 
   const requestResult = await pool.query(
-    'SELECT import_request_id, workspace_id, editor_id, source_project_id, source_sha256, manifest, status, confirmation_required, confirmation_received FROM public.codelab_project_import_requests WHERE import_request_id=$1',
+    'SELECT import_request_id, workspace_id, editor_id, source_project_id, source_sha256, manifest, status, confirmation_required, confirmation_received, work_score FROM public.codelab_project_import_requests WHERE import_request_id=$1',
     [importRequestId]
   );
   if (!requestResult.rowCount) throw new Error('Import request not found: ' + importRequestId);
@@ -114,6 +114,7 @@ export async function importCodeLabArtifact(pool, {
     const serialized = JSON.stringify(project);
     const contentSha = sha256(Buffer.from(serialized));
     const now = Date.now();
+    const workScore = Number(request.work_score ?? 0);
 
     await pool.query(
       `INSERT INTO public.codelab_project_registry
@@ -189,6 +190,7 @@ export async function importCodeLabArtifact(pool, {
       sourceSha256: actualSha,
     };
   } catch (error) {
+    error.message = `codelab_artifact_import_failed: ${error.message}`;
     await pool.query(
       'UPDATE public.codelab_project_import_requests SET status=\'failed\', updated_at=now() WHERE import_request_id=$1',
       [importRequestId]
