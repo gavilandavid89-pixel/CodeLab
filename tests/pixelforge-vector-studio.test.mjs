@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createVectorModel, vectorModelToSVG, auditVectorModel, parseSvgPathData, parseSVGToVectorModel } from '../public/pixelforge/src/vector-studio.js';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
+import { AIWorkspace } from '../public/pixelforge/src/workspaces.js';
+import { AICommandSession } from '../public/pixelforge/src/ai-tools.js';
 
 test('vector model stores editable objects and exports SVG', () => {
   const model = createVectorModel(256, 256);
@@ -131,4 +133,40 @@ test('SVG importer preserves nested groups, transforms, gradients and cubic path
     if (previous === undefined) delete globalThis.DOMParser;
     else globalThis.DOMParser = previous;
   }
+});
+
+
+test('allowlisted PixelForge vector commands cover editing operations through the isolated AI workspace', () => {
+  const doc = new RasterDocument(160, 120, 'Vector command coverage');
+  const model = createVectorModel(160, 120);
+  model.objects.push(
+    { id: 'a', type: 'rect', x: 10, y: 12, width: 20, height: 16, fill: '#ffffff', transform: {} },
+    { id: 'b', type: 'ellipse', x: 50, y: 30, width: 18, height: 18, fill: '#ffffff', transform: {} }
+  );
+  doc.setVectorModel(model);
+  const workspace = new AIWorkspace(doc);
+  const session = new AICommandSession(workspace);
+  const run = action => {
+    const outcome = session.execute(action);
+    assert.equal(outcome.ok, true, outcome.error?.message || action.name);
+    return outcome.result;
+  };
+  run({ name: 'vector.object.duplicate', ids: ['a'], dx: 4, dy: 6 });
+  assert.equal(workspace.sandbox.getVectorModel().objects.length, 3);
+  const copies = workspace.sandbox.getVectorModel().objects.filter(item => item.id !== 'a' && item.id !== 'b');
+  assert.equal(copies[0].x, 14);
+  run({ name: 'vector.group.create', ids: ['a', 'b'], name: 'Pair' });
+  const grouped = workspace.sandbox.getVectorModel().objects.find(item => item.type === 'group');
+  assert.equal(grouped.children.length, 2);
+  run({ name: 'vector.group.ungroup', id: grouped.id });
+  assert.equal(workspace.sandbox.getVectorModel().objects.some(item => item.type === 'group'), false);
+  run({ name: 'vector.object.mirror', id: 'a', axis: 'x', center: 80 });
+  assert.equal(workspace.sandbox.getVectorModel().objects.find(item => item.id === 'a').x, 130);
+  run({ name: 'vector.gradient.set', id: 'a', gradient: { type: 'linear', stops: [{ offset: 0, color: '#ffffff' }, { offset: 100, color: '#000000' }] } });
+  run({ name: 'vector.keyframes.set', id: 'a', keyframes: [{ time: 0, x: 10 }, { time: 10, x: 20 }] });
+  run({ name: 'vector.snap.set', enabled: false, grid: 4 });
+  const audited = run({ name: 'vector.model.validate' });
+  assert.equal(audited.ok, true);
+  assert.equal(workspace.sandbox.getVectorModel().snap, false);
+  assert.equal(run({ name: 'agent.tools.list' }).tools.some(tool => tool.name === 'vector.group.create'), true);
 });
