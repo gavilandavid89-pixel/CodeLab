@@ -1147,13 +1147,14 @@ export class AICommandSession {
         }
         case 'vector.object.transform': {
           const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
-          const item=model.objects.find(value=>value.id===action.id); if(!item) throw new Error('Vector object not found.');
+          const index=model.objects.findIndex(value=>value.id===action.id); if(index<0) throw new Error('Vector object not found.');
+          const item=model.objects[index];
           const center=action.center && Number.isFinite(action.center.x) && Number.isFinite(action.center.y) ? action.center : {x:0,y:0};
-          if(action.operation==='translate') translateObject(item, Number(action.dx)||0, Number(action.dy)||0);
-          else if(action.operation==='scale') scaleObject(item, center, Number(action.sx), action.sy===undefined?Number(action.sx):Number(action.sy));
-          else if(action.operation==='rotate') rotateObject(item, center, Number(action.degrees));
+          if(action.operation==='translate') model.objects[index]=translateObject(item, Number(action.dx)||0, Number(action.dy)||0);
+          else if(action.operation==='scale') model.objects[index]=scaleObject(item, center, Number(action.sx), action.sy===undefined?Number(action.sx):Number(action.sy));
+          else if(action.operation==='rotate') model.objects[index]=rotateObject(item, center, Number(action.degrees));
           else throw new TypeError('operation must be translate, scale, or rotate.');
-          doc.setVectorModel(model); result={object:plainResult(item)}; break;
+          doc.setVectorModel(model); result={object:plainResult(model.objects[index])}; break;
         }
         case 'vector.object.reorder': {
           const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
