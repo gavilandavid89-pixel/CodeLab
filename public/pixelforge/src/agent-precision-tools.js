@@ -319,7 +319,7 @@ export function nearestPointOnPolyline(point, points, closed=false) {
 export function alignObjectEdges(objects, edge='left', target=null) {
   const items=(objects||[]).map(object=>({object:clone(object),bounds:boundsOf(object)}));
   if(!items.length)return [];
-  const ref=target==null?(edge==='right'?Math.max(...items.map(i=>i.bounds.x+i.bounds.width)):edge==='bottom'?Math.max(...items.map(i=>i.bounds.y+i.bounds.height)):edge==='center-x'?((Math.min(...items.map(i=>i.bounds.x))+Math.max(...items.map(i=>i.bounds.x+i.bounds.width)))/2):edge==='center-y'?((Math.min(...items.map(i=>i.bounds.y))+Math.max(...items.map(i=>i.bounds.y+i.bounds.height)))/2):edge==='top'?Math.min(...items.map(i=>i.bounds.y)):Math.min(...items.map(i=>i.bounds.x)):target;
+  const ref=target==null ? (edge==='right' ? Math.max(...items.map(i=>i.bounds.x+i.bounds.width)) : edge==='bottom' ? Math.max(...items.map(i=>i.bounds.y+i.bounds.height)) : edge==='center-x' ? ((Math.min(...items.map(i=>i.bounds.x))+Math.max(...items.map(i=>i.bounds.x+i.bounds.width)))/2) : edge==='center-y' ? ((Math.min(...items.map(i=>i.bounds.y))+Math.max(...items.map(i=>i.bounds.y+i.bounds.height)))/2) : edge==='top' ? Math.min(...items.map(i=>i.bounds.y)) : Math.min(...items.map(i=>i.bounds.x)) ) : target;
   return items.map(item=>{
     const b=item.bounds;
     if(edge==='left')return translateObject(item.object,ref-b.x,0);
