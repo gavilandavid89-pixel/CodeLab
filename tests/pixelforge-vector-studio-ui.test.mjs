@@ -42,17 +42,30 @@ function createStudio(seed = {}) {
   };
   globalThis.DOMParser = class {
     parseFromString() {
-      const node = (tagName, attrs = {}, textContent = '') => ({ tagName, textContent, getAttribute: name => attrs[name] ?? null });
-      return {
-        querySelector: () => null,
-        querySelectorAll: () => [
-          node('rect', { x: '1', y: '2', width: '3', height: '4' }),
-          node('ellipse', { cx: '8', cy: '9', rx: '2', ry: '3' }),
-          node('line', { x1: '1', y1: '2', x2: '3', y2: '4' }),
-          node('text', { x: '5', y: '6' }, 'Hello'),
-          node('path', { d: 'M 1 2 L 3 4' }),
-        ],
+      const node = (tagName, attrs = {}, textContent = '', children = []) => ({
+        tagName, textContent, children,
+        getAttribute: name => attrs[name] ?? null,
+        querySelectorAll: selector => {
+          const wanted = selector.split(',').map(value => value.trim());
+          const found = [];
+          const walk = current => { for (const child of current.children || []) { if (wanted.includes(child.tagName)) found.push(child); walk(child); } };
+          walk({ children }); return found;
+        },
+      });
+      const children = [
+        node('rect', { x: '1', y: '2', width: '3', height: '4' }),
+        node('ellipse', { cx: '8', cy: '9', rx: '2', ry: '3' }),
+        node('line', { x1: '1', y1: '2', x2: '3', y2: '4' }),
+        node('text', { x: '5', y: '6' }, 'Hello'),
+        node('path', { d: 'M 1 2 L 3 4' }),
+      ];
+      const root = node('svg', {}, '', children);
+      root.querySelectorAll = selector => {
+        const wanted = selector.split(',').map(value => value.trim()), found = [];
+        const walk = current => { for (const child of current.children || []) { if (wanted.includes(child.tagName)) found.push(child); walk(child); } };
+        walk(root); return found;
       };
+      return { documentElement: root, querySelector: () => null };
     }
   };
   const host = new FakeElement('host');
