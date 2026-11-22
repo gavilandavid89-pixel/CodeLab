@@ -126,7 +126,7 @@ const EXTENSION_DESTINATIONS = {
 };
 function normalizeDestination(value) {
   if (typeof value !== 'string') return null;
-  const normalized = value.toLowerCase().replace(/[_\\s]+/g, '-').replace(/^\\/+|\\/+$/g, '');
+  const normalized = value.toLowerCase().replace(/[_\s]+/g, '-').replace(/^\/+|\/+$/g, '');
   if (DESTINATIONS.has(normalized)) return normalized;
   for (const [destination, aliases] of Object.entries(DESTINATION_ALIASES)) {
     if (aliases.includes(normalized)) return destination;
