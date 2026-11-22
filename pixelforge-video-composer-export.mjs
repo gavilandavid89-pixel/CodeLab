@@ -224,8 +224,9 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     await page.setInputFiles('#vc-file', packagePath);
     await page.waitForFunction(() => {
       const empty = document.querySelector('#vc-empty');
-      const canvas = document.querySelector('#vc-canvas');
-      return !!canvas && !canvas.hidden && !!empty && empty.hidden;
+      const canvas = document.querySelector('#vc-preview');
+      const frames = Number(document.querySelector('#vc-stat-frames')?.textContent || 0);
+      return !!canvas && !canvas.hidden && !!empty && empty.hidden && frames > 0;
     }, null, { timeout: 30000 });
     const imported = await page.evaluate(() => ({
       frames: Number(document.querySelector('#vc-stat-frames')?.textContent || 0),
@@ -238,6 +239,9 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
       throw new Error('CodeLab Video Composer imported unexpected animation metadata.');
     }
     await page.selectOption('#vc-format', 'webm-vp9').catch(() => {});
+    await page.selectOption('#vc-output-fps', String(fps)).catch(() => {});
+    await page.selectOption('#vc-resolution', 'auto').catch(() => {});
+    await page.selectOption('#vc-aspect', 'auto').catch(() => {});
     await page.waitForFunction(() => {
       const button = document.querySelector('#vc-export');
       return button && !button.disabled;
