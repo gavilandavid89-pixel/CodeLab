@@ -67,17 +67,21 @@ function assertSafePath(value) {
 
 function contentTypeForPath(filePath) {
   const lower = filePath.toLowerCase();
-  if (lower.endsWith('.json')) return 'application/json';
-  if (lower.endsWith('.svg')) return 'image/svg+xml';
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.webm')) return 'video/webm';
-  if (lower.endsWith('.mp3')) return 'audio/mpeg';
-  if (lower.endsWith('.wav')) return 'audio/wav';
-  return 'application/octet-stream';
+  const extension = lower.split('.').at(-1);
+  const types = {
+    json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', bmp: 'image/bmp',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska',
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4',
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', rtf: 'application/rtf',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    css: 'text/css', scss: 'text/x-scss', js: 'text/javascript', mjs: 'text/javascript', cjs: 'text/javascript',
+    ts: 'text/typescript', tsx: 'text/typescript', jsx: 'text/javascript', html: 'text/html', htm: 'text/html',
+    csv: 'text/csv', xml: 'application/xml', yaml: 'application/yaml', yml: 'application/yaml',
+    ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2',
+    glb: 'model/gltf-binary', gltf: 'model/gltf+json', obj: 'model/obj', fbx: 'application/octet-stream',
+  };
+  return types[extension] || 'application/octet-stream';
 }
 
 async function extractCodelabArchive(buffer, tempRoot) {
