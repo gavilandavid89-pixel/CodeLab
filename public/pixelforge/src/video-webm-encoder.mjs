@@ -88,11 +88,10 @@ export function encodeWebMFromChunks(chunks, { width, height, codec = 'vp9', dur
   const clusters = [];
   let clusterParts = [];
   let clusterStart = null;
-  let clusterLast = 0;
-  const flushCluster = () => {
+   const flushCluster = () => {
     if (!clusterParts.length) return;
     clusters.push(element(0x1f43b675, concat([
-      element(0xe7, uint(clusterStart, 2)),
+      element(0xe7, uint(clusterStart, 4)),
       ...clusterParts
     ])));
     clusterParts = [];
@@ -105,7 +104,6 @@ export function encodeWebMFromChunks(chunks, { width, height, codec = 'vp9', dur
       clusterStart = timestampMs;
     }
     const relative = timestampMs - clusterStart;
-    clusterLast = timestampMs;
     const flags = chunk.type === 'key' ? 0x80 : 0x00;
     const block = concat([
       new Uint8Array([0x81]),
@@ -113,7 +111,12 @@ export function encodeWebMFromChunks(chunks, { width, height, codec = 'vp9', dur
       new Uint8Array([flags]),
       new Uint8Array(chunk.byteLength)
     ]);
-    block.set(new Uint8Array(chunk.data), 4);
+    // EncodedVideoChunk exposes its bytes through copyTo(); it does not expose
+    // a raw chunk.data buffer. Leaving the destination zero-filled produces a
+    // structurally valid WebM whose VP8/VP9 payload is invalid.
+    const chunkBytes = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(chunkBytes);
+    block.set(chunkBytes, 4);
     clusterParts.push(element(0xa3, block));
   }
   flushCluster();
