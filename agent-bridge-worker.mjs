@@ -148,11 +148,11 @@ async function claimCommand() {
   try {
     await client.query('BEGIN');
     await client.query(
-      "UPDATE codelab_agent_commands SET status='expired', result=COALESCE(result, '{\"error\":\"command_expired\"}'::jsonb), finished_at=now(), updated_at=now() WHERE workspace_id=$1 AND status IN ('queued','running') AND expires_at <= now()",
+      "UPDATE codelab_agent_commands SET status='expired', result=COALESCE(result, '{\"error\":\"command_expired\"}'::jsonb), finished_at=now(), updated_at=now() WHERE workspace_id=$1 AND status='queued' AND expires_at <= now()",
       [workspaceId]
     );
     await client.query(
-      "UPDATE codelab_agent_commands SET status='queued', started_at=NULL, updated_at=now() WHERE workspace_id=$1 AND status='running' AND updated_at < now() - interval '3 minutes' AND expires_at > now()",
+      "UPDATE codelab_agent_commands SET status='queued', started_at=NULL, updated_at=now() WHERE workspace_id=$1 AND status='running' AND action <> 'codelab_validate' AND updated_at < now() - interval '3 minutes' AND expires_at > now()",
       [workspaceId]
     );
     const selected = await client.query(
@@ -2902,9 +2902,10 @@ async function main() {
             }]
           }));
           if (validation) {
+            const validationStatus = validation.ok ? null : 'failed';
             await pool.query(
-              "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
-              [command.command_id, JSON.stringify({ nativeValidation: validation }), workspaceId]
+              "UPDATE codelab_agent_commands SET status=COALESCE($4,status), result=COALESCE(result,'{}'::jsonb) || $2::jsonb, finished_at=CASE WHEN $4='failed' THEN now() ELSE finished_at END, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
+              [command.command_id, JSON.stringify({ nativeValidation: validation }), workspaceId, validationStatus]
             );
             if (!validation.ok && !commandError) {
               commandError = new Error('Native validation failed after command execution.');
