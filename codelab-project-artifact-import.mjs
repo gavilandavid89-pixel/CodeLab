@@ -33,7 +33,7 @@ export function assertCodelabPackageEntries(entries) {
   const normalizedEntries = new Set();
   for (const entry of entries) {
     if (!assertSafePath(entry)) throw new Error(`Unsafe path in CodeLab package: ${entry}`);
-    const normalized = entry.replace(/\\\\/g, '/').replace(/\\/$/, '');
+    const normalized = entry.replace(/\\/g, '/').replace(/\/$/, '');
     if (normalizedEntries.has(normalized)) throw new Error(`Duplicate entry in CodeLab package: ${entry}`);
     normalizedEntries.add(normalized);
   }
