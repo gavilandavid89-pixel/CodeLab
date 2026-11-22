@@ -162,3 +162,17 @@ test('uses file signatures as a fallback when an extension gives no clue', () =>
   assert.equal(byPath['misc/unknown.bin'].destination, 'assets');
   assert.equal(byPath['misc/opaque.bin'].destination, 'project-files');
 });
+
+test('installs real image resources into the native PixelForge Reference Center', () => {
+  const project = { format: 'pixelforge-project', id: 'ref-project', name: 'References', width: 1, height: 1, layers: [{ id: 'layer-1', name: 'Layer 1', pixels: 'AAAAAA==' }] };
+  const image = makeRgbaPng(1, 1, Buffer.from([40, 80, 120, 255]));
+  const files = new Map([['reference/characters/hero.png', image], ['guides/brief.pdf', Buffer.from('%PDF-1.4 test')]]);
+  const result = installCodeLabPackage({ manifest: { editor: 'pixelforge' }, project, files });
+  const reference = project.drawingModel.referenceCenter.entries[0];
+  assert.equal(result.resources.referenceImages, 1);
+  assert.equal(reference.sourcePath, 'reference-center/characters/hero.png');
+  assert.equal(reference.category, 'reference');
+  assert.match(reference.imageDataUrl, /^data:image\\/png;base64,/);
+  assert.equal(project.drawingModel.packageResources.length, 2);
+  assert.equal(project.drawingModel.packageResources.find(item => item.destination === 'documents').contentType, 'application/pdf');
+});
