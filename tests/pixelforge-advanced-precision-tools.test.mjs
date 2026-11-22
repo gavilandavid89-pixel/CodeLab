@@ -18,11 +18,11 @@ test('local coordinate frames are reversible and deterministic', () => {
   const local = worldToLocal(world,frame);
   assert.ok(Math.abs(local.x-5)<1e-9);
   assert.ok(Math.abs(local.y)<1e-9);
-  assert.deepEqual(polarPoint({x:0,y:0},10,90),{x:0,y:10});
+  const polar=polarPoint({x:0,y:0},10,90); assert.ok(Math.abs(polar.x)<1e-12); assert.ok(Math.abs(polar.y-10)<1e-12);
 });
 
 test('construction helpers cover exact CAD-style relationships', () => {
-  const bis = angleBisector({x:0,y:0},{x:0,y:0},{x:10,y:0});
+  const bis = angleBisector({x:10,y:0},{x:0,y:0},{x:0,y:10});
   assert.ok(Math.abs(bis.angleDegrees-45)<1e-9);
   const perp = perpendicularThrough({x:5,y:5},{x:0,y:0},{x:10,y:0});
   assert.deepEqual(perp.direction,{x:0,y:1});
