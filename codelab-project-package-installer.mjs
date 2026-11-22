@@ -4,7 +4,7 @@ const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 function fail(message) { throw new Error('CodeLab package install: ' + message); }
 
-function decodePngRgba(buffer) {
+function decodePngRgba(buffer, expectedWidth, expectedHeight) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 33 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
     fail('animation cel must be a valid PNG or raw RGBA8 file.');
   }
@@ -32,6 +32,7 @@ function decodePngRgba(buffer) {
       ![0, 2, 3, 4, 6].includes(colorType)) {
     fail('PNG must be 8-bit, non-interlaced grayscale, RGB, indexed, grayscale-alpha or RGBA.');
   }
+  if (width !== expectedWidth || height !== expectedHeight) fail('PNG cel dimensions must match project canvas dimensions.');
   if (colorType === 3 && (!palette || palette.length % 3)) fail('indexed PNG palette is missing or invalid.');
   const channels = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 })[colorType];
   const rowBytes = width * channels;
@@ -80,8 +81,7 @@ function decodeCel(file, encoding, width, height) {
     return file;
   }
   if (encoding !== 'png' && encoding !== 'png-rgba8') fail('cel encoding must be rgba8 or png.');
-  const decoded = decodePngRgba(file);
-  if (decoded.width !== width || decoded.height !== height) fail('PNG cel dimensions must match project canvas dimensions.');
+  const decoded = decodePngRgba(file, width, height);
   return decoded.pixels;
 }
 
