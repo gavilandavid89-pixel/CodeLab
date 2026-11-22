@@ -3377,6 +3377,16 @@ seedAdminAccountIfConfigured().then(async () => {
   } catch (error) {
     console.error('[CodeLab Native Bridge] Neon wake listener unavailable:', error.message);
   }
+  // Every CodeLab process wake (Render cold start, manual wake, or deploy)
+  // must announce availability to Neon. Starting the worker here makes it
+  // publish its "running" bridge signal during its own startup, instead of
+  // waiting for a Neon command that may never arrive.
+  try {
+    const bridge = startAgentBridge();
+    console.log('[CodeLab Native Bridge] startup worker launch requested:', bridge);
+  } catch (error) {
+    console.error('[CodeLab Native Bridge] startup worker launch unavailable:', error.message);
+  }
   try {
     await ensurePixelForgeTable();
   } catch (error) {
@@ -3386,7 +3396,7 @@ seedAdminAccountIfConfigured().then(async () => {
     console.error('PixelForge database initialization failed; studio API will return 503:', error.message);
   }
   server.listen(PORT, () => {
-  console.log('[CodeLab Native Bridge] bridge lazy-start enabled; the agent must call /api/agent/bridge/ensure when work requires the Neon command consumer.');
+  console.log('[CodeLab Native Bridge] worker auto-start enabled; CodeLab startup is announced to Neon by the worker.');
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
