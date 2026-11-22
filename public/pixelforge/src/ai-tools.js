@@ -1,6 +1,6 @@
 import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
-import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide } from './agent-precision-tools.js';
+import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject } from './agent-precision-tools.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
@@ -155,6 +155,18 @@ export class AICommandSession {
         }
         case 'geometry.bounds': {
           result = boundsOf(action.object);
+          break;
+        }
+        case 'geometry.project': {
+          result = projectPointToSegment(action.point, action.a, action.b);
+          break;
+        }
+        case 'geometry.intersection': {
+          result = lineIntersection(action.a1, action.a2, action.b1, action.b2);
+          break;
+        }
+        case 'geometry.measure': {
+          result = measureObject(action.object);
           break;
         }
         case 'geometry.distribute': {
