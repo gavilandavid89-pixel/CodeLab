@@ -20,11 +20,18 @@ permissions:
 jobs:
   runtime-contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.17.0"
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install Playwright FFmpeg
+        run: npx playwright-core install ffmpeg
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: "0"
       - name: Validate runtime module syntax
         run: |
           node --check .github/scripts/codelab-bridge.mjs
@@ -34,7 +41,58 @@ jobs:
           node --experimental-default-type=module --check public/pixelforge/src/workspaces.js
           node --experimental-default-type=module --check public/pixelforge/src/headless-bridge.js
           node --experimental-default-type=module --check public/pixelforge/src/headless-vision.js
+          node --check native-headless-browser.mjs
+          node --check assistant-headless-client.mjs
       - name: Run agent bridge and canvas coordinate contract tests
         run: node --test tests/pixelforge-agent-bridge-contract.test.mjs
       - name: Run headless runtime, bridge and vision contract tests
         run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs tests/pixelforge-headless-bridge.test.mjs tests/pixelforge-headless-vision.test.mjs
+      - name: Run native Headless browser, video and persistence contracts
+        run: npm run test:native-headless
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: "0"
+          HEADLESS_VISUAL_ARTIFACT_DIR: artifacts/native-headless-visuals
+      - name: Run PixelForge vector studio and integration suite
+        run: npm run test:pixelforge
+      - name: Package merged CodeLab source
+        if: success()
+        run: |
+          mkdir -p artifacts
+          git archive --format=zip --prefix=CodeLab-Headless/ HEAD -o artifacts/CodeLab-Headless-source.zip
+          cat > artifacts/HEADLESS-INSTALL.txt <<'EOF'
+          CodeLab Headless - source snapshot
+          Runtime: Node.js 22.17.0+
+          
+          This package is a source snapshot from the isolated integration branch.
+          It contains no production credentials, Neon data, user projects, Render
+          secrets, cookies, or authenticated sessions.
+          
+          Install:
+            npm install --ignore-scripts
+            npx playwright-core install ffmpeg
+          
+          Runtime configuration:
+            DATABASE_URL=<isolated PostgreSQL connection>
+            CODELAB_BASE_URL=<CodeLab server URL>
+          
+          Use an isolated database/workspace for tests. Do not configure production
+          endpoints or credentials unless separately authorized.
+          EOF
+      - name: Upload downloadable Headless source package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodeLab-Headless-downloadable
+          path: |
+            artifacts/CodeLab-Headless-source.zip
+            artifacts/HEADLESS-INSTALL.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Headless visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodeLab-Headless-visual-evidence
+          path: artifacts/native-headless-visuals
+          if-no-files-found: warn
+          retention-days: 14
