@@ -167,7 +167,7 @@ export class VectorStudio {
     Object.assign(this.bar.style, { position: 'absolute', top: '12px', left: '12px', zIndex: 12, display: 'none', gap: '5px', padding: '7px', border: '1px solid #3a3e4d', borderRadius: '10px', background: 'rgba(15,17,24,.95)', flexWrap: 'wrap' });
     const tools = [
       ['select', '↖'], ['rect', '▭'], ['ellipse', '◯'], ['line', '／'], ['pen', '✒'], ['node', '◇'], ['text', 'T'],
-      ['group', 'G'], ['ungroup', '↙'], ['duplicate', '⧉'], ['mirror', '⇋'], ['grid', '#'],
+      ['group', 'G'], ['ungroup', '↙'], ['duplicate', '⧉'], ['mirror', '⇋'], ['grad', '∿'], ['align-left', '⇤'], ['align-center', '↔'], ['align-right', '⇥'], ['align-top', '⇡'], ['align-middle', '↕'], ['align-bottom', '⇣'], ['grid', '#'],
       ['import', '⇧'], ['export', '⇩'], ['undo', '↶'], ['redo', '↷'], ['delete', '⌫']
     ];
     for (const [t, glyph] of tools) {
@@ -201,6 +201,8 @@ export class VectorStudio {
     if (tool === 'ungroup') return this.ungroupSelected();
     if (tool === 'duplicate') return this.duplicateSelected();
     if (tool === 'mirror') return this.mirrorSelected();
+    if (tool === 'grad') return this.addGradient('linear');
+    if (tool.startsWith('align-')) return this.align(tool.slice(6));
     if (tool === 'grid') { this.model.snap = !this.model.snap; this.status(this.model.snap ? 'Vector snapping on' : 'Vector snapping off', 'neutral'); return; }
     this.tool = tool; this.pen = []; this.status('Vector tool: ' + tool, 'neutral'); this.render();
   }
