@@ -80,3 +80,34 @@ test('rejects unsafe paths, wrong RGBA sizes and invalid frame dimensions', () =
   second.files.set('frames/0001/base.rgba', Buffer.from([1, 2, 3]));
   assert.throws(() => installCodeLabPackage(second), /RGBA8 cel byte length/);
 });
+
+import { deflateSync } from 'node:zlib';
+
+function makeRgbaPng(width, height, rgba) {
+  const chunk = (type, data) => {
+    const name = Buffer.from(type);
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0); name.copy(out, 4); data.copy(out, 8);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4);
+  header[8] = 8; header[9] = 6;
+  const rows = Buffer.alloc(height * (width * 4 + 1));
+  for (let y = 0; y < height; y++) Buffer.from([0]).copy(rows, y * (width * 4 + 1));
+  for (let y = 0; y < height; y++) Buffer.from(rgba).copy(rows, y * (width * 4 + 1) + 1);
+  return Buffer.concat([
+    Buffer.from([137,80,78,71,13,10,26,10]),
+    chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('decodes PNG cels to the exact RGBA bytes expected by the PixelForge timeline', () => {
+  const { project, manifest, files } = fixture();
+  const expected = Buffer.from([12, 34, 56, 255, 78, 90, 123, 128]);
+  files.set('frames/0001/base.rgba', makeRgbaPng(2, 1, expected));
+  manifest.animation.frames[0].cels[0].encoding = 'png';
+  const result = installCodeLabPackage({ manifest, project, files });
+  assert.equal(result.installed.animationCels, 4);
+  assert.deepEqual(Buffer.from(project.animation.frames[0].cels[0].pixels, 'base64'), expected);
+});
