@@ -895,6 +895,7 @@ function renderAnimationTimeline() {
   $('#crop-preview').title = enabled ? 'Canvas crop is temporarily unavailable while a multi-frame timeline is active' : 'Preview crop for the current canvas';
   for (const id of controls) { const node = $('#' + id); if (node) node.disabled = !enabled; }
   $('#animation-play').disabled = !enabled || animation.frameCount < 2 || animationPlayback.playing;
+  $('#record-video').disabled = !enabled || animation.frameCount < 2 || animationPlayback.playing;
   $('#animation-stop').disabled = !enabled || !animationPlayback.playing;
   $('#animation-add-frame').disabled = enabled && animation.frameCount >= 240;
   $('#animation-delete-frame').disabled = !enabled || animation.frameCount <= 1;
