@@ -184,7 +184,8 @@ export function smartSnap(point,objects=[],options={}) {
     if(o.type==='path'&&o.points?.length){for(let i=0;i<o.points.length-1;i++){const h=projectToSegment(p,o.points[i],o.points[i+1]);addCandidate('path',h.point,o,{segment:i,t:h.t});}}
   }
   if(options.grid){const g=Math.max(EPS,n(options.grid,1));const q={x:Math.round(p.x/g)*g,y:Math.round(p.y/g)*g};addCandidate('grid',q,null);}
-  c.sort((a,b)=>a.distance-b.distance || String(a.kind).localeCompare(String(b.kind)));
+  const priority={endpoint:0,anchor:1,center:2,midpoint:3,path:4,perpendicular:5,grid:6};
+  c.sort((a,b)=>(priority[a.kind]??99)-(priority[b.kind]??99) || a.distance-b.distance || String(a.kind).localeCompare(String(b.kind)));
   return {point:p,best:c[0]||null,candidates:c,reason:c[0]?.kind??'none'};
 }
 export function snapToAxis(point,origin={x:0,y:0},angleDegrees=0) {
