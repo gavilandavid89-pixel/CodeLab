@@ -411,6 +411,8 @@ async function exportVideo() {
   const exportCanvas = document.createElement('canvas');
   exportCanvas.width = width;
   exportCanvas.height = height;
+  exportCanvas.style.cssText = 'position:fixed;left:-10000px;top:-10000px;opacity:0;pointer-events:none;';
+  document.body.appendChild(exportCanvas);
   const context = exportCanvas.getContext('2d', { alpha: !solidBackground });
   if (!context) {
     exportBusy = false; refreshFormatSupport();
@@ -426,6 +428,7 @@ async function exportVideo() {
     recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: Math.min(25_000_000, Math.max(1_000_000, width * height * outputFps * 0.12)) });
   } catch (error) {
     stream.getTracks().forEach(track => track.stop());
+    exportCanvas.remove();
     exportBusy = false; refreshFormatSupport();
     setStatus('No se pudo iniciar el codificador: ' + error.message, 'error');
     return;
