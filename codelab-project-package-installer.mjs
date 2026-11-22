@@ -199,10 +199,10 @@ function imageMimeForResource(filePath, file) {
   if (file?.[0] === 0xff && file?.[1] === 0xd8 && file?.[2] === 0xff) return 'image/jpeg';
   if (file?.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/)) return 'image/gif';
   if (file?.subarray(0, 4).toString('ascii') === 'RIFF' && file.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
-  if (/\\.png$/i.test(lower)) return 'image/png';
-  if (/\\.jpe?g$/i.test(lower)) return 'image/jpeg';
-  if (/\\.gif$/i.test(lower)) return 'image/gif';
-  if (/\\.webp$/i.test(lower)) return 'image/webp';
+  if (/\.(?:png)$/i.test(lower)) return 'image/png';
+  if (/\.(?:png)$/i.test(lower)) return 'image/png';
+  if (/\.(?:png)$/i.test(lower)) return 'image/png';
+  if (/\.(?:png)$/i.test(lower)) return 'image/png';
   return null;
 }
 
@@ -225,7 +225,6 @@ function installPackageResourceCatalog(project, destinations, files, manifest) {
   model.referenceCenter ||= { version: 2, entries: [], activeEntryId: null, viewContext: {} };
   model.referenceCenter.entries = Array.isArray(model.referenceCenter.entries) ? model.referenceCenter.entries : [];
   const declared = Array.isArray(manifest.resources) ? manifest.resources : [];
-  const resourceByPath = new Map(destinations.map(item => [item.path, item]));
   const catalog = destinations.map(item => {
     const bytes = files.get(item.path);
     return {
@@ -250,7 +249,7 @@ function installPackageResourceCatalog(project, destinations, files, manifest) {
     const fileName = item.path.split('/').at(-1) || 'Reference image';
     const entry = {
       id: 'package-reference-' + (referenceImages + 1) + '-' + item.destinationPath.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 80),
-      name: fileName.replace(/\\.[^.]+$/, '').slice(0, 120) || 'Reference image',
+      name: fileName.replace(/\.[^.]+$/, '').slice(0, 120) || 'Reference image',
       type: 'asset',
       category: 'reference',
       version: 1,
