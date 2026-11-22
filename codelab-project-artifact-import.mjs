@@ -7,6 +7,22 @@ import { createHash } from 'node:crypto';
 
 const execFileAsync = promisify(execFile);
 
+const MAX_CODELAB_ARTIFACT_BYTES = 100 * 1024 * 1024;
+
+async function queryChecked(pool, label, text, values) {
+  const placeholderMatches = [...text.matchAll(/\$(\d+)/g)];
+  const maxPlaceholder = placeholderMatches.reduce((m, match) => Math.max(m, Number(match[1])), 0);
+  if (maxPlaceholder !== values.length) {
+    throw new Error(`SQL parameter mismatch in ${label}: query requires ${maxPlaceholder}, values supplied ${values.length}`);
+  }
+  try {
+    return await queryChecked(pool, 'codelab_import_query', text, values);
+  } catch (error) {
+    error.message = `${label}: ${error.message}`;
+    throw error;
+  }
+}
+
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
@@ -84,6 +100,7 @@ export async function importCodeLabArtifact(pool, {
 
   const artifact = artifactResult.rows[0];
   const buffer = artifact.artifact;
+  if (buffer.length > MAX_CODELAB_ARTIFACT_BYTES) throw new Error(`Artifact exceeds maximum supported size of ${MAX_CODELAB_ARTIFACT_BYTES} bytes.`);
   if (Number(artifact.byte_size) !== buffer.length) throw new Error('Artifact byte size mismatch.');
   const actualSha = sha256(buffer);
   if (actualSha !== artifact.sha256 || (request.source_sha256 && request.source_sha256 !== actualSha)) {
