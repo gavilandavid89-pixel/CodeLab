@@ -11,6 +11,9 @@ import {
   distributeObjects,
   boundsOf,
   constructSymmetryPoints,
+  projectPointToSegment,
+  lineIntersection,
+  measureObject,
   buildAgentToolCatalog
 } from '../public/pixelforge/src/agent-precision-tools.js';
 
@@ -59,6 +62,18 @@ test('bounds, distribution and symmetry are exact', () => {
   assert.deepEqual(mirrored[1], {x:80,y:50});
   const radial = constructSymmetryPoints({x:110,y:100},{x:100,y:100},'radial',4);
   assert.equal(radial.length,4);
+});
+
+test('measurement, projection and intersection provide exact construction feedback', () => {
+  const projection = projectPointToSegment({x:5,y:4},{x:0,y:0},{x:10,y:0});
+  assert.deepEqual(projection.point,{x:5,y:0});
+  assert.equal(projection.t,0.5);
+  const intersection = lineIntersection({x:0,y:0},{x:10,y:10},{x:0,y:10},{x:10,y:0});
+  assert.equal(intersection.intersects,true);
+  assert.ok(Math.abs(intersection.point.x-5)<1e-9);
+  const measurement = measureObject({type:'line',x1:0,y1:0,x2:3,y2:4});
+  assert.equal(measurement.length,5);
+  assert.equal(measurement.angle,Math.atan2(4,3)*180/Math.PI);
 });
 
 test('agent tool catalog is explicit and deterministic', () => {
