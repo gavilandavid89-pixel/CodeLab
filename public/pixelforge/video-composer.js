@@ -428,6 +428,7 @@ async function exportVideo() {
       codec,
       fps: outputFps,
       durationMs: total,
+      backgroundColor: solidBackground ? '#101116' : null,
       isCancelled: () => cancelRequested,
       onProgress: (value, label) => setProgress(value, label)
     });
