@@ -80,7 +80,15 @@ export function projectToSegment(point,a,b){
 function replaceEndpoint(o,index,target){
   const r=clone(o);
   if(r.type==='line'){if(index===0){r.x1=target.x;r.y1=target.y;}else{r.x2=target.x;r.y2=target.y;}}
-  else if(r.type==='path'){const p=r.points?.[index===0?0:r.points.length-1];if(p){p.x=target.x;p.y=target.y;if(p.c1){p.c1.x+=target.x-num(p.x);p.c1.y+=target.y-num(p.y);}if(p.c2){p.c2.x+=target.x-num(p.x);p.c2.y+=target.y-num(p.y);}}}
+  else if(r.type==='path'){
+    const p=r.points?.[index===0?0:r.points.length-1];
+    if(p){
+      const dx=target.x-num(p.x),dy=target.y-num(p.y);
+      p.x=target.x;p.y=target.y;
+      if(p.c1){p.c1.x+=dx;p.c1.y+=dy;}
+      if(p.c2){p.c2.x+=dx;p.c2.y+=dy;}
+    }
+  }
   return r;
 }
 export function connectObjects(a,b,{tolerance=.01,weld=false}={}){
@@ -164,31 +172,52 @@ function movePointConstraint(o,id,delta){
 }
 export function solveConstraints(objects,constraints=[],{tolerance=.001,maxIterations=24}={}){
   let current=(objects||[]).map(clone),diagnostics=[];
+  const iterations=Math.max(1,Math.floor(maxIterations));
   const get=(id,index=0)=>{const o=current.find(x=>x.id===id);if(!o)return null;const e=objectEndpoints(o);return e[index]||anchorPoint(o,'center');};
-  for(let iter=0;iter<Math.max(1,Math.floor(maxIterations));iter++){
+  const movePair=(constraint,delta)=>{
+    if(constraint.move==='a') current=current.map(o=>o.id===constraint.a?movePointConstraint(o,constraint.aIndex??0,mul(delta,-1)):o);
+    else if(constraint.move==='b') current=current.map(o=>o.id===constraint.b?movePointConstraint(o,constraint.bIndex??0,delta):o);
+    else {
+      current=current.map(o=>o.id===constraint.a?movePointConstraint(o,constraint.aIndex??0,mul(delta,-.5)):o);
+      current=current.map(o=>o.id===constraint.b?movePointConstraint(o,constraint.bIndex??0,mul(delta,.5)):o);
+    }
+  };
+  for(let iter=0;iter<iterations;iter++){
     let changed=0;
     for(const c of constraints||[]){
-      const a=get(c.a,c.aIndex??0),b=get(c.b,c.bIndex??0);if(!a||!b){diagnostics.push({constraint:c,status:'missing_reference'});continue;}
-      let delta={x:0,y:0};
-      if(c.type==='coincident'){delta={x:b.x-a.x,y:b.y-a.y};}
-      else if(c.type==='horizontal'){delta={x:0,y:b.y-a.y};}
-      else if(c.type==='vertical'){delta={x:b.x-a.x,y:0};}
-      else if(c.type==='distance'){const target=Math.abs(num(c.value)),v=sub(b,a),l=Math.hypot(v.x,v.y)||1;delta=mul(v,(target-l)/l);}
-      else if(c.type==='angle'){const target=num(c.degrees)*Math.PI/180,v=sub(b,a),l=Math.hypot(v.x,v.y);if(l){const ca=Math.cos(target),sa=Math.sin(target),rot={x:v.x*ca-v.y*sa,y:v.x*sa+v.y*ca},desired=add(a,mul(rot,1));delta=sub(desired,b);}}
-      else continue;
-      const targetA=c.move==='a'?-1:0.5,targetB=c.move==='a'?0:0.5;
-      current=current.map(o=>o.id===c.b?movePointConstraint(o,c.bIndex??0,mul(delta,targetB)):o);
-      if(c.move!=='a')current=current.map(o=>o.id===c.a?movePointConstraint(o,c.aIndex??0,mul(delta,targetA)):o);
-      changed+=Math.hypot(delta.x,delta.y);
+      const a=get(c.a,c.aIndex??0),b=get(c.b,c.bIndex??0);
+      if(!a||!b){diagnostics.push({constraint:c,status:'missing_reference'});continue;}
+      let correction=null;
+      if(c.type==='coincident') correction=sub(a,b);
+      else if(c.type==='horizontal') correction={x:0,y:a.y-b.y};
+      else if(c.type==='vertical') correction={x:a.x-b.x,y:0};
+      else if(c.type==='distance'){
+        const target=Math.abs(num(c.value)),v=sub(b,a),l=Math.hypot(v.x,v.y);
+        if(l<EPS){diagnostics.push({constraint:c,status:'degenerate_distance'});continue;}
+        correction=mul(v,(target-l)/l);
+      } else if(c.type==='angle'){
+        const target=num(c.degrees)*Math.PI/180,v=sub(b,a),l=Math.hypot(v.x,v.y);
+        if(l<EPS){diagnostics.push({constraint:c,status:'degenerate_angle'});continue;}
+        const ca=Math.cos(target),sa=Math.sin(target),rot={x:v.x*ca-v.y*sa,y:v.x*sa+v.y*ca};
+        correction=sub(add(a,rot),b);
+      } else {
+        continue;
+      }
+      movePair(c,correction); changed+=Math.hypot(correction.x,correction.y);
     }
     if(changed<=tolerance)break;
   }
   for(const c of constraints||[]){
     const a=get(c.a,c.aIndex??0),b=get(c.b,c.bIndex??0);let error=null,status='unsupported';
-    if(a&&b){if(c.type==='coincident'||c.type==='horizontal'||c.type==='vertical')error=c.type==='coincident'?dist(a,b):c.type==='horizontal'?Math.abs(a.y-b.y):Math.abs(a.x-b.x);else if(c.type==='distance')error=Math.abs(dist(a,b)-Math.abs(num(c.value)));status=error<=tolerance?'satisfied':'unsatisfied';}
+    if(a&&b){
+      if(c.type==='coincident'||c.type==='horizontal'||c.type==='vertical')error=c.type==='coincident'?dist(a,b):c.type==='horizontal'?Math.abs(a.y-b.y):Math.abs(a.x-b.x);
+      else if(c.type==='distance')error=Math.abs(dist(a,b)-Math.abs(num(c.value)));
+      else if(c.type==='angle'){const actual=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;let delta=((actual-num(c.degrees)+180)%360+360)%360-180;error=Math.abs(delta);}
+      if(error!==null)status=error<=tolerance?'satisfied':'unsatisfied';
+    }
     diagnostics.push({constraint:c,status,error,tolerance});
   }
-  return{objects:current,diagnostics,iterations:Math.max(1,Math.floor(maxIterations))};
+  return{objects:current,diagnostics,iterations};
 }
 export function constraintAudit(objects,constraints=[],tolerance=.001){
   const solved=solveConstraints(objects,constraints,{tolerance,maxIterations:1});
