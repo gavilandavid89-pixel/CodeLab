@@ -473,7 +473,7 @@ export class VectorStudio {
           else if (n.tagName === 'line') model.objects.push({ ...common, type: 'line', x1: Number(n.getAttribute('x1') || 0), y1: Number(n.getAttribute('y1') || 0), x2: Number(n.getAttribute('x2') || 0), y2: Number(n.getAttribute('y2') || 0) });
           else if (n.tagName === 'text') model.objects.push({ ...common, type: 'text', x: Number(n.getAttribute('x') || 0), y: Number(n.getAttribute('y') || 0), text: n.textContent || '', fontSize: Number(n.getAttribute('font-size') || 16) });
           else if (n.tagName === 'path') {
-            const d = n.getAttribute('d') || '', nums = d.match(/-?\\d*\\.?\\d+/g)?.map(Number) || [], points = [];
+            const d = n.getAttribute('d') || '', nums = d.match(/-?\d*\.?\d+/g)?.map(Number) || [], points = [];
             for (let k = 0; k + 1 < nums.length; k += 2) points.push({ x: nums[k], y: nums[k + 1] });
             model.objects.push({ ...common, type: 'path', points, closed: /z/i.test(d), lineJoin: 'round' });
           }
