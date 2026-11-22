@@ -78,16 +78,23 @@ async function extractCodelabArchive(buffer, tempRoot) {
 
   const { stdout } = await execFileAsync('unzip', ['-Z1', archive], { timeout: 30_000 });
   const entries = stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+  const seen = new Set();
   for (const entry of entries) {
     if (!assertSafePath(entry)) throw new Error(`Unsafe path in .codelab archive: ${entry}`);
-    const normalized = entry.replace(/\\/g, '/');
-    if (!normalized.startsWith('manifest.json') &&
-        !normalized.startsWith('project.json') &&
-        !normalized.startsWith('assets/') &&
-        !normalized.startsWith('scenes/') &&
-        !normalized.startsWith('animations/')) {
+    const normalized = entry.replace(/\\\\/g, '/');
+    if (seen.has(normalized)) throw new Error(`Duplicate entry in .codelab archive: ${entry}`);
+    seen.add(normalized);
+    const allowed = normalized === 'manifest.json' ||
+      normalized === 'project.json' ||
+      normalized === 'assets' || normalized.startsWith('assets/') ||
+      normalized === 'scenes' || normalized.startsWith('scenes/') ||
+      normalized === 'animations' || normalized.startsWith('animations/');
+    if (!allowed) {
       throw new Error(`Unsupported file outside the declared .codelab package areas: ${entry}`);
     }
+  }
+  if (!seen.has('manifest.json') || !seen.has('project.json')) {
+    throw new Error('Invalid .codelab package: root manifest.json and project.json are required.');
   }
 
   await execFileAsync('unzip', ['-oq', archive, '-d', extractDir], { timeout: 30_000 });
