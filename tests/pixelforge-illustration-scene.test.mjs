@@ -48,9 +48,10 @@ test('semantic scene rejects missing anatomical anchors', () => {
 test('semantic scene compiles into deterministic allowlisted raster actions', () => {
   const compiled = compileIllustrationScene(scene);
   assert.equal(compiled.compilation.mode, 'semantic-to-raster');
-  assert.equal(compiled.actionCount, 3);
+  assert.equal(compiled.actionCount, 4);
   assert.equal(compiled.actions[0].name, 'canvas.draw_shape');
   assert.equal(compiled.actions[1].name, 'canvas.draw_stroke');
-  assert.equal(compiled.actions[2].name, 'canvas.draw_line');
+  assert.equal(compiled.actions[2].name, 'canvas.draw_shape');
+  assert.equal(compiled.actions[3].name, 'canvas.draw_line');
   assert.equal(compiled.compilation.noImageGeneration, true);
 });

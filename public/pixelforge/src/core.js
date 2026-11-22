@@ -233,6 +233,7 @@ function entryBytes(entry) {
     const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0), 0);
     return bytes(entry.before) + bytes(entry.after) + 512;
   }
+  if (entry.type === 'vector-model') return JSON.stringify(entry.before ?? null).length * 2 + JSON.stringify(entry.after ?? null).length * 2 + 128;
   return 128;
 }
 
@@ -259,6 +260,7 @@ export class RasterDocument {
     this.dirty = false;
     this.selectionMask = null;
     this.drawingModel = null;
+    this.vectorModel = null;
   }
   setDrawingModel(model) {
     if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Drawing model must be an object or null.');
@@ -268,6 +270,18 @@ export class RasterDocument {
   }
   getDrawingModel() {
     return this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel));
+  }
+  setVectorModel(model) {
+    if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Vector model must be an object or null.');
+    const next = model === null ? null : JSON.parse(JSON.stringify(model));
+    if (JSON.stringify(this.vectorModel) === JSON.stringify(next)) return false;
+    const before = this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel));
+    this.vectorModel = next;
+    this.#record({ type: 'vector-model', before, after: next === null ? null : JSON.parse(JSON.stringify(next)) });
+    return true;
+  }
+  getVectorModel() {
+    return this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel));
   }
   setSelectionMask(mask) {
     if (mask === null) { this.selectionMask = null; return; }
@@ -716,6 +730,9 @@ export class RasterDocument {
     this.drawingModel = snapshot.drawingModel === null || snapshot.drawingModel === undefined
       ? null
       : JSON.parse(JSON.stringify(snapshot.drawingModel));
+    this.vectorModel = snapshot.vectorModel === null || snapshot.vectorModel === undefined
+      ? null
+      : JSON.parse(JSON.stringify(snapshot.vectorModel));
     this.selectionMask = null;
     this.compositeCache = new Uint8ClampedArray(this.width * this.height * 4);
     this.compositeDirtyTiles = new Set();
@@ -732,11 +749,13 @@ export class RasterDocument {
       width: this.width, height: this.height, name: this.name,
       activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer),
       drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
+      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
     };
     const after = {
       width: candidate.width, height: candidate.height, name: candidate.name,
       activeLayerId: candidate.activeLayerId, layers: candidate.layers.map(cloneLayer),
       drawingModel: candidate.drawingModel === null ? null : JSON.parse(JSON.stringify(candidate.drawingModel)),
+      vectorModel: candidate.vectorModel === null ? null : JSON.parse(JSON.stringify(candidate.vectorModel)),
     };
     const beforeById = new Map(before.layers.map(layer => [layer.id, layer]));
     const afterById = new Map(after.layers.map(layer => [layer.id, layer]));
@@ -780,7 +799,8 @@ export class RasterDocument {
     const structuralChanges = before.width !== after.width || before.height !== after.height ||
       before.layers.length !== after.layers.length || before.layers.some((layer, index) => after.layers[index]?.id !== layer.id);
     const drawingModelChanged = JSON.stringify(before.drawingModel) !== JSON.stringify(after.drawingModel);
-    const stateChanged = changedLayers > 0 || changedPixels > 0 || drawingModelChanged || before.name !== after.name ||
+    const vectorModelChanged = JSON.stringify(before.vectorModel) !== JSON.stringify(after.vectorModel);
+    const stateChanged = changedLayers > 0 || changedPixels > 0 || drawingModelChanged || vectorModelChanged || before.name !== after.name ||
       before.activeLayerId !== after.activeLayerId;
     if (!stateChanged) return { changedPixels: 0, changedLayers: 0, structuralChanges: false };
 
@@ -1073,7 +1093,8 @@ export class RasterDocument {
     }
     return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
       layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })),
-      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)) };
+      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
+      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)) };
   }
   static fromJSON(data, { newIdentity = false } = {}) {
     if (!data || data.format !== 'pixelforge-project' || data.version !== 1 || !Array.isArray(data.layers)) throw new TypeError('Unsupported or invalid PixelForge project file.');
@@ -1111,6 +1132,8 @@ export class RasterDocument {
     doc.activeLayerId = data.activeLayerId === undefined ? doc.layers[0].id : (newIdentity ? layerIdMap.get(data.activeLayerId) : data.activeLayerId);
     doc.drawingModel = data.drawingModel && typeof data.drawingModel === 'object' && !Array.isArray(data.drawingModel)
       ? JSON.parse(JSON.stringify(data.drawingModel)) : null;
+    doc.vectorModel = data.vectorModel && typeof data.vectorModel === 'object' && !Array.isArray(data.vectorModel)
+      ? JSON.parse(JSON.stringify(data.vectorModel)) : null;
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
     doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
@@ -1200,6 +1223,9 @@ export class RasterDocument {
   #applyEntry(entry, forward) {
     if (entry.type === 'document-rename') {
       this.name = forward ? entry.after : entry.before;
+    } else if (entry.type === 'vector-model') {
+      const model = forward ? entry.after : entry.before;
+      this.vectorModel = model === null ? null : JSON.parse(JSON.stringify(model));
     } else if (entry.type === 'document-state') {
       this.#restoreDocument(forward ? entry.after : entry.before);
     } else if (entry.type === 'document-crop') {

@@ -1,5 +1,10 @@
 import { AIWorkspace } from './workspaces.js';
+import { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
+import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';
+import { buildAdvancedPrecisionToolCatalog, coordinateFrame, localToWorld, worldToLocal, polarPoint, angleBisector, perpendicularThrough, parallelThrough, divideSegment, circumcenter, triangleCenters, circleLineIntersections, tangentLinesToCircle, bezierPoint, bezierTangentAt, bezierCurvatureAt, splitBezier, curveContinuity, sampleBezier, fitPolyline, reversePath, pathLength, polygonBoolean, smartSnap, snapToAxis, measureBetween, objectMetrics, diagnoseGeometry, geometryDiff, intentPlan } from './advanced-precision-tools.js';
+import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, extendToIntersection, trimToIntersection, filletLines, chamferLines, offsetLine, snapSmart, anchorPoint, alignToAnchor, dimension, constructionGraph, solveConstraints, constraintAudit, continuity } from './agent-connectivity-tools.js';
+import { parseSVGToVectorModel } from './vector-studio.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
@@ -104,6 +109,154 @@ export class AICommandSession {
       const doc = this.#workspace.sandbox;
       let result;
       switch (action.name) {
+        case 'geometry.point': {
+          result = { point: { x: Number(action.x), y: Number(action.y) } };
+          break;
+        }
+        case 'geometry.line': {
+          result = createLine(action.a || { x: action.x1, y: action.y1 }, action.b || { x: action.x2, y: action.y2 }, action.style || {});
+          break;
+        }
+        case 'geometry.rect': {
+          result = createRect(action.x, action.y, action.width, action.height, action.style || {});
+          break;
+        }
+        case 'geometry.ellipse': {
+          result = createEllipse(action.cx, action.cy, action.rx, action.ry, action.style || {});
+          break;
+        }
+        case 'geometry.polygon': {
+          result = createRegularPolygon(action.cx, action.cy, action.radius, action.sides, action.rotation, action.style || {});
+          break;
+        }
+        case 'geometry.star': {
+          result = createStar(action.cx, action.cy, action.outerRadius, action.innerRadius, action.points, action.rotation, action.style || {});
+          break;
+        }
+        case 'geometry.bezier': {
+          result = createBezier(action.points, { closed: action.closed, style: action.style || {} });
+          break;
+        }
+        case 'geometry.path': {
+          result = pathFromCommands(action.commands, action.style || {});
+          break;
+        }
+        case 'geometry.translate': {
+          result = translateObject(action.object, action.dx, action.dy);
+          break;
+        }
+        case 'geometry.scale': {
+          result = scaleObject(action.object, action.center, action.sx, action.sy);
+          break;
+        }
+        case 'geometry.rotate': {
+          result = rotateObject(action.object, action.center, action.degrees);
+          break;
+        }
+        case 'geometry.bounds': {
+          result = boundsOf(action.object);
+          break;
+        }
+        case 'geometry.project': {
+          result = projectPointToSegment(action.point, action.a, action.b);
+          break;
+        }
+        case 'geometry.intersection': {
+          result = lineIntersection(action.a1, action.a2, action.b1, action.b2);
+          break;
+        }
+        case 'geometry.measure': {
+          result = measureObject(action.object);
+          break;
+        }
+        case 'geometry.roundedRect': {
+          result = createRoundedRect(action.x, action.y, action.width, action.height, action.radius, action.style || {});
+          break;
+        }
+        case 'geometry.arc': {
+          result = createArc(action.cx, action.cy, action.radius, action.startDegrees, action.endDegrees, action.style || {});
+          break;
+        }
+        case 'geometry.circle3': {
+          result = createCircleThroughThreePoints(action.a, action.b, action.c, action.style || {});
+          break;
+        }
+        case 'geometry.polarArray': {
+          result = { objects: createPolarArray(action.object, action.center, action.count, action.startDegrees, action.sweepDegrees) };
+          break;
+        }
+        case 'geometry.gridArray': {
+          result = { objects: createGridArray(action.object, action.origin, action.columns, action.rows, action.dx, action.dy) };
+          break;
+        }
+        case 'geometry.polylineLength': {
+          result = { length: polylineLength(action.points, action.closed) };
+          break;
+        }
+        case 'geometry.nearest': {
+          result = nearestPointOnPolyline(action.point, action.points, action.closed);
+          break;
+        }
+        case 'geometry.edgeAlign': {
+          result = { objects: alignObjectEdges(action.objects, action.edge, action.target) };
+          break;
+        }
+        case 'geometry.distribute': {
+          result = { objects: distributeObjects(action.objects, action.axis || 'x', action.gap) };
+          break;
+        }
+        case 'geometry.symmetry': {
+          result = { points: constructSymmetryPoints(action.point, action.center, action.mode || 'mirror-x', action.radialCount) };
+          break;
+        }
+        case 'guide.create': {
+          result = makePrecisionGuide(action);
+          break;
+        }
+        case 'geometry.coordinateFrame': result = coordinateFrame(action.origin, action.angleDegrees); break;
+        case 'geometry.toLocal': result = worldToLocal(action.point, action.frame); break;
+        case 'geometry.toWorld': result = localToWorld(action.point, action.frame); break;
+        case 'geometry.polarPoint': result = polarPoint(action.origin, action.radius, action.angleDegrees); break;
+        case 'geometry.angleBisector': result = angleBisector(action.a, action.vertex ?? action.b, action.c); break;
+        case 'geometry.perpendicularThrough': result = perpendicularThrough(action.point, action.a, action.b); break;
+        case 'geometry.parallelThrough': result = parallelThrough(action.point, action.a, action.b); break;
+        case 'geometry.divideSegment': result = { points: divideSegment(action.a, action.b, action.count, action.mode) }; break;
+        case 'geometry.circumcenter': result = circumcenter(action.a, action.b, action.c); break;
+        case 'geometry.triangleCenters': result = triangleCenters(action.a, action.b, action.c); break;
+        case 'geometry.circleLineIntersections': result = { points: circleLineIntersections(action.circle, action.a, action.b) }; break;
+        case 'geometry.tangentLinesToCircle': result = { lines: tangentLinesToCircle(action.point, action.circle) }; break;
+        case 'geometry.bezierPoint': result = bezierPoint(action.p0, action.p1, action.p2, action.p3, action.t); break;
+        case 'geometry.bezierTangent': result = bezierTangentAt(action.segment, action.t); break;
+        case 'geometry.bezierCurvature': result = { curvature: bezierCurvatureAt(action.segment, action.t) }; break;
+        case 'geometry.bezierSplit': result = { segments: splitBezier(action.segment, action.t) }; break;
+        case 'geometry.bezierContinuity': result = curveContinuity(action.a, action.b, action.tolerance ?? 0.001); break;
+        case 'geometry.bezierSample': result = { points: sampleBezier(action.segment, action.samples ?? 32) }; break;
+        case 'geometry.fitPolyline': result = fitPolyline(action.points, { closed: action.closed, tolerance: action.tolerance ?? 0.5 }); break;
+        case 'geometry.reversePath': result = reversePath(action.path); break;
+        case 'geometry.pathLength': result = { length: pathLength(action.path) }; break;
+        case 'geometry.boolean': result = polygonBoolean(action.subject, action.clip, action.operation ?? 'intersect'); break;
+        case 'geometry.smartSnap': result = smartSnap(action.point, action.objects || [], action.options || { tolerance: action.tolerance ?? 8, grid: action.grid }); break;
+        case 'geometry.snapAxis': result = snapToAxis(action.point, action.origin, action.angleDegrees); break;
+        case 'geometry.measureBetween': result = measureBetween(action.a, action.b); break;
+        case 'geometry.objectMetrics': result = objectMetrics(action.object); break;
+        case 'geometry.diagnose': result = diagnoseGeometry(action.object, { tolerance: action.tolerance ?? 0.001 }); break;
+        case 'geometry.diff': result = geometryDiff(action.before, action.after, action.tolerance ?? 0.001); break;
+        case 'geometry.intentPlan': result = intentPlan(action.intent, { objects: action.objects || [] }); break;
+        case 'geometry.add': {
+          const model = doc.getVectorModel() || { version: 4, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
+          const object = action.object;
+          if (!object || typeof object !== 'object') throw new TypeError('geometry.add requires an object.');
+          const next = plainResult(object); next.id = next.id || crypto.randomUUID();
+          model.objects.push(next); doc.setVectorModel(model); result = { object: next, objectCount: model.objects.length };
+          break;
+        }
+        case 'geometry.update': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const index = model.objects.findIndex(item => item.id === action.id); if (index < 0) throw new Error('Vector object not found.');
+          model.objects[index] = { ...model.objects[index], ...plainResult(action.patch || {}), id: model.objects[index].id };
+          doc.setVectorModel(model); result = { object: plainResult(model.objects[index]) };
+          break;
+        }
         case 'drawing.workflow.start': {
           const workflowId = typeof action.workflowId === 'string' && action.workflowId ? action.workflowId : crypto.randomUUID();
           this.#drawingWorkflow = new DrawingWorkflow({
@@ -815,6 +968,322 @@ export class AICommandSession {
         case 'history.redo':
           result = { changed: doc.redo() };
           break;
+        case 'pixelforge.validate': {
+          const project = action.project || doc.toJSON();
+          result = validatePixelForgeProject(project, { tolerance: action.tolerance ?? 2 });
+          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);
+          break;
+        }
+        case 'vector.validate': {
+          const model = action.model || doc.getVectorModel();
+          result = validateVectorModel(model, { width: doc.width, height: doc.height, tolerance: action.tolerance ?? 2 });
+          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);
+          break;
+        }
+        case 'vector.audit': {
+          const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, objects: [], precision: { tolerance: 0.001, constraints: [] } };
+          const issues = [];
+          const precisionAudit = model.precision?.constraints?.length
+            ? constraintAudit(model.objects || [], model.precision.constraints, action.tolerance ?? model.precision?.tolerance ?? 0.001)
+            : { ok: true, counts: {}, diagnostics: [] };
+          for (const item of precisionAudit.diagnostics || []) {
+            if (item.status === 'unsatisfied') issues.push({ code: 'constraint_unsatisfied', severity: 'error', message: 'Precision constraint is unsatisfied.', constraint: item.constraint });
+            if (item.status === 'missing_reference') issues.push({ code: 'constraint_missing_reference', severity: 'error', message: 'Precision constraint references missing geometry.', constraint: item.constraint });
+          }
+          const objects = model.objects || [];
+          const bounds = o => o.type === 'line'
+            ? { x: Math.min(o.x1,o.x2), y: Math.min(o.y1,o.y2), width: Math.abs(o.x2-o.x1), height: Math.abs(o.y2-o.y1) }
+            : { x:o.x||0, y:o.y||0, width:o.width||0, height:o.height||0 };
+          for (const o of objects) {
+            const b = bounds(o);
+            if (!o.id) issues.push({code:'missing_id',severity:'error',message:'Object has no id.'});
+            if (![b.x,b.y,b.width,b.height].every(Number.isFinite)) issues.push({code:'invalid_geometry',severity:'error',objectId:o.id,message:'Non-finite geometry.'});
+            if (b.x < -2 || b.y < -2 || b.x+b.width > model.width+2 || b.y+b.height > model.height+2)
+              issues.push({code:'out_of_bounds',severity:'warning',objectId:o.id,message:'Object exceeds document bounds.'});
+            if (o.type === 'path' && (!o.points || o.points.length < 2))
+              issues.push({code:'empty_path',severity:'error',objectId:o.id,message:'Path needs at least two points.'});
+          }
+          result = {ok:!issues.some(i=>i.severity==='error'),score:Math.max(0,100-issues.filter(i=>i.severity==='error').length*20-issues.filter(i=>i.severity==='warning').length*5),objectCount:objects.length,issues};
+          break;
+        }
+        case 'geometry.connect': {
+          result = connectObjects(action.a, action.b, { tolerance: action.tolerance ?? 0.01, weld: false });
+          break;
+        }
+        case 'geometry.weld': {
+          result = connectObjects(action.a, action.b, { tolerance: action.tolerance ?? 0.01, weld: true });
+          break;
+        }
+        case 'geometry.join': {
+          result = joinPaths(action.objects || [], { tolerance: action.tolerance ?? 0.01, close: action.close === true });
+          break;
+        }
+        case 'geometry.merge': {
+          const objects = (action.objects || []).map(plainResult);
+          if (!objects.length) throw new TypeError('geometry.merge requires objects.');
+          if (objects.every(o => ['line','path'].includes(o.type))) result = joinPaths(objects, { tolerance: action.tolerance ?? 0.01, close: action.close === true });
+          else result = { object: { id: crypto.randomUUID(), type: 'group', name: action.name || 'Merged group', children: objects, transform: {} } };
+          break;
+        }
+        case 'geometry.closeGap': {
+          result = closeGap(action.object, action.endpointIndex ?? 1, action.target);
+          break;
+        }
+        case 'geometry.extendToIntersection': {
+          result = extendToIntersection(action.object, action.other);
+          break;
+        }
+        case 'geometry.trimToIntersection': {
+          result = trimToIntersection(action.object, action.other, action.keep || 'start');
+          break;
+        }
+        case 'geometry.fillet': {
+          result = filletLines(action.a, action.b, action.radius);
+          break;
+        }
+        case 'geometry.chamfer': {
+          result = chamferLines(action.a, action.b, action.distance);
+          break;
+        }
+        case 'geometry.offset': {
+          result = offsetLine(action.object, action.distance);
+          break;
+        }
+        case 'geometry.snapSmart': {
+          result = snapSmart(action.point, action.objects || [], action.tolerance ?? 8);
+          break;
+        }
+        case 'geometry.anchor': {
+          result = { point: anchorPoint(action.object, action.anchor || 'center'), anchor: action.anchor || 'center' };
+          break;
+        }
+        case 'geometry.alignToAnchor': {
+          result = alignToAnchor(action.object, action.anchor || 'center', action.target);
+          break;
+        }
+        case 'geometry.dimension': {
+          result = dimension(action.a, action.b, action.label);
+          break;
+        }
+        case 'geometry.constructionGraph': {
+          result = constructionGraph(action.objects || [], action.relations || []);
+          break;
+        }
+        case 'geometry.solveConstraints': {
+          result = solveConstraints(action.objects || [], action.constraints || [], { tolerance: action.tolerance ?? 0.001, maxIterations: action.maxIterations ?? 24 });
+          break;
+        }
+        case 'geometry.constraintAudit': {
+          result = constraintAudit(action.objects || [], action.constraints || [], action.tolerance ?? 0.001);
+          break;
+        }
+        case 'geometry.continuity': {
+          result = continuity(action.a, action.b, action.tolerance ?? 0.001);
+          break;
+        }
+        case 'agent.tools.list': {
+          result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog(), ...buildAdvancedPrecisionToolCatalog(), ...[
+            'vector.model.get','vector.model.import_svg','vector.object.create','vector.object.update','vector.object.delete','vector.object.duplicate','vector.object.transform','vector.object.reorder','vector.object.mirror','vector.group.create','vector.group.ungroup','vector.align','vector.gradient.set','vector.keyframes.set','vector.snap.set','vector.history.undo','vector.history.redo','vector.model.validate'
+          ].map(name => ({ name, description: 'PixelForge vector editing operation available through isolated proposals.' }))] };
+          break;
+        }
+        case 'geometry.precision.get': {
+          const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, objects: [], precision: { tolerance: 0.001, anchors: [], guides: [], constraints: [], constructionGraph: { version: 1, nodes: [], edges: [] } } };
+          result = plainResult(model.precision || {});
+          break;
+        }
+        case 'geometry.precision.set': {
+          const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
+          model.precision = {
+            tolerance: Number.isFinite(Number(action.tolerance)) ? Number(action.tolerance) : 0.001,
+            anchors: Array.isArray(action.anchors) ? plainResult(action.anchors) : (model.precision?.anchors || []),
+            guides: Array.isArray(action.guides) ? plainResult(action.guides) : (model.precision?.guides || []),
+            constraints: Array.isArray(action.constraints) ? plainResult(action.constraints) : (model.precision?.constraints || []),
+            constructionGraph: action.constructionGraph && typeof action.constructionGraph === 'object'
+              ? plainResult(action.constructionGraph)
+              : (model.precision?.constructionGraph || { version: 1, nodes: [], edges: [] }),
+          };
+          doc.setVectorModel(model);
+          result = { precision: plainResult(model.precision) };
+          break;
+        }
+        case 'geometry.precision.solve': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const solved = solveConstraints(model.objects || [], model.precision?.constraints || [], {
+            tolerance: action.tolerance ?? model.precision?.tolerance ?? 0.001,
+            maxIterations: action.maxIterations ?? 24,
+          });
+          model.objects = solved.objects;
+          model.precision = { ...(model.precision || {}), constraints: plainResult(model.precision?.constraints || []) };
+          doc.setVectorModel(model);
+          result = { objects: plainResult(model.objects), diagnostics: plainResult(solved.diagnostics), iterations: solved.iterations };
+          break;
+        }
+        case 'vector.model.get': {
+          result = plainResult(doc.getVectorModel() || { version: 1, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] });
+          break;
+        }
+        case 'vector.object.create': {
+          const model = doc.getVectorModel() || { version: 1, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
+          if (!action.object || typeof action.object !== 'object' || Array.isArray(action.object)) throw new TypeError('Vector object must be an object.');
+          const object = plainResult(action.object);
+          object.id = typeof object.id === 'string' && object.id ? object.id : crypto.randomUUID();
+          const allowed = ['rect','ellipse','line','path','text'];
+          if (!allowed.includes(object.type)) throw new TypeError('Unsupported vector object type.');
+          model.objects.push(object); doc.setVectorModel(model);
+          result = { object: plainResult(object), objectCount: model.objects.length };
+          break;
+        }
+        case 'vector.object.update': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const index = model.objects.findIndex(item => item.id === action.id);
+          if (index < 0) throw new Error('Vector object not found.');
+          if (!action.patch || typeof action.patch !== 'object' || Array.isArray(action.patch)) throw new TypeError('Vector patch must be an object.');
+          model.objects[index] = { ...model.objects[index], ...plainResult(action.patch), id: model.objects[index].id };
+          doc.setVectorModel(model); result = { object: plainResult(model.objects[index]) };
+          break;
+        }
+        case 'vector.object.transform': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const index=model.objects.findIndex(value=>value.id===action.id); if(index<0) throw new Error('Vector object not found.');
+          const item=model.objects[index];
+          const center=action.center && Number.isFinite(action.center.x) && Number.isFinite(action.center.y) ? action.center : {x:0,y:0};
+          if(action.operation==='translate') model.objects[index]=translateObject(item, Number(action.dx)||0, Number(action.dy)||0);
+          else if(action.operation==='scale') model.objects[index]=scaleObject(item, center, Number(action.sx), action.sy===undefined?Number(action.sx):Number(action.sy));
+          else if(action.operation==='rotate') model.objects[index]=rotateObject(item, center, Number(action.degrees));
+          else throw new TypeError('operation must be translate, scale, or rotate.');
+          doc.setVectorModel(model); result={object:plainResult(model.objects[index])}; break;
+        }
+        case 'vector.object.reorder': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const index=model.objects.findIndex(value=>value.id===action.id); if(index<0) throw new Error('Vector object not found.');
+          const [item]=model.objects.splice(index,1);
+          const target=action.position==='back'?0:action.position==='forward'?Math.min(model.objects.length,index+1):action.position==='front'?model.objects.length:action.position==='backward'?Math.max(0,index-1):-1;
+          if(target<0) throw new TypeError('position must be front, back, forward, or backward.');
+          model.objects.splice(target,0,item); doc.setVectorModel(model); result={order:model.objects.map(value=>value.id)}; break;
+        }
+        case 'vector.object.delete': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const before = model.objects.length;
+          model.objects = model.objects.filter(item => item.id !== action.id);
+          if (model.objects.length === before) throw new Error('Vector object not found.');
+          doc.setVectorModel(model); result = { deleted: action.id, objectCount: model.objects.length };
+          break;
+        }
+        case 'vector.align': {
+          const model = doc.getVectorModel();
+          if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [];
+          const objects = model.objects.filter(item => ids.includes(item.id));
+          if (objects.length < 2) throw new Error('At least two vector objects are required.');
+          const b = o => o.type === 'line'
+            ? { x: Math.min(o.x1,o.x2), y: Math.min(o.y1,o.y2), width: Math.abs(o.x2-o.x1), height: Math.abs(o.y2-o.y1) }
+            : { x:o.x||0, y:o.y||0, width:o.width||0, height:o.height||0 };
+          const boxes = objects.map(b);
+          const left=Math.min(...boxes.map(v=>v.x)), top=Math.min(...boxes.map(v=>v.y));
+          const right=Math.max(...boxes.map(v=>v.x+v.width)), bottom=Math.max(...boxes.map(v=>v.y+v.height));
+          for (const o of objects) {
+            const q=b(o);
+            if (action.axis==='left') o.x=left;
+            else if (action.axis==='center') o.x=left+(right-left-q.width)/2;
+            else if (action.axis==='right') o.x=right-q.width;
+            else if (action.axis==='top') o.y=top;
+            else if (action.axis==='middle') o.y=top+(bottom-top-q.height)/2;
+            else if (action.axis==='bottom') o.y=bottom-q.height;
+            else throw new TypeError('axis must be left, center, right, top, middle, or bottom.');
+          }
+          doc.setVectorModel(model); result = { aligned: ids, axis: action.axis };
+          break;
+        }
+
+        case 'vector.model.import_svg': {
+          if (typeof action.svg !== 'string' || !action.svg.trim()) throw new TypeError('svg source is required.');
+          const model = parseSVGToVectorModel(action.svg, doc.width, doc.height);
+          doc.setVectorModel(model);
+          result = { imported: model.objects.length, model: plainResult(model) };
+          break;
+        }
+        case 'vector.object.duplicate': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [action.id].filter(Boolean);
+          const source = model.objects.filter(item => ids.includes(item.id));
+          if (!source.length) throw new Error('No matching vector objects found.');
+          const dx = Number.isFinite(action.dx) ? action.dx : 8, dy = Number.isFinite(action.dy) ? action.dy : 8;
+          const cloneTree = item => {
+            const copy = plainResult(item); copy.id = crypto.randomUUID();
+            if (Array.isArray(copy.children)) copy.children = copy.children.map(cloneTree);
+            if (copy.type === 'line') { copy.x1 += dx; copy.x2 += dx; copy.y1 += dy; copy.y2 += dy; }
+            else if (copy.type === 'path') copy.points = (copy.points || []).map(p => ({ ...p, x:p.x+dx, y:p.y+dy, ...(p.c1?{c1:{...p.c1,x:p.c1.x+dx,y:p.c1.y+dy}}:{}), ...(p.c2?{c2:{...p.c2,x:p.c2.x+dx,y:p.c2.y+dy}}:{}) }));
+            else { copy.x = (copy.x || 0)+dx; copy.y = (copy.y || 0)+dy; }
+            return copy;
+          };
+          const copies = source.map(cloneTree); model.objects.push(...copies); doc.setVectorModel(model);
+          result = { objects: plainResult(copies), objectCount: model.objects.length }; break;
+        }
+        case 'vector.group.create': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [];
+          const children = model.objects.filter(item => ids.includes(item.id));
+          if (children.length < 2) throw new Error('At least two objects are required to create a group.');
+          const group = { id: typeof action.group_id === 'string' && action.group_id ? action.group_id : crypto.randomUUID(), name: action.group_name || 'Group', type: 'group', children: plainResult(children), transform: {} };
+          model.objects = model.objects.filter(item => !ids.includes(item.id)); model.objects.push(group); doc.setVectorModel(model);
+          result = { group: plainResult(group), objectCount: model.objects.length }; break;
+        }
+        case 'vector.group.ungroup': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [action.id].filter(Boolean);
+          const groups = model.objects.filter(item => ids.includes(item.id) && item.type === 'group');
+          if (!groups.length) throw new Error('No matching groups found.');
+          const ungrouped = groups.flatMap(group => plainResult(group.children || []));
+          model.objects = model.objects.filter(item => !groups.some(group => group.id === item.id)).concat(ungrouped);
+          doc.setVectorModel(model); result = { objects: plainResult(ungrouped), objectCount: model.objects.length }; break;
+        }
+        case 'vector.object.mirror': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [action.id].filter(Boolean);
+          const items = model.objects.filter(item => ids.includes(item.id));
+          if (!items.length) throw new Error('No matching vector objects found.');
+          const bounds = items.map(item => item.type === 'line' ? {x:Math.min(item.x1,item.x2),width:Math.abs(item.x2-item.x1)} : {x:item.x||0,width:item.width||0});
+          const axis = action.axis === 'y' ? 'y' : 'x';
+          const values = items.map(item => item.type === 'line' ? {p:Math.min(item.x1,item.x2),size:Math.abs(item.x2-item.x1)} : {p:item.x||0,size:item.width||0});
+          const center = Number.isFinite(action.center) ? action.center : (Math.min(...values.map(v=>v.p))+Math.max(...values.map(v=>v.p+v.size)))/2;
+          const mirror = item => {
+            if (item.type === 'line' && axis==='y') { const y1=2*center-item.y1; item.y1=2*center-item.y2; item.y2=y1; }
+            else if (item.type === 'group') { item.children = (item.children||[]).map(child => { const c=plainResult(child); mirror(c); return c; }); }
+            else if (item.type === 'line' && axis==='x') { const x1=2*center-item.x1; item.x1=2*center-item.x2; item.x2=x1; }
+            else if (item.type === 'path') for (const p of item.points||[]) { const key=axis==='x'?'x':'y'; p[key]=2*center-p[key]; if(p.c1)p.c1[key]=2*center-p.c1[key]; if(p.c2)p.c2[key]=2*center-p.c2[key]; }
+            else { const key=axis==='x'?'x':'y', size=axis==='x'?'width':'height'; item[key]=2*center-(item[key]||0)-(item[size]||0); }
+          };
+          items.forEach(mirror); doc.setVectorModel(model); result = { mirrored: ids, axis, center }; break;
+        }
+        case 'vector.gradient.set': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const item=model.objects.find(value=>value.id===action.id); if(!item) throw new Error('Vector object not found.');
+          const gradient=action.gradient;
+          if(!gradient || !['linear','radial'].includes(gradient.type) || !Array.isArray(gradient.stops) || gradient.stops.length<2) throw new TypeError('A linear or radial gradient with at least two stops is required.');
+          item.gradient=plainResult(gradient); doc.setVectorModel(model); result={object:plainResult(item)}; break;
+        }
+        case 'vector.keyframes.set': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const item=model.objects.find(value=>value.id===action.id); if(!item) throw new Error('Vector object not found.');
+          if(!Array.isArray(action.keyframes)) throw new TypeError('keyframes must be an array.');
+          item.keyframes=plainResult(action.keyframes); doc.setVectorModel(model); result={object:plainResult(item)}; break;
+        }
+        case 'vector.snap.set': {
+          const model=doc.getVectorModel() || {version:5,width:doc.width,height:doc.height,grid:8,snap:true,objects:[],frames:[]};
+          if(action.enabled !== undefined) model.snap=Boolean(action.enabled);
+          if(action.grid !== undefined) { const grid=Number(action.grid); if(!Number.isFinite(grid)||grid<=0) throw new TypeError('grid must be a positive number.'); model.grid=grid; }
+          doc.setVectorModel(model); result={snap:model.snap,grid:model.grid}; break;
+        }
+        case 'vector.history.undo': result={changed:doc.undo(), vectorModel:plainResult(doc.getVectorModel())}; break;
+        case 'vector.history.redo': result={changed:doc.redo(), vectorModel:plainResult(doc.getVectorModel())}; break;
+        case 'vector.model.validate': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          result=validateVectorModel(model); break;
+        }
         default:
           return { ok: false, error: { code: 'unknown_action', message: 'Unsupported AI action: ' + action.name } };
       }
@@ -837,3 +1306,5 @@ export class AICommandSession {
     return this.#workspace.createProposal(summary);
   }
 }
+
+
