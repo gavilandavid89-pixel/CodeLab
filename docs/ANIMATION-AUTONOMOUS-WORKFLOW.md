@@ -121,3 +121,57 @@ Si la revisión visual detecta defectos, la tarea vuelve al ciclo de corrección
 La revisión visual es un requisito de aceptación, no un paso opcional ni una comprobación meramente decorativa.
 
 **Principio rector:** el usuario define el objetivo; el agente conduce el trabajo completo durante la sesión activa y comunica el resultado final. No se requiere que el usuario supervise cada orden, fotograma o corrección.
+
+
+## 8. CodeLab package installation and resource destinations
+
+A ZIP is recognized as a CodeLab package only when it contains `project.codelab` at the archive root, plus root `manifest.json` and `project.json`. The ZIP filename and extension are irrelevant.
+
+Import is a two-stage operation: validate/extract the package, then install its declared resources into editor-native structures. Files are never guessed to be frames from their names or extensions.
+
+Top-level folder destinations are preserved and classified as follows:
+
+- `assets/**` → project assets
+- `scenes/**` → project scenes
+- `animations/**` → animation resources
+- `frames/**` → frame source resources
+- all other safe paths → project files
+
+For PixelForge, the manifest may explicitly map external frame cels to native animation slots:
+
+```json
+{
+  "format": "codelab",
+  "version": 1,
+  "editor": "pixelforge",
+  "projectType": "pixelforge",
+  "entry": "project.json",
+  "animation": {
+    "fps": 12,
+    "activeFrameIndex": 0,
+    "loop": true,
+    "frames": [
+      {
+        "id": "frame-1",
+        "durationMs": 83,
+        "cels": [
+          {
+            "layerId": "layer-base",
+            "path": "frames/0001/base.png",
+            "encoding": "png"
+          },
+          {
+            "layerId": "layer-detail",
+            "path": "frames/0001/detail.rgba",
+            "encoding": "rgba8"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Each frame must provide exactly one cel for every layer ID declared by `project.json`. A cel path must exist in the archive, may only be assigned once, and must match the project canvas dimensions. Supported cel encodings are PNG (8-bit, non-interlaced grayscale/RGB/indexed/grayscale-alpha/RGBA) and raw RGBA8. The installer converts them to the base64 RGBA cels consumed by `PixelForgeAnimation.fromJSON`, then writes the native `project.animation` object into the project before Neon persistence. Limits follow PixelForge: 240 frames, 64 layers, 1–60 FPS, 1–10,000 ms per frame, and a 64 MiB animation pixel-memory budget.
+
+This mapping is explicit and deterministic: an arbitrary PNG under `assets/` remains an asset and is never silently inserted into the timeline.
