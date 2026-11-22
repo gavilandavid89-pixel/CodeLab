@@ -1757,6 +1757,7 @@ function undoDocument() {
     status('Cannot restore that layer: it would exceed the active animation memory budget.', 'warning'); return false;
   }
   if (!doc.undo()) return false;
+  vectorStudio?.syncFromDocument();
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
   return true;
@@ -1767,6 +1768,7 @@ function redoDocument() {
     status('Cannot redo that layer: it would exceed the active animation memory budget.', 'warning'); return false;
   }
   if (!doc.redo()) return false;
+  vectorStudio?.syncFromDocument();
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
   return true;
