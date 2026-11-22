@@ -70,7 +70,7 @@ export function angleBisector(a,b,c) {
 }
 export function perpendicularThrough(point,a,b) {
   const v=norm(sub(pt(b),pt(a))); if(len(v)<EPS) throw new Error('perpendicular_requires_nonzero_line');
-  return {origin:pt(point),direction:{x:-v.y,y:v.x}};
+  return {origin:pt(point),direction:{x:Math.abs(v.y)<EPS?0:-v.y,y:Math.abs(v.x)<EPS?0:v.x}};
 }
 export function parallelThrough(point,a,b) {
   const v=norm(sub(pt(b),pt(a))); if(len(v)<EPS) throw new Error('parallel_requires_nonzero_line');
@@ -156,6 +156,7 @@ export function pathLength(path) {
   for(let i=1;i<p.length;i++){if(p[i].kind==='cubic'&&p[i].c1&&p[i].c2){const s={p0:p[i-1],p1:p[i-1].c2||p[i-1],p2:p[i].c1,p3:p[i]};const samples=20;let prev=bezierPoint(s.p0,s.p1,s.p2,s.p3,0);for(let j=1;j<=samples;j++){const q=bezierPoint(s.p0,s.p1,s.p2,s.p3,j/samples);total+=dist(prev,q);prev=q;}}else total+=dist(p[i-1],p[i]);}
   if(path?.closed&&p.length>1)total+=dist(p.at(-1),p[0]); return total;
 }
+function projectToSegment(point,a,b) { const p=pt(point),u=sub(pt(b),pt(a)),den=dot(u,u); if(den<EPS)return {point:pt(a),t:0,distance:dist(p,a)}; const t=Math.max(0,Math.min(1,dot(sub(p,pt(a)),u)/den)); const q=add(pt(a),mul(u,t)); return {point:q,t,distance:dist(p,q)}; }
 function polygon(points){return points.map(pt);}
 function inside(p,a,b){return cross(sub(b,a),sub(p,a))>=-EPS;}
 function segmentIntersection(a,b,c,d){const r=sub(b,a),s=sub(d,c),den=cross(r,s);if(Math.abs(den)<EPS)return null;const t=cross(sub(c,a),s)/den,u=cross(sub(c,a),r)/den;return {point:add(a,mul(r,t)),t,u};}
