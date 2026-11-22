@@ -277,7 +277,7 @@ export class VectorStudio {
   move(e) {
     if (!this.drag) return;
     const p = this.point(e);
-    if (this.tool === 'node' && this.drag.node) {
+    if (this.tool === 'node' && this.drag.node !== undefined && this.drag.node !== null) {
       const o = this.model.objects.find(item => item.id === [...this.selected][0]);
       if (o?.type === 'path' && o.points[this.drag.node]) { o.points[this.drag.node].x = p.x; o.points[this.drag.node].y = p.y; this.render(); }
       return;
