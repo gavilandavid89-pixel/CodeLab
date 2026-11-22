@@ -129,7 +129,7 @@ async function ensureAgentBridgeWakeListener() {
             'codelab_project_convert_to_web','codelab_project_inspect',
             'codelab_project_connect','codelab_project_get_code',
             'codelab_project_update_code','codelab_project_capture_png',
-            'codelab_project_record_video','codelab_ui_execute','neon_function_invoke'
+            'codelab_project_record_video','codelab_ui_execute','codelab_validate','neon_function_invoke'
           ]));
       EXCEPTION WHEN duplicate_object THEN NULL;
       END $$`);
