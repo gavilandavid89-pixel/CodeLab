@@ -226,10 +226,34 @@ export function solveConstraints(objects,constraints=[],{tolerance=.001,maxItera
   return{objects:current,diagnostics,iterations};
 }
 export function constraintAudit(objects,constraints=[],tolerance=.001){
-  const solved=solveConstraints(objects,constraints,{tolerance,maxIterations:1});
+  const source=Array.isArray(objects)?objects:[];
+  const tol=Math.max(0,num(tolerance,.001));
+  const get=(id,index=0)=>{
+    const o=source.find(x=>x.id===id);
+    if(!o)return null;
+    const e=objectEndpoints(o);
+    if(e.length)return e[index]||null;
+    if(['rect','ellipse'].includes(o.type))return anchorPoint(o,'center');
+    return null;
+  };
+  const diagnostics=(Array.isArray(constraints)?constraints:[]).map(constraint=>{
+    const a=get(constraint.a,constraint.aIndex??0),b=get(constraint.b,constraint.bIndex??0);
+    if(!a||!b)return{constraint,status:'missing_reference',error:null,tolerance:tol};
+    let error=null;
+    if(constraint.type==='coincident')error=dist(a,b);
+    else if(constraint.type==='horizontal')error=Math.abs(a.y-b.y);
+    else if(constraint.type==='vertical')error=Math.abs(a.x-b.x);
+    else if(constraint.type==='distance')error=Math.abs(dist(a,b)-Math.abs(num(constraint.value)));
+    else if(constraint.type==='angle'){
+      const actual=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
+      let delta=((actual-num(constraint.degrees)+180)%360+360)%360-180;
+      error=Math.abs(delta);
+    }
+    return{constraint,status:error===null?'unsupported':error<=tol?'satisfied':'unsatisfied',error,tolerance:tol};
+  });
   const counts={satisfied:0,unsatisfied:0,missing_reference:0,unsupported:0};
-  solved.diagnostics.forEach(d=>counts[d.status]=(counts[d.status]||0)+1);
-  return{ok:counts.unsatisfied===0&&counts.missing_reference===0,counts,diagnostics:solved.diagnostics};
+  diagnostics.forEach(d=>counts[d.status]++);
+  return{ok:counts.unsatisfied===0&&counts.missing_reference===0&&counts.unsupported===0,counts,diagnostics};
 }
 export function continuity(pathA,pathB,tolerance=.001){
   const a=objectEndpoints(pathA),b=objectEndpoints(pathB);if(a.length<2||b.length<2)return{g0:false,g1:false,g2:false};
