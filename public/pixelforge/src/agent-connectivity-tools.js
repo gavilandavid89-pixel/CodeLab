@@ -47,7 +47,8 @@ export function snapSmart(point, objects=[], tolerance=8){
       [[x,y,'top-left'],[x+w,y,'top-right'],[x,y+h,'bottom-left'],[x+w,y+h,'bottom-right'],[x+w/2,y,'top'],[x+w/2,y+h,'bottom'],[x,y+h/2,'left'],[x+w,y+h/2,'right'],[x+w/2,y+h/2,'center']].forEach(([x1,y1,anchor])=>push('anchor',{x:x1,y:y1},o.id,{anchor}));
     }
   }
-  candidates.sort((a,b)=>a.distance-b.distance);
+  const priority={endpoint:0,anchor:1,center:2,midpoint:3,perpendicular:4};
+  candidates.sort((a,b)=>(priority[a.kind]??99)-(priority[b.kind]??99)||a.distance-b.distance||String(a.objectId).localeCompare(String(b.objectId)));
   return {point:p,best:candidates[0]||null,candidates};
 }
 export function anchorPoint(object,anchor='center'){
@@ -140,7 +141,10 @@ export function filletLines(a,b,radius){
   const shared=ea.map((p,i)=>eb.map((q,j)=>({p,q,i,j,d:dist(p,q)}))).flat().sort((x,y)=>x.d-y.d)[0];
   if(shared.d>1e-6)throw new Error('fillet_requires_shared_vertex');
   const vertex=shared.p, pa=ea[1-shared.i], pb=eb[1-shared.j], va=normalize(sub(pa,vertex)), vb=normalize(sub(pb,vertex)), r=Math.abs(num(radius));
-  const angle=Math.acos(Math.max(-1,Math.min(1,dot(va,vb)))), tangent=r/Math.tan(angle/2);
+  const angle=Math.acos(Math.max(-1,Math.min(1,dot(va,vb))));
+  if(angle<EPS||Math.abs(Math.PI-angle)<EPS)throw new Error('fillet_requires_non_degenerate_vertex_angle');
+  const tangent=r/Math.tan(angle/2);
+  if(!Number.isFinite(tangent)||tangent<EPS)throw new Error('fillet_radius_is_too_large_or_invalid');
   const p1=add(vertex,mul(va,tangent)),p2=add(vertex,mul(vb,tangent)),bis=normalize(add(va,vb)),center=add(vertex,mul(bis,r/Math.sin(angle/2)));
   const startAngle=Math.atan2(p1.y-center.y,p1.x-center.x)*180/Math.PI,endAngle=Math.atan2(p2.y-center.y,p2.x-center.x)*180/Math.PI;
   return{trimmedA:replaceEndpoint(a,1-shared.i,p1),trimmedB:replaceEndpoint(b,1-shared.j,p2),arc:{type:'arc',cx:center.x,cy:center.y,radius:r,startDegrees:startAngle,endDegrees:endAngle},tangentPoints:[p1,p2],center};
@@ -150,6 +154,8 @@ export function chamferLines(a,b,distanceValue){
   const shared=ea.map((p,i)=>eb.map((q,j)=>({p,q,i,j,d:dist(p,q)}))).flat().sort((x,y)=>x.d-y.d)[0];
   if(shared.d>1e-6)throw new Error('chamfer_requires_shared_vertex');
   const vertex=shared.p,pa=ea[1-shared.i],pb=eb[1-shared.j],d=Math.abs(num(distanceValue));
+  if(d<EPS)throw new Error('chamfer_distance_must_be_positive');
+  if(dist(pa,vertex)<EPS||dist(pb,vertex)<EPS)throw new Error('chamfer_requires_non_degenerate_lines');
   const p1=add(vertex,mul(normalize(sub(pa,vertex)),d)),p2=add(vertex,mul(normalize(sub(pb,vertex)),d));
   return{trimmedA:replaceEndpoint(a,1-shared.i,p1),trimmedB:replaceEndpoint(b,1-shared.j,p2),segment:line(p1,p2),points:[p1,p2]};
 }
@@ -227,8 +233,12 @@ export function constraintAudit(objects,constraints=[],tolerance=.001){
 }
 export function continuity(pathA,pathB,tolerance=.001){
   const a=objectEndpoints(pathA),b=objectEndpoints(pathB);if(a.length<2||b.length<2)return{g0:false,g1:false,g2:false};
-  const g0=dist(a[1],b[0])<=tolerance,g1=g0&&pathA.type==='path'&&pathB.type==='path'&&pathA.points.at(-1)?.c2&&pathB.points[0]?.c1;
-  return{g0,g1:Boolean(g1),g2:false,notes:g1?'Tangent-handle continuity detected; curvature continuity requires explicit curve analysis.':'Position continuity only.'};
+  const g0=dist(a[1],b[0])<=tolerance;
+  if(!g0||pathA.type!=='path'||pathB.type!=='path')return{g0,g1:false,g2:false,notes:g0?'Position continuity only.':'Endpoint mismatch.'};
+  const pa=pathA.points.at(-1),pb=pathB.points[0];
+  const ta=pa?.c2?normalize(sub(pa.c2,pa)):null,tb=pb?.c1?normalize(sub(pb,pb.c1)):null;
+  const g1=Boolean(ta&&tb&&Math.abs(cross(ta,tb))<=tolerance&&dot(ta,tb)>0);
+  return{g0,g1,g2:false,tangentError:g1?0:(ta&&tb?Math.abs(Math.atan2(cross(ta,tb),dot(ta,tb)))*180/Math.PI:null),notes:g1?'G0/G1 tangent continuity detected; G2 requires explicit curvature analysis.':'Position continuity without matching tangent handles.'};
 }
 export function buildConnectivityToolCatalog(){
  return[
