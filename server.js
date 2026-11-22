@@ -2994,7 +2994,15 @@ const server = http.createServer(async (req, res) => {
         return attached ? sendJson(res, 200, { ok: true, evidence: attached }) : sendJson(res, 404, { error: 'evidence_event_not_found' });
       }
 
-      if (req.method === 'GET' && pathname === '/api/pixelforge/mode') {\n        return sendJson(res, 200, {\n          guestMode: PIXELFORGE_GUEST_MODE,\n          workspace: PIXELFORGE_GUEST_MODE ? 'temporary-shared' : 'account',\n          accountsAvailableForPixelForge: !PIXELFORGE_GUEST_MODE\n        });\n      }\n\n      // Native capture commands are issued from the authenticated user's workspace
+      if (req.method === 'GET' && pathname === '/api/pixelforge/mode') {
+        return sendJson(res, 200, {
+          guestMode: PIXELFORGE_GUEST_MODE,
+          workspace: PIXELFORGE_GUEST_MODE ? 'temporary-shared' : 'account',
+          accountsAvailableForPixelForge: !PIXELFORGE_GUEST_MODE
+        });
+      }
+
+      // Native capture commands are issued from the authenticated user's workspace
       // but execute through the trusted ADMIN bridge mailbox.
       const pixelforgeCaptureMatch = pathname.match(/^\/api\/pixelforge\/capture(?:\/([A-Za-z0-9_-]+))?$/);
       if (pixelforgeCaptureMatch && (req.method === 'POST' || req.method === 'GET')) {
