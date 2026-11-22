@@ -148,3 +148,14 @@ test('manifest resource declarations override inferred folder and extension dest
   assert.equal(result.destinations[0].destination, 'reference-center');
   assert.equal(result.destinations[0].destinationPath, 'reference-center/misc/pose.png');
 });
+
+test('uses file signatures as a fallback when an extension gives no clue', () => {
+  const project = { format: 'pixelforge-project', width: 1, height: 1, layers: [{ id: 'layer-1' }] };
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]);
+  const files = new Map([['misc/unknown.bin', pngSignature], ['misc/opaque.bin', Buffer.from([1, 2, 3, 4])]]);
+  const result = installCodeLabPackage({ manifest: { editor: 'web' }, project, files });
+  const byPath = Object.fromEntries(result.destinations.map(item => [item.path, item]));
+  assert.equal(byPath['misc/unknown.bin'].destination, 'assets');
+  assert.equal(byPath['opaque.bin']?.destination, undefined);
+  assert.equal(byPath['misc/opaque.bin'].destination, 'project-files');
+});
