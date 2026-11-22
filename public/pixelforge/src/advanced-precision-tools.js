@@ -85,7 +85,8 @@ export function circumcenter(a,b,c) {
   const p=pt(a),q=pt(b),r=pt(c),d=2*(p.x*(q.y-r.y)+q.x*(r.y-p.y)+r.x*(p.y-q.y));
   if(Math.abs(d)<EPS) throw new Error('collinear_points_no_circumcenter');
   const aa=p.x*p.x+p.y*p.y,bb=q.x*q.x+q.y*q.y,cc=r.x*r.x+r.y*r.y;
-  return {x:(aa*(q.y-r.y)+bb*(r.y-p.y)+cc*(p.y-q.y))/d,y:(aa*(r.x-q.x)+bb*(p.x-r.x)+cc*(q.x-p.x))/d};
+  const x=(aa*(q.y-r.y)+bb*(r.y-p.y)+cc*(p.y-q.y))/d, y=(aa*(r.x-q.x)+bb*(p.x-r.x)+cc*(q.x-p.x))/d;
+  return {x:Math.abs(x)<EPS?0:x,y:Math.abs(y)<EPS?0:y};
 }
 export function triangleCenters(a,b,c) {
   const p=pt(a),q=pt(b),r=pt(c), area2=cross(sub(q,p),sub(r,p));
@@ -148,7 +149,7 @@ export function fitPolyline(points,{closed=false,tolerance=.5}={}) {
   return {type:'path',points:simplified.map((q,i)=>({...q,kind:'line'})),closed:Boolean(closed),transform:{},tolerance:n(tolerance,.5),sourcePointCount:p.length};
 }
 export function reversePath(path) {
-  const r=clone(path); r.points=(r.points||[]).slice().reverse().map(p=>({...p,c1:p.c2&&clone(p.c2),c2:p.c1&&clone(p.c1)})); return r;
+  const r=clone(path); r.points=(r.points||[]).slice().reverse().map(p=>{const q={...p}; if(p.c2)q.c1=clone(p.c2);else delete q.c1; if(p.c1)q.c2=clone(p.c1);else delete q.c2; return q;}); return r;
 }
 export function pathLength(path) {
   const p=path?.points||[]; let total=0;
