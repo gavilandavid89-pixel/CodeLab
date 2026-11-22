@@ -192,7 +192,7 @@ export function distributeObjects(objects, axis = 'x', gap = null) {
   });
 }
 
-export function constructSymmetryPoints(point, center, mode = 'mirror-x') {
+export function constructSymmetryPoints(point, center, mode = 'mirror-x', radialCount = 8) {
   const p=normalizePoint(point), c=normalizePoint(center), dx=p.x-c.x,dy=p.y-c.y;
   const variants=[p];
   if(mode==='mirror-x'||mode==='quadrant')variants.push({x:c.x-dx,y:c.y+dy});
@@ -200,7 +200,7 @@ export function constructSymmetryPoints(point, center, mode = 'mirror-x') {
   if(mode==='quadrant')variants.push({x:c.x-dx,y:c.y-dy});
   if(mode==='radial') {
     variants.length=0;
-    const count=Math.max(2,Math.floor(finite(arguments[3],8)));
+    const count=Math.max(2,Math.floor(finite(radialCount,8)));
     for(let i=0;i<count;i++){const a=i*2*Math.PI/count;variants.push({x:c.x+dx*Math.cos(a)-dy*Math.sin(a),y:c.y+dx*Math.sin(a)+dy*Math.cos(a)});}
   }
   return variants;
