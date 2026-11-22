@@ -14,6 +14,14 @@ import {
   projectPointToSegment,
   lineIntersection,
   measureObject,
+  createRoundedRect,
+  createArc,
+  createCircleThroughThreePoints,
+  createPolarArray,
+  createGridArray,
+  polylineLength,
+  nearestPointOnPolyline,
+  alignObjectEdges,
   buildAgentToolCatalog
 } from '../public/pixelforge/src/agent-precision-tools.js';
 
@@ -74,6 +82,35 @@ test('measurement, projection and intersection provide exact construction feedba
   const measurement = measureObject({type:'line',x1:0,y1:0,x2:3,y2:4});
   assert.equal(measurement.length,5);
   assert.equal(measurement.angle,Math.atan2(4,3)*180/Math.PI);
+});
+
+test('parametric construction tools cover common illustration cases', () => {
+  const rr=createRoundedRect(10,20,100,60,12);
+  assert.equal(rr.type,'path');
+  assert.equal(rr.closed,true);
+  assert.equal(rr.points.length,12);
+
+  const arc=createArc(0,0,50,0,180);
+  assert.equal(arc.type,'path');
+  assert.ok(arc.points.length>=3);
+
+  const circle=createCircleThroughThreePoints({x:0,y:1},{x:1,y:0},{x:0,y:-1});
+  assert.ok(Math.abs(circle.x-(-1)) < 1e-9);
+  assert.ok(Math.abs(circle.width-2) < 1e-9);
+
+  const object={type:'rect',x:0,y:0,width:10,height:10};
+  assert.equal(createPolarArray(object,{x:0,y:0},4).length,4);
+  assert.equal(createGridArray(object,{x:0,y:0},3,2,20,30).length,6);
+
+  assert.equal(polylineLength([{x:0,y:0},{x:3,y:4}]),5);
+  const nearest=nearestPointOnPolyline({x:5,y:3},[{x:0,y:0},{x:10,y:0}]);
+  assert.deepEqual(nearest.point,{x:5,y:0});
+
+  const aligned=alignObjectEdges([
+    {type:'rect',x:10,y:0,width:10,height:10},
+    {type:'rect',x:50,y:20,width:20,height:20}
+  ],'left');
+  assert.deepEqual(aligned.map(o=>o.x),[10,10]);
 });
 
 test('agent tool catalog is explicit and deterministic', () => {
