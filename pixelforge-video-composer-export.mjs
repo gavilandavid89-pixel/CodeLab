@@ -185,7 +185,9 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     };
     const entries = [
       { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') },
-      { name: 'project.json', data: Buffer.from(JSON.stringify(project), 'utf8') },
+      // project.json is optional for Video Composer import. Omitting the huge
+      // base64-heavy project snapshot keeps 120-frame exports within the
+      // browser/Render memory budget; the manifest + PNG frames are authoritative.
       ...frameEntries
     ];
     const zipBytes = makeStoredZip(entries);
