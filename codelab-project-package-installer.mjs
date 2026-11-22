@@ -112,7 +112,9 @@ export function installCodeLabPackage({ manifest, project, files }) {
     return { project, destinations, installed: { animationFrames: 0, animationCels: 0 } };
   }
   if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
-      !Number.isInteger(project.width) || !Number.isInteger(project.height)) {
+      !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
+      project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096 ||
+      project.width * project.height > 16_777_216) {
     fail('PixelForge animation package requires a valid native pixelforge-project document.');
   }
   const animationSpec = manifest.animation;
@@ -120,9 +122,12 @@ export function installCodeLabPackage({ manifest, project, files }) {
     fail('manifest.animation.frames must contain 1–240 frames.');
   }
   const layerIds = project.layers.map(layer => layer.id);
-  if (!layerIds.length || layerIds.length > 64 || new Set(layerIds).size !== layerIds.length) {
+  if (!layerIds.length || layerIds.length > 64 || layerIds.some(id => typeof id !== 'string' || !id) ||
+      new Set(layerIds).size !== layerIds.length) {
     fail('project layers must have unique IDs before animation installation.');
   }
+  const totalBytes = project.width * project.height * 4 * layerIds.length * animationSpec.frames.length;
+  if (totalBytes > 64 * 1024 * 1024) fail('animation exceeds PixelForge 64 MiB animation pixel-memory budget.');
   const usedPaths = new Set();
   let celCount = 0;
   const frames = animationSpec.frames.map((frame, index) => {
