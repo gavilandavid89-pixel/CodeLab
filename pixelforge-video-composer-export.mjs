@@ -252,7 +252,7 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     const videoPath = path.join(tempDir, safeVideoName(project.name) + '-composer.' + (download.suggestedFilename().split('.').pop() || 'webm'));
     await download.saveAs(videoPath);
     const stat = fs.statSync(videoPath);
-    if (!stat.isFile() || stat.size < 1000) throw new Error('CodeLab Video Composer produced an invalid video.');
+    if (!stat.isFile() || stat.size < 1000) throw new Error('CodeLab Video Composer produced an invalid video: ' + JSON.stringify({isFile: stat.isFile(), sizeBytes: stat.size, filename: download.suggestedFilename()}));
     if (stat.size > 24 * 1024 * 1024) throw new Error('CodeLab Video Composer video exceeds the 24 MiB artifact limit.');
     const videoBytes = fs.readFileSync(videoPath);
 
