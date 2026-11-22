@@ -230,7 +230,7 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     }, null, { timeout: 30000 });
     const imported = await page.evaluate(() => ({
       frames: Number(document.querySelector('#vc-stat-frames')?.textContent || 0),
-      fps: Number(document.querySelector('#vc-stat-fps')?.textContent || 0),
+      fps: Number.parseInt(document.querySelector('#vc-stat-fps')?.textContent || '0', 10),
       size: document.querySelector('#vc-stat-size')?.textContent || '',
       duration: document.querySelector('#vc-stat-duration')?.textContent || '',
       status: document.querySelector('#vc-status')?.textContent || ''
