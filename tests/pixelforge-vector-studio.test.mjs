@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createVectorModel, vectorModelToSVG, auditVectorModel, parseSvgPathData } from '../public/pixelforge/src/vector-studio.js';
+import { createVectorModel, vectorModelToSVG, auditVectorModel, parseSvgPathData, parseSVGToVectorModel } from '../public/pixelforge/src/vector-studio.js';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
 
 test('vector model stores editable objects and exports SVG', () => {
@@ -91,4 +91,44 @@ test('vector model survives full project serialization and rehydration', () => {
   const loaded = RasterDocument.fromJSON(JSON.parse(JSON.stringify(saved)));
   assert.deepEqual(loaded.getVectorModel(), model);
   assert.deepEqual(JSON.parse(JSON.stringify(loaded.toJSON().vectorModel)), model);
+});
+
+test('SVG importer preserves nested groups, transforms, gradients and cubic paths', () => {
+  const previous = globalThis.DOMParser;
+  const makeNode = (tagName, attrs = {}, children = [], textContent = '') => ({
+    tagName, children, textContent,
+    getAttribute: name => attrs[name] ?? null,
+    querySelectorAll(selector) {
+      const wanted = selector.split(',').map(value => value.trim()), found = [];
+      const walk = current => { for (const child of current.children || []) { if (wanted.includes(child.tagName)) found.push(child); walk(child); } };
+      walk(this); return found;
+    }
+  });
+  const stopA = makeNode('stop', { offset: '0%', 'stop-color': '#ffffff' });
+  const stopB = makeNode('stop', { offset: '100%', 'stop-color': '#000000', 'stop-opacity': '0.5' });
+  const gradient = makeNode('linearGradient', { id: 'paint' }, [stopA, stopB]);
+  const defs = makeNode('defs', {}, [gradient]);
+  const rect = makeNode('rect', { id: 'panel', x: '4', y: '5', width: '20', height: '10', fill: 'url(#paint)' });
+  const path = makeNode('path', { d: 'M 0 0 C 1 2 3 4 5 6', transform: 'translate(2 3)' });
+  const group = makeNode('g', { id: 'layer', transform: 'rotate(15)' }, [rect, path]);
+  const root = makeNode('svg', {}, [defs, group]);
+  globalThis.DOMParser = class { parseFromString() { return { documentElement: root, querySelector: () => null }; } };
+  try {
+    const model = parseSVGToVectorModel('<svg/>', 80, 60);
+    assert.equal(model.objects.length, 1);
+    const importedGroup = model.objects[0];
+    assert.equal(importedGroup.type, 'group');
+    assert.equal(importedGroup.transform.svgTransform, 'rotate(15)');
+    assert.equal(importedGroup.children[0].gradient.stops.length, 2);
+    assert.equal(importedGroup.children[0].gradient.stops[1].opacity, 0.5);
+    assert.equal(importedGroup.children[1].points[1].kind, 'cubic');
+    assert.equal(importedGroup.children[1].transform.svgTransform, 'translate(2 3)');
+    const exported = vectorModelToSVG(model);
+    assert.match(exported, /linearGradient/);
+    assert.match(exported, /rotate\(15\)/);
+    assert.match(exported, /C 1 2 3 4 5 6/);
+  } finally {
+    if (previous === undefined) delete globalThis.DOMParser;
+    else globalThis.DOMParser = previous;
+  }
 });
