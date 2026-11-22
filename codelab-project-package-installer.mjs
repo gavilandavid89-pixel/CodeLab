@@ -133,7 +133,32 @@ function normalizeDestination(value) {
   }
   return null;
 }
-function classifyPath(filePath, declaredResources = []) {
+function classifyContent(file) {
+  if (!Buffer.isBuffer(file) || file.length < 4) return null;
+  if (file.subarray(0, 8).equals(PNG_SIGNATURE)) return 'assets';
+  if (file[0] === 0xff && file[1] === 0xd8 && file[2] === 0xff) return 'assets';
+  if (file.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/)) return 'assets';
+  if (file.subarray(0, 4).toString('ascii') === 'RIFF') {
+    const riffType = file.subarray(8, 12).toString('ascii');
+    if (riffType === 'WEBP') return 'assets';
+    if (riffType === 'WAVE') return 'audio';
+    if (riffType === 'AVI ') return 'video';
+  }
+  if (file.subarray(0, 3).toString('ascii') === 'ID3' || file.subarray(0, 4).toString('ascii') === 'OggS' ||
+      file.subarray(0, 4).toString('ascii') === 'fLaC') return 'audio';
+  if (file.length >= 12 && file.subarray(4, 8).toString('ascii') === 'ftyp') return 'video';
+  if (file.subarray(0, 4).toString('ascii') === '%PDF') return 'documents';
+  if (file.subarray(0, 4).toString('ascii') === 'glTF') return 'models';
+  if (file.subarray(0, 4).toString('ascii') === 'wOF2' ||
+      file.subarray(0, 4).toString('ascii') === 'wOFF' ||
+      file.subarray(0, 4).toString('ascii') === 'OTTO' ||
+      file.subarray(0, 4).toString('ascii') === '\\x00\\x01\\x00\\x00') return 'fonts';
+  const text = file.subarray(0, Math.min(file.length, 256)).toString('utf8').trimStart().toLowerCase();
+  if (text.startsWith('<svg') || text.startsWith('<?xml') && text.includes('<svg')) return 'assets';
+  if (text.startsWith('<!doctype html') || text.startsWith('<html')) return 'pages';
+  return null;
+}
+function classifyPath(filePath, declaredResources = [], file = null) {
   const declared = declaredResources.find(resource => resource && resource.path === filePath);
   if (declared) {
     const destination = normalizeDestination(declared.destination);
@@ -150,7 +175,7 @@ function classifyPath(filePath, declaredResources = []) {
   const filename = segments.at(-1).toLowerCase();
   const dot = filename.lastIndexOf('.');
   const extension = dot >= 0 ? filename.slice(dot) : '';
-  return EXTENSION_DESTINATIONS[extension] || 'project-files';
+  return EXTENSION_DESTINATIONS[extension] || classifyContent(file) || 'project-files';
 }
 function destinationPathFor(filePath, destination) {
   const segments = filePath.split('/');
