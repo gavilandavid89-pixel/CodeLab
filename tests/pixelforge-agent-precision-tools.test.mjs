@@ -1,0 +1,69 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  createRegularPolygon,
+  createStar,
+  createBezier,
+  pathFromCommands,
+  translateObject,
+  scaleObject,
+  rotatePoint,
+  distributeObjects,
+  boundsOf,
+  constructSymmetryPoints,
+  buildAgentToolCatalog
+} from '../public/pixelforge/src/agent-precision-tools.js';
+
+test('precision primitives generate deterministic geometry', () => {
+  const polygon = createRegularPolygon(100, 100, 50, 4, 0);
+  assert.equal(polygon.type, 'path');
+  assert.equal(polygon.points.length, 4);
+  assert.ok(Math.abs(polygon.points[0].x - 150) < 1e-9);
+
+  const star = createStar(0, 0, 10, 5, 5);
+  assert.equal(star.points.length, 10);
+
+  const bezier = createBezier([{x:0,y:0},{x:10,y:10}], {closed:false});
+  assert.equal(bezier.points.length, 2);
+  assert.equal(bezier.points[1].kind, 'cubic');
+});
+
+test('exact path commands and transforms are stable', () => {
+  const path = pathFromCommands([
+    {type:'M',x:10,y:20},
+    {type:'C',x:40,y:50,c1:{x:20,y:20},c2:{x:30,y:40}},
+    {type:'L',x:60,y:70}
+  ]);
+  assert.equal(path.points[1].c1.x, 20);
+  const moved = translateObject(path, 5, -10);
+  assert.equal(moved.points[0].x, 15);
+  assert.equal(moved.points[0].y, 10);
+  const scaled = scaleObject(moved, {x:0,y:0}, 2);
+  assert.equal(scaled.points[0].x, 30);
+  assert.equal(scaled.points[0].y, 20);
+  const rotated = rotatePoint({x:10,y:0},{x:0,y:0},90);
+  assert.ok(Math.abs(rotated.x) < 1e-9);
+  assert.ok(Math.abs(rotated.y-10) < 1e-9);
+});
+
+test('bounds, distribution and symmetry are exact', () => {
+  const objects = [
+    {type:'rect',x:0,y:0,width:10,height:10},
+    {type:'rect',x:30,y:0,width:10,height:10},
+    {type:'rect',x:80,y:0,width:10,height:10}
+  ];
+  const distributed = distributeObjects(objects,'x',10);
+  assert.deepEqual(distributed.map(o=>o.x), [0,20,40]);
+  assert.deepEqual(boundsOf(distributed[1]), {x:20,y:0,width:10,height:10});
+  const mirrored = constructSymmetryPoints({x:120,y:50},{x:100,y:50},'mirror-x');
+  assert.deepEqual(mirrored[1], {x:80,y:50});
+  const radial = constructSymmetryPoints({x:110,y:100},{x:100,y:100},'radial',4);
+  assert.equal(radial.length,4);
+});
+
+test('agent tool catalog is explicit and deterministic', () => {
+  const names = buildAgentToolCatalog().map(tool=>tool.name);
+  for (const name of ['geometry.path','geometry.bezier','geometry.distribute','geometry.symmetry','guide.create']) {
+    assert.ok(names.includes(name));
+  }
+});
