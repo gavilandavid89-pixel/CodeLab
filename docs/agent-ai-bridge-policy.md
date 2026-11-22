@@ -10,24 +10,32 @@ Flujo canónico:
 Usuario
   ↓ petición explícita
 Agente IA
-  ↓ registra/consulta trabajo
-Neon (órdenes, estado, proyecto, revisión)
+  ↓ trabaja en su entorno headless
+Headless propio del agente
+  ↓ empaqueta proyecto .codelab
+Neon
   ↓ bridge/worker
-CodeLab (ejecución programática)
-  ↓ resultado y, cuando corresponda, evidencia visual
-Neon (resultado persistido y referencias)
+CodeLab
+  ↓ proyecto real / interfaz real cuando se requiere inspección
+Resultado + evidencia visual solicitada
   ↓
-Agente IA (inspección y siguiente decisión)
+Neon
+  ↓
+Agente IA inspecciona
+  ↓
+continúa en su headless propio
+  o
+entrega el proyecto al usuario
 ```
 
-- **Agente IA:** interpreta la petición, decide las operaciones, inspecciona resultados y determina si corresponde corregir o continuar.
-- **Neon:** fuente de verdad persistente para órdenes, estado de trabajos, proyectos, revisiones y referencias a evidencias.
-- **Bridge/worker:** transporte y consumidor de órdenes. No es un segundo agente y no decide objetivos ni inicia tareas nuevas por su cuenta.
-- **CodeLab:** ejecuta operaciones mediante interfaces programáticas.
-- **Cloudflare:** facilita el transporte y la transferencia de evidencias cuando está configurado.
-- **R2:** almacena artefactos binarios cuando el flujo lo utiliza.
+- **Agente IA:** trabaja sobre el proyecto en su propio headless, decide cuándo empaquetarlo, transferirlo e inspeccionarlo mediante evidencia y decide si continúa o entrega.
+- **Headless propio del agente:** entorno principal de trabajo. Si no existe, puede obtenerse desde el repositorio.
+- **Headless/bridge de CodeLab:** componente distinto que permite controlar CodeLab. El headless propio del agente **nunca lo sustituye ni lo modifica**.
+- **Neon:** estado canónico de órdenes, proyectos, revisiones, artefactos, resultados y evidencias.
+- **CodeLab:** proyecto real e interfaz real donde se entrega el proyecto y, cuando hace falta, se obtiene la evidencia solicitada.
+- **Cloudflare/R2:** transporte y almacenamiento de artefactos/evidencias cuando están configurados.
 
-No conviertas commits de GitHub en el transporte de cada modificación de proyecto. GitHub versiona el software; Neon y el bridge transportan los trabajos del flujo actual.
+GitHub versiona el software y puede proporcionar el headless del agente; no es el transporte obligatorio de cada cambio visual.
 
 ## 2. Inicio, activación y límites
 
@@ -37,12 +45,12 @@ No conviertas commits de GitHub en el transporte de cada modificación de proyec
 - No mantengas el servicio despierto con pings periódicos, bucles de keep-alive o cron artificiales. La activación debe ser bajo demanda.
 - No confundas la ventana de supervisión del agente con un timeout del worker. Respeta los límites técnicos reales declarados por la operación; no mates procesos solo porque el agente dejó de esperar o la sesión de conversación se interrumpió.
 
-## 3. Identidad, cuenta y sesiones locales
+## 3. Identidad y separación de entornos
 
-- Para proyectos del usuario, utiliza el contexto de identidad/workspace que proporciona el sistema mediante la configuración y autenticación existentes. No inventes usuarios ni reemplaces ese contexto con una identidad genérica.
-- Las sesiones locales/headless son una herramienta auxiliar válida para ejecutar y probar CodeLab de forma aislada. No deben eliminarse por el mero hecho de ser locales.
-- Una sesión local aislada no equivale a la sesión autenticada del usuario. No afirmes que un cambio local quedó persistido en el workspace real sin verificarlo mediante la lectura de vuelta del servidor/Neon.
-- Las pruebas aisladas pueden utilizar su propio directorio de datos y fixtures. Deben mantenerse separadas de los proyectos y datos reales del usuario.
+- Para proyectos del usuario utiliza el workspace que proporciona la autenticación existente.
+- El headless del agente y el headless/bridge de CodeLab son componentes distintos.
+- Si el agente obtiene su headless desde el repositorio, eso solo proporciona su entorno de trabajo y **no reemplaza** el mecanismo que controla CodeLab.
+- Una sesión local aislada no demuestra persistencia en el workspace real.
 - No registres ni expongas credenciales, cookies, tokens o secretos.
 
 ## 4. Ciclo de trabajo y recuperación
@@ -76,14 +84,17 @@ Si la sesión del agente se interrumpe:
 
 Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.md).
 
-## 5. Ejecución programática y verificación visual
+## 5. Trabajo en headless propio e inspección real
 
-- Las modificaciones principales deben utilizar las interfaces programáticas de CodeLab; la UI es para inspección y validación visual, no el mecanismo principal de automatización.
-- Una respuesta HTTP exitosa, `success: true`, un workflow verde o una orden aceptada no demuestran por sí solos que el resultado sea correcto.
-- Verifica persistencia y lectura de vuelta desde la fuente correspondiente.
-- Para dibujo y animación, genera evidencia visual real. Inspecciona continuidad, composición, silueta, movimiento, frames, duración y exportación según el objetivo.
-- Las referencias externas sirven para orientar el trabajo; no sustituyen el resultado editable ni el estado real del proyecto.
-- Si el resultado es defectuoso, corrige y repite el ciclo sin pedir confirmaciones rutinarias entre pasos.
+- El trabajo principal se realiza en el **headless propio del agente**.
+- Si el agente no tiene ese headless, puede obtenerlo desde el repositorio.
+- Obtenerlo desde el repositorio **no significa reemplazar** el headless/bridge que controla CodeLab. Son dos componentes diferentes.
+- El agente empaqueta el proyecto trabajado en `.codelab` y lo sube/entrega a CodeLab a través de Neon cuando corresponde.
+- Si el agente no puede continuar sin inspeccionar el proyecto real en una interfaz real, debe solicitar la evidencia visual que necesite.
+- La evidencia debe corresponder al proyecto real y a la inspección solicitada.
+- El agente debe inspeccionarla realmente antes de decidir.
+- Tras inspeccionarla, puede continuar trabajando en su headless propio, corregir y volver a empaquetar, o entregar el proyecto al usuario.
+- La evidencia visual es evidencia de inspección; no sustituye al proyecto editable ni se convierte en la fuente canónica del proyecto.
 
 ## 6. Workflows A/B históricos
 
@@ -96,4 +107,4 @@ Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instan
 
 ## 7. Principio de cierre
 
-Un trabajo solo se declara terminado cuando el resultado esperado está verificado en el estado persistido y, si el tipo de tarea lo requiere, su evidencia visual fue inspeccionada. Si algo no pudo probarse —por ejemplo, producción/Render— debe indicarse expresamente como no verificado.
+Un trabajo se declara terminado cuando el proyecto y el resultado esperado están verificados según el objetivo. Si requirió inspección del proyecto real, la evidencia solicitada debe haber sido inspeccionada. Si necesita correcciones, el agente continúa en su headless propio; si está listo, entrega el proyecto al usuario. Si algo no pudo probarse, debe indicarse expresamente como no verificado.

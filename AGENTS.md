@@ -7,13 +7,26 @@ Antes de trabajar en el repositorio, lee esta entrada y la política completa:
 
 El flujo actual de trabajo es:
 
-`usuario → agente → Neon (trabajo/estado) → bridge/worker → CodeLab → resultado/evidencia → Neon → agente`.
+`usuario → agente → entorno headless del agente → paquete .codelab → Neon → bridge/worker → CodeLab → resultado/evidencia → Neon → agente`.
 
+- El agente trabaja primero en **su propio entorno headless**. Ese headless es independiente del headless/bridge que controla CodeLab.
+- Si el entorno del agente no dispone de un headless compatible, puede obtenerlo desde el repositorio; eso no sustituye ni modifica el headless que permite controlar CodeLab.
 - Neon conserva el estado canónico de órdenes, proyectos, revisiones, resultados y referencias a evidencias.
-- El bridge/worker entrega las órdenes a CodeLab; no es un segundo agente y no toma decisiones de producto.
-- CodeLab ejecuta operaciones mediante sus interfaces programáticas. No automatices el trabajo principal simulando clics o gestos de la interfaz.
-- El agente inspecciona el resultado persistido y la evidencia visual cuando corresponda antes de decidir la siguiente operación.
+- El agente empaqueta el proyecto trabajado y lo transfiere a CodeLab mediante Neon cuando el flujo de entrega lo requiere.
+- Si el proyecto necesita inspección dentro de la interfaz real de CodeLab, el agente solicita y recibe la evidencia visual correspondiente; después la inspecciona y decide la siguiente operación.
 - La recuperación debe consultar el estado real antes de reintentar. Nunca dupliques una orden que siga activa.
+
+## Reglas de ejecución
+
+1. Solo una petición explícita del usuario inicia una nueva tarea del agente. Los workers pueden completar órdenes ya autorizadas, pero no iniciar nuevas tareas autónomas del agente.
+2. Antes de actuar, consulta proyecto, revisión y órdenes activas.
+3. Usa `project_id` y la última `server_revision` para continuar proyectos existentes.
+4. Trabaja sobre el proyecto en el headless propio del agente y conserva allí el estado editable hasta que corresponda entregarlo.
+5. Si CodeLab necesita ser inspeccionado en su interfaz real, solicita la evidencia visual necesaria; no trates esa evidencia como la fuente canónica del proyecto.
+6. Inspecciona realmente la evidencia recibida y, según el resultado, continúa trabajando en el headless propio o entrega el proyecto al usuario.
+7. No registres secretos, cookies, tokens ni contraseñas.
+8. No cambies ni despliegues servicios ajenos al alcance solicitado.
+9. No declares que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
 
 ## A/B y workflows históricos
 
