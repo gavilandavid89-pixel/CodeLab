@@ -202,3 +202,12 @@ El manifiesto puede forzar un destino cuando el nombre o la extensión no expres
 ```
 
 Cada recurso conserva sus bytes y se persiste bajo su ruta de destino canónica. `project-files` queda reservado para archivos sin una clasificación fiable. La clasificación organiza el almacenamiento de importación; no afirma que una vista concreta del editor ya haya consumido el recurso si esa integración nativa todavía no existe.
+
+
+## 10. Integración de recursos importados en PixelForge
+
+Además de conservar los archivos en `codelab_project_files`, los proyectos PixelForge reciben un índice persistente `drawingModel.packageResources` con la ruta de origen, destino canónico, tipo MIME y tamaño de cada recurso. El panel Reference Center lo muestra agrupado por destino, para que también sean localizables documentos, audio, video, fuentes, modelos, componentes y demás archivos del paquete.
+
+Las imágenes ubicadas en `reference-center` (o carpetas alias como `reference/`, `refs/`, `moodboard/`) se incorporan como entradas inmutables de `drawingModel.referenceCenter.entries`. PNG, JPEG, GIF y WebP se reconocen por su firma binaria y se muestran como miniaturas en Reference Center. El usuario puede copiarlas al lienzo como una capa editable; se ajustan al canvas manteniendo la proporción y sin modificar el original. La incrustación está limitada a 4 MiB por imagen y 12 MiB acumulados; los archivos de referencia que exceden esos límites siguen en el catálogo de recursos y en el almacenamiento de archivos del proyecto.
+
+El editor refresca Reference Center después de cargar un proyecto, no solo al crear la interfaz. Así las referencias importadas aparecen en la primera apertura y al cambiar de proyecto. La conversión de imágenes no las inserta en la línea de tiempo: los frames continúan sujetos al mapeo explícito frame/capa del manifiesto.
