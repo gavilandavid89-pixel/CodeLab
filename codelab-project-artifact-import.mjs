@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
+import { installCodeLabPackage } from './codelab-project-package-installer.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -218,9 +219,13 @@ export async function importCodeLabArtifact(pool, {
       [artifact.artifact_id]
     );
 
-    const { manifest, project } = await readProjectPackage(buffer, tempRoot);
+    const { manifest, project: sourceProject } = await readProjectPackage(buffer, tempRoot);
     const packageRoot = path.join(tempRoot, 'project');
     const packageFiles = await collectProjectFiles(packageRoot);
+    const packageFileMap = new Map();
+    for (const file of packageFiles) packageFileMap.set(file.relative, await fs.readFile(file.absolute));
+    const project = structuredClone(sourceProject);
+    const installation = installCodeLabPackage({ manifest, project, files: packageFileMap });
     if (manifest.editor !== request.editor_id) {
       throw new Error('Manifest editor does not match the import request editor_id.');
     }
@@ -251,7 +256,7 @@ export async function importCodeLabArtifact(pool, {
 
     if (packageFiles.length) {
       for (const file of packageFiles) {
-        const fileBuffer = await fs.readFile(file.absolute);
+        const fileBuffer = packageFileMap.get(file.relative);
         const fileSha = sha256(fileBuffer);
         await queryChecked(pool, 'import_sql', `
           INSERT INTO public.codelab_project_files
@@ -327,6 +332,8 @@ export async function importCodeLabArtifact(pool, {
       projectId,
       contentSha256: contentSha,
       sourceSha256: actualSha,
+      installedResources: installation.installed,
+      resourceDestinations: installation.destinations,
     };
   } catch (error) {
     error.message = `codelab_artifact_import_failed: ${error.message}`;
