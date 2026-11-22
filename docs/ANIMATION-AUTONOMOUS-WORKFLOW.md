@@ -175,3 +175,29 @@ For PixelForge, the manifest may explicitly map external frame cels to native an
 Each frame must provide exactly one cel for every layer ID declared by `project.json`. A cel path must exist in the archive, may only be assigned once, and must match the project canvas dimensions. Supported cel encodings are PNG (8-bit, non-interlaced grayscale/RGB/indexed/grayscale-alpha/RGBA) and raw RGBA8. The installer converts them to the base64 RGBA cels consumed by `PixelForgeAnimation.fromJSON`, then writes the native `project.animation` object into the project before Neon persistence. Limits follow PixelForge: 240 frames, 64 layers, 1–60 FPS, 1–10,000 ms per frame, and a 64 MiB animation pixel-memory budget.
 
 This mapping is explicit and deterministic: an arbitrary PNG under `assets/` remains an asset and is never silently inserted into the timeline.
+
+## 9. Clasificación semántica de recursos y destinos ampliados
+
+El instalador no debe enviar automáticamente todas las carpetas no reconocidas a `project-files`. Clasifica cada archivo en este orden:
+
+1. `manifest.resources[]` puede declarar explícitamente `path` y `destination`; esta declaración tiene prioridad.
+2. Los nombres de carpetas y sus alias se interpretan semánticamente, incluso cuando están anidados.
+3. Si la ruta no da contexto suficiente, se usa la extensión como pista de tipo de recurso.
+4. Solo los formatos o rutas que sigan siendo ambiguos quedan en `project-files`.
+
+Destinos admitidos: `reference-center`, `assets`, `scenes`, `animations`, `frames`, `audio`, `video`, `fonts`, `documents`, `models`, `textures`, `scripts`, `styles`, `components`, `templates`, `pages`, `exports`, `backups`, `data` y `project-files`.
+
+Ejemplos de alias: `reference`, `references`, `refs`, `moodboard` e `inspiration` se enrutan al **centro de referencia**; `guides` y `docs` a documentos; `sounds` y `music` a audio; `typography` a fuentes; `models` a modelos 3D; `components` a componentes; `pages` y `views` a páginas. Las rutas ya canónicas se conservan sin duplicar carpetas. Para evitar falsas asignaciones, los nombres de archivos por sí solos no se usan para inferir frames: la animación PixelForge sigue dependiendo del mapeo explícito de cada celda a frame y capa.
+
+El manifiesto puede forzar un destino cuando el nombre o la extensión no expresan el propósito:
+
+```json
+{
+  "resources": [
+    { "path": "misc/pose.png", "destination": "reference-center" },
+    { "path": "misc/brand-font.woff2", "destination": "fonts" }
+  ]
+}
+```
+
+Cada recurso conserva sus bytes y se persiste bajo su ruta de destino canónica. `project-files` queda reservado para archivos sin una clasificación fiable. La clasificación organiza el almacenamiento de importación; no afirma que una vista concreta del editor ya haya consumido el recurso si esa integración nativa todavía no existe.
