@@ -186,6 +186,93 @@ function status(message, kind = 'neutral') {
   statusNode.textContent = message;
   statusNode.dataset.kind = kind;
 }
+
+async function waitForNativeCapture(commandId, kind) {
+  const started = Date.now();
+  while (Date.now() - started < 180000) {
+    const response = await fetch('/api/pixelforge/capture/' + encodeURIComponent(commandId), {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+      cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Capture status request failed with HTTP ' + response.status + '.');
+    const data = await response.json();
+    if (data.status === 'failed') throw new Error(data.result?.error || data.result?.message || 'Native capture failed.');
+    if (data.status === 'succeeded') return data.result || {};
+    status(kind === 'video' ? 'Rendering animation video…' : 'Capturing project…', 'neutral');
+    await new Promise(resolve => setTimeout(resolve, 900));
+  }
+  throw new Error('Native capture timed out after 3 minutes.');
+}
+
+async function startNativeCapture(kind) {
+  const projectId = doc?.id;
+  if (!projectId) throw new Error('Save the PixelForge project before capturing it.');
+  const response = await fetch('/api/pixelforge/capture', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      project_id: projectId,
+      kind,
+      width: kind === 'video' ? 960 : 1440,
+      height: kind === 'video' ? 720 : 1000,
+      fps: kind === 'video' ? (animation?.fps || 12) : undefined,
+      full_page: kind !== 'video'
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Could not queue the native capture.');
+  status(kind === 'video' ? 'Video queued…' : 'PNG capture queued…', 'neutral');
+  const result = await waitForNativeCapture(data.commandId, kind);
+  if (kind === 'image') {
+    const artwork = Array.isArray(result.images) ? result.images.find(item => item.role === 'artwork') || result.images[0] : null;
+    if (!artwork?.dataBase64) throw new Error('Capture finished without an artwork image.');
+    const bytes = Uint8Array.from(atob(artwork.dataBase64), char => char.charCodeAt(0));
+    downloadBlob(new Blob([bytes], { type: artwork.mimeType || 'image/png' }), safeName(doc.name) + '-capture.png');
+    status('PNG capturado desde el proyecto guardado y descargado correctamente.', 'success');
+    return;
+  }
+  const videoUrl = '/api/agent-commands/' + encodeURIComponent(data.commandId) + '/video';
+  const link = document.createElement('a');
+  link.href = videoUrl;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.textContent = 'Abrir video WebM';
+  link.style.marginLeft = '8px';
+  const statusNode = $('#status');
+  if (statusNode) {
+    statusNode.textContent = '';
+    statusNode.append('Video renderizado correctamente · ', link);
+    statusNode.dataset.kind = 'success';
+  }
+}
+
+$('#capture-png')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await flushAutosave();
+    await startNativeCapture('image');
+  } catch (error) {
+    status('PNG capture failed: ' + error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#record-video')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await flushAutosave();
+    await startNativeCapture('video');
+  } catch (error) {
+    status('Video capture failed: ' + error.message, 'error');
+  } finally {
+    button.disabled = !animation || animation.frameCount < 2;
+  }
+});
 function updateAIWorkspaceUI() {
   const state = $('#ai-workspace-state');
   const dot = document.querySelector('.ai-state-dot');
