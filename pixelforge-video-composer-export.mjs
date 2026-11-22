@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { deflateSync } from 'node:zlib';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 
@@ -31,7 +32,7 @@ function rgbaToPng(rgba, width, height) {
     raw[y * (stride + 1)] = 0;
     rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
   }
-  const compressed = require('node:zlib').deflateSync(raw, { level: 6 });
+  const compressed = deflateSync(raw, { level: 6 });
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
