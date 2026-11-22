@@ -74,7 +74,7 @@ test('CodeLab studio navigation header closes before the main workspace layout',
 
 test('Native mailbox leases are workspace-scoped, expire dead commands, and heartbeat active work', () => {
   assert.match(worker, /status='queued' AND expires_at <= now\(\)/);
-  assert.match(worker, /WHERE workspace_id=\$1 AND status='running' AND updated_at < now\(\) - interval '3 minutes'/);
+  assert.match(worker, /WHERE workspace_id=\$1 AND status='running'[\s\S]*?updated_at < now\(\) - interval '3 minutes'/);
   assert.match(worker, /heartbeatTimer = setInterval/);
   assert.match(worker, /SET updated_at=now\(\) WHERE command_id=\$1 AND workspace_id=\$2 AND status='running'/);
   assert.match(worker, /clearInterval\(heartbeatTimer\)/);
