@@ -183,7 +183,8 @@ El instalador no debe enviar automáticamente todas las carpetas no reconocidas 
 1. `manifest.resources[]` puede declarar explícitamente `path` y `destination`; esta declaración tiene prioridad.
 2. Los nombres de carpetas y sus alias se interpretan semánticamente, incluso cuando están anidados.
 3. Si la ruta no da contexto suficiente, se usa la extensión como pista de tipo de recurso.
-4. Solo los formatos o rutas que sigan siendo ambiguos quedan en `project-files`.
+4. Si la extensión tampoco ayuda, se inspeccionan firmas binarias conocidas (PNG/JPEG/GIF/WebP, audio, video, PDF, GLB y fuentes) y encabezados de SVG/HTML.
+5. Solo los formatos o rutas que sigan siendo ambiguos quedan en `project-files`.
 
 Destinos admitidos: `reference-center`, `assets`, `scenes`, `animations`, `frames`, `audio`, `video`, `fonts`, `documents`, `models`, `textures`, `scripts`, `styles`, `components`, `templates`, `pages`, `exports`, `backups`, `data` y `project-files`.
 
