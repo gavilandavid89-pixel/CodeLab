@@ -88,3 +88,14 @@ test('constraint audit distinguishes missing references without attempting a sol
   assert.equal(audit.counts.missing_reference,1);
   assert.equal(audit.diagnostics[0].status,'missing_reference');
 });
+
+test('fillet rejects radii that exceed either available segment',()=>{
+  const a=line('a',0,0,10,0), b=line('b',10,0,10,1);
+  assert.throws(()=>filletLines(a,b,2),/fillet_radius_exceeds_available_segments/);
+});
+
+test('intersection and offset reject degenerate or non-finite geometry',()=>{
+  assert.throws(()=>extendToIntersection(line('a',0,0,0,0),line('b',1,-1,1,1)),/intersection_requires_non_degenerate_lines/);
+  assert.throws(()=>offsetLine(line('zero',1,1,1,1),2),/offset_requires_non_degenerate_line/);
+  assert.throws(()=>offsetLine(line('a',0,0,10,0),Number.NaN),/offset_distance_must_be_finite/);
+});
