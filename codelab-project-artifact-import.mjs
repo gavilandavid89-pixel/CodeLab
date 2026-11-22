@@ -226,6 +226,7 @@ export async function importCodeLabArtifact(pool, {
     for (const file of packageFiles) packageFileMap.set(file.relative, await fs.readFile(file.absolute));
     const project = structuredClone(sourceProject);
     const installation = installCodeLabPackage({ manifest, project, files: packageFileMap });
+    const destinationByPath = new Map(installation.destinations.map(item => [item.path, item.destination]));
     if (manifest.editor !== request.editor_id) {
       throw new Error('Manifest editor does not match the import request editor_id.');
     }
@@ -269,7 +270,9 @@ export async function importCodeLabArtifact(pool, {
             sha256=EXCLUDED.sha256,
             content=EXCLUDED.content,
             updated_at=EXCLUDED.updated_at`,
-          [request.workspace_id, projectId, request.editor_id, file.relative, contentTypeForPath(file.relative), fileBuffer.length, fileSha, fileBuffer, now]
+          [request.workspace_id, projectId, request.editor_id,
+            destinationByPath.get(file.relative) === 'project-files' ? `project-files/${file.relative}` : file.relative,
+            contentTypeForPath(file.relative), fileBuffer.length, fileSha, fileBuffer, now]
         );
       }
     }
