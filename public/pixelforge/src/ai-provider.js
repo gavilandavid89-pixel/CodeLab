@@ -67,6 +67,9 @@ export const AI_ACTION_CONTRACT = Object.freeze([
   { name: 'geometry.solveConstraints', description: 'Solve deterministic geometric constraints using bounded iterations, never a wall-clock timeout.', parameters: { objects: 'array', constraints: 'array', tolerance: 'number', maxIterations: 'number' } },
   { name: 'geometry.constraintAudit', description: 'Audit constraints for satisfied, unsatisfied and missing relationships.', parameters: { objects: 'array', constraints: 'array', tolerance: 'number' } },
   { name: 'geometry.continuity', description: 'Audit G0/G1-like continuity between paths.', parameters: { a: 'object', b: 'object', tolerance: 'number' } },
+  { name: 'geometry.precision.get', description: 'Read persisted agent precision anchors, guides, constraints and construction graph.', parameters: {} },
+  { name: 'geometry.precision.set', description: 'Persist precision anchors, guides, constraints and construction graph in the vector model.', parameters: { tolerance: 'number', anchors: 'array', guides: 'array', constraints: 'array', constructionGraph: 'object' } },
+  { name: 'geometry.precision.solve', description: 'Solve persisted model constraints and apply the deterministic result.', parameters: { tolerance: 'number', maxIterations: 'number' } },
 ]);
 
 const SYSTEM_PROMPT = [
