@@ -56,7 +56,7 @@ test('construction graph and constraint audit are serializable',()=>{
 });
 
 test('continuity reports G0 and G1 only for aligned tangent handles',()=>{
-  const a={type:'path',points:[{x:0,y:0},{x:10,y:0,c2:{x:12,y:0}}]};
+  const a={type:'path',points:[{x:0,y:0},{x:10,y:0,c2:{x:8,y:0}}]};
   const b={type:'path',points:[{x:10,y:0,c1:{x:12,y:0}},{x:20,y:0}]};
   assert.equal(continuity(a,b,.001).g1,true);
   const bad={type:'path',points:[{x:10,y:0,c1:{x:10,y:2}},{x:20,y:0}]};
