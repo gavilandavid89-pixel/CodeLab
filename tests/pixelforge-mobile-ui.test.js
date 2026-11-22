@@ -13,7 +13,7 @@ assert.match(html, /id="import-file"/, 'image and project import must remain ava
 assert.match(html, /id="export-project"/, 'editable project export must remain available');
 assert.match(html, /id="export-sprite-sheet"/, 'sprite-sheet export must remain available');
 assert.match(html, /class="brand" href="\/" aria-label="Back to CodeLab dashboard"/, 'brand must provide a return path to CodeLab');
-assert.match(html, /AI proposals currently support pixel edits on existing layers/, 'AI layer-structure limitation must be disclosed');
+assert.match(html, /AI proposals support raster pixel edits plus editable vector objects: create, update, delete and precise alignment\./, 'AI capabilities and layer-structure limitation must be disclosed');
 assert.match(js, /files: '#files-tab'/, 'Files tab must be included in inspector panel state');
 assert.match(js, /\$\('#files-tab'\)\.addEventListener\('click'/, 'Files tab must be interactive');
 assert.match(css, /\.inspector\[data-panel="files"\] \.inspector-section:not\(\.files-section\)\{display:none\}/, 'mobile Files mode must isolate the Files panel');
