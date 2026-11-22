@@ -2576,6 +2576,34 @@ async function processCommand(command) {
     case 'codelab_ui_execute':
       await finish(command.command_id, 'succeeded', await executeExplicitCodeLabBrowser(command));
       return;
+    case 'codelab_validate': {
+      const { createNativeCodeLabValidationEngine } = await import('./public/codelab-native-validators.mjs');
+      const engine = createNativeCodeLabValidationEngine();
+      if (payload.operation === 'list') {
+        await finish(command.command_id, 'succeeded', {
+          ok: true,
+          engineVersion: 1,
+          validators: engine.list()
+        });
+        return;
+      }
+      const target = String(payload.target || '').trim();
+      if (!target) throw new Error('validation_target_required');
+      const input = payload.input !== undefined ? payload.input : payload;
+      const result = await engine.validate(target, input, { options: payload.options || {} });
+      await finish(command.command_id, result.ok ? 'succeeded' : 'failed', {
+        status: result.ok ? 'passed' : 'validation_failed',
+        ok: result.ok,
+        engineVersion: result.version,
+        validator: result.validator,
+        score: result.score,
+        issues: result.issues,
+        details: result.details,
+        startedAt: result.startedAt,
+        finishedAt: result.finishedAt
+      });
+      return;
+    }
     case 'codelab_project_connect':
       await finish(command.command_id, 'succeeded', await connectCodeLabProject(command));
       return;
