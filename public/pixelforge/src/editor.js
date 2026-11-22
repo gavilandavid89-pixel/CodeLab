@@ -2603,7 +2603,7 @@ async function boot() {
     fitCanvas();
     const captureLayout = params.get('capture') === '1' || params.get('capture') === 'video'
       ? fitArtworkForCapture() : null;
-    updateTitle(); renderLayers(); renderAnimationTimeline();
+    updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh();
     if (params.get('capture') === 'video') {
       if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
       animationLoop = false;
