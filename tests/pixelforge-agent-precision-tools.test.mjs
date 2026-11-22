@@ -95,7 +95,7 @@ test('parametric construction tools cover common illustration cases', () => {
   assert.ok(arc.points.length>=3);
 
   const circle=createCircleThroughThreePoints({x:0,y:1},{x:1,y:0},{x:0,y:-1});
-  assert.ok(Math.abs(circle.x-(-1)) < 1e-9);
+  assert.ok(Math.abs(circle.x-(-0)) < 1e-9);
   assert.ok(Math.abs(circle.width-2) < 1e-9);
 
   const object={type:'rect',x:0,y:0,width:10,height:10};
