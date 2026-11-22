@@ -220,8 +220,19 @@ function resourceContentType(filePath, file) {
 }
 
 function installPackageResourceCatalog(project, destinations, files, manifest) {
+  const catalog = destinations.map(item => {
+    const bytes = files.get(item.path);
+    return {
+      path: item.path,
+      destination: item.destination,
+      destinationPath: item.destinationPath,
+      byteSize: bytes.length,
+      contentType: resourceContentType(item.path, bytes),
+    };
+  });
+  project.packageResources = catalog;
   if (manifest.editor !== 'pixelforge' || project.format !== 'pixelforge-project') {
-    return { resourceCount: destinations.length, referenceImages: 0 };
+    return { resourceCount: catalog.length, referenceImages: 0, embeddedReferenceBytes: 0 };
   }
   const model = project.drawingModel && typeof project.drawingModel === 'object'
     ? structuredClone(project.drawingModel)
@@ -237,17 +248,6 @@ function installPackageResourceCatalog(project, destinations, files, manifest) {
     };
   model.referenceCenter ||= { version: 2, entries: [], activeEntryId: null, viewContext: {} };
   model.referenceCenter.entries = Array.isArray(model.referenceCenter.entries) ? model.referenceCenter.entries : [];
-  const declared = Array.isArray(manifest.resources) ? manifest.resources : [];
-  const catalog = destinations.map(item => {
-    const bytes = files.get(item.path);
-    return {
-      path: item.path,
-      destination: item.destination,
-      destinationPath: item.destinationPath,
-      byteSize: bytes.length,
-      contentType: resourceContentType(item.path, bytes),
-    };
-  });
   model.packageResources = catalog;
   let referenceImages = 0;
   const maxReferenceBytes = 12 * 1024 * 1024;
