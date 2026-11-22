@@ -131,7 +131,7 @@ export function encodeWebMFromChunks(chunks, { width, height, codec = 'vp9', dur
 }
 
 export async function encodeWebMFrames(frames, {
-  width, height, codec = 'vp9', fps = 12, durationMs = 0,
+  width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null,
   onProgress, isCancelled
 } = {}) {
   if (!('VideoEncoder' in globalThis) || !('VideoFrame' in globalThis)) {
@@ -177,11 +177,13 @@ export async function encodeWebMFrames(frames, {
       const bitmap = await createImageBitmap(frame.blob);
       try {
         const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
-        if (bitmap.width !== width || bitmap.height !== height) {
-          renderContext.clearRect(0, 0, width, height);
-          renderContext.drawImage(bitmap, 0, 0, width, height);
+        renderContext.clearRect(0, 0, width, height);
+        if (backgroundColor) {
+          renderContext.fillStyle = backgroundColor;
+          renderContext.fillRect(0, 0, width, height);
         }
-        const source = bitmap.width === width && bitmap.height === height ? bitmap : renderCanvas;
+        renderContext.drawImage(bitmap, 0, 0, width, height);
+        const source = renderCanvas;
         const videoFrame = new VideoFrame(source, { timestamp: timestampUs, duration: durationUs });
         encoder.encode(videoFrame, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
         videoFrame.close();
