@@ -193,17 +193,30 @@ function destinationPathFor(filePath, destination) {
  * pixelforge-animation JSON model. No filename guessing: every cel is linked
  * explicitly by frameId + layerId in manifest.animation.frames[].cels[].
  */
-function imageMimeForResource(filePath, file) {
-  const lower = filePath.toLowerCase();
-  if (file?.subarray(0, 8).equals(PNG_SIGNATURE)) return 'image/png';
-  if (file?.[0] === 0xff && file?.[1] === 0xd8 && file?.[2] === 0xff) return 'image/jpeg';
-  if (file?.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/)) return 'image/gif';
-  if (file?.subarray(0, 4).toString('ascii') === 'RIFF' && file.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
-  if (/\.(?:png)$/i.test(lower)) return 'image/png';
-  if (/\.(?:png)$/i.test(lower)) return 'image/png';
-  if (/\.(?:png)$/i.test(lower)) return 'image/png';
-  if (/\.(?:png)$/i.test(lower)) return 'image/png';
+function imageMimeForResource(file) {
+  if (!Buffer.isBuffer(file)) return null;
+  if (file.subarray(0, 8).equals(PNG_SIGNATURE)) return 'image/png';
+  if (file[0] === 0xff && file[1] === 0xd8 && file[2] === 0xff) return 'image/jpeg';
+  if (file.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/)) return 'image/gif';
+  if (file.length >= 12 && file.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      file.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
   return null;
+}
+
+function resourceContentType(filePath, file) {
+  const imageMime = imageMimeForResource(file);
+  if (imageMime) return imageMime;
+  const extension = filePath.toLowerCase().split('.').at(-1);
+  const types = {
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska',
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', json: 'application/json',
+    csv: 'text/csv', html: 'text/html', htm: 'text/html', css: 'text/css',
+    js: 'text/javascript', mjs: 'text/javascript', ts: 'text/typescript', xml: 'application/xml',
+    ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2',
+    glb: 'model/gltf-binary', gltf: 'model/gltf+json', obj: 'model/obj',
+  };
+  return types[extension] || 'application/octet-stream';
 }
 
 function installPackageResourceCatalog(project, destinations, files, manifest) {
@@ -232,7 +245,7 @@ function installPackageResourceCatalog(project, destinations, files, manifest) {
       destination: item.destination,
       destinationPath: item.destinationPath,
       byteSize: bytes.length,
-      contentType: imageMimeForResource(item.path, bytes) || 'application/octet-stream',
+      contentType: resourceContentType(item.path, bytes),
     };
   });
   model.packageResources = catalog;
@@ -242,7 +255,7 @@ function installPackageResourceCatalog(project, destinations, files, manifest) {
   for (const item of destinations) {
     if (item.destination !== 'reference-center') continue;
     const bytes = files.get(item.path);
-    const mimeType = imageMimeForResource(item.path, bytes);
+    const mimeType = imageMimeForResource(bytes);
     if (!mimeType || bytes.length > 4 * 1024 * 1024 || embeddedBytes + bytes.length > maxReferenceBytes) continue;
     const existing = model.referenceCenter.entries.find(entry => entry.sourcePath === item.destinationPath);
     if (existing) continue;
