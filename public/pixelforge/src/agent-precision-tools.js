@@ -233,6 +233,105 @@ export function measureObject(object) {
   return {type:object.type,bounds:b};
 }
 
+export function createRoundedRect(x, y, width, height, radius, style = {}) {
+  const w=Math.max(0,finite(width)), h=Math.max(0,finite(height));
+  const r=Math.min(Math.abs(finite(radius)),w/2,h/2);
+  const k=0.5522847498307936;
+  const x0=finite(x), y0=finite(y), x1=x0+w, y1=y0+h;
+  const c=r*k;
+  const points=[
+    {x:x0+r,y:y0,kind:'line'},
+    {x:x1-r,y:y0,kind:'line'},
+    {x:x1-r+c,y:y0,kind:'cubic',c1:{x:x1-r+c,y:y0},c2:{x:x1,y:y0+r-c}},
+    {x:x1,y:y0+r,kind:'cubic',c1:{x:x1,y:y0+r-c},c2:{x:x1,y:y0+r}},
+    {x:x1,y:y1-r,kind:'line'},
+    {x:x1,y:y1-r+c,kind:'cubic',c1:{x:x1,y:y1-r+c},c2:{x:x1-r+c,y:y1}},
+    {x:x1-r,y:y1,kind:'cubic',c1:{x:x1-r+c,y:y1},c2:{x:x1-r,y:y1}},
+    {x:x0+r,y:y1,kind:'line'},
+    {x:x0+r-c,y:y1,kind:'cubic',c1:{x:x0+r-c,y:y1},c2:{x:x0,y:y1-r+c}},
+    {x:x0,y:y1-r,kind:'cubic',c1:{x:x0,y:y1-r+c},c2:{x:x0,y:y1-r}},
+    {x:x0,y:y0+r,kind:'line'},
+    {x:x0,y:y0+r-c,kind:'cubic',c1:{x:x0,y:y0+r-c},c2:{x:x0+r-c,y:y0}}
+  ];
+  return {type:'path',points,closed:true,transform:{},...clone(style)};
+}
+
+export function createArc(cx, cy, radius, startDegrees, endDegrees, style = {}) {
+  const r=Math.abs(finite(radius)), start=finite(startDegrees)*Math.PI/180, end=finite(endDegrees)*Math.PI/180;
+  let delta=end-start;
+  if(Math.abs(delta)<EPSILON)delta=Math.PI*2;
+  const segments=Math.max(1,Math.ceil(Math.abs(delta)/(Math.PI/2)));
+  const step=delta/segments, points=[];
+  for(let i=0;i<segments;i++){
+    const a=start+i*step,b=a+step,k=(4/3)*Math.tan((b-a)/4);
+    const p0={x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};
+    const p3={x:cx+r*Math.cos(b),y:cy+r*Math.sin(b)};
+    const p1={x:p0.x-k*r*Math.sin(a),y:p0.y+k*r*Math.cos(a)};
+    const p2={x:p3.x+k*r*Math.sin(b),y:p3.y-k*r*Math.cos(b)};
+    if(i===0)points.push({...p0,kind:'line'});
+    points.push({...p3,kind:'cubic',c1:p1,c2:p2});
+  }
+  return {type:'path',points,closed:false,transform:{},...clone(style)};
+}
+
+export function createCircleThroughThreePoints(a,b,c,style={}) {
+  const p=normalizePoint(a),q=normalizePoint(b),r=normalizePoint(c);
+  const d=2*(p.x*(q.y-r.y)+q.x*(r.y-p.y)+r.x*(p.y-q.y));
+  if(Math.abs(d)<EPSILON)throw new Error('collinear_points_no_unique_circle');
+  const aa=p.x*p.x+p.y*p.y,bb=q.x*q.x+q.y*q.y,cc=r.x*r.x+r.y*r.y;
+  const ux=(aa*(q.y-r.y)+bb*(r.y-p.y)+cc*(p.y-q.y))/d;
+  const uy=(aa*(r.x-q.x)+bb*(p.x-r.x)+cc*(q.x-p.x))/d;
+  return createEllipse(ux,uy,distance({x:ux,y:uy},p),distance({x:ux,y:uy},p),style);
+}
+
+export function createPolarArray(object, center, count, startDegrees=0, sweepDegrees=360) {
+  const n=Math.max(1,Math.floor(finite(count,1))), c=normalizePoint(center), total=finite(sweepDegrees,360);
+  return Array.from({length:n},(_,i)=>rotateObject(object,c,finite(startDegrees)+ (n===1?0:i*total/n)));
+}
+
+export function createGridArray(object, origin, columns, rows, dx, dy) {
+  const cols=Math.max(1,Math.floor(finite(columns,1))), rs=Math.max(1,Math.floor(finite(rows,1)));
+  const o=normalizePoint(origin);
+  const result=[];
+  for(let y=0;y<rs;y++)for(let x=0;x<cols;x++)result.push(translateObject(object,o.x+x*finite(dx),o.y+y*finite(dy)));
+  return result;
+}
+
+export function polylineLength(points, closed=false) {
+  const p=(points||[]).map(normalizePoint);
+  let total=0;
+  for(let i=1;i<p.length;i++)total+=distance(p[i-1],p[i]);
+  if(closed&&p.length>1)total+=distance(p.at(-1),p[0]);
+  return total;
+}
+
+export function nearestPointOnPolyline(point, points, closed=false) {
+  const p=(points||[]).map(normalizePoint);
+  if(p.length<2)return null;
+  let best=null, segments=p.length-1+(closed?1:0);
+  for(let i=0;i<segments;i++){
+    const hit=projectPointToSegment(point,p[i],p[(i+1)%p.length]);
+    if(!best||hit.distance<best.distance)best={...hit,segment:i};
+  }
+  return best;
+}
+
+export function alignObjectEdges(objects, edge='left', target=null) {
+  const items=(objects||[]).map(object=>({object:clone(object),bounds:boundsOf(object)}));
+  if(!items.length)return [];
+  const ref=target==null?(edge==='right'?Math.max(...items.map(i=>i.bounds.x+i.bounds.width)):edge==='bottom'?Math.max(...items.map(i=>i.bounds.y+i.bounds.height)):edge==='center-x'?((Math.min(...items.map(i=>i.bounds.x))+Math.max(...items.map(i=>i.bounds.x+i.bounds.width))/2)):edge==='center-y'?((Math.min(...items.map(i=>i.bounds.y))+Math.max(...items.map(i=>i.bounds.y+i.bounds.height))/2)):edge==='top'?Math.min(...items.map(i=>i.bounds.y)):Math.min(...items.map(i=>i.bounds.x)):target;
+  return items.map(item=>{
+    const b=item.bounds;
+    if(edge==='left')return translateObject(item.object,ref-b.x,0);
+    if(edge==='right')return translateObject(item.object,ref-(b.x+b.width),0);
+    if(edge==='top')return translateObject(item.object,0,ref-b.y);
+    if(edge==='bottom')return translateObject(item.object,0,ref-(b.y+b.height));
+    if(edge==='center-x')return translateObject(item.object,ref-(b.x+b.width/2),0);
+    if(edge==='center-y')return translateObject(item.object,0,ref-(b.y+b.height/2));
+    return item.object;
+  });
+}
+
 export function makePrecisionGuide({ type = 'line', ...data } = {}) {
   return { id:'guide-' + crypto.randomUUID(), type, visible:true, locked:true, ...clone(data) };
 }
@@ -241,6 +340,15 @@ export function buildAgentToolCatalog() {
   return [
     { name:'geometry.point', description:'Crear o normalizar un punto con coordenadas exactas.', precision:'subpixel' },
     { name:'geometry.line', description:'Crear una línea con extremos exactos.', precision:'subpixel' },
+    { name:'geometry.roundedRect', description:'Crear rectángulo redondeado exacto.', precision:'subpixel' },
+    { name:'geometry.arc', description:'Crear arco circular exacto mediante Bézier cúbico.', precision:'subpixel' },
+    { name:'geometry.circle3', description:'Crear círculo definido por tres puntos.', precision:'subpixel' },
+    { name:'geometry.polarArray', description:'Repetir geometría alrededor de un pivote.', precision:'subpixel' },
+    { name:'geometry.gridArray', description:'Repetir geometría en una matriz exacta.', precision:'subpixel' },
+    { name:'geometry.polylineLength', description:'Medir longitud de polilínea abierta o cerrada.', precision:'subpixel' },
+    { name:'geometry.nearest', description:'Encontrar el punto más cercano sobre una polilínea.', precision:'subpixel' },
+    { name:'geometry.edgeAlign', description:'Alinear objetos por bordes o centros exactos.', precision:'subpixel' },
+
     { name:'geometry.rect', description:'Crear rectángulo con posición y tamaño exactos.', precision:'subpixel' },
     { name:'geometry.ellipse', description:'Crear elipse por centro y radios.', precision:'subpixel' },
     { name:'geometry.polygon', description:'Crear polígono regular con número de lados, radio y rotación.', precision:'subpixel' },
