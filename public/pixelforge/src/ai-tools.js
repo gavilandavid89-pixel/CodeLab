@@ -1,6 +1,6 @@
 import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
-import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject } from './agent-precision-tools.js';
+import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
@@ -167,6 +167,38 @@ export class AICommandSession {
         }
         case 'geometry.measure': {
           result = measureObject(action.object);
+          break;
+        }
+        case 'geometry.roundedRect': {
+          result = createRoundedRect(action.x, action.y, action.width, action.height, action.radius, action.style || {});
+          break;
+        }
+        case 'geometry.arc': {
+          result = createArc(action.cx, action.cy, action.radius, action.startDegrees, action.endDegrees, action.style || {});
+          break;
+        }
+        case 'geometry.circle3': {
+          result = createCircleThroughThreePoints(action.a, action.b, action.c, action.style || {});
+          break;
+        }
+        case 'geometry.polarArray': {
+          result = { objects: createPolarArray(action.object, action.center, action.count, action.startDegrees, action.sweepDegrees) };
+          break;
+        }
+        case 'geometry.gridArray': {
+          result = { objects: createGridArray(action.object, action.origin, action.columns, action.rows, action.dx, action.dy) };
+          break;
+        }
+        case 'geometry.polylineLength': {
+          result = { length: polylineLength(action.points, action.closed) };
+          break;
+        }
+        case 'geometry.nearest': {
+          result = nearestPointOnPolyline(action.point, action.points, action.closed);
+          break;
+        }
+        case 'geometry.edgeAlign': {
+          result = { objects: alignObjectEdges(action.objects, action.edge, action.target) };
           break;
         }
         case 'geometry.distribute': {
