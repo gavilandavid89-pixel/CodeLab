@@ -1083,7 +1083,7 @@ export class AICommandSession {
         }
         case 'agent.tools.list': {
           result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog(), ...buildAdvancedPrecisionToolCatalog(), ...[
-            'vector.model.get','vector.model.import_svg','vector.object.create','vector.object.update','vector.object.delete','vector.object.duplicate','vector.object.mirror','vector.group.create','vector.group.ungroup','vector.align','vector.gradient.set','vector.keyframes.set','vector.snap.set','vector.history.undo','vector.history.redo','vector.model.validate'
+            'vector.model.get','vector.model.import_svg','vector.object.create','vector.object.update','vector.object.delete','vector.object.duplicate','vector.object.transform','vector.object.reorder','vector.object.mirror','vector.group.create','vector.group.ungroup','vector.align','vector.gradient.set','vector.keyframes.set','vector.snap.set','vector.history.undo','vector.history.redo','vector.model.validate'
           ].map(name => ({ name, description: 'PixelForge vector editing operation available through isolated proposals.' }))] };
           break;
         }
@@ -1144,6 +1144,24 @@ export class AICommandSession {
           model.objects[index] = { ...model.objects[index], ...plainResult(action.patch), id: model.objects[index].id };
           doc.setVectorModel(model); result = { object: plainResult(model.objects[index]) };
           break;
+        }
+        case 'vector.object.transform': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const item=model.objects.find(value=>value.id===action.id); if(!item) throw new Error('Vector object not found.');
+          const center=action.center && Number.isFinite(action.center.x) && Number.isFinite(action.center.y) ? action.center : {x:0,y:0};
+          if(action.operation==='translate') translateObject(item, Number(action.dx)||0, Number(action.dy)||0);
+          else if(action.operation==='scale') scaleObject(item, center, Number(action.sx), action.sy===undefined?Number(action.sx):Number(action.sy));
+          else if(action.operation==='rotate') rotateObject(item, center, Number(action.degrees));
+          else throw new TypeError('operation must be translate, scale, or rotate.');
+          doc.setVectorModel(model); result={object:plainResult(item)}; break;
+        }
+        case 'vector.object.reorder': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const index=model.objects.findIndex(value=>value.id===action.id); if(index<0) throw new Error('Vector object not found.');
+          const [item]=model.objects.splice(index,1);
+          const target=action.position==='back'?0:action.position==='forward'?Math.min(model.objects.length,index+1):action.position==='front'?model.objects.length:action.position==='backward'?Math.max(0,index-1):-1;
+          if(target<0) throw new TypeError('position must be front, back, forward, or backward.');
+          model.objects.splice(target,0,item); doc.setVectorModel(model); result={order:model.objects.map(value=>value.id)}; break;
         }
         case 'vector.object.delete': {
           const model = doc.getVectorModel();
@@ -1232,7 +1250,8 @@ export class AICommandSession {
           const values = items.map(item => item.type === 'line' ? {p:Math.min(item.x1,item.x2),size:Math.abs(item.x2-item.x1)} : {p:item.x||0,size:item.width||0});
           const center = Number.isFinite(action.center) ? action.center : (Math.min(...values.map(v=>v.p))+Math.max(...values.map(v=>v.p+v.size)))/2;
           const mirror = item => {
-            if (item.type === 'group') { item.children = (item.children||[]).map(child => { const c=plainResult(child); mirror(c); return c; }); }
+            if (item.type === 'line' && axis==='y') { const y1=2*center-item.y1; item.y1=2*center-item.y2; item.y2=y1; }
+            else if (item.type === 'group') { item.children = (item.children||[]).map(child => { const c=plainResult(child); mirror(c); return c; }); }
             else if (item.type === 'line' && axis==='x') { const x1=2*center-item.x1; item.x1=2*center-item.x2; item.x2=x1; }
             else if (item.type === 'path') for (const p of item.points||[]) { const key=axis==='x'?'x':'y'; p[key]=2*center-p[key]; if(p.c1)p.c1[key]=2*center-p.c1[key]; if(p.c2)p.c2[key]=2*center-p.c2[key]; }
             else { const key=axis==='x'?'x':'y', size=axis==='x'?'width':'height'; item[key]=2*center-(item[key]||0)-(item[size]||0); }
