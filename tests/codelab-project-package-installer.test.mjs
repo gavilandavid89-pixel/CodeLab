@@ -140,6 +140,8 @@ test('routes extra folders by semantic folder names and file types into usable d
   assert.equal(byPath['styles/theme.css'].destination, 'styles');
   assert.equal(byPath['components/button.json'].destination, 'components');
   assert.equal(byPath['unknown.custom'].destination, 'project-files');
+  assert.equal(project.packageResources.length, files.size);
+  assert.equal(project.packageResources.find(item => item.destination === 'reference-center').destinationPath, 'reference-center/character/pose.png');
 });
 
 test('manifest resource declarations override inferred folder and extension destinations', () => {
