@@ -2323,6 +2323,39 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, operation: 'bridge_status', bridge: agentBridgeStatus() });
       }
 
+      // Native CodeLab Validation Engine. This runs validators in-process and deliberately
+      // has no wall-clock deadline. A long-running validation can only be stopped by its
+      // caller (AbortSignal), so vital checks are never cut off by an arbitrary timer.
+      if (req.method === 'POST' && pathname === '/api/agent/validate') {
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || url.searchParams.get('token') || '');
+        if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
+          return sendJson(res, 401, { error: 'agent_validation_unauthorized' });
+        }
+        try {
+          const body = await readBody(req);
+          const { createNativeCodeLabValidationEngine } = await import('./public/codelab-native-validators.mjs');
+          const engine = createNativeCodeLabValidationEngine();
+          if (body?.operation === 'list') {
+            return sendJson(res, 200, { ok: true, engineVersion: 1, validators: engine.list() });
+          }
+          const target = String(body?.target || '').trim();
+          if (!target) return sendJson(res, 400, { error: 'validation_target_required' });
+          const result = await engine.validate(target, body?.input, { options: body?.options || {} });
+          return sendJson(res, result.ok ? 200 : 422, {
+            ok: result.ok,
+            engineVersion: result.version,
+            validator: result.validator,
+            score: result.score,
+            issues: result.issues,
+            details: result.details,
+            startedAt: result.startedAt,
+            finishedAt: result.finishedAt
+          });
+        } catch (error) {
+          return sendJson(res, 500, { error: 'native_validation_failed', message: String(error.message || error) });
+        }
+      }
+
       // Native CodeLab account login. Public registration is intentionally disabled.
       if (req.method === 'POST' && pathname === '/api/auth/login') {
         const body = await readBody(req);
