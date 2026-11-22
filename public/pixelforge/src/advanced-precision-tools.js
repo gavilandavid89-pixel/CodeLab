@@ -142,11 +142,17 @@ export function sampleBezier(segment,samples=32) {
   return Array.from({length:count},(_,i)=>bezierPoint(p0,p1,p2,p3,i/(count-1)));
 }
 export function fitPolyline(points,{closed=false,tolerance=.5}={}) {
-  const p=(points||[]).map(pt); if(p.length<2)throw new Error('fit_requires_two_points');
+  const p=(points||[]).map(pt); const tol=Math.max(EPS,n(tolerance,.5));
+  if(p.length<2)throw new Error('fit_requires_two_points');
   const simplified=[p[0]];
-  for(let i=1;i<p.length-1;i++){const a=simplified.at(-1),b=p[i],c=p[i+1],crossError=Math.abs(cross(sub(b,a),sub(c,a)))/(dist(a,c)||1);if(crossError>n(tolerance,.5))simplified.push(b);}
+  for(let i=1;i<p.length-1;i++){
+    const a=simplified.at(-1),b=p[i],c=p[i+1];
+    const baseline=sub(c,a), baseLen=len(baseline);
+    const deviation=baseLen<EPS?dist(b,a):Math.abs(cross(sub(b,a),baseline))/baseLen;
+    if(deviation>tol)simplified.push(b);
+  }
   simplified.push(p.at(-1));
-  return {type:'path',points:simplified.map((q,i)=>({...q,kind:'line'})),closed:Boolean(closed),transform:{},tolerance:n(tolerance,.5),sourcePointCount:p.length};
+  return {type:'path',points:simplified.map(q=>({...q,kind:'line'})),closed:Boolean(closed),transform:{},tolerance:tol,sourcePointCount:p.length};
 }
 export function reversePath(path) {
   const r=clone(path); r.points=(r.points||[]).slice().reverse().map(p=>{const q={...p}; if(p.c2)q.c1=clone(p.c2);else delete q.c1; if(p.c1)q.c2=clone(p.c1);else delete q.c2; return q;}); return r;
@@ -166,11 +172,12 @@ function clipPolygon(subject,clip) {
   } return out;
 }
 export function polygonBoolean(subject,clip,operation='intersect') {
-  const a=(subject||[]).map(pt),b=(clip||[]).map(pt); if(a.length<3||b.length<3)throw new Error('boolean_requires_two_polygons');
-  if(operation==='intersect')return {operation,points:clipPolygon(a,b),exactFor:'convex_clip_polygon'};
-  if(operation==='subtract')return {operation,points:clipPolygon(a,b),mode:'clip_boundary_preview',exactFor:'convex_clip_polygon_boundary'};
-  if(operation==='union')return {operation,points:a.concat(b),mode:'compound_preview',exactFor:'compound_preview'};
-  if(operation==='exclude')return {operation,points:a.concat(b),mode:'compound_preview',exactFor:'compound_preview'};
+  const a=(subject||[]).map(pt),b=(clip||[]).map(pt);
+  if(a.length<3||b.length<3)throw new Error('boolean_requires_two_polygons');
+  if(operation==='intersect')return {operation,points:clipPolygon(a,b),mode:'exact',exactFor:'convex_clip_polygon'};
+  if(['subtract','union','exclude'].includes(operation)){
+    return {operation,points:[],regions:[],mode:'unsupported',exactFor:null,reason:'operation_requires_multi-region_boolean_kernel'};
+  }
   throw new Error('unsupported_boolean_operation');
 }
 export function smartSnap(point,objects=[],options={}) {
@@ -248,7 +255,7 @@ export function buildAdvancedPrecisionToolCatalog() {
     ['geometry.fitPolyline','Simplify a polyline into deterministic path geometry.'],
     ['geometry.reversePath','Reverse a path while swapping handles.'],
     ['geometry.pathLength','Measure path length with deterministic cubic sampling.'],
-    ['geometry.boolean','Preview convex polygon boolean operations.'],
+    ['geometry.boolean','Compute exact convex polygon intersection; other boolean operations require a multi-region kernel.'],
     ['geometry.smartSnap','Rank semantic snap candidates.'],
     ['geometry.snapAxis','Snap a point to a local X/Y axis.'],
     ['geometry.measureBetween','Measure between two points.'],
