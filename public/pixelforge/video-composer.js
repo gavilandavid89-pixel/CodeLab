@@ -418,7 +418,8 @@ async function exportVideo() {
     return;
   }
   context.imageSmoothingEnabled = false;
-  const stream = exportCanvas.captureStream(outputFps);
+  const stream = exportCanvas.captureStream(0);
+  const canvasTrack = stream.getVideoTracks()[0];
   const chunks = [];
   let recorder;
   try {
@@ -440,7 +441,7 @@ async function exportVideo() {
   let thumbnails = [];
   try {
     thumbnails = await makeTimelineThumbnails();
-    recorder.start();
+    recorder.start(100);
     for (let repeat = 0; repeat < repeatCount; repeat++) {
       for (let index = 0; index < packageData.frames.length; index++) {
         if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
@@ -454,6 +455,7 @@ async function exportVideo() {
           background: solidBackground ? '#101116' : '#20232d'
         });
         bitmap.close?.();
+        if (canvasTrack && typeof canvasTrack.requestFrame === 'function') canvasTrack.requestFrame();
         await delay(frame.durationMs);
         if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
         elapsed += frame.durationMs;
