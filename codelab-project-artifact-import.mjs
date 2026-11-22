@@ -102,7 +102,7 @@ async function collectProjectFiles(root) {
     const entries = await fs.readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       const absolute = path.join(current, entry.name);
-      const relative = path.relative(root, absolute).replace(/\\\\/g, '/');
+      const relative = path.relative(root, absolute).replace(/\\/g, '/');
       if (!assertSafePath(relative)) throw new Error(`Unsafe extracted path: ${relative}`);
       if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not allowed in CodeLab packages: ${relative}`);
       if (entry.isDirectory()) stack.push(absolute);
