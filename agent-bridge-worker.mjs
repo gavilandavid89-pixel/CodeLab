@@ -28,6 +28,7 @@ const MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const MAX_PROJECTS = 50;
 const POLL_MS = 150;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
+const NATIVE_VALIDATION_ENABLED = String(process.env.CODELAB_NATIVE_VALIDATION_ENABLED || 'true').toLowerCase() !== 'false';
 let stopping = false;
 let shutdownSignalPromise = null;
 let workspaceId;
@@ -2518,6 +2519,29 @@ async function executeExplicitCodeLabBrowser(command) {
   }
 }
 
+async function validateAfterCommand(command) {
+  if (!NATIVE_VALIDATION_ENABLED) return null;
+  if (!command || !String(command.action || '').startsWith('pixelforge_')) return null;
+  if (command.action === 'pixelforge_propose' || command.action === 'pixelforge_export_animation_video') return null;
+  const projectId = typeof command.payload?.project_id === 'string' ? command.payload.project_id : null;
+  if (!projectId) return null;
+  const loaded = await loadProject(projectId);
+  const { createNativeCodeLabValidationEngine } = await import('./public/codelab-native-validators.mjs');
+  const engine = createNativeCodeLabValidationEngine();
+  const result = await engine.validate('pixelforge', loaded.project, { options: { sourceAction: command.action } });
+  return {
+    status: result.ok ? 'passed' : 'validation_failed',
+    ok: result.ok,
+    validator: result.validator,
+    score: result.score,
+    issues: result.issues,
+    details: result.details,
+    projectId,
+    serverRevision: loaded.serverRevision,
+    contentSha256: loaded.contentSha256
+  };
+}
+
 async function processCommand(command) {
   if (command.workspace_id !== workspaceId) throw new Error('Workspace is not authorized for this bridge.');
   await writeBridgeSignal('running', {
@@ -2866,6 +2890,26 @@ async function main() {
         });
         try {
           await processCommand(command);
+          const validation = await validateAfterCommand(command).catch(error => ({
+            status: 'validation_error',
+            ok: false,
+            validator: command.action,
+            score: 0,
+            issues: [{
+              code: 'native_validation_exception',
+              severity: 'fatal',
+              message: String(error.message || error)
+            }]
+          }));
+          if (validation) {
+            await pool.query(
+              "UPDATE codelab_agent_commands SET result=COALESCE(result,'{}'::jsonb) || $2::jsonb, updated_at=now() WHERE command_id=$1 AND workspace_id=$3",
+              [command.command_id, JSON.stringify({ nativeValidation: validation }), workspaceId]
+            );
+            if (!validation.ok && !commandError) {
+              commandError = new Error('Native validation failed after command execution.');
+            }
+          }
         } catch (error) {
           commandError = error;
           console.error('[CodeLab Native Bridge] command failed:', command.command_id, error.message);
