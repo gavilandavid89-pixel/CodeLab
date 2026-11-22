@@ -1,6 +1,7 @@
 import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
 import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';
+import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, extendToIntersection, trimToIntersection, filletLines, chamferLines, offsetLine, snapSmart, anchorPoint, alignToAnchor, dimension, constructionGraph, solveConstraints, constraintAudit, continuity } from './agent-connectivity-tools.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
@@ -956,6 +957,85 @@ export class AICommandSession {
               issues.push({code:'empty_path',severity:'error',objectId:o.id,message:'Path needs at least two points.'});
           }
           result = {ok:!issues.some(i=>i.severity==='error'),score:Math.max(0,100-issues.filter(i=>i.severity==='error').length*20-issues.filter(i=>i.severity==='warning').length*5),objectCount:objects.length,issues};
+          break;
+        }
+        case 'geometry.connect': {
+          result = connectObjects(action.a, action.b, { tolerance: action.tolerance ?? 0.01, weld: false });
+          break;
+        }
+        case 'geometry.weld': {
+          result = connectObjects(action.a, action.b, { tolerance: action.tolerance ?? 0.01, weld: true });
+          break;
+        }
+        case 'geometry.join': {
+          result = joinPaths(action.objects || [], { tolerance: action.tolerance ?? 0.01, close: action.close === true });
+          break;
+        }
+        case 'geometry.merge': {
+          const objects = (action.objects || []).map(plainResult);
+          if (!objects.length) throw new TypeError('geometry.merge requires objects.');
+          if (objects.every(o => ['line','path'].includes(o.type))) result = joinPaths(objects, { tolerance: action.tolerance ?? 0.01, close: action.close === true });
+          else result = { object: { id: crypto.randomUUID(), type: 'group', name: action.name || 'Merged group', children: objects, transform: {} } };
+          break;
+        }
+        case 'geometry.closeGap': {
+          result = closeGap(action.object, action.endpointIndex ?? 1, action.target);
+          break;
+        }
+        case 'geometry.extendToIntersection': {
+          result = extendToIntersection(action.object, action.other);
+          break;
+        }
+        case 'geometry.trimToIntersection': {
+          result = trimToIntersection(action.object, action.other, action.keep || 'start');
+          break;
+        }
+        case 'geometry.fillet': {
+          result = filletLines(action.a, action.b, action.radius);
+          break;
+        }
+        case 'geometry.chamfer': {
+          result = chamferLines(action.a, action.b, action.distance);
+          break;
+        }
+        case 'geometry.offset': {
+          result = offsetLine(action.object, action.distance);
+          break;
+        }
+        case 'geometry.snapSmart': {
+          result = snapSmart(action.point, action.objects || [], action.tolerance ?? 8);
+          break;
+        }
+        case 'geometry.anchor': {
+          result = { point: anchorPoint(action.object, action.anchor || 'center'), anchor: action.anchor || 'center' };
+          break;
+        }
+        case 'geometry.alignToAnchor': {
+          result = alignToAnchor(action.object, action.anchor || 'center', action.target);
+          break;
+        }
+        case 'geometry.dimension': {
+          result = dimension(action.a, action.b, action.label);
+          break;
+        }
+        case 'geometry.constructionGraph': {
+          result = constructionGraph(action.objects || [], action.relations || []);
+          break;
+        }
+        case 'geometry.solveConstraints': {
+          result = solveConstraints(action.objects || [], action.constraints || [], { tolerance: action.tolerance ?? 0.001, maxIterations: action.maxIterations ?? 24 });
+          break;
+        }
+        case 'geometry.constraintAudit': {
+          result = constraintAudit(action.objects || [], action.constraints || [], action.tolerance ?? 0.001);
+          break;
+        }
+        case 'geometry.continuity': {
+          result = continuity(action.a, action.b, action.tolerance ?? 0.001);
+          break;
+        }
+        case 'agent.tools.list': {
+          result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog()] };
           break;
         }
         case 'vector.model.get': {
