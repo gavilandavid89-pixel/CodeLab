@@ -4,6 +4,7 @@ import { DrawingWorkflow } from './drawing-workflow.js';
 import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';
 import { buildAdvancedPrecisionToolCatalog, coordinateFrame, localToWorld, worldToLocal, polarPoint, angleBisector, perpendicularThrough, parallelThrough, divideSegment, circumcenter, triangleCenters, circleLineIntersections, tangentLinesToCircle, bezierPoint, bezierTangentAt, bezierCurvatureAt, splitBezier, curveContinuity, sampleBezier, fitPolyline, reversePath, pathLength, polygonBoolean, smartSnap, snapToAxis, measureBetween, objectMetrics, diagnoseGeometry, geometryDiff, intentPlan } from './advanced-precision-tools.js';
 import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, extendToIntersection, trimToIntersection, filletLines, chamferLines, offsetLine, snapSmart, anchorPoint, alignToAnchor, dimension, constructionGraph, solveConstraints, constraintAudit, continuity } from './agent-connectivity-tools.js';
+import { parseSVGToVectorModel } from './vector-studio.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
@@ -1081,7 +1082,9 @@ export class AICommandSession {
           break;
         }
         case 'agent.tools.list': {
-          result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog(), ...buildAdvancedPrecisionToolCatalog()] };
+          result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog(), ...buildAdvancedPrecisionToolCatalog(), ...[
+            'vector.model.get','vector.model.import_svg','vector.object.create','vector.object.update','vector.object.delete','vector.object.duplicate','vector.object.mirror','vector.group.create','vector.group.ungroup','vector.align','vector.gradient.set','vector.keyframes.set','vector.snap.set','vector.history.undo','vector.history.redo','vector.model.validate'
+          ].map(name => ({ name, description: 'PixelForge vector editing operation available through isolated proposals.' }))] };
           break;
         }
         case 'geometry.precision.get': {
@@ -1177,6 +1180,90 @@ export class AICommandSession {
           break;
         }
 
+        case 'vector.model.import_svg': {
+          if (typeof action.svg !== 'string' || !action.svg.trim()) throw new TypeError('svg source is required.');
+          const model = parseSVGToVectorModel(action.svg, doc.width, doc.height);
+          doc.setVectorModel(model);
+          result = { imported: model.objects.length, model: plainResult(model) };
+          break;
+        }
+        case 'vector.object.duplicate': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [action.id].filter(Boolean);
+          const source = model.objects.filter(item => ids.includes(item.id));
+          if (!source.length) throw new Error('No matching vector objects found.');
+          const dx = Number.isFinite(action.dx) ? action.dx : 8, dy = Number.isFinite(action.dy) ? action.dy : 8;
+          const cloneTree = item => {
+            const copy = plainResult(item); copy.id = crypto.randomUUID();
+            if (Array.isArray(copy.children)) copy.children = copy.children.map(cloneTree);
+            if (copy.type === 'line') { copy.x1 += dx; copy.x2 += dx; copy.y1 += dy; copy.y2 += dy; }
+            else if (copy.type === 'path') copy.points = (copy.points || []).map(p => ({ ...p, x:p.x+dx, y:p.y+dy, ...(p.c1?{c1:{...p.c1,x:p.c1.x+dx,y:p.c1.y+dy}}:{}), ...(p.c2?{c2:{...p.c2,x:p.c2.x+dx,y:p.c2.y+dy}}:{}) }));
+            else { copy.x = (copy.x || 0)+dx; copy.y = (copy.y || 0)+dy; }
+            return copy;
+          };
+          const copies = source.map(cloneTree); model.objects.push(...copies); doc.setVectorModel(model);
+          result = { objects: plainResult(copies), objectCount: model.objects.length }; break;
+        }
+        case 'vector.group.create': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [];
+          const children = model.objects.filter(item => ids.includes(item.id));
+          if (children.length < 2) throw new Error('At least two objects are required to create a group.');
+          const group = { id: typeof action.group_id === 'string' && action.group_id ? action.group_id : crypto.randomUUID(), name: action.name || 'Group', type: 'group', children: plainResult(children), transform: {} };
+          model.objects = model.objects.filter(item => !ids.includes(item.id)); model.objects.push(group); doc.setVectorModel(model);
+          result = { group: plainResult(group), objectCount: model.objects.length }; break;
+        }
+        case 'vector.group.ungroup': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [action.id].filter(Boolean);
+          const groups = model.objects.filter(item => ids.includes(item.id) && item.type === 'group');
+          if (!groups.length) throw new Error('No matching groups found.');
+          const ungrouped = groups.flatMap(group => plainResult(group.children || []));
+          model.objects = model.objects.filter(item => !groups.some(group => group.id === item.id)).concat(ungrouped);
+          doc.setVectorModel(model); result = { objects: plainResult(ungrouped), objectCount: model.objects.length }; break;
+        }
+        case 'vector.object.mirror': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const ids = Array.isArray(action.ids) ? action.ids : [action.id].filter(Boolean);
+          const items = model.objects.filter(item => ids.includes(item.id));
+          if (!items.length) throw new Error('No matching vector objects found.');
+          const bounds = items.map(item => item.type === 'line' ? {x:Math.min(item.x1,item.x2),width:Math.abs(item.x2-item.x1)} : {x:item.x||0,width:item.width||0});
+          const axis = action.axis === 'y' ? 'y' : 'x';
+          const values = items.map(item => item.type === 'line' ? {p:Math.min(item.x1,item.x2),size:Math.abs(item.x2-item.x1)} : {p:item.x||0,size:item.width||0});
+          const center = Number.isFinite(action.center) ? action.center : (Math.min(...values.map(v=>v.p))+Math.max(...values.map(v=>v.p+v.size)))/2;
+          const mirror = item => {
+            if (item.type === 'group') { item.children = (item.children||[]).map(child => { const c=plainResult(child); mirror(c); return c; }); }
+            else if (item.type === 'line' && axis==='x') { const x1=2*center-item.x1; item.x1=2*center-item.x2; item.x2=x1; }
+            else if (item.type === 'path') for (const p of item.points||[]) { const key=axis==='x'?'x':'y'; p[key]=2*center-p[key]; if(p.c1)p.c1[key]=2*center-p.c1[key]; if(p.c2)p.c2[key]=2*center-p.c2[key]; }
+            else { const key=axis==='x'?'x':'y', size=axis==='x'?'width':'height'; item[key]=2*center-(item[key]||0)-(item[size]||0); }
+          };
+          items.forEach(mirror); doc.setVectorModel(model); result = { mirrored: ids, axis, center }; break;
+        }
+        case 'vector.gradient.set': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const item=model.objects.find(value=>value.id===action.id); if(!item) throw new Error('Vector object not found.');
+          const gradient=action.gradient;
+          if(!gradient || !['linear','radial'].includes(gradient.type) || !Array.isArray(gradient.stops) || gradient.stops.length<2) throw new TypeError('A linear or radial gradient with at least two stops is required.');
+          item.gradient=plainResult(gradient); doc.setVectorModel(model); result={object:plainResult(item)}; break;
+        }
+        case 'vector.keyframes.set': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          const item=model.objects.find(value=>value.id===action.id); if(!item) throw new Error('Vector object not found.');
+          if(!Array.isArray(action.keyframes)) throw new TypeError('keyframes must be an array.');
+          item.keyframes=plainResult(action.keyframes); doc.setVectorModel(model); result={object:plainResult(item)}; break;
+        }
+        case 'vector.snap.set': {
+          const model=doc.getVectorModel() || {version:5,width:doc.width,height:doc.height,grid:8,snap:true,objects:[],frames:[]};
+          if(action.enabled !== undefined) model.snap=Boolean(action.enabled);
+          if(action.grid !== undefined) { const grid=Number(action.grid); if(!Number.isFinite(grid)||grid<=0) throw new TypeError('grid must be a positive number.'); model.grid=grid; }
+          doc.setVectorModel(model); result={snap:model.snap,grid:model.grid}; break;
+        }
+        case 'vector.history.undo': result={changed:doc.undo(), vectorModel:plainResult(doc.getVectorModel())}; break;
+        case 'vector.history.redo': result={changed:doc.redo(), vectorModel:plainResult(doc.getVectorModel())}; break;
+        case 'vector.model.validate': {
+          const model=doc.getVectorModel(); if(!model) throw new Error('No vector model exists.');
+          result=validateVectorModel(model); break;
+        }
         default:
           return { ok: false, error: { code: 'unknown_action', message: 'Unsupported AI action: ' + action.name } };
       }
