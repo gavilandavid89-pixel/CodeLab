@@ -1,0 +1,9 @@
+{
+  "name": "CodeLab Assistant Headless Runtime",
+  "version": "1.0.0",
+  "purpose": "Offline assistant-side execution environment for CodeLab/PixelForge UI tests",
+  "externalServices": {"neon": false, "render": false, "oauth": false, "accounts": false, "externalApis": false},
+  "browser": "system Chromium via Chrome DevTools Protocol",
+  "dependencies": "Node.js built-ins + system Chromium",
+  "sourceIncluded": true
+}
