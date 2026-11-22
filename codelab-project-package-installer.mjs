@@ -179,10 +179,13 @@ function classifyPath(filePath, declaredResources = [], file = null) {
 }
 function destinationPathFor(filePath, destination) {
   const segments = filePath.split('/');
-  if (normalizeDestination(segments[0]) === destination) return filePath;
+  const rootDestination = normalizeDestination(segments[0]);
+  if (rootDestination === destination) return [destination, ...segments.slice(1)].join('/');
   const aliasIndex = segments.slice(0, -1).findIndex(segment => normalizeDestination(segment) === destination);
-  const remainder = aliasIndex >= 0 ? segments.slice(aliasIndex + 1) : segments;
-  return [destination, ...remainder].join('/');
+  const remainder = aliasIndex >= 0
+    ? [...segments.slice(0, aliasIndex), destination, ...segments.slice(aliasIndex + 1)]
+    : [destination, ...segments];
+  return remainder.join('/');
 }
 
 /**
@@ -190,16 +193,107 @@ function destinationPathFor(filePath, destination) {
  * pixelforge-animation JSON model. No filename guessing: every cel is linked
  * explicitly by frameId + layerId in manifest.animation.frames[].cels[].
  */
+function imageMimeForResource(filePath, file) {
+  const lower = filePath.toLowerCase();
+  if (file?.subarray(0, 8).equals(PNG_SIGNATURE)) return 'image/png';
+  if (file?.[0] === 0xff && file?.[1] === 0xd8 && file?.[2] === 0xff) return 'image/jpeg';
+  if (file?.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/)) return 'image/gif';
+  if (file?.subarray(0, 4).toString('ascii') === 'RIFF' && file.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (/\\.png$/i.test(lower)) return 'image/png';
+  if (/\\.jpe?g$/i.test(lower)) return 'image/jpeg';
+  if (/\\.gif$/i.test(lower)) return 'image/gif';
+  if (/\\.webp$/i.test(lower)) return 'image/webp';
+  return null;
+}
+
+function installPackageResourceCatalog(project, destinations, files, manifest) {
+  if (manifest.editor !== 'pixelforge' || project.format !== 'pixelforge-project') {
+    return { resourceCount: destinations.length, referenceImages: 0 };
+  }
+  const model = project.drawingModel && typeof project.drawingModel === 'object'
+    ? structuredClone(project.drawingModel)
+    : {
+      version: 1,
+      sheet: { mode: 'digital-sheet', preset: null, width: project.width, height: project.height, gridStep: 8, brushMin: 1, finePrecision: true },
+      palette: {},
+      objects: [],
+      referenceCenter: { version: 2, entries: [], activeEntryId: null, viewContext: { previousOpacity: 0.25, nextOpacity: 0.15, previousCount: 1, nextCount: 1 } },
+      currentState: { version: 1, entries: [], activeEntryId: null },
+      environmentHistory: { version: 1, entries: [], activeEntryId: null },
+      layerRoles: {},
+    };
+  model.referenceCenter ||= { version: 2, entries: [], activeEntryId: null, viewContext: {} };
+  model.referenceCenter.entries = Array.isArray(model.referenceCenter.entries) ? model.referenceCenter.entries : [];
+  const declared = Array.isArray(manifest.resources) ? manifest.resources : [];
+  const resourceByPath = new Map(destinations.map(item => [item.path, item]));
+  const catalog = destinations.map(item => {
+    const bytes = files.get(item.path);
+    return {
+      path: item.path,
+      destination: item.destination,
+      destinationPath: item.destinationPath,
+      byteSize: bytes.length,
+      contentType: imageMimeForResource(item.path, bytes) || 'application/octet-stream',
+    };
+  });
+  model.packageResources = catalog;
+  let referenceImages = 0;
+  const maxReferenceBytes = 12 * 1024 * 1024;
+  let embeddedBytes = 0;
+  for (const item of destinations) {
+    if (item.destination !== 'reference-center') continue;
+    const bytes = files.get(item.path);
+    const mimeType = imageMimeForResource(item.path, bytes);
+    if (!mimeType || bytes.length > 4 * 1024 * 1024 || embeddedBytes + bytes.length > maxReferenceBytes) continue;
+    const existing = model.referenceCenter.entries.find(entry => entry.sourcePath === item.destinationPath);
+    if (existing) continue;
+    const fileName = item.path.split('/').at(-1) || 'Reference image';
+    const entry = {
+      id: 'package-reference-' + (referenceImages + 1) + '-' + item.destinationPath.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 80),
+      name: fileName.replace(/\\.[^.]+$/, '').slice(0, 120) || 'Reference image',
+      type: 'asset',
+      category: 'reference',
+      version: 1,
+      sourcePath: item.destinationPath,
+      createdAt: new Date().toISOString(),
+      immutableSnapshot: true,
+      imageDataUrl: 'data:' + mimeType + ';base64,' + bytes.toString('base64'),
+      mimeType,
+      frames: [],
+      parts: [],
+      geometry: { canvas: { width: 0, height: 0 }, objectCount: 1 },
+    };
+    model.referenceCenter.entries.push(entry);
+    embeddedBytes += bytes.length;
+    referenceImages++;
+  }
+  if (referenceImages) model.referenceCenter.activeEntryId = model.referenceCenter.entries.at(-1).id;
+  project.drawingModel = model;
+  return { resourceCount: catalog.length, referenceImages, embeddedReferenceBytes: embeddedBytes };
+}
+
 export function installCodeLabPackage({ manifest, project, files }) {
   if (!manifest || !project || !(files instanceof Map)) fail('manifest, project and file map are required.');
+  const declaredResources = Array.isArray(manifest.resources) ? manifest.resources : [];
+  const declaredPaths = new Set();
+  for (const resource of declaredResources) {
+    if (!resource || !safeResourcePath(resource.path) || declaredPaths.has(resource.path)) {
+      fail('manifest.resources contains an invalid or duplicate resource path.');
+    }
+    declaredPaths.add(resource.path);
+    if (!normalizeDestination(resource.destination)) fail('manifest resource destination is unsupported for ' + resource.path);
+    if (!files.has(resource.path)) fail('manifest resource declaration references missing file: ' + resource.path);
+  }
   const destinations = [];
   for (const filePath of files.keys()) {
     if (!safeResourcePath(filePath)) fail('unsafe resource path: ' + filePath);
-    destinations.push({ path: filePath, destination: classifyPath(filePath) });
+    const destination = classifyPath(filePath, declaredResources, files.get(filePath));
+    destinations.push({ path: filePath, destination, destinationPath: destinationPathFor(filePath, destination) });
   }
+  const resources = installPackageResourceCatalog(project, destinations, files, manifest);
 
   if (manifest.editor !== 'pixelforge' || !manifest.animation) {
-    return { project, destinations, installed: { animationFrames: 0, animationCels: 0 } };
+    return { project, destinations, resources, installed: { animationFrames: 0, animationCels: 0 } };
   }
   if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
       !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
@@ -253,5 +347,5 @@ export function installCodeLabPackage({ manifest, project, files }) {
     loop: animationSpec.loop !== false,
     playbackSpeed: Number.isFinite(animationSpec.playbackSpeed) ? animationSpec.playbackSpeed : 1,
   };
-  return { project, destinations, installed: { animationFrames: frames.length, animationCels: celCount } };
+  return { project, destinations, resources, installed: { animationFrames: frames.length, animationCels: celCount } };
 }
