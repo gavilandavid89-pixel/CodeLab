@@ -420,17 +420,11 @@ async function exportVideo() {
     // durationMs is timeline data, not wall-clock sleep. Every timestamp is
     // calculated before/while encoding, so a 10-second animation does not
     // force a 10-second export.
-    const framesForEncode = sourceFrames.map((frame, index) => {
-      if (solidBackground) {
-        // Keep the source frame unchanged here; the encoder receives the same
-        // visual content while timing remains entirely metadata-driven.
-      }
-      return frame;
-    });
+    const framesForEncode = sourceFrames.map(frame => frame);
 
     const video = await encodeWebMFrames(framesForEncode, {
-      width: packageData.manifest.width,
-      height: packageData.manifest.height,
+      width,
+      height,
       codec,
       fps: outputFps,
       durationMs: total,
