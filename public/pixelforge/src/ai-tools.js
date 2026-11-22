@@ -1,6 +1,6 @@
 import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
-import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';
+import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';\nimport { buildAdvancedPrecisionToolCatalog, coordinateFrame, localToWorld, worldToLocal, polarPoint, angleBisector, perpendicularThrough, parallelThrough, divideSegment, circumcenter, triangleCenters, circleLineIntersections, tangentLinesToCircle, bezierPoint, bezierTangentAt, bezierCurvatureAt, splitBezier, curveContinuity, sampleBezier, fitPolyline, reversePath, pathLength, polygonBoolean, smartSnap, snapToAxis, measureBetween, objectMetrics, diagnoseGeometry, geometryDiff, intentPlan } from './advanced-precision-tools.js';
 import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, extendToIntersection, trimToIntersection, filletLines, chamferLines, offsetLine, snapSmart, anchorPoint, alignToAnchor, dimension, constructionGraph, solveConstraints, constraintAudit, continuity } from './agent-connectivity-tools.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
@@ -210,6 +210,35 @@ export class AICommandSession {
           result = makePrecisionGuide(action);
           break;
         }
+        case 'geometry.coordinateFrame': result = coordinateFrame(action.origin, action.angleDegrees); break;
+        case 'geometry.toLocal': result = worldToLocal(action.point, action.frame); break;
+        case 'geometry.toWorld': result = localToWorld(action.point, action.frame); break;
+        case 'geometry.polarPoint': result = polarPoint(action.origin, action.radius, action.angleDegrees); break;
+        case 'geometry.angleBisector': result = angleBisector(action.a, action.vertex ?? action.b, action.c); break;
+        case 'geometry.perpendicularThrough': result = perpendicularThrough(action.point, action.a, action.b); break;
+        case 'geometry.parallelThrough': result = parallelThrough(action.point, action.a, action.b); break;
+        case 'geometry.divideSegment': result = { points: divideSegment(action.a, action.b, action.count, action.mode) }; break;
+        case 'geometry.circumcenter': result = circumcenter(action.a, action.b, action.c); break;
+        case 'geometry.triangleCenters': result = triangleCenters(action.a, action.b, action.c); break;
+        case 'geometry.circleLineIntersections': result = { points: circleLineIntersections(action.circle, action.a, action.b) }; break;
+        case 'geometry.tangentLinesToCircle': result = { lines: tangentLinesToCircle(action.point, action.circle) }; break;
+        case 'geometry.bezierPoint': result = bezierPoint(action.p0, action.p1, action.p2, action.p3, action.t); break;
+        case 'geometry.bezierTangent': result = bezierTangentAt(action.segment, action.t); break;
+        case 'geometry.bezierCurvature': result = { curvature: bezierCurvatureAt(action.segment, action.t) }; break;
+        case 'geometry.bezierSplit': result = { segments: splitBezier(action.segment, action.t) }; break;
+        case 'geometry.bezierContinuity': result = curveContinuity(action.a, action.b, action.tolerance ?? 0.001); break;
+        case 'geometry.bezierSample': result = { points: sampleBezier(action.segment, action.samples ?? 32) }; break;
+        case 'geometry.fitPolyline': result = fitPolyline(action.points, { closed: action.closed, tolerance: action.tolerance ?? 0.5 }); break;
+        case 'geometry.reversePath': result = reversePath(action.path); break;
+        case 'geometry.pathLength': result = { length: pathLength(action.path) }; break;
+        case 'geometry.boolean': result = polygonBoolean(action.subject, action.clip, action.operation ?? 'intersect'); break;
+        case 'geometry.smartSnap': result = smartSnap(action.point, action.objects || [], action.options || { tolerance: action.tolerance ?? 8, grid: action.grid }); break;
+        case 'geometry.snapAxis': result = snapToAxis(action.point, action.origin, action.angleDegrees); break;
+        case 'geometry.measureBetween': result = measureBetween(action.a, action.b); break;
+        case 'geometry.objectMetrics': result = objectMetrics(action.object); break;
+        case 'geometry.diagnose': result = diagnoseGeometry(action.object, { tolerance: action.tolerance ?? 0.001 }); break;
+        case 'geometry.diff': result = geometryDiff(action.before, action.after, action.tolerance ?? 0.001); break;
+        case 'geometry.intentPlan': result = intentPlan(action.intent, { objects: action.objects || [] }); break;
         case 'geometry.add': {
           const model = doc.getVectorModel() || { version: 4, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
           const object = action.object;
@@ -1038,7 +1067,7 @@ export class AICommandSession {
           break;
         }
         case 'agent.tools.list': {
-          result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog()] };
+          result = { tools: [...buildAgentToolCatalog(), ...buildConnectivityToolCatalog(), ...buildAdvancedPrecisionToolCatalog()] };
           break;
         }
         case 'geometry.precision.get': {
