@@ -236,7 +236,7 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
       status: document.querySelector('#vc-status')?.textContent || ''
     }));
     if (imported.frames !== frames.length || imported.fps !== fps) {
-      throw new Error('CodeLab Video Composer imported unexpected animation metadata.');
+      throw new Error('CodeLab Video Composer imported unexpected animation metadata: ' + JSON.stringify({imported,expected:{frames:frames.length,fps}}));
     }
     await page.selectOption('#vc-format', 'webm-vp9').catch(() => {});
     await page.selectOption('#vc-output-fps', String(fps)).catch(() => {});
