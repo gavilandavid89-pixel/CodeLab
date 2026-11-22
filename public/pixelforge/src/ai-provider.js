@@ -15,7 +15,7 @@ export const AI_ACTION_CONTRACT = Object.freeze([
   { name: 'history.undo', description: 'Undo one sandbox edit.', parameters: {} },
   { name: 'history.redo', description: 'Redo one sandbox edit.', parameters: {} },
   { name: 'vector.audit', description: 'Run deterministic quality checks over the editable vector scene and return machine-readable issues and score.', parameters: { tolerance: 'number' } },
-  { name: 'vector.model.get', description: 'Read the editable vector object model.', parameters: {} },
+  { name: 'agent.tools.list, geometry.point, geometry.line, geometry.rect, geometry.ellipse, geometry.polygon, geometry.star, geometry.bezier, geometry.path, geometry.translate, geometry.scale, geometry.rotate, geometry.bounds, geometry.distribute, geometry.symmetry, guide.create, geometry.add, geometry.update, vector.model.get', description: 'Read the editable vector object model.', parameters: {} },
   { name: 'vector.object.create', description: 'Create an editable SVG-like vector object.', parameters: { object: 'object' } },
   { name: 'vector.object.update', description: 'Update one editable vector object.', parameters: { id: 'string', patch: 'object' } },
   { name: 'vector.object.delete', description: 'Delete one vector object from the isolated AI workspace.', parameters: { id: 'string' } },
