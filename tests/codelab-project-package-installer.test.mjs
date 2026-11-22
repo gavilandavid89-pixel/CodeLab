@@ -53,7 +53,7 @@ test('installs declared frame cels into native PixelForge animation and routes p
   assert.equal(Buffer.from(project.animation.frames[1].cels[1].pixels, 'base64').toString('hex'),
     'ffff00ff00000000');
   assert.deepEqual(result.destinations.map(item => item.destination).sort(),
-    ['assets', 'custom-data', 'frames', 'frames', 'frames', 'frames', 'project-files', 'scenes'].sort());
+    ['assets', 'frames', 'frames', 'frames', 'frames', 'project-files', 'scenes'].sort());
 });
 
 test('does not guess that arbitrary images are frames without manifest animation mapping', () => {
