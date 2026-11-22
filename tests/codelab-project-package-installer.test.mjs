@@ -19,7 +19,11 @@ function fixture() {
     ['frames/0002/base.rgba', rgbaC], ['frames/0002/detail.rgba', rgbaD],
     ['assets/reference.txt', Buffer.from('reference')],
     ['scenes/intro.json', Buffer.from('{}')],
-    ['custom-data/readme.txt', Buffer.from('extra')],\n    ['reference/moodboard/character.png', Buffer.from('image')],\n    ['audio/theme.ogg', Buffer.from('audio')],\n    ['ui/button.css', Buffer.from('css')],\n    ['unknown.blob', Buffer.from('opaque')],
+    ['custom-data/readme.txt', Buffer.from('extra')],
+    ['reference/moodboard/character.png', Buffer.from('image')],
+    ['audio/theme.ogg', Buffer.from('audio')],
+    ['ui/button.css', Buffer.from('css')],
+    ['unknown.blob', Buffer.from('opaque')],
   ]);
   const manifest = {
     format: 'codelab', version: 1, editor: 'pixelforge', projectType: 'pixelforge', entry: 'project.json',
