@@ -254,7 +254,7 @@ function setAttr(el, attrs) { for (const [k, v] of Object.entries(attrs)) if (v 
 
 export class VectorStudio {
   constructor({ host, getDocument, getModel, setModel, onChanged, onUndo, onRedo, status } = {}) {
-    this.host = host; this.getDocument = getDocument; this.setModel = setModel; this.onChanged = onChanged; this.onUndo = onUndo; this.onRedo = onRedo; this.status = status || (() => {});
+    this.host = host; this.getDocument = getDocument; this.getModel = getModel; this.setModel = setModel; this.onChanged = onChanged; this.onUndo = onUndo; this.onRedo = onRedo; this.status = status || (() => {});
     this.model = createVectorModel(getDocument().width, getDocument().height, getModel?.());
     this.tool = 'select'; this.selected = new Set(); this.drag = null; this.pen = []; this.enabled = false; this.build(); this.render();
   }
@@ -491,6 +491,12 @@ export class VectorStudio {
       if (k.scaleX !== undefined) o.transform = { ...(o.transform || {}), scaleX: k.scaleX };
       if (k.scaleY !== undefined) o.transform = { ...(o.transform || {}), scaleY: k.scaleY };
     }
+    this.render();
+  }
+
+  syncFromDocument() {
+    this.model = createVectorModel(this.getDocument().width, this.getDocument().height, this.getModel?.());
+    this.selected = new Set([...this.selected].filter(id => flattenObjects(this.model.objects).some(object => object.id === id)));
     this.render();
   }
 
