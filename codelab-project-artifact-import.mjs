@@ -16,7 +16,7 @@ async function queryChecked(pool, label, text, values) {
     throw new Error(`SQL parameter mismatch in ${label}: query requires ${maxPlaceholder}, values supplied ${values.length}`);
   }
   try {
-    return await queryChecked(pool, 'import_sql', text, values);
+    return await pool.query(text, values);
   } catch (error) {
     error.message = `${label}: ${error.message}`;
     throw error;
@@ -144,7 +144,7 @@ export async function importCodeLabArtifact(pool, {
          content_sha256=EXCLUDED.content_sha256,
          work_score=EXCLUDED.work_score,
          updated_at=now()`,
-      [request.workspace_id, projectId, request.editor_id, name, serialized, Number(request.work_score || 0)]
+      [request.workspace_id, projectId, request.editor_id, name, serialized, workScore]
     );
 
     if (request.editor_id === 'pixelforge') {
