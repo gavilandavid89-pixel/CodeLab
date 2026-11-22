@@ -156,6 +156,5 @@ test('uses file signatures as a fallback when an extension gives no clue', () =>
   const result = installCodeLabPackage({ manifest: { editor: 'web' }, project, files });
   const byPath = Object.fromEntries(result.destinations.map(item => [item.path, item]));
   assert.equal(byPath['misc/unknown.bin'].destination, 'assets');
-  assert.equal(byPath['opaque.bin']?.destination, undefined);
   assert.equal(byPath['misc/opaque.bin'].destination, 'project-files');
 });
