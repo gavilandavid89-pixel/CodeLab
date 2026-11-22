@@ -1,5 +1,6 @@
 import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
+import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide } from './agent-precision-tools.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
@@ -104,6 +105,85 @@ export class AICommandSession {
       const doc = this.#workspace.sandbox;
       let result;
       switch (action.name) {
+        case 'agent.tools.list': {
+          result = { tools: buildAgentToolCatalog() };
+          break;
+        }
+        case 'geometry.point': {
+          result = { point: { x: Number(action.x), y: Number(action.y) } };
+          break;
+        }
+        case 'geometry.line': {
+          result = createLine(action.a || { x: action.x1, y: action.y1 }, action.b || { x: action.x2, y: action.y2 }, action.style || {});
+          break;
+        }
+        case 'geometry.rect': {
+          result = createRect(action.x, action.y, action.width, action.height, action.style || {});
+          break;
+        }
+        case 'geometry.ellipse': {
+          result = createEllipse(action.cx, action.cy, action.rx, action.ry, action.style || {});
+          break;
+        }
+        case 'geometry.polygon': {
+          result = createRegularPolygon(action.cx, action.cy, action.radius, action.sides, action.rotation, action.style || {});
+          break;
+        }
+        case 'geometry.star': {
+          result = createStar(action.cx, action.cy, action.outerRadius, action.innerRadius, action.points, action.rotation, action.style || {});
+          break;
+        }
+        case 'geometry.bezier': {
+          result = createBezier(action.points, { closed: action.closed, style: action.style || {} });
+          break;
+        }
+        case 'geometry.path': {
+          result = pathFromCommands(action.commands, action.style || {});
+          break;
+        }
+        case 'geometry.translate': {
+          result = translateObject(action.object, action.dx, action.dy);
+          break;
+        }
+        case 'geometry.scale': {
+          result = scaleObject(action.object, action.center, action.sx, action.sy);
+          break;
+        }
+        case 'geometry.rotate': {
+          result = rotateObject(action.object, action.center, action.degrees);
+          break;
+        }
+        case 'geometry.bounds': {
+          result = boundsOf(action.object);
+          break;
+        }
+        case 'geometry.distribute': {
+          result = { objects: distributeObjects(action.objects, action.axis || 'x', action.gap) };
+          break;
+        }
+        case 'geometry.symmetry': {
+          result = { points: constructSymmetryPoints(action.point, action.center, action.mode || 'mirror-x', action.radialCount) };
+          break;
+        }
+        case 'guide.create': {
+          result = makePrecisionGuide(action);
+          break;
+        }
+        case 'geometry.add': {
+          const model = doc.getVectorModel() || { version: 4, width: doc.width, height: doc.height, grid: 8, snap: true, objects: [], frames: [] };
+          const object = action.object;
+          if (!object || typeof object !== 'object') throw new TypeError('geometry.add requires an object.');
+          const next = plainResult(object); next.id = next.id || crypto.randomUUID();
+          model.objects.push(next); doc.setVectorModel(model); result = { object: next, objectCount: model.objects.length };
+          break;
+        }
+        case 'geometry.update': {
+          const model = doc.getVectorModel(); if (!model) throw new Error('No vector model exists.');
+          const index = model.objects.findIndex(item => item.id === action.id); if (index < 0) throw new Error('Vector object not found.');
+          model.objects[index] = { ...model.objects[index], ...plainResult(action.patch || {}), id: model.objects[index].id };
+          doc.setVectorModel(model); result = { object: plainResult(model.objects[index]) };
+          break;
+        }
         case 'drawing.workflow.start': {
           const workflowId = typeof action.workflowId === 'string' && action.workflowId ? action.workflowId : crypto.randomUUID();
           this.#drawingWorkflow = new DrawingWorkflow({
