@@ -16,7 +16,7 @@ async function queryChecked(pool, label, text, values) {
     throw new Error(`SQL parameter mismatch in ${label}: query requires ${maxPlaceholder}, values supplied ${values.length}`);
   }
   try {
-    return await queryChecked(pool, 'codelab_import_query', text, values);
+    return await pool.query(text, values);
   } catch (error) {
     error.message = `${label}: ${error.message}`;
     throw error;
