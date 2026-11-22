@@ -1,4 +1,4 @@
-export const VECTOR_MODEL_VERSION = 4;
+export const VECTOR_MODEL_VERSION = 5;
 
 const NS = 'http://www.w3.org/2000/svg';
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -57,6 +57,15 @@ export function auditVectorModel(model, { tolerance = 2, viewport = true } = {})
       issues.push({ code: 'bbox_overlap', severity: 'info', objects: [objects[i].id, objects[j].id], message: 'Bounding boxes overlap; verify intentional layering.' });
     }
   }
+  const precision = model?.precision || {};
+  const objectIds = new Set(objects.map(o => o.id).filter(Boolean));
+  for (const c of precision.constraints || []) {
+    if (c.a && !objectIds.has(c.a)) issues.push({ code: 'dangling_constraint', severity: 'error', message: 'Constraint references missing object.', constraintId: c.id || null, objectId: c.a });
+    if (c.b && !objectIds.has(c.b)) issues.push({ code: 'dangling_constraint', severity: 'error', message: 'Constraint references missing object.', constraintId: c.id || null, objectId: c.b });
+  }
+  for (const n of precision.constructionGraph?.nodes || []) {
+    if (n.id && !objectIds.has(n.id)) issues.push({ code: 'dangling_graph_node', severity: 'warning', message: 'Construction graph references missing object.', nodeId: n.id });
+  }
   const errors = issues.filter(i => i.severity === 'error').length, warnings = issues.filter(i => i.severity === 'warning').length;
   return { ok: errors === 0, score: Math.max(0, 100 - errors * 20 - warnings * 5), objectCount: objects.length, issues };
 }
@@ -71,6 +80,20 @@ export function createVectorModel(width, height, existing = null) {
     snap: m.snap !== false,
     objects: Array.isArray(m.objects) ? m.objects : [],
     frames: Array.isArray(m.frames) ? m.frames : [],
+    precision: m.precision && typeof m.precision === 'object' ? {
+      tolerance: Number.isFinite(Number(m.precision.tolerance)) ? Number(m.precision.tolerance) : 0.001,
+      anchors: Array.isArray(m.precision.anchors) ? m.precision.anchors : [],
+      guides: Array.isArray(m.precision.guides) ? m.precision.guides : [],
+      constraints: Array.isArray(m.precision.constraints) ? m.precision.constraints : [],
+      constructionGraph: m.precision.constructionGraph && typeof m.precision.constructionGraph === 'object'
+        ? m.precision.constructionGraph : { version: 1, nodes: [], edges: [] }
+    } : {
+      tolerance: 0.001,
+      anchors: [],
+      guides: [],
+      constraints: [],
+      constructionGraph: { version: 1, nodes: [], edges: [] }
+    },
     metadata: m.metadata && typeof m.metadata === 'object' ? m.metadata : { intent: '', tags: [] }
   };
 }
