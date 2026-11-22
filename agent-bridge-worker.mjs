@@ -203,12 +203,19 @@ async function finish(commandId, status, result, proposal = null, token = null) 
     }
   });
 }
-async function loadProject(projectId) {
+function targetPixelForgeWorkspace(payload = {}) {
+  const target = typeof payload.target_workspace_id === 'string' && payload.target_workspace_id.trim()
+    ? payload.target_workspace_id.trim()
+    : pixelForgeWorkspaceId;
+  if (!/^ws_[a-zA-Z0-9_-]{1,140}$/.test(target)) throw new Error('Invalid target PixelForge workspace.');
+  return target;
+}
+async function loadProject(projectId, targetWorkspace = pixelForgeWorkspaceId) {
   const result = await pool.query(
     'SELECT project, server_revision, content_sha256 FROM codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2',
-    [pixelForgeWorkspaceId, projectId]
+    [targetWorkspace, projectId]
   );
-  if (!result.rowCount) throw new Error('PixelForge project not found in the ADMIN workspace.');
+  if (!result.rowCount) throw new Error('PixelForge project not found in the target workspace.');
   return {
     project: result.rows[0].project,
     serverRevision: Number(result.rows[0].server_revision || 0),
@@ -1991,9 +1998,10 @@ async function migrateAdminPixelForgeProjectsToGuest() {
 }
 
 async function capturePixelForgeInterface(payload = {}) {
+  const targetWorkspace = targetPixelForgeWorkspace(payload);
   if (payload.project_id !== undefined) {
     assertProjectId(payload.project_id);
-    await loadProject(payload.project_id);
+    await loadProject(payload.project_id, targetWorkspace);
   }
   const width = Number.isInteger(payload.width) ? Math.max(640, Math.min(2560, payload.width)) : 1440;
   const height = Number.isInteger(payload.height) ? Math.max(480, Math.min(1800, payload.height)) : 1000;
@@ -2035,6 +2043,10 @@ async function capturePixelForgeInterface(payload = {}) {
     }
     const captureUrl = baseUrl + '/pixelforge/index.html?capture=1' +
       (payload.project_id ? '&projectId=' + encodeURIComponent(payload.project_id) : '');
+    await page.addInitScript(({ id, token }) => {
+      localStorage.setItem('codelab_xd_workspace_v4', id);
+      localStorage.setItem('codelab_xd_workspace_token_v1', token);
+    }, { id: targetWorkspace, token: workspaceTokenFor(targetWorkspace) });
     const response = await page.goto(captureUrl, {
       waitUntil: 'domcontentloaded',
       timeout: 45000
@@ -2163,11 +2175,12 @@ async function capturePixelForgeInterface(payload = {}) {
 
 
 async function previewPixelForgeEvidenceVideo(payload = {}) {
+  const targetWorkspace = targetPixelForgeWorkspace(payload);
   const eventId = String(payload.event_id || '');
   if (!/^[0-9a-f-]{36}$/i.test(eventId)) throw new Error('A valid evidence event_id is required.');
   const result = await pool.query(
     'SELECT video_data, video_mime_type, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
-    [workspaceId, eventId]
+    [targetWorkspace, eventId]
   );
   const evidence = result.rows[0];
   if (!evidence || !evidence.video_data) throw new Error('Video evidence bytes were not found in Neon.');
@@ -2236,8 +2249,9 @@ async function previewPixelForgeEvidenceVideo(payload = {}) {
 }
 
 async function exportPixelForgeAnimationVideo(payload = {}) {
+  const targetWorkspace = targetPixelForgeWorkspace(payload);
   assertProjectId(payload.project_id);
-  const loaded = await loadProject(payload.project_id);
+  const loaded = await loadProject(payload.project_id, targetWorkspace);
   const project = loaded.project;
   const timeline = project.animation;
   if (!timeline || !Array.isArray(timeline.frames) || timeline.frames.length < 2) {
@@ -2308,7 +2322,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
     await page.addInitScript(({ id, token }) => {
       localStorage.setItem('codelab_xd_workspace_v4', id);
       localStorage.setItem('codelab_xd_workspace_token_v1', token);
-    }, { id: workspaceId, token: workspaceTokenFor(workspaceId) });
+    }, { id: targetWorkspace, token: workspaceTokenFor(targetWorkspace) });
 
     const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     if (!response || !response.ok()) {
@@ -2359,7 +2373,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
       // Create the Neon event before uploading so the event itself measures the
       // handoff path instead of hiding the upload behind a command result.
       evidence = await neonEvidence.createChangeEvent(pool, {
-        workspaceId: pixelForgeWorkspaceId,
+        workspaceId: targetWorkspace,
         projectId: payload.project_id,
         revision: loaded.serverRevision,
         changeKind: 'animation-evidence',
@@ -2372,7 +2386,7 @@ async function exportPixelForgeAnimationVideo(payload = {}) {
           videoDurationMs: totalDurationMs
         }
       });
-      const objectKey = 'pixelforge/' + pixelForgeWorkspaceId + '/' + payload.project_id +
+      const objectKey = 'pixelforge/' + targetWorkspace + '/' + payload.project_id +
         '/r' + loaded.serverRevision + '/' + evidence.eventId + '.webm';
       let upload = null;
       if (neonEvidence.storageConfigured()) {
@@ -2563,6 +2577,7 @@ async function processCommand(command) {
     return;
   }
   const payload = command.payload || {};
+  const targetWorkspace = targetPixelForgeWorkspace(payload);
   switch (command.action) {
     case 'neon_function_invoke':
       await finish(command.command_id, 'succeeded', await invokeNeonFunction(payload));
@@ -2751,10 +2766,10 @@ async function processCommand(command) {
       return;
     }
     case 'pixelforge_capture_interface':
-      await finish(command.command_id, 'succeeded', await capturePixelForgeInterface(payload));
+      await finish(command.command_id, 'succeeded', await capturePixelForgeInterface({ ...payload, target_workspace_id: targetWorkspace }));
       return;
     case 'pixelforge_export_animation_video':
-      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo({ ...payload, command_id: command.command_id }));
+      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo({ ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id }));
       return;
     case 'pixelforge_preview_evidence_video':
       await finish(command.command_id, 'succeeded', await previewPixelForgeEvidenceVideo(payload));
