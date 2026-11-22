@@ -27,6 +27,16 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+async function assertZipArchive(buffer, tempRoot) {
+  const archive = path.join(tempRoot, 'integrity-check.codelab');
+  await fs.writeFile(archive, buffer);
+  try {
+    await execFileAsync('unzip', ['-tq', archive], { timeout: 30_000 });
+  } catch {
+    throw new Error('The .codelab artifact is corrupted or incomplete and cannot be imported.');
+  }
+}
+
 function assertSafePath(value) {
   if (typeof value !== 'string' || value.length === 0 || value.includes('\0')) return false;
   const normalized = value.replace(/\\/g, '/');
@@ -198,6 +208,7 @@ export async function importCodeLabArtifact(pool, {
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-import-'));
   try {
+    await assertZipArchive(buffer, tempRoot);
     await queryChecked(pool, 'import_sql', 
       'UPDATE public.codelab_project_import_requests SET status=\'running\', updated_at=now() WHERE import_request_id=$1',
       [importRequestId]
