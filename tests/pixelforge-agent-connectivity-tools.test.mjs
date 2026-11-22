@@ -22,6 +22,9 @@ test('join paths produces one path',()=>{
 test('gap, extend, trim and offset are deterministic',()=>{
   const a=line('a',0,0,10,0), b=line('b',15,-5,15,5);
   assert.deepEqual(closeGap(a,1,{x:12,y:0}).x2,12);
+  const bez={type:'path',points:[{x:0,y:0,c2:{x:4,y:0}},{x:10,y:0,c1:{x:6,y:0}}]};
+  const moved=closeGap(bez,0,{x:2,y:0});
+  assert.deepEqual(moved.points[0].c2,{x:6,y:0});
   assert.deepEqual(extendToIntersection(a,b).intersection,{x:15,y:0});
   assert.deepEqual(trimToIntersection(a,b,'start').intersection,{x:15,y:0});
   assert.deepEqual(offsetLine(a,2),{type:'line',x1:0,y1:2,x2:10,y2:2,transform:{}});
@@ -45,7 +48,8 @@ test('construction graph and constraint audit are serializable',()=>{
   const graph=constructionGraph([a,b],[{type:'horizontal',a:'a',b:'b'}]);
   assert.equal(graph.nodes.length,2); assert.equal(graph.edges.length,1);
   const solved=solveConstraints([a,b],[{type:'horizontal',a:'a',b:'b'}],{maxIterations:8});
-  assert.ok(solved.diagnostics.length>=1);
+  assert.equal(solved.diagnostics.at(-1).status,'satisfied');
+  assert.equal(Math.abs(solved.objects[1].y1-solved.objects[0].y1)<1e-3,true);
   const audit=constraintAudit(solved.objects,[{type:'horizontal',a:'a',b:'b'}],.001);
   assert.equal(typeof audit.ok,'boolean');
 });
