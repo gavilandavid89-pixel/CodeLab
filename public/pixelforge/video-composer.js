@@ -364,18 +364,17 @@ function startPlayback() {
   });
   else { playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback(); }
 }
-function recorderMime() {
-  if (!window.MediaRecorder) return '';
+function webCodecsSupport() {
+  if (!('VideoEncoder' in globalThis) || !('VideoFrame' in globalThis)) return '';
   const choice = $('#vc-format').value;
-  const candidates = choice === 'mp4' ? ['video/mp4'] :
-    choice === 'webm-vp9' ? ['video/webm;codecs=vp9'] :
-    choice === 'webm-vp8' ? ['video/webm;codecs=vp8'] :
-    ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
-  return candidates.find(type => window.MediaRecorder?.isTypeSupported?.(type)) || '';
+  if (choice === 'mp4') return '';
+  return choice === 'webm-vp8' ? 'VP8 · WebCodecs' : 'VP9 · WebCodecs';
 }
 function refreshFormatSupport() {
-  const supported = recorderMime();
-  $('#vc-format-support').textContent = supported ? 'Disponible en este navegador: ' + supported : 'Este navegador no ofrece un codificador compatible para la opción seleccionada.';
+  const supported = webCodecsSupport();
+  $('#vc-format-support').textContent = supported
+    ? 'Codificación determinista disponible: ' + supported + ' · sin espera en tiempo real.'
+    : 'Esta plataforma no ofrece el codificador WebCodecs para la opción seleccionada. Usa WebM VP9/VP8.';
   ui.export.disabled = !packageData || !supported || exportBusy;
   ui.exportTop.disabled = !packageData || !supported || exportBusy;
 }
