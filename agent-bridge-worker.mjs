@@ -8,6 +8,7 @@ import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js';
 import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
+import { importCodeLabArtifact } from './codelab-project-artifact-import.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -2566,6 +2567,16 @@ async function processCommand(command) {
     case 'neon_function_invoke':
       await finish(command.command_id, 'succeeded', await invokeNeonFunction(payload));
       return;
+    case 'codelab_project_import': {
+      const result = await importCodeLabArtifact(pool, {
+        importRequestId: payload.import_request_id,
+        workspaceId,
+        pixelForgeWorkspaceId,
+      });
+      const terminalStatus = result.status === 'awaiting_confirmation' ? 'succeeded' : 'succeeded';
+      await finish(command.command_id, terminalStatus, result);
+      return;
+    }
     case 'codelab_project_create':
       await finish(command.command_id, 'succeeded', await createCodeLabProject(command));
       return;
