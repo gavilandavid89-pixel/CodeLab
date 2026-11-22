@@ -1,14 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertCodelabArtifactFilename } from '../codelab-project-artifact-import.mjs';
+import { assertCodelabPackageEntries } from '../codelab-project-artifact-import.mjs';
 
-test('accepts only filenames ending in .codelab', () => {
-  assert.equal(assertCodelabArtifactFilename('project.codelab'), true);
-  assert.equal(assertCodelabArtifactFilename('portrait-animation.CODELAB'), true);
+test('accepts any archive filename when the root project.codelab marker exists', () => {
+  assert.equal(assertCodelabPackageEntries([
+    'project.codelab',
+    'manifest.json',
+    'project.json',
+    'assets/',
+    'assets/portrait.png',
+    'scenes/main.scene',
+    'custom-data/metadata.json',
+    'README.txt',
+  ]), true);
 });
 
-test('rejects generic ZIP files and unsafe artifact filenames', () => {
-  for (const filename of ['project.zip', 'project.zip.codelab.exe', 'project.codelab.zip', '../project.codelab', '', null]) {
-    assert.throws(() => assertCodelabArtifactFilename(filename), /Only \.codelab project packages/);
-  }
+test('rejects ZIP archives without the root project.codelab marker', () => {
+  assert.throws(() => assertCodelabPackageEntries([
+    'manifest.json', 'project.json', 'assets/portrait.png',
+  ]), /root project\.codelab marker is missing/);
+});
+
+test('does not accept a nested marker as the project marker', () => {
+  assert.throws(() => assertCodelabPackageEntries([
+    'nested/project.codelab', 'manifest.json', 'project.json',
+  ]), /root project\.codelab marker is missing/);
+});
+
+test('rejects unsafe or duplicate archive paths', () => {
+  assert.throws(() => assertCodelabPackageEntries([
+    'project.codelab', 'manifest.json', 'project.json', '../outside.txt',
+  ]), /Unsafe path/);
+  assert.throws(() => assertCodelabPackageEntries([
+    'project.codelab', 'manifest.json', 'project.json', 'assets/a.png', 'assets/a.png',
+  ]), /Duplicate entry/);
 });
