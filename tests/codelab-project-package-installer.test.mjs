@@ -19,6 +19,7 @@ function fixture() {
     ['frames/0002/base.rgba', rgbaC], ['frames/0002/detail.rgba', rgbaD],
     ['assets/reference.txt', Buffer.from('reference')],
     ['scenes/intro.json', Buffer.from('{}')],
+    ['custom-data/readme.txt', Buffer.from('extra')],
   ]);
   const manifest = {
     format: 'codelab', version: 1, editor: 'pixelforge', projectType: 'pixelforge', entry: 'project.json',
@@ -52,7 +53,7 @@ test('installs declared frame cels into native PixelForge animation and routes p
   assert.equal(Buffer.from(project.animation.frames[1].cels[1].pixels, 'base64').toString('hex'),
     'ffff00ff00000000');
   assert.deepEqual(result.destinations.map(item => item.destination).sort(),
-    ['assets', 'frames', 'frames', 'frames', 'frames', 'project-files', 'scenes'].sort());
+    ['assets', 'custom-data', 'frames', 'frames', 'frames', 'frames', 'project-files', 'scenes'].sort());
 });
 
 test('does not guess that arbitrary images are frames without manifest animation mapping', () => {
@@ -69,7 +70,7 @@ test('rejects incomplete frame-to-layer mappings and missing resource paths', ()
   assert.throws(() => installCodeLabPackage({ manifest, project, files }), /exactly one cel for every project layer/);
   const next = fixture();
   next.manifest.animation.frames[0].cels[0].path = 'frames/missing.rgba';
-  assert.throws(() => installCodeLabPackage(next), /manifest, project and file map are required/);
+  assert.throws(() => installCodeLabPackage({ manifest: next.manifest, project: next.project, files: next.files }), /references missing file/);
 });
 
 test('rejects unsafe paths, wrong RGBA sizes and invalid frame dimensions', () => {
