@@ -211,7 +211,7 @@ function resourceContentType(filePath, file) {
     mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4',
     mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska',
     pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', json: 'application/json',
-    csv: 'text/csv', html: 'text/html', htm: 'text/html', css: 'text/css',
+    csv: 'text/csv', html: 'text/html', htm: 'text/html', css: 'text/css', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp',
     js: 'text/javascript', mjs: 'text/javascript', ts: 'text/typescript', xml: 'application/xml',
     ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2',
     glb: 'model/gltf-binary', gltf: 'model/gltf+json', obj: 'model/obj',
