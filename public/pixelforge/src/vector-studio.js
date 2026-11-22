@@ -134,6 +134,7 @@ function style(o) {
 }
 
 function transformString(t = {}) {
+  if (typeof t.svgTransform === 'string' && t.svgTransform) return t.svgTransform;
   const x = num(t.x), y = num(t.y), r = num(t.rotation), sx = num(t.scaleX, 1), sy = num(t.scaleY, 1), kx = num(t.skewX), ky = num(t.skewY);
   const parts = [];
   if (x || y) parts.push(`translate(${x} ${y})`);
@@ -178,6 +179,75 @@ function objectToSvg(o) {
 
 export function vectorModelToSVG(model) {
   return `<svg xmlns="${NS}" width="${model.width}" height="${model.height}" viewBox="0 0 ${model.width} ${model.height}">${defsFor(model)}${(model.objects || []).filter(o => !o.hidden).map(objectToSvg).join('')}</svg>`;
+}
+
+export function parseSvgPathData(data) {
+  const tokens = String(data || '').match(/[a-zA-Z]|[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g) || [];
+  const points = []; let i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0, control = null, previous = '';
+  const command = value => /^[a-zA-Z]$/.test(value);
+  const read = () => { if (i >= tokens.length || command(tokens[i])) throw new Error('Malformed SVG path.'); const n = Number(tokens[i++]); if (!Number.isFinite(n)) throw new Error('Invalid SVG coordinate.'); return n; };
+  const add = (nx, ny, extra = {}) => { x = nx; y = ny; points.push({ x, y, ...extra }); };
+  while (i < tokens.length) {
+    if (command(tokens[i])) cmd = tokens[i++];
+    else if (!cmd) throw new Error('SVG path must start with a command.');
+    const op = cmd.toUpperCase(), rel = cmd !== op;
+    if (op === 'Z') { x = sx; y = sy; previous = op; control = null; cmd = ''; continue; }
+    if (op === 'M' || op === 'L' || op === 'T') {
+      const a = read(), b = read(), nx = rel ? x + a : a, ny = rel ? y + b : b;
+      if (op === 'M') { add(nx, ny); sx = x; sy = y; cmd = rel ? 'l' : 'L'; }
+      else if (op === 'T') {
+        const q = previous === 'Q' || previous === 'T' ? { x: 2*x-control.x, y: 2*y-control.y } : { x, y };
+        add(nx, ny, { kind: 'cubic', c1: { x: x+(q.x-x)*2/3, y: y+(q.y-y)*2/3 }, c2: { x: nx+(q.x-nx)*2/3, y: ny+(q.y-ny)*2/3 } }); control = q;
+      } else { add(nx, ny); control = null; }
+      previous = op; continue;
+    }
+    if (op === 'H' || op === 'V') { const n = read(); add(op === 'H' ? (rel ? x+n : n) : x, op === 'V' ? (rel ? y+n : n) : y); control = null; previous = op; continue; }
+    if (op === 'C' || op === 'S' || op === 'Q') {
+      let c1, c2, nx, ny;
+      if (op === 'C') {
+        const a=read(),b=read(),c=read(),d=read(),e=read(),f=read();
+        c1=rel?{x:x+a,y:y+b}:{x:a,y:b}; c2=rel?{x:x+c,y:y+d}:{x:c,y:d}; nx=rel?x+e:e; ny=rel?y+f:f; control=c2;
+      } else if (op === 'S') {
+        const a=read(),b=read(),e=read(),f=read();
+        c1=(previous==='C'||previous==='S')?{x:2*x-control.x,y:2*y-control.y}:{x,y}; c2=rel?{x:x+a,y:y+b}:{x:a,y:b}; nx=rel?x+e:e; ny=rel?y+f:f; control=c2;
+      } else {
+        const a=read(),b=read(),e=read(),f=read(),q=rel?{x:x+a,y:y+b}:{x:a,y:b};
+        nx=rel?x+e:e; ny=rel?y+f:f; c1={x:x+(q.x-x)*2/3,y:y+(q.y-y)*2/3}; c2={x:nx+(q.x-nx)*2/3,y:ny+(q.y-ny)*2/3}; control=q;
+      }
+      add(nx,ny,{kind:'cubic',c1,c2}); previous=op; continue;
+    }
+    throw new Error('Unsupported SVG path command: ' + cmd);
+  }
+  return { points, closed: /z/i.test(String(data || '')) };
+}
+
+export function parseSVGToVectorModel(source, width, height) {
+  const xml = new DOMParser().parseFromString(String(source), 'image/svg+xml');
+  if (xml.querySelector('parsererror')) throw new Error('Invalid SVG');
+  const root = xml.documentElement;
+  if (!root || String(root.tagName).toLowerCase() !== 'svg') throw new Error('SVG root element is missing.');
+  const model = createVectorModel(width, height), gradients = new Map();
+  for (const node of root.querySelectorAll('linearGradient,radialGradient')) {
+    const id=node.getAttribute('id'); if (!id) continue;
+    gradients.set(id,{type:node.tagName==='radialGradient'?'radial':'linear',stops:[...node.querySelectorAll('stop')].map(s=>({offset:String(s.getAttribute('offset')||'0').replace('%',''),color:s.getAttribute('stop-color')||'#000000',opacity:finite(s.getAttribute('stop-opacity'),1)}))});
+  }
+  const parse = node => {
+    const tag=String(node.tagName||'').toLowerCase();
+    if (!['g','rect','ellipse','line','text','path'].includes(tag)) return null;
+    const attr=name=>node.getAttribute(name), styleText=String(attr('style')||'');
+    const styles=Object.fromEntries(styleText.split(';').map(s=>s.split(':').map(v=>v.trim())).filter(p=>p.length===2));
+    const value=name=>attr(name)??styles[name]??null;
+    const fill=value('fill')||'none', common={id:uid('svg'),name:attr('id')||tag,fill,stroke:value('stroke')||'#E8EAF2',strokeWidth:finite(value('stroke-width'),1),opacity:finite(value('opacity'),1),transform:{svgTransform:attr('transform')||''}};
+    const ref=fill.match(/^url\(#([^)]*)\)$/)?.[1]; if(ref&&gradients.has(ref)) common.gradient=clone(gradients.get(ref));
+    if(tag==='g') return {...common,type:'group',children:[...node.children].map(parse).filter(Boolean)};
+    if(tag==='rect') return {...common,type:tag,x:finite(attr('x')),y:finite(attr('y')),width:Math.max(0,finite(attr('width'))),height:Math.max(0,finite(attr('height'))),rx:finite(attr('rx'))};
+    if(tag==='ellipse'){const rx=finite(attr('rx')),ry=finite(attr('ry'));return {...common,type:tag,x:finite(attr('cx'))-rx,y:finite(attr('cy'))-ry,width:rx*2,height:ry*2};}
+    if(tag==='line') return {...common,type:tag,x1:finite(attr('x1')),y1:finite(attr('y1')),x2:finite(attr('x2')),y2:finite(attr('y2'))};
+    if(tag==='text') return {...common,type:tag,x:finite(attr('x')),y:finite(attr('y')),text:node.textContent||'',fontSize:finite(attr('font-size'),16),fontFamily:attr('font-family')||'sans-serif'};
+    const parsed=parseSvgPathData(attr('d')||''); return {...common,type:'path',points:parsed.points,closed:parsed.closed,lineJoin:attr('stroke-linejoin')||'round'};
+  };
+  model.objects=[...root.children].map(parse).filter(Boolean);
+  return model;
 }
 
 function setAttr(el, attrs) { for (const [k, v] of Object.entries(attrs)) if (v !== undefined && v !== null) el.setAttribute(k, v); }
@@ -462,22 +532,7 @@ export class VectorStudio {
     input.onchange = async () => {
       const file = input.files?.[0]; if (!file) return;
       try {
-        const xml = new DOMParser().parseFromString(await file.text(), 'image/svg+xml');
-        if (xml.querySelector('parsererror')) throw new Error('Invalid SVG');
-        const model = createVectorModel(this.getDocument().width, this.getDocument().height);
-        for (const n of xml.querySelectorAll('rect,ellipse,line,text,path,g')) {
-          if (n.tagName === 'g') continue;
-          const common = { id: uid('v'), name: n.tagName, fill: n.getAttribute('fill') || 'none', stroke: n.getAttribute('stroke') || '#E8EAF2', strokeWidth: Number(n.getAttribute('stroke-width') || 1), transform: {} };
-          if (n.tagName === 'rect') model.objects.push({ ...common, type: 'rect', x: Number(n.getAttribute('x') || 0), y: Number(n.getAttribute('y') || 0), width: Number(n.getAttribute('width') || 0), height: Number(n.getAttribute('height') || 0), rx: Number(n.getAttribute('rx') || 0) });
-          else if (n.tagName === 'ellipse') model.objects.push({ ...common, type: 'ellipse', x: Number(n.getAttribute('cx') || 0) - Number(n.getAttribute('rx') || 0), y: Number(n.getAttribute('cy') || 0) - Number(n.getAttribute('ry') || 0), width: Number(n.getAttribute('rx') || 0) * 2, height: Number(n.getAttribute('ry') || 0) * 2 });
-          else if (n.tagName === 'line') model.objects.push({ ...common, type: 'line', x1: Number(n.getAttribute('x1') || 0), y1: Number(n.getAttribute('y1') || 0), x2: Number(n.getAttribute('x2') || 0), y2: Number(n.getAttribute('y2') || 0) });
-          else if (n.tagName === 'text') model.objects.push({ ...common, type: 'text', x: Number(n.getAttribute('x') || 0), y: Number(n.getAttribute('y') || 0), text: n.textContent || '', fontSize: Number(n.getAttribute('font-size') || 16) });
-          else if (n.tagName === 'path') {
-            const d = n.getAttribute('d') || '', nums = d.match(/-?\d*\.?\d+/g)?.map(Number) || [], points = [];
-            for (let k = 0; k + 1 < nums.length; k += 2) points.push({ x: nums[k], y: nums[k + 1] });
-            model.objects.push({ ...common, type: 'path', points, closed: /z/i.test(d), lineJoin: 'round' });
-          }
-        }
+        const model = parseSVGToVectorModel(await file.text(), this.getDocument().width, this.getDocument().height);
         this.model = model; this.selected.clear(); this.changed(); this.status('SVG imported as editable vector objects', 'success');
       } catch (error) { this.status('SVG import failed: ' + error.message, 'error'); }
     };
