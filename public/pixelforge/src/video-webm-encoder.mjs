@@ -162,6 +162,11 @@ export async function encodeWebMFrames(frames, {
   }
   encoder.configure(config);
   let timestampUs = 0;
+  const renderCanvas = document.createElement('canvas');
+  renderCanvas.width = width;
+  renderCanvas.height = height;
+  const renderContext = renderCanvas.getContext('2d', { alpha: true });
+  renderContext.imageSmoothingEnabled = false;
   try {
     for (let index = 0; index < frames.length; index++) {
       if (isCancelled?.()) throw new DOMException('Exportación cancelada.', 'AbortError');
@@ -169,7 +174,12 @@ export async function encodeWebMFrames(frames, {
       const bitmap = await createImageBitmap(frame.blob);
       try {
         const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
-        const videoFrame = new VideoFrame(bitmap, { timestamp: timestampUs, duration: durationUs });
+        if (bitmap.width !== width || bitmap.height !== height) {
+          renderContext.clearRect(0, 0, width, height);
+          renderContext.drawImage(bitmap, 0, 0, width, height);
+        }
+        const source = bitmap.width === width && bitmap.height === height ? bitmap : renderCanvas;
+        const videoFrame = new VideoFrame(source, { timestamp: timestampUs, duration: durationUs });
         encoder.encode(videoFrame, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
         videoFrame.close();
         timestampUs += durationUs;
