@@ -97,15 +97,15 @@ Si aparece un bloqueo que realmente requiere intervención del usuario, debe exp
 
 El flujo de proyectos y animaciones **no utiliza Object Storage como dependencia del transporte o importación**.
 
-El transporte canónico de un paquete `.codelab` es:
+El transporte canónico es un archivo ZIP cuyo contenido incluye un marcador `project.codelab` en la raíz del proyecto:
 
-`proyecto.codelab → comando/endpoint → Neon BYTEA → importador → proyecto CodeLab`
+`cualquier-nombre.zip (project.codelab + archivos del proyecto) → comando/endpoint → Neon BYTEA → importador → proyecto CodeLab`
 
 El importador admite el transporte inline mediante `artifactBase64` y persiste los bytes directamente en `public.codelab_project_artifacts.artifact`. Object Storage puede existir en la infraestructura, pero **no debe ser requerido, consultado ni usado como condición para completar una importación**.
 
 Si Object Storage no está disponible, el flujo debe continuar mediante el transporte inline de Neon. Una incidencia de DNS, disponibilidad o acceso a Object Storage no debe bloquear una tarea de CodeLab.
 
-La integridad del paquete se verifica siempre sobre los bytes reales almacenados en Neon mediante tamaño y SHA-256, seguida de validación del archivo `.codelab` antes de iniciar la importación.
+El importador identifica un proyecto exclusivamente por la presencia de `project.codelab` en la raíz del ZIP. El nombre y la extensión del ZIP son irrelevantes, y los demás archivos conservan sus nombres y rutas normales. Se exige además el manifiesto y el documento de proyecto del formato CodeLab; se permiten archivos de proyecto en carpetas arbitrarias siempre que sus rutas sean seguras. La integridad del paquete se verifica sobre los bytes reales almacenados en Neon mediante tamaño y SHA-256 antes de iniciar la importación.
 
 ## 8. Criterio de finalización
 
