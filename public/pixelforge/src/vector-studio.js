@@ -40,8 +40,17 @@ export function auditVectorModel(model, { tolerance = 2, viewport = true } = {})
         if (names.has(o.name)) issues.push({ code: 'duplicate_name', severity: 'warning', objectId: o.id, message: 'Duplicate vector object name.' });
         names.add(o.name);
       }
+      const numericGeometry = o.type === 'line'
+        ? [o.x1, o.y1, o.x2, o.y2]
+        : o.type === 'path'
+          ? (o.points || []).flatMap(p => [p.x, p.y, p.c1?.x, p.c1?.y, p.c2?.x, p.c2?.y])
+          : o.type === 'group'
+            ? []
+            : [o.x, o.y, o.width, o.height];
+      if (numericGeometry.some(v => v !== undefined && !Number.isFinite(Number(v)))) {
+        issues.push({ code: 'invalid_geometry', severity: 'error', objectId: o.id, message: 'Geometry contains non-finite values.' });
+      }
       const q = objectBounds(o);
-      if (![q.x, q.y, q.width, q.height].every(Number.isFinite)) issues.push({ code: 'invalid_geometry', severity: 'error', objectId: o.id, message: 'Geometry contains non-finite values.' });
       if (viewport && (q.x < -tolerance || q.y < -tolerance || q.x + q.width > model.width + tolerance || q.y + q.height > model.height + tolerance)) {
         issues.push({ code: 'out_of_bounds', severity: 'warning', objectId: o.id, message: 'Object extends outside document bounds.' });
       }
@@ -136,14 +145,14 @@ function transformString(t = {}) {
 }
 
 function defsFor(model) {
-  const gradients = (model.objects || []).flatMap(flattenObjects).filter(o => o.gradient).map(o => {
+  const gradients = flattenObjects(model.objects || []).filter(o => o.gradient).map(o => {
     const g = o.gradient, stops = (g.stops || []).map(s => `<stop offset="${escapeXml(s.offset)}" stop-color="${escapeXml(s.color)}" stop-opacity="${num(s.opacity, 1)}"/>`).join('');
     const type = g.type === 'radial' ? 'radialGradient' : 'linearGradient';
     return type === 'radialGradient'
       ? `<radialGradient id="g-${o.id}" cx="50%" cy="50%" r="50%">${stops}</radialGradient>`
       : `<linearGradient id="g-${o.id}" x1="${num(g.x1, 0)}%" y1="${num(g.y1, 0)}%" x2="${num(g.x2, 100)}%" y2="${num(g.y2, 0)}%">${stops}</linearGradient>`;
   }).join('');
-  const clips = (model.objects || []).flatMap(flattenObjects).filter(o => o.clipPath).map(o => `<clipPath id="clip-${o.id}"><path d="${escapeXml(o.clipPath)}"/></clipPath>`).join('');
+  const clips = flattenObjects(model.objects || []).filter(o => o.clipPath).map(o => `<clipPath id="clip-${o.id}"><path d="${escapeXml(o.clipPath)}"/></clipPath>`).join('');
   return gradients || clips ? `<defs>${gradients}${clips}</defs>` : '';
 }
 
