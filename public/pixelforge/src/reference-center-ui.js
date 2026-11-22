@@ -31,6 +31,10 @@ export function createReferenceCenterUI({
       <span id="reference-next-opacity-value">15%</span>
     </div>
     <div id="reference-state-summary" class="reference-center-context"></div>
+    <section class="reference-package-resources">
+      <div class="control-heading"><span>Imported package resources</span><span class="tiny-tag">PROJECT FILES</span></div>
+      <div id="reference-package-resource-list" class="reference-parts"></div>
+    </section>
     <div class="reference-environment-history">
       <div class="reference-center-actions">
         <button id="reference-environment-preview" class="file-button" type="button">▶ Preview environment</button>
@@ -46,6 +50,7 @@ export function createReferenceCenterUI({
 
   const list = host.querySelector('#reference-center-list');
   const stateSummary = host.querySelector('#reference-state-summary');
+  const packageResourceList = host.querySelector('#reference-package-resource-list');
   const environmentCanvas = host.querySelector('#reference-environment-canvas');
   const environmentList = host.querySelector('#reference-environment-list');
   const environmentPreviewButton = host.querySelector('#reference-environment-preview');
@@ -128,6 +133,79 @@ export function createReferenceCenterUI({
     onDocumentChanged();
     refresh();
     void save();
+  }
+
+  async function copyImageReference(entry) {
+    if (!entry?.imageDataUrl) return;
+    const d = doc();
+    try {
+      const image = new Image();
+      image.src = entry.imageDataUrl;
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Could not decode the reference image.'));
+      });
+      const source = document.createElement('canvas');
+      source.width = image.naturalWidth;
+      source.height = image.naturalHeight;
+      const sourceContext = source.getContext('2d', { willReadFrequently: true });
+      if (!sourceContext) throw new Error('Could not create the reference image surface.');
+      sourceContext.drawImage(image, 0, 0);
+      const target = document.createElement('canvas');
+      target.width = d.width;
+      target.height = d.height;
+      const scale = Math.min(d.width / source.width, d.height / source.height);
+      const width = Math.max(1, Math.round(source.width * scale));
+      const height = Math.max(1, Math.round(source.height * scale));
+      const x = Math.floor((d.width - width) / 2);
+      const y = Math.floor((d.height - height) / 2);
+      const targetContext = target.getContext('2d', { willReadFrequently: true });
+      if (!targetContext) throw new Error('Could not create the canvas import surface.');
+      targetContext.imageSmoothingEnabled = false;
+      targetContext.drawImage(source, x, y, width, height);
+      const pixels = targetContext.getImageData(0, 0, d.width, d.height).data;
+      const layer = d.addLayer(entry.name || 'Reference image');
+      d.setLayerPixels(layer.id, new Uint8Array(pixels));
+      d.setActiveLayer(layer.id);
+      d.dirty = true;
+      status('Copied reference image to the canvas as an editable layer', 'success');
+      render(); renderLayers(); onDocumentChanged(); void save();
+    } catch (error) {
+      status('Could not copy reference image: ' + error.message, 'error');
+    }
+  }
+
+  function renderPackageResources(resources = []) {
+    packageResourceList.replaceChildren();
+    if (!resources.length) {
+      const empty = document.createElement('p');
+      empty.className = 'small-note';
+      empty.textContent = 'No imported package resources.';
+      packageResourceList.append(empty);
+      return;
+    }
+    const groups = new Map();
+    for (const resource of resources) {
+      const key = resource.destination || 'project-files';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(resource);
+    }
+    for (const [destination, items] of groups) {
+      const group = document.createElement('details');
+      group.className = 'reference-resource-group';
+      const summary = document.createElement('summary');
+      summary.textContent = destination.replace(/-/g, ' ') + ' · ' + items.length;
+      group.append(summary);
+      const list = document.createElement('ul');
+      for (const item of items) {
+        const row = document.createElement('li');
+        row.textContent = item.destinationPath || item.path;
+        row.title = (item.contentType || 'file') + ' · ' + Number(item.byteSize || 0).toLocaleString() + ' bytes';
+        list.append(row);
+      }
+      group.append(list);
+      packageResourceList.append(group);
+    }
   }
 
   function copyPart(entry, part) {
@@ -269,6 +347,7 @@ export function createReferenceCenterUI({
     const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
     list.replaceChildren();
     stateSummary.replaceChildren();
+    renderPackageResources(model.packageResources || []);
     environmentList.replaceChildren();
     stopEnvironmentPreview();
     const stateInfo = document.createElement('p');
@@ -313,6 +392,29 @@ export function createReferenceCenterUI({
       header.querySelector('strong').textContent = entry.name;
       header.querySelector('.tiny-tag').textContent = entry.category || entry.type || 'asset';
       card.append(header);
+      if (entry.imageDataUrl) {
+        const image = document.createElement('img');
+        image.src = entry.imageDataUrl;
+        image.alt = entry.name + ' reference';
+        image.loading = 'lazy';
+        image.style.maxWidth = '100%';
+        image.style.maxHeight = '180px';
+        image.style.objectFit = 'contain';
+        image.style.imageRendering = 'auto';
+        image.style.display = 'block';
+        image.style.margin = '8px 0';
+        card.append(image);
+        const copyImageButton = document.createElement('button');
+        copyImageButton.type = 'button';
+        copyImageButton.className = 'file-button';
+        copyImageButton.textContent = '↳ Copy image to canvas';
+        copyImageButton.addEventListener('click', () => void copyImageReference(entry));
+        card.append(copyImageButton);
+        const sourcePath = document.createElement('p');
+        sourcePath.className = 'small-note';
+        sourcePath.textContent = entry.sourcePath || '';
+        card.append(sourcePath);
+      }
       const meta = document.createElement('p');
       meta.className = 'small-note';
       meta.textContent = `${entry.parts?.length || 0} parts · ${entry.frames?.length || 0} frames · ${entry.geometry?.canvas?.width || doc().width}×${entry.geometry?.canvas?.height || doc().height}`;
