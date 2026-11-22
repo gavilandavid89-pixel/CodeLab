@@ -233,6 +233,7 @@ function entryBytes(entry) {
     const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0), 0);
     return bytes(entry.before) + bytes(entry.after) + 512;
   }
+  if (entry.type === 'vector-model') return JSON.stringify(entry.before ?? null).length * 2 + JSON.stringify(entry.after ?? null).length * 2 + 128;
   return 128;
 }
 
@@ -272,8 +273,12 @@ export class RasterDocument {
   }
   setVectorModel(model) {
     if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Vector model must be an object or null.');
-    this.vectorModel = model === null ? null : JSON.parse(JSON.stringify(model));
-    this.revision++; this.dirty = true; this.saveVersion++;
+    const next = model === null ? null : JSON.parse(JSON.stringify(model));
+    if (JSON.stringify(this.vectorModel) === JSON.stringify(next)) return false;
+    const before = this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel));
+    this.vectorModel = next;
+    this.#record({ type: 'vector-model', before, after: next === null ? null : JSON.parse(JSON.stringify(next)) });
+    return true;
   }
   getVectorModel() {
     return this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel));
@@ -1218,6 +1223,9 @@ export class RasterDocument {
   #applyEntry(entry, forward) {
     if (entry.type === 'document-rename') {
       this.name = forward ? entry.after : entry.before;
+    } else if (entry.type === 'vector-model') {
+      const model = forward ? entry.after : entry.before;
+      this.vectorModel = model === null ? null : JSON.parse(JSON.stringify(model));
     } else if (entry.type === 'document-state') {
       this.#restoreDocument(forward ? entry.after : entry.before);
     } else if (entry.type === 'document-crop') {
