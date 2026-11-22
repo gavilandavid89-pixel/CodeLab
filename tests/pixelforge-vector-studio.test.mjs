@@ -20,7 +20,7 @@ test('vector model is JSON serializable for PixelForge project persistence', () 
   model.objects.push({ id: 'e1', type: 'ellipse', x: 8, y: 12, width: 20, height: 14, fill: '#ffffff', stroke: 'none' });
   const roundTrip = JSON.parse(JSON.stringify(model));
   assert.deepEqual(roundTrip.objects[0], model.objects[0]);
-  assert.equal(roundTrip.version, 4);
+  assert.equal(roundTrip.version, 5);
 });
 
 test('vector model supports gradients, groups and animation keyframes in persistence/export', () => {
