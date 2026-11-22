@@ -47,6 +47,8 @@ function initVectorStudio() {
     getModel: () => doc.getVectorModel(),
     setModel: model => doc.setVectorModel(model),
     onChanged: () => { updateTitle(); scheduleAutosave(); },
+    onUndo: undoDocument,
+    onRedo: redoDocument,
     status,
   });
   toggle.addEventListener('click', () => {
