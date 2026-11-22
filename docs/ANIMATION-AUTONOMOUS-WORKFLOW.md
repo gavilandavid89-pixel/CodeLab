@@ -23,9 +23,10 @@ El agente IA es responsable de conducir el ciclo completo:
 3. **Esperar:** esperar el resultado de esa orden. No asumir que fue ejecutada solo porque se envió, se aceptó o quedó encolada.
 4. **Verificar:** consultar el estado persistido y comprobar que el cambio ocurrió realmente.
 5. **Inspeccionar:** evaluar la evidencia visual cuando la tarea afecte dibujos, frames, capas o animación.
-6. **Corregir:** si hay errores, resultados parciales o defectos visuales, diagnosticar la causa, preparar una corrección y volver a ejecutar.
-7. **Continuar:** avanzar al siguiente bloque o paso usando el estado real recién verificado.
-8. **Finalizar:** exportar y validar el resultado completo antes de declarar la tarea terminada.
+6. **Revisar calidad visual:** la revisión visual es **obligatoria** antes de considerar terminada una tarea visual. No basta con que el worker, bridge o exportador informe "success": el agente debe inspeccionar la evidencia visual real y comprobar que el resultado cumple el objetivo de calidad solicitado.
+7. **Corregir:** si hay errores, resultados parciales o defectos visuales, diagnosticar la causa, preparar una corrección y volver a ejecutar.
+8. **Continuar:** avanzar al siguiente bloque o paso usando el estado real recién verificado.
+9. **Finalizar:** exportar y validar el resultado completo antes de declarar la tarea terminada.
 
 El ciclo se repite tantas veces como sea necesario dentro del trabajo solicitado:
 
@@ -62,9 +63,14 @@ No crear polling permanente, bucles de pings ni despertares periódicos. Un ping
 - Consultar el frame anterior real desde CodeLab/A antes de construir el siguiente frame dependiente.
 - Después de crear o modificar un bloque, comprobar que los frames quedaron guardados y que el estado activo/índices corresponden.
 - Evaluar continuidad, silueta, proporciones, anatomía, pose, dirección del movimiento, pies, manos, cabeza, torso, extremidades y objetos sostenidos.
+- **La revisión visual es obligatoria:** toda animación, dibujo, modificación de frames o cambio de capas debe pasar por una inspección visual antes de la entrega.
+- La revisión debe utilizar evidencia visual real del resultado producido, no una inferencia basada en el estado de la orden, metadatos, hashes, existencia del archivo o un mensaje de "success".
+- En animaciones, revisar como mínimo continuidad entre frames, fluidez del movimiento, silueta, proporciones, anatomía, pose, dirección del movimiento, pies, manos, cabeza, torso, extremidades, objetos y coherencia temporal.
+- Para una revisión de calidad suficiente, inspeccionar el resultado completo o una muestra representativa que permita detectar defectos entre frames; cuando existan dudas, revisar los frames afectados individualmente.
+- **No declarar terminada una tarea si la revisión visual no se realizó, no está disponible o no permite comprobar la calidad.**
 - Rechazar resultados visualmente defectuosos aunque la orden o el workflow informe "success".
 - Corregir y repetir los pasos necesarios hasta alcanzar el objetivo o identificar un bloqueo no resoluble.
-- Para la entrega, comprobar la cantidad de frames, FPS, duración, loop, archivo exportado y reproducción visual real. La existencia del archivo por sí sola no demuestra que la animación esté bien.
+- Para la entrega, comprobar la cantidad de frames, FPS, duración, loop, archivo exportado y reproducción visual real, además de completar la revisión visual obligatoria. La existencia del archivo por sí sola no demuestra que la animación esté bien.
 
 ## 6. Comunicación con el usuario: solo resultado final
 
@@ -89,6 +95,15 @@ Si aparece un bloqueo que realmente requiere intervención del usuario, debe exp
 
 ## 8. Criterio de finalización
 
-La tarea solo se considera terminada cuando el resultado está persistido, la exportación existe y puede abrirse/reproducirse, y la inspección técnica y visual confirma que cumple el objetivo.
+La tarea solo se considera terminada cuando:
+- el resultado está persistido;
+- la exportación existe y puede abrirse/reproducirse;
+- la cantidad de frames, FPS, duración y loop son correctos;
+- la evidencia técnica confirma que el resultado fue realmente ejecutado y guardado;
+- **la revisión visual obligatoria confirma que la calidad del resultado cumple el objetivo**.
+
+Si la revisión visual detecta defectos, la tarea vuelve al ciclo de corrección y no puede declararse terminada hasta repetir la verificación.
+
+La revisión visual es un requisito de aceptación, no un paso opcional ni una comprobación meramente decorativa.
 
 **Principio rector:** el usuario define el objetivo; el agente conduce el trabajo completo durante la sesión activa y comunica el resultado final. No se requiere que el usuario supervise cada orden, fotograma o corrección.
