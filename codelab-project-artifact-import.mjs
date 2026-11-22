@@ -28,7 +28,27 @@ function sha256(buffer) {
 }
 
 function assertSafePath(value) {
-  return typeof value === 'string' && value.length > 0 && !value.includes('\\0') && !value.startsWith('/') && !value.includes('..');
+  if (typeof value !== 'string' || value.length === 0 || value.includes('\0')) return false;
+  const normalized = value.replace(/\\/g, '/');
+  if (normalized.startsWith('/')) return false;
+  const segments = normalized.split('/');
+  if (segments.some((segment) => segment === '..')) return false;
+  return true;
+}
+
+function contentTypeForPath(filePath) {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.svg')) return 'image/svg+xml';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mp3')) return 'audio/mpeg';
+  if (lower.endsWith('.wav')) return 'audio/wav';
+  return 'application/octet-stream';
 }
 
 async function extractCodelabArchive(buffer, tempRoot) {
@@ -36,8 +56,51 @@ async function extractCodelabArchive(buffer, tempRoot) {
   const extractDir = path.join(tempRoot, 'project');
   await fs.mkdir(extractDir, { recursive: true });
   await fs.writeFile(archive, buffer);
+
+  const { stdout } = await execFileAsync('unzip', ['-Z1', archive], { timeout: 30_000 });
+  const entries = stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    if (!assertSafePath(entry)) throw new Error(`Unsafe path in .codelab archive: ${entry}`);
+    const normalized = entry.replace(/\\/g, '/');
+    if (!normalized.startsWith('manifest.json') &&
+        !normalized.startsWith('project.json') &&
+        !normalized.startsWith('assets/') &&
+        !normalized.startsWith('scenes/') &&
+        !normalized.startsWith('animations/')) {
+      throw new Error(`Unsupported file outside the declared .codelab package areas: ${entry}`);
+    }
+  }
+
   await execFileAsync('unzip', ['-oq', archive, '-d', extractDir], { timeout: 30_000 });
   return extractDir;
+}
+
+async function collectProjectFiles(root) {
+  const files = [];
+  for (const area of ['assets', 'scenes', 'animations']) {
+    const areaRoot = path.join(root, area);
+    try {
+      await fs.access(areaRoot);
+    } catch {
+      continue;
+    }
+
+    const stack = [areaRoot];
+    while (stack.length) {
+      const current = stack.pop();
+      const entries = await fs.readdir(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const absolute = path.join(current, entry.name);
+        const relative = path.relative(root, absolute).replace(/\\/g, '/');
+        if (!assertSafePath(relative)) throw new Error(`Unsafe extracted path: ${relative}`);
+        if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not allowed in .codelab files: ${relative}`);
+        if (entry.isDirectory()) stack.push(absolute);
+        else if (entry.isFile()) files.push({ absolute, relative });
+        else throw new Error(`Unsupported filesystem entry in .codelab package: ${relative}`);
+      }
+    }
+  }
+  return files;
 }
 
 async function readProjectPackage(buffer, tempRoot) {
@@ -119,6 +182,8 @@ export async function importCodeLabArtifact(pool, {
     );
 
     const { manifest, project } = await readProjectPackage(buffer, tempRoot);
+    const packageRoot = path.join(tempRoot, 'project');
+    const packageFiles = await collectProjectFiles(packageRoot);
     if (manifest.editor !== request.editor_id) {
       throw new Error('Manifest editor does not match the import request editor_id.');
     }
@@ -146,6 +211,26 @@ export async function importCodeLabArtifact(pool, {
          updated_at=now()`,
       [request.workspace_id, projectId, request.editor_id, name, serialized, contentSha, workScore]
     );
+
+    if (packageFiles.length) {
+      for (const file of packageFiles) {
+        const fileBuffer = await fs.readFile(file.absolute);
+        const fileSha = sha256(fileBuffer);
+        await queryChecked(pool, 'import_sql', `
+          INSERT INTO public.codelab_project_files
+            (workspace_id, project_id, editor_id, file_path, content_type, byte_size, sha256, content, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ON CONFLICT (workspace_id, project_id, file_path) DO UPDATE SET
+            editor_id=EXCLUDED.editor_id,
+            content_type=EXCLUDED.content_type,
+            byte_size=EXCLUDED.byte_size,
+            sha256=EXCLUDED.sha256,
+            content=EXCLUDED.content,
+            updated_at=EXCLUDED.updated_at`,
+          [request.workspace_id, projectId, request.editor_id, file.relative, contentTypeForPath(file.relative), fileBuffer.length, fileSha, fileBuffer, now]
+        );
+      }
+    }
 
     if (request.editor_id === 'pixelforge') {
       const width = Number(project.width || 128);
