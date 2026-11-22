@@ -2587,6 +2587,9 @@ async function processCommand(command) {
         importRequestId: payload.import_request_id,
         workspaceId,
         pixelForgeWorkspaceId,
+        artifactBase64: payload.artifact_base64 || payload.artifact?.dataBase64 || null,
+        artifactFilename: payload.artifact_filename || payload.artifact?.filename || 'project.codelab',
+        artifactContentType: payload.artifact_content_type || payload.artifact?.contentType || 'application/zip',
       });
       const terminalStatus = result.status === 'awaiting_confirmation' ? 'succeeded' : 'succeeded';
       await finish(command.command_id, terminalStatus, result);
