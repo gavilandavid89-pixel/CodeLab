@@ -93,6 +93,20 @@ Si aparece un bloqueo que realmente requiere intervención del usuario, debe exp
 - No exponer secretos, tokens, cookies ni credenciales en documentación, logs o mensajes.
 - Antes de reiniciar, desplegar o cambiar configuración, identificar el servicio exacto y confirmar que la acción es necesaria y está dentro del alcance autorizado.
 
+## Transporte de proyectos: Neon BYTEA, sin Object Storage
+
+El flujo de proyectos y animaciones **no utiliza Object Storage como dependencia del transporte o importación**.
+
+El transporte canónico de un paquete `.codelab` es:
+
+`proyecto.codelab → comando/endpoint → Neon BYTEA → importador → proyecto CodeLab`
+
+El importador admite el transporte inline mediante `artifactBase64` y persiste los bytes directamente en `public.codelab_project_artifacts.artifact`. Object Storage puede existir en la infraestructura, pero **no debe ser requerido, consultado ni usado como condición para completar una importación**.
+
+Si Object Storage no está disponible, el flujo debe continuar mediante el transporte inline de Neon. Una incidencia de DNS, disponibilidad o acceso a Object Storage no debe bloquear una tarea de CodeLab.
+
+La integridad del paquete se verifica siempre sobre los bytes reales almacenados en Neon mediante tamaño y SHA-256, seguida de validación del archivo `.codelab` antes de iniciar la importación.
+
 ## 8. Criterio de finalización
 
 La tarea solo se considera terminada cuando:
