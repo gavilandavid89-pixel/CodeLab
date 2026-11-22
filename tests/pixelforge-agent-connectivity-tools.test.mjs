@@ -39,7 +39,8 @@ test('fillet and chamfer create construction geometry',()=>{
 test('smart snap and anchors expose semantic construction points',()=>{
   const r=line('a',0,0,10,0);
   const snap=snapSmart({x:4.9,y:.1},[r],.5);
-  assert.equal(snap.best.kind,'midpoint'); assert.deepEqual(anchorPoint({x:0,y:0,width:10,height:20},'center'),{x:5,y:10});
+  assert.equal(snap.best.kind,'midpoint');
+  assert.equal(snapSmart({x:10.1,y:.1},[r],.5).best.kind,'endpoint'); assert.deepEqual(anchorPoint({x:0,y:0,width:10,height:20},'center'),{x:5,y:10});
   assert.deepEqual(alignToAnchor({type:'rect',x:0,y:0,width:10,height:10},'center',{x:20,y:20}).x,15);
 });
 
@@ -52,6 +53,14 @@ test('construction graph and constraint audit are serializable',()=>{
   assert.equal(Math.abs(solved.objects[1].y1-solved.objects[0].y1)<1e-3,true);
   const audit=constraintAudit(solved.objects,[{type:'horizontal',a:'a',b:'b'}],.001);
   assert.equal(typeof audit.ok,'boolean');
+});
+
+test('continuity reports G0 and G1 only for aligned tangent handles',()=>{
+  const a={type:'path',points:[{x:0,y:0},{x:10,y:0,c2:{x:12,y:0}}]};
+  const b={type:'path',points:[{x:10,y:0,c1:{x:12,y:0}},{x:20,y:0}]};
+  assert.equal(continuity(a,b,.001).g1,true);
+  const bad={type:'path',points:[{x:10,y:0,c1:{x:10,y:2}},{x:20,y:0}]};
+  assert.equal(continuity(a,bad,.001).g1,false);
 });
 
 test('continuity reports G0 for matching endpoints',()=>{
