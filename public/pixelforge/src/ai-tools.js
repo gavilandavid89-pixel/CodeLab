@@ -1,6 +1,8 @@
-import { AIWorkspace } from './workspaces.js';\nimport { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
+import { AIWorkspace } from './workspaces.js';
+import { validatePixelForgeProject, validateVectorModel, formatValidationFailure } from './pixelforge-validation.js';
 import { DrawingWorkflow } from './drawing-workflow.js';
-import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';\nimport { buildAdvancedPrecisionToolCatalog, coordinateFrame, localToWorld, worldToLocal, polarPoint, angleBisector, perpendicularThrough, parallelThrough, divideSegment, circumcenter, triangleCenters, circleLineIntersections, tangentLinesToCircle, bezierPoint, bezierTangentAt, bezierCurvatureAt, splitBezier, curveContinuity, sampleBezier, fitPolyline, reversePath, pathLength, polygonBoolean, smartSnap, snapToAxis, measureBetween, objectMetrics, diagnoseGeometry, geometryDiff, intentPlan } from './advanced-precision-tools.js';
+import { buildAgentToolCatalog, createLine, createRect, createEllipse, createRegularPolygon, createStar, createBezier, pathFromCommands, translateObject, scaleObject, rotateObject, boundsOf, distributeObjects, constructSymmetryPoints, makePrecisionGuide, projectPointToSegment, lineIntersection, measureObject, createRoundedRect, createArc, createCircleThroughThreePoints, createPolarArray, createGridArray, polylineLength, nearestPointOnPolyline, alignObjectEdges } from './agent-precision-tools.js';
+import { buildAdvancedPrecisionToolCatalog, coordinateFrame, localToWorld, worldToLocal, polarPoint, angleBisector, perpendicularThrough, parallelThrough, divideSegment, circumcenter, triangleCenters, circleLineIntersections, tangentLinesToCircle, bezierPoint, bezierTangentAt, bezierCurvatureAt, splitBezier, curveContinuity, sampleBezier, fitPolyline, reversePath, pathLength, polygonBoolean, smartSnap, snapToAxis, measureBetween, objectMetrics, diagnoseGeometry, geometryDiff, intentPlan } from './advanced-precision-tools.js';
 import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, extendToIntersection, trimToIntersection, filletLines, chamferLines, offsetLine, snapSmart, anchorPoint, alignToAnchor, dimension, constructionGraph, solveConstraints, constraintAudit, continuity } from './agent-connectivity-tools.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
@@ -965,7 +967,19 @@ export class AICommandSession {
         case 'history.redo':
           result = { changed: doc.redo() };
           break;
-        case 'pixelforge.validate': {\n          const project = action.project || doc.toJSON();\n          result = validatePixelForgeProject(project, { tolerance: action.tolerance ?? 2 });\n          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);\n          break;\n        }\n        case 'vector.validate': {\n          const model = action.model || doc.getVectorModel();\n          result = validateVectorModel(model, { width: doc.width, height: doc.height, tolerance: action.tolerance ?? 2 });\n          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);\n          break;\n        }\n        case 'vector.audit': {
+        case 'pixelforge.validate': {
+          const project = action.project || doc.toJSON();
+          result = validatePixelForgeProject(project, { tolerance: action.tolerance ?? 2 });
+          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);
+          break;
+        }
+        case 'vector.validate': {
+          const model = action.model || doc.getVectorModel();
+          result = validateVectorModel(model, { width: doc.width, height: doc.height, tolerance: action.tolerance ?? 2 });
+          if (action.failOnError !== false && !result.ok) result.message = formatValidationFailure(result);
+          break;
+        }
+        case 'vector.audit': {
           const model = doc.getVectorModel() || { version: 5, width: doc.width, height: doc.height, objects: [], precision: { tolerance: 0.001, constraints: [] } };
           const issues = [];
           const precisionAudit = model.precision?.constraints?.length
