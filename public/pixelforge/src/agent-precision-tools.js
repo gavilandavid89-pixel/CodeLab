@@ -206,6 +206,33 @@ export function constructSymmetryPoints(point, center, mode = 'mirror-x', radial
   return variants;
 }
 
+export function projectPointToSegment(point, a, b) {
+  const p=normalizePoint(point), s=normalizePoint(a), e=normalizePoint(b);
+  const dx=e.x-s.x, dy=e.y-s.y, len2=dx*dx+dy*dy;
+  if(len2<EPSILON)return {point:s,t:0,distance:distance(p,s)};
+  const t=clamp(((p.x-s.x)*dx+(p.y-s.y)*dy)/len2,0,1);
+  const q={x:s.x+t*dx,y:s.y+t*dy};
+  return {point:q,t,distance:distance(p,q)};
+}
+
+export function lineIntersection(a1, a2, b1, b2) {
+  const p=normalizePoint(a1), p2=normalizePoint(a2), q=normalizePoint(b1), q2=normalizePoint(b2);
+  const r={x:p2.x-p.x,y:p2.y-p.y}, s={x:q2.x-q.x,y:q2.y-q.y};
+  const cross=(u,v)=>u.x*v.y-u.y*v.x;
+  const denominator=cross(r,s);
+  if(Math.abs(denominator)<EPSILON)return {intersects:false,parallel:true};
+  const qp={x:q.x-p.x,y:q.y-p.y}, t=cross(qp,s)/denominator, u=cross(qp,r)/denominator;
+  return {intersects:t>=0&&t<=1&&u>=0&&u<=1, parallel:false, point:{x:p.x+t*r.x,y:p.y+t*r.y},t,u};
+}
+
+export function measureObject(object) {
+  const b=boundsOf(object);
+  if(object.type==='line')return {type:'line',length:distance({x:object.x1,y:object.y1},{x:object.x2,y:object.y2}),angle:angleBetween({x:object.x1,y:object.y1},{x:object.x2,y:object.y2}),bounds:b};
+  if(object.type==='ellipse')return {type:'ellipse',area:Math.PI*(b.width/2)*(b.height/2),bounds:b};
+  if(object.type==='rect')return {type:'rect',area:b.width*b.height,perimeter:2*(b.width+b.height),bounds:b};
+  return {type:object.type,bounds:b};
+}
+
 export function makePrecisionGuide({ type = 'line', ...data } = {}) {
   return { id:'guide-' + crypto.randomUUID(), type, visible:true, locked:true, ...clone(data) };
 }
@@ -226,6 +253,9 @@ export function buildAgentToolCatalog() {
     { name:'geometry.distribute', description:'Distribuir objetos por eje o separación exacta.', precision:'subpixel' },
     { name:'geometry.symmetry', description:'Generar variantes simétricas o radiales.', precision:'subpixel' },
     { name:'geometry.bounds', description:'Obtener límites geométricos exactos.', precision:'subpixel' },
+    { name:'geometry.project', description:'Proyectar un punto sobre un segmento y obtener distancia exacta.', precision:'subpixel' },
+    { name:'geometry.intersection', description:'Calcular intersección exacta entre dos segmentos.', precision:'subpixel' },
+    { name:'geometry.measure', description:'Medir longitud, ángulo, área, perímetro y bounds.', precision:'subpixel' },
     { name:'guide.create', description:'Crear guías bloqueables para construcción asistida.', precision:'subpixel' }
   ];
 }
