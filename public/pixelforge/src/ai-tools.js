@@ -1228,7 +1228,7 @@ export class AICommandSession {
           const ids = Array.isArray(action.ids) ? action.ids : [];
           const children = model.objects.filter(item => ids.includes(item.id));
           if (children.length < 2) throw new Error('At least two objects are required to create a group.');
-          const group = { id: typeof action.group_id === 'string' && action.group_id ? action.group_id : crypto.randomUUID(), name: action.name || 'Group', type: 'group', children: plainResult(children), transform: {} };
+          const group = { id: typeof action.group_id === 'string' && action.group_id ? action.group_id : crypto.randomUUID(), name: action.group_name || 'Group', type: 'group', children: plainResult(children), transform: {} };
           model.objects = model.objects.filter(item => !ids.includes(item.id)); model.objects.push(group); doc.setVectorModel(model);
           result = { group: plainResult(group), objectCount: model.objects.length }; break;
         }
