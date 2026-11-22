@@ -132,6 +132,9 @@ export async function importCodeLabArtifact(pool, {
   importRequestId,
   workspaceId,
   pixelForgeWorkspaceId,
+  artifactBase64 = null,
+  artifactFilename = 'project.codelab',
+  artifactContentType = 'application/zip',
 }) {
   if (!importRequestId) throw new Error('import_request_id is required.');
 
@@ -153,6 +156,29 @@ export async function importCodeLabArtifact(pool, {
   }
   if (!['queued', 'approved'].includes(request.status)) {
     throw new Error('Import request is not importable in status: ' + request.status);
+  }
+
+  // Inline transport fallback: durable command payload -> Neon BYTEA.
+  // This avoids requiring direct S3/Object Storage DNS reachability from a
+  // restricted agent runtime. The normal uploaded-artifact path remains intact.
+  if (artifactBase64) {
+    if (typeof artifactBase64 !== 'string' || artifactBase64.length > 140_000_000) {
+      throw new Error('Inline .codelab artifact exceeds the transport envelope.');
+    }
+    const inlineBuffer = Buffer.from(artifactBase64, 'base64');
+    if (!inlineBuffer.length) throw new Error('Inline .codelab artifact is empty.');
+    if (inlineBuffer.length > MAX_CODELAB_ARTIFACT_BYTES) {
+      throw new Error(`Artifact exceeds maximum supported size of ${MAX_CODELAB_ARTIFACT_BYTES} bytes.`);
+    }
+    const inlineSha = sha256(inlineBuffer);
+    await queryChecked(pool, 'inline_artifact_sql',
+      `INSERT INTO public.codelab_project_artifacts
+        (artifact_id, import_request_id, workspace_id, editor_id, source_project_id, filename, content_type, sha256, byte_size, artifact, status, created_at, updated_at)
+       SELECT gen_random_uuid(), import_request_id, workspace_id, editor_id, source_project_id, $2, $3, $4, $5, $6, 'uploaded', now(), now()
+       FROM public.codelab_project_import_requests
+       WHERE import_request_id=$1`,
+      [importRequestId, artifactFilename, artifactContentType, inlineSha, inlineBuffer.length, inlineBuffer]
+    );
   }
 
   const artifactResult = await queryChecked(pool, 'import_sql', 
