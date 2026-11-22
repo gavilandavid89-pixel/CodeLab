@@ -183,8 +183,8 @@ export function vectorModelToSVG(model) {
 function setAttr(el, attrs) { for (const [k, v] of Object.entries(attrs)) if (v !== undefined && v !== null) el.setAttribute(k, v); }
 
 export class VectorStudio {
-  constructor({ host, getDocument, getModel, setModel, onChanged, status } = {}) {
-    this.host = host; this.getDocument = getDocument; this.setModel = setModel; this.onChanged = onChanged; this.status = status || (() => {});
+  constructor({ host, getDocument, getModel, setModel, onChanged, onUndo, onRedo, status } = {}) {
+    this.host = host; this.getDocument = getDocument; this.setModel = setModel; this.onChanged = onChanged; this.onUndo = onUndo; this.onRedo = onRedo; this.status = status || (() => {});
     this.model = createVectorModel(getDocument().width, getDocument().height, getModel?.());
     this.tool = 'select'; this.selected = new Set(); this.drag = null; this.pen = []; this.enabled = false; this.build(); this.render();
   }
@@ -424,8 +424,8 @@ export class VectorStudio {
     this.render();
   }
 
-  undoVector() { this.status('Vector history is shared with the document history. Use the main Undo control.', 'neutral'); }
-  redoVector() { this.status('Vector history is shared with the document history. Use the main Redo control.', 'neutral'); }
+  undoVector() { if (this.onUndo) return this.onUndo(); this.status('Vector history is shared with the document history. Use the main Undo control.', 'neutral'); return false; }
+  redoVector() { if (this.onRedo) return this.onRedo(); this.status('Vector history is shared with the document history. Use the main Redo control.', 'neutral'); return false; }
 
   changed() { this.setModel?.(clone(this.model)); this.onChanged?.(); this.render(); }
   enable() { this.enabled = true; this.svg.style.display = 'block'; this.bar.style.display = 'flex'; this.status('Vector mode enabled · professional SVG tools', 'success'); this.render(); }
