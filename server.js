@@ -125,7 +125,7 @@ async function ensureAgentBridgeWakeListener() {
             'pixelforge_propose','pixelforge_approve','pixelforge_discard',
             'pixelforge_animation_frame_context','pixelforge_export_image',
             'pixelforge_capture_interface','pixelforge_export_animation_video',
-            'pixelforge_intelligence','codelab_project_create',
+            'pixelforge_intelligence','codelab_project_import','codelab_project_create',
             'codelab_project_convert_to_web','codelab_project_inspect',
             'codelab_project_connect','codelab_project_get_code',
             'codelab_project_update_code','codelab_project_capture_png',
