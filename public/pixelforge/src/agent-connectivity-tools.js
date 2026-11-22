@@ -124,7 +124,9 @@ export function closeGap(object,endpointIndex=1,target=null){
 }
 export function extendToIntersection(object,other){
   const a=objectEndpoints(object),b=objectEndpoints(other);if(a.length!==2||b.length!==2)throw new Error('extend_requires_line_like_objects');
-  const v=sub(a[1],a[0]),w=sub(b[1],b[0]),den=cross(v,w);if(Math.abs(den)<EPS)throw new Error('parallel_lines_no_intersection');
+  const v=sub(a[1],a[0]),w=sub(b[1],b[0]);
+  if(Math.hypot(v.x,v.y)<EPS||Math.hypot(w.x,w.y)<EPS)throw new Error('intersection_requires_non_degenerate_lines');
+  const den=cross(v,w);if(Math.abs(den)<EPS)throw new Error('parallel_lines_no_intersection');
   const t=cross(sub(b[0],a[0]),w)/den,q=add(a[0],mul(v,t)),r=clone(object);
   if(t<0){if(r.type==='line'){r.x1=q.x;r.y1=q.y;}else r.points[0]={...r.points[0],x:q.x,y:q.y};}
   else {if(r.type==='line'){r.x2=q.x;r.y2=q.y;}else{const p=r.points.at(-1);p.x=q.x;p.y=q.y;}}
@@ -143,8 +145,9 @@ export function filletLines(a,b,radius){
   const vertex=shared.p, pa=ea[1-shared.i], pb=eb[1-shared.j], va=normalize(sub(pa,vertex)), vb=normalize(sub(pb,vertex)), r=Math.abs(num(radius));
   const angle=Math.acos(Math.max(-1,Math.min(1,dot(va,vb))));
   if(angle<EPS||Math.abs(Math.PI-angle)<EPS)throw new Error('fillet_requires_non_degenerate_vertex_angle');
-  const tangent=r/Math.tan(angle/2);
-  if(!Number.isFinite(tangent)||tangent<EPS)throw new Error('fillet_radius_is_too_large_or_invalid');
+  if(!Number.isFinite(r)||r<EPS)throw new Error('fillet_radius_is_too_large_or_invalid');
+  const tangent=r/Math.tan(angle/2),lengthA=dist(vertex,pa),lengthB=dist(vertex,pb);
+  if(!Number.isFinite(tangent)||tangent<EPS||tangent>lengthA+EPS||tangent>lengthB+EPS)throw new Error('fillet_radius_exceeds_available_segments');
   const p1=add(vertex,mul(va,tangent)),p2=add(vertex,mul(vb,tangent)),bis=normalize(add(va,vb)),center=add(vertex,mul(bis,r/Math.sin(angle/2)));
   const startAngle=Math.atan2(p1.y-center.y,p1.x-center.x)*180/Math.PI,endAngle=Math.atan2(p2.y-center.y,p2.x-center.x)*180/Math.PI;
   return{trimmedA:replaceEndpoint(a,1-shared.i,p1),trimmedB:replaceEndpoint(b,1-shared.j,p2),arc:{type:'arc',cx:center.x,cy:center.y,radius:r,startDegrees:startAngle,endDegrees:endAngle},tangentPoints:[p1,p2],center};
@@ -161,8 +164,11 @@ export function chamferLines(a,b,distanceValue){
 }
 export function offsetLine(object,distanceValue){
   const e=objectEndpoints(object);if(e.length!==2)throw new Error('offset_requires_line_like_object');
-  const a=e[0],b=e[1],v=normalize(sub(b,a)),n={x:-v.y,y:v.x},d=num(distanceValue);
-  return line(add(a,mul(n,d)),add(b,mul(n,d)));
+  const a=e[0],b=e[1],v=sub(b,a),length=Math.hypot(v.x,v.y),d=Number(distanceValue);
+  if(length<EPS)throw new Error('offset_requires_non_degenerate_line');
+  if(!Number.isFinite(d))throw new Error('offset_distance_must_be_finite');
+  const direction=mul(v,1/length),normal={x:-direction.y,y:direction.x};
+  return line(add(a,mul(normal,d)),add(b,mul(normal,d)));
 }
 export function dimension(a,b,label=null){
   const p=pt(a),q=pt(b),dx=q.x-p.x,dy=q.y-p.y;
