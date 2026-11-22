@@ -64,6 +64,8 @@ test('path utilities and semantic snap provide agent feedback', () => {
   assert.deepEqual(reversed.points[0],{x:10,y:10,kind:'line'});
   const simplified=fitPolyline([{x:0,y:0},{x:1,y:.01},{x:2,y:0},{x:10,y:0}],{tolerance:.1});
   assert.ok(simplified.points.length<=4);
+  const metricTolerance=fitPolyline([{x:0,y:0},{x:5,y:.2},{x:10,y:0}],{tolerance:.3});
+  assert.equal(metricTolerance.points.length,2);
   const snap=smartSnap({x:9.2,y:.4},[{id:'line-1',type:'line',x1:0,y1:0,x2:10,y2:0}],{tolerance:2});
   assert.equal(snap.best.kind,'endpoint');
   const axis=snapToAxis({x:4,y:2},{x:0,y:0},0);
@@ -85,6 +87,9 @@ test('boolean preview and semantic intent planning are stable', () => {
   const squareB=[{x:5,y:5},{x:15,y:5},{x:15,y:15},{x:5,y:15}];
   const inter=polygonBoolean(squareA,squareB,'intersect');
   assert.equal(inter.points.length,4);
+  const unsupported=polygonBoolean(squareA,squareB,'union');
+  assert.equal(unsupported.mode,'unsupported');
+  assert.equal(unsupported.exactFor,null);
   const plan=intentPlan({kind:'circle',position:{x:10,y:20},radius:5,snap:true},{objects:[]});
   assert.equal(plan.steps.at(-1).tool,'geometry.ellipse');
   assert.equal(plan.requires.geometryAudit,true);
