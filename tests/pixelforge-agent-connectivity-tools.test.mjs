@@ -68,3 +68,23 @@ test('continuity reports G0 for matching endpoints',()=>{
   const b={type:'path',points:[{x:10,y:0},{x:20,y:0}]};
   assert.equal(continuity(a,b,.001).g0,true);
 });
+
+test('constraint audit is observational and never solves or mutates geometry',()=>{
+  const a=line('a',0,0,10,0), b=line('b',10,4,20,4);
+  const before=JSON.stringify([a,b]);
+  const audit=constraintAudit([a,b],[{type:'horizontal',a:'a',b:'b'}],.001);
+  assert.equal(audit.ok,false);
+  assert.equal(audit.counts.unsatisfied,1);
+  assert.equal(JSON.stringify([a,b]),before);
+  const unsupported=constraintAudit([a,b],[{type:'parallel',a:'a',b:'b'}]);
+  assert.equal(unsupported.ok,false);
+  assert.equal(unsupported.counts.unsupported,1);
+});
+
+test('constraint audit distinguishes missing references without attempting a solve',()=>{
+  const a=line('a',0,0,10,0);
+  const audit=constraintAudit([a],[{type:'coincident',a:'a',b:'missing'}]);
+  assert.equal(audit.ok,false);
+  assert.equal(audit.counts.missing_reference,1);
+  assert.equal(audit.diagnostics[0].status,'missing_reference');
+});
