@@ -90,9 +90,74 @@ function safeResourcePath(value) {
     !value.includes('\\0') && !value.split('/').some(part => !part || part === '.' || part === '..' || part.includes('\\'));
 }
 
-function classifyPath(filePath) {
-  const [head] = filePath.split('/');
-  return ['assets', 'scenes', 'animations', 'frames'].includes(head) ? head : 'project-files';
+const DESTINATION_ALIASES = {
+  'reference-center': ['reference', 'references', 'ref', 'refs', 'reference-center', 'reference_center', 'moodboard', 'moodboards', 'inspiration', 'inspirations', 'visual-reference', 'visual-references', 'style-reference', 'style-references'],
+  assets: ['asset', 'assets', 'media', 'images', 'img', 'sprites', 'sprite'],
+  scenes: ['scene', 'scenes', 'levels', 'level', 'screens', 'screen'],
+  animations: ['animation', 'animations', 'motion', 'motions'],
+  frames: ['frame', 'frames', 'cels', 'cel', 'keyframes', 'key-frames'],
+  audio: ['audio', 'sound', 'sounds', 'music', 'sfx'],
+  video: ['video', 'videos', 'clips', 'footage'],
+  fonts: ['font', 'fonts', 'typefaces', 'typography'],
+  documents: ['document', 'documents', 'docs', 'notes', 'readme', 'manuals', 'guides', 'briefs'],
+  models: ['model', 'models', '3d', 'meshes', 'mesh'],
+  textures: ['texture', 'textures', 'materials', 'material'],
+  scripts: ['script', 'scripts', 'code', 'src'],
+  styles: ['style', 'styles', 'css', 'theme', 'themes'],
+  components: ['component', 'components', 'widgets'],
+  templates: ['template', 'templates', 'layouts'],
+  pages: ['page', 'pages', 'views'],
+  exports: ['export', 'exports', 'output', 'outputs', 'renders', 'render'],
+  backups: ['backup', 'backups', 'archive', 'archives'],
+  data: ['data', 'datasets', 'database', 'json', 'config', 'configs'],
+};
+const DESTINATIONS = new Set(['reference-center', ...Object.keys(DESTINATION_ALIASES)]);
+const EXTENSION_DESTINATIONS = {
+  '.png': 'assets', '.jpg': 'assets', '.jpeg': 'assets', '.webp': 'assets', '.gif': 'assets', '.svg': 'assets', '.avif': 'assets', '.bmp': 'assets',
+  '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio', '.m4a': 'audio',
+  '.mp4': 'video', '.webm': 'video', '.mov': 'video', '.mkv': 'video',
+  '.ttf': 'fonts', '.otf': 'fonts', '.woff': 'fonts', '.woff2': 'fonts',
+  '.pdf': 'documents', '.md': 'documents', '.txt': 'documents', '.rtf': 'documents', '.doc': 'documents', '.docx': 'documents',
+  '.obj': 'models', '.fbx': 'models', '.gltf': 'models', '.glb': 'models', '.stl': 'models',
+  '.css': 'styles', '.scss': 'styles', '.sass': 'styles',
+  '.js': 'scripts', '.mjs': 'scripts', '.cjs': 'scripts', '.ts': 'scripts', '.tsx': 'scripts', '.jsx': 'scripts', '.py': 'scripts',
+  '.html': 'pages', '.htm': 'pages',
+  '.json': 'data', '.csv': 'data', '.xml': 'data', '.yaml': 'data', '.yml': 'data',
+};
+function normalizeDestination(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.toLowerCase().replace(/[_\\s]+/g, '-').replace(/^\\/+|\\/+$/g, '');
+  if (DESTINATIONS.has(normalized)) return normalized;
+  for (const [destination, aliases] of Object.entries(DESTINATION_ALIASES)) {
+    if (aliases.includes(normalized)) return destination;
+  }
+  return null;
+}
+function classifyPath(filePath, declaredResources = []) {
+  const declared = declaredResources.find(resource => resource && resource.path === filePath);
+  if (declared) {
+    const destination = normalizeDestination(declared.destination);
+    if (!destination) fail('manifest resource destination is unsupported for ' + filePath);
+    return destination;
+  }
+  const segments = filePath.split('/');
+  const existingRoot = normalizeDestination(segments[0]);
+  if (existingRoot) return existingRoot;
+  for (const segment of segments.slice(0, -1)) {
+    const matched = normalizeDestination(segment);
+    if (matched) return matched;
+  }
+  const filename = segments.at(-1).toLowerCase();
+  const dot = filename.lastIndexOf('.');
+  const extension = dot >= 0 ? filename.slice(dot) : '';
+  return EXTENSION_DESTINATIONS[extension] || 'project-files';
+}
+function destinationPathFor(filePath, destination) {
+  const segments = filePath.split('/');
+  if (normalizeDestination(segments[0]) === destination) return filePath;
+  const aliasIndex = segments.slice(0, -1).findIndex(segment => normalizeDestination(segment) === destination);
+  const remainder = aliasIndex >= 0 ? segments.slice(aliasIndex + 1) : segments;
+  return [destination, ...remainder].join('/');
 }
 
 /**
