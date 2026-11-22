@@ -16,7 +16,7 @@ async function queryChecked(pool, label, text, values) {
     throw new Error(`SQL parameter mismatch in ${label}: query requires ${maxPlaceholder}, values supplied ${values.length}`);
   }
   try {
-    return await pool.query(text, values);
+    return await queryChecked(pool, 'import_sql', text, values);
   } catch (error) {
     error.message = `${label}: ${error.message}`;
     throw error;
@@ -72,7 +72,7 @@ export async function importCodeLabArtifact(pool, {
 }) {
   if (!importRequestId) throw new Error('import_request_id is required.');
 
-  const requestResult = await pool.query(
+  const requestResult = await queryChecked(pool, 'import_sql', 
     'SELECT import_request_id, workspace_id, editor_id, source_project_id, source_sha256, manifest, status, confirmation_required, confirmation_received, work_score FROM public.codelab_project_import_requests WHERE import_request_id=$1',
     [importRequestId]
   );
@@ -92,7 +92,7 @@ export async function importCodeLabArtifact(pool, {
     throw new Error('Import request is not importable in status: ' + request.status);
   }
 
-  const artifactResult = await pool.query(
+  const artifactResult = await queryChecked(pool, 'import_sql', 
     'SELECT artifact_id, filename, content_type, sha256, byte_size, artifact FROM public.codelab_project_artifacts WHERE import_request_id=$1 AND status=\'uploaded\' ORDER BY created_at DESC LIMIT 1',
     [importRequestId]
   );
@@ -109,11 +109,11 @@ export async function importCodeLabArtifact(pool, {
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-import-'));
   try {
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       'UPDATE public.codelab_project_import_requests SET status=\'running\', updated_at=now() WHERE import_request_id=$1',
       [importRequestId]
     );
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       'UPDATE public.codelab_project_artifacts SET status=\'claimed\', updated_at=now() WHERE artifact_id=$1',
       [artifact.artifact_id]
     );
@@ -133,7 +133,7 @@ export async function importCodeLabArtifact(pool, {
     const now = Date.now();
     const workScore = Number(request.work_score ?? 0);
 
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       `INSERT INTO public.codelab_project_registry
         (workspace_id, project_id, editor_id, name, project, content_sha256, work_score, updated_at)
        VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,now())
@@ -151,7 +151,7 @@ export async function importCodeLabArtifact(pool, {
       const width = Number(project.width || 128);
       const height = Number(project.height || 128);
       const byteSize = Buffer.byteLength(serialized, 'utf8');
-      await pool.query(
+      await queryChecked(pool, 'import_sql', 
         `INSERT INTO public.codelab_pixelforge_projects
           (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256)
          VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,1,$9)
@@ -169,7 +169,7 @@ export async function importCodeLabArtifact(pool, {
       );
     }
 
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       `INSERT INTO public.codelab_project_imports
         (workspace_id, project_id, editor_id, format, format_version, manifest, source_sha256, payload, status, result)
        VALUES ($1,$2,$3,'codelab',1,$4::jsonb,$5,$6::jsonb,'succeeded',$7::jsonb)`,
@@ -184,13 +184,13 @@ export async function importCodeLabArtifact(pool, {
       ]
     );
 
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       `UPDATE public.codelab_project_import_requests
        SET status='succeeded', updated_at=now()
        WHERE import_request_id=$1`,
       [importRequestId]
     );
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       `UPDATE public.codelab_project_artifacts
        SET status='imported', updated_at=now()
        WHERE artifact_id=$1`,
@@ -208,11 +208,11 @@ export async function importCodeLabArtifact(pool, {
     };
   } catch (error) {
     error.message = `codelab_artifact_import_failed: ${error.message}`;
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       'UPDATE public.codelab_project_import_requests SET status=\'failed\', updated_at=now() WHERE import_request_id=$1',
       [importRequestId]
     ).catch(() => {});
-    await pool.query(
+    await queryChecked(pool, 'import_sql', 
       'UPDATE public.codelab_project_artifacts SET status=\'failed\', updated_at=now() WHERE artifact_id=$1',
       [artifact.artifact_id]
     ).catch(() => {});
