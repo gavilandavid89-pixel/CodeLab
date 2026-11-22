@@ -157,8 +157,6 @@ export function installCodeLabPackage({ manifest, project, files }) {
       !Number.isInteger(activeFrameIndex) || activeFrameIndex < 0 || activeFrameIndex >= frames.length) {
     fail('animation FPS or active frame index is outside supported limits.');
   }
-  const totalBytes = project.width * project.height * 4 * layerIds.length * frames.length;
-  if (totalBytes > 64 * 1024 * 1024) fail('animation exceeds PixelForge 64 MiB frame-memory budget.');
   project.animation = {
     format: 'pixelforge-animation', version: 1, width: project.width, height: project.height,
     layerIds, fps, activeFrameIndex, frames,
