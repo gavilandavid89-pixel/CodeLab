@@ -172,7 +172,7 @@ test('installs real image resources into the native PixelForge Reference Center'
   assert.equal(result.resources.referenceImages, 1);
   assert.equal(reference.sourcePath, 'reference-center/characters/hero.png');
   assert.equal(reference.category, 'reference');
-  assert.match(reference.imageDataUrl, /^data:image\\/png;base64,/);
+  assert.equal(reference.imageDataUrl.startsWith('data:image/png;base64,'), true);
   assert.equal(project.drawingModel.packageResources.length, 2);
   assert.equal(project.drawingModel.packageResources.find(item => item.destination === 'documents').contentType, 'application/pdf');
 });
