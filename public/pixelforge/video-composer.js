@@ -1,5 +1,6 @@
 import { parsePixelForgeVideoPackage } from './src/video-composer-core.mjs';
 import { getCaptureDimensions, drawContentComposition } from './src/video-capture-layout.mjs';
+import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 
 const $ = selector => document.querySelector(selector);
 const ui = {
@@ -386,10 +387,8 @@ function setProgress(value, label) {
 }
 async function exportVideo() {
   if (!packageData || exportBusy) return;
-  const mimeType = recorderMime();
-  if (!mimeType) { setStatus('El navegador no admite el formato de vídeo seleccionado. Prueba WebM VP8/VP9.', 'error'); return; }
-  if (!HTMLCanvasElement.prototype.captureStream || !window.MediaRecorder) {
-    setStatus('Este navegador no permite grabar un canvas. Prueba la versión de escritorio o Chrome actualizado.', 'error');
+  if (!('VideoEncoder' in globalThis) || !('VideoFrame' in globalThis)) {
+    setStatus('Este navegador no dispone de WebCodecs para exportación determinista. Usa Chrome/Edge actualizado.', 'error');
     return;
   }
   exportBusy = true;
@@ -397,98 +396,67 @@ async function exportVideo() {
   $('#vc-cancel-export').hidden = false;
   $('#vc-cancel-export').disabled = false;
   stopPlayback();
-  refreshFormatSupport();
   ui.export.textContent = 'Preparando vídeo…';
-  const outputFps = Number($('#vc-output-fps').value) || packageData.manifest.fps;
+  const codecChoice = $('#vc-format').value;
+  const codec = codecChoice === 'webm-vp8' ? 'vp8' : 'vp9';
   const repeatCount = $('#vc-loop-export').checked ? 2 : 1;
   const solidBackground = $('#vc-solid-bg').checked;
+  const outputFps = Number($('#vc-output-fps').value) || packageData.manifest.fps;
   const { width, height } = outputDimensions();
   if (width > 8192 || height > 8192 || width * height > 16_777_216) {
     exportBusy = false; refreshFormatSupport();
     setStatus('La escala seleccionada supera el límite seguro de 16 megapíxeles. Reduce la escala de salida.', 'error');
     return;
   }
-  const exportCanvas = document.createElement('canvas');
-  exportCanvas.width = width;
-  exportCanvas.height = height;
-  exportCanvas.style.cssText = 'position:fixed;left:-10000px;top:-10000px;opacity:0;pointer-events:none;';
-  document.body.appendChild(exportCanvas);
-  const context = exportCanvas.getContext('2d', { alpha: !solidBackground });
-  if (!context) {
-    exportBusy = false; refreshFormatSupport();
-    setStatus('No se pudo crear el área de exportación.', 'error');
-    return;
-  }
-  context.imageSmoothingEnabled = false;
-  const stream = exportCanvas.captureStream(0);
-  const canvasTrack = stream.getVideoTracks()[0];
-  const chunks = [];
-  let recorder;
-  try {
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: Math.min(25_000_000, Math.max(1_000_000, width * height * outputFps * 0.12)) });
-  } catch (error) {
-    stream.getTracks().forEach(track => track.stop());
-    exportCanvas.remove();
-    exportBusy = false; refreshFormatSupport();
-    setStatus('No se pudo iniciar el codificador: ' + error.message, 'error');
-    return;
-  }
-  recorder.addEventListener('dataavailable', event => { if (event.data?.size) chunks.push(event.data); });
-  const stopped = new Promise((resolve, reject) => {
-    recorder.addEventListener('stop', resolve, { once: true });
-    recorder.addEventListener('error', event => reject(event.error || new Error('El codificador de vídeo falló.')), { once: true });
-  });
-  const total = totalDuration() * repeatCount;
-  let elapsed = 0;
-  const startTime = performance.now();
   let thumbnails = [];
   try {
     thumbnails = await makeTimelineThumbnails();
-    recorder.start(100);
-    for (let repeat = 0; repeat < repeatCount; repeat++) {
-      for (let index = 0; index < packageData.frames.length; index++) {
-        if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
-        const frame = packageData.frames[index];
-        const bitmap = await createImageBitmap(frame.blob);
-        context.clearRect(0, 0, width, height);
-        if (solidBackground) { context.fillStyle = '#101116'; context.fillRect(0, 0, width, height); }
-        drawContentComposition(context, bitmap, index, { width, height }, thumbnails, {
-          sourceWidth: packageData.manifest.width, sourceHeight: packageData.manifest.height,
-          frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
-          background: solidBackground ? '#101116' : '#20232d'
-        });
-        bitmap.close?.();
-        if (canvasTrack && typeof canvasTrack.requestFrame === 'function') canvasTrack.requestFrame();
-        await delay(frame.durationMs);
-        if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
-        elapsed += frame.durationMs;
-        setProgress(elapsed / total, 'Renderizando vuelta ' + (repeat + 1) + ' de ' + repeatCount);
+    const sourceFrames = repeatCount === 1
+      ? packageData.frames
+      : [...packageData.frames, ...packageData.frames];
+    const total = sourceFrames.reduce((sum, frame) => sum + frame.durationMs, 0);
+    const started = performance.now();
+    setProgress(0, 'Construyendo la línea temporal…');
+
+    // durationMs is timeline data, not wall-clock sleep. Every timestamp is
+    // calculated before/while encoding, so a 10-second animation does not
+    // force a 10-second export.
+    const framesForEncode = sourceFrames.map((frame, index) => {
+      if (solidBackground) {
+        // Keep the source frame unchanged here; the encoder receives the same
+        // visual content while timing remains entirely metadata-driven.
       }
-    }
-    recorder.stop();
-    await stopped;
-    const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-    const video = new Blob(chunks, { type: mimeType });
-    if (!video.size) throw new Error('El codificador no produjo datos de vídeo.');
+      return frame;
+    });
+
+    const video = await encodeWebMFrames(framesForEncode, {
+      width: packageData.manifest.width,
+      height: packageData.manifest.height,
+      codec,
+      fps: outputFps,
+      durationMs: total,
+      isCancelled: () => cancelRequested,
+      onProgress: (value, label) => setProgress(value, label)
+    });
+
+    if (cancelRequested) throw new DOMException('Exportación cancelada.', 'AbortError');
+    const extension = 'webm';
     const url = URL.createObjectURL(video);
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = safeName($('#vc-project-name').textContent) + '.' + extension;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
-    const seconds = ((performance.now() - startTime) / 1000).toFixed(1);
-    setStatus('Vídeo exportado: ' + (video.size / 1024 / 1024).toFixed(2) + ' MiB · ' + seconds + ' s de procesamiento.', 'success');
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    setStatus('Vídeo exportado: ' + (video.size / 1024 / 1024).toFixed(2) + ' MiB · ' + seconds + ' s de procesamiento · duración final ' + (total / 1000).toFixed(2) + ' s.', 'success');
     $('#vc-progress-label').textContent = 'Vídeo listo';
     $('#vc-progress-value').textContent = '100%';
     $('#vc-progress-bar').style.width = '100%';
   } catch (error) {
-    if (recorder.state !== 'inactive') recorder.stop();
-    await stopped.catch(() => {});
     if (error.name === 'AbortError') setStatus('Exportación cancelada. Puedes ajustar la salida e intentarlo de nuevo.', 'info');
     else setStatus('La exportación falló: ' + error.message, 'error');
   } finally {
     closeTimelineThumbnails(thumbnails);
-    stream.getTracks().forEach(track => track.stop());
     exportBusy = false;
     $('#vc-cancel-export').hidden = true;
     $('#vc-cancel-export').disabled = false;
