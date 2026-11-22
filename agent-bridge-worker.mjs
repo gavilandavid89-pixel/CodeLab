@@ -9,6 +9,7 @@ import { chromium as playwrightChromium } from 'playwright-core';
 import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js';
 import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
 import { importCodeLabArtifact } from './codelab-project-artifact-import.mjs';
+import { exportPixelForgeAnimationVideo as exportPixelForgeAnimationVideoComposer } from './pixelforge-video-composer-export.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -2772,7 +2773,7 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface({ ...payload, target_workspace_id: targetWorkspace }));
       return;
     case 'pixelforge_export_animation_video':
-      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideo({ ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id }));
+      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideoComposer({ ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id }, { loadProject, targetPixelForgeWorkspace, uploadNativeArtifact, neonEvidence, pool, workspaceTokenFor, workspaceId }));
       return;
     case 'pixelforge_preview_evidence_video':
       await finish(command.command_id, 'succeeded', await previewPixelForgeEvidenceVideo(payload));
