@@ -336,6 +336,7 @@ export async function importCodeLabArtifact(pool, {
       contentSha256: contentSha,
       sourceSha256: actualSha,
       installedResources: installation.installed,
+      resourceSummary: installation.resources,
       resourceDestinations: installation.destinations,
     };
   } catch (error) {
