@@ -152,7 +152,7 @@ function classifyContent(file) {
   if (file.subarray(0, 4).toString('ascii') === 'wOF2' ||
       file.subarray(0, 4).toString('ascii') === 'wOFF' ||
       file.subarray(0, 4).toString('ascii') === 'OTTO' ||
-      file.subarray(0, 4).toString('ascii') === '\\x00\\x01\\x00\\x00') return 'fonts';
+      (file[0] === 0 && file[1] === 1 && file[2] === 0 && file[3] === 0)) return 'fonts';
   const text = file.subarray(0, Math.min(file.length, 256)).toString('utf8').trimStart().toLowerCase();
   if (text.startsWith('<svg') || text.startsWith('<?xml') && text.includes('<svg')) return 'assets';
   if (text.startsWith('<!doctype html') || text.startsWith('<html')) return 'pages';
