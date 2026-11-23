@@ -8,7 +8,7 @@ const baseProject = () => ({
   width: 100,
   height: 80,
   activeLayerId: 'layer-1',
-  layers: [{ id: 'layer-1', name: 'Background', visible: true, opacity: 1, locked: false, pixels: 'AAAA' }],
+  layers: [{ id: 'layer-1', name: 'Background', visible: true, opacity: 1, locked: false, pixels: Buffer.alloc(100 * 80 * 4).toString('base64') }],
   vectorModel: { version: 4, width: 100, height: 80, grid: 8, snap: true, objects: [], frames: [] },
 });
 
@@ -42,4 +42,37 @@ test('PixelForge validation detects animation and transform corruption', () => {
   assert.ok(result.categories === undefined || result.issues.some(i => i.code === 'invalid_transform'));
   assert.ok(result.issues.some(i => i.code === 'invalid_frame_time'));
   assert.ok(result.issues.some(i => i.code === 'invalid_frame_duration'));
+});
+
+test('PixelForge validation rejects short and malformed RGBA buffers', () => {
+  const short = baseProject();
+  short.layers[0].pixels = 'AAAA';
+  const shortResult = validatePixelForgeProject(short);
+  assert.equal(shortResult.ok, false);
+  assert.ok(shortResult.issues.some(i => i.code === 'invalid_layer_pixel_buffer'));
+
+  const malformed = baseProject();
+  malformed.layers[0].pixels = 'A'.repeat(Buffer.alloc(100 * 80 * 4).toString('base64').length);
+  const malformedResult = validatePixelForgeProject(malformed);
+  assert.equal(malformedResult.ok, false);
+  assert.ok(malformedResult.issues.some(i => i.code === 'invalid_layer_pixel_buffer'));
+});
+
+test('PixelForge validation rejects dimensions and aggregate raster memory beyond engine limits', () => {
+  const oversized = baseProject();
+  oversized.width = 5000;
+  const oversizedResult = validatePixelForgeProject(oversized);
+  assert.equal(oversizedResult.ok, false);
+  assert.ok(oversizedResult.issues.some(i => i.code === 'invalid_width'));
+
+  const tooManyLayers = baseProject();
+  tooManyLayers.width = 2048;
+  tooManyLayers.height = 2048;
+  tooManyLayers.layers = Array.from({ length: 5 }, (_, index) => ({
+    id: 'layer-' + index, name: 'Layer ' + index, visible: true, opacity: 1, locked: false,
+    pixels: Buffer.alloc(2048 * 2048 * 4).toString('base64'),
+  }));
+  const result = validatePixelForgeProject(tooManyLayers);
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(i => i.code === 'raster_memory_limit_exceeded'));
 });
