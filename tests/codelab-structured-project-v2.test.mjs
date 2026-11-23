@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { installCodeLabPackage } from '../codelab-project-package-installer.mjs';
 
 function rgba(width, height, seed) {
@@ -78,6 +79,11 @@ function makePackage() {
     }))],
     ['reference.personaje/reference.personaje1/image.bin', referencePixels],
   ]);
+  const integrityFiles = Object.fromEntries([...files.entries()].map(([path, bytes]) => [path, {
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    byteSize: bytes.length,
+  }]));
+  files.set('integrity.json', Buffer.from(JSON.stringify({ format: 'codelab-integrity', version: 1, files: integrityFiles })));
   return {
     manifest: {
       format: 'codelab',
@@ -89,6 +95,7 @@ function makePackage() {
       entry: 'project.json',
       frames: { manifestPath: 'frames/frames.tscn' },
       referenceCenter: { manifestPath: 'center.op/center.json' },
+      integrityPath: 'integrity.json',
     },
     project: baseProject(),
     files,
