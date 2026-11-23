@@ -1473,7 +1473,7 @@ async function stageInlineArtifactChunk(artifactId, chunkIndex, bytes) {
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
   const result = await accountPool.query(
     `SELECT total_chunks, total_bytes FROM public.codelab_agent_artifacts
-      WHERE artifact_id=$1 AND workspace_id=$2 AND kind='pixelforge_zip_upload' AND expires_at>now()`,
+      WHERE artifact_id=$1 AND workspace_id=$2 AND kind IN ('pixelforge_zip_upload','codelab_zip_upload') AND expires_at>now()`,
     [artifactId, await resolveAdminAgentWorkspace()]
   );
   if (!result.rowCount) throw Object.assign(new Error('agent_artifact_not_found'), { status: 404 });
@@ -1496,7 +1496,7 @@ async function commitInlineAgentArtifact(artifactId, expectedSha256) {
   const workspaceId = await resolveAdminAgentWorkspace();
   const meta = await accountPool.query(
     `SELECT * FROM public.codelab_agent_artifacts
-      WHERE artifact_id=$1 AND workspace_id=$2 AND kind='pixelforge_zip_upload' AND expires_at>now()`,
+      WHERE artifact_id=$1 AND workspace_id=$2 AND kind IN ('pixelforge_zip_upload','codelab_zip_upload') AND expires_at>now()`,
     [artifactId, workspaceId]
   );
   if (!meta.rowCount) throw Object.assign(new Error('agent_artifact_not_found'), { status: 404 });
@@ -1534,20 +1534,35 @@ async function commitInlineAgentArtifact(artifactId, expectedSha256) {
     };
   }
   const commandId = crypto.randomUUID();
-  const payload = {
-    artifact_id: artifactId,
-    name: row.metadata?.projectName || row.filename.replace(/\\.codelab$/i, '').replace(/\\.zip$/i, ''),
-    target_workspace_id: row.metadata?.targetWorkspaceId || PIXELFORGE_GUEST_WORKSPACE_ID,
-    wake: true
-  };
+  const isCodeLabImport = row.kind === 'codelab_zip_upload';
+  const payload = isCodeLabImport
+    ? {
+        native_artifact_id: artifactId,
+        import_request_id: row.metadata?.importRequestId || null,
+        artifact_filename: row.filename,
+        artifact_content_type: row.content_type,
+        target_workspace_id: row.metadata?.targetWorkspaceId || PIXELFORGE_GUEST_WORKSPACE_ID,
+        wake: true
+      }
+    : {
+        artifact_id: artifactId,
+        name: row.metadata?.projectName || row.filename.replace(/\\.codelab$/i, '').replace(/\\.zip$/i, ''),
+        target_workspace_id: row.metadata?.targetWorkspaceId || PIXELFORGE_GUEST_WORKSPACE_ID,
+        wake: true
+      };
+  if (isCodeLabImport && !payload.import_request_id) {
+    throw Object.assign(new Error('agent_artifact_import_request_missing'), { status: 400 });
+  }
+  const action = isCodeLabImport ? 'codelab_project_import' : 'pixelforge_import_zip';
   await accountPool.query(
     `INSERT INTO public.codelab_agent_commands
       (command_id,workspace_id,action,payload,status,expires_at,updated_at)
-     VALUES ($1,$2,'pixelforge_import_zip',$3::jsonb,'queued',now()+interval '15 minutes',now())`,
-    [commandId, workspaceId, JSON.stringify(payload)]
+     VALUES ($1,$2,$3,$4::jsonb,'queued',now()+interval '15 minutes',now())`,
+    [commandId, workspaceId, action, JSON.stringify(payload)]
   );
   return {
     ok: true, artifactId, commandId, status: 'queued',
+    action: isCodeLabImport ? 'codelab_project_import' : 'pixelforge_import_zip',
     sizeBytes: total, chunkCount: Number(row.total_chunks), sha256: digest
   };
 }
@@ -2408,6 +2423,12 @@ const server = http.createServer(async (req, res) => {
             const sha256 = String(body.sha256 || '').toLowerCase();
             const filename = String(body.filename || 'pixelforge.codelab').slice(0, 180);
             const targetWorkspaceId = String(body.target_workspace_id || PIXELFORGE_GUEST_WORKSPACE_ID);
+            const artifactKind = String(body.artifact_kind || 'pixelforge_zip_upload');
+            const importRequestId = body.import_request_id == null ? null : String(body.import_request_id);
+            if (!['pixelforge_zip_upload', 'codelab_zip_upload'].includes(artifactKind) ||
+                (artifactKind === 'codelab_zip_upload' && !/^[a-zA-Z0-9_-]{16,128}$/.test(importRequestId || ''))) {
+              return sendJson(res, 400, { error: 'invalid_agent_artifact_kind' });
+            }
             if (!Number.isInteger(totalBytes) || totalBytes < 1 || totalBytes > AGENT_INLINE_ARTIFACT_MAX_BYTES ||
                 !Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > 256 ||
                 !/^[a-f0-9]{64}$/.test(sha256) ||
@@ -2420,9 +2441,9 @@ const server = http.createServer(async (req, res) => {
             await accountPool.query(
               `INSERT INTO public.codelab_agent_artifacts
                 (artifact_id,workspace_id,kind,filename,content_type,total_bytes,total_chunks,sha256,metadata,expires_at)
-               VALUES ($1,$2,'pixelforge_zip_upload',$3,'application/zip',$4,$5,$6,$7::jsonb,now()+interval '1 hour')`,
-              [artifactId, workspaceId, filename, totalBytes, totalChunks, sha256,
-               JSON.stringify({ targetWorkspaceId, projectName: body.project_name || null, selfTest: body.self_test === true, transport: 'inline-bridge' })]
+               VALUES ($1,$2,$3,$4,'application/zip',$5,$6,$7,$8::jsonb,now()+interval '1 hour')`,
+              [artifactId, workspaceId, artifactKind, filename, totalBytes, totalChunks, sha256,
+               JSON.stringify({ targetWorkspaceId, projectName: body.project_name || null, importRequestId, selfTest: body.self_test === true, transport: 'inline-bridge' })]
             );
             return sendJson(res, 201, { ok: true, artifactId, chunkBytes: AGENT_INLINE_ARTIFACT_CHUNK_BYTES, totalBytes, totalChunks, sha256 });
           }
