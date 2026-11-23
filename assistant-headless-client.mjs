@@ -181,6 +181,9 @@ export function createAssistantHeadlessClient(options = {}) {
     wait,
     run,
     status: () => run('status'),
+    importCodeLabArtifact: payload => run('codelab_project_import', payload || {}, { ttlMs: payload?.ttlMs ?? 180000, timeoutMs: payload?.timeoutMs ?? 185000 }),
+    validateCodeLab: payload => run('codelab_validate', payload || {}),
+    invokeNeonFunction: payload => run('neon_function_invoke', payload || {}),
     createCodeLabProject: options => run('codelab_project_create', options || {}),
     convertCodeLabProjectToWeb: projectId => run('codelab_project_convert_to_web', { project_id: projectId }),
     inspectCodeLabProject: (projectId, options = {}) => run('codelab_project_inspect', {
@@ -213,6 +216,8 @@ export function createAssistantHeadlessClient(options = {}) {
     queryPixelForgeIntelligence: (projectId, operation = 'model', options = {}) => run('pixelforge_intelligence', { project_id: projectId, operation, ...options }),
     previewPixelForgeEvidenceVideo: options => run('pixelforge_preview_evidence_video', options || {}),
     capturePixelForgeInterface: (options = {}) => run('pixelforge_capture_interface', options),
+    exportPixelForgeImage: (projectId, options = {}) => run('pixelforge_export_image', { project_id: projectId, ...options }),
+    proposePixelForgeChanges: (projectId, actions, summary) => run('pixelforge_propose', { project_id: projectId, actions, summary }),
     getPixelForgeAnimationFrameContext: (projectId, index, layerId, options = {}) => run('pixelforge_animation_frame_context', {
       project_id: projectId,
       index,
