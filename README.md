@@ -18,7 +18,7 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 
 **Arquitectura implementada del flujo de órdenes:** Neon guarda la orden; PostgreSQL la notifica directamente a CodeLab mediante LISTEN/NOTIFY. Cloudflare/R2 es una ruta de almacenamiento de evidencia cuando está configurada, no un salto obligatorio para entregar cada orden.
 
-\`\`\`text
+```text
 AGENTE
   │ INSERT orden (queued) / consulta resultado
   ▼
@@ -43,7 +43,7 @@ NEON POSTGRESQL
 AGENTE
   │ consulta snapshot, inspecciona vídeo/imagen
   └─────────────► decide si envía otra orden
-\`\`\`
+```
 
 ### Reglas de esta arquitectura
 
@@ -71,18 +71,18 @@ El flujo de animación es: petición → fila queued en Neon → NOTIFY → work
 
 ### Activación y ciclo de vida del bridge
 
-El servidor arma al iniciar un cliente PostgreSQL dedicado con \`LISTEN codelab_agent_bridge_wake\`. Un trigger AFTER INSERT OR UPDATE OF status publica NOTIFY cuando una orden pasa a \`queued\`. El listener arranca \`agent-bridge-worker.mjs\` bajo demanda; si ya está activo, no crea otro proceso.
+El servidor arma al iniciar un cliente PostgreSQL dedicado con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT OR UPDATE OF status publica NOTIFY cuando una orden pasa a `queued`. El listener arranca `agent-bridge-worker.mjs` bajo demanda; si ya está activo, no crea otro proceso.
 
-Al armar/reconectar LISTEN, el servidor reconcilia cualquier orden queued no expirada, aunque el payload no tenga \`wake:true\`. Esto cubre la ventana en la que una notificación pudo producirse antes de registrar el listener.
+Al armar/reconectar LISTEN, el servidor reconcilia cualquier orden queued no expirada, aunque el payload no tenga `wake:true`. Esto cubre la ventana en la que una notificación pudo producirse antes de registrar el listener.
 
-El worker mantiene su propio listener. Reclama órdenes desde la tabla durable con una transacción y \`FOR UPDATE SKIP LOCKED\`. Si no encuentra trabajo, espera una notificación sin polling. El worker ocioso sigue siendo un proceso vivo esperando eventos; \`sleeping\` en \`codelab_agent_bridge_state\` indica que el proceso terminó y dejó señal para reactivación, no que esté simplemente sin órdenes.
+El worker mantiene su propio listener. Reclama órdenes desde la tabla durable con una transacción y `FOR UPDATE SKIP LOCKED`. Si no encuentra trabajo, espera una notificación sin polling. El worker ocioso sigue siendo un proceso vivo esperando eventos; `sleeping` en `codelab_agent_bridge_state` indica que el proceso terminó y dejó señal para reactivación, no que esté simplemente sin órdenes.
 
-También existe la operación explícita \`POST /api/agent/bridge/ensure\` (GET como fallback), protegida por \`x-codelab-agent-bridge-token\` y \`CODELAB_AGENT_BRIDGE_CONTROL_SECRET\`. Sirve para iniciar el worker de forma controlada; no es el mecanismo normal de entrega ni un cron.
+También existe la operación explícita `POST /api/agent/bridge/ensure` (GET como fallback), protegida por `x-codelab-agent-bridge-token` y `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`. Sirve para iniciar el worker de forma controlada; no es el mecanismo normal de entrega ni un cron.
 
 ### Snapshot del bridge
 
-\`GET /api/agent/bridge/state\` requiere el mismo token y devuelve:
-- estado de bridge y señal \`wake_required\` / \`signal_version\`;
+`GET /api/agent/bridge/state` requiere el mismo token y devuelve:
+- estado de bridge y señal `wake_required` / `signal_version`;
 - últimas 20 órdenes con payload/result;
 - últimos 20 proyectos PixelForge con revisión/hash;
 - últimas 20 evidencias cuando la tabla existe.
@@ -91,7 +91,7 @@ No consultarlo continuamente: los payload/result y documentos pueden ser grandes
 
 ### Detalles de conexión
 
-Los pools SQL normales de \`server.js\` y el worker usan \`DATABASE_URL\`. El pool del servidor tiene máximo 5 conexiones; el del worker, máximo 2. Los dos usan \`CODELAB_DATABASE_SSL\`: TLS por defecto y \`disable\` solo para pruebas locales. Los clientes dedicados LISTEN convierten el hostname \`-pooler.\` al endpoint directo equivalente y mantienen una conexión \`pg.Client\` estable.
+Los pools SQL normales de `server.js` y el worker usan `DATABASE_URL`. El pool del servidor tiene máximo 5 conexiones; el del worker, máximo 2. Los dos usan `CODELAB_DATABASE_SSL`: TLS por defecto y `disable` solo para pruebas locales. Los clientes dedicados LISTEN convierten el hostname `-pooler.` al endpoint directo equivalente y mantienen una conexión `pg.Client` estable.
 
 El listener del servidor reconecta con backoff exponencial limitado a 60 segundos. El listener del worker reintenta tras 5 segundos y vuelve a reclamar desde la cola durable. Durante una ejecución, el worker actualiza el heartbeat de la orden cada 30 segundos.
 
