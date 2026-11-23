@@ -704,7 +704,12 @@ export class RasterDocument {
       throw new RangeError('Crop bounds must be positive integer dimensions fully inside the canvas.');
     }
     if (x === 0 && y === 0 && width === this.width && height === this.height) return false;
-    const snapshot = { width: this.width, height: this.height, activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer) };
+    const snapshot = {
+      width: this.width, height: this.height, name: this.name,
+      activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer),
+      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
+      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
+    };
     this.#cropTo(x, y, width, height);
     this.selectionMask = null;
     this.#record({ type: 'document-crop', before: snapshot, x, y, width, height });
