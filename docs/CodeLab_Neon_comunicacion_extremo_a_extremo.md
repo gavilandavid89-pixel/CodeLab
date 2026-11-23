@@ -417,3 +417,121 @@ Además:
 - revisar el diagrama antes de presentar la implementación al usuario;
 - indicar rama, commit y si se probó localmente, en CI o en producción;
 - nunca describir un comportamiento antiguo como vigente por quedar mencionado en un documento histórico.
+
+
+## 17. Arquitectura de la aplicación CodeLab completa
+
+El sistema no es solo el bridge. La aplicación se divide en capas que cooperan:
+
+\`\`\`mermaid
+flowchart TB
+    Browser[Navegador / UI pública] -->|HTTPS| HTTP[Node.js http server: server.js]
+    HTTP --> Static[public/: HTML, CSS, JS]
+    HTTP --> Auth[OAuth / sesiones / ADMIN]
+    HTTP --> Workspace[API workspace / proyectos]
+    HTTP --> AI[Proxy IA / proveedores]
+    HTTP --> Admin[API admin y límites]
+    Auth --> DB[(Neon PostgreSQL)]
+    Workspace --> DB
+    Admin --> DB
+    AI --> Provider[OpenAI-compatible / Groq / OpenRouter]
+    DB --> Wake[LISTEN/NOTIFY]
+    Wake --> Worker[agent-bridge-worker.mjs]
+    Worker --> Pixel[PixelForge headless / validadores]
+    Worker --> Workspace
+    Pixel --> Evidence[neon-pixelforge-evidence.js]
+    Evidence --> DB
+    Evidence --> Storage[Cloudflare R2 / S3 opcional]
+\`\`\`
+
+### 17.1 Servidor HTTP y frontend
+
+- El proceso de entrada es Node.js y usa el módulo nativo \`http.createServer\` en \`server.js\`; no es una aplicación Express.
+- El servidor enruta solicitudes \`/api/*\`, aplica límites generales, autenticación/autorización por ruta y respuestas JSON con \`Cache-Control: no-store\`.
+- Los archivos de interfaz se sirven desde \`public/\`. La UI se comunica con el backend por same-origin HTTP(S).
+- Se definen encabezados de seguridad como \`X-Content-Type-Options\`, \`X-Frame-Options\`, \`Referrer-Policy\`, \`Permissions-Policy\` y HSTS en producción.
+- \`CODELAB_MAX_BODY_BYTES\` limita el tamaño del cuerpo entrante (default documentado: 10 MiB). Las rutas pueden aplicar límites más estrictos por tipo de dato.
+- El límite general por IP y el limitador dedicado de IA son independientes. La exención del límite general para ADMIN requiere una sesión local validada con rol admin; no acepta un header o parámetro enviado por el cliente como prueba de admin.
+
+### 17.2 Autenticación, sesiones y workspaces
+
+- Proveedores OAuth implementados: GitHub y Google.
+- El inicio OAuth genera \`state\` y lo valida en el callback contra cookie HttpOnly de corta duración.
+- Tras callback válido, CodeLab crea/asegura el workspace del usuario y crea una sesión persistida.
+- La cookie de sesión se llama \`codelab_sid\`, es HttpOnly, SameSite=Lax y Secure cuando la solicitud es HTTPS; su duración se basa en \`SESSION_TTL_MS\`.
+- Los workspaces OAuth son deterministas por proveedor/usuario, por ejemplo \`ws_github_<id>\` o \`ws_google_<id>\`, de modo que el usuario puede recuperar su espacio desde otro dispositivo.
+- La API workspace autoriza mediante token HMAC \`x-workspace-token\` o por la sesión autenticada propietaria del workspace. La comparación de token se hace con \`timingSafeEqual\`.
+- Los IDs OAuth reservados no pueden ser ocupados anónimamente. Las escrituras validan estructura de proyectos y \`baseRevision\`; un conflicto devuelve HTTP 409 y no sobrescribe el estado nuevo.
+- La cuenta local ADMIN es distinta de la identidad OAuth de un usuario. El worker resuelve explícitamente \`codelab_accounts.username='ADMIN'\` y \`role='admin'\`.
+
+### 17.3 Persistencia del workspace web
+
+La tabla principal es \`codelab_workspace_states\`; guarda workspace_id, revision, state JSONB, owner y updated_at. Cuando no hay pool PostgreSQL configurado, el servidor puede usar archivos locales dentro de \`CODELAB_DATA_DIR\` como modo de desarrollo/fallback.
+
+Con PostgreSQL activo:
+- \`readState()\` intenta recuperar el estado de la tabla;
+- si existe un archivo legacy y aún no hay fila, normaliza e importa el estado a la tabla;
+- \`writeState()\` hace UPDATE condicionado a la revisión esperada;
+- si la revisión no coincide, devuelve conflicto de escritura.
+
+En hosting con disco persistente, \`CODELAB_DATA_DIR\` puede apuntar a \`/var/data\` para conservar archivos auxiliares/backups. El estado principal del workspace autenticado se guarda en PostgreSQL cuando \`DATABASE_URL\` está configurado.
+
+### 17.4 Copiloto IA y credenciales por usuario
+
+El endpoint principal es \`POST /api/ai/complete\`:
+- valida prompt (máximo 8 000 caracteres);
+- limita el tamaño combinado de HTML/CSS/JS a 200 000 caracteres;
+- valida tamaño de API key suministrada por el cliente;
+- aplica un limitador dedicado de IA;
+- usa la key del usuario si se proporciona; si no, puede usar \`AI_API_KEY\` del servidor;
+- cuando se usa una key del usuario, el endpoint/modelo del proveedor se toma de la configuración asociada a esa key y no se mezcla con el secreto del servidor;
+- el proxy usa HTTPS, resuelve el destino y bloquea direcciones IP locales/privadas para reducir SSRF y DNS rebinding;
+- errores upstream se convierten en respuestas controladas (por ejemplo 429 del límite local o 502 por proveedor).
+
+Las preferencias/keys propias del usuario se administran en Ajustes del copiloto del navegador. No registrar keys en logs, ni trasladar credenciales entre cuentas OAuth. Las variables globales \`AI_API_KEY\`, \`AI_BASE_URL\`, \`AI_MODEL\`, \`AI_MAX_TOKENS\` y \`AI_RATE_MAX\` configuran el proveedor de servidor; no convierten la key privada de un usuario en una key global compartida.
+
+### 17.5 PixelForge y runtime headless
+
+- La UI PixelForge vive bajo \`public/pixelforge/\`.
+- El runtime headless comparte modelos/validadores con la lógica del editor para inspeccionar, aplicar acciones y exportar sin depender de interacción manual en la UI.
+- El worker crea/abre el runtime para ejecutar operaciones de dibujo, edición, exportación y vídeo.
+- Las propuestas de cambios pueden ejecutarse en memoria, producir diff y esperar aprobación antes de escribir el proyecto.
+- La persistencia de PixelForge usa documento JSONB, revisión incremental, hash SHA-256, límites de bytes/dimensiones y locks por workspace.
+- Las pruebas de UI, headless, raster, vector, animación, vídeo y persistencia se ejecutan en workflows distintos; el resultado de un workflow debe asociarse a su SHA exacto.
+
+### 17.6 Arranque y apagado del servicio
+
+1. Node carga configuración y módulos.
+2. Si hay \`DATABASE_URL\`, inicializa pool PostgreSQL.
+3. Siembra/verifica la cuenta ADMIN cuando está configurada.
+4. Asegura tabla de workspaces y sesiones; migra sesiones legacy y limpia expiradas.
+5. Arma el listener Neon; reconcilia queued pendientes.
+6. Asegura tabla PixelForge; si esta parte falla, la API de PixelForge puede responder 503 sin impedir que otras áreas web arranquen.
+7. Abre el puerto \`PORT\`.
+8. En apagado, el servidor detiene el worker y escribe la señal de cierre del bridge cuando puede acceder a Neon.
+
+El servidor web puede estar operativo aunque el listener Neon falle temporalmente; en ese caso registra el error y debe reconectar. Sin Neon disponible no se puede afirmar que las operaciones de persistencia/bridge funcionen correctamente.
+
+### 17.7 CI frente a producción
+
+- CI comprueba sintaxis, contratos, pruebas unitarias, integraciones PostgreSQL local y E2E con servicios aislados.
+- Un PostgreSQL de servicio dentro de GitHub Actions no es el proyecto Neon de producción.
+- Un workflow exitoso no demuestra que Render haya arrancado ni que la cuota/credenciales de Neon estén disponibles.
+- Para declarar verificación productiva se requiere revisar la versión desplegada, logs del servicio, conectividad real y una operación de extremo a extremo con evidencia persistida.
+
+## 18. Checklist de actualización para cambios del sistema completo
+
+Al tocar cualquier capa, actualizar las piezas correspondientes:
+
+| Cambio | Código principal | Documentación/pruebas que se actualizan |
+|---|---|---|
+| HTTP/API/rate limit | \`server.js\` | README, este documento, tests de endpoint/seguridad |
+| OAuth/sesiones/ADMIN | \`server.js\`, migraciones | política de cuenta, este documento, tests de auth |
+| workspace web | \`server.js\`, almacenamiento | política de persistencia, este documento, tests de revisión |
+| Neon/bridge | \`server.js\`, \`agent-bridge-worker.mjs\` | diagrama, documento Neon, contrato event-driven |
+| PixelForge | \`public/pixelforge/\`, worker | \`PIXELFORGE_FUNCTIONS.md\`, matriz de cobertura, tests |
+| IA/proveedores | \`server.js\`, UI ajustes | README, seguridad, tests de aislamiento y SSRF |
+| vídeo/evidencia | composer, worker, evidence module | flujo de animación, almacenamiento, tests de evidencia |
+| despliegue/config | workflows, scripts, variables | README y notas operativas sin secretos |
+
+No se debe presentar al usuario un diagrama nuevo hasta verificarlo contra los archivos modificados de esa misma revisión.
