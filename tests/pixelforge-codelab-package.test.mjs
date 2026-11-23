@@ -72,7 +72,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.entries.has('project.codelab-pixelforge'), true);
   assert.equal(imported.entries.has('frames/frames.tscn'), true);
   assert.equal(imported.entries.has('center.op/center.json'), true);
-  assert.equal(imported.entries.has('reference.personaje/Hero-hero-master/reference.json'), true);
+  assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
   assert.equal(imported.project.animation.frames[0].cels.length, project.layers.length);
   assert.equal(imported.project.drawingModel.referenceCenter.entries.length, 1);
@@ -89,6 +89,7 @@ test('survives import, a real Headless edit, save, export and second import', as
   const firstImport = await importPackage(firstExport.bytes);
 
   const runtime = HeadlessEditorRuntime.fromJSON(firstImport.project);
+  const originalLayerPixels = firstImport.project.layers.map(layer => layer.pixels);
   const edited = runtime.execute({
     name: 'canvas.draw_line',
     x0: 1, y0: 1, x1: 5, y1: 5,
@@ -96,7 +97,11 @@ test('survives import, a real Headless edit, save, export and second import', as
     size: 1,
   });
   assert.equal(edited.ok, true);
+  const proposal = runtime.createProposal('Round-trip edit validation');
+  assert.ok(proposal);
+  assert.equal(runtime.acceptProposal().status, 'applied');
   const savedProject = runtime.toJSON();
+  assert.equal(savedProject.layers.some((layer, index) => layer.pixels !== originalLayerPixels[index]), true);
   const secondExport = createPixelForgeCodeLabPackageZip(savedProject);
   const secondImport = await importPackage(secondExport.bytes);
 
@@ -104,5 +109,7 @@ test('survives import, a real Headless edit, save, export and second import', as
   assert.equal(secondImport.project.animation.frames.length, savedProject.animation.frames.length);
   assert.equal(secondImport.project.drawingModel.referenceCenter.entries.length, 1);
   assert.equal(secondImport.project.drawingModel.referenceCenter.entries[0].parts[0].pixels.length > 0, true);
-  assert.equal(secondImport.project.layers.some(layer => layer.pixels !== savedProject.layers.find(item => item.id === layer.id)?.pixels), true);
+  for (const layer of secondImport.project.layers) {
+    assert.equal(layer.pixels, savedProject.layers.find(item => item.id === layer.id)?.pixels);
+  }
 });
