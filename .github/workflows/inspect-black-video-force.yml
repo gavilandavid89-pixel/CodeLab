@@ -24,20 +24,20 @@ jobs:
           EVENT_ID: 933b85df-9126-4bd9-bb8c-19532f0ec8c2
         run: |
           node <<'NODE'
-          import { chromium } from 'playwright';
+          import { chromium, request } from 'playwright';
           import { writeFile, stat } from 'node:fs/promises';
           import { execFile } from 'node:child_process';
           import { promisify } from 'node:util';
           const exec = promisify(execFile);
           const target = process.env.TARGET_URL.replace(/\/$/,'');
           const browser = await chromium.launch({headless:true});
-          const request = await browser.request.newContext();
-          const login = await request.post(target + '/api/auth/login', {
+          const api = await request.newContext();
+          const login = await api.post(target + '/api/auth/login', {
             headers:{'content-type':'application/json'},
             data:{username:process.env.ADMIN_USERNAME,password:process.env.ADMIN_PASSWORD}
           });
           if (!login.ok()) throw new Error('login HTTP '+login.status());
-          const res = await request.get(target + '/api/pixelforge/evidence/' + process.env.EVENT_ID + '/video');
+          const res = await api.get(target + '/api/pixelforge/evidence/' + process.env.EVENT_ID + '/video');
           if (!res.ok()) throw new Error('video HTTP '+res.status());
           await writeFile('/tmp/video.webm', await res.body());
           console.log('downloaded', (await stat('/tmp/video.webm')).size, 'bytes');
