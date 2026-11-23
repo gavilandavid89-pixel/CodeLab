@@ -28,9 +28,9 @@ El flujo actual de trabajo es:
 8. No cambies ni despliegues servicios ajenos al alcance solicitado.
 9. No declares que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
 
-## A/B y workflows históricos
+## A/B: uso exclusivo de vídeo
 
-Los workflows A/B (un workflow que alojaba una sesión y otro que se conectaba a ella) pertenecen a una arquitectura anterior. **No forman parte del flujo operativo actual ni son un requisito para ejecutar CodeLab.** Sus archivos pueden permanecer en el repositorio como herramientas históricas/de pruebas; no los invoques como camino normal ni describas su supervisión de 10 minutos como política vigente.
+A/B no forma parte del flujo general de CodeLab. Se conserva únicamente como ruta especializada para procesamiento/render/captura de vídeo por el límite de memoria de Render. Para cada trabajo se usa **una sola sesión A y una sola B procesadora**; nunca se lanzan múltiples B en paralelo ni lotes de estrés. Consulta [docs/VIDEO-PROCESSING-AB.md](docs/VIDEO-PROCESSING-AB.md) antes de tocar estos workflows. No inicies A/B para tareas normales de edición, persistencia o importación.
 
 El flujo actual usa el bridge y el estado persistido en Neon, con activación bajo demanda cuando el bridge informa que está dormido. No mantengas pings periódicos, cron de keep-alive ni procesos artificiales para simular actividad.
 
