@@ -70,6 +70,13 @@ function compositeFrame(project, frame) {
   }
   return out;
 }
+function countVisiblePixels(rgba) {
+  let visible = 0;
+  for (let offset = 3; offset < rgba.length; offset += 4) {
+    if (rgba[offset] > 0) visible++;
+  }
+  return visible;
+}
 function makeZip(entries) {
   const local = [], central = []; let offset = 0;
   for (const entry of entries) {
@@ -170,15 +177,26 @@ try {
   const entries = [];
   const manifestFrames = [];
   let durationMs = 0;
+  let totalVisiblePixels = 0;
   for (let i = 0; i < frames.length; i++) {
     const duration = Math.max(1, Number(frames[i].durationMs || Math.round(1000 / fps)));
-    const png = rgbaToPng(compositeFrame(project, frames[i]), Number(project.width), Number(project.height));
+    const rgba = compositeFrame(project, frames[i]);
+    const visiblePixels = countVisiblePixels(rgba);
+    totalVisiblePixels += visiblePixels;
+    if (i === 0 || i === Math.floor(frames.length / 2) || i === frames.length - 1) {
+      console.log('[worker] source frame ' + (i + 1) + '/' + frames.length + ': ' + visiblePixels + ' visible pixels');
+    }
+    const png = rgbaToPng(rgba, Number(project.width), Number(project.height));
     const file = 'frames/frame-' + String(i + 1).padStart(4, '0') + '.png';
     entries.push({ name: file, data: png });
     manifestFrames.push({ index: i, file, durationMs: duration });
     durationMs += duration;
     if ((i + 1) % 20 === 0 || i === frames.length - 1) console.log('[worker] packaged ' + (i + 1) + '/' + frames.length);
   }
+  if (totalVisiblePixels === 0) {
+    throw new Error('PixelForge source animation is completely transparent: every frame has 0 visible pixels. The project data is empty before Video Composer; restore/save the artwork in PixelForge before exporting.');
+  }
+  console.log('[worker] source animation visible-pixel total: ' + totalVisiblePixels);
   entries.unshift({
     name: 'manifest.json',
     data: JSON.stringify({
