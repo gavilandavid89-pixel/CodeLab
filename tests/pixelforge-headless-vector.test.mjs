@@ -12,7 +12,7 @@ test('Headless vector object edits are isolated until proposal approval and surv
   assert.equal(batch.ok, true);
   const ids = runtime.sandbox.getVectorModel().objects.map(item => item.id);
   assert.equal(ids.length, 2);
-  const grouped = runtime.execute({ name: 'vector.group.create', object_ids: ids, name: 'Character' });
+  const grouped = runtime.execute({ name: 'vector.group.create', object_ids: ids, group_name: 'Character' });
   assert.equal(grouped.ok, true);
   assert.equal(runtime.sandbox.getVectorModel().objects.length, 1);
   const group = runtime.sandbox.getVectorModel().objects[0];
