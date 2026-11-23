@@ -5,7 +5,7 @@ import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 import { createPixelForgeProjectZip } from './pixelforge-agent-zip.mjs';
 
-const ALLOWED_OPERATIONS = new Set(['inspect', 'seek', 'play', 'configure', 'capture_preview']);
+const ALLOWED_OPERATIONS = new Set(['inspect', 'seek', 'play', 'configure', 'capture_preview', 'capture_studio', 'record_studio']);
 
 export function validateVideoComposerOperations(operations = [{ type: 'inspect' }]) {
   if (!Array.isArray(operations) || operations.length < 1 || operations.length > 20) {
@@ -21,6 +21,7 @@ export function validateVideoComposerOperations(operations = [{ type: 'inspect' 
     if (operation.type === 'play' && (!Number.isInteger(operation.duration_ms) || operation.duration_ms < 100 || operation.duration_ms > 10000)) {
       throw new RangeError('play.duration_ms must be between 100 and 10,000.');
     }
+    if (operation.type === 'record_studio' && (!Number.isInteger(operation.duration_ms) || operation.duration_ms < 1000 || operation.duration_ms > 30000)) throw new RangeError('record_studio.duration_ms must be between 1,000 and 30,000.');
     if (operation.type === 'configure') {
       if (operation.format !== undefined && !['webm-vp9', 'webm-vp8', 'mp4'].includes(operation.format)) throw new TypeError('Unsupported Video Composer output format.');
       if (operation.output_fps !== undefined && ![12, 24, 30, 60].includes(operation.output_fps)) throw new RangeError('output_fps must be 12, 24, 30 or 60.');
@@ -47,7 +48,8 @@ export async function controlPixelForgeVideoComposer(payload, deps = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-vc-control-'));
   const packagePath = path.join(tempDir, 'pixelforge-control.zip');
   fs.writeFileSync(packagePath, packageData.bytes);
-  let browser;
+  let browser, context, page, video;
+  const artifacts = [];
   try {
     chromium.setGraphicsMode = false;
     browser = await playwrightChromium.launch({
@@ -56,20 +58,24 @@ export async function controlPixelForgeVideoComposer(payload, deps = {}) {
       headless: true,
       timeout: 60000
     });
-    const context = await browser.newContext({
-      viewport: {
-        width: Number.isInteger(payload.viewport?.width) ? Math.max(640, Math.min(1600, payload.viewport.width)) : 960,
-        height: Number.isInteger(payload.viewport?.height) ? Math.max(480, Math.min(1200, payload.viewport.height)) : 720
-      },
+    const viewport = {
+      width: Number.isInteger(payload.viewport?.width) ? Math.max(640, Math.min(1600, payload.viewport.width)) : 960,
+      height: Number.isInteger(payload.viewport?.height) ? Math.max(480, Math.min(1200, payload.viewport.height)) : 720
+    };
+    const recordStudioRequested = operations.some(operation => operation.type === 'record_studio');
+    context = await browser.newContext({
+      viewport,
       deviceScaleFactor: 1,
       colorScheme: 'dark',
-      reducedMotion: 'reduce'
+      reducedMotion: 'reduce',
+      ...(recordStudioRequested ? { recordVideo: { dir: tempDir, size: viewport, fps: 24 } } : {})
     });
     await context.addInitScript(({ id, token }) => {
       localStorage.setItem('codelab_xd_workspace_v4', id);
       localStorage.setItem('codelab_xd_workspace_token_v1', token);
     }, { id: targetWorkspace, token: workspaceTokenFor(targetWorkspace) });
-    const page = await context.newPage();
+    page = await context.newPage();
+    video = recordStudioRequested ? page.video() : null;
     const pageErrors = [], consoleErrors = [];
     page.on('pageerror', error => { if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300)); });
     page.on('console', message => { if (message.type() === 'error' && consoleErrors.length < 20) consoleErrors.push(message.text().slice(0, 300)); });
@@ -132,7 +138,41 @@ export async function controlPixelForgeVideoComposer(payload, deps = {}) {
         const png = await page.locator('#vc-preview').screenshot({ type: 'png' });
         if (png.length > 2 * 1024 * 1024) throw new RangeError('Video Composer preview PNG exceeds the 2 MiB inline evidence limit.');
         results.push({ type: 'capture_preview', mimeType: 'image/png', sizeBytes: png.length, dataBase64: png.toString('base64'), state: await inspectPage(page) });
+      } else if (operation.type === 'capture_studio') {
+        const png = await page.screenshot({ type: 'png', fullPage: true });
+        if (typeof deps.storeArtifact === 'function') {
+          const artifact = await deps.storeArtifact({
+            kind: 'pixelforge_composer_png',
+            filename: 'pixelforge-video-composer.png',
+            contentType: 'image/png',
+            bytes: png,
+            metadata: { projectId: payload.project_id, serverRevision: loaded.serverRevision, capture: 'full-composer-interface' }
+          });
+          artifacts.push(artifact);
+          results.push({ type: 'capture_studio', mimeType: 'image/png', sizeBytes: png.length, artifact });
+        } else {
+          if (png.length > 2 * 1024 * 1024) throw new RangeError('Video Composer studio screenshot exceeds the inline evidence limit.');
+          results.push({ type: 'capture_studio', mimeType: 'image/png', sizeBytes: png.length, dataBase64: png.toString('base64') });
+        }
+      } else if (operation.type === 'record_studio') {
+        await page.waitForTimeout(operation.duration_ms);
+        results.push({ type: 'record_studio', requestedDurationMs: operation.duration_ms, capture: 'Playwright page recording' });
       }
+    }
+    if (recordStudioRequested) {
+      await context.close();
+      const videoPath = await video.path();
+      const videoBytes = fs.readFileSync(videoPath);
+      if (videoBytes.length < 1000 || videoBytes.length > 24 * 1024 * 1024) throw new RangeError('Video Composer studio recording must be between 1 KiB and 24 MiB.');
+      if (typeof deps.storeArtifact !== 'function') throw new Error('Video Composer recording requires native artifact storage.');
+      const artifact = await deps.storeArtifact({
+        kind: 'pixelforge_composer_video',
+        filename: 'pixelforge-video-composer-studio.webm',
+        contentType: 'video/webm',
+        bytes: videoBytes,
+        metadata: { projectId: payload.project_id, serverRevision: loaded.serverRevision, capture: 'Playwright page recording', fps: 24 }
+      });
+      artifacts.push(artifact);
     }
     return {
       ok: pageErrors.length === 0 && consoleErrors.length === 0,
@@ -143,6 +183,7 @@ export async function controlPixelForgeVideoComposer(payload, deps = {}) {
       package: packageData.metadata,
       imported,
       operations: results,
+      artifacts,
       diagnostics: { pageErrors, consoleErrors }
     };
   } finally {
