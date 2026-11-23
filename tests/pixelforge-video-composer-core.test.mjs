@@ -4,15 +4,18 @@ import fs from 'node:fs';
 import { createZipBlob } from '../public/pixelforge/src/zip-export.js';
 import { readStoredZip, parsePixelForgeVideoPackage } from '../public/pixelforge/src/video-composer-core.mjs';
 
-function pngFixture() {
-  const bytes = new Uint8Array(24);
-  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+function pngFixture({ corrupt = false } = {}) {
+  const bytes = Uint8Array.from(Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=',
+    'base64'
+  ));
+  if (corrupt) bytes[45] ^= 0xff;
   return new Blob([bytes], { type: 'image/png' });
 }
 
 test('reads a PixelForge ZIP package without inflating the complete archive into memory', async () => {
   const manifest = {
-    format: 'pixelforge-video-package', version: 1, width: 96, height: 96,
+    format: 'pixelforge-video-package', version: 1, width: 1, height: 1,
     fps: 12, loop: true, frameCount: 1, projectFile: 'project/orbital.pforge',
     frames: [{ index: 0, file: 'frames/frame-0001.png', durationMs: 83.333, startMs: 0 }],
   };
@@ -26,7 +29,7 @@ test('reads a PixelForge ZIP package without inflating the complete archive into
   const parsed = await parsePixelForgeVideoPackage(zip);
   assert.equal(parsed.manifest.frameCount, 1);
   assert.equal(parsed.manifest.totalDurationMs, 83.333);
-  assert.equal(parsed.frames[0].blob.size, 24);
+  assert.equal(parsed.frames[0].blob.size, 68);
   assert.ok(parsed.project instanceof Blob);
 });
 
@@ -73,4 +76,33 @@ test('content capture includes a frame strip and keeps pixel-art rendering unsmo
   assert.match(js, /drawContentComposition/);
   assert.match(js, /imageSmoothingEnabled = false/);
   assert.match(js, /getDisplayMedia/);
+});
+
+test('rejects PNG frames with broken chunk CRC or dimensions that differ from the manifest', async () => {
+  const manifest = {
+    format: 'pixelforge-video-package', version: 1, width: 1, height: 1,
+    fps: 12, loop: true, frameCount: 1,
+    frames: [{ index: 0, file: 'frames/frame-0001.png', durationMs: 83, startMs: 0 }],
+  };
+  const corrupted = await createZipBlob([
+    { name: 'manifest.json', data: JSON.stringify(manifest) },
+    { name: 'frames/frame-0001.png', data: pngFixture({ corrupt: true }) },
+  ]);
+  await assert.rejects(() => parsePixelForgeVideoPackage(corrupted), /PNG .* CRC integrity check/);
+
+  const wrongDimensions = { ...manifest, width: 2 };
+  const mismatched = await createZipBlob([
+    { name: 'manifest.json', data: JSON.stringify(wrongDimensions) },
+    { name: 'frames/frame-0001.png', data: pngFixture() },
+  ]);
+  await assert.rejects(() => parsePixelForgeVideoPackage(mismatched), /dimensions do not match/);
+});
+
+test('rejects ZIP payload corruption even when its central directory remains intact', async () => {
+  const good = await createZipBlob([{ name: 'payload.bin', data: 'original payload' }]);
+  const bytes = new Uint8Array(await good.arrayBuffer());
+  const nameLength = bytes[26] | (bytes[27] << 8);
+  const dataOffset = 30 + nameLength;
+  bytes[dataOffset] ^= 0xff;
+  await assert.rejects(() => readStoredZip(new Blob([bytes])), /failed its CRC integrity check/);
 });
