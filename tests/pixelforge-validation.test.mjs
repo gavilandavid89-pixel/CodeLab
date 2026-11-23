@@ -15,8 +15,9 @@ const baseProject = () => ({
 test('PixelForge validation accepts a valid raster + vector project', () => {
   const result = validatePixelForgeProject(baseProject());
   assert.equal(result.ok, true);
-  assert.equal(result.score, 100);
+  assert.equal(result.score, 95);
   assert.equal(result.categories.schema.ok, true);
+  assert.ok(result.issues.some(i => i.code === 'empty_artwork' && i.severity === 'warning'));
 });
 
 test('PixelForge validation reports duplicate vector IDs and invalid paths', () => {
@@ -75,4 +76,19 @@ test('PixelForge validation rejects dimensions and aggregate raster memory beyon
   const result = validatePixelForgeProject(tooManyLayers);
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(i => i.code === 'raster_memory_limit_exceeded'));
+});
+
+test('PixelForge validation warns on an empty raster but accepts real artwork pixels', () => {
+  const empty = baseProject();
+  const emptyResult = validatePixelForgeProject(empty);
+  assert.equal(emptyResult.ok, true);
+  assert.ok(emptyResult.issues.some(i => i.code === 'empty_artwork'));
+
+  const artwork = baseProject();
+  const pixels = Buffer.alloc(100 * 80 * 4);
+  pixels[3] = 255;
+  artwork.layers[0].pixels = pixels.toString('base64');
+  const artworkResult = validatePixelForgeProject(artwork);
+  assert.equal(artworkResult.ok, true);
+  assert.equal(artworkResult.issues.some(i => i.code === 'empty_artwork'), false);
 });
