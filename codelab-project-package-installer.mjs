@@ -1,4 +1,5 @@
 import { inflateSync } from 'node:zlib';
+import { installStructuredCodeLabV2 } from './codelab-project-structured-format.mjs';
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -304,8 +305,18 @@ export function installCodeLabPackage({ manifest, project, files }) {
   }
   const resources = installPackageResourceCatalog(project, destinations, files, manifest);
 
+  if (Number(manifest.version) === 2 && Number(manifest.schemaVersion) === 2) {
+    const structured = installStructuredCodeLabV2({ manifest, project, files });
+    return {
+      project,
+      destinations,
+      resources: { ...resources, referenceImages: structured.references.referenceCount, embeddedReferenceBytes: structured.references.embeddedReferenceBytes },
+      installed: { animationFrames: structured.frames.frameCount, animationCels: structured.frames.celCount, referenceCenterEntries: structured.references.referenceCount },
+      structured,
+    };
+  }
   if (manifest.editor !== 'pixelforge' || !manifest.animation) {
-    return { project, destinations, resources, installed: { animationFrames: 0, animationCels: 0 } };
+    return { project, destinations, resources, installed: { animationFrames: 0, animationCels: 0, referenceCenterEntries: 0 } };
   }
   if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
       !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
