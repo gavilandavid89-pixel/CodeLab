@@ -3641,6 +3641,58 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      // Imported Web/Design package files. Every request is bound to the authenticated
+      // workspace and the project registry; file paths are treated as opaque relative paths.
+      const projectFilesMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/projects\\/([^/]+)\\/files(?:\\/(.*))?$/);
+      if (projectFilesMatch && req.method === 'GET') {
+        const id = safeId(projectFilesMatch[1]);
+        const projectId = safeId(projectFilesMatch[2]);
+        if (!id || !projectId) return sendJson(res, 400, { error: 'invalid_project_reference' });
+        if (!(await isAuthorized(req, id))) return sendJson(res, 401, { error: 'workspace_unauthorized' });
+        if (!accountPool) return sendJson(res, 503, { error: 'project_files_unavailable' });
+        try {
+          await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
+          const project = await accountPool.query(
+            "SELECT editor_id FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2 AND editor_id IN ('web','design') LIMIT 1",
+            [id, projectId]
+          );
+          if (!project.rowCount) return sendJson(res, 404, { error: 'project_not_found' });
+          const requestedPath = projectFilesMatch[3];
+          if (!requestedPath) {
+            const files = await accountPool.query(
+              'SELECT file_path, content_type, byte_size, sha256, updated_at FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 ORDER BY file_path',
+              [id, projectId, project.rows[0].editor_id]
+            );
+            return sendJson(res, 200, { files: files.rows.map(file => ({
+              path: file.file_path, contentType: file.content_type, byteSize: Number(file.byte_size),
+              sha256: file.sha256, updatedAt: file.updated_at
+            })) });
+          }
+          let filePath;
+          try { filePath = decodeURIComponent(requestedPath); } catch (_) {
+            return sendJson(res, 400, { error: 'invalid_file_path' });
+          }
+          if (!filePath || filePath.length > 500 || filePath.startsWith('/') ||
+              filePath.split('/').some(part => !part || part === '.' || part === '..' || part.includes('\\\\'))) {
+            return sendJson(res, 400, { error: 'invalid_file_path' });
+          }
+          const file = await accountPool.query(
+            'SELECT file_path, content_type, byte_size, sha256, content FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 AND file_path=$4 LIMIT 1',
+            [id, projectId, project.rows[0].editor_id, filePath]
+          );
+          if (!file.rowCount) return sendJson(res, 404, { error: 'project_file_not_found' });
+          const row = file.rows[0];
+          return sendJson(res, 200, {
+            path: row.file_path, contentType: row.content_type, byteSize: Number(row.byte_size),
+            sha256: row.sha256, contentBase64: Buffer.from(row.content).toString('base64')
+          });
+        } catch (error) {
+          if (error && error.message === 'workspace_owner_mismatch') return sendJson(res, 403, { error: 'workspace_forbidden' });
+          console.error('project_files_read_failed', error.message);
+          return sendJson(res, 500, { error: 'project_files_read_failed' });
+        }
+      }
+
       // Workspace init
       if (req.method === 'POST' && pathname === '/api/workspace/init') {
         const body = await readBody(req);
