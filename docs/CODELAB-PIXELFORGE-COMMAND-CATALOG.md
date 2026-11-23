@@ -90,7 +90,7 @@ The vector document is stored in `RasterDocument.vectorModel`, so it participate
 - Model settings: `vector.model.configure` (`grid`, `snap`, `metadata`), `vector.precision.configure` (`precision` object), `vector.frames.set` (`frames`, up to 240 entries).
 - SVG: `vector.svg.import` (`svg`, optional `replace`, maximum 2 MiB), `vector.svg.export`.
 - Objects: `vector.object.create` (`object` of type `rect`, `ellipse`, `line`, `path`, `text` or `group`, optional insertion `index`); `vector.object.update` (`object_id`, `patch`, ID/type immutable); `vector.object.delete` (`object_id`); `vector.object.duplicate` (`object_id`, recursively regenerates IDs); `vector.object.reorder` (`object_id`, top-level `index`); `vector.object.transform` (`object_id`, transform values).
-- Grouping: `vector.group.create` (`object_ids` containing at least two top-level IDs, optional `name`), `vector.group.ungroup` (`object_id`).
+- Grouping: `vector.group.create` (`object_ids` containing at least two top-level IDs, optional `group_name`), `vector.group.ungroup` (`object_id`).
 - Validation enforces unique IDs including nested group children, supported object types, finite geometry, valid SVG parsing, and the 16 MiB Headless vector-model budget. Audit warnings (for example out-of-bounds geometry) are returned; fatal audit errors block the mutation. The worker normalizes generated object/group/duplicate/SVG IDs before the proposal is previewed and stores those exact actions for approval replay, so the accepted model matches the reviewed diff.
 
 ### Animation and timeline
