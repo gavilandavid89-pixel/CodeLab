@@ -96,7 +96,7 @@ const DESTINATION_ALIASES = {
   assets: ['asset', 'assets', 'media', 'images', 'img', 'sprites', 'sprite'],
   scenes: ['scene', 'scenes', 'levels', 'level', 'screens', 'screen'],
   animations: ['animation', 'animations', 'motion', 'motions'],
-  frames: ['frame', 'frames', 'cels', 'cel', 'keyframes', 'key-frames'],
+  frames: ['frame', 'frames', 'cels', 'cel', 'keyframes', 'key-frames'],\n  environment: ['entorno', 'environment', 'world'],\n  effects: ['efecto', 'efectos', 'effect', 'effects', 'vfx'],\n  details: ['detalle', 'detalles', 'detail', 'details'],\n  elements: ['elemento', 'elementos', 'element', 'elements'],\n  objects: ['objeto', 'objetos', 'object', 'objects', 'props'],
   audio: ['audio', 'sound', 'sounds', 'music', 'sfx'],
   video: ['video', 'videos', 'clips', 'footage'],
   fonts: ['font', 'fonts', 'typefaces', 'typography'],
