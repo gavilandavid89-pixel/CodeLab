@@ -67,6 +67,83 @@ function normalizeTransform(transform = {}) {
   return result;
 }
 
+
+const SCENE_SECTION_LAYOUT = {
+  environment: { folder: 'Entorno', filename: 'entorno.tscn', role: 'environment' },
+  effects: { folder: 'Efectos', filename: 'efectos.tscn', role: 'effect' },
+  details: { folder: 'Detalles', filename: 'detalles.tscn', role: 'detail' },
+  elements: { folder: 'Elementos', filename: 'elementos.tscn', role: 'element' },
+  objects: { folder: 'Objetos', filename: 'objetos.tscn', role: 'object' },
+};
+
+function installSceneSections(project, files, scenesManifest) {
+  if (!scenesManifest || scenesManifest.format !== 'codelab-pixelforge-scenes' ||
+      Number(scenesManifest.version) !== 1 || !scenesManifest.sections ||
+      typeof scenesManifest.sections !== 'object' || Array.isArray(scenesManifest.sections)) {
+    fail('manifest.scenes must declare codelab-pixelforge-scenes version 1.');
+  }
+  const layerIds = new Set((project.layers || []).map(layer => String(layer.id)));
+  const drawing = project.drawingModel && typeof project.drawingModel === 'object'
+    ? structuredClone(project.drawingModel) : {};
+  const drawingObjects = new Set((Array.isArray(drawing.objects) ? drawing.objects : []).map(item => String(item.id)));
+  const flattenVector = list => (Array.isArray(list) ? list : []).flatMap(item => [
+    item, ...(item?.type === 'group' ? flattenVector(item.children) : []),
+  ]);
+  const vectorObjects = new Set(flattenVector(project.vectorModel?.objects).map(item => String(item.id)));
+  const installed = {};
+  drawing.sceneSections = drawing.sceneSections && typeof drawing.sceneSections === 'object'
+    ? drawing.sceneSections : {};
+  for (const [key, layout] of Object.entries(SCENE_SECTION_LAYOUT)) {
+    const declaration = scenesManifest.sections[key];
+    if (!declaration || typeof declaration.manifestPath !== 'string') {
+      fail('manifest.scenes.sections.' + key + '.manifestPath is required.');
+    }
+    const scenePath = requireSafeRelativePath(declaration.manifestPath, 'scene ' + key + ' manifestPath');
+    if (scenePath !== layout.folder + '/' + layout.filename) {
+      fail('scene ' + key + ' must use canonical path ' + layout.folder + '/' + layout.filename + '.');
+    }
+    const scene = jsonFile(files, scenePath, key + ' scene manifest');
+    if (scene.format !== 'codelab-pixelforge-scene' || Number(scene.version) !== 1 ||
+        scene.sceneType !== key || String(scene.projectId) !== String(project.id)) {
+      fail(scenePath + ' must declare the matching PixelForge scene type, version and projectId.');
+    }
+    if (!scene.canvas || Number(scene.canvas.width) !== Number(project.width) ||
+        Number(scene.canvas.height) !== Number(project.height)) {
+      fail(scenePath + ' canvas dimensions must match project.json.');
+    }
+    for (const [field, validIds, label] of [
+      ['layerIds', layerIds, 'layer'],
+      ['drawingObjectIds', drawingObjects, 'drawing object'],
+      ['vectorObjectIds', vectorObjects, 'vector object'],
+    ]) {
+      const ids = scene[field] ?? [];
+      if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !validIds.has(id)) ||
+          new Set(ids).size !== ids.length) {
+        fail(scenePath + ' contains an unknown or duplicate ' + label + ' ID in ' + field + '.');
+      }
+    }
+    if (!scene.data || typeof scene.data !== 'object' || Array.isArray(scene.data)) {
+      fail(scenePath + ' data must be an object.');
+    }
+    drawing.sceneSections[key] = structuredClone(scene.data);
+    if (key === 'environment' && scene.environmentHistory !== undefined) {
+      if (!scene.environmentHistory || typeof scene.environmentHistory !== 'object' ||
+          !Array.isArray(scene.environmentHistory.entries)) {
+        fail(scenePath + ' environmentHistory is invalid.');
+      }
+      drawing.environmentHistory = structuredClone(scene.environmentHistory);
+    }
+    installed[key] = {
+      manifestPath: scenePath,
+      layerCount: (scene.layerIds || []).length,
+      drawingObjectCount: (scene.drawingObjectIds || []).length,
+      vectorObjectCount: (scene.vectorObjectIds || []).length,
+    };
+  }
+  project.drawingModel = drawing;
+  return installed;
+}
+
 function installStructuredFrames(project, files, framesManifest) {
   if (!framesManifest || framesManifest.format !== 'codelab-frames' || Number(framesManifest.version) !== 1) {
     fail('frames/frames.tscn must declare format codelab-frames version 1.');
@@ -302,7 +379,7 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
   const result = {
     integrityEntries,
     frames: { frameCount: 0, celCount: 0 },
-    references: { referenceCount: 0, embeddedReferenceBytes: 0, categories: [] },
+    references: { referenceCount: 0, embeddedReferenceBytes: 0, categories: [] },\n    scenes: {},
   };
 
   // The Web and Design editors store their native document in project.json.
@@ -314,7 +391,7 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
     } else {
       fail('PixelForge structured manifest must declare frames.manifestPath.');
     }
-    if (manifest.referenceCenter?.manifestPath) {
+    if (manifest.scenes) result.scenes = installSceneSections(project, files, manifest.scenes);\n    if (manifest.referenceCenter?.manifestPath) {
       const centerManifestPath = requireSafeRelativePath(manifest.referenceCenter.manifestPath, 'manifest.referenceCenter.manifestPath');
       result.references = installReferenceCenter(project, files, jsonFile(files, centerManifestPath, 'reference center manifest'));
     } else {
@@ -327,7 +404,7 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
     layout: 'structured',
     editor,
     framesManifest: manifest.frames?.manifestPath || null,
-    referenceCenterManifest: manifest.referenceCenter?.manifestPath || null,
+    referenceCenterManifest: manifest.referenceCenter?.manifestPath || null,\n    sceneManifestVersion: manifest.scenes?.version || null,
     integrityPath,
   };
   return result;
