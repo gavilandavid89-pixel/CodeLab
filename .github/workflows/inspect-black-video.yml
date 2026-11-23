@@ -1,9 +1,12 @@
-name: Inspect black PixelForge video
+name: Inspect PixelForge evidence video
 
 on:
-  push:
-    branches: [main, debug/inspect-black-video]
   workflow_dispatch:
+    inputs:
+      event_id:
+        description: "Existing PixelForge evidence event ID that has a video"
+        required: true
+        type: string
 
 # Auto-trigger marker: this branch is intentionally push-triggered for inspection.
 
@@ -18,12 +21,14 @@ jobs:
           node-version: 22.17
       - run: npm install --no-audit --no-fund playwright@1.64.1
       - run: npx playwright install --with-deps chromium
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Download evidence video and extract frames
         env:
           TARGET_URL: https://codelab-qedi.onrender.com
           ADMIN_USERNAME: ADMIN
           ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
-          EVENT_ID: 933b85df-9126-4bd9-bb8c-19532f0ec8c2
+          EVENT_ID: ${{ github.event.inputs.event_id }}
         run: |
           node <<'NODE'
           import { chromium, request } from 'playwright';
