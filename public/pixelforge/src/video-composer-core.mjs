@@ -237,14 +237,16 @@ export function buildConstantFrameRateSequence(frames, fps, { maxFrames = 24000 
   const output = [];
   let sourceIndex = 0;
   for (let index = 0; index < outputCount; index++) {
-    const timestampMs = index * frameIntervalMs;
+    const startUs = Math.round(index * frameIntervalMs * 1000);
+    const endUs = Math.min(Math.round(totalDurationMs * 1000), Math.round((index + 1) * frameIntervalMs * 1000));
+    const timestampMs = startUs / 1000;
     while (sourceIndex < cumulativeEnds.length - 1 && timestampMs >= cumulativeEnds[sourceIndex] - 1e-8) sourceIndex++;
     output.push({
       ...frames[sourceIndex],
       index,
       sourceIndex,
       timestampMs,
-      durationMs: Math.min(frameIntervalMs, totalDurationMs - timestampMs),
+      durationMs: (endUs - startUs) / 1000,
     });
   }
   return output;
