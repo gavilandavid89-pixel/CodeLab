@@ -256,6 +256,22 @@ Para operaciones que requieren aprobación, la propuesta se prepara en memoria, 
 - Error fatal de arranque: se intenta escribir una señal de apagado/error y el proceso termina con código no cero.
 - El listener del servidor programa reintento tanto si falla la conexión inicial al arrancar como si una conexión ya establecida emite error; usa backoff exponencial limitado (1, 2, 4, 8, 16, 32 y hasta 60 segundos). Si Neon vuelve a estar disponible, el listener se rearma y reconcilia la cola durable.
 
+## Comportamiento cuando el servidor/worker está dormido
+
+El estado `sleeping` del bridge debe interpretarse como **proceso terminado**, no como un worker simplemente ocioso. Cuando CodeLab queda sin el proceso consumidor, una orden puede permanecer durablemente en Neon con `status='queued'` hasta que el listener/worker vuelva a estar disponible. La orden no se pierde porque Neon conserva la fila como fuente de verdad.
+
+La recuperación funciona así:
+
+1. Una orden nueva se inserta en Neon con `status='queued'`.
+2. Si el servidor está activo y su listener PostgreSQL está conectado, el trigger emite `NOTIFY` y CodeLab levanta el worker.
+3. Si la notificación ocurrió mientras el listener no estaba activo, al iniciar o reconectar `LISTEN` el servidor **reconcilia la cola durable** y busca órdenes queued no expiradas, por lo que no depende de recuperar una notificación perdida.
+4. El worker reclama la orden desde Neon con su transacción normal y continúa la ejecución.
+5. Si el proceso worker termina y deja `sleeping` + `wake_required=true`, el estado sirve como señal de que debe reactivarse; `sleeping` no significa que exista un worker vivo esperando.
+
+Por tanto, **Render/hosting puede dormir o terminar el proceso sin convertir una orden queued en una pérdida de trabajo**. Lo importante para la recuperación es que la orden permanezca en Neon y que, cuando CodeLab vuelva a estar disponible, el listener reconcilie la cola y el worker la reclame. No se debe crear polling, cron ni keep-alive para evitar este estado.
+
+Cuando el listener del servidor pierde conexión con Neon, aplica reintentos con backoff y, al reconectar, vuelve a reconciliar la cola. El listener del worker también reintenta y vuelve a reclamar desde el estado durable.
+
 ## 7. Señal de estado del bridge
 
 Tabla: `public.codelab_agent_bridge_state`.
