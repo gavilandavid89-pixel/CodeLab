@@ -1,0 +1,52 @@
+name: CodeLab Video Composer Actions Worker
+
+on:
+  push:
+    branches:
+      - "test/video-composer-actions-worker"
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "PixelForge project id"
+        required: false
+        default: "2b33ccf4-f70c-4649-bed8-df1707cfdc74"
+      keepalive_seconds:
+        description: "Keep runner alive after export"
+        required: false
+        default: "1800"
+
+permissions:
+  contents: read
+
+jobs:
+  video-composer-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout CodeLab
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.64.1
+          npx playwright install --with-deps chromium
+
+      - name: Run CodeLab Video Composer worker
+        env:
+          TARGET_URL: https://codelab-pbw9.onrender.com
+          PROJECT_ID: ${{ github.event.inputs.project_id || "2b33ccf4-f70c-4649-bed8-df1707cfdc74" }}
+          KEEPALIVE_SECONDS: ${{ github.event.inputs.keepalive_seconds || "1800" }}
+          CODELAB_ADMIN_USERNAME: ${{ secrets.CODELAB_ADMIN_USERNAME }}
+          CODELAB_ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
+        run: node .github/scripts/codelab-video-composer-actions-worker.mjs
+
+      - name: Upload worker log context
+        if: always()
+        run: |
+          echo "Video Composer Actions worker finished with status ${{ job.status }}"
+          echo "Runner was configured with a 30-minute post-export keepalive."
