@@ -108,7 +108,7 @@ function startLocalComposerServer() {
   const server = http.createServer(async (req, res) => {
     try {
       const pathname = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
-      const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\\/+/, '');
+      const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
       const filePath = path.resolve(root, relative);
       if (!filePath.startsWith(root + path.sep) && filePath !== root) {
         res.writeHead(403); return res.end('Forbidden');
