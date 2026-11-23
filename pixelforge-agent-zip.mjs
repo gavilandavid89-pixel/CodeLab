@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { createZip } from './public/pixelforge/src/zip-export.js';
 import { parsePixelForgeVideoPackage } from './public/pixelforge/src/video-composer-core.mjs';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
+import { vectorModelToSVG } from './public/pixelforge/src/vector-studio.js';
+import chromium from '@sparticuz/chromium';
+import { chromium as playwrightChromium } from 'playwright-core';
 
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const MAX_ZIP_BYTES = 256 * 1024 * 1024;
@@ -72,7 +75,7 @@ function composite(project, frame) {
   return output;
 }
 
-export function createPixelForgeProjectZip(sourceProject) {
+export async function createPixelForgeProjectZip(sourceProject) {
   if (!sourceProject || typeof sourceProject !== 'object') throw new TypeError('A PixelForge project object is required.');
   const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
   if (sourceProject.vectorModel) {
@@ -96,14 +99,61 @@ export function createPixelForgeProjectZip(sourceProject) {
   const fps = Number.isInteger(animation?.fps) ? animation.fps : 1;
   const frameEntries = [];
   let totalDurationMs = 0;
-  for (let index = 0; index < frames.length; index++) {
-    const durationMs = Math.max(1, Math.min(10000, Number(frames[index].durationMs || Math.round(1000 / fps))));
-    totalDurationMs += durationMs;
-    const rgba = composite(project, frames[index]);
-    frameEntries.push({
-      name: 'frames/frame-' + String(index + 1).padStart(4, '0') + '.png',
-      data: rgbaToPng(rgba, project.width, project.height)
-    });
+  const vectorSvg = project.vectorModel?.objects?.length ? vectorModelToSVG(project.vectorModel) : null;
+  let browser = null;
+  try {
+    let vectorPage = null;
+    if (vectorSvg) {
+      chromium.setGraphicsMode = false;
+      browser = await playwrightChromium.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: true,
+        timeout: 60000
+      });
+      vectorPage = await browser.newPage({
+        viewport: { width: project.width, height: project.height },
+        deviceScaleFactor: 1
+      });
+      await vectorPage.setContent('<!doctype html><html><body style="margin:0;padding:0;background:transparent"><canvas id="vector-composite" width="' +
+        project.width + '" height="' + project.height + '" style="display:block"></canvas></body></html>');
+    }
+    const vectorDataUrl = vectorSvg ? 'data:image/svg+xml;base64,' + Buffer.from(vectorSvg, 'utf8').toString('base64') : null;
+    for (let index = 0; index < frames.length; index++) {
+      const durationMs = Math.max(1, Math.min(10000, Number(frames[index].durationMs || Math.round(1000 / fps))));
+      totalDurationMs += durationMs;
+      const rgba = composite(project, frames[index]);
+      let png = rgbaToPng(rgba, project.width, project.height);
+      if (vectorPage) {
+        await vectorPage.evaluate(async ({ rasterDataUrl, vectorDataUrl, width, height }) => {
+          const load = source => new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('Could not rasterize vector overlay for the ZIP frame.'));
+            image.src = source;
+          });
+          const [raster, vector] = await Promise.all([load(rasterDataUrl), load(vectorDataUrl)]);
+          const canvas = document.querySelector('#vector-composite');
+          canvas.width = width; canvas.height = height;
+          const context = canvas.getContext('2d', { alpha: true });
+          context.clearRect(0, 0, width, height);
+          context.drawImage(raster, 0, 0, width, height);
+          context.drawImage(vector, 0, 0, width, height);
+        }, {
+          rasterDataUrl: 'data:image/png;base64,' + png.toString('base64'),
+          vectorDataUrl,
+          width: project.width,
+          height: project.height
+        });
+        png = await vectorPage.locator('#vector-composite').screenshot({ type: 'png' });
+      }
+      frameEntries.push({
+        name: 'frames/frame-' + String(index + 1).padStart(4, '0') + '.png',
+        data: png
+      });
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
   }
   const projectFile = 'project/' + safeName(project.name) + '.pforge';
   const manifest = {
@@ -140,7 +190,8 @@ export function createPixelForgeProjectZip(sourceProject) {
       fps,
       totalDurationMs,
       projectFile,
-      entryCount: frameEntries.length + 3
+      entryCount: frameEntries.length + 3,
+      vectorOverlayIncluded: Boolean(vectorSvg)
     }
   };
 }
