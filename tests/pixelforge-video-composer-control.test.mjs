@@ -24,7 +24,7 @@ test('Video Composer remote controls import, inspect, seek, configure and captur
   project.id = 'remote_composer_proof';
   const server = createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
-    const relative = decodeURIComponent(url.pathname).replace(/^\\/+/, '');
+    const relative = decodeURIComponent(url.pathname).split('/').filter(Boolean).join('/');
     const filePath = path.resolve(publicRoot, relative);
     if (filePath !== publicRoot && !filePath.startsWith(publicRoot + path.sep)) {
       res.writeHead(403); res.end(); return;
