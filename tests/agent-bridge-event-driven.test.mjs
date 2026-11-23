@@ -33,6 +33,6 @@ test('worker sleeps on LISTEN/NOTIFY instead of polling the queue', () => {
 test('server and worker share TLS policy and direct-endpoint conversion', () => {
   assert.match(server, /const DATABASE_SSL = process\.env\.CODELAB_DATABASE_SSL === 'disable' \? false : \{ rejectUnauthorized: false \}/);
   assert.match(worker, /ssl: process\.env\.CODELAB_DATABASE_SSL === 'disable' \? false : \{ rejectUnauthorized: false \}/);
-  assert.match(server, /url\.hostname\.replace\('-pooler\\.', '\\.'\)/);
-  assert.match(worker, /url\.hostname\.replace\('-pooler\\.', '\\.'\)/);
+  assert.match(server, /url\.hostname\.replace\('-pooler\.', '\.'\)/);
+  assert.match(worker, /url\.hostname\.replace\('-pooler\.', '\.'\)/);
 });
