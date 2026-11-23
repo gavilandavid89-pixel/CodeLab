@@ -43,3 +43,10 @@ El polling de 150 ms fue retirado. La transferencia todavía puede ser alta si s
 ## Mantenimiento obligatorio
 
 Cualquier cambio de conexión, TLS, pooling, LISTEN/NOTIFY, trigger, cola, ciclo de vida, persistencia, revisiones, animación o evidencia requiere actualizar el documento técnico enlazado, el README y las pruebas correspondientes en el mismo PR. El diagrama debe describir el código actual, no una arquitectura aspiracional o histórica.
+
+
+## Catálogo de comandos del agente y cobertura PixelForge
+
+El inventario ejecutable de órdenes del buzón, los contratos de payload/resultados, las operaciones Headless de raster/animación y los límites explícitos de cobertura vectorial se mantienen en [CodeLab + PixelForge command catalog](CODELAB-PIXELFORGE-COMMAND-CATALOG.md). El catálogo distingue acciones de primer nivel (SQL mailbox) de operaciones internas de cada batch; no deben confundirse ni registrarse todas las operaciones internas como comandos SQL.
+
+Toda acción nueva debe quedar sincronizada entre el switch del worker, `NATIVE_ACTIONS` del cliente, la restricción SQL del worker y la migración versionada. Las mutaciones PixelForge permanecen aisladas hasta la aprobación explícita de la propuesta y el control de `serverRevision`. La prueba de paridad automatizada falla si un handler del worker no aparece en el allowlist SQL o en el cliente.
