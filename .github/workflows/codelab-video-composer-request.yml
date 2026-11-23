@@ -33,7 +33,7 @@ jobs:
           FPS: ${{ inputs.capture_fps || '12' }}
         run: |
           body=$(printf 'project_id=%s\ncapture_fps=%s\nrequested_by=github-actions\n' "$PROJECT_ID" "$FPS")
-          url=$(gh issue create --title "Video Composer request: $PROJECT_ID" --body "$body" --label "video-worker-request" --repo "$GITHUB_REPOSITORY")
+          url=$(gh issue create --title "Video Composer request: $PROJECT_ID" --body "$body" --repo "$GITHUB_REPOSITORY")
           echo "issue_url=$url" >> "$GITHUB_OUTPUT"
           echo "Created request: $url"
       - name: Wait for machine result
