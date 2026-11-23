@@ -32,7 +32,7 @@ export async function ensureNativeArtifactSchema(pool) {
     "  chunk_sha256 TEXT NOT NULL CHECK (chunk_sha256 ~ '^[a-f0-9]{64}$'),",
     "  PRIMARY KEY (artifact_id, chunk_index)",
     ");"
-  ].join('\\n');
+  ].join('\n');
   await pool.query(schema);
   const migration = [
     "DO $native_artifact_migration$",
@@ -51,7 +51,7 @@ export async function ensureNativeArtifactSchema(pool) {
     "  END IF;",
     "END",
     "$native_artifact_migration$;"
-  ].join('\\n');
+  ].join('\n');
   await pool.query(migration);
 }
 
