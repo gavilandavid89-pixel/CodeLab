@@ -12,7 +12,7 @@ import { importCodeLabArtifact } from './codelab-project-artifact-import.mjs';
 import { exportPixelForgeAnimationVideo as exportPixelForgeAnimationVideoComposer } from './pixelforge-video-composer-export.mjs';
 
 const require = createRequire(import.meta.url);
-const { Pool } = require('pg');
+const { Pool, Client } = require('pg');
 const neonEvidence = require('./neon-pixelforge-evidence.js');
 const os = require('node:os');
 const DATABASE_URL = process.env.DATABASE_URL || '';
@@ -28,7 +28,72 @@ const pool = new Pool({
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const MAX_PROJECTS = 50;
-const POLL_MS = 150;
+// PostgreSQL notifications wake the worker only when a queued command commits.
+let wakeClient = null;
+let wakeVersion = 0;
+let wakeWaiter = null;
+
+function signalCommandWake() {
+  wakeVersion += 1;
+  if (wakeWaiter) {
+    const resolve = wakeWaiter;
+    wakeWaiter = null;
+    resolve();
+  }
+}
+
+function directDatabaseUrl() {
+  const url = new URL(DATABASE_URL);
+  if (url.hostname.includes('-pooler.')) url.hostname = url.hostname.replace('-pooler.', '.');
+  return url.toString();
+}
+
+async function connectCommandWakeListener() {
+  if (wakeClient || stopping) return;
+  const client = new Client({
+    connectionString: directDatabaseUrl(),
+    ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false },
+    application_name: 'codelab-agent-bridge-command-listener',
+  });
+  client.on('notification', message => {
+    if (message.channel === 'codelab_agent_bridge_wake') signalCommandWake();
+  });
+  client.on('error', error => {
+    console.error('[CodeLab Native Bridge] command wake listener error:', error.message);
+    if (wakeClient === client) wakeClient = null;
+    signalCommandWake();
+    void client.end().catch(() => {});
+  });
+  await client.connect();
+  await client.query('LISTEN codelab_agent_bridge_wake');
+  wakeClient = client;
+  console.log('[CodeLab Native Bridge] command listener armed; idle polling disabled.');
+}
+
+async function waitForCommandWake(observedVersion) {
+  if (wakeVersion !== observedVersion) return;
+  if (!wakeClient) {
+    await delay(5000);
+    if (!stopping) {
+      try {
+        await connectCommandWakeListener();
+        // Reconcile durable queue state after reconnecting, including notifications
+        // that may have been missed while the listener was disconnected.
+        signalCommandWake();
+      } catch (error) {
+        console.error('[CodeLab Native Bridge] command listener reconnect failed:', error.message);
+      }
+    }
+    return;
+  }
+  await new Promise(resolve => {
+    if (wakeVersion !== observedVersion || stopping) {
+      resolve();
+      return;
+    }
+    wakeWaiter = resolve;
+  });
+}
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 const NATIVE_VALIDATION_ENABLED = String(process.env.CODELAB_NATIVE_VALIDATION_ENABLED || 'true').toLowerCase() !== 'false';
 let stopping = false;
@@ -2891,6 +2956,7 @@ async function main() {
     reason: 'bridge_started',
     metadata: { pid: process.pid, hostname: os.hostname(), source: 'agent-bridge-worker' }
   });
+  await connectCommandWakeListener();
   if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
     pixelForgeWorkspaceId = workspaceId;
   } else {
@@ -2899,9 +2965,10 @@ async function main() {
   console.log('[CodeLab Native Bridge] online for mailbox workspace', workspaceId, 'and PixelForge workspace', pixelForgeWorkspaceId);
   while (!stopping) {
     try {
+      const observedWakeVersion = wakeVersion;
       const command = await claimCommand();
       if (!command) {
-        await delay(POLL_MS);
+        await waitForCommandWake(observedWakeVersion);
         continue;
       }
       const heartbeatTimer = setInterval(() => {
@@ -2993,14 +3060,19 @@ async function main() {
         clearInterval(heartbeatTimer);
       }
     } catch (error) {
-      console.error('[CodeLab Native Bridge] poll error:', error.message);
+      console.error('[CodeLab Native Bridge] mailbox error:', error.message);
       await delay(2500);
     }
   }
 }
 async function shutdown(reason) {
   stopping = true;
+  signalCommandWake();
   await emitShutdownSignal(reason);
+  if (wakeClient) {
+    try { await wakeClient.end(); } catch (_) {}
+    wakeClient = null;
+  }
   await pool.end().catch(() => {});
 }
 process.once('SIGTERM', () => { void shutdown('sigterm'); });
