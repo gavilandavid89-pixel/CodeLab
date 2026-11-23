@@ -112,6 +112,26 @@ async function main() {
       [sessionId, JSON.stringify({ id: 'pixelforge-integration-user', provider: 'github', name: 'PIXELFORGE_TEST', role: 'user' })]
     );
   }
+  if (testSessionPool) {
+    const { ensureNativeArtifactSchema, stageNativeArtifact, readNativeArtifact, deleteNativeArtifact } =
+      await import('../native-agent-artifacts.mjs');
+    await ensureNativeArtifactSchema(testSessionPool);
+    const artifactBytes = Buffer.from('native-artifact-postgres-roundtrip');
+    const staged = await stageNativeArtifact(testSessionPool, {
+      workspaceId: 'ws_pixelforge_native_artifact_test',
+      kind: 'pixelforge_zip_upload',
+      filename: 'artifact-roundtrip.zip',
+      contentType: 'application/zip',
+      bytes: artifactBytes,
+      ttlMs: 60_000
+    });
+    const restored = await readNativeArtifact(
+      testSessionPool, 'ws_pixelforge_native_artifact_test', staged.artifactId, 'pixelforge_zip_upload'
+    );
+    assert.deepEqual(restored.bytes, artifactBytes, 'native artifact chunks must round-trip through PostgreSQL');
+    assert.equal(restored.metadata.sha256, staged.sha256, 'native artifact full-file SHA-256 must remain stable');
+    await deleteNativeArtifact(testSessionPool, 'ws_pixelforge_native_artifact_test', staged.artifactId);
+  }
   const authenticatedMalformedId = await fetch(base + '/api/pixelforge/projects/%E0%A4%A', { headers: authHeaders });
   assert.equal(authenticatedMalformedId.status, 400, 'malformed encoded project IDs should return a client error, not crash the API');
   assert.equal((await authenticatedMalformedId.json()).error, 'invalid_project_id', 'malformed project ID should have a stable error code');
