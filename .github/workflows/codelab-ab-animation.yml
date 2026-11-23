@@ -47,7 +47,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
-          CODELAB_SESSION_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CODELAB_SESSION_ID: independent-ab-${{ github.run_id }}-${{ github.run_attempt }}
           CODELAB_SESSION_TIMEOUT_MS: "90000"
           CODELAB_SESSION_REQUEST: >-
             {"kind":"browser","start_path":"/pixelforge/index.html?createDemo=walk-crouch-24&capture=video","actions":[
