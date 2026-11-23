@@ -22,7 +22,7 @@ flowchart TD
 - Commands are scoped to the ADMIN workspace; the worker resolves the workspace rather than trusting a caller-supplied workspace ID.
 - PixelForge reads are read-only. Mutations run in an isolated Headless sandbox and do not persist merely because a batch succeeded.
 - PixelForge persistence requires an explicit proposal approval and a valid proposal token. The server-issued `serverRevision` is the concurrency guard; conflicts must not overwrite another session.
-- Command payloads are JSON objects. The assistant client currently caps a serialized payload at 2 MiB and TTL at 1 second–15 minutes. Long video tasks use an explicitly larger command TTL/timeout.
+- Command payloads are JSON objects. The assistant client caps a serialized payload at 2 MiB and TTL at 1 second–15 minutes. ZIP bytes do not travel inside a mailbox JSON payload: the client stages them in workspace-scoped, SHA-256-verified 1 MiB PostgreSQL chunks, then submits only an artifact ID. ZIP artifacts are capped at 256 MiB and expire after one hour unless consumed earlier.
 - A terminal result is `succeeded`, `failed`, `rejected`, or `expired`; proposal-producing work may pause at `awaiting_approval`.
 - Never put provider API keys, passwords, or other secrets in command payloads or project documents.
 
@@ -61,6 +61,9 @@ These are the executable top-level action names routed by `agent-bridge-worker.m
 | `pixelforge_export_image` | Export the selected project/frame as SVG. | `project_id`, optional `frame_index`; returns SVG as Base64 with dimensions and revision. Legacy `operation: "capture_interface"` is retained for backward compatibility. |
 | `pixelforge_export_animation_video` | Render/record an animation using the real browser Video Composer path. | `project_id` and supported capture/export settings; returns validated video artifact metadata. This is a long-running command. |
 | `pixelforge_preview_evidence_video` | Preview existing PixelForge evidence video. | Evidence lookup fields consumed by `previewPixelForgeEvidenceVideo`; returns preview metadata. |
+| `pixelforge_import_zip` | Import an editable PixelForge ZIP package as a new project. | `artifact_id` from `client.importPixelForgeZip(bytes, options)`; optional `name`. Returns new project ID, revision 1, package metadata and inspection. Original project IDs are never overwritten. |
+| `pixelforge_export_zip` | Export an editable project plus transparent PNG timeline frames and manifest. | `project_id`; returns a workspace-scoped artifact receipt with SHA-256, byte size and filename. `client.exportPixelForgeZip()` also retrieves the verified ZIP bytes. |
+| `pixelforge_video_composer` | Remotely control the real Video Composer page in Chromium. | `project_id`, `operations` (1–20). Supported operation types: `inspect`, `seek` (`index` 0–239), `play` (`duration_ms` 100–10,000), `configure` (`format`, `output_fps`, `resolution`, `aspect`, `loop_export`, `solid_background`), `capture_preview`, `capture_studio`, `record_studio` (`duration_ms` 1,000–30,000). Returns imported timeline state, operation results, browser diagnostics and staged evidence artifacts. |
 | `pixelforge_propose` | Run a structured Headless batch and create a review proposal. | `project_id`, `actions` (1–500 Headless operations), and a short `summary`; returns proposal token, inspection and pixel/timeline diff. |
 | `pixelforge_approve` | Approve and persist a pending proposal. | `proposal_command_id`, `proposal_token`; server revalidates the proposal and revision before saving. |
 | `pixelforge_discard` | Discard a pending proposal. | `proposal_command_id`, `proposal_token`; marks the pending proposal rejected. |
@@ -79,25 +82,53 @@ The operations below are **not separate SQL mailbox actions**. They are the `nam
 - Selection: `selection.clear`, `selection.create_rect`, `selection.create_ellipse`, `selection.create_lasso`, `selection.create_magic`, `selection.modify`, `selection.combine`, `selection.translate`.
 - History: `history.undo`, `history.redo`.
 
+### Vector studio and geometry model
+
+The vector document is stored in `RasterDocument.vectorModel`, so it participates in the same sandbox revision, proposal diff, approval and PostgreSQL project JSON as raster layers. These actions are Headless batch operations (not SQL mailbox actions):
+
+- Read/validation: `vector.model.get`, `vector.audit`, `vector.svg.export`.
+- Model settings: `vector.model.configure` (`grid`, `snap`, `metadata`), `vector.precision.configure` (`precision` object), `vector.frames.set` (`frames`, up to 240 entries).
+- SVG: `vector.svg.import` (`svg`, optional `replace`, maximum 2 MiB), `vector.svg.export`.
+- Objects: `vector.object.create` (`object` of type `rect`, `ellipse`, `line`, `path`, `text` or `group`, optional insertion `index`); `vector.object.update` (`object_id`, `patch`, ID/type immutable); `vector.object.delete` (`object_id`); `vector.object.duplicate` (`object_id`, recursively regenerates IDs); `vector.object.reorder` (`object_id`, top-level `index`); `vector.object.transform` (`object_id`, transform values).
+- Grouping: `vector.group.create` (`object_ids` containing at least two top-level IDs, optional `name`), `vector.group.ungroup` (`object_id`).
+- Validation enforces unique IDs including nested group children, supported object types, finite geometry, valid SVG parsing, and the 16 MiB Headless vector-model budget. Audit warnings (for example out-of-bounds geometry) are returned; fatal audit errors block the mutation.
+
 ### Animation and timeline
 
 - Timeline: `animation.get_summary`, `animation.undo`, `animation.redo`, `animation.set_fps`, `animation.set_loop`, `animation.set_playback_speed`.
 - Frames: `animation.frame.add_from_layer`, `animation.frame.capture_composite`, `animation.frame.capture_document`, `animation.frame.duplicate`, `animation.frame.delete`, `animation.frame.reorder`, `animation.frame.set_duration`, `animation.frame.set_active`.
 - Cels and preview: `animation.frame.get_cel`, `animation.frame.set_cel`, `animation.frame.get_context`, `animation.frame.get_onion_skin`, `animation.frame.get_composite`.
 
+### ZIP import/export and artifact transfer
+
+- Editable exports contain `project/<name>.pforge` (canonical JSON with raster layers, vector model and animation cels), `manifest.json`, `README.txt`, and transparent `frames/frame-0001.png`… files in playback order. The same archive is valid as a Video Composer package.
+- Import requires the editable `.pforge` project entry and a `pixelforge-video-package` version-1 manifest whose dimensions and frame count match the project. The importer validates ZIP paths, duplicate names, local/central directory agreement, CRC-32, project schema, raster byte lengths, vector model, and animation timeline.
+- ZIP reader currently accepts uncompressed STORE entries only; encrypted, multi-disk, data-descriptor, ZIP64 and compressed-DEFLATE ZIPs are rejected with an explicit error. Maximum 512 entries / 256 MiB uncompressed total; project JSON remains limited to 96 MiB.
+- Import creates a new project identity and resets `revision`, `saveVersion` and `serverRevision` before inserting revision 1. It never replaces an existing project.
+- Large ZIP transfers use `codelab_agent_artifacts` and `codelab_agent_artifact_chunks`, scoped to the ADMIN mailbox workspace. Chunks are 1 MiB and individually plus globally SHA-256 checked. Supported artifact kinds are `pixelforge_zip_upload`, `pixelforge_zip_export`, `pixelforge_composer_png`, and `pixelforge_composer_video`.
+
+### Video Composer remote control and evidence
+
+- `pixelforge_video_composer` opens the deployed Video Composer route in a fresh Playwright Chromium session, imports the project's own generated ZIP package, and performs the requested operation batch against the real page DOM and canvas.
+- `inspect` reads the loaded frame count/FPS/dimensions/duration/current frame/status; `seek` updates the timeline scrubber; `play` plays for a bounded duration and pauses; `configure` changes supported output controls; `capture_preview` returns the rendered preview canvas PNG; `capture_studio` stores a full-page Composer screenshot; `record_studio` records the Composer page as WebM through Playwright video capture.
+- `pixelforge_export_animation_video` remains the dedicated deterministic WebM export command. It imports the project timeline into Video Composer and validates the downloaded WebM before persisting evidence.
+- `record_studio` records the Composer page itself, not the user's entire desktop or another browser tab. The UI's `getDisplayMedia` screen-sharing controls still require a real user gesture/permission and are not bypassed by the agent.
+- Each remote control call is an isolated short-lived Chromium session; put sequential controls in one `operations` array when they must share the same imported timeline state.
+
 ### Runtime limits and persistence guarantees
 
 - Batch maximum: 500 actions. Maximum 64 raster layers and 240 animation frames, subject to memory and serialized project limits.
 - Canvas dimension maximum: 4096 × 4096. Region reads are bounded to 32 × 32 / 1024 pixels.
 - Raster and animation raw RGBA budgets are each 64 MiB; the combined serialized project envelope is 96 MiB.
-- PixelForge mutations require review/approval. The source project is not modified by an unapproved sandbox batch.
+- PixelForge raster, vector and animation mutations require review/approval. The source project is not modified by an unapproved sandbox batch. The vector model is included in the proposal's revision guard and saved project JSON.
 - The runtime is deterministic and DOM-free; it does not run a real-time animation playback clock. Real interface/video evidence is captured separately through Chromium.
 
 ## Explicit coverage boundaries (do not misrepresent)
 
 - The native mailbox covers the CodeLab platform and the PixelForge Headless raster/animation, drawing-intelligence, project and evidence contracts listed above.
-- PixelForge's separate vector studio and pure geometry helper module (`public/pixelforge/src/vector-studio.js`, `agent-connectivity-tools.js`) exist in the repository, but their full editing surface is **not yet exposed as a persistent Headless mailbox operation set**. Do not claim vector-object editing is covered by `pixelforge_propose` until a shared vector document model, validation, proposal diff, persistence and tests are wired end-to-end.
-- ZIP packaging, local Video Composer export, and image import are currently visual-editor/local workflows; do not claim they are all remotely executable mailbox commands.
+- The vector model is now integrated into the Headless sandbox and proposal persistence. The operation catalog above covers object creation/update/deletion/duplication/reordering/transforms, groups, SVG import/export, precision metadata and vector frame metadata. UI-only affordances that do not map to the versioned vector model remain outside the mailbox.
+- Editable ZIP import/export is remotely executable through chunked artifacts. The ZIP reader intentionally supports STORE-only archives at this stage; compressed/DEFLATE archives must be re-exported using PixelForge's STORE package exporter.
+- Video Composer import, timeline playback/seek/configuration, preview capture, full-page screenshot, WebM page recording and deterministic animation export are remotely executable. Browser display capture of the user's external desktop/tab still requires user gesture and permission and is not remotely simulated.
 - Provider-backed AI generation is separate from the deterministic Headless runtime. It must reuse CodeLab's existing user-owned provider settings and must not leak API keys or send artwork without the configured consent flow.
 
 ## Change checklist
