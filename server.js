@@ -3118,8 +3118,8 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 404, { error: 'video_evidence_object_missing' });
       }
 
-      // Neon evidence API: each saved revision receives an event, and the browser can
-      // upload the corresponding PNG/video directly to Neon Object Storage via a short-lived signed URL.
+      // Evidence API: each saved revision receives an event, and the browser can
+      // upload the corresponding PNG/video to the configured evidence object store via a short-lived signed URL.
       const neonEvidenceMatch = pathname.match(/^\/api\/pixelforge\/evidence\/([0-9a-f-]{36})$/i);
       if (neonEvidenceMatch && ['GET', 'POST'].includes(req.method)) {
         const user = await getSessionUser(req);
@@ -3135,7 +3135,7 @@ const server = http.createServer(async (req, res) => {
         if (!body || !['image', 'video'].includes(body.kind)) return sendJson(res, 400, { error: 'evidence_kind_required' });
         const event = await neonEvidence.getChangeEvent(accountPool, workspaceId, eventId);
         if (!event) return sendJson(res, 404, { error: 'evidence_event_not_found' });
-        if (!neonEvidence.storageConfigured()) return sendJson(res, 503, { error: 'neon_storage_not_configured' });
+        if (!neonEvidence.storageConfigured()) return sendJson(res, 503, { error: 'evidence_storage_not_configured' });
         const ext = body.kind === 'image' ? 'png' : 'webm';
         const key = 'pixelforge/' + workspaceId + '/' + event.projectId + '/r' + event.revision + '/' + eventId + '.' + ext;
         try {
@@ -3144,11 +3144,10 @@ const server = http.createServer(async (req, res) => {
             contentType: body.kind === 'image' ? 'image/png' : 'video/webm',
             expiresInSeconds: 900
           });
-          const publicUrl = signed.publicUrl ||
-            ((process.env.NEON_STORAGE_ENDPOINT || '').replace(/\/$/, '') + '/' + signed.bucket + '/' + key);
+          const publicUrl = signed.publicUrl || null;
           return sendJson(res, 200, { ok: true, eventId, kind: body.kind, key, upload: signed, publicUrl });
         } catch (error) {
-          return sendJson(res, 503, { error: error.message === 'neon_storage_credentials_missing' ? error.message : 'neon_storage_presign_failed' });
+          return sendJson(res, 503, { error: error.message || 'evidence_storage_presign_failed' });
         }
       }
 
