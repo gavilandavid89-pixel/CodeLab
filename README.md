@@ -8,6 +8,16 @@
 
 # CodeLab XD Studio Pro v2.7.0
 
+## Documentos clave para agentes
+
+> **Antes de trabajar en animación, Headless o la integración CodeLab/Neon, revisar estos 3 documentos:**
+>
+> 1. [`docs/ANIMATION-AUTONOMOUS-WORKFLOW.md`](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md) — **Flujo autónomo de animación.** Define el ciclo real de trabajo: preparar, ejecutar, esperar, verificar el estado persistido, inspeccionar visualmente, corregir y finalizar. También contiene los criterios técnicos de aceptación de una animación.
+> 2. [`docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md`](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md) — **Arquitectura CodeLab ↔ Neon ↔ Worker ↔ agente.** Explica cómo se envían las órdenes, cómo Neon mantiene el estado durable, cómo el worker las ejecuta y cómo se recuperan resultados y evidencias.
+> 3. [`docs/agent-ai-bridge-policy.md`](docs/agent-ai-bridge-policy.md) — **Obtención y aislamiento del Headless del agente.** Es el documento clave para saber cómo conseguir el Headless propio: mediante un artefacto real de GitHub Actions; no clonando ni reconstruyendo el repositorio. También define la separación entre el Headless del agente y CodeLab, el uso de Xvfb y las reglas de transferencia al sistema.
+>
+> **Importante:** estos documentos son complementarios, no sustitutos entre sí. El tercero contiene específicamente el procedimiento de obtención del Headless; el primero contiene el flujo operativo de animación y el segundo la arquitectura extremo a extremo.
+
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
 
 **Runtime:** Node.js 22.17.0 o superior. El servidor utiliza `pg`, `@sparticuz/chromium` y `playwright-core`. Ejecuta `npm install` para instalar las dependencias y su postinstall de navegador; después inicia con `npm start`.
