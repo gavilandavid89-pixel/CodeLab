@@ -1,0 +1,53 @@
+name: Request CodeLab Video Composer
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "PixelForge project id"
+        required: true
+        default: "2b33ccf4-f70c-4649-bed8-df1707cfdc74"
+      capture_fps:
+        description: "Capture FPS"
+        required: false
+        default: "12"
+      wait_for_result:
+        description: "Wait for the machine to finish the request"
+        required: false
+        default: "true"
+
+permissions:
+  issues: write
+
+jobs:
+  request-video:
+    name: Ask Video Composer machine
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    steps:
+      - name: Create processing request
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROJECT_ID: ${{ inputs.project_id }}
+          FPS: ${{ inputs.capture_fps || '12' }}
+        run: |
+          body=$(printf 'project_id=%s\ncapture_fps=%s\nrequested_by=github-actions\n' "$PROJECT_ID" "$FPS")
+          url=$(gh issue create --title "Video Composer request: $PROJECT_ID" --body "$body" --label "video-worker-request" --repo "$GITHUB_REPOSITORY")
+          echo "issue_url=$url" >> "$GITHUB_OUTPUT"
+          echo "Created request: $url"
+      - name: Wait for machine result
+        if: ${{ inputs.wait_for_result != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_URL: ${{ steps.request.outputs.issue_url }}
+        run: |
+          issue_number="${ISSUE_URL##*/}"
+          for i in $(seq 1 180); do
+            comments=$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json comments --jq '.comments[].body')
+            if echo "$comments" | grep -q "VIDEO_COMPOSER_RESULT: success"; then echo "$comments"; exit 0; fi
+            if echo "$comments" | grep -q "VIDEO_COMPOSER_RESULT: failure"; then echo "$comments"; exit 1; fi
+            sleep 10
+          done
+          echo "Timed out waiting for the Video Composer machine."
+          exit 1
