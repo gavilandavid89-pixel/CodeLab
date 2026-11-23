@@ -18,6 +18,27 @@ CREATE TABLE IF NOT EXISTS public.codelab_agent_artifacts (
 CREATE INDEX IF NOT EXISTS codelab_agent_artifacts_workspace_idx
   ON public.codelab_agent_artifacts (workspace_id, created_at DESC);
 
+DO $native_artifact_migration$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.codelab_agent_artifacts'::regclass
+       AND conname = 'codelab_agent_artifacts_kind_check'
+       AND pg_get_constraintdef(oid) LIKE '%pixelforge_composer_video%'
+       AND pg_get_constraintdef(oid) LIKE '%pixelforge_composer_png%'
+  ) THEN
+    ALTER TABLE public.codelab_agent_artifacts
+      DROP CONSTRAINT IF EXISTS codelab_agent_artifacts_kind_check;
+    ALTER TABLE public.codelab_agent_artifacts
+      ADD CONSTRAINT codelab_agent_artifacts_kind_check
+      CHECK (kind = ANY (ARRAY[
+        'pixelforge_zip_upload','pixelforge_zip_export',
+        'pixelforge_composer_video','pixelforge_composer_png'
+      ]));
+  END IF;
+END
+$native_artifact_migration$;
+
 CREATE TABLE IF NOT EXISTS public.codelab_agent_artifact_chunks (
   artifact_id TEXT NOT NULL REFERENCES public.codelab_agent_artifacts(artifact_id) ON DELETE CASCADE,
   chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
