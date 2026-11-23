@@ -149,6 +149,37 @@ Reglas:
 
 La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado permanentemente como vía especializada y obligatoria del empaquetador de vídeo**.
 
+## 6.4 Aislamiento del Headless propio del agente y transferencia al sistema
+
+El **Headless propio del agente está completamente aislado del sistema de CodeLab**. No tiene conexión directa con Neon, el bridge/worker, CodeLab, sus APIs internas ni sus mecanismos de transporte, y **no debe incorporarse ninguna conexión directa** para permitir que el agente trabaje.
+
+Esto es intencional:
+
+```text
+Agente
+  ↓
+Headless propio del agente (aislado)
+  ↓
+proyecto / artefacto generado
+  ↓
+intermediario soportado por el entorno del agente
+  ↓
+Neon / mecanismo de subida soportado
+  ↓
+CodeLab
+```
+
+Reglas:
+
+- El Headless propio del agente **solo se utiliza como entorno de trabajo del agente**.
+- Si el agente crea o modifica una animación usando ese Headless, el Headless no intenta subirla directamente a CodeLab.
+- El **agente mismo** debe tomar el proyecto resultante y llevarlo, mediante un **intermediario soportado**, hasta el mecanismo de subida que acepta CodeLab.
+- El intermediario es el límite entre el entorno aislado del agente y el sistema. El Headless no debe obtener credenciales del sistema ni abrir conexiones directas para saltarse ese límite.
+- El proyecto editable debe conservarse como proyecto real (por ejemplo, `.codelab`) al realizar la transferencia; no se debe reducir la transferencia a capturas, frames sueltos o un vídeo cuando se necesita el proyecto editable.
+- Una vez que el proyecto ha sido entregado al mecanismo soportado, CodeLab/bridge puede continuar con su procesamiento normal.
+- Esta separación **no cambia** la regla anterior de que A/B está reservado permanentemente para el empaquetado/render de vídeo.
+- Si no existe un intermediario soportado para una transferencia concreta, el agente debe detener esa transferencia e indicarlo explícitamente; **no debe crear una conexión directa al sistema como workaround**.
+
 ## 6.3 Uso de Xvfb durante la animación en Headless
 
 Cuando el **Headless propio del agente** necesita un display gráfico para ejecutar el navegador o los componentes de PixelForge durante una tarea de animación, se utiliza **Xvfb como display virtual**.
