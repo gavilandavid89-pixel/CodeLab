@@ -16,6 +16,7 @@
 > 2. [`docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md`](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md) — **Arquitectura CodeLab ↔ Neon ↔ Worker ↔ agente.** Explica cómo se envían las órdenes, cómo Neon mantiene el estado durable, cómo el worker las ejecuta y cómo se recuperan resultados y evidencias.
 > 3. [`docs/agent-ai-bridge-policy.md`](docs/agent-ai-bridge-policy.md) — **Obtención y aislamiento del Headless del agente.** Es el documento clave para saber cómo conseguir el Headless propio: mediante un artefacto real de GitHub Actions; no clonando ni reconstruyendo el repositorio. También define la separación entre el Headless del agente y CodeLab, el uso de Xvfb y las reglas de transferencia al sistema.
 > 4. [`docs/VIDEO-PROCESSING-AB.md`](docs/VIDEO-PROCESSING-AB.md) — **Procesamiento de vídeo A/B.** Define el único uso permitido de A/B: una sesión A y una sola B para procesar/capturar vídeo; no es un sistema multiagente ni de carga.
+> 5. [`docs/PIXELFORGE-PROJECT-PACKAGE.md`](docs/PIXELFORGE-PROJECT-PACKAGE.md) — **Formato ZIP PixelForge.** Define la estructura CodeLab v2, nombres de archivos, frames, Reference Center y la diferencia con el ZIP de Video Composer.
 >
 > **Importante:** estos documentos son complementarios, no sustitutos entre sí. El tercero contiene específicamente el procedimiento de obtención del Headless; el primero contiene el flujo operativo de animación y el segundo la arquitectura extremo a extremo.
 
