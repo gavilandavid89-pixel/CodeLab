@@ -10,7 +10,7 @@ import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
-import { readStoredZip } from './video-composer-core.mjs';
+import { readStoredZip } from './video-composer-core.mjs';\nimport { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from './codelab-package.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
 
@@ -2199,21 +2199,12 @@ $('#save').addEventListener('click', async () => {
 $('#export-project').addEventListener('click', async () => {
   try {
     settleActiveInput();
-    if (animation) { await $('#animation-export-zip').click(); return; }
-    const snapshot = buildProjectSnapshot(), filename = `${safeName(doc.name)}-project.zip`;
-    const previewCanvas = document.createElement('canvas');
-    previewCanvas.width = doc.width; previewCanvas.height = doc.height;
-    const previewContext = previewCanvas.getContext('2d', { alpha: true });
-    if (!previewContext) throw new Error('Could not create the project preview surface.');
-    previewContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
-    const preview = await new Promise((resolve, reject) => previewCanvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG preview encoder returned no data.')), 'image/png'));
-    const archive = await createZipBlob([
-      { name: 'project/' + safeName(doc.name) + '.pforge', data: new Blob([JSON.stringify(snapshot)], { type: 'application/json' }) },
-      { name: 'preview.png', data: preview },
-      { name: 'README.txt', data: 'PIXELFORGE PROJECT PACKAGE\\n\\nOpen the .pforge file in PixelForge to continue editing.\\n' },
-    ]);
-    downloadBlob(archive, filename);
-    status('Editable project ZIP exported', 'success');
+    stopAnimationPlayback();
+    const snapshot = buildProjectSnapshot();
+    const exported = await exportPixelForgeCodeLabPackage(snapshot);
+    downloadBlob(exported.blob, exported.filename);
+    status('CodeLab PixelForge project exported · ' + exported.metadata.frameCount + ' frames · ' +
+      exported.metadata.sceneSectionCount + ' scene folders · ' + exported.metadata.referenceCount + ' references', 'success');
   } catch (error) { status(`Project export failed: ${error.message}`, 'error'); }
 });
 $('#export-sprite-sheet').addEventListener('click', async () => {
@@ -2268,23 +2259,35 @@ $('#import-file').addEventListener('change', async event => {
     if (file.size > 256 * 1024 * 1024) throw new RangeError('This file is larger than the 256 MiB import safety limit.');
     let importedDoc;
     let zipProject = null;
-    if (file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip') {
+    let structuredCodeLabPackage = false;
+    if (file.name.toLowerCase().endsWith('.zip') || file.name.toLowerCase().endsWith('.codelab-pixelforge') || file.type === 'application/zip') {
       const entries = await readStoredZip(file);
-      const projectEntry = [...entries.values()].find(entry => entry.name.toLowerCase().endsWith('.pforge'));
-      if (!projectEntry) throw new TypeError('This ZIP does not contain an editable PixelForge .pforge project.');
-      zipProject = JSON.parse(await projectEntry.blob.text());
+      if (entries.has('project.codelab-pixelforge') || entries.has('project.codelab')) {
+        const installed = await importPixelForgeCodeLabPackage(entries);
+        zipProject = installed.project;
+        structuredCodeLabPackage = true;
+      } else {
+        const projectEntry = [...entries.values()].find(entry => entry.name.toLowerCase().endsWith('.pforge'));
+        if (!projectEntry) throw new TypeError('This ZIP is neither a structured .codelab-pixelforge project nor a legacy editable .pforge ZIP.');
+        zipProject = JSON.parse(await projectEntry.blob.text());
+      }
     }
     if (zipProject || file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
       const parsed = zipProject || JSON.parse(await file.text());
-      importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: true });
+      importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: !structuredCodeLabPackage });
+      if (structuredCodeLabPackage) importedDoc.id = crypto.randomUUID();
       importedDoc.animationLoop = parsed.animation?.loop !== false;
       if (parsed.animation) {
-        const layerIdMap = new Map(parsed.layers.map((layer, index) => [layer.id, importedDoc.layers[index].id]));
-        const remapped = { ...parsed.animation,
-          layerIds: parsed.animation.layerIds.map(id => layerIdMap.get(id)),
-          frames: parsed.animation.frames.map(frame => ({ ...frame, cels: frame.cels.map(cel => ({ ...cel, layerId: layerIdMap.get(cel.layerId) })) }))
-        };
-        importedDoc.animationData = remapped;
+        if (structuredCodeLabPackage) {
+          importedDoc.animationData = parsed.animation;
+        } else {
+          const layerIdMap = new Map(parsed.layers.map((layer, index) => [layer.id, importedDoc.layers[index].id]));
+          const remapped = { ...parsed.animation,
+            layerIds: parsed.animation.layerIds.map(id => layerIdMap.get(id)),
+            frames: parsed.animation.frames.map(frame => ({ ...frame, cels: frame.cels.map(cel => ({ ...cel, layerId: layerIdMap.get(cel.layerId) })) }))
+          };
+          importedDoc.animationData = remapped;
+        }
       }
     } else {
       const expectedImage = await preflightImageFile(file);
