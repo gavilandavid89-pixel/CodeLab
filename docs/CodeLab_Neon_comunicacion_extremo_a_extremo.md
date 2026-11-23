@@ -254,7 +254,7 @@ Para operaciones que requieren aprobación, la propuesta se prepara en memoria, 
 - Tras reconectar, el worker vuelve a reclamar desde la tabla durable para recuperar señales perdidas.
 - Error transitorio de mailbox: se registra y se reintenta después de 2,5 segundos.
 - Error fatal de arranque: se intenta escribir una señal de apagado/error y el proceso termina con código no cero.
-- El listener de servidor también reconecta con backoff exponencial limitado (1, 2, 4, 8, 16, 32 y hasta 60 segundos).
+- El listener del servidor programa reintento tanto si falla la conexión inicial al arrancar como si una conexión ya establecida emite error; usa backoff exponencial limitado (1, 2, 4, 8, 16, 32 y hasta 60 segundos). Si Neon vuelve a estar disponible, el listener se rearma y reconcilia la cola durable.
 
 ## 7. Señal de estado del bridge
 
@@ -510,7 +510,7 @@ Las preferencias/keys propias del usuario se administran en Ajustes del copiloto
 7. Abre el puerto `PORT`.
 8. En apagado, el servidor detiene el worker y escribe la señal de cierre del bridge cuando puede acceder a Neon.
 
-El servidor web puede estar operativo aunque el listener Neon falle temporalmente; en ese caso registra el error y debe reconectar. Sin Neon disponible no se puede afirmar que las operaciones de persistencia/bridge funcionen correctamente.
+El servidor web puede estar operativo aunque el listener Neon falle temporalmente; registra el error y programa reintentos exponenciales incluso si falla la conexión inicial. Cuando Neon vuelve a aceptar conexiones, rearma LISTEN y reconcilia órdenes queued. Sin Neon disponible no se puede afirmar que las operaciones de persistencia/bridge funcionen correctamente.
 
 ### 17.7 CI frente a producción
 
