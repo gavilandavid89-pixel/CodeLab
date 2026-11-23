@@ -3,6 +3,10 @@ name: CodeLab A/B temporary-session video verification
 on:
   workflow_dispatch:
 
+concurrency:
+  group: codelab-video-processor
+  cancel-in-progress: false
+
 permissions:
   contents: read
   issues: write
