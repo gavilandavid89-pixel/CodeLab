@@ -3002,6 +3002,55 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+            // Remote Video Composer workers (for GitHub Actions) upload only the finished
+      // video here. The heavy browser/encoding work stays on the remote runner.
+      if (req.method === 'POST' && pathname === '/api/pixelforge/remote-video') {
+        const user = await getSessionUser(req);
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
+        if (user?.name !== 'ADMIN') return sendJson(res, 403, { error: 'admin_required' });
+        const body = await readBody(req, 32 * 1024 * 1024);
+        const projectId = decodePixelForgeProjectId(body?.project_id);
+        const videoBase64 = typeof body?.video_base64 === 'string' ? body.video_base64 : '';
+        if (!projectId || !videoBase64) return sendJson(res, 400, { error: 'project_id_and_video_required' });
+        const video = Buffer.from(videoBase64, 'base64');
+        if (!video.length || video.length > 24 * 1024 * 1024) return sendJson(res, 413, { error: 'video_size_invalid' });
+        const project = await loadPixelForgeProjectFromDatabase(workspaceId, projectId);
+        if (!project) return sendJson(res, 404, { error: 'project_not_found' });
+        const evidence = await neonEvidence.createChangeEvent(accountPool, {
+          workspaceId,
+          projectId,
+          revision: Number(project.serverRevision || 0),
+          changeKind: 'animation-video-composer-actions-export',
+          metadata: {
+            action: 'pixelforge_export_animation_video',
+            capture: 'codelab-video-composer-actions',
+            frames: Number(body.frames || 0),
+            fps: Number(body.fps || 0),
+            durationMs: Number(body.duration_ms || 0),
+            filename: String(body.filename || 'pixelforge-animation-composer.webm').slice(0, 200)
+          }
+        });
+        let artifact;
+        if (neonEvidence.storageConfigured()) {
+          const objectKey = 'pixelforge/' + workspaceId + '/' + projectId + '/r' + Number(project.serverRevision || 0) + '/' + evidence.eventId + '-composer.webm';
+          const signed = neonEvidence.presignStorageObject({ objectKey, contentType: 'video/webm', expiresInSeconds: 900 });
+          const upload = await fetch(signed.url, { method: 'PUT', headers: signed.headers, body: video });
+          if (!upload.ok) throw new Error('remote_video_storage_upload_failed_' + upload.status);
+          artifact = await neonEvidence.attachEvidence(accountPool, {
+            workspaceId, eventId: evidence.eventId, kind: 'video', objectKey,
+            publicUrl: signed.publicUrl || null
+          });
+        } else {
+          artifact = await neonEvidence.attachEvidence(accountPool, {
+            workspaceId, eventId: evidence.eventId, kind: 'video', objectKey: null,
+            publicUrl: null, data: video, mimeType: 'video/webm'
+          });
+        }
+        return sendJson(res, 201, { ok: true, eventId: evidence.eventId, projectId, revision: Number(project.serverRevision || 0), sizeBytes: video.length, artifact });
+      }
+
       // Native capture commands are issued from the authenticated user's workspace
       // but execute through the trusted ADMIN bridge mailbox.
       const pixelforgeCaptureMatch = pathname.match(/^\/api\/pixelforge\/capture(?:\/([A-Za-z0-9_-]+))?$/);
