@@ -213,3 +213,9 @@ test('vector-generated IDs are normalized once and replayed identically at appro
 test('vector audit and object counts are part of the proposal review diff', () => {
   assert.match(source, /vector: diff\.vector/);
 });
+
+
+test('Video Composer and animation export command status reflects validated browser evidence', () => {
+  assert.match(source, /finish\(command\.command_id, result\.ok \? 'succeeded' : 'failed', result\)/);
+  assert.match(source, /finish\(command\.command_id, result\.videoExport\?\.passed \? 'succeeded' : 'failed', result\)/);
+});
