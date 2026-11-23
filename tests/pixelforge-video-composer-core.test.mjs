@@ -106,3 +106,26 @@ test('rejects ZIP payload corruption even when its central directory remains int
   bytes[dataOffset] ^= 0xff;
   await assert.rejects(() => readStoredZip(new Blob([bytes])), /failed its CRC integrity check/);
 });
+
+test('constant-FPS resampling follows variable-duration source frames and preserves total duration', async () => {
+  const { buildConstantFrameRateSequence } = await import('../public/pixelforge/src/video-composer-core.mjs');
+  const source = [
+    { id: 'a', durationMs: 100, blob: new Blob(['a']) },
+    { id: 'b', durationMs: 200, blob: new Blob(['b']) },
+    { id: 'c', durationMs: 100, blob: new Blob(['c']) },
+  ];
+  const output = buildConstantFrameRateSequence(source, 10);
+  assert.equal(output.length, 4);
+  assert.deepEqual(output.map(frame => frame.id), ['a', 'b', 'b', 'c']);
+  assert.deepEqual(output.map(frame => frame.sourceIndex), [0, 1, 1, 2]);
+  assert.deepEqual(output.map(frame => frame.timestampMs), [0, 100, 200, 300]);
+  assert.equal(output.reduce((sum, frame) => sum + frame.durationMs, 0), 400);
+  assert.ok(output.every(frame => frame.blob instanceof Blob));
+});
+
+test('constant-FPS resampling rejects unsafe frame explosions and invalid timelines', async () => {
+  const { buildConstantFrameRateSequence } = await import('../public/pixelforge/src/video-composer-core.mjs');
+  assert.throws(() => buildConstantFrameRateSequence([{ durationMs: 10000 }], 60, { maxFrames: 100 }), /safe export limit/);
+  assert.throws(() => buildConstantFrameRateSequence([{ durationMs: 0 }], 12), /positive finite duration/);
+  assert.throws(() => buildConstantFrameRateSequence([], 12), /non-empty source/);
+});
