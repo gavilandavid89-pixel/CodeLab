@@ -2414,7 +2414,7 @@ const server = http.createServer(async (req, res) => {
       const inlineArtifactCommit = req.method === 'POST'
         ? pathname.match(/^\/api\/agent\/bridge\/artifacts\/([a-f0-9]{32})\/commit$/) : null;
       if (inlineArtifactBegin || inlineArtifactChunk || inlineArtifactCommit) {
-        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || requestUrl.searchParams.get('token') || '');
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || searchParams.get('token') || '');
         const acceptedBridgeToken = String(process.env.AGENT_INLINE_ARTIFACT_SMOKE_TEST || '') === '1' && process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST
           ? String(process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST)
           : AGENT_BRIDGE_CONTROL_SECRET || String(process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST || '');
