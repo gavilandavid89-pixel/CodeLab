@@ -49,7 +49,7 @@ export async function ensureNativeArtifactSchema(pool) {
     "    ALTER TABLE public.codelab_agent_artifacts DROP CONSTRAINT IF EXISTS codelab_agent_artifacts_kind_check;",
     "    ALTER TABLE public.codelab_agent_artifacts",
     "      ADD CONSTRAINT codelab_agent_artifacts_kind_check",
-    "      CHECK (kind = ANY (ARRAY['pixelforge_zip_upload','pixelforge_zip_export','pixelforge_composer_video','pixelforge_composer_png','codelab_zip_upload']));",
+    "      CHECK (kind = ANY (ARRAY['pixelforge_zip_upload','pixelforge_zip_export','pixelforge_composer_video','pixelforge_composer_png','codelab_zip_upload','codelab_project_png']));",
     "  END IF;",
     "END",
     "$native_artifact_migration$;"
