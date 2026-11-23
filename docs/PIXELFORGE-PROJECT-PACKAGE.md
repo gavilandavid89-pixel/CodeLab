@@ -27,7 +27,7 @@ mi-proyecto.codelab-pixelforge
     ├── manifest.json                # contrato, versión y rutas
     ├── project.json                 # documento nativo PixelForge
     ├── integrity.json               # SHA-256 y tamaño de cada archivo protegido
-    ├── frames/
+    ├── Frames/
     │   ├── frames.tscn              # índice/manifest de la línea de tiempo
     │   ├── frame-0001/
     │   │   ├── frame.json           # metadatos del frame y sus capas
@@ -37,6 +37,21 @@ mi-proyecto.codelab-pixelforge
     │       ├── frame.json
     │       ├── layer-base.rgba
     │       └── layer-detail.rgba
+    ├── Entorno/
+    │   ├── entorno.tscn
+    │   └── assets/                  # recursos exclusivos del entorno
+    ├── Efectos/
+    │   ├── efectos.tscn
+    │   └── assets/                  # sprites, texturas y recursos de efectos
+    ├── Detalles/
+    │   ├── detalles.tscn
+    │   └── assets/                  # detalles y recursos auxiliares
+    ├── Elementos/
+    │   ├── elementos.tscn
+    │   └── assets/                  # recursos propios de elementos
+    ├── Objetos/
+    │   ├── objetos.tscn
+    │   └── assets/                  # modelos, texturas y recursos de objetos
     ├── center.op/
     │   └── center.json              # índice de categorías y referencias
     ├── reference.personaje/
@@ -59,7 +74,9 @@ mi-proyecto.codelab-pixelforge
     └── project-files/
 ~~~
 
-Es una estructura de referencia legible. Las rutas exactas de los archivos de píxeles se declaran en los manifiestos/JSON; el importador no deduce una capa o un frame a partir del nombre del archivo.
+Esta es la estructura canónica del paquete PixelForge. Las seis carpetas son obligatorias en paquetes nuevos porque cada una contiene su manifiesto; las subcarpetas de recursos se incluyen cuando hay archivos. Todo recurso queda dentro de la carpeta de la sección a la que pertenece y se declara también en manifest.resources[] con su ruta exacta y destino. No mover recursos entre secciones renombrando solo el archivo.
+
+Los archivos .tscn de este contrato son manifiestos JSON propios de CodeLab: frames.tscn describe el timeline y los otros cinco .tscn describen las secciones. No son escenas nativas de Godot. El formato TSCN de Godot tiene su propia gramática de escenas y recursos; la extensión por sí sola no convierte este manifiesto en un archivo Godot. [Documentación oficial del formato TSCN](https://docs.godotengine.org/en/latest/engine_details/file_formats/tscn.html).
 
 ### 2.1 manifest.json
 
@@ -87,7 +104,7 @@ Es el documento nativo serializado. Contiene identidad/nombre del proyecto, dime
 
 No reemplazar project.json por una imagen PNG compuesta: eso elimina la estructura editable.
 
-## 3. Animación: frames/frames.tscn
+## 3. Animación: Frames/frames.tscn
 
 El índice declara:
 
@@ -116,7 +133,25 @@ Al instalar, los bytes se convierten a base64 y se reconstruye project.animation
 
 **No inferir frames por carpeta/extensión:** un PNG bajo assets/ o reference.personaje/ es un recurso/parte, no un frame. Solo el mapeo explícito frame → layer → pixelsPath lo convierte en un cel.
 
-## 4. Reference Center: qué significa reference.personaje
+## 4. Secciones de escena: Entorno, Efectos, Detalles, Elementos y Objetos
+
+Además del timeline y del Reference Center, cada proyecto nuevo lleva cinco manifiestos de sección:
+
+| Carpeta y archivo | Contenido |
+|---|---|
+| Entorno/entorno.tscn | Capas marcadas con role = environment, historial de entornos y datos propios de esa sección |
+| Efectos/efectos.tscn | Capas marcadas con role = effect y datos explícitos de efectos |
+| Detalles/detalles.tscn | Capas marcadas con role = detail y datos explícitos de detalles |
+| Elementos/elementos.tscn | Referencias a objetos de dibujo/vector etiquetados explícitamente como elements |
+| Objetos/objetos.tscn | Referencias a objetos de dibujo/vector etiquetados explícitamente como objects |
+
+Cada archivo usa el contrato JSON CodeLab `codelab-pixelforge-scene` version 1: `sceneType`, `projectId`, `canvas`, `layerIds`, `drawingObjectIds`, `vectorObjectIds` y `data`. Entorno también conserva `environmentHistory`.
+
+**No se clasifican cosas por adivinanza.** Las capas de Entorno/Efectos/Detalles se identifican mediante `drawingModel.layerRoles[layerId].role`. Elementos y Objetos solo incluyen objetos que ya llevan una etiqueta explícita `sceneSection`, `category` o `role` con el valor correspondiente. El contenido propio de cada sección se guarda en `drawingModel.sceneSections[section]` y se restaura al importar. Así, un objeto no termina en la carpeta equivocada por su nombre.
+
+Los manifiestos apuntan a los IDs del documento nativo; no duplican la imagen compuesta. Los recursos binarios específicos se guardan debajo de su carpeta, por ejemplo `Efectos/assets/spark.png` o `Objetos/textures/metal.png`, y se declaran en `manifest.resources[]`. Si el paquete se importa, CodeLab conserva los bytes en `packageResourceFiles` para que un guardado y una exportación posteriores no los pierdan.
+
+## 5. Reference Center: qué significa reference.personaje
 
 **reference.personaje es el nombre de una carpeta de categoría**, no una propiedad JavaScript ni un comando. El prefijo reference. es el namespace que el instalador estructurado exige para las carpetas de categorías. El texto posterior al punto es el identificador de categoría:
 
@@ -186,7 +221,7 @@ Al pulsar una parte, PixelForge crea una capa nueva con sus píxeles. Al copiar 
 
 Límites del Reference Center estructurado: hasta 256 partes por referencia y 16 MiB de píxeles RGBA8 incrustados en total.
 
-## 5. Integridad y rutas
+## 6. Integridad y rutas
 
 - integrity.json usa format = codelab-integrity, version = 1 y un mapa files.
 - Para cada ruta protegida guarda sha256 y byteSize; el instalador recalcula ambos y rechaza discrepancias.
@@ -194,7 +229,7 @@ Límites del Reference Center estructurado: hasta 256 partes por referencia y 16
 - Los archivos referenciados por los manifiestos deben existir.
 - No inventar rutas: primero se declara la ruta en el JSON/manifest y luego se incluye exactamente ese archivo en el ZIP.
 
-## 6. Recursos y nombres
+## 7. Recursos y nombres
 
 El instalador organiza recursos adicionales por declaración explícita manifest.resources[].destination; si no existe, utiliza segmentos de carpeta, alias semánticos, extensión y firma binaria. Prioridad:
 
@@ -219,7 +254,7 @@ Destinos reconocidos incluyen reference-center, assets, scenes, animations, fram
 
 No renombrar un archivo aislado sin actualizar todas las referencias que lo apuntan y el hash correspondiente en integrity.json.
 
-## 7. ZIP de agente/Video Composer actual: formato distinto
+## 8. ZIP de agente/Video Composer actual: formato distinto
 
 pixelforge-agent-zip.mjs exporta actualmente pixelforge-video-package v1. Su ZIP contiene:
 
@@ -243,7 +278,7 @@ El parser valida manifiesto, dimensiones y frame count, carga el JSON .pforge, v
 
 Hasta que ambos flujos se integren explícitamente, no afirmar que un ZIP de Video Composer ha pasado el ciclo completo del paquete CodeLab .codelab-pixelforge.
 
-## 8. Flujo de importación/edición/guardado y aceptación
+## 9. Flujo de importación/edición/guardado y aceptación
 
 Para el paquete estructurado v2, el comportamiento esperado es:
 
@@ -259,20 +294,20 @@ Para el paquete estructurado v2, el comportamiento esperado es:
 
 Prueba de aceptación obligatoria: **exportar → importar → editar una capa/parte → guardar → exportar → importar otra vez**. Comparar datos nativos, no solo el aspecto de los PNG.
 
-## 9. Código fuente y pruebas que son fuente de verdad
+## 10. Código fuente y pruebas que son fuente de verdad
 
 | Área | Código / prueba |
 |---|---|
 | Marcadores y nombre externo | codelab-project-artifact-import.mjs, tests/codelab-artifact-filename.test.mjs |
 | Instalación ZIP y destinos de recursos | codelab-project-package-installer.mjs, tests/codelab-project-package-installer.test.mjs |
-| Esquema estructurado v2, frames y Reference Center | codelab-project-structured-format.mjs, tests/codelab-structured-project-v2.test.mjs |
+| Esquema estructurado v2, frames, cinco secciones y Reference Center | codelab-project-structured-format.mjs, tests/codelab-structured-project-v2.test.mjs |
 | Modelo de dibujo y referencias | public/pixelforge/src/drawing-intelligence.js |
 | Operaciones Headless de referencias | public/pixelforge/src/headless.js, tests/pixelforge-reference-center.test.mjs |
 | UI del Reference Center | public/pixelforge/src/reference-center-ui.js |
-| Exportador estructurado CodeLab v2 | pixelforge-codelab-package.mjs, tests/pixelforge-codelab-package.test.mjs |
+| Exportador estructurado CodeLab v2 (Node) | pixelforge-codelab-package.mjs, tests/pixelforge-codelab-package.test.mjs |\n| Importador/exportador real de la UI PixelForge | public/pixelforge/src/codelab-package.js, tests/pixelforge-codelab-package-browser.test.mjs |
 | ZIP de agente/Video Composer | pixelforge-agent-zip.mjs, tests/pixelforge-agent-zip.test.mjs |
 | ZIP de bajo nivel | public/pixelforge/src/zip-export.js, public/pixelforge/src/video-composer-core.mjs |
 
-El nuevo exportador estructurado se implementa en pixelforge-codelab-package.mjs y produce el paquete que consume el instalador CodeLab v2. Aún es un módulo de exportación independiente: no reemplaza pixelforge-agent-zip.mjs ni se debe afirmar que la UI o el flujo de subida existente ya lo invoca hasta integrar explícitamente ese punto de entrada.
+El exportador de referencia de Node se implementa en pixelforge-codelab-package.mjs. La interfaz PixelForge usa public/pixelforge/src/codelab-package.js: export-project genera .codelab-pixelforge e import-file reconoce el marcador raíz, valida integridad, reconstruye frames y referencias y guarda el documento con saveProject. El ZIP de Video Composer sigue siendo un formato separado para secuencias PNG de vídeo.
 
 Si cambia un nombre de archivo, ruta, campo, límite o regla de instalación, actualizar este documento y las pruebas en el mismo cambio.
