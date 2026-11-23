@@ -1,4 +1,4 @@
-name: CodeLab A/B persistent animation verification
+name: CodeLab A/B temporary-session video verification
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright
           npx playwright install --with-deps chromium
-      - name: Start A persistent CodeLab session
+      - name: Start A temporary CodeLab session (30-minute maximum)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
