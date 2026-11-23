@@ -132,5 +132,11 @@ test('rejects a frame that declares the wrong layer count instead of inventing m
   const frame = JSON.parse(pkg.files.get('frames/frame.001/frame.json').toString('utf8'));
   frame.layerCount = 1;
   pkg.files.set('frames/frame.001/frame.json', Buffer.from(JSON.stringify(frame)));
+  const integrity = JSON.parse(pkg.files.get('integrity.json').toString('utf8'));
+  integrity.files['frames/frame.001/frame.json'] = {
+    sha256: createHash('sha256').update(pkg.files.get('frames/frame.001/frame.json')).digest('hex'),
+    byteSize: pkg.files.get('frames/frame.001/frame.json').length,
+  };
+  pkg.files.set('integrity.json', Buffer.from(JSON.stringify(integrity)));
   assert.throws(() => installCodeLabPackage(pkg), /must declare exactly 2 layers/);
 });
