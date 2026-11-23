@@ -148,59 +148,27 @@ Reglas:
 
 La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado permanentemente como vía especializada y obligatoria del empaquetador de vídeo**.
 
-## 6.3 Ciclo de animación: Headless + Xvfb + vídeo real + corrección
+## 6.3 Uso de Xvfb durante la animación en Headless
 
-Para animaciones, el ciclo operativo es iterativo y debe ejecutarse sobre el proyecto real. **Xvfb es el display virtual del entorno de ejecución cuando el Headless necesita un navegador/display; no es un sustituto del Headless ni de la inspección real.**
+Cuando el **Headless propio del agente** necesita un display gráfico para ejecutar el navegador o los componentes de PixelForge durante una tarea de animación, se utiliza **Xvfb como display virtual**.
 
 ```text
-Referencia / proyecto inicial
-        ↓
 Headless propio del agente
         ↓
-Xvfb (display virtual, si el runtime lo requiere)
+Xvfb (display virtual, cuando el runtime lo requiere)
         ↓
-PixelForge Headless: crear/ajustar timeline
+PixelForge Headless
         ↓
-validar timeline (FPS, frames, duración, cels)
-        ↓
-.codelab
-        ↓
-Neon (proyecto + orden + revisión)
-        ↓
-CodeLab / sesión real
-        ↓
-A/B de vídeo (siempre y exclusivamente para vídeo)
-        ↓
-PixelForge + Video Composer
-        ↓
-WebM/MP4 + evidencia visual
-        ↓
-Neon
-        ↓
-Agente inspecciona el vídeo real
-        ↓
-¿Movimiento/frames/composición correctos?
-      ↙                         ↘
-    NO                           SÍ
-     ↓                            ↓
-Headless propio                  cerrar ciclo
-     ↓                            ↓
-corregir timeline                entregar resultado
-     ↓
-repetir desde validación
+crear / ajustar / validar la animación
 ```
 
 Reglas específicas:
 
-- El objetivo de cada iteración es producir una animación real en el proyecto editable; un vídeo generado localmente fuera de este circuito **no cuenta como evidencia del ciclo**.
-- Xvfb solo aporta el display virtual necesario para ejecutar componentes que dependen de una pantalla/navegador. El trabajo de edición y la lógica de animación siguen perteneciendo al Headless propio del agente.
-- La animación se valida primero en el estado del proyecto (timeline, FPS, número de frames, duración y cels) y después mediante el vídeo real.
-- Para el objetivo de referencia de este proyecto, **120 frames a 12 FPS = 10 segundos**, siempre que el proyecto y el render mantengan esos valores.
-- El vídeo debe generarse mediante la ruta A/B obligatoria de vídeo y corresponder a la revisión real enviada a Neon.
-- La inspección visual del WebM/MP4 forma parte de la verificación: comprobar movimiento, continuidad entre frames, composición, duración/FPS y defectos visibles.
-- Si el vídeo no demuestra una animación correcta, **no se entrega**: se vuelve al Headless propio, se corrige el timeline y se repite el ciclo.
-- No presentar un harness local, una animación simulada o un vídeo de prueba como si fuera resultado del Headless real.
-- El ciclo termina solo cuando la revisión del proyecto y la evidencia de vídeo corresponden entre sí y el resultado esperado queda verificado.
+- Xvfb solo proporciona el display virtual necesario para el runtime; **no sustituye al Headless del agente**.
+- La creación y modificación de la animación sigue realizándose mediante el Headless propio del agente.
+- Xvfb no implica por sí mismo un cambio en la arquitectura Neon → bridge/worker → CodeLab.
+- El uso de Xvfb debe quedar limitado a los procesos que realmente necesiten un display gráfico.
+- No presentar una ejecución local o un harness como resultado del Headless real simplemente porque utilice Xvfb.
 
 ## 7. Principio de cierre
 
