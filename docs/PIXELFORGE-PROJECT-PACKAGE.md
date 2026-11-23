@@ -125,7 +125,7 @@ Al instalar, los bytes se convierten a base64 y se reconstruye project.animation
 - reference.objeto/ — objetos/props.
 - reference.efecto/ — efectos.
 
-El ID puede estar en español; debe coincidir con el id de la categoría en center.op/center.json. La carpeta debe comenzar por reference.; cada reference.json debe permanecer dentro de la carpeta que declara su categoría.
+El id de categoría y el sufijo de carpeta son campos separados: el instalador valida que folder empiece por reference., pero no exige que el texto después del punto coincida con id. Conviene mantener una convención explícita, por ejemplo id = character y folder = reference.personaje, o id = personaje y folder = reference.personaje. Cada reference.json debe permanecer dentro de la carpeta que declara su categoría.
 
 ### 4.1 center.op/center.json
 
@@ -269,7 +269,10 @@ Prueba de aceptación obligatoria: **exportar → importar → editar una capa/p
 | Modelo de dibujo y referencias | public/pixelforge/src/drawing-intelligence.js |
 | Operaciones Headless de referencias | public/pixelforge/src/headless.js, tests/pixelforge-reference-center.test.mjs |
 | UI del Reference Center | public/pixelforge/src/reference-center-ui.js |
+| Exportador estructurado CodeLab v2 | pixelforge-codelab-package.mjs, tests/pixelforge-codelab-package.test.mjs |
 | ZIP de agente/Video Composer | pixelforge-agent-zip.mjs, tests/pixelforge-agent-zip.test.mjs |
 | ZIP de bajo nivel | public/pixelforge/src/zip-export.js, public/pixelforge/src/video-composer-core.mjs |
+
+El nuevo exportador estructurado se implementa en pixelforge-codelab-package.mjs y produce el paquete que consume el instalador CodeLab v2. Aún es un módulo de exportación independiente: no reemplaza pixelforge-agent-zip.mjs ni se debe afirmar que la UI o el flujo de subida existente ya lo invoca hasta integrar explícitamente ese punto de entrada.
 
 Si cambia un nombre de archivo, ruta, campo, límite o regla de instalación, actualizar este documento y las pruebas en el mismo cambio.
