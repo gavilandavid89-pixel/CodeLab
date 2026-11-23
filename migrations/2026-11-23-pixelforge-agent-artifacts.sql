@@ -26,6 +26,7 @@ BEGIN
        AND conname = 'codelab_agent_artifacts_kind_check'
        AND pg_get_constraintdef(oid) LIKE '%pixelforge_composer_video%'
        AND pg_get_constraintdef(oid) LIKE '%pixelforge_composer_png%'
+       AND pg_get_constraintdef(oid) LIKE '%codelab_zip_upload%'
   ) THEN
     ALTER TABLE public.codelab_agent_artifacts
       DROP CONSTRAINT IF EXISTS codelab_agent_artifacts_kind_check;
