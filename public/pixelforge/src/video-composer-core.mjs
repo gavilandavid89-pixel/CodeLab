@@ -207,3 +207,40 @@ export async function parsePixelForgeVideoPackage(blob) {
     entryCount: entries.size,
   };
 }
+
+/**
+ * Convert a variable-duration source timeline into a constant-frame-rate sequence.
+ * Each output frame references the source image covering its presentation timestamp.
+ */
+export function buildConstantFrameRateSequence(frames, fps, { maxFrames = 24000 } = {}) {
+  if (!Array.isArray(frames) || frames.length < 1) throw new TypeError('A non-empty source frame sequence is required.');
+  if (!Number.isInteger(fps) || fps < 1 || fps > 60) throw new RangeError('Output FPS must be an integer from 1 to 60.');
+  if (!Number.isInteger(maxFrames) || maxFrames < 1) throw new RangeError('Maximum output frame count must be positive.');
+  const durations = frames.map(frame => Number(frame?.durationMs));
+  if (durations.some(duration => !Number.isFinite(duration) || duration < 1)) {
+    throw new TypeError('Every source frame must have a positive finite duration.');
+  }
+  const totalDurationMs = durations.reduce((sum, duration) => sum + duration, 0);
+  const frameIntervalMs = 1000 / fps;
+  const outputCount = Math.ceil(totalDurationMs / frameIntervalMs - 1e-10);
+  if (!Number.isSafeInteger(outputCount) || outputCount > maxFrames) {
+    throw new RangeError('The selected FPS would produce ' + outputCount + ' frames, exceeding the safe export limit of ' + maxFrames + '. Reduce the duration or output FPS.');
+  }
+  const cumulativeEnds = [];
+  let elapsed = 0;
+  for (const duration of durations) { elapsed += duration; cumulativeEnds.push(elapsed); }
+  const output = [];
+  let sourceIndex = 0;
+  for (let index = 0; index < outputCount; index++) {
+    const timestampMs = index * frameIntervalMs;
+    while (sourceIndex < cumulativeEnds.length - 1 && timestampMs >= cumulativeEnds[sourceIndex] - 1e-8) sourceIndex++;
+    output.push({
+      ...frames[sourceIndex],
+      index,
+      sourceIndex,
+      timestampMs,
+      durationMs: Math.min(frameIntervalMs, totalDurationMs - timestampMs),
+    });
+  }
+  return output;
+}
