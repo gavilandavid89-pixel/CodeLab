@@ -39,7 +39,8 @@ test('browser package exporter writes all six project folders and the named TSCN
   assert.equal(installed.project.drawingModel.sceneSections.environment.label, 'Night forest');
   assert.equal(installed.project.drawingModel.sceneSections.effects.entries[0].id, 'spark-01');
   assert.equal(installed.project.packageResourceFiles[0].path, 'Entorno/assets/palette.txt');
-  assert.equal(installed.project.packageResources[0].byteSize, new TextEncoder().encode('embedded palette bytes').length);\n  assert.equal(installed.manifest.resources[0].destination, 'environment');
+  assert.equal(installed.project.packageResources[0].byteSize, new TextEncoder().encode('embedded palette bytes').length);
+  assert.equal(installed.manifest.resources[0].destination, 'environment');
   assert.equal(installed.project.animation.frames.length, fixture().animation.frames.length);
 });
 
