@@ -443,7 +443,11 @@ export class RasterDocument {
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
     const replacement = [...parseHexColor(color), 255], secondary = [...parseHexColor(secondaryColor), 255];
-    const seedOffset = (y * this.width + x) * 4;
+    const seedPixel = y * this.width + x;
+    // A fill must start inside the active selection. Treat the selection as a
+    // traversal boundary, not merely a paint-time clipping mask.
+    if (this.selectionMask && !this.selectionMask[seedPixel]) return 0;
+    const seedOffset = seedPixel * 4;
     const seed = Array.from(layer.pixels.subarray(seedOffset, seedOffset + 4));
     const matches = index => {
       // RGB values under zero alpha are invisible and must not split a transparent fill region.
@@ -484,6 +488,7 @@ export class RasterDocument {
         const px = pixel % this.width, py = Math.floor(pixel / this.width);
         const enqueue = neighbor => {
           if (neighbor < 0 || neighbor >= pixelCount || visited[neighbor]) return;
+          if (this.selectionMask && !this.selectionMask[neighbor]) return;
           visited[neighbor] = 1;
           if (matches(neighbor * 4)) queue[tail++] = neighbor;
         };
