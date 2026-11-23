@@ -205,7 +205,7 @@ function executeVectorModelAction(document, action) {
       throw new RangeError('Vector model exceeds the 10,000-object or 240-frame limit.');
     }
     const serialized = JSON.stringify(candidate);
-    if (Buffer.byteLength(serialized, 'utf8') > 16 * 1024 * 1024) {
+    if (new TextEncoder().encode(serialized).byteLength > 16 * 1024 * 1024) {
       throw new RangeError('Vector model exceeds the 16 MiB Headless vector budget.');
     }
     const audit = auditVectorModel(candidate);
