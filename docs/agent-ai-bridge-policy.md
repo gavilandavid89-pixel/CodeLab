@@ -47,6 +47,23 @@ GitHub versiona el software y puede proporcionar el headless del agente; no es e
 - No confundas la ventana de supervisión del agente con un timeout del worker. Respeta los límites técnicos reales declarados por la operación; no mates procesos solo porque el agente dejó de esperar o la sesión de conversación se interrumpió.
 
 ## 3.1 Obtención del Headless del agente mediante workflow y artefacto
+## 3.2 Inicio de workflows disponibles solo manualmente
+
+La disponibilidad de un workflow únicamente mediante **ejecución manual** no impide al agente utilizarlo. Cuando el workflow es la vía requerida para producir un artefacto o realizar una operación necesaria, el agente debe **buscar primero una forma soportada de iniciarlo**, aunque la interfaz de GitHub lo muestre como `workflow_dispatch`/manual.
+
+Reglas:
+
+- El agente **sí puede iniciar workflows** que estén configurados para ejecución manual cuando disponga de un mecanismo autorizado para hacerlo.
+- Que un workflow no se ejecute automáticamente por `push`, `pull_request` u otro evento no significa que deba omitirse.
+- Si la herramienta o interfaz utilizada no expone directamente el disparo manual, el agente debe buscar **otras formas soportadas** de iniciar ese mismo workflow (por ejemplo, una acción/API/puente autorizado disponible en el entorno), en lugar de concluir inmediatamente que no puede ejecutarlo.
+- No se debe sustituir el workflow por una reconstrucción local o por un artefacto inventado cuando el workflow es la fuente canónica del Headless.
+- Una vez iniciado, el agente debe esperar la ejecución real, verificar su estado y obtener el artefacto real producido por esa ejecución.
+- Si después de explorar los mecanismos soportados no existe ningún método autorizado para iniciar el workflow, debe informarse del bloqueo concreto; no debe simular la ejecución.
+
+Para el Headless del agente, esto refuerza la regla anterior:
+
+**workflow manual disponible → agente busca un mecanismo soportado para iniciarlo → workflow empaqueta el Headless más reciente → artefacto real → agente obtiene el artefacto → Headless aislado.**
+
 
 El **Headless que utiliza el agente no se obtiene clonando el repositorio ni reconstruyéndolo manualmente**. La fuente operativa es un **workflow de GitHub Actions dedicado a empaquetar el Headless más reciente**.
 
