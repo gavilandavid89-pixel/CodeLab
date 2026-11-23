@@ -171,7 +171,7 @@ async function ensureAgentBridgeWakeListener() {
     // listener is being registered may be missed. Reconcile durable queued state
     // once after LISTEN is active, then rely only on notifications afterward.
     const pendingWake = await client.query(
-      "SELECT command_id, workspace_id FROM public.codelab_agent_commands WHERE status='queued' AND expires_at > now() AND COALESCE((payload->>'wake')::boolean, false) = true ORDER BY created_at LIMIT 1"
+      "SELECT command_id, workspace_id FROM public.codelab_agent_commands WHERE status='queued' AND expires_at > now() ORDER BY created_at LIMIT 1"
     );
     if (pendingWake.rowCount) {
       console.log('[CodeLab Native Bridge] durable wake state found at listener startup:', pendingWake.rows[0].command_id);
