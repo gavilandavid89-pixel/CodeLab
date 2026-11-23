@@ -44,25 +44,30 @@ function crc32Bytes(bytes, start, end) {
 }
 
 async function validatePng(blob, expectedWidth, expectedHeight) {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  if (bytes.length < 57 || bytes[0] !== 137 || bytes[1] !== 80 || bytes[2] !== 78 ||
-      bytes[3] !== 71 || bytes[4] !== 13 || bytes[5] !== 10 || bytes[6] !== 26 || bytes[7] !== 10) {
+  if (blob.size < 57) throw new TypeError('Frame image is not a complete PNG file.');
+  const signature = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+  if (signature.length !== 8 || signature[0] !== 137 || signature[1] !== 80 ||
+      signature[2] !== 78 || signature[3] !== 71 || signature[4] !== 13 ||
+      signature[5] !== 10 || signature[6] !== 26 || signature[7] !== 10) {
     throw new TypeError('Frame image is not a complete PNG file.');
   }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 8, sawHeader = false, sawData = false, sawEnd = false;
-  while (offset < bytes.length) {
-    if (offset + 12 > bytes.length) throw new TypeError('PNG chunk header is truncated.');
-    const length = view.getUint32(offset, false);
+  while (offset < blob.size) {
+    if (offset + 12 > blob.size) throw new TypeError('PNG chunk header is truncated.');
+    const header = new Uint8Array(await blob.slice(offset, offset + 8).arrayBuffer());
+    const length = new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(0, false);
     const dataStart = offset + 8, crcOffset = dataStart + length, chunkEnd = crcOffset + 4;
-    if (chunkEnd > bytes.length) throw new TypeError('PNG chunk payload is truncated.');
-    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
-    if (crc32Bytes(bytes, offset + 4, crcOffset) !== view.getUint32(crcOffset, false)) {
-      throw new TypeError('PNG ' + type + ' chunk failed its CRC integrity check.');
-    }
+    if (chunkEnd > blob.size) throw new TypeError('PNG chunk payload is truncated.');
+    const typeBytes = header.slice(4, 8);
+    const type = String.fromCharCode(...typeBytes);
+    const crcBytes = new Uint8Array(await blob.slice(crcOffset, chunkEnd).arrayBuffer());
+    const expectedCrc = new DataView(crcBytes.buffer, crcBytes.byteOffset, crcBytes.byteLength).getUint32(0, false);
+    const actualCrc = await crc32Blob(new Blob([typeBytes, blob.slice(dataStart, crcOffset)]));
+    if (actualCrc !== expectedCrc) throw new TypeError('PNG ' + type + ' chunk failed its CRC integrity check.');
     if (!sawHeader) {
       if (type !== 'IHDR' || length !== 13) throw new TypeError('PNG must begin with a valid IHDR chunk.');
-      const width = view.getUint32(dataStart, false), height = view.getUint32(dataStart + 4, false);
+      const dimensions = new DataView(await blob.slice(dataStart, dataStart + 8).arrayBuffer());
+      const width = dimensions.getUint32(0, false), height = dimensions.getUint32(4, false);
       if (width !== expectedWidth || height !== expectedHeight) {
         throw new TypeError('PNG frame dimensions do not match the video manifest.');
       }
@@ -72,7 +77,7 @@ async function validatePng(blob, expectedWidth, expectedHeight) {
     if (type === 'IEND') {
       if (length !== 0 || !sawData) throw new TypeError('PNG IEND is invalid or image data is missing.');
       sawEnd = true;
-      if (chunkEnd !== bytes.length) throw new TypeError('PNG contains data after its IEND chunk.');
+      if (chunkEnd !== blob.size) throw new TypeError('PNG contains data after its IEND chunk.');
       break;
     }
     offset = chunkEnd;
