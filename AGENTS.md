@@ -67,5 +67,6 @@ Antes de presentar el cambio al usuario, volver a leer los archivos modificados 
 - [Comunicación CodeLab ↔ Neon de extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)
 - [Política del agente y bridge](docs/agent-ai-bridge-policy.md)
 - [Flujo autónomo de dibujo y animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
+- [Formato ZIP de PixelForge y Reference Center](docs/PIXELFORGE-PROJECT-PACKAGE.md)
 - [Recuperación de expiración de sesión](docs/SESSION-EXPIRATION-RECOVERY.md)
 - [Cuenta y persistencia](docs/account-admin-and-persistence-policy.md)
