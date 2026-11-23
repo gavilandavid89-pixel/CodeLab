@@ -194,3 +194,10 @@ test('worker SQL allowlist and assistant client cover every executable native ma
     'pixelforge_export_zip', 'pixelforge_video_composer'
   ]) assert.ok(NATIVE_ACTIONS.includes(action), action + ' must be available to the assistant');
 });
+
+
+test('mailbox inspection exposes vector model, audit and SVG export without mutation approval', () => {
+  assert.match(source, /vector_model:\s*\{ name: 'vector\.model\.get' \}/);
+  assert.match(source, /vector_audit:\s*\{ name: 'vector\.audit' \}/);
+  assert.match(source, /vector_svg:\s*\{ name: 'vector\.svg\.export' \}/);
+});
