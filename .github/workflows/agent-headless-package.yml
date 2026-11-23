@@ -1,0 +1,59 @@
+name: Agent Headless Package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/pixelforge/src/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/agent-headless-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-headless:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest Headless source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
+
+      - name: Validate Headless source
+        run: |
+          set -euo pipefail
+          for file in public/pixelforge/src/*.js; do
+            node --experimental-default-type=module --check "$file"
+          done
+
+      - name: Package latest agent Headless
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/agent-headless"
+          mkdir -p "$RUNNER_TEMP/agent-headless/pixelforge/src"
+          cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/pixelforge/src/"
+          cp package.json "$RUNNER_TEMP/agent-headless/"
+          if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
+          printf '%s\n' \
+            "repository=$GITHUB_REPOSITORY" \
+            "commit=$GITHUB_SHA" \
+            "ref=$GITHUB_REF_NAME" \
+            "headless_source=public/pixelforge/src" \
+            "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
+          tar -C "$RUNNER_TEMP/agent-headless" -czf "$RUNNER_TEMP/agent-headless-$GITHUB_SHA.tar.gz" .
+
+      - name: Publish latest agent Headless artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-headless-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-headless-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
