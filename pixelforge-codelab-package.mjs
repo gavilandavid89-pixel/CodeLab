@@ -1,0 +1,259 @@
+import { createHash } from 'node:crypto';
+import { createZip } from './public/pixelforge/src/zip-export.js';
+import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
+
+const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
+const MAX_FRAMES = 240;
+const MAX_LAYERS = 64;
+const MAX_REFERENCE_PARTS = 256;
+const MAX_REFERENCE_BYTES = 16 * 1024 * 1024;
+
+const safeSlug = (value, fallback = 'item') =>
+  String(value || fallback).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 72) || fallback;
+
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+
+function safeRelativePath(value) {
+  return typeof value === 'string' && value.length > 0 && !value.startsWith('/') &&
+    !value.includes('\\') && !value.includes('\0') &&
+    !value.split('/').some(part => !part || part === '.' || part === '..');
+}
+
+function decodePixels(value, expectedBytes, label) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new TypeError(label + ' must be base64 RGBA8 pixels.');
+  }
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.length !== expectedBytes) {
+    throw new RangeError(label + ' must contain exactly ' + expectedBytes + ' RGBA8 bytes; received ' + bytes.length + '.');
+  }
+  return bytes;
+}
+
+function frameLayers(frame, project, frameIndex) {
+  const cels = new Map((frame?.cels || []).map(cel => [String(cel.layerId), cel]));
+  return project.layers.map(layer => {
+    const cel = cels.get(String(layer.id));
+    const encoded = cel?.pixels ?? (frameIndex === -1 ? layer.pixels : null);
+    if (typeof encoded !== 'string') {
+      throw new TypeError('Frame ' + (frameIndex + 1) + ' is missing pixels for layer ' + layer.id + '.');
+    }
+    const pixels = decodePixels(encoded, project.width * project.height * 4, 'Frame ' + (frameIndex + 1) + '/' + layer.id);
+    return { layer, pixels };
+  });
+}
+
+function categoryFolder(category) {
+  const aliases = {
+    character: 'personaje', characters: 'personaje', personaje: 'personaje',
+    scene: 'escena', scenes: 'escena', environment: 'escena', escena: 'escena',
+    object: 'objeto', objects: 'objeto', prop: 'objeto', objeto: 'objeto',
+    effect: 'efecto', effects: 'efecto', efecto: 'efecto',
+    part: 'parte', parts: 'parte', parte: 'parte',
+  };
+  return aliases[String(category || 'object').toLowerCase()] || safeSlug(category, 'objeto');
+}
+
+function addReferenceEntries(project, files) {
+  const entries = project.drawingModel?.referenceCenter?.entries || [];
+  const categories = new Map();
+  let embeddedBytes = 0;
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') throw new TypeError('Reference Center contains an invalid entry.');
+    const categoryId = safeSlug(entry.category, 'object');
+    const folder = 'reference.' + categoryFolder(entry.category);
+    if (!categories.has(categoryId)) categories.set(categoryId, { id: categoryId, folder, references: [] });
+    const referenceId = safeSlug(entry.id, 'reference');
+    const referencePath = folder + '/' + safeSlug(entry.name, 'reference') + '-' + referenceId + '/reference.json';
+    const width = Number(entry.geometry?.canvas?.width || project.width);
+    const height = Number(entry.geometry?.canvas?.height || project.height);
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 4096 || height > 4096) {
+      throw new RangeError('Reference ' + entry.name + ' has invalid canvas dimensions.');
+    }
+    const snapshot = new Map((entry.layerSnapshot || []).map(layer => [String(layer.id), layer]));
+    const sourceParts = Array.isArray(entry.parts) ? entry.parts : [];
+    if (!sourceParts.length) {
+      throw new TypeError('Reference ' + entry.name + ' has no editable parts. Image-only references must be exported as package resources.');
+    }
+    if (sourceParts.length > MAX_REFERENCE_PARTS) throw new RangeError('Reference ' + entry.name + ' exceeds 256 parts.');
+    const parts = sourceParts.map((part, index) => {
+      const partId = safeSlug(part.id, 'part-' + (index + 1));
+      const partWidth = Number(part.width || width);
+      const partHeight = Number(part.height || height);
+      const pixelData = part.pixels || snapshot.get(String(part.layerId))?.pixels;
+      const bytes = decodePixels(pixelData, partWidth * partHeight * 4, 'Reference ' + entry.name + '/' + part.name);
+      embeddedBytes += bytes.length;
+      if (embeddedBytes > MAX_REFERENCE_BYTES) throw new RangeError('Reference Center exceeds the 16 MiB embedded RGBA8 budget.');
+      const pixelsPath = folder + '/' + safeSlug(entry.name, 'reference') + '-' + referenceId + '/parts/' + partId + '.rgba';
+      files.set(pixelsPath, bytes);
+      const { pixels, ...metadata } = part;
+      return {
+        ...metadata,
+        id: part.id || partId,
+        name: part.name || partId,
+        role: part.role || 'detail',
+        width: partWidth,
+        height: partHeight,
+        pixelsPath,
+      };
+    });
+    const { imageDataUrl, ...referenceMetadata } = entry;
+    files.set(referencePath, Buffer.from(JSON.stringify({
+      ...referenceMetadata,
+      id: entry.id || referenceId,
+      name: entry.name || 'Reference',
+      width,
+      height,
+      parts,
+    }, null, 2), 'utf8'));
+    categories.get(categoryId).references.push({ path: referencePath });
+  }
+  return { format: 'codelab-reference-center', version: 1, categories: [...categories.values()] };
+}
+
+function addAnimation(project, files) {
+  const source = project.animation;
+  const frames = source?.frames?.length
+    ? source.frames
+    : [{ id: 'frame-still', durationMs: 1000, cels: project.layers.map(layer => ({ layerId: layer.id, pixels: layer.pixels })) }];
+  if (frames.length > MAX_FRAMES) throw new RangeError('PixelForge structured packages support at most 240 frames.');
+  if (!Array.isArray(project.layers) || !project.layers.length || project.layers.length > MAX_LAYERS) {
+    throw new RangeError('PixelForge project must contain 1–64 layers.');
+  }
+  const frameRefs = [];
+  let totalBytes = 0;
+  frames.forEach((frame, index) => {
+    const directory = 'frames/frame-' + String(index + 1).padStart(4, '0');
+    const layers = frameLayers(frame, project, source?.frames?.length ? index : -1);
+    const frameLayersMetadata = layers.map(({ layer, pixels }) => {
+      totalBytes += pixels.length;
+      if (totalBytes > 64 * 1024 * 1024) throw new RangeError('PixelForge animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
+      const pixelsPath = directory + '/' + safeSlug(layer.name, layer.id) + '-' + safeSlug(layer.id, 'layer') + '.rgba';
+      files.set(pixelsPath, pixels);
+      return {
+        id: String(layer.id),
+        name: String(layer.name || layer.id),
+        pixelsPath,
+        position: { x: Number(layer.x || 0), y: Number(layer.y || 0) },
+        opacity: Number(layer.opacity ?? 1),
+        visible: layer.visible !== false,
+        locked: layer.locked === true,
+        zIndex: project.layers.findIndex(item => item.id === layer.id),
+      };
+    });
+    const framePath = directory + '/frame.json';
+    files.set(framePath, Buffer.from(JSON.stringify({
+      id: String(frame.id || 'frame-' + (index + 1)),
+      name: String(frame.name || 'Frame ' + (index + 1)),
+      index,
+      width: project.width,
+      height: project.height,
+      durationMs: Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12))))),
+      layerCount: frameLayersMetadata.length,
+      layers: frameLayersMetadata,
+    }, null, 2), 'utf8'));
+    frameRefs.push({ path: framePath });
+  });
+  const manifest = {
+    format: 'codelab-frames',
+    version: 1,
+    canvas: { width: project.width, height: project.height },
+    fps: Number.isInteger(source?.fps) ? Math.max(1, Math.min(60, source.fps)) : 12,
+    activeFrameIndex: Math.max(0, Math.min(frames.length - 1, Number(source?.activeFrameIndex || 0))),
+    loop: source?.loop !== false,
+    playbackSpeed: Number.isFinite(Number(source?.playbackSpeed)) ? Number(source.playbackSpeed) : 1,
+    frames: frameRefs,
+  };
+  files.set('frames/frames.tscn', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
+  return manifest;
+}
+
+export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [] } = {}) {
+  if (!sourceProject || typeof sourceProject !== 'object' || Array.isArray(sourceProject)) {
+    throw new TypeError('A PixelForge project object is required.');
+  }
+  const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
+  const project = runtime.toJSON();
+  if (project.format !== 'pixelforge-project' || !project.id || !project.name ||
+      !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
+      project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096) {
+    throw new TypeError('The source must be a valid native PixelForge project.');
+  }
+
+  const files = new Map();
+  const referenceCenter = addReferenceEntries(project, files);
+  const frames = addAnimation(project, files);
+  const resourceDeclarations = [];
+  for (const resource of resources) {
+    if (!resource || !safeRelativePath(resource.path) || files.has(resource.path)) {
+      throw new TypeError('Package resource path is invalid or duplicated: ' + String(resource?.path || ''));
+    }
+    const bytes = Buffer.isBuffer(resource.bytes) ? resource.bytes : Buffer.from(resource.bytes || []);
+    if (!bytes.length) throw new TypeError('Package resource is empty: ' + resource.path);
+    const destination = String(resource.destination || 'project-files');
+    files.set(resource.path, bytes);
+    resourceDeclarations.push({
+      path: resource.path,
+      destination,
+      contentType: String(resource.contentType || 'application/octet-stream'),
+    });
+  }
+  if (Array.isArray(project.packageResources) && project.packageResources.length && !resources.length) {
+    throw new Error('The project declares external packageResources; provide their bytes in the resources option instead of silently dropping them.');
+  }
+
+  delete project.animation;
+  if (project.drawingModel?.referenceCenter) {
+    project.drawingModel.referenceCenter.entries = project.drawingModel.referenceCenter.entries.filter(entry => !entry?.parts?.length);
+  }
+  const projectBytes = Buffer.from(JSON.stringify(project), 'utf8');
+  if (projectBytes.length > 96 * 1024 * 1024) throw new RangeError('PixelForge project JSON exceeds the 96 MiB limit.');
+  files.set('project.json', projectBytes);
+  files.set('frames/frames.tscn', Buffer.from(JSON.stringify(frames, null, 2), 'utf8'));
+  files.set('center.op/center.json', Buffer.from(JSON.stringify(referenceCenter, null, 2), 'utf8'));
+
+  const manifest = {
+    format: 'codelab',
+    version: 2,
+    schemaVersion: 2,
+    layout: 'structured',
+    editor: 'pixelforge',
+    projectType: 'pixelforge',
+    entry: 'project.json',
+    integrityPath: 'integrity.json',
+    frames: { manifestPath: 'frames/frames.tscn' },
+    referenceCenter: { manifestPath: 'center.op/center.json' },
+    resources: resourceDeclarations,
+  };
+  files.set('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
+  files.set('project.codelab-pixelforge', Buffer.alloc(0));
+
+  const integrity = { format: 'codelab-integrity', version: 1, files: {} };
+  for (const [path, bytes] of files) {
+    integrity.files[path] = { sha256: sha256(bytes), byteSize: bytes.length };
+  }
+  files.set('integrity.json', Buffer.from(JSON.stringify(integrity, null, 2), 'utf8'));
+
+  const entries = [...files].map(([name, data]) => ({ name, data }));
+  const bytes = Buffer.from(createZip(entries));
+  if (bytes.length > MAX_PACKAGE_BYTES) throw new RangeError('PixelForge CodeLab package exceeds the 100 MiB artifact limit.');
+  return {
+    bytes,
+    filename: safeSlug(project.name, 'pixelforge-project') + '.codelab-pixelforge',
+    metadata: {
+      format: 'codelab',
+      version: 2,
+      editor: 'pixelforge',
+      projectId: project.id,
+      projectName: project.name,
+      width: project.width,
+      height: project.height,
+      layerCount: project.layers.length,
+      frameCount: frames.frames.length,
+      referenceCount: referenceCenter.categories.reduce((sum, category) => sum + category.references.length, 0),
+      resourceCount: resourceDeclarations.length,
+      entryCount: entries.length,
+    },
+  };
+}
