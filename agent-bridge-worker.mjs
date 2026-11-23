@@ -2814,7 +2814,16 @@ async function processCommand(command) {
     case 'pixelforge_video_composer': {
       await finish(command.command_id, 'succeeded', await controlPixelForgeVideoComposer(
         { ...payload, target_workspace_id: targetWorkspace },
-        { loadProject, targetPixelForgeWorkspace, workspaceTokenFor }
+        {
+          loadProject,
+          targetPixelForgeWorkspace,
+          workspaceTokenFor,
+          storeArtifact: artifact => stageNativeArtifact(pool, {
+            workspaceId,
+            ...artifact,
+            ttlMs: 60 * 60 * 1000
+          })
+        }
       ));
       return;
     }
