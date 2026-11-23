@@ -10,6 +10,9 @@ import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js
 import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
 import { importCodeLabArtifact } from './codelab-project-artifact-import.mjs';
 import { exportPixelForgeAnimationVideo as exportPixelForgeAnimationVideoComposer } from './pixelforge-video-composer-export.mjs';
+import { createPixelForgeProjectZip, parsePixelForgeProjectZip } from './pixelforge-agent-zip.mjs';
+import { controlPixelForgeVideoComposer } from './pixelforge-video-composer-control.mjs';
+import { ensureNativeArtifactSchema, stageNativeArtifact, readNativeArtifact, deleteNativeArtifact } from './native-agent-artifacts.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool, Client } = require('pg');
@@ -330,6 +333,43 @@ async function createProject(payload) {
     client.release();
   }
 }
+
+async function persistImportedPixelForgeProject(sourceProject) {
+  const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
+  const document = { ...runtime.toJSON(), serverRevision: 1 };
+  const serialized = JSON.stringify(document);
+  const bytes = Buffer.byteLength(serialized, 'utf8');
+  if (bytes > MAX_PROJECT_BYTES) throw new Error('Imported PixelForge project exceeds the 96 MiB storage limit.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [pixelForgeWorkspaceId]);
+    const usage = await client.query(
+      'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size),0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id=$1',
+      [pixelForgeWorkspaceId]
+    );
+    if (Number(usage.rows[0].count) >= MAX_PROJECTS) throw new Error('PixelForge project limit reached.');
+    if (Number(usage.rows[0].bytes) + bytes > MAX_ACCOUNT_BYTES) throw new Error('PixelForge account storage limit reached.');
+    const now = Date.now();
+    const sha = createHash('sha256').update(serialized).digest('hex');
+    await client.query(
+      'INSERT INTO codelab_pixelforge_projects (workspace_id,project_id,name,width,height,updated_at,last_opened_at,project,byte_size,server_revision,content_sha256) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,1,$9)',
+      [pixelForgeWorkspaceId, document.id, document.name, document.width, document.height, now, serialized, bytes, sha]
+    );
+    await client.query('COMMIT');
+    return {
+      projectId: document.id, name: document.name, width: document.width, height: document.height,
+      serverRevision: 1, byteSize: bytes, contentSha256: sha,
+      inspection: compactInspection(HeadlessEditorRuntime.fromJSON(document).inspect())
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function listProjects() {
   const result = await pool.query(
     'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt", server_revision AS "serverRevision" FROM codelab_pixelforge_projects WHERE workspace_id=$1 ORDER BY last_opened_at DESC',
@@ -2737,6 +2777,47 @@ async function processCommand(command) {
         approvalRequired: true, persistence: 'PostgreSQL',
       });
       return;
+    case 'pixelforge_import_zip': {
+      const staged = await readNativeArtifact(pool, workspaceId, payload.artifact_id, 'pixelforge_zip_upload');
+      const parsed = await parsePixelForgeProjectZip(staged.bytes, { importedName: payload.name });
+      const saved = await persistImportedPixelForgeProject(parsed.project);
+      await deleteNativeArtifact(pool, workspaceId, payload.artifact_id);
+      await finish(command.command_id, 'succeeded', {
+        imported: true,
+        project: saved,
+        package: { ...parsed.metadata, sha256: staged.metadata.sha256 }
+      });
+      return;
+    }
+    case 'pixelforge_export_zip': {
+      assertProjectId(payload.project_id);
+      const loaded = await loadProject(payload.project_id, targetWorkspace);
+      const exported = createPixelForgeProjectZip(loaded.project);
+      const artifact = await stageNativeArtifact(pool, {
+        workspaceId,
+        kind: 'pixelforge_zip_export',
+        filename: exported.metadata.projectName.replace(/[^a-z0-9_-]+/gi, '-') + '.pixelforge.zip',
+        contentType: 'application/zip',
+        bytes: exported.bytes,
+        metadata: { projectId: payload.project_id, serverRevision: loaded.serverRevision, ...exported.metadata },
+        ttlMs: 60 * 60 * 1000
+      });
+      await finish(command.command_id, 'succeeded', {
+        exported: true,
+        projectId: payload.project_id,
+        serverRevision: loaded.serverRevision,
+        package: exported.metadata,
+        artifact
+      });
+      return;
+    }
+    case 'pixelforge_video_composer': {
+      await finish(command.command_id, 'succeeded', await controlPixelForgeVideoComposer(
+        { ...payload, target_workspace_id: targetWorkspace },
+        { loadProject, targetPixelForgeWorkspace, workspaceTokenFor }
+      ));
+      return;
+    }
     case 'pixelforge_create':
       await finish(command.command_id, 'succeeded', await createProject(payload));
       return;
@@ -2916,6 +2997,7 @@ async function main() {
     CREATE INDEX IF NOT EXISTS codelab_agent_commands_workspace_idx
       ON public.codelab_agent_commands (workspace_id, created_at DESC);
   `);
+  await ensureNativeArtifactSchema(pool);
   await pool.query(`
     DO $codelab_migration$
     BEGIN
@@ -2931,6 +3013,9 @@ async function main() {
            AND pg_get_constraintdef(oid) LIKE '%codelab_ui_execute%'
            AND pg_get_constraintdef(oid) LIKE '%neon_function_invoke%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_capture_png%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_import_zip%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_zip%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_video_composer%'
       ) THEN
         ALTER TABLE codelab_agent_commands
           DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
@@ -2941,6 +3026,7 @@ async function main() {
             'pixelforge_propose','pixelforge_approve','pixelforge_discard','pixelforge_animation_frame_context',
             'pixelforge_export_image','pixelforge_capture_interface','pixelforge_export_animation_video',
             'pixelforge_intelligence','pixelforge_preview_evidence_video',
+            'pixelforge_import_zip','pixelforge_export_zip','pixelforge_video_composer',
             'codelab_project_create','codelab_project_convert_to_web',
             'codelab_project_inspect','codelab_project_connect',
             'codelab_project_get_code','codelab_project_update_code',
