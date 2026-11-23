@@ -368,11 +368,9 @@ function validateIds(ids, allowed, label) {
       new Set(ids).size !== ids.length) throw new TypeError(label + ' contains unknown or duplicate IDs.');
 }
 
-export async function importPixelForgeCodeLabPackage(file) {
-  if (!file || !Number.isFinite(file.size) || file.size < 1 || file.size > 256 * 1024 * 1024) {
-    throw new RangeError('CodeLab package must be between 1 byte and 256 MiB.');
-  }
-  const entries = await readStoredZip(file);
+export async function importPixelForgeCodeLabPackage(fileOrEntries) {
+  const entries = fileOrEntries instanceof Map ? fileOrEntries : await readStoredZip(fileOrEntries);
+  if (!(entries instanceof Map) || entries.size < 1) throw new TypeError('A readable CodeLab ZIP package is required.');
   if (!entries.has('project.codelab-pixelforge') && !entries.has('project.codelab')) {
     throw new TypeError('ZIP root marker project.codelab-pixelforge is missing.');
   }
