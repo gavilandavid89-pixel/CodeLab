@@ -10,6 +10,8 @@ La regla central es:
 
 Nunca se debe saltar el ciclo para tomar decisiones basadas en suposiciones.
 
+> **Aclaración de nombres:** en este documento, “B” significa el agente que razona sobre el proyecto y “A” el ejecutor que devuelve contexto. No describe una flota de workflows. El workflow GitHub llamado B es otra cosa: una única ejecución especializada para procesar vídeo, documentada en [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md).
+
 > **Protocolo de autonomía y comunicación:** para animación, también es obligatorio seguir [ANIMATION-AUTONOMOUS-WORKFLOW.md](ANIMATION-AUTONOMOUS-WORKFLOW.md). El agente debe conducir el ciclo completo durante la sesión activa (ordenar, esperar, verificar, inspeccionar, corregir y continuar), sin mantenerse activo 24/7 y sin enviar informes de progreso. El usuario recibe el informe final, salvo que exista un bloqueo real que requiera su intervención.
 
 ## Qué representa cada parte
