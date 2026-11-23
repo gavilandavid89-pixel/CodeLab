@@ -382,6 +382,33 @@ function assertProjectId(value) {
     throw new Error('A valid PixelForge project_id is required.');
   }
 }
+
+function normalizeHeadlessProposalActions(actions) {
+  return actions.map(source => {
+    const action = JSON.parse(JSON.stringify(source));
+    if (!action || typeof action.name !== 'string') return action;
+    if (action.name === 'vector.object.create' && action.object && typeof action.object === 'object') {
+      const rootId = typeof action.object.id === 'string' && action.object.id
+        ? action.object.id : randomBytes(16).toString('hex');
+      action.object.id = rootId;
+      let index = 0;
+      const assign = object => {
+        if (!object.id) object.id = rootId + '-' + index;
+        index++;
+        if (object.type === 'group') for (const child of object.children || []) assign(child);
+      };
+      assign(action.object);
+    } else if (action.name === 'vector.object.duplicate' && !action.new_id) {
+      action.new_id = randomBytes(16).toString('hex');
+    } else if (action.name === 'vector.group.create' && !action.group_id) {
+      action.group_id = randomBytes(16).toString('hex');
+    } else if (action.name === 'vector.svg.import' && !action.id_prefix) {
+      action.id_prefix = randomBytes(16).toString('hex');
+    }
+    return action;
+  });
+}
+
 async function handleProposal(command) {
   const payload = command.payload || {};
   assertProjectId(payload.project_id);
@@ -392,8 +419,9 @@ async function handleProposal(command) {
     throw new Error('A short proposal summary is required.');
   }
   const loaded = await loadProject(payload.project_id);
+  const normalizedActions = normalizeHeadlessProposalActions(payload.actions);
   const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
-  const batch = runtime.executeBatch(payload.actions);
+  const batch = runtime.executeBatch(normalizedActions);
   if (!batch.ok) throw new Error('Headless batch failed at action ' + batch.failedIndex + ': ' + (batch.error?.message || 'unknown error'));
   if (!runtime.hasPendingChanges) throw new Error('The proposed batch did not change the project.');
   const proposalInfo = runtime.createProposal(payload.summary.trim());
@@ -403,7 +431,7 @@ async function handleProposal(command) {
   const proposal = {
     projectId: payload.project_id,
     baseServerRevision: loaded.serverRevision,
-    actions: payload.actions,
+    actions: normalizedActions,
     summary: payload.summary.trim(),
     proposalInfo,
     diff: {
