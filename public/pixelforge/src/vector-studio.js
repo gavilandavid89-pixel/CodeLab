@@ -223,7 +223,7 @@ export function parseSvgPathData(data) {
 
 
 function decodeXmlEntities(value) {
-  return String(value).replace(/&(#x[0-9a-f]+|#\\d+|amp|lt|gt|quot|apos);/gi, (match, entity) => {
+  return String(value).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (match, entity) => {
     const key = entity.toLowerCase();
     if (key === 'amp') return '&';
     if (key === 'lt') return '<';
@@ -240,16 +240,16 @@ function decodeXmlEntities(value) {
 
 function parseSvgXmlFallback(source) {
   const input = String(source);
-  if (/<!DOCTYPE|<!ENTITY|<\\s*(script|foreignObject)\\b/i.test(input)) {
+  if (/<!DOCTYPE|<!ENTITY|<\s*(script|foreignObject)\b/i.test(input)) {
     throw new TypeError('SVG DTDs, entities, scripts and foreignObject elements are not supported.');
   }
   const rootDocument = { documentElement: null, querySelector: () => null };
   const stack = [];
-  const tokens = input.match(/<!--[\\s\\S]*?-->|<\\?[\\s\\S]*?\\?>|<[^>]+>|[^<]+/g) || [];
+  const tokens = input.match(/<!--[\\s\\S]*?-->|<\?[\\s\\S]*?\?>|<[^>]+>|[^<]+/g) || [];
   for (const token of tokens) {
     if (token.startsWith('<!--') || token.startsWith('<?')) continue;
     if (token.startsWith('</')) {
-      const closing = token.match(/^<\\/\\s*([A-Za-z][\\w:.-]*)\\s*>$/);
+      const closing = token.match(/^<\/\s*([A-Za-z][\w:.-]*)\s*>$/);
       if (!closing || !stack.length || stack[stack.length - 1].tagName !== closing[1]) {
         throw new TypeError('SVG has mismatched XML closing tags.');
       }
@@ -257,21 +257,17 @@ function parseSvgXmlFallback(source) {
       continue;
     }
     if (token.startsWith('<')) {
-      const opening = token.match(/^<\\s*([A-Za-z][\\w:.-]*)([\\s\\S]*?)\\/?>$/);
+      const opening = token.match(/^<\s*([A-Za-z][\w:.-]*)([\s\S]*?)\/?>$/);
       if (!opening) throw new TypeError('SVG contains malformed XML markup.');
       const tagName = opening[1];
-      const attributeText = opening[2].replace(/\\/\\s*$/, '');
+      const attributeText = opening[2].replace(/\/\s*$/, '');
       const attributes = {};
-      let remainder = attributeText;
-      const attributePattern = /([A-Za-z_:][\\w:.-]*)\\s*=\\s*(?:"([^"]*)"|'([^']*)')/g;
+      const attributePattern = /([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
       let match;
-      let consumed = '';
       while ((match = attributePattern.exec(attributeText))) {
         attributes[match[1]] = decodeXmlEntities(match[2] ?? match[3] ?? '');
-        consumed += attributeText.slice(consumed.length, match.index).replace(/\\s+/g, '');
-        consumed += match[0];
       }
-      remainder = attributeText.replace(attributePattern, '').replace(/\\s+/g, '');
+      const remainder = attributeText.replace(attributePattern, '').replace(/\s+/g, '');
       if (remainder) throw new TypeError('SVG contains an unsupported or malformed attribute.');
       const node = {
         tagName,
@@ -294,7 +290,7 @@ function parseSvgXmlFallback(source) {
       if (stack.length) stack[stack.length - 1].children.push(node);
       else if (!rootDocument.documentElement) rootDocument.documentElement = node;
       else throw new TypeError('SVG must contain exactly one root element.');
-      if (!/\\/\\s*>$/.test(token)) stack.push(node);
+      if (!/\/\s*>$/.test(token)) stack.push(node);
       continue;
     }
     if (stack.length) stack[stack.length - 1].textContent += decodeXmlEntities(token);
