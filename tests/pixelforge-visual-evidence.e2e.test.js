@@ -91,16 +91,31 @@ const EXPECTED_VIDEO_SECONDS = 5;
     assert.ok(rasterStats.colors >= 8, 'drawing must contain a meaningful palette, not a single flat color');
 
     await page.locator('#animation-play').click();
-    // The capture must contain the actual full playback, not just the 700ms startup.
-    await page.waitForTimeout(EXPECTED_VIDEO_SECONDS * 1000 + 350);
-    const afterStats = await canvas.evaluate(node => {
-      const ctx = node.getContext('2d'); const d = ctx.getImageData(0, 0, node.width, node.height).data;
-      let checksum = 0;
-      for (let i = 0; i < d.length; i += 4) checksum = (checksum + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3]) % 1000000007;
-      return checksum;
-    });
+    // The animation loops, so checking only one frame after the full duration can
+    // legitimately land on a visually identical frame. Observe playback while it
+    // is running and require at least one rendered frame to differ from the baseline.
+    const playbackStartedAt = Date.now();
+    let playbackChanged = false;
+    let observedChecksum = rasterStats.checksum;
+    for (let sample = 0; sample < 20; sample++) {
+      await page.waitForTimeout(100);
+      observedChecksum = await canvas.evaluate(node => {
+        const ctx = node.getContext('2d'); const d = ctx.getImageData(0, 0, node.width, node.height).data;
+        let checksum = 0;
+        for (let i = 0; i < d.length; i += 4) checksum = (checksum + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3]) % 1000000007;
+        return checksum;
+      });
+      if (observedChecksum !== rasterStats.checksum) {
+        playbackChanged = true;
+        break;
+      }
+    }
+    // Still keep the full recording window so the artifact contains the complete
+    // five-second playback rather than stopping after the first changed frame.
+    const remainingPlaybackMs = Math.max(0, EXPECTED_VIDEO_SECONDS * 1000 + 350 - (Date.now() - playbackStartedAt));
+    if (remainingPlaybackMs) await page.waitForTimeout(remainingPlaybackMs);
     await canvas.screenshot({ type: 'png', path: path.join(ARTIFACT_DIR, 'animation-frame-playback.png') });
-    assert.notEqual(afterStats, rasterStats.checksum, 'playback must visibly change the rendered frame');
+    assert.ok(playbackChanged, 'playback must visibly change the rendered frame');
     assert.deepEqual(errors, []);
 
     const video = page.video();
