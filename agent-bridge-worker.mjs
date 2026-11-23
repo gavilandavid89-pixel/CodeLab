@@ -1929,12 +1929,25 @@ async function captureCodeLabProjectPng(project, payload = {}) {
       ? await page.screenshot({ type: 'png', fullPage: payload.full_page !== false, animations: 'disabled' })
       : await page.frameLocator('#previewIframe').locator('body').screenshot({ type: 'png', animations: 'disabled' });
     if (screenshot.length > 8 * 1024 * 1024) throw new Error('CodeLab PNG exceeds the 8 MiB artifact limit.');
-    let artifact;
-    if (payload.uploadTarget) {
-      artifact = await uploadNativeArtifact(payload.uploadTarget, screenshot, 'image/png', 'codelab/exports/');
-    } else {
-      artifact = { stored: false, mimeType: 'image/png', sizeBytes: screenshot.length, dataBase64: screenshot.toString('base64') };
-    }
+    const staged = await stageNativeArtifact(pool, {
+      workspaceId,
+      kind: 'codelab_project_png',
+      filename: String(project.name || 'codelab-project').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 80) + '.png',
+      contentType: 'image/png',
+      bytes: screenshot,
+      metadata: { projectId: project.id, revision: payload.revision ?? null, captureMethod: 'playwright-chromium-real-browser', viewport: { width, height } },
+      ttlMs: 60 * 60 * 1000
+    });
+    const publicBase = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || '').replace(/\\/$/, '');
+    const artifact = {
+      stored: true,
+      provider: 'codelab-postgresql-artifact-store',
+      access: 'unlisted_expiring_link',
+      ...staged,
+      downloadUrl: publicBase ? publicBase + '/api/agent/artifacts/' + staged.artifactId : null,
+      mimeType: 'image/png',
+      sizeBytes: screenshot.length
+    };
     return {
       captureMethod: 'playwright-chromium-real-browser',
       projectId: project.id,
