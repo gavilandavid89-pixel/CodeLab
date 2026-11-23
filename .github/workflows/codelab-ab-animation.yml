@@ -41,7 +41,11 @@ jobs:
             fi
             sleep 1
           done
-          grep -q "\[CodeLab Session Ready\]" "${{ runner.temp }}/codelab-host.log"
+          if ! grep -Fq "[CodeLab Session Ready]" "${{ runner.temp }}/codelab-host.log"; then
+            echo "A did not become ready within 10 minutes; host log follows:"
+            cat "${{ runner.temp }}/codelab-host.log" || true
+            exit 1
+          fi
       - name: B sends animation request into A
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
