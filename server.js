@@ -3534,16 +3534,10 @@ seedAdminAccountIfConfigured().then(async () => {
   } catch (error) {
     console.error('[CodeLab Native Bridge] Neon wake listener unavailable:', error.message);
   }
-  // Every CodeLab process wake (Render cold start, manual wake, or deploy)
-  // must announce availability to Neon. Starting the worker here makes it
-  // publish its "running" bridge signal during its own startup, instead of
-  // waiting for a Neon command that may never arrive.
-  try {
-    const bridge = startAgentBridge();
-    console.log('[CodeLab Native Bridge] startup worker launch requested:', bridge);
-  } catch (error) {
-    console.error('[CodeLab Native Bridge] startup worker launch unavailable:', error.message);
-  }
+  // Keep the database notification listener armed, but do not launch the
+  // native worker on every web-server startup. The worker starts on the first
+  // committed queued command and then sleeps on LISTEN/NOTIFY between commands.
+  console.log('[CodeLab Native Bridge] worker is command-driven; no idle worker startup.');
   try {
     await ensurePixelForgeTable();
   } catch (error) {
