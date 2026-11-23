@@ -28,6 +28,15 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+export function stableJsonStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return '[' + value.map(item => stableJsonStringify(item) ?? 'null').join(',') + ']';
+  }
+  const keys = Object.keys(value).filter(key => value[key] !== undefined).sort();
+  return '{' + keys.map(key => JSON.stringify(key) + ':' + stableJsonStringify(value[key])).join(',') + '}';
+}
+
 export function assertCodelabPackageEntries(entries) {
   if (!Array.isArray(entries)) throw new Error('Invalid CodeLab package entry list.');
   const normalizedEntries = new Set();
@@ -329,7 +338,7 @@ export async function importCodeLabArtifact(pool, {
     const projectId = String(project.id || request.source_project_id);
     const name = String(project.name || projectId).slice(0, 100);
     const serialized = JSON.stringify(project);
-    const contentSha = sha256(Buffer.from(serialized));
+    const contentSha = sha256(Buffer.from(stableJsonStringify(project)));
     const now = Date.now();
     const workScore = Number(request.work_score ?? 0);
 
@@ -377,8 +386,7 @@ export async function importCodeLabArtifact(pool, {
     );
     if (rereadProjectResult.rowCount !== 1) throw new Error('Persisted CodeLab project could not be re-read after import.');
     const rereadProject = rereadProjectResult.rows[0].project;
-    const rereadSerialized = JSON.stringify(rereadProject);
-    const rereadSha = sha256(Buffer.from(rereadSerialized));
+    const rereadSha = sha256(Buffer.from(stableJsonStringify(rereadProject)));
     if (rereadSha !== contentSha || rereadProjectResult.rows[0].content_sha256 !== contentSha) {
       throw new Error('Persisted CodeLab project round-trip SHA-256 verification failed.');
     }
