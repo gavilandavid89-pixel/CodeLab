@@ -154,7 +154,16 @@ async function claimCommand() {
       [workspaceId]
     );
     await client.query(
-      "UPDATE codelab_agent_commands SET status='queued', started_at=NULL, updated_at=now() WHERE workspace_id=$1 AND status='running' AND action <> 'codelab_validate' AND updated_at < now() - CASE WHEN action = 'pixelforge_export_animation_video' THEN interval '10 minutes' ELSE interval '3 minutes' END AND expires_at > now()",
+      "UPDATE codelab_agent_commands
+       SET status='queued',
+           started_at=NULL,
+           expires_at=now() + CASE WHEN action = 'pixelforge_export_animation_video' THEN interval '15 minutes' ELSE interval '15 minutes' END,
+           updated_at=now()
+       WHERE workspace_id=$1
+         AND status='running'
+         AND action <> 'codelab_validate'
+         AND updated_at < now() - CASE WHEN action = 'pixelforge_export_animation_video' THEN interval '10 minutes' ELSE interval '3 minutes' END
+         AND expires_at > now()",
       [workspaceId]
     );
     const selected = await client.query(
