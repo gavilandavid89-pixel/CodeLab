@@ -264,7 +264,7 @@ export function createAssistantHeadlessClient(options = {}) {
         operations,
         ...(options.viewport ? { viewport: options.viewport } : {})
       }, { ttlMs: options.ttlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 });
-      if (outcome.status !== 'succeeded' || !Array.isArray(outcome.result?.artifacts)) return outcome;
+      if (!Array.isArray(outcome.result?.artifacts)) return outcome;
       const workspaceId = await getWorkspaceId();
       const evidenceArtifacts = [];
       for (const reference of outcome.result.artifacts) {
