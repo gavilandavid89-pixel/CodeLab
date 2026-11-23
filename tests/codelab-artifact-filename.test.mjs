@@ -9,11 +9,11 @@ test('accepts editor-specific root markers and the legacy marker', () => {
 });
 
 test('rejects ZIP archives without an editor marker', () => {
-  assert.throws(() => assertCodelabPackageEntries(['manifest.json', 'project.json']), /editor-specific project\\.codelab marker is missing/);
+  assert.throws(() => assertCodelabPackageEntries(['manifest.json', 'project.json']), /editor-specific project\.codelab marker is missing/);
 });
 
 test('does not accept a nested marker as the project marker', () => {
-  assert.throws(() => assertCodelabPackageEntries(['nested/project.codelab-pixelforge', 'manifest.json', 'project.json']), /editor-specific project\\.codelab marker is missing/);
+  assert.throws(() => assertCodelabPackageEntries(['nested/project.codelab-pixelforge', 'manifest.json', 'project.json']), /editor-specific project\.codelab marker is missing/);
 });
 
 test('rejects multiple editor marker files in a single package', () => {
