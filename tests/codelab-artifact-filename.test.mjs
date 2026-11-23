@@ -26,7 +26,7 @@ test('rejects ZIP archives without an editor marker', () => {
 
 test('does not accept a nested marker as the project marker', () => {
   assert.throws(() => assertCodelabPackageEntries([
-    'nested/project.codelab', 'manifest.json', 'project.json',
+    'nested/project.codelab-pixelforge', 'manifest.json', 'project.json',
   ]), /root project\.codelab marker is missing/);
 });
 
