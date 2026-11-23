@@ -2,9 +2,6 @@ name: CodeLab A/B persistent animation verification
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/pixelforge-integrity-wave-1
 
 permissions:
   contents: read
