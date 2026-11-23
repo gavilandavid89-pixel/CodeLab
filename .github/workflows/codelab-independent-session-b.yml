@@ -8,13 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Stress mode"
+        description: "Video processing mode"
         required: false
-        default: "normal"
+        default: "walk"
         type: choice
-        options: [normal, concurrent, queue, walk, walk-step]
+        options: [walk, walk-step]
       session_id:
-        description: "Existing persistent A session ID (preferred for stress runs)"
+        description: "Persistent A session ID used by the video processor"
         required: false
         default: ""
         type: string
@@ -39,12 +39,6 @@ on:
         required: false
         default: ""
         type: string
-      request:
-        description: "Structured CodeLab session request JSON"
-        required: false
-        default: '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}'
-        type: string
-
 concurrency:
   group: codelab-independent-session-b
   cancel-in-progress: false
@@ -107,16 +101,6 @@ jobs:
           echo "CODELAB_SESSION_ID=$SUPPLIED_SESSION_ID" >> "$GITHUB_ENV"
           echo "CODELAB_MAILBOX_BASE_URL=$SUPPLIED_MAILBOX" >> "$GITHUB_ENV"
           echo "Connected directly to supplied A session: $SUPPLIED_SESSION_ID"
-
-      - name: Send independent B request to A
-        id: request
-        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && (github.event.inputs.mode || github.event.client_payload.mode || 'normal') != 'walk' && (github.event.inputs.mode || github.event.client_payload.mode || 'normal') != 'walk-step' }}
-        env:
-          CODELAB_SESSION_TIMEOUT_MS: "120000"
-          CODELAB_SESSION_REQUEST: ${{ github.event.inputs.request || github.event.client_payload.request || '{"kind":"browser","start_path":"/pixelforge/index.html","actions":[{"type":"wait_for","selector":"body","state":"visible","timeoutMs":30000},{"type":"screenshot","fullPage":false}]}' }}
-        run: |
-          echo "B mode: ${{ github.event.inputs.mode || github.event.client_payload.mode || 'normal' }}"
-          node scripts/codelab-session-request.mjs
 
       - name: Run B→A→context→B→A walking animation cycle
         id: walk
