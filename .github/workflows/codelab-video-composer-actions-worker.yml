@@ -11,7 +11,7 @@ on:
         required: false
         default: "2b33ccf4-f70c-4649-bed8-df1707cfdc74"
       keepalive_seconds:
-        description: "Keep runner alive after export"
+        description: "Keep runner alive in the dedicated keepalive job"
         required: false
         default: "1800"
 
@@ -19,9 +19,10 @@ permissions:
   contents: read
 
 jobs:
-  video-composer-worker:
+  video-composer:
+    name: Video Composer export
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
     steps:
       - name: Checkout CodeLab
         uses: actions/checkout@v4
@@ -36,17 +37,26 @@ jobs:
           npm install --no-save playwright@1.64.1
           npx playwright install --with-deps chromium
 
-      - name: Run CodeLab Video Composer worker
+      - name: Run CodeLab Video Composer
         env:
           TARGET_URL: https://codelab-pbw9.onrender.com
           PROJECT_ID: ${{ inputs.project_id || '2b33ccf4-f70c-4649-bed8-df1707cfdc74' }}
-          KEEPALIVE_SECONDS: ${{ inputs.keepalive_seconds || '1800' }}
+          KEEPALIVE_SECONDS: "0"
           CODELAB_ADMIN_USERNAME: ${{ secrets.CODELAB_ADMIN_USERNAME }}
           CODELAB_ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
         run: node .github/scripts/codelab-video-composer-actions-worker.mjs
 
-      - name: Upload worker log context
-        if: always()
+  runner-keepalive:
+    name: Dedicated runner keepalive
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Keep dedicated processing slot alive
+        env:
+          KEEPALIVE_SECONDS: ${{ inputs.keepalive_seconds || '1800' }}
         run: |
-          echo "Video Composer Actions worker finished with status ${{ job.status }}"
-          echo "Runner was configured with a 30-minute post-export keepalive."
+          echo "Dedicated keepalive runner started."
+          echo "This job intentionally has no Video Composer work."
+          echo "Keeping slot alive for ${KEEPALIVE_SECONDS} seconds."
+          sleep "${KEEPALIVE_SECONDS}"
+          echo "Dedicated keepalive runner finished."
