@@ -71,12 +71,10 @@ export function createReferenceCenterUI({
     const next = Number(nextRange.value) / 100;
     d.layers.forEach((layer, index) => {
       const distance = index - active;
-      if (distance === 0) layer.opacity = 1;
-      else if (distance < 0) layer.opacity = previous;
-      else layer.opacity = next;
+      const opacity = distance === 0 ? 1 : distance < 0 ? previous : next;
+      d.setLayerOpacity(layer.id, opacity);
     });
     d.dirty = true;
-    d.saveVersion++;
     prevValue.textContent = Math.round(previous * 100) + '%';
     nextValue.textContent = Math.round(next * 100) + '%';
     render();
