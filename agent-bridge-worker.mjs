@@ -2718,14 +2718,27 @@ async function processCommand(command) {
       await finish(command.command_id, 'succeeded', await invokeNeonFunction(payload));
       return;
     case 'codelab_project_import': {
+      let stagedArtifact = null;
+      if (payload.native_artifact_id) {
+        stagedArtifact = await readNativeArtifact(
+          pool,
+          workspaceId,
+          String(payload.native_artifact_id),
+          'codelab_zip_upload'
+        );
+      }
       const result = await importCodeLabArtifact(pool, {
         importRequestId: payload.import_request_id,
         workspaceId,
         pixelForgeWorkspaceId,
-        artifactBase64: payload.artifact_base64 || payload.artifact?.dataBase64 || null,
-        artifactFilename: payload.artifact_filename || payload.artifact?.filename || 'project.codelab',
-        artifactContentType: payload.artifact_content_type || payload.artifact?.contentType || 'application/zip',
+        artifactBuffer: stagedArtifact?.bytes || null,
+        artifactBase64: stagedArtifact ? null : (payload.artifact_base64 || payload.artifact?.dataBase64 || null),
+        artifactFilename: stagedArtifact?.metadata?.filename || payload.artifact_filename || payload.artifact?.filename || 'project.codelab',
+        artifactContentType: stagedArtifact?.metadata?.contentType || payload.artifact_content_type || payload.artifact?.contentType || 'application/zip',
       });
+      if (stagedArtifact) {
+        await deleteNativeArtifact(pool, workspaceId, String(payload.native_artifact_id));
+      }
       const terminalStatus = result.status === 'awaiting_confirmation' ? 'succeeded' : 'succeeded';
       await finish(command.command_id, terminalStatus, result);
       return;
