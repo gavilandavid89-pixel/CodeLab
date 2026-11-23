@@ -7,7 +7,8 @@ const ALLOWED_KINDS = new Set([
   'pixelforge_zip_export',
   'pixelforge_composer_video',
   'pixelforge_composer_png',
-  'codelab_zip_upload'
+  'codelab_zip_upload',
+  'codelab_project_png'
 ]);
 
 export async function ensureNativeArtifactSchema(pool) {
