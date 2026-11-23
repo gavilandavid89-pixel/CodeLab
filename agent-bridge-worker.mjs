@@ -2963,9 +2963,14 @@ async function processCommand(command) {
     case 'pixelforge_capture_interface':
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface({ ...payload, target_workspace_id: targetWorkspace }));
       return;
-    case 'pixelforge_export_animation_video':
-      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideoComposer({ ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id }, { loadProject, targetPixelForgeWorkspace, uploadNativeArtifact, neonEvidence, pool, workspaceTokenFor, workspaceId }));
+    case 'pixelforge_export_animation_video': {
+      const result = await exportPixelForgeAnimationVideoComposer(
+        { ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id },
+        { loadProject, targetPixelForgeWorkspace, uploadNativeArtifact, neonEvidence, pool, workspaceTokenFor, workspaceId }
+      );
+      await finish(command.command_id, result.videoExport?.passed ? 'succeeded' : 'failed', result);
       return;
+    }
     case 'pixelforge_preview_evidence_video':
       await finish(command.command_id, 'succeeded', await previewPixelForgeEvidenceVideo(payload));
       return;
