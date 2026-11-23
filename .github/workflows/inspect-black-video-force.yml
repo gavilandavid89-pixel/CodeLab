@@ -16,6 +16,8 @@ jobs:
           node-version: 22.17
       - run: npm install --no-audit --no-fund playwright@1.64.1
       - run: npx playwright install --with-deps chromium
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Download evidence video and extract frames
         env:
           TARGET_URL: https://codelab-pbw9.onrender.com
