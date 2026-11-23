@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createVectorModel, vectorModelToSVG, auditVectorModel, parseSvgPathData, parseSVGToVectorModel } from '../public/pixelforge/src/vector-studio.js';
+import { createVectorModel, vectorModelToSVG, auditVectorModel, parseSvgPathData, parseSVGToVectorModel, VectorStudio } from '../public/pixelforge/src/vector-studio.js';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
 import { AIWorkspace } from '../public/pixelforge/src/workspaces.js';
 import { AICommandSession } from '../public/pixelforge/src/ai-tools.js';
@@ -169,4 +169,19 @@ test('allowlisted PixelForge vector commands cover editing operations through th
   assert.equal(audited.ok, true);
   assert.equal(workspace.sandbox.getVectorModel().snap, false);
   assert.equal(run({ name: 'agent.tools.list' }).tools.some(tool => tool.name === 'vector.group.create'), true);
+});
+
+test('vector path translation moves Bezier anchors and both control handles', () => {
+  const studio = Object.create(VectorStudio.prototype);
+  const path = {
+    id: 'curve', type: 'path', points: [
+      { x: 10, y: 20, c1: { x: 7, y: 18 }, c2: { x: 13, y: 22 } },
+      { x: 30, y: 40, c1: { x: 27, y: 38 }, c2: { x: 33, y: 42 } },
+    ],
+  };
+  studio.translateObjectRaw(path, 8, -5);
+  assert.deepEqual(path.points, [
+    { x: 18, y: 15, c1: { x: 15, y: 13 }, c2: { x: 21, y: 17 } },
+    { x: 38, y: 35, c1: { x: 35, y: 33 }, c2: { x: 41, y: 37 } },
+  ]);
 });
