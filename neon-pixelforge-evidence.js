@@ -125,8 +125,11 @@ function canonicalQuery(params) {
     .join('&');
 }
 
-function presignStorageObject({ bucket = DEFAULT_BUCKET, objectKey, contentType, expiresInSeconds = 900 }) {
-  if (cloudflareEvidenceConfigured()) return presignCloudflareEvidenceObject({ objectKey, contentType, expiresInSeconds });
+function presignStorageObject({ bucket = DEFAULT_BUCKET, objectKey, contentType, expiresInSeconds = 900, operation = 'upload' }) {
+  if (cloudflareEvidenceConfigured()) {
+    if (operation !== 'upload') throw new Error('cloudflare_evidence_download_presign_not_supported');
+    return presignCloudflareEvidenceObject({ objectKey, contentType, expiresInSeconds });
+  }
   if (!storageConfigured()) throw new Error('neon_storage_credentials_missing');
   if (!objectKey || objectKey.includes('..') || objectKey.startsWith('/')) throw new Error('invalid_object_key');
 
@@ -137,7 +140,8 @@ function presignStorageObject({ bucket = DEFAULT_BUCKET, objectKey, contentType,
   const dateStamp = amzDate.slice(0, 8);
   const credential = STORAGE_ACCESS_KEY + '/' + dateStamp + '/' + STORAGE_REGION + '/s3/aws4_request';
   const expires = Math.min(604800, Math.max(1, Number(expiresInSeconds) || 900));
-  const signedHeaders = 'content-type;host';
+  const method = operation === 'download' ? 'GET' : 'PUT';
+  const signedHeaders = operation === 'download' ? 'host' : 'content-type;host';
   const params = {
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
     'X-Amz-Credential': credential,
@@ -147,15 +151,17 @@ function presignStorageObject({ bucket = DEFAULT_BUCKET, objectKey, contentType,
   };
   const canonicalUri = '/' + encodePath(bucket) + '/' + objectKey.split('/').map(encodePath).join('/');
   const query = canonicalQuery(params);
-  const canonicalHeaders = 'content-type:' + String(contentType || 'application/octet-stream') + '\n' + 'host:' + host + '\n';
-  const canonicalRequest = ['PUT', canonicalUri, query, canonicalHeaders, signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
+  const canonicalHeaders = operation === 'download'
+    ? 'host:' + host + '\n'
+    : 'content-type:' + String(contentType || 'application/octet-stream') + '\n' + 'host:' + host + '\n';
+  const canonicalRequest = [method, canonicalUri, query, canonicalHeaders, signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
   const scope = dateStamp + '/' + STORAGE_REGION + '/s3/aws4_request';
   const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256(canonicalRequest)].join('\n');
   const signature = hmac(signingKey(STORAGE_SECRET_KEY, dateStamp, STORAGE_REGION, 's3'), stringToSign, 'hex');
   return {
-    method: 'PUT',
+    method,
     url: STORAGE_ENDPOINT + canonicalUri + '?' + query + '&X-Amz-Signature=' + signature,
-    headers: { 'content-type': String(contentType || 'application/octet-stream') },
+    headers: operation === 'download' ? {} : { 'content-type': String(contentType || 'application/octet-stream') },
     expiresAt: new Date(now.getTime() + expires * 1000).toISOString(),
     bucket,
     objectKey
