@@ -17,6 +17,7 @@ export const NATIVE_ACTIONS = Object.freeze([
   'codelab_ui_execute',
   'codelab_project_import',
   'codelab_validate',
+  'neon_function_invoke',
   'pixelforge_create',
   'pixelforge_list',
   'pixelforge_inspect',
