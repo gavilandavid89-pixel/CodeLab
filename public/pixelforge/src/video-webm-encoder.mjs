@@ -130,76 +130,39 @@ export function encodeWebMFromChunks(chunks, { width, height, codec = 'vp9', dur
   return new Blob([ebmlHeader, segment], { type: codecConfig(codec, width, height).mime });
 }
 
-export async function encodeWebMFrames(frames, {
-  width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null,
-  onProgress, isCancelled
-} = {}) {
-  if (!('VideoEncoder' in globalThis) || !('VideoFrame' in globalThis)) {
-    throw new Error('Este navegador no dispone de WebCodecs para exportación determinista.');
+export async function encodeWebMFrames(frames, options = {}) {
+  const { onProgress, isCancelled } = options;
+  if (typeof Worker !== 'undefined' && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
+    const worker = new Worker(new URL('./video-webm-encoder-worker.mjs', import.meta.url), { type: 'module' });
+    const transferableFrames = frames.map(frame => ({ durationMs: frame.durationMs, blob: frame.blob }));
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = fn => { if (settled) return; settled = true; worker.terminate(); fn(); };
+      worker.onmessage = event => {
+        const data = event.data || {};
+        if (data.type === 'progress') { onProgress?.(data.value, data.label); return; }
+        if (data.type === 'done') finish(() => resolve(new Blob([data.buffer], { type:data.mime })));
+        if (data.type === 'error') finish(() => reject(Object.assign(new Error(data.message), { name:data.name })));
+      };
+      worker.onerror = event => finish(() => reject(new Error(event.message || 'Falló el worker de exportación.')));
+      const cancelTimer = setInterval(() => {
+        if (isCancelled?.()) { clearInterval(cancelTimer); finish(() => reject(new DOMException('Exportación cancelada.', 'AbortError'))); }
+      }, 100);
+      const originalFinish = finish;
+      const wrappedFinish = fn => { clearInterval(cancelTimer); originalFinish(fn); };
+      // Replace handlers' close path with cancellation-aware cleanup.
+      worker.onmessage = event => {
+        const data = event.data || {};
+        if (data.type === 'progress') { onProgress?.(data.value, data.label); return; }
+        if (data.type === 'done') wrappedFinish(() => resolve(new Blob([data.buffer], { type:data.mime })));
+        if (data.type === 'error') wrappedFinish(() => reject(Object.assign(new Error(data.message), { name:data.name })));
+      };
+      worker.onerror = event => wrappedFinish(() => reject(new Error(event.message || 'Falló el worker de exportación.')));
+      worker.postMessage({
+        frames: transferableFrames, width:options.width, height:options.height, codec:options.codec,
+        fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor
+      });
+    });
   }
-  const chunks = [];
-  const errors = [];
-  let configuredCodec = codec === 'vp8' ? 'vp8' : 'vp09.00.10.08';
-  const encoder = new VideoEncoder({
-    output: chunk => chunks.push(chunk),
-    error: error => errors.push(error)
-  });
-  const config = {
-    codec: configuredCodec,
-    width, height,
-    bitrate: Math.min(25_000_000, Math.max(1_000_000, width * height * Math.max(1, fps) * 0.12)),
-    framerate: Math.max(1, fps),
-    latencyMode: 'quality'
-  };
-  if (!VideoEncoder.isConfigSupported) {
-    throw new Error('El navegador no permite comprobar la configuración del codificador.');
-  }
-  const support = await VideoEncoder.isConfigSupported(config);
-  if (!support.supported) {
-    if (codec !== 'vp8') {
-      configuredCodec = 'vp8';
-      config.codec = configuredCodec;
-      const fallback = await VideoEncoder.isConfigSupported(config);
-      if (!fallback.supported) throw new Error('WebCodecs no admite VP9/VP8 en esta plataforma.');
-    } else throw new Error('WebCodecs no admite VP8 en esta plataforma.');
-  }
-  encoder.configure(config);
-  let timestampUs = 0;
-  const renderCanvas = document.createElement('canvas');
-  renderCanvas.width = width;
-  renderCanvas.height = height;
-  const renderContext = renderCanvas.getContext('2d', { alpha: true });
-  renderContext.imageSmoothingEnabled = false;
-  try {
-    for (let index = 0; index < frames.length; index++) {
-      if (isCancelled?.()) throw new DOMException('Exportación cancelada.', 'AbortError');
-      const frame = frames[index];
-      const bitmap = await createImageBitmap(frame.blob);
-      try {
-        const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
-        renderContext.clearRect(0, 0, width, height);
-        if (backgroundColor) {
-          renderContext.fillStyle = backgroundColor;
-          renderContext.fillRect(0, 0, width, height);
-        }
-        renderContext.drawImage(bitmap, 0, 0, width, height);
-        const source = renderCanvas;
-        const videoFrame = new VideoFrame(source, { timestamp: timestampUs, duration: durationUs });
-        encoder.encode(videoFrame, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
-        videoFrame.close();
-        timestampUs += durationUs;
-      } finally {
-        bitmap.close?.();
-      }
-      if (onProgress) onProgress((index + 1) / frames.length, 'Codificando fotograma ' + (index + 1) + ' de ' + frames.length);
-    }
-    await encoder.flush();
-  } finally {
-    encoder.close();
-  }
-  if (errors.length) throw errors[0];
-  return encodeWebMFromChunks(chunks, {
-    width, height, codec: configuredCodec === 'vp8' ? 'vp8' : 'vp9',
-    durationMs: durationMs || timestampUs / 1000
-  });
+  throw new Error('Este navegador no admite Workers para exportación determinista.');
 }
