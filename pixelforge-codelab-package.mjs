@@ -32,7 +32,12 @@ function decodePixels(value, expectedBytes, label) {
 }
 
 function frameLayers(frame, project, frameIndex) {
-  const cels = new Map((frame?.cels || []).map(cel => [String(cel.layerId), cel]));
+  const sourceCels = Array.isArray(frame?.cels) ? frame.cels : [];
+  const cels = new Map(sourceCels.map(cel => [String(cel.layerId), cel]));
+  if (sourceCels.length !== project.layers.length || cels.size !== sourceCels.length ||
+      sourceCels.some(cel => !project.layers.some(layer => String(layer.id) === String(cel.layerId)))) {
+    throw new TypeError('Frame ' + (frameIndex + 1) + ' must contain exactly one cel for every project layer.');
+  }
   return project.layers.map(layer => {
     const cel = cels.get(String(layer.id));
     const encoded = cel?.pixels ?? (frameIndex === -1 ? layer.pixels : null);
@@ -149,7 +154,7 @@ function addAnimation(project, files) {
       index,
       width: project.width,
       height: project.height,
-      durationMs: Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12))))),
+      durationMs: Math.round(Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12))))),
       layerCount: frameLayersMetadata.length,
       layers: frameLayersMetadata,
     }, null, 2), 'utf8'));
