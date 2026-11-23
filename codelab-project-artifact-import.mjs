@@ -146,6 +146,85 @@ async function readProjectPackage(buffer, tempRoot) {
   return { manifest, project };
 }
 
+export async function publishImportedCodeLabProjectToWorkspace(pool, workspaceId, project, editorId) {
+  if (!['web', 'design'].includes(String(editorId))) {
+    return { published: false, reason: 'editor_uses_dedicated_workspace' };
+  }
+  if (!workspaceId || !project || typeof project !== 'object' || Array.isArray(project)) {
+    throw new Error('Imported CodeLab project cannot be published to an invalid workspace.');
+  }
+  if (typeof project.id !== 'string' || !project.id.trim() || project.id.length > 80) {
+    throw new Error('Imported CodeLab project ID is not valid for the editor workspace.');
+  }
+  if (typeof project.name !== 'string' || !project.name.trim() || project.name.length > 200) {
+    throw new Error('Imported CodeLab project name is not valid for the editor workspace.');
+  }
+  if (!project.code || typeof project.code !== 'object' || Array.isArray(project.code)) {
+    throw new Error('Imported CodeLab project has no normalized code document.');
+  }
+  for (const field of ['html', 'css', 'js']) {
+    if (typeof project.code[field] !== 'string' || project.code[field].length > 500_000) {
+      throw new Error('Imported CodeLab project contains an invalid code.' + field + ' field.');
+    }
+  }
+  if (editorId === 'design') {
+    if (!project.design || !Array.isArray(project.design.elements) || project.design.elements.length > 2000) {
+      throw new Error('Imported Design project has an invalid element list.');
+    }
+    const elementIds = new Set();
+    for (const element of project.design.elements) {
+      if (!element || typeof element !== 'object' || Array.isArray(element) ||
+          typeof element.id !== 'string' || !element.id.trim() || element.id.length > 100 ||
+          elementIds.has(element.id)) {
+        throw new Error('Imported Design project contains an invalid or duplicate element ID.');
+      }
+      elementIds.add(element.id);
+    }
+  }
+
+  // Compare-and-swap protects concurrent editor saves while making the imported
+  // document visible in the same workspace that the normal CodeLab UI loads.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const current = await queryChecked(pool, 'workspace_publish_read',
+      'SELECT state, revision FROM public.codelab_workspace_states WHERE workspace_id=$1',
+      [workspaceId]
+    );
+    if (!current.rowCount) throw new Error('Target CodeLab workspace does not exist: ' + workspaceId);
+    const stored = current.rows[0].state && typeof current.rows[0].state === 'object'
+      ? current.rows[0].state : {};
+    const projects = Array.isArray(stored.projects) ? [...stored.projects] : [];
+    const existingIndex = projects.findIndex(item => item && item.id === project.id);
+    if (existingIndex >= 0) projects[existingIndex] = project;
+    else {
+      if (projects.length >= 50) throw new Error('Target CodeLab workspace has reached its 50-project limit.');
+      projects.unshift(project);
+    }
+    const revision = Number(current.rows[0].revision) || 0;
+    const updatedAt = new Date().toISOString();
+    const nextState = {
+      ...stored,
+      version: 5,
+      revision: revision + 1,
+      updatedAt,
+      projects,
+    };
+    const updated = await queryChecked(pool, 'workspace_publish_write',
+      'UPDATE public.codelab_workspace_states SET revision=$2,state=$3::jsonb,updated_at=$4 WHERE workspace_id=$1 AND revision=$5 RETURNING revision',
+      [workspaceId, revision + 1, JSON.stringify(nextState), updatedAt, revision]
+    );
+    if (updated.rowCount) {
+      return {
+        published: true,
+        workspaceId,
+        workspaceRevision: revision + 1,
+        projectCount: projects.length,
+        replacedExisting: existingIndex >= 0,
+      };
+    }
+  }
+  throw new Error('CodeLab workspace changed repeatedly during project import; retry the import.');
+}
+
 export async function importCodeLabArtifact(pool, {
   importRequestId,
   workspaceId,
@@ -323,6 +402,9 @@ export async function importCodeLabArtifact(pool, {
       }
     }
     const persistedProject = rereadProject;
+    const workspacePublication = await publishImportedCodeLabProjectToWorkspace(
+      pool, request.workspace_id, persistedProject, request.editor_id
+    );
     if (Number(manifest.version) === 2 && persistedProject.codelabSchema?.version !== 2) {
       throw new Error('Persisted structured CodeLab project lost its schema declaration.');
     }
@@ -394,8 +476,7 @@ export async function importCodeLabArtifact(pool, {
       resourceDestinations: installation.destinations,
       reloadedFromPersistence: true,
       persistedAnimationFrameCount,
-      persistedReferenceCount,
-    };
+      persistedReferenceCount,\n      workspacePublication,\n    };
   } catch (error) {
     error.message = `codelab_artifact_import_failed: ${error.message}`;
     await queryChecked(pool, 'import_sql', 
