@@ -33,7 +33,7 @@ entrega el proyecto al usuario
 - **Headless/bridge de CodeLab:** componente distinto que permite controlar CodeLab. El headless propio del agente **nunca lo sustituye ni lo modifica**.
 - **Neon:** estado canónico de órdenes, proyectos, revisiones, artefactos, resultados y evidencias.
 - **CodeLab:** proyecto real e interfaz real donde se entrega el proyecto y, cuando hace falta, se obtiene la evidencia solicitada.
-- **Cloudflare/R2:** transporte y almacenamiento de artefactos/evidencias cuando están configurados.
+- **Cloudflare/R2:** almacenamiento/transporte de bytes grandes de evidencia cuando está configurado; las órdenes llegan directamente desde Neon a CodeLab por PostgreSQL LISTEN/NOTIFY.
 
 GitHub versiona el software y puede proporcionar el headless del agente; no es el transporte obligatorio de cada cambio visual.
 
@@ -41,8 +41,9 @@ GitHub versiona el software y puede proporcionar el headless del agente; no es e
 
 - Solo una petición explícita del usuario puede iniciar una nueva tarea del agente IA.
 - Un worker puede terminar una orden que ya fue autorizada, pero un resultado, webhook, cron, error o señal de bridge no debe iniciar por sí solo una nueva ejecución del agente.
-- Si el estado persistido indica que el bridge está dormido y requiere activación, usa la operación explícita de ensure/wake documentada por el endpoint actual. Incluye la versión de señal observada cuando el protocolo lo requiera.
-- No mantengas el servicio despierto con pings periódicos, bucles de keep-alive o cron artificiales. La activación debe ser bajo demanda.
+- El camino normal de una orden es insertar la fila en Neon con `status='queued'`: el trigger PostgreSQL emite `NOTIFY` y el listener de `server.js` inicia el worker si no existe. No es necesario llamar a ensure para cada orden.
+- Si el listener/worker se apagó y se necesita arrancarlo explícitamente, puede usarse `POST /api/agent/bridge/ensure` con el token de control. Esta ruta es un fallback controlado, no el transporte normal de órdenes.
+- El worker espera `LISTEN/NOTIFY` cuando no hay órdenes; no mantiene polling de 150 ms, cron ni pings de keep-alive. Si Neon falla al arrancar, el listener del servidor reintenta con backoff y reconcilia órdenes queued al reconectar.
 - No confundas la ventana de supervisión del agente con un timeout del worker. Respeta los límites técnicos reales declarados por la operación; no mates procesos solo porque el agente dejó de esperar o la sesión de conversación se interrumpió.
 
 ## 3. Identidad y separación de entornos
