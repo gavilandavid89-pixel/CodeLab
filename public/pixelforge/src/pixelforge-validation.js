@@ -7,6 +7,15 @@ function expectedBase64Length(byteLength) {
   return Math.ceil(byteLength / 3) * 4;
 }
 
+function base64ContainsNonZeroByte(value, byteLength) {
+  const paddingLength = byteLength % 3 === 0 ? 0 : byteLength % 3 === 1 ? 2 : 1;
+  const dataEnd = value.length - paddingLength;
+  for (let index = 0; index < dataEnd; index++) {
+    if (value.charCodeAt(index) !== 65) return true;
+  }
+  return false;
+}
+
 function validBase64Buffer(value, byteLength) {
   if (typeof value !== 'string' || value.length !== expectedBase64Length(byteLength)) return false;
   const padding = byteLength % 3 === 0 ? '' : byteLength % 3 === 1 ? '==' : '=';
@@ -79,6 +88,22 @@ function validateRasterProject(project) {
     }
     if (project.activeLayerId && !ids.has(project.activeLayerId)) {
       issues.push(issue('invalid_active_layer', 'error', 'Active layer does not exist.', { layerId: project.activeLayerId }));
+    }
+  }
+  if (dimensionsValid && Array.isArray(project.layers)) {
+    const rasterBuffers = project.layers.map(layer => layer?.pixels).filter(value => typeof value === 'string');
+    const animationBuffers = Array.isArray(project.animation?.frames)
+      ? project.animation.frames.flatMap(frame => Array.isArray(frame?.cels) ? frame.cels.map(cel => cel?.pixels) : [])
+        .filter(value => typeof value === 'string')
+      : [];
+    const allBuffers = [...rasterBuffers, ...animationBuffers];
+    const hasRasterContent = allBuffers.some(value => {
+      const byteLength = project.width * project.height * 4;
+      return value.length === expectedBase64Length(byteLength) && base64ContainsNonZeroByte(value, byteLength);
+    });
+    const hasVectorContent = Array.isArray(project.vectorModel?.objects) && project.vectorModel.objects.length > 0;
+    if (allBuffers.length && !hasRasterContent && !hasVectorContent) {
+      issues.push(issue('empty_artwork', 'warning', 'All raster layers and animation cels are completely transparent; the project has no visible pixel content.'));
     }
   }
   const vector = project.vectorModel;
