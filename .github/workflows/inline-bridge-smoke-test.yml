@@ -1,0 +1,41 @@
+name: Inline bridge smoke test
+
+on:
+  push:
+    paths:
+      - .github/workflows/inline-bridge-smoke-test.yml
+      - server.js
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=2d711642b726b04401627ca9d6b5f3f6f0d5f0d6b2d5f2d4f8f7f4f0f5e2f3a
+          # Actual SHA-256 of the one-byte payload "x".
+          SHA=$(printf x | sha256sum | awk '{print $1}')
+          BODY=$(printf '{"total_bytes":1,"total_chunks":1,"sha256":"%s","filename":"inline-self-test.codelab","target_workspace_id":"ws_guest_pixelforge","project_name":"inline-self-test","self_test":true}' "$SHA")
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts?token=inline-clean-test-2026-11-23"             -H 'content-type: application/json' --data "$BODY" | tee manifest.json
+          test "$(jq -r '.ok' manifest.json)" = "true"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - name: Chunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID=$(jq -r '.artifactId' manifest.json)
+          curl --fail-with-body -sS -X PUT "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ID/0?token=inline-clean-test-2026-11-23"             -H 'content-type: application/octet-stream' --data-binary 'x' | tee chunk.json
+          test "$(jq -r '.ok' chunk.json)" = "true"
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID=$(jq -r '.artifactId' manifest.json)
+          SHA=$(jq -r '.sha' "$GITHUB_OUTPUT" 2>/dev/null || printf x | sha256sum | awk '{print $1}')
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ID/commit?token=inline-clean-test-2026-11-23"             -H 'content-type: application/json' --data "{\"sha256\":\"$SHA\"}" | tee commit.json
+          test "$(jq -r '.ok' commit.json)" = "true"
+          test "$(jq -r '.status' commit.json)" = "queued"
+          cat commit.json
