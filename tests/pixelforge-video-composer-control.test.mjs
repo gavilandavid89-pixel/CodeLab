@@ -51,22 +51,28 @@ test('Video Composer remote controls import, inspect, seek, configure and captur
         { type: 'inspect' },
         { type: 'seek', index: 0 },
         { type: 'configure', format: 'webm-vp9', output_fps: 24, resolution: '720', aspect: '1:1', loop_export: true },
-        { type: 'capture_preview' }
+        { type: 'capture_preview' },
+        { type: 'capture_studio' },
+        { type: 'record_studio', duration_ms: 1000 }
       ]
     }, {
       loadProject: async () => ({ project, serverRevision: 7, contentSha256: 'test-sha' }),
       targetPixelForgeWorkspace: () => 'ws_test',
-      workspaceTokenFor: () => 'test-token'
+      workspaceTokenFor: () => 'test-token',
+      storeArtifact: async artifact => ({ artifactId: 'a'.repeat(32), kind: artifact.kind, filename: artifact.filename, sizeBytes: artifact.bytes.length, signature: artifact.bytes.subarray(0, 4).toString('hex') })
     });
     assert.equal(result.projectId, project.id);
     assert.equal(result.serverRevision, 7);
     assert.equal(result.imported.frames, 1);
-    assert.equal(result.operations.length, 4);
+    assert.equal(result.operations.length, 6);
     assert.equal(result.operations[0].state.frameCount, 1);
     assert.equal(result.operations[2].settings.outputFps, 24);
     const preview = Buffer.from(result.operations[3].dataBase64, 'base64');
     assert.deepEqual([...preview.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.equal(result.diagnostics.pageErrors.length, 0);
+    assert.equal(result.artifacts.length, 2);
+    assert.equal(result.artifacts.find(item => item.kind === 'pixelforge_composer_png').signature, '89504e47');
+    assert.equal(result.artifacts.find(item => item.kind === 'pixelforge_composer_video').signature, '1a45dfa3');
   } finally {
     if (previousUrl === undefined) delete process.env.RENDER_EXTERNAL_URL;
     else process.env.RENDER_EXTERNAL_URL = previousUrl;
@@ -76,7 +82,7 @@ test('Video Composer remote controls import, inspect, seek, configure and captur
 
 test('Video Composer remote operation validation rejects unsafe or unsupported controls', () => {
   assert.throws(() => validateVideoComposerOperations([]), /between 1 and 20/);
-  assert.throws(() => validateVideoComposerOperations([{ type: 'capture_studio' }]), /Unsupported/);
+  assert.throws(() => validateVideoComposerOperations([{ type: 'record_studio', duration_ms: 60000 }]), /1,000 and 30,000/);
   assert.throws(() => validateVideoComposerOperations([{ type: 'play', duration_ms: 60000 }]), /100 and 10,000/);
   assert.throws(() => validateVideoComposerOperations([{ type: 'configure', output_fps: 120 }]), /12, 24, 30 or 60/);
 });
