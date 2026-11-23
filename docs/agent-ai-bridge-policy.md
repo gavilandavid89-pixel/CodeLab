@@ -65,6 +65,32 @@ Regla operativa adicional:
 
 El agente debe preferir modificar el workflow existente cuando sea adecuado y solo crear uno nuevo cuando no exista una vía correcta que pueda adaptarse. La modificación debe limitarse a conseguir el empaquetado y publicación correctos del Headless; no debe convertir el workflow en una implementación alternativa del Headless.
 
+## 3.1.1 Procedimiento aplicado cuando faltaba el artefacto
+
+Cuando se detectó que los workflows existentes no estaban produciendo un paquete del Headless del agente, el procedimiento correcto fue:
+
+1. Inspeccionar los workflows existentes y distinguir los artefactos de **evidencia visual** de un artefacto que realmente contuviera el Headless.
+2. Confirmar que no había un workflow dedicado que empaquetara y publicara el Headless más reciente.
+3. Crear/modificar un workflow dedicado, `agent-headless-package.yml`, con `workflow_dispatch` y ejecución sobre cambios relevantes de `main`.
+4. Hacer que el workflow tomara el código vigente de `public/pixelforge/src/`, validara su sintaxis y lo empaquetara junto con los archivos de ejecución necesarios y un manifiesto de commit/ref.
+5. Publicar ese paquete mediante `actions/upload-artifact@v4` como artefacto con nombre asociado al SHA de la ejecución.
+6. Como el entorno del agente no disponía de un disparador manual directo expuesto por la herramienta, utilizar la ejecución soportada por el propio workflow mediante el cambio en `main` que activó su trigger de `push`.
+7. Esperar la ejecución real, comprobar el job de empaquetado y verificar que el paso de publicación terminó correctamente.
+8. Consultar los artefactos de esa ejecución y descargar el artefacto **real**, comprobando su identidad, tamaño, SHA-256 y que no estuviera expirado.
+9. Solo después de esa verificación, considerar ese ZIP como el Headless del agente aislado.
+
+Resultado de referencia de la primera obtención válida:
+
+- Workflow: `Agent Headless Package`
+- Run: `45128253959`
+- Job: `package-headless`
+- Estado: `success`
+- Artefacto: `agent-headless-32f79646950eb57b60c6cf7c810d82488ddcd7af`
+- Artifact ID: `14796577116`
+- Digest SHA-256: `8af59de24bb3bb6a7484db68f7cc41f01567cc139acf9faa4d8e571457e42bfe`
+
+Este procedimiento queda como ejemplo operativo de la regla anterior: **si falta el paquete canónico, el agente debe construir la vía de empaquetado y obtener el artefacto mediante una ejecución real; no debe fingir que ya existe ni sustituirlo por una copia manual.**
+
 ## 3.2 Inicio de workflows disponibles solo manualmente
 
 La disponibilidad de un workflow únicamente mediante **ejecución manual** no impide al agente utilizarlo. Cuando el workflow es la vía requerida para producir un artefacto o realizar una operación necesaria, el agente debe **buscar primero una forma soportada de iniciarlo**, aunque la interfaz de GitHub lo muestre como `workflow_dispatch`/manual.
