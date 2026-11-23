@@ -89,6 +89,7 @@ function installStructuredFrames(project, files, framesManifest) {
 
   const seenFrameIds = new Set();
   const frames = [];
+  const frameLayerMetadata = [];
   let totalBytes = 0;
   for (let frameIndex = 0; frameIndex < frameRefs.length; frameIndex++) {
     const ref = frameRefs[frameIndex];
@@ -109,6 +110,7 @@ function installStructuredFrames(project, files, framesManifest) {
     }
     const seenLayers = new Set();
     const cels = [];
+    const frameMetadata = [];
     for (const layer of layers) {
       if (!layer || typeof layer !== 'object') fail(frameId + ' contains an invalid layer declaration.');
       const layerId = requireString(layer.id, frameId + '.layer.id');
@@ -117,21 +119,20 @@ function installStructuredFrames(project, files, framesManifest) {
       const pixels = readRgba8(files, layer.pixelsPath, width, height, frameId + '/' + layerId);
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) fail('structured animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
-      cels.push({
+      cels.push({ layerId, pixels: pixels.toString('base64') });
+      frameMetadata.push({
         layerId,
-        pixels: pixels.toString('base64'),
-        metadata: {
-          name: String(layer.name || ''),
-          position: { x: requireFinite(layer.position?.x ?? 0, frameId + '/' + layerId + '.position.x'), y: requireFinite(layer.position?.y ?? 0, frameId + '/' + layerId + '.position.y') },
-          opacity: requireFinite(layer.opacity ?? 1, frameId + '/' + layerId + '.opacity'),
-          visible: layer.visible !== false,
-          locked: layer.locked === true,
-          zIndex: Number.isFinite(Number(layer.zIndex)) ? Number(layer.zIndex) : 0,
-          pixelsSha256: sha256(pixels),
-        },
+        name: String(layer.name || ''),
+        position: { x: requireFinite(layer.position?.x ?? 0, frameId + '/' + layerId + '.position.x'), y: requireFinite(layer.position?.y ?? 0, frameId + '/' + layerId + '.position.y') },
+        opacity: requireFinite(layer.opacity ?? 1, frameId + '/' + layerId + '.opacity'),
+        visible: layer.visible !== false,
+        locked: layer.locked === true,
+        zIndex: Number.isFinite(Number(layer.zIndex)) ? Number(layer.zIndex) : 0,
+        pixelsSha256: sha256(pixels),
       });
     }
     if (seenLayers.size !== layerIds.length) fail(frameId + ' does not provide every project layer.');
+    frameLayerMetadata.push({ id: frameId, index: frameIndex, layers: frameMetadata });
     frames.push({
       id: frameId,
       name: String(frame.name || frameId),
@@ -144,7 +145,7 @@ function installStructuredFrames(project, files, framesManifest) {
   }
   project.animation = {
     format: 'pixelforge-animation',
-    version: 2,
+    version: 1,
     width: project.width,
     height: project.height,
     layerIds,
@@ -154,6 +155,12 @@ function installStructuredFrames(project, files, framesManifest) {
     playbackSpeed: Number.isFinite(Number(framesManifest.playbackSpeed)) ? Number(framesManifest.playbackSpeed) : 1,
     frames,
     source: { format: 'codelab-frames', manifestPath: 'frames/frames.tscn' },
+  };
+  project.drawingModel ||= {};
+  project.drawingModel.animationLayerMetadata = {
+    format: 'pixelforge-frame-layer-metadata',
+    version: 1,
+    frames: frameLayerMetadata,
   };
   return { frameCount: frames.length, celCount: frames.reduce((sum, frame) => sum + frame.cels.length, 0) };
 }
