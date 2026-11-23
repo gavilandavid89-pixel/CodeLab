@@ -226,7 +226,6 @@ function executeVectorModelAction(document, action) {
     for (const object of flatten(candidate.objects)) {
         const value = object[key];
         if (typeof value === 'string' && (/url\(\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
-        if (typeof value === 'string' && (/url\\(\\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
           throw new TypeError('Vector styles cannot reference external resources or executable URLs.');
         }
       }
