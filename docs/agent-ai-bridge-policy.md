@@ -1,6 +1,6 @@
 # Política operativa del agente IA y del bridge de CodeLab
 
-**Estado: vigente.** Esta política describe el flujo actual Neon → bridge/worker → CodeLab. Los workflows A/B descritos en versiones anteriores son históricos y no forman parte de la ejecución normal.
+**Estado: vigente.** Esta política describe el flujo actual Neon → bridge/worker → CodeLab. Los workflows A/B descritos en versiones anteriores son históricos y no forman parte de la ejecución normal. Para conexiones, esquema SQL, diagramas y detalles de implementación, consultar [la documentación técnica CodeLab ↔ Neon](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
 ## 1. Arquitectura y responsabilidades
 
