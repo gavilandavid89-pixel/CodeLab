@@ -41,3 +41,21 @@ test('contiguous flood fill still fills connected pixels inside the active selec
     assert.deepEqual([...doc.activeLayer.pixels.slice(offset, offset + 4)], [0, 0, 255, 255]);
   }
 });
+
+test('undoing a crop restores drawing and vector models as well as raster layers', () => {
+  const doc = makeDocument(4, 4);
+  const drawingModel = { version: 1, strokes: [{ points: [{ x: 1, y: 1 }] }] };
+  const vectorModel = { version: 1, paths: [{ id: 'path-1', points: [{ x: 2, y: 2 }] }] };
+  doc.setDrawingModel(drawingModel);
+  doc.setVectorModel(vectorModel);
+
+  assert.equal(doc.cropCanvas(1, 1, 2, 2), true);
+  assert.equal(doc.width, 2);
+  assert.equal(doc.height, 2);
+  assert.equal(doc.undo(), true);
+
+  assert.equal(doc.width, 4);
+  assert.equal(doc.height, 4);
+  assert.deepEqual(doc.getDrawingModel(), drawingModel);
+  assert.deepEqual(doc.getVectorModel(), vectorModel);
+});
