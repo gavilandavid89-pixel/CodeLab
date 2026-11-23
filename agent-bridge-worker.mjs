@@ -441,6 +441,7 @@ async function handleProposal(command) {
       animationChangedPixels: diff.animationChangedPixels,
       bounds: diff.bounds,
       animation: diff.animation,
+      vector: diff.vector,
     },
     inspection,
     expiresAt: new Date(Date.now() + PROPOSAL_TTL_MS).toISOString(),
