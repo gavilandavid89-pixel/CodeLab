@@ -15,6 +15,12 @@ test('server wakes the bridge from committed queued commands', () => {
   assert.match(server, /startAgentBridge\(\)/);
 });
 
+test('server retries Neon listener setup when the initial connection fails', () => {
+  assert.match(server, /function scheduleAgentBridgeWakeReconnect\(reason\)/);
+  assert.match(server, /scheduleAgentBridgeWakeReconnect\(error\)/);
+  assert.match(server, /Math\.min\(60000, 1000 \* Math\.pow\(2, attempt - 1\)\)/);
+});
+
 test('startup reconciliation sees every non-expired queued command', () => {
   const start = server.indexOf("SELECT command_id, workspace_id FROM public.codelab_agent_commands WHERE status='queued'");
   assert.notEqual(start, -1, 'startup reconciliation query should select queued commands');
