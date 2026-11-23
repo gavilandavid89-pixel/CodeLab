@@ -13,17 +13,17 @@ Este archivo es el resumen de arquitectura de persistencia. La especificación t
 
 ## Comunicación y activación del worker
 
-El servidor \`server.js\` mantiene un pool PostgreSQL y un cliente dedicado \`pg.Client\` con \`LISTEN codelab_agent_bridge_wake\`. Un trigger AFTER INSERT/UPDATE de una orden a estado \`queued\` emite \`pg_notify\`. El listener arranca \`agent-bridge-worker.mjs\` bajo demanda si no está activo.
+El servidor `server.js` mantiene un pool PostgreSQL y un cliente dedicado `pg.Client` con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT/UPDATE de una orden a estado `queued` emite `pg_notify`. El listener arranca `agent-bridge-worker.mjs` bajo demanda si no está activo.
 
-El worker tiene su propio pool SQL y su propio cliente dedicado LISTEN. Reclama órdenes de la tabla durable con transacciones y \`FOR UPDATE SKIP LOCKED\`. Cuando la cola queda vacía, espera una notificación; **no ejecuta polling de 150 ms ni un cron de keep-alive**. La notificación despierta; la fila SQL es la fuente durable.
+El worker tiene su propio pool SQL y su propio cliente dedicado LISTEN. Reclama órdenes de la tabla durable con transacciones y `FOR UPDATE SKIP LOCKED`. Cuando la cola queda vacía, espera una notificación; **no ejecuta polling de 150 ms ni un cron de keep-alive**. La notificación despierta; la fila SQL es la fuente durable.
 
-Ambos listeners convierten el hostname Neon pooled a endpoint directo cuando detectan \`-pooler.\`, porque mantienen conexiones estables LISTEN/NOTIFY. Los pools de consultas normales pueden seguir usando el endpoint configurado en \`DATABASE_URL\`. El servidor y el worker usan \`CODELAB_DATABASE_SSL\` con TLS habilitado por defecto.
+Ambos listeners convierten el hostname Neon pooled a endpoint directo cuando detectan `-pooler.`, porque mantienen conexiones estables LISTEN/NOTIFY. Los pools de consultas normales pueden seguir usando el endpoint configurado en `DATABASE_URL`. El servidor y el worker usan `CODELAB_DATABASE_SSL` con TLS habilitado por defecto.
 
 ## Proyectos y animación
 
 Las modificaciones persistentes deben seguir el flujo:
 
-\`editor/API → validación → Neon project JSONB → server_revision + 1 → content_sha256\`.
+`editor/API → validación → Neon project JSONB → server_revision + 1 → content_sha256`.
 
 Las escrituras críticas verifican la revisión esperada y usan locks por workspace. Un conflicto de revisión debe devolverse como conflicto, no sobrescribir el proyecto.
 
