@@ -3547,7 +3547,7 @@ seedAdminAccountIfConfigured().then(async () => {
     console.error('PixelForge database initialization failed; studio API will return 503:', error.message);
   }
   server.listen(PORT, () => {
-  console.log('[CodeLab Native Bridge] worker auto-start enabled; CodeLab startup is announced to Neon by the worker.');
+  console.log('[CodeLab Native Bridge] Neon wake listener ready; worker starts only when a queued command arrives.');
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
   if (!process.env.CODELAB_DATA_DIR) {
