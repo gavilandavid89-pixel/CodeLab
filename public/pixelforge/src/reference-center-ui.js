@@ -148,7 +148,7 @@ export function createReferenceCenterUI({
   }
 
   async function copyImageReference(entry) {
-    if (!entry?.imageDataUrl || !confirmStaticCanvasMutation('Copying a reference image')) return;
+    if (!entry?.imageDataUrl) return;
     const d = doc();
     try {
       const image = new Image();
@@ -176,6 +176,7 @@ export function createReferenceCenterUI({
       targetContext.imageSmoothingEnabled = false;
       targetContext.drawImage(source, x, y, width, height);
       const pixels = targetContext.getImageData(0, 0, d.width, d.height).data;
+      if (!confirmStaticCanvasMutation('Copying a reference image')) return;
       const layer = d.addLayer(entry.name || 'Reference image');
       d.setLayerPixels(layer.id, new Uint8Array(pixels));
       d.setActiveLayer(layer.id);
