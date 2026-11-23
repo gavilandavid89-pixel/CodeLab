@@ -208,3 +208,8 @@ test('vector-generated IDs are normalized once and replayed identically at appro
   assert.match(source, /const normalizedActions = normalizeHeadlessProposalActions\(payload\.actions\)/);
   assert.match(source, /actions: normalizedActions/);
 });
+
+
+test('vector audit and object counts are part of the proposal review diff', () => {
+  assert.match(source, /vector: diff\.vector/);
+});
