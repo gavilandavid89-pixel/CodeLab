@@ -90,6 +90,12 @@ test('assistant headless client validates the supported command contract', () =>
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_ui_execute'));
   const clientSource = fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8');
+  assert.match(clientSource, /importCodeLabArtifact: payload => run\('codelab_project_import'/);
+  assert.match(clientSource, /validateCodeLab: payload => run\('codelab_validate'/);
+  assert.match(clientSource, /invokeNeonFunction: payload => run\('neon_function_invoke'/);
+  assert.match(clientSource, /queryPixelForgeIntelligence: \(projectId, operation = 'model'/);
+  assert.match(clientSource, /previewPixelForgeEvidenceVideo: options => run\('pixelforge_preview_evidence_video'/);
+  assert.match(clientSource, /proposePixelForgeChanges: \(projectId, actions, summary\)/);
   assert.match(clientSource, /executeCodeLabUi: \(actions, options = \{\}\) =>/);
   assert.match(clientSource, /\/api\/health/);
   assert.match(clientSource, /CODELAB_BASE_URL/);
