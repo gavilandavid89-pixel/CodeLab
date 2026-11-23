@@ -128,8 +128,11 @@ async function readProjectPackage(buffer, tempRoot) {
   ]);
   const manifest = JSON.parse(manifestText);
   const project = JSON.parse(projectText);
-  if (manifest.format !== 'codelab' || Number(manifest.version) !== 1) {
+  if (manifest.format !== 'codelab' || ![1, 2].includes(Number(manifest.version))) {
     throw new Error('Unsupported .codelab package format.');
+  }
+  if (Number(manifest.version) === 2 && (Number(manifest.schemaVersion) !== 2 || manifest.layout !== 'structured')) {
+    throw new Error('CodeLab v2 packages must declare schemaVersion=2 and layout=structured.');
   }
   if (!['pixelforge', 'web', 'design'].includes(String(manifest.editor))) {
     throw new Error('The .codelab manifest must declare an active editor explicitly.');
