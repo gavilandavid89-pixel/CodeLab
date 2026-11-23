@@ -1,0 +1,78 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
+import { RasterDocument } from '../public/pixelforge/src/core.js';
+import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '../public/pixelforge/src/codelab-package.js';
+
+function fixture() {
+  const showcase = createOrbitalShowcase();
+  const project = showcase.doc.toJSON();
+  project.id = 'browser-package-fixture';
+  project.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
+  project.drawingModel ||= {};
+  project.drawingModel.layerRoles = Object.fromEntries(project.layers.map((layer, index) => [
+    layer.id, { role: ['environment', 'effect', 'detail', 'element', 'object'][index % 5] },
+  ]));
+  project.drawingModel.sceneSections = {
+    environment: { label: 'Night forest', ambient: { color: '#182030' } },
+    effects: { entries: [{ id: 'spark-01', type: 'spark' }] },
+    details: { precision: 'pixel-grid' },
+    elements: { ordering: 'z-index' },
+    objects: { collision: 'none' },
+  };
+  const resource = new TextEncoder().encode('embedded palette bytes');
+  project.packageResourceFiles = [{
+    path: 'Entorno/assets/palette.txt',
+    destination: 'assets',
+    contentType: 'text/plain',
+    base64: btoa(String.fromCharCode(...resource)),
+  }];
+  return project;
+}
+
+test('browser package exporter writes all six project folders and the named TSCN manifests', async () => {
+  const exported = await exportPixelForgeCodeLabPackage(fixture());
+  assert.match(exported.filename, /\.codelab-pixelforge$/);
+  const installed = await importPixelForgeCodeLabPackage(exported.blob);
+  assert.equal(installed.manifest.frames.manifestPath, 'Frames/frames.tscn');
+  assert.equal(installed.manifest.scenes.sections.environment.manifestPath, 'Entorno/entorno.tscn');
+  assert.equal(installed.metadata.sceneSectionCount, 5);
+  assert.equal(installed.project.drawingModel.sceneSections.environment.label, 'Night forest');
+  assert.equal(installed.project.drawingModel.sceneSections.effects.entries[0].id, 'spark-01');
+  assert.equal(installed.project.packageResourceFiles[0].path, 'Entorno/assets/palette.txt');
+  assert.equal(installed.project.packageResources[0].byteSize, new TextEncoder().encode('embedded palette bytes').length);
+  assert.equal(installed.project.animation.frames.length, fixture().animation.frames.length);
+});
+
+test('browser import preserves package resources and scene metadata through native save and a second export', async () => {
+  const first = await exportPixelForgeCodeLabPackage(fixture());
+  const imported = await importPixelForgeCodeLabPackage(first.blob);
+  const document = RasterDocument.fromJSON(imported.project, { newIdentity: false });
+  document.id = 'browser-roundtrip-second-project';
+  const saved = document.toJSON();
+  saved.animation = imported.project.animation;
+  const second = await exportPixelForgeCodeLabPackage(saved);
+  const restored = await importPixelForgeCodeLabPackage(second.blob);
+  assert.equal(restored.project.packageResourceFiles[0].path, 'Entorno/assets/palette.txt');
+  assert.equal(restored.project.packageResourceFiles[0].base64, imported.project.packageResourceFiles[0].base64);
+  assert.equal(restored.project.drawingModel.sceneSections.environment.label, 'Night forest');
+  assert.equal(restored.project.animation.frames.length, imported.project.animation.frames.length);
+  for (const layer of restored.project.layers) {
+    assert.equal(layer.pixels, saved.layers.find(item => item.id === layer.id)?.pixels);
+  }
+});
+
+test('browser importer rejects tampered resources and invalid scene manifests', async () => {
+  const exported = await exportPixelForgeCodeLabPackage(fixture());
+  const { readStoredZip } = await import('../public/pixelforge/src/video-composer-core.mjs');
+  const { createZipBlob } = await import('../public/pixelforge/src/zip-export.js');
+  const entries = await readStoredZip(exported.blob);
+  const tampered = [];
+  for (const [path, entry] of entries) {
+    const bytes = new Uint8Array(await entry.blob.arrayBuffer());
+    if (path === 'Entorno/assets/palette.txt') bytes[0] ^= 1;
+    tampered.push({ name: path, data: bytes });
+  }
+  const archive = await createZipBlob(tampered);
+  await assert.rejects(() => importPixelForgeCodeLabPackage(archive), /Integrity verification failed/);
+});
