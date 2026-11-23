@@ -304,7 +304,8 @@ Prueba de aceptación obligatoria: **exportar → importar → editar una capa/p
 | Modelo de dibujo y referencias | public/pixelforge/src/drawing-intelligence.js |
 | Operaciones Headless de referencias | public/pixelforge/src/headless.js, tests/pixelforge-reference-center.test.mjs |
 | UI del Reference Center | public/pixelforge/src/reference-center-ui.js |
-| Exportador estructurado CodeLab v2 (Node) | pixelforge-codelab-package.mjs, tests/pixelforge-codelab-package.test.mjs |\n| Importador/exportador real de la UI PixelForge | public/pixelforge/src/codelab-package.js, tests/pixelforge-codelab-package-browser.test.mjs |
+| Exportador estructurado CodeLab v2 (Node) | pixelforge-codelab-package.mjs, tests/pixelforge-codelab-package.test.mjs |
+| Importador/exportador real de la UI PixelForge | public/pixelforge/src/codelab-package.js, tests/pixelforge-codelab-package-browser.test.mjs |
 | ZIP de agente/Video Composer | pixelforge-agent-zip.mjs, tests/pixelforge-agent-zip.test.mjs |
 | ZIP de bajo nivel | public/pixelforge/src/zip-export.js, public/pixelforge/src/video-composer-core.mjs |
 
