@@ -1938,7 +1938,7 @@ async function captureCodeLabProjectPng(project, payload = {}) {
       metadata: { projectId: project.id, revision: payload.revision ?? null, captureMethod: 'playwright-chromium-real-browser', viewport: { width, height } },
       ttlMs: 60 * 60 * 1000
     });
-    const publicBase = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || '').replace(/\\/$/, '');
+    const publicBase = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || '').replace(/\/$/, '');
     const artifact = {
       stored: true,
       provider: 'codelab-postgresql-artifact-store',
