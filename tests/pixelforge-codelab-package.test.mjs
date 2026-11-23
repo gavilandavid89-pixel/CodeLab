@@ -60,7 +60,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   project.id = 'structured_pixelforge_source';
   project.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
   const exported = createPixelForgeCodeLabPackageZip(project, {
-    resources: [{ path: 'assets/palette.txt', destination: 'data', contentType: 'text/plain', bytes: Buffer.from('palette=warm') }],
+    resources: [{ path: 'Entorno/assets/palette.txt', contentType: 'text/plain', bytes: Buffer.from('palette=warm') }],
   });
   assert.equal(exported.filename.endsWith('.codelab-pixelforge'), true);
   assert.equal(exported.metadata.format, 'codelab');
@@ -77,7 +77,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.project.animation.frames[0].cels.length, project.layers.length);
   assert.equal(imported.project.drawingModel.referenceCenter.entries.length, 1);
   assert.equal(imported.project.drawingModel.referenceCenter.entries[0].parts[0].name, 'Body');
-  assert.equal(imported.project.packageResources.some(item => item.path === 'assets/palette.txt'), true);
+  assert.equal(imported.project.packageResources.some(item => item.path === 'Entorno/assets/palette.txt' && item.destination === 'environment'), true);
   assert.equal(imported.installed.referenceCenterEntries, 1);
 });
 
