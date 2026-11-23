@@ -42,7 +42,7 @@ async function registerMailbox(expiresAt) {
 }
 
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE is required.');
-const startupWatchdog = setTimeout(() => { console.error('A startup watchdog expired after 600 seconds.'); process.exit(1); }, 600000);
+const startupWatchdog = setTimeout(() => { console.error('A startup watchdog expired after 660 seconds.'); process.exit(1); }, 660000);
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-session-'));
 const sessionStoreDir = path.join(dataDir, 'sessions');
