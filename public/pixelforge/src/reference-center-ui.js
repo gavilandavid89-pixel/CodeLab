@@ -63,6 +63,20 @@ export function createReferenceCenterUI({
   const prevValue = host.querySelector('#reference-prev-opacity-value');
   const nextValue = host.querySelector('#reference-next-opacity-value');
 
+  function confirmStaticCanvasMutation(action) {
+    if (!animation()) return true;
+    if (typeof setAnimation !== 'function') {
+      status('Cannot safely modify raster layers while an animation timeline is active.', 'error');
+      return false;
+    }
+    const accepted = window.confirm(
+      action + ' will keep the currently displayed frame as static artwork and close the multi-frame timeline. Continue?'
+    );
+    if (!accepted) return false;
+    setAnimation(null);
+    return true;
+  }
+
   function contextOpacity() {
     const d = doc();
     const active = d.layers.findIndex(layer => layer.id === d.activeLayerId);
@@ -134,7 +148,7 @@ export function createReferenceCenterUI({
   }
 
   async function copyImageReference(entry) {
-    if (!entry?.imageDataUrl) return;
+    if (!entry?.imageDataUrl || !confirmStaticCanvasMutation('Copying a reference image')) return;
     const d = doc();
     try {
       const image = new Image();
@@ -207,6 +221,7 @@ export function createReferenceCenterUI({
   }
 
   function copyPart(entry, part) {
+    if (!confirmStaticCanvasMutation('Copying a reference part')) return;
     const d = doc();
     const layer = d.addLayer(`${entry.name} · ${part.name}`);
     const pixels = part.pixels ? Uint8Array.from(atob(part.pixels), c => c.charCodeAt(0)) : null;
@@ -223,7 +238,7 @@ export function createReferenceCenterUI({
 
   function copyFrame(entry, frameIndex) {
     const frame = entry.frames?.find(item => Number(item.index) === Number(frameIndex));
-    if (!frame) return;
+    if (!frame || !confirmStaticCanvasMutation('Copying a reference frame')) return;
     const d = doc();
     for (const layer of [...d.layers]) if (layer.id !== d.layers[0].id) d.deleteLayer(layer.id);
     const base = d.layers[0];
