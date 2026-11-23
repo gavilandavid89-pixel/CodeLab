@@ -263,6 +263,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
   const files = new Map();
   const referenceCenter = addReferenceEntries(project, files);
   const frames = addAnimation(project, files);
+  const scenes = addSceneSections(project, files);
   const resourceDeclarations = [];
   for (const resource of resources) {
     if (!resource || !safeRelativePath(resource.path) || files.has(resource.path)) {
@@ -302,6 +303,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
     entry: 'project.json',
     integrityPath: 'integrity.json',
     frames: { manifestPath: 'Frames/frames.tscn' },
+    scenes,
     referenceCenter: { manifestPath: 'center.op/center.json' },
     resources: resourceDeclarations,
   };
