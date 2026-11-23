@@ -20,6 +20,7 @@ let cancelRequested = false;
 let studioRecorder = null;
 let studioStream = null;
 let studioChunks = [];
+const exportOnly = new URLSearchParams(window.location.search).get('export') === '1';
 
 function formatTime(ms) {
   const value = Math.max(0, Number(ms) || 0);
@@ -319,10 +320,17 @@ async function importPackage(file) {
     $('#vc-output-fps').value = String(parsed.manifest.fps);
     setEnabled(true);
     refreshFormatSupport();
-    await buildTimeline();
-    if (requestId !== activeImport) return;
-    await renderFrame(0);
-    setStatus('Paquete validado. Reproduce la secuencia o configura la exportación de vídeo.', 'success');
+    // Server-side Video Composer exports do not need the interactive timeline.
+    // Avoid creating 120 thumbnail canvases/ImageBitmaps before encoding; this
+    // keeps Chromium's peak RSS low enough for constrained Render instances.
+    if (!exportOnly) {
+      await buildTimeline();
+      if (requestId !== activeImport) return;
+      await renderFrame(0);
+    }
+    setStatus(exportOnly
+      ? 'Paquete validado para exportación. Preparando el codificador…'
+      : 'Paquete validado. Reproduce la secuencia o configura la exportación de vídeo.', 'success');
   } catch (error) {
     if (requestId === activeImport) {
       resetComposer();
