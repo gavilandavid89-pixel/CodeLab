@@ -111,13 +111,33 @@ El índice declara:
 - format = codelab-frames y version = 1.
 - canvas.width y canvas.height, iguales a las dimensiones del proyecto.
 - fps (1–60), activeFrameIndex, loop y opcionalmente playbackSpeed.
-- frames[]: referencias ordenadas a archivos frame.json.
+- frames[]: referencias ordenadas a los frames.
 
-Cada frame.json declara id, index, width, height, durationMs, layerCount y layers[]. Cada capa declara:
+### 3.1 Esquema maestro de cada frame
 
-- id: debe coincidir exactamente con un project.layers[].id.
-- pixelsPath: ruta relativa al archivo de píxeles de esa celda.
-- name, position, opacity, visible, locked y zIndex: metadatos del cel.
+Cada frame debe seguir **un esquema maestro fijo**. La presencia o ausencia de un dato no cambia la estructura: todos los frames conservan los mismos campos posibles y expresan el estado de cada dato mediante valores explícitos como un valor real, `inexistente`, `no_aplicable` o equivalente definido por el contrato.
+
+El esquema debe contemplar toda la información que CodeLab pueda necesitar para reconstruir el frame, incluyendo como mínimo:
+
+- identidad e índice del frame.
+- dimensiones del canvas.
+- píxeles y formato de píxeles.
+- colores/paleta.
+- capas y orden de capas.
+- coordenadas y posición.
+- escala, rotación y ángulo.
+- opacidad, visibilidad y bloqueo.
+- transformaciones.
+- referencias utilizadas.
+- assets y rutas de recursos.
+- configuración y metadatos.
+- duración/tiempo y relación con la línea de tiempo cuando corresponda.
+
+Por ejemplo, `angle = 90°` y `angle = inexistente` son estados distintos. No se debe eliminar el campo `angle` del segundo frame solo porque no tenga un valor aplicable. Esto evita que el importador tenga que adivinar si un dato fue omitido intencionalmente, no existía o se perdió durante la exportación.
+
+Cada capa del frame sigue el mismo principio: su contrato declara todos los campos que pueden ser necesarios para reconstruirla, aunque determinados valores sean inexistentes o no aplicables.
+
+**Los frames no son referencias.** No usan `.reference` y no pertenecen al Reference Center. `Frames/frames.tscn` organiza el conjunto de frames que CodeLab coloca en la escena/lienzo, y cada frame se resuelve por su número/índice.
 
 Reglas implementadas:
 
@@ -125,13 +145,12 @@ Reglas implementadas:
 - Cada frame debe contener exactamente un cel por cada ID de capa del proyecto; sin IDs desconocidos ni duplicados.
 - Todas las dimensiones deben coincidir con el canvas.
 - durationMs: 1–10.000 ms.
-- Los archivos .rgba deben contener exactamente width × height × 4 bytes.
-- El instalador también acepta cels PNG de 8 bits no entrelazados y los decodifica a RGBA8.
+- Los archivos de píxeles deben declarar y cumplir el formato/dimensiones esperados.
 - El presupuesto de memoria de píxeles de animación es 64 MiB.
 
-Al instalar, los bytes se convierten a base64 y se reconstruye project.animation en formato pixelforge-animation, con IDs de capa, FPS, frame activo, loop, duración y cels.
+Al instalar, los datos se convierten a la representación de animación de PixelForge, conservando IDs de capa, FPS, frame activo, loop, duración, cels y metadatos.
 
-**No inferir frames por carpeta/extensión:** un PNG bajo assets/ o reference.personaje/ es un recurso/parte, no un frame. Solo el mapeo explícito frame → layer → pixelsPath lo convierte en un cel.
+**No inferir frames por carpeta/extensión:** un recurso bajo assets/ o Reference Center no se convierte en frame por su nombre. Solo el mapeo explícito del contrato lo convierte en parte del frame.
 
 ## 4. Secciones de escena: Entorno, Efectos, Detalles, Elementos y Objetos
 
@@ -162,32 +181,24 @@ Los manifiestos apuntan a los IDs del documento nativo; no duplican la imagen co
 
 El id de categoría y el sufijo de carpeta son campos separados: el instalador valida que folder empiece por reference., pero no exige que el texto después del punto coincida con id. Conviene mantener una convención explícita, por ejemplo id = character y folder = reference.personaje, o id = personaje y folder = reference.personaje. Cada reference.json debe permanecer dentro de la carpeta que declara su categoría.
 
-### 4.1 center.op/center.json
+### 4.1 reference.center
 
-Contrato:
+`reference.center` identifica el contenido que debe cargarse en el **Reference Center**. No debe tratarse como una escena `.tscn` del editor.
 
-- format = codelab-reference-center.
-- version = 1.
-- categories[]: categorías únicas, cada una con id, folder y references[].
-- Cada referencia apunta a un path relativo a su folder.
+La jerarquía de categorías es explícita. Por ejemplo:
 
-Ejemplo esquemático:
+- `reference.center/reference.personaje/reference.personaje1/` = referencia 1 de la categoría personaje.
+- `reference.center/entorno.reference/entorno.reference1/` = referencia 1 de entorno.
+- `reference.center/elementos.reference/elemento.reference1/` = referencia 1 de elementos.
+- `reference.center/detalles.reference/detalle.reference1/` = referencia 1 de detalles.
+- `reference.center/objetos.reference/objeto.reference1/` = referencia 1 de objetos.
+- `reference.center/efectos.reference/efecto.reference1/` = referencia 1 de efectos.
 
-~~~json
-{
-  "format": "codelab-reference-center",
-  "version": 1,
-  "categories": [
-    {
-      "id": "personaje",
-      "folder": "reference.personaje",
-      "references": [
-        { "path": "reference.personaje/hero/reference.json" }
-      ]
-    }
-  ]
-}
-~~~
+La terminación `.center` tiene semántica propia: **Reference Center**. La terminación `.tscn` pertenece al contenido de escena/editor y no debe usarse para marcar una referencia del centro.
+
+Cada referencia individual usa `.reference` y conserva el mismo principio de esquema completo que los frames: todos los campos posibles permanecen definidos y sus valores indican si el dato existe, no aplica o está ausente.
+
+El contrato del centro debe mantener categorías, IDs y rutas explícitas. CodeLab no debe decidir una categoría por el nombre de un archivo ni mover una referencia a `.tscn` solo porque contenga datos parecidos a una escena.
 
 ### 4.2 reference.json
 
