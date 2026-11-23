@@ -47,6 +47,24 @@ GitHub versiona el software y puede proporcionar el headless del agente; no es e
 - No confundas la ventana de supervisión del agente con un timeout del worker. Respeta los límites técnicos reales declarados por la operación; no mates procesos solo porque el agente dejó de esperar o la sesión de conversación se interrumpió.
 
 ## 3.1 Obtención del Headless del agente mediante workflow y artefacto
+
+Si el agente **no encuentra un artefacto válido del Headless más reciente ni un workflow que realmente lo empaquete**, no debe detenerse ni sustituir el proceso por una copia local, un `git clone`, una reconstrucción manual o un artefacto inventado.
+
+En ese caso, el agente debe:
+
+1. **Modificar o crear el workflow necesario** para que empaquete el Headless más reciente correspondiente al código vigente.
+2. Configurar el workflow para **publicar ese paquete como un artefacto real de GitHub Actions**.
+3. **Lanzar el workflow él mismo** mediante el mecanismo soportado disponible en el entorno.
+4. Esperar la ejecución real y comprobar que terminó correctamente.
+5. Obtener/descargar el artefacto producido por esa ejecución.
+6. Utilizar ese artefacto como el Headless propio aislado del agente.
+
+Regla operativa adicional:
+
+**No existe artefacto válido + no existe workflow que empaquete el Headless más reciente → agente modifica/crea el workflow → agente lo lanza → workflow empaqueta → publica artefacto → agente obtiene el artefacto → continúa con el Headless aislado.**
+
+El agente debe preferir modificar el workflow existente cuando sea adecuado y solo crear uno nuevo cuando no exista una vía correcta que pueda adaptarse. La modificación debe limitarse a conseguir el empaquetado y publicación correctos del Headless; no debe convertir el workflow en una implementación alternativa del Headless.
+
 ## 3.2 Inicio de workflows disponibles solo manualmente
 
 La disponibilidad de un workflow únicamente mediante **ejecución manual** no impide al agente utilizarlo. Cuando el workflow es la vía requerida para producir un artefacto o realizar una operación necesaria, el agente debe **buscar primero una forma soportada de iniciarlo**, aunque la interfaz de GitHub lo muestre como `workflow_dispatch`/manual.
