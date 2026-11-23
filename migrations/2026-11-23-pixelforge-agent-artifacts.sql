@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS public.codelab_agent_artifacts (
   artifact_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind = ANY (ARRAY['pixelforge_zip_upload','pixelforge_zip_export'])),
+  kind TEXT NOT NULL CHECK (kind = ANY (ARRAY['pixelforge_zip_upload','pixelforge_zip_export','pixelforge_composer_video','pixelforge_composer_png'])),
   filename TEXT NOT NULL,
   content_type TEXT NOT NULL,
   total_bytes BIGINT NOT NULL CHECK (total_bytes > 0 AND total_bytes <= 268435456),
