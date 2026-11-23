@@ -145,7 +145,7 @@ export async function createPixelForgeProjectZip(sourceProject) {
           width: project.width,
           height: project.height
         });
-        png = await vectorPage.locator('#vector-composite').screenshot({ type: 'png' });
+        png = await vectorPage.screenshot({ type: 'png', omitBackground: true });
       }
       frameEntries.push({
         name: 'frames/frame-' + String(index + 1).padStart(4, '0') + '.png',
