@@ -62,9 +62,12 @@ export function assertCodelabPackageEntries(entries) {
     if (normalizedEntries.has(normalized)) throw new Error(`Duplicate entry in CodeLab package: ${entry}`);
     normalizedEntries.add(normalized);
   }
-  if (!normalizedEntries.has('project.codelab')) {
-    throw new Error('Not a CodeLab project: root project.codelab marker is missing.');
+  const markers = ['project.codelab', 'project.codelab-web', 'project.codelab-design', 'project.codelab-pixelforge']
+    .filter(marker => normalizedEntries.has(marker));
+  if (!markers.length) {
+    throw new Error('Not a CodeLab project: root editor-specific project.codelab marker is missing.');
   }
+  if (markers.length > 1) throw new Error('Invalid CodeLab package: multiple editor marker files are present.');
   if (!normalizedEntries.has('manifest.json') || !normalizedEntries.has('project.json')) {
     throw new Error('Invalid CodeLab project: root manifest.json and project.json are required.');
   }
@@ -135,7 +138,7 @@ async function collectProjectFiles(root) {
       if (!assertSafePath(relative)) throw new Error(`Unsafe extracted path: ${relative}`);
       if (entry.isSymbolicLink()) throw new Error(`Symbolic links are not allowed in CodeLab packages: ${relative}`);
       if (entry.isDirectory()) stack.push(absolute);
-      else if (entry.isFile() && !['project.codelab', 'manifest.json', 'project.json'].includes(relative)) {
+      else if (entry.isFile() && !['project.codelab', 'project.codelab-web', 'project.codelab-design', 'project.codelab-pixelforge', 'manifest.json', 'project.json'].includes(relative)) {
         files.push({ absolute, relative });
       } else if (!entry.isFile()) throw new Error(`Unsupported filesystem entry in CodeLab package: ${relative}`);
     }
@@ -153,6 +156,12 @@ async function readProjectPackage(buffer, tempRoot) {
   ]);
   const manifest = JSON.parse(manifestText);
   const project = JSON.parse(projectText);
+  const rootEntries = await fs.readdir(root);
+  const marker = rootEntries.find(name => ['project.codelab', 'project.codelab-web', 'project.codelab-design', 'project.codelab-pixelforge'].includes(name));
+  const markerEditor = marker && marker !== 'project.codelab' ? marker.slice('project.codelab-'.length) : null;
+  if (markerEditor && markerEditor !== String(manifest.editor)) {
+    throw new Error('CodeLab package marker editor does not match manifest.editor.');
+  }
   if (manifest.format !== 'codelab' || ![1, 2].includes(Number(manifest.version))) {
     throw new Error('Unsupported .codelab package format.');
   }
