@@ -235,6 +235,19 @@ function addFrames(project, files) {
   return manifest;
 }
 
+function canonicalResourcePath(path, destination) {
+  const segments = path.split('/');
+  const aliases = {
+    assets: 'assets', fonts: 'fonts', audio: 'audio', video: 'video',
+    models: 'models', textures: 'textures', documents: 'documents',
+    frames: 'frames', entorno: 'environment', environment: 'environment',
+    efectos: 'effects', effects: 'effects', detalles: 'details', details: 'details',
+    elementos: 'elements', elements: 'elements', objetos: 'objects', objects: 'objects',
+  };
+  if (aliases[segments[0].toLowerCase()] === destination) return [destination, ...segments.slice(1)].join('/');
+  return [destination, ...segments].join('/');
+}
+
 function inferResourceDestination(path) {
   const folder = String(path).split('/')[0].toLowerCase();
   const folders = {
@@ -544,7 +557,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
   const resources = [];
   let resourceBytes = 0;
   for (const declaration of manifest.resources || []) {
-    if (!declaration || !safePath(declaration.path)) throw new TypeError('manifest.resources contains an unsafe path.');
+    if (!declaration || !safePath(declaration.path) || resourcePaths.has(declaration.path)) throw new TypeError('manifest.resources contains an unsafe or duplicate path.');\n    resourcePaths.add(declaration.path);
     const bytes = await readBytes(entries, declaration.path, 'declared resource');
     resourceBytes += bytes.length;
     if (resourceBytes > MAX_RESOURCE_BYTES) throw new RangeError('Package resources exceed the 32 MiB aggregate limit.');
