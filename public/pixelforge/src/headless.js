@@ -223,6 +223,19 @@ function executeVectorModelAction(document, action) {
     }
     const audit = auditVectorModel(candidate);
     if (!audit.ok) throw new TypeError('Vector model failed validation: ' + audit.issues.filter(issue => issue.severity === 'error').map(issue => issue.code).join(', '));
+    for (const object of flatten(candidate.objects)) {
+      for (const key of ['fill', 'stroke', 'fontFamily']) {
+        const value = object[key];
+        if (typeof value === 'string' && (/url\\(\\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
+          throw new TypeError('Vector styles cannot reference external resources or executable URLs.');
+        }
+      }
+      for (const stop of object.gradient?.stops || []) {
+        if (typeof stop.color === 'string' && /url\\(|(?:javascript|https?|file|data):/i.test(stop.color)) {
+          throw new TypeError('Vector gradients cannot reference external resources.');
+        }
+      }
+    }
     const ids = flatten(candidate.objects).map(item => item.id);
     if (ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) {
       throw new TypeError('Vector object IDs must be present and unique, including nested group children.');
