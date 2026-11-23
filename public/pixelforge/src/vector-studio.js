@@ -221,8 +221,93 @@ export function parseSvgPathData(data) {
   return { points, closed: /z/i.test(String(data || '')) };
 }
 
+
+function decodeXmlEntities(value) {
+  return String(value).replace(/&(#x[0-9a-f]+|#\\d+|amp|lt|gt|quot|apos);/gi, (match, entity) => {
+    const key = entity.toLowerCase();
+    if (key === 'amp') return '&';
+    if (key === 'lt') return '<';
+    if (key === 'gt') return '>';
+    if (key === 'quot') return '"';
+    if (key === 'apos') return "'";
+    const code = key.startsWith('#x') ? parseInt(key.slice(2), 16) : Number(key.slice(1));
+    if (!Number.isInteger(code) || code < 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+      throw new TypeError('SVG contains an invalid XML character reference.');
+    }
+    return String.fromCodePoint(code);
+  });
+}
+
+function parseSvgXmlFallback(source) {
+  const input = String(source);
+  if (/<!DOCTYPE|<!ENTITY|<\\s*(script|foreignObject)\\b/i.test(input)) {
+    throw new TypeError('SVG DTDs, entities, scripts and foreignObject elements are not supported.');
+  }
+  const rootDocument = { documentElement: null, querySelector: () => null };
+  const stack = [];
+  const tokens = input.match(/<!--[\\s\\S]*?-->|<\\?[\\s\\S]*?\\?>|<[^>]+>|[^<]+/g) || [];
+  for (const token of tokens) {
+    if (token.startsWith('<!--') || token.startsWith('<?')) continue;
+    if (token.startsWith('</')) {
+      const closing = token.match(/^<\\/\\s*([A-Za-z][\\w:.-]*)\\s*>$/);
+      if (!closing || !stack.length || stack[stack.length - 1].tagName !== closing[1]) {
+        throw new TypeError('SVG has mismatched XML closing tags.');
+      }
+      stack.pop();
+      continue;
+    }
+    if (token.startsWith('<')) {
+      const opening = token.match(/^<\\s*([A-Za-z][\\w:.-]*)([\\s\\S]*?)\\/?>$/);
+      if (!opening) throw new TypeError('SVG contains malformed XML markup.');
+      const tagName = opening[1];
+      const attributeText = opening[2].replace(/\\/\\s*$/, '');
+      const attributes = {};
+      let remainder = attributeText;
+      const attributePattern = /([A-Za-z_:][\\w:.-]*)\\s*=\\s*(?:"([^"]*)"|'([^']*)')/g;
+      let match;
+      let consumed = '';
+      while ((match = attributePattern.exec(attributeText))) {
+        attributes[match[1]] = decodeXmlEntities(match[2] ?? match[3] ?? '');
+        consumed += attributeText.slice(consumed.length, match.index).replace(/\\s+/g, '');
+        consumed += match[0];
+      }
+      remainder = attributeText.replace(attributePattern, '').replace(/\\s+/g, '');
+      if (remainder) throw new TypeError('SVG contains an unsupported or malformed attribute.');
+      const node = {
+        tagName,
+        children: [],
+        textContent: '',
+        getAttribute(name) { return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null; },
+        querySelectorAll(selector) {
+          const names = String(selector).split(',').map(value => value.trim());
+          const found = [];
+          const visit = parent => {
+            for (const child of parent.children) {
+              if (names.includes(child.tagName)) found.push(child);
+              visit(child);
+            }
+          };
+          visit(this);
+          return found;
+        }
+      };
+      if (stack.length) stack[stack.length - 1].children.push(node);
+      else if (!rootDocument.documentElement) rootDocument.documentElement = node;
+      else throw new TypeError('SVG must contain exactly one root element.');
+      if (!/\\/\\s*>$/.test(token)) stack.push(node);
+      continue;
+    }
+    if (stack.length) stack[stack.length - 1].textContent += decodeXmlEntities(token);
+    else if (token.trim()) throw new TypeError('SVG contains text outside its root element.');
+  }
+  if (stack.length) throw new TypeError('SVG contains unclosed XML elements.');
+  return rootDocument;
+}
+
 export function parseSVGToVectorModel(source, width, height) {
-  const xml = new DOMParser().parseFromString(String(source), 'image/svg+xml');
+  const xml = typeof DOMParser === 'function'
+    ? new DOMParser().parseFromString(String(source), 'image/svg+xml')
+    : parseSvgXmlFallback(source);
   if (xml.querySelector('parsererror')) throw new Error('Invalid SVG');
   const root = xml.documentElement;
   if (!root || String(root.tagName).toLowerCase() !== 'svg') throw new Error('SVG root element is missing.');
