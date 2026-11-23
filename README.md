@@ -86,7 +86,7 @@ El servidor arma al iniciar un cliente PostgreSQL dedicado con `LISTEN codelab_a
 
 Al armar/reconectar LISTEN, el servidor reconcilia cualquier orden queued no expirada, aunque el payload no tenga `wake:true`. Esto cubre la ventana en la que una notificación pudo producirse antes de registrar el listener.
 
-El worker mantiene su propio listener. Reclama órdenes desde la tabla durable con una transacción y `FOR UPDATE SKIP LOCKED`. Si no encuentra trabajo, espera una notificación sin polling. El worker ocioso sigue siendo un proceso vivo esperando eventos; `sleeping` en `codelab_agent_bridge_state` indica que el proceso terminó y dejó señal para reactivación, no que esté simplemente sin órdenes.
+El worker mantiene su propio listener. Reclama órdenes desde la tabla durable con una transacción y `FOR UPDATE SKIP LOCKED`. Si no encuentra trabajo, espera una notificación sin polling.
 
 También existe la operación explícita `POST /api/agent/bridge/ensure` (GET como fallback), protegida por `x-codelab-agent-bridge-token` y `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`. Sirve para iniciar el worker de forma controlada; no es el mecanismo normal de entrega ni un cron.
 
