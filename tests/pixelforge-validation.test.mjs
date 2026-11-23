@@ -70,7 +70,7 @@ test('PixelForge validation rejects dimensions and aggregate raster memory beyon
   tooManyLayers.height = 2048;
   tooManyLayers.layers = Array.from({ length: 5 }, (_, index) => ({
     id: 'layer-' + index, name: 'Layer ' + index, visible: true, opacity: 1, locked: false,
-    pixels: Buffer.alloc(2048 * 2048 * 4).toString('base64'),
+    pixels: 'A'.repeat(Math.ceil((2048 * 2048 * 4) / 3) * 4 - 2) + '==',
   }));
   const result = validatePixelForgeProject(tooManyLayers);
   assert.equal(result.ok, false);
