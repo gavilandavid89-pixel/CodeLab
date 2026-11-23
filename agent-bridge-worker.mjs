@@ -10,9 +10,12 @@ import { createVisionSnapshot } from './public/pixelforge/src/headless-vision.js
 import { executeCodeLabBrowserActions } from './native-headless-browser.mjs';
 import { importCodeLabArtifact } from './codelab-project-artifact-import.mjs';
 import { exportPixelForgeAnimationVideo as exportPixelForgeAnimationVideoComposer } from './pixelforge-video-composer-export.mjs';
+import { createPixelForgeProjectZip, parsePixelForgeProjectZip } from './pixelforge-agent-zip.mjs';
+import { controlPixelForgeVideoComposer } from './pixelforge-video-composer-control.mjs';
+import { ensureNativeArtifactSchema, stageNativeArtifact, readNativeArtifact, deleteNativeArtifact } from './native-agent-artifacts.mjs';
 
 const require = createRequire(import.meta.url);
-const { Pool } = require('pg');
+const { Pool, Client } = require('pg');
 const neonEvidence = require('./neon-pixelforge-evidence.js');
 const os = require('node:os');
 const DATABASE_URL = process.env.DATABASE_URL || '';
@@ -28,7 +31,72 @@ const pool = new Pool({
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
 const MAX_ACCOUNT_BYTES = 512 * 1024 * 1024;
 const MAX_PROJECTS = 50;
-const POLL_MS = 150;
+// PostgreSQL notifications wake the worker only when a queued command commits.
+let wakeClient = null;
+let wakeVersion = 0;
+let wakeWaiter = null;
+
+function signalCommandWake() {
+  wakeVersion += 1;
+  if (wakeWaiter) {
+    const resolve = wakeWaiter;
+    wakeWaiter = null;
+    resolve();
+  }
+}
+
+function directDatabaseUrl() {
+  const url = new URL(DATABASE_URL);
+  if (url.hostname.includes('-pooler.')) url.hostname = url.hostname.replace('-pooler.', '.');
+  return url.toString();
+}
+
+async function connectCommandWakeListener() {
+  if (wakeClient || stopping) return;
+  const client = new Client({
+    connectionString: directDatabaseUrl(),
+    ssl: process.env.CODELAB_DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false },
+    application_name: 'codelab-agent-bridge-command-listener',
+  });
+  client.on('notification', message => {
+    if (message.channel === 'codelab_agent_bridge_wake') signalCommandWake();
+  });
+  client.on('error', error => {
+    console.error('[CodeLab Native Bridge] command wake listener error:', error.message);
+    if (wakeClient === client) wakeClient = null;
+    signalCommandWake();
+    void client.end().catch(() => {});
+  });
+  await client.connect();
+  await client.query('LISTEN codelab_agent_bridge_wake');
+  wakeClient = client;
+  console.log('[CodeLab Native Bridge] command listener armed; idle polling disabled.');
+}
+
+async function waitForCommandWake(observedVersion) {
+  if (wakeVersion !== observedVersion) return;
+  if (!wakeClient) {
+    await delay(5000);
+    if (!stopping) {
+      try {
+        await connectCommandWakeListener();
+        // Reconcile durable queue state after reconnecting, including notifications
+        // that may have been missed while the listener was disconnected.
+        signalCommandWake();
+      } catch (error) {
+        console.error('[CodeLab Native Bridge] command listener reconnect failed:', error.message);
+      }
+    }
+    return;
+  }
+  await new Promise(resolve => {
+    if (wakeVersion !== observedVersion || stopping) {
+      resolve();
+      return;
+    }
+    wakeWaiter = resolve;
+  });
+}
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 const NATIVE_VALIDATION_ENABLED = String(process.env.CODELAB_NATIVE_VALIDATION_ENABLED || 'true').toLowerCase() !== 'false';
 let stopping = false;
@@ -265,6 +333,43 @@ async function createProject(payload) {
     client.release();
   }
 }
+
+async function persistImportedPixelForgeProject(sourceProject) {
+  const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
+  const document = { ...runtime.toJSON(), serverRevision: 1 };
+  const serialized = JSON.stringify(document);
+  const bytes = Buffer.byteLength(serialized, 'utf8');
+  if (bytes > MAX_PROJECT_BYTES) throw new Error('Imported PixelForge project exceeds the 96 MiB storage limit.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [pixelForgeWorkspaceId]);
+    const usage = await client.query(
+      'SELECT COUNT(*)::int AS count, COALESCE(SUM(byte_size),0)::bigint AS bytes FROM codelab_pixelforge_projects WHERE workspace_id=$1',
+      [pixelForgeWorkspaceId]
+    );
+    if (Number(usage.rows[0].count) >= MAX_PROJECTS) throw new Error('PixelForge project limit reached.');
+    if (Number(usage.rows[0].bytes) + bytes > MAX_ACCOUNT_BYTES) throw new Error('PixelForge account storage limit reached.');
+    const now = Date.now();
+    const sha = createHash('sha256').update(serialized).digest('hex');
+    await client.query(
+      'INSERT INTO codelab_pixelforge_projects (workspace_id,project_id,name,width,height,updated_at,last_opened_at,project,byte_size,server_revision,content_sha256) VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,1,$9)',
+      [pixelForgeWorkspaceId, document.id, document.name, document.width, document.height, now, serialized, bytes, sha]
+    );
+    await client.query('COMMIT');
+    return {
+      projectId: document.id, name: document.name, width: document.width, height: document.height,
+      serverRevision: 1, byteSize: bytes, contentSha256: sha,
+      inspection: compactInspection(HeadlessEditorRuntime.fromJSON(document).inspect())
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function listProjects() {
   const result = await pool.query(
     'SELECT project_id AS id, name, width, height, updated_at AS "updatedAt", last_opened_at AS "lastOpenedAt", server_revision AS "serverRevision" FROM codelab_pixelforge_projects WHERE workspace_id=$1 ORDER BY last_opened_at DESC',
@@ -277,6 +382,33 @@ function assertProjectId(value) {
     throw new Error('A valid PixelForge project_id is required.');
   }
 }
+
+function normalizeHeadlessProposalActions(actions) {
+  return actions.map(source => {
+    const action = JSON.parse(JSON.stringify(source));
+    if (!action || typeof action.name !== 'string') return action;
+    if (action.name === 'vector.object.create' && action.object && typeof action.object === 'object') {
+      const rootId = typeof action.object.id === 'string' && action.object.id
+        ? action.object.id : randomBytes(16).toString('hex');
+      action.object.id = rootId;
+      let index = 0;
+      const assign = object => {
+        if (!object.id) object.id = rootId + '-' + index;
+        index++;
+        if (object.type === 'group') for (const child of object.children || []) assign(child);
+      };
+      assign(action.object);
+    } else if (action.name === 'vector.object.duplicate' && !action.new_id) {
+      action.new_id = randomBytes(16).toString('hex');
+    } else if (action.name === 'vector.group.create' && !action.group_id) {
+      action.group_id = randomBytes(16).toString('hex');
+    } else if (action.name === 'vector.svg.import' && !action.id_prefix) {
+      action.id_prefix = randomBytes(16).toString('hex');
+    }
+    return action;
+  });
+}
+
 async function handleProposal(command) {
   const payload = command.payload || {};
   assertProjectId(payload.project_id);
@@ -287,8 +419,9 @@ async function handleProposal(command) {
     throw new Error('A short proposal summary is required.');
   }
   const loaded = await loadProject(payload.project_id);
+  const normalizedActions = normalizeHeadlessProposalActions(payload.actions);
   const runtime = HeadlessEditorRuntime.fromJSON(loaded.project);
-  const batch = runtime.executeBatch(payload.actions);
+  const batch = runtime.executeBatch(normalizedActions);
   if (!batch.ok) throw new Error('Headless batch failed at action ' + batch.failedIndex + ': ' + (batch.error?.message || 'unknown error'));
   if (!runtime.hasPendingChanges) throw new Error('The proposed batch did not change the project.');
   const proposalInfo = runtime.createProposal(payload.summary.trim());
@@ -298,7 +431,7 @@ async function handleProposal(command) {
   const proposal = {
     projectId: payload.project_id,
     baseServerRevision: loaded.serverRevision,
-    actions: payload.actions,
+    actions: normalizedActions,
     summary: payload.summary.trim(),
     proposalInfo,
     diff: {
@@ -308,6 +441,7 @@ async function handleProposal(command) {
       animationChangedPixels: diff.animationChangedPixels,
       bounds: diff.bounds,
       animation: diff.animation,
+      vector: diff.vector,
     },
     inspection,
     expiresAt: new Date(Date.now() + PROPOSAL_TTL_MS).toISOString(),
@@ -2672,6 +2806,57 @@ async function processCommand(command) {
         approvalRequired: true, persistence: 'PostgreSQL',
       });
       return;
+    case 'pixelforge_import_zip': {
+      const staged = await readNativeArtifact(pool, workspaceId, payload.artifact_id, 'pixelforge_zip_upload');
+      const parsed = await parsePixelForgeProjectZip(staged.bytes, { importedName: payload.name });
+      const saved = await persistImportedPixelForgeProject(parsed.project);
+      await deleteNativeArtifact(pool, workspaceId, payload.artifact_id);
+      await finish(command.command_id, 'succeeded', {
+        imported: true,
+        project: saved,
+        package: { ...parsed.metadata, sha256: staged.metadata.sha256 }
+      });
+      return;
+    }
+    case 'pixelforge_export_zip': {
+      assertProjectId(payload.project_id);
+      const loaded = await loadProject(payload.project_id, targetWorkspace);
+      const exported = await createPixelForgeProjectZip(loaded.project);
+      const artifact = await stageNativeArtifact(pool, {
+        workspaceId,
+        kind: 'pixelforge_zip_export',
+        filename: exported.metadata.projectName.replace(/[^a-z0-9_-]+/gi, '-') + '.pixelforge.zip',
+        contentType: 'application/zip',
+        bytes: exported.bytes,
+        metadata: { projectId: payload.project_id, serverRevision: loaded.serverRevision, ...exported.metadata },
+        ttlMs: 60 * 60 * 1000
+      });
+      await finish(command.command_id, 'succeeded', {
+        exported: true,
+        projectId: payload.project_id,
+        serverRevision: loaded.serverRevision,
+        package: exported.metadata,
+        artifact
+      });
+      return;
+    }
+    case 'pixelforge_video_composer': {
+      const result = await controlPixelForgeVideoComposer(
+        { ...payload, target_workspace_id: targetWorkspace },
+        {
+          loadProject,
+          targetPixelForgeWorkspace,
+          workspaceTokenFor,
+          storeArtifact: artifact => stageNativeArtifact(pool, {
+            workspaceId,
+            ...artifact,
+            ttlMs: 60 * 60 * 1000
+          })
+        }
+      );
+      await finish(command.command_id, result.ok ? 'succeeded' : 'failed', result);
+      return;
+    }
     case 'pixelforge_create':
       await finish(command.command_id, 'succeeded', await createProject(payload));
       return;
@@ -2695,6 +2880,9 @@ async function processCommand(command) {
           layer: { name: 'drawing.layer.inspect', layerId: payload.layer_id, includeCoordinates: payload.include_coordinates !== false, gridStep: payload.grid_step ?? 8 },
           references: { name: 'drawing.reference.list' },
           reference: { name: 'drawing.reference.get', referenceId: payload.reference_id },
+          vector_model: { name: 'vector.model.get' },
+          vector_audit: { name: 'vector.audit' },
+          vector_svg: { name: 'vector.svg.export' },
         };
         const action = actionByOperation[operation];
         if (!action) throw new Error('Unsupported intelligence operation.');
@@ -2739,6 +2927,9 @@ async function processCommand(command) {
         },
         references: { name: 'drawing.reference.list' },
         reference: { name: 'drawing.reference.get', referenceId: payload.reference_id },
+        vector_model: { name: 'vector.model.get' },
+        vector_audit: { name: 'vector.audit' },
+        vector_svg: { name: 'vector.svg.export' },
       };
       const action = actionByOperation[operation];
       if (!action) throw new Error('Unsupported intelligence operation.');
@@ -2772,9 +2963,14 @@ async function processCommand(command) {
     case 'pixelforge_capture_interface':
       await finish(command.command_id, 'succeeded', await capturePixelForgeInterface({ ...payload, target_workspace_id: targetWorkspace }));
       return;
-    case 'pixelforge_export_animation_video':
-      await finish(command.command_id, 'succeeded', await exportPixelForgeAnimationVideoComposer({ ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id }, { loadProject, targetPixelForgeWorkspace, uploadNativeArtifact, neonEvidence, pool, workspaceTokenFor, workspaceId }));
+    case 'pixelforge_export_animation_video': {
+      const result = await exportPixelForgeAnimationVideoComposer(
+        { ...payload, target_workspace_id: targetWorkspace, command_id: command.command_id },
+        { loadProject, targetPixelForgeWorkspace, uploadNativeArtifact, neonEvidence, pool, workspaceTokenFor, workspaceId }
+      );
+      await finish(command.command_id, result.videoExport?.passed ? 'succeeded' : 'failed', result);
       return;
+    }
     case 'pixelforge_preview_evidence_video':
       await finish(command.command_id, 'succeeded', await previewPixelForgeEvidenceVideo(payload));
       return;
@@ -2851,6 +3047,7 @@ async function main() {
     CREATE INDEX IF NOT EXISTS codelab_agent_commands_workspace_idx
       ON public.codelab_agent_commands (workspace_id, created_at DESC);
   `);
+  await ensureNativeArtifactSchema(pool);
   await pool.query(`
     DO $codelab_migration$
     BEGIN
@@ -2866,6 +3063,9 @@ async function main() {
            AND pg_get_constraintdef(oid) LIKE '%codelab_ui_execute%'
            AND pg_get_constraintdef(oid) LIKE '%neon_function_invoke%'
            AND pg_get_constraintdef(oid) LIKE '%codelab_project_capture_png%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_import_zip%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_export_zip%'
+           AND pg_get_constraintdef(oid) LIKE '%pixelforge_video_composer%'
       ) THEN
         ALTER TABLE codelab_agent_commands
           DROP CONSTRAINT IF EXISTS codelab_agent_commands_action_check;
@@ -2875,10 +3075,13 @@ async function main() {
             'status','pixelforge_create','pixelforge_list','pixelforge_inspect',
             'pixelforge_propose','pixelforge_approve','pixelforge_discard','pixelforge_animation_frame_context',
             'pixelforge_export_image','pixelforge_capture_interface','pixelforge_export_animation_video',
+            'pixelforge_intelligence','pixelforge_preview_evidence_video',
+            'pixelforge_import_zip','pixelforge_export_zip','pixelforge_video_composer',
             'codelab_project_create','codelab_project_convert_to_web',
             'codelab_project_inspect','codelab_project_connect',
             'codelab_project_get_code','codelab_project_update_code',
-            'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute','neon_function_invoke'
+            'codelab_project_capture_png','codelab_project_record_video','codelab_ui_execute',
+            'codelab_validate','codelab_project_import','neon_function_invoke'
           ]));
       END IF;
     END
@@ -2891,6 +3094,7 @@ async function main() {
     reason: 'bridge_started',
     metadata: { pid: process.pid, hostname: os.hostname(), source: 'agent-bridge-worker' }
   });
+  await connectCommandWakeListener();
   if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
     pixelForgeWorkspaceId = workspaceId;
   } else {
@@ -2899,9 +3103,10 @@ async function main() {
   console.log('[CodeLab Native Bridge] online for mailbox workspace', workspaceId, 'and PixelForge workspace', pixelForgeWorkspaceId);
   while (!stopping) {
     try {
+      const observedWakeVersion = wakeVersion;
       const command = await claimCommand();
       if (!command) {
-        await delay(POLL_MS);
+        await waitForCommandWake(observedWakeVersion);
         continue;
       }
       const heartbeatTimer = setInterval(() => {
@@ -2993,14 +3198,19 @@ async function main() {
         clearInterval(heartbeatTimer);
       }
     } catch (error) {
-      console.error('[CodeLab Native Bridge] poll error:', error.message);
+      console.error('[CodeLab Native Bridge] mailbox error:', error.message);
       await delay(2500);
     }
   }
 }
 async function shutdown(reason) {
   stopping = true;
+  signalCommandWake();
   await emitShutdownSignal(reason);
+  if (wakeClient) {
+    try { await wakeClient.end(); } catch (_) {}
+    wakeClient = null;
+  }
   await pool.end().catch(() => {});
 }
 process.once('SIGTERM', () => { void shutdown('sigterm'); });

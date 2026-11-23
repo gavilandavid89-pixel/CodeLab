@@ -1,4 +1,4 @@
-name: CodeLab A/B persistent animation verification
+name: CodeLab A/B temporary-session video verification
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
 jobs:
   a-and-b:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,32 +22,36 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright
           npx playwright install --with-deps chromium
-      - name: Start A persistent CodeLab session
+      - name: Start A temporary CodeLab session (30-minute maximum)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_SESSION_ID: independent-ab-${{ github.run_id }}-${{ github.run_attempt }}
-          CODELAB_SESSION_MINUTES: "2"
+          CODELAB_SESSION_MINUTES: "30"
           CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-ab-video
         run: |
           mkdir -p "${{ runner.temp }}/codelab-ab-video"
           node scripts/codelab-session-host.mjs > "${{ runner.temp }}/codelab-host.log" 2>&1 &
           echo $! > "${{ runner.temp }}/codelab-host.pid"
-          for i in $(seq 1 60); do
+          for i in $(seq 1 600); do
             if grep -q "\[CodeLab Session Ready\]" "${{ runner.temp }}/codelab-host.log" 2>/dev/null; then
               echo "A is ready"
               break
             fi
             sleep 1
           done
-          grep -q "\[CodeLab Session Ready\]" "${{ runner.temp }}/codelab-host.log"
+          if ! grep -Fq "[CodeLab Session Ready]" "${{ runner.temp }}/codelab-host.log"; then
+            echo "A did not become ready within 10 minutes; host log follows:"
+            cat "${{ runner.temp }}/codelab-host.log" || true
+            exit 1
+          fi
       - name: B sends animation request into A
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
-          CODELAB_SESSION_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CODELAB_SESSION_ID: independent-ab-${{ github.run_id }}-${{ github.run_attempt }}
           CODELAB_SESSION_TIMEOUT_MS: "90000"
           CODELAB_SESSION_REQUEST: >-
             {"kind":"browser","start_path":"/pixelforge/index.html?createDemo=walk-crouch-24&capture=video","actions":[

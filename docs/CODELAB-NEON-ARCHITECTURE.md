@@ -1,61 +1,79 @@
-# CodeLab — Neon integration and animation persistence
+# CodeLab — arquitectura Neon y persistencia de proyectos
 
-## Neon is part of the CodeLab data path
+Este archivo es el resumen de arquitectura de persistencia. La especificación técnica detallada y el diagrama de comunicación se mantienen en [CodeLab ↔ Neon: comunicación técnica extremo a extremo](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
-CodeLab uses **Neon Postgres** as the database connection for CodeLab's persistent project state. The Neon-backed data layer is the source of truth for project data that must survive browser sessions and deployments.
+## Principios
 
-### Project creation and modification
+- Neon PostgreSQL es la fuente de verdad de cuentas, órdenes, proyectos persistentes, revisiones, resultados y metadatos de evidencia.
+- El navegador puede mantener caché/estado temporal, pero no sustituye la persistencia del servidor.
+- Los proyectos PixelForge y sus animaciones se guardan como documentos editables asociados a workspace, revisión y hash.
+- Los vídeos e imágenes son evidencia de inspección; no son la fuente canónica del proyecto.
+- Cloudflare/R2 o almacenamiento S3-compatible guarda bytes de evidencia cuando está configurado; Neon conserva las referencias y metadata.
+- GitHub versiona el software y ejecuta CI; no es el transporte normal de cada edición de proyecto.
 
-Project operations that change persistent CodeLab projects must be treated as database-backed operations:
+## Comunicación y activación del worker
 
-- create a project
-- edit project metadata
-- modify project structure/design data
-- modify web-space data
-- save project revisions
-- update project state used by the editor
+El servidor `server.js` mantiene un pool PostgreSQL y un cliente dedicado `pg.Client` con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT/UPDATE de una orden a estado `queued` emite `pg_notify`. El listener arranca `agent-bridge-worker.mjs` bajo demanda si no está activo.
 
-When implementing or repairing these operations, keep the Neon persistence layer connected to the editor/API flow. Do not replace the persistent Neon path with local-only state or browser storage as the authoritative project store.
+El worker tiene su propio pool SQL y su propio cliente dedicado LISTEN. Reclama órdenes de la tabla durable con transacciones y `FOR UPDATE SKIP LOCKED`. Cuando la cola queda vacía, espera una notificación; **no ejecuta polling de 150 ms ni un cron de keep-alive**. La notificación despierta; la fila SQL es la fuente durable.
 
-Browser/local state may be used for UI caching or temporary editor state, but it must not silently become the canonical storage path for persistent project modifications.
+Ambos listeners convierten el hostname Neon pooled a endpoint directo cuando detectan `-pooler.`, porque mantienen conexiones estables LISTEN/NOTIFY. Los pools de consultas normales pueden seguir usando el endpoint configurado en `DATABASE_URL`. El servidor y el worker usan `CODELAB_DATABASE_SSL` con TLS habilitado por defecto. Si Neon no acepta la conexión inicial, el listener del servidor programa reintentos exponenciales de hasta 60 segundos y vuelve a reconciliar la cola cuando conecta.
 
-## Neon and PixelForge animation
+## Proyectos y animación
 
-The animation editor/workflow is part of the same persistent CodeLab project system.
+Las modificaciones persistentes deben seguir el flujo:
 
-Animation-related project changes include:
+`editor/API → validación → Neon project JSONB → server_revision + 1 → content_sha256`.
 
-- animation frames and frame metadata
-- FPS/timing
-- animation configuration
-- PixelForge document/layer state
-- edits to the soldier animation
-- visual revisions and saved versions
+Las escrituras críticas verifican la revisión esperada y usan locks por workspace. Un conflicto de revisión debe devolverse como conflicto, no sobrescribir el proyecto.
 
-When an animation is modified from CodeLab, the resulting project/animation state must remain associated with the corresponding CodeLab project through the Neon-backed persistence path.
+Para dibujo/animación:
+- conservar frames, cels, capas, timings y metadatos dentro del documento persistente;
+- validar los datos raster/vectoriales antes de exportar;
+- generar PNG/vídeo como evidencia cuando corresponda;
+- relacionar cada evidencia con proyecto, revisión y event_id;
+- inspeccionar realmente el vídeo/captura antes de afirmar que la animación se ve correcta.
 
-### Soldier animation
+## Recuperación y límites
 
-The current soldier animation work is in:
+NOTIFY puede perderse si se produce antes de que LISTEN esté activo; por eso el servidor consulta órdenes queued no expiradas al terminar de armar el listener. El worker también vuelve a consultar la cola al reconectar. Las órdenes tienen expiración, heartbeat durante ejecución y recuperación limitada de filas running abandonadas.
 
-- `public/pixelforge/src/showcase-animation.mjs`
+El polling de 150 ms fue retirado. La transferencia todavía puede ser alta si se consultan snapshots con payload/result grandes, proyectos con Base64 o vídeos/imágenes. Medir por endpoint antes de atribuir cuota a un único origen.
 
-The animation is generated as a raster PixelForge animation and currently uses a 60-frame showcase with configurable FPS. Changes to the soldier gait, frames, visual details, or animation settings are project changes and therefore belong to the same persistent CodeLab project lifecycle.
+## Mantenimiento obligatorio
 
-## Implementation rule
+Cualquier cambio de conexión, TLS, pooling, LISTEN/NOTIFY, trigger, cola, ciclo de vida, persistencia, revisiones, animación o evidencia requiere actualizar el documento técnico enlazado, el README y las pruebas correspondientes en el mismo PR. El diagrama debe describir el código actual, no una arquitectura aspiracional o histórica.
 
-**CodeLab → project editor/API → Neon persistence → project/animation state**
 
-Do not introduce a second unrelated persistence mechanism for project modifications or animation state without explicitly updating this architecture document and the corresponding data flow.
+## Catálogo de comandos del agente y cobertura PixelForge
 
-## Current animation revision
+El inventario ejecutable de órdenes del buzón, los contratos de payload/resultados, las operaciones Headless de raster/animación y los límites explícitos de cobertura vectorial se mantienen en [CodeLab + PixelForge command catalog](CODELAB-PIXELFORGE-COMMAND-CATALOG.md). El catálogo distingue acciones de primer nivel (SQL mailbox) de operaciones internas de cada batch; no deben confundirse ni registrarse todas las operaciones internas como comandos SQL.
 
-The soldier walking cycle was refined in commit:
+Toda acción nueva debe quedar sincronizada entre el switch del worker, `NATIVE_ACTIONS` del cliente, la restricción SQL del worker y la migración versionada. Las mutaciones PixelForge permanecen aisladas hasta la aprobación explícita de la propuesta y el control de `serverRevision`. La prueba de paridad automatizada falla si un handler del worker no aparece en el allowlist SQL o en el cliente.
 
-`7d18a3ea29a1dc54c4d48382cb552c8eaf34366b`
 
-The revision improves the gait using alternating foot-lift phases, knee movement, arm/hand counter-motion, torso sway and a 20-frame gait cycle while retaining the existing PixelForge 60-frame showcase.
+## PixelForge vector, ZIP and Video Composer agent bridge
 
-## Maintenance
+The native command catalog is documented in [CODELAB-PIXELFORGE-COMMAND-CATALOG.md](CODELAB-PIXELFORGE-COMMAND-CATALOG.md). Three additional execution paths now share the same ADMIN mailbox and workspace boundary:
 
-Any future work that changes how CodeLab saves, loads, edits, versions, or persists projects/animations should update this document if the Neon data path or animation persistence behavior changes.
+```mermaid
+flowchart TD
+  A[Assistant Headless Client] --> M[(codelab_agent_commands)]
+  A --> U[(codelab_agent_artifacts + chunks)]
+  M --> W[Native Bridge Worker]
+  U --> W
+  W --> V[Headless vector model]
+  V --> P[Proposal + vector audit + revision diff]
+  P -->|explicit approval| DB[(codelab_pixelforge_projects)]
+  W --> Z[Editable ZIP importer/exporter]
+  Z --> DB
+  W --> C[Playwright Video Composer]
+  C --> E[PNG / WebM evidence artifacts]
+```
+
+- Vector edits operate on `RasterDocument.vectorModel` inside the same isolated Headless sandbox as raster and animation. The vector model is serialized with the project and participates in proposal diffs, revision guards and explicit approval.
+- Editable ZIP packages contain the canonical `.pforge` project JSON, manifest, README and transparent PNG timeline frames. Import validates ZIP central/local metadata, CRCs, PNG frames, project dimensions, raster data, vector data and animation metadata; it creates a new project identity rather than overwriting an existing project.
+- Large ZIPs and Composer evidence do not enter the 2 MiB mailbox JSON payload. They use workspace-scoped 1 MiB chunks in `codelab_agent_artifacts` and `codelab_agent_artifact_chunks`, with per-chunk and full-file SHA-256 verification and expiration.
+- Video Composer automation uses a fresh Playwright Chromium page for each operation batch. It can import, inspect, seek, play, configure, capture preview/full-page screenshots and record the Composer page as WebM. The existing `pixelforge_export_animation_video` action performs the deterministic WebM export and stores evidence.
+- Playwright page recording is not a substitute for OS-level desktop capture. Browser `getDisplayMedia` still requires an actual user gesture and permission; the agent does not bypass it.
+- ZIP reader currently accepts STORE entries only and caps packages at 256 MiB / 512 entries. Project JSON remains capped at 96 MiB.

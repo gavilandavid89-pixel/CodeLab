@@ -74,8 +74,9 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   assert.equal(await page.locator('#vc-stat-fps').textContent(), '12 FPS');
   const encoderStatus = await page.locator('#vc-format-support').textContent();
   assert.ok(encoderStatus.length > 0, 'the interface should explain the current encoder capability');
-  assert.equal(await page.locator('#vc-export').isDisabled(), !encoderStatus.startsWith('Disponible'),
-    'export must be enabled only when the browser can capture and encode video');
+  const encoderAvailable = encoderStatus.startsWith('Codificación determinista disponible:');
+  assert.equal(await page.locator('#vc-export').isDisabled(), !encoderAvailable,
+    'export must be enabled only when WebCodecs is available for the selected format');
   assert.equal(await page.locator('#vc-preview').isVisible(), true);
   assert.equal(await page.locator('#vc-resolution').inputValue(), '1080');
   assert.equal(await page.locator('#vc-aspect').inputValue(), '16:9');

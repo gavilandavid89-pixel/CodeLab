@@ -3,6 +3,7 @@ import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
 import { analyzeMotion, deserializePixels as deserializeDrawingPixels, buildReferenceFromProject, registerReferenceEntry, normalizeDrawingModel } from './drawing-intelligence.js';
+import { createVectorModel, auditVectorModel, parseSVGToVectorModel, vectorModelToSVG } from './vector-studio.js';
 
 const MAX_ANIMATION_HISTORY_STEPS = 100;
 
@@ -41,6 +42,12 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
     'selection.clear', 'selection.create_rect', 'selection.create_ellipse',
     'selection.create_lasso', 'selection.create_magic', 'selection.modify',
     'selection.combine', 'selection.translate', 'history.undo', 'history.redo',
+  ]),
+  vectorActions: Object.freeze([
+    'vector.model.get', 'vector.model.configure', 'vector.audit', 'vector.svg.import', 'vector.svg.export',
+    'vector.object.create', 'vector.object.update', 'vector.object.delete', 'vector.object.duplicate',
+    'vector.object.reorder', 'vector.object.transform', 'vector.group.create', 'vector.group.ungroup',
+    'vector.precision.configure', 'vector.frames.set',
   ]),
   animationActions: Object.freeze([
     'animation.get_summary', 'animation.undo', 'animation.redo',
@@ -173,6 +180,190 @@ function diffAnimationTimelines(before, after) {
  * DOM-free, provider-independent PixelForge automation runtime.
  * Mutations stay in an isolated sandbox until an explicit proposal is accepted.
  */
+
+function assignVectorObjectIds(value, rootId = crypto.randomUUID()) {
+  let index = 0;
+  const visit = object => {
+    if (!object.id) object.id = index === 0 ? rootId : rootId + '-' + index;
+    index++;
+    if (object.type === 'group') for (const child of object.children || []) visit(child);
+  };
+  visit(value);
+  return value;
+}
+
+function cloneVectorObjectWithFreshIds(value, rootId = crypto.randomUUID()) {
+  const copy = JSON.parse(JSON.stringify(value));
+  let index = 0;
+  const visit = object => {
+    object.id = index === 0 ? rootId : rootId + '-' + index;
+    index++;
+    if (object.type === 'group') for (const child of object.children || []) visit(child);
+  };
+  visit(copy);
+  return copy;
+}
+
+function executeVectorModelAction(document, action) {
+  const name = action.name;
+  const current = document.getVectorModel();
+  const model = createVectorModel(document.width, document.height, current);
+  const findObject = id => model.objects.find(item => item.id === id);
+  const flatten = objects => objects.flatMap(item => [item, ...(item.type === 'group' ? flatten(item.children || []) : [])]);
+  const objectCount = flatten(model.objects).length;
+  const maxObjects = 10000;
+  const validate = candidate => {
+    if (!Array.isArray(candidate.objects) || candidate.objects.length > maxObjects ||
+        !Array.isArray(candidate.frames) || candidate.frames.length > 240) {
+      throw new RangeError('Vector model exceeds the 10,000-object or 240-frame limit.');
+    }
+    const serialized = JSON.stringify(candidate);
+    if (new TextEncoder().encode(serialized).byteLength > 16 * 1024 * 1024) {
+      throw new RangeError('Vector model exceeds the 16 MiB Headless vector budget.');
+    }
+    const audit = auditVectorModel(candidate);
+    if (!audit.ok) throw new TypeError('Vector model failed validation: ' + audit.issues.filter(issue => issue.severity === 'error').map(issue => issue.code).join(', '));
+    for (const object of flatten(candidate.objects)) {
+      for (const key of ['fill', 'stroke', 'fontFamily']) {
+        const value = object[key];
+        if (typeof value === 'string' && (/url\(\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
+          throw new TypeError('Vector styles cannot reference external resources or executable URLs.');
+        }
+      }
+      for (const stop of object.gradient?.stops || []) {
+        if (typeof stop.color === 'string' && /url\(|(?:javascript|https?|file|data):/i.test(stop.color)) {
+          throw new TypeError('Vector gradients cannot reference external resources.');
+        }
+      }
+    }
+    const ids = flatten(candidate.objects).map(item => item.id);
+    if (ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) {
+      throw new TypeError('Vector object IDs must be present and unique, including nested group children.');
+    }
+    return audit;
+  };
+  if (name === 'vector.model.get') {
+    return { ok: true, action: name, result: { model, objectCount, frameCount: model.frames.length } };
+  }
+  if (name === 'vector.audit') {
+    return { ok: true, action: name, result: auditVectorModel(model) };
+  }
+  if (name === 'vector.svg.export') {
+    return { ok: true, action: name, result: { svg: vectorModelToSVG(model), width: model.width, height: model.height, objectCount } };
+  }
+  if (name === 'vector.svg.import') {
+    if (typeof action.svg !== 'string' || !action.svg.trim() || action.svg.length > 2 * 1024 * 1024) {
+      throw new TypeError('vector.svg.import requires SVG text between 1 byte and 2 MiB.');
+    }
+    const imported = parseSVGToVectorModel(action.svg, document.width, document.height);
+    let importedId = 0;
+    const assignImportedIds = object => {
+      object.id = (action.id_prefix || crypto.randomUUID()) + '-' + importedId++;
+      if (object.type === 'group') for (const child of object.children || []) assignImportedIds(child);
+    };
+    for (const object of imported.objects) assignImportedIds(object);
+    if (action.replace === false) model.objects.push(...imported.objects);
+    else {
+      model.objects = imported.objects;
+      model.precision = imported.precision;
+      model.metadata = imported.metadata;
+    }
+    const audit = validate(model);
+    document.setVectorModel(model);
+    return { ok: true, action: name, result: { objectCount: model.objects.length, importedObjectCount: imported.objects.length, audit } };
+  }
+  if (name === 'vector.model.configure') {
+    if (action.grid !== undefined) {
+      const grid = Number(action.grid);
+      if (!Number.isFinite(grid) || grid < 1 || grid > 4096) throw new RangeError('Vector grid must be between 1 and 4096.');
+      model.grid = grid;
+    }
+    if (action.snap !== undefined) {
+      if (typeof action.snap !== 'boolean') throw new TypeError('Vector snap must be a boolean.');
+      model.snap = action.snap;
+    }
+    if (action.metadata !== undefined) {
+      if (!action.metadata || typeof action.metadata !== 'object' || Array.isArray(action.metadata)) throw new TypeError('Vector metadata must be an object.');
+      model.metadata = { ...model.metadata, ...action.metadata };
+    }
+  } else if (name === 'vector.precision.configure') {
+    if (!action.precision || typeof action.precision !== 'object' || Array.isArray(action.precision)) throw new TypeError('precision must be an object.');
+    model.precision = { ...model.precision, ...action.precision };
+  } else if (name === 'vector.frames.set') {
+    if (!Array.isArray(action.frames) || action.frames.length > 240) throw new RangeError('Vector frames must be an array of at most 240 entries.');
+    model.frames = JSON.parse(JSON.stringify(action.frames));
+  } else if (name === 'vector.object.create') {
+    if (!action.object || typeof action.object !== 'object' || Array.isArray(action.object)) throw new TypeError('object is required.');
+    const object = JSON.parse(JSON.stringify(action.object));
+    if (!['rect', 'ellipse', 'line', 'path', 'text', 'group'].includes(object.type)) throw new TypeError('Unsupported vector object type.');
+    object.id = typeof object.id === 'string' && object.id ? object.id : crypto.randomUUID();
+    assignVectorObjectIds(object, object.id);
+    if (flatten(model.objects).some(item => item.id === object.id)) throw new TypeError('Vector object ID already exists.');
+    if (object.type === 'group' && !Array.isArray(object.children)) throw new TypeError('Vector group children must be an array.');
+    model.objects.splice(Number.isInteger(action.index) ? Math.max(0, Math.min(model.objects.length, action.index)) : model.objects.length, 0, object);
+  } else if (name === 'vector.object.update') {
+    const object = findObject(action.object_id);
+    if (!object) throw new Error('Vector object was not found.');
+    if (!action.patch || typeof action.patch !== 'object' || Array.isArray(action.patch) || 'id' in action.patch || 'type' in action.patch) {
+      throw new TypeError('patch must be an object and cannot change object id or type.');
+    }
+    Object.assign(object, JSON.parse(JSON.stringify(action.patch)));
+  } else if (name === 'vector.object.delete') {
+    if (typeof action.object_id !== 'string') throw new TypeError('object_id is required.');
+    const before = flatten(model.objects).length;
+    const remove = list => {
+      for (let index = list.length - 1; index >= 0; index--) {
+        const item = list[index];
+        if (item.id === action.object_id) list.splice(index, 1);
+        else if (item.type === 'group') remove(item.children || []);
+      }
+    };
+    remove(model.objects);
+    if (flatten(model.objects).length === before) throw new Error('Vector object was not found.');
+  } else if (name === 'vector.object.duplicate') {
+    const object = findObject(action.object_id);
+    if (!object) throw new Error('Vector object was not found.');
+    const duplicate = cloneVectorObjectWithFreshIds(object, action.new_id || crypto.randomUUID());
+    duplicate.name = String(duplicate.name || duplicate.type) + ' copy';
+    model.objects.splice(model.objects.indexOf(object) + 1, 0, duplicate);
+  } else if (name === 'vector.object.reorder') {
+    const object = findObject(action.object_id);
+    if (!object) throw new Error('Vector object was not found.');
+    if (!Number.isInteger(action.index) || action.index < 0 || action.index >= model.objects.length) throw new RangeError('index must identify a top-level vector object position.');
+    const currentIndex = model.objects.indexOf(object);
+    if (currentIndex < 0) throw new TypeError('Only top-level vector objects can be reordered.');
+    model.objects.splice(currentIndex, 1);
+    model.objects.splice(Math.min(action.index, model.objects.length), 0, object);
+  } else if (name === 'vector.object.transform') {
+    const object = findObject(action.object_id);
+    if (!object) throw new Error('Vector object was not found.');
+    const transform = action.transform;
+    if (!transform || typeof transform !== 'object' || Array.isArray(transform)) throw new TypeError('transform must be an object.');
+    for (const key of ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY']) {
+      if (transform[key] !== undefined && !Number.isFinite(Number(transform[key]))) throw new TypeError('Transform values must be finite numbers.');
+    }
+    object.transform = { ...(object.transform || {}), ...transform };
+  } else if (name === 'vector.group.create') {
+    const ids = [...new Set(action.object_ids || [])];
+    if (ids.length < 2 || ids.some(id => typeof id !== 'string')) throw new TypeError('Grouping requires at least two object_ids.');
+    const selected = model.objects.filter(object => ids.includes(object.id));
+    if (selected.length !== ids.length) throw new TypeError('All grouped objects must be top-level objects in the document.');
+    model.objects = model.objects.filter(object => !ids.includes(object.id));
+    model.objects.push({ id: action.group_id || crypto.randomUUID(), name: action.group_name || 'Group', type: 'group', children: selected, transform: {} });
+  } else if (name === 'vector.group.ungroup') {
+    const index = model.objects.findIndex(object => object.id === action.object_id && object.type === 'group');
+    if (index < 0) throw new Error('Vector group was not found.');
+    const [group] = model.objects.splice(index, 1);
+    model.objects.splice(index, 0, ...(group.children || []));
+  } else {
+    throw new TypeError('Unsupported vector action: ' + name);
+  }
+  const audit = validate(model);
+  const changed = JSON.stringify(current) !== JSON.stringify(model);
+  if (changed) document.setVectorModel(model);
+  return { ok: true, action: name, result: { changed, objectCount: flatten(model.objects).length, frameCount: model.frames.length, audit } };
+}
+
 export class HeadlessEditorRuntime {
   #document;
   #workspace;
@@ -256,6 +447,12 @@ export class HeadlessEditorRuntime {
   }
 
   execute(action) {
+    if (action && typeof action.name === 'string' && action.name.startsWith('vector.')) {
+      const readOnlyVectorActions = new Set(['vector.model.get', 'vector.audit', 'vector.svg.export']);
+      if (this.#workspace.hasProposal && !readOnlyVectorActions.has(action.name)) return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more vector edits.' } };
+      try { return executeVectorModelAction(this.#workspace.sandbox, action); }
+      catch (error) { return { ok: false, action: action.name, error: { code: error instanceof RangeError ? 'out_of_bounds_or_limit' : error instanceof TypeError ? 'invalid_arguments' : 'operation_failed', message: error instanceof Error ? error.message : 'Vector operation failed.' } }; }
+    }
     if (action?.name === 'layer.get_context') {
       try { return { ok: true, action: action.name, result: this.#layerContext(action.layerId) }; }
       catch (error) { return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Layer context failed.' } }; }
@@ -443,6 +640,8 @@ export class HeadlessEditorRuntime {
         id: source.id, name: source.name, width: source.width, height: source.height,
         revision: source.revision, serverRevision: source.serverRevision,
         layerCount: source.layers.length,
+        vectorObjectCount: source.getVectorModel()?.objects?.length || 0,
+        vectorAudit: source.getVectorModel() ? auditVectorModel(createVectorModel(source.width, source.height, source.getVectorModel())) : null,
         layers: source.layers.map((layer, index) => ({
           index, id: layer.id, name: layer.name, visible: layer.visible,
           locked: layer.locked, opacity: layer.opacity,
@@ -451,6 +650,8 @@ export class HeadlessEditorRuntime {
       sandbox: {
         width: sandbox.width, height: sandbox.height, revision: sandbox.revision,
         layerCount: sandbox.layers.length, hasChanges: this.#workspace.hasSandboxChanges,
+        vectorObjectCount: sandbox.getVectorModel()?.objects?.length || 0,
+        vectorAudit: sandbox.getVectorModel() ? auditVectorModel(createVectorModel(sandbox.width, sandbox.height, sandbox.getVectorModel())) : null,
       },
       proposal: this.#workspace.proposalSummary,
       animation: { ...summarizeAnimationTimeline(this.#sandboxAnimation), hasChanges: this.#animationDirty },
@@ -475,6 +676,12 @@ export class HeadlessEditorRuntime {
       animationChangedPixels: animation.changedPixels,
       bounds: raster.bounds,
       pixels: raster.pixels,
+      vector: {
+        changed: JSON.stringify(this.#document.getVectorModel()) !== JSON.stringify(this.#workspace.sandbox.getVectorModel()),
+        beforeObjectCount: this.#document.getVectorModel()?.objects?.length || 0,
+        afterObjectCount: this.#workspace.sandbox.getVectorModel()?.objects?.length || 0,
+        audit: this.#workspace.sandbox.getVectorModel() ? auditVectorModel(createVectorModel(this.#workspace.sandbox.width, this.#workspace.sandbox.height, this.#workspace.sandbox.getVectorModel())) : null,
+      },
       animation,
     };
   }

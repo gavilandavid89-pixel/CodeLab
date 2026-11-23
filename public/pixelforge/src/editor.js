@@ -12,7 +12,7 @@ import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 import { createReferenceCenterUI } from './reference-center-ui.js';
-import { VectorStudio } from './vector-studio.js';
+import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -66,7 +66,7 @@ function initReferenceCenterUI() {
     getDocument: () => doc,
     getAnimation: () => animation,
     setAnimation: value => { animation = value; animationLoop = value?.loop !== false; animationPlaybackSpeed = value?.playbackSpeed ?? 1; renderAnimationTimeline(); },
-    save: () => saveProject(doc.toJSON()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
+    save: () => saveProject(buildProjectSnapshot()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
     render: () => render(),
     renderLayers: () => renderLayers(),
     status: (message, kind) => status(message, kind),
@@ -1981,10 +1981,12 @@ $('#animation-export-zip').addEventListener('click', async () => {
   button.disabled = true;
   const previousLabel = button.textContent;
   button.textContent = 'Preparing…';
+  let vectorOverlay = null;
   try {
     settleActiveInput();
     stopAnimationPlayback();
     const snapshot = buildProjectSnapshot();
+    vectorOverlay = await createVectorOverlayImage();
     const baseName = safeName(doc.name);
     const entries = [
       { name: 'project/' + baseName + '.pforge', data: new Blob([JSON.stringify(snapshot)], { type: 'application/json' }) },
@@ -2014,6 +2016,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
         const frame = animation.getFrame(index);
         const pixels = animation.compositeFrame(index, layerSettings);
         frameContext.putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+        drawVectorOverlay(frameContext, vectorOverlay);
         const png = await new Promise((resolve, reject) => frameCanvas.toBlob(
           blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data for frame ' + (index + 1) + '.')),
           'image/png'
@@ -2037,6 +2040,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
       const frameContext = frameCanvas.getContext('2d', { alpha: true });
       if (!frameContext) throw new Error('Could not create the preview export surface.');
       frameContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+      drawVectorOverlay(frameContext, vectorOverlay);
       const preview = await new Promise((resolve, reject) => frameCanvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('PNG preview encoder returned no data.')), 'image/png'
       ));
@@ -2058,14 +2062,17 @@ $('#animation-export-zip').addEventListener('click', async () => {
   } catch (error) {
     status('ZIP export failed: ' + error.message, 'error');
   } finally {
+    disposeVectorOverlay(vectorOverlay);
     button.disabled = !animation;
     button.textContent = previousLabel;
   }
 });
 $('#animation-export-sheet').addEventListener('click', async () => {
+  let vectorOverlay = null;
   try {
     if (!animation) return;
     captureAnimationFrame();
+    vectorOverlay = await createVectorOverlayImage();
     const layout = createSpriteSheetLayout(animation.frameCount, doc.width, doc.height, {
       columns: Math.ceil(Math.sqrt(animation.frameCount)), padding: 1
     });
@@ -2075,6 +2082,7 @@ $('#animation-export-sheet').addEventListener('click', async () => {
     const frames = layout.frames.map((frame, index) => {
       const pixels = animation.compositeFrame(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })));
       context.putImageData(new ImageData(pixels, doc.width, doc.height), frame.x, frame.y);
+      drawVectorOverlay(context, vectorOverlay, doc.width, doc.height, frame.x, frame.y);
       return { ...frame, frame: index, durationMs: animation.getFrame(index).durationMs };
     });
     const png = await new Promise((resolve, reject) => sheet.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
@@ -2086,6 +2094,7 @@ $('#animation-export-sheet').addEventListener('click', async () => {
     downloadBlob(archive, safeName(doc.name) + '-animation-sheet.zip');
     status('Animation sprite sheet and timing manifest exported in one ZIP', 'success');
   } catch (error) { status('Animation export failed: ' + error.message, 'error'); }
+  finally { disposeVectorOverlay(vectorOverlay); }
 });
 $('#projects-button').addEventListener('click', async () => {
   try {
@@ -2230,20 +2239,28 @@ $('#export-sprite-sheet').addEventListener('click', async () => {
     status(`Sprite sheet exported as one ZIP: ${frames.length} layers, ${layout.width} × ${layout.height}`, 'success');
   } catch (error) { status(`Sprite sheet export failed: ${error.message}`, 'error'); }
 });
-$('#export-png').addEventListener('click', () => {
+$('#export-png').addEventListener('click', async () => {
+  let vectorOverlay = null;
   try {
     settleActiveInput();
+    vectorOverlay = await createVectorOverlayImage();
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = doc.width; exportCanvas.height = doc.height;
     const exportName = `${safeName(doc.name)}.png`;
-    const exportContext = exportCanvas.getContext('2d');
+    const exportContext = exportCanvas.getContext('2d', { alpha: true });
     if (!exportContext) throw new Error('Could not create the PNG export surface.');
     exportContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
-    exportCanvas.toBlob(blob => {
-      if (blob) { downloadBlob(blob, exportName); status('PNG exported', 'success'); }
-      else status('PNG export failed', 'error');
-    }, 'image/png');
-  } catch (error) { status(`PNG export failed: ${error.message}`, 'error'); }
+    drawVectorOverlay(exportContext, vectorOverlay);
+    const blob = await new Promise((resolve, reject) => exportCanvas.toBlob(
+      value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'
+    ));
+    downloadBlob(blob, exportName);
+    status('PNG exported' + (vectorOverlay ? ' with vector artwork' : ''), 'success');
+  } catch (error) {
+    status(`PNG export failed: ${error.message}`, 'error');
+  } finally {
+    disposeVectorOverlay(vectorOverlay);
+  }
 });
 $('#import-file').addEventListener('change', async event => {
   const file = event.target.files?.[0]; if (!file) return;
@@ -2375,6 +2392,28 @@ $('#delete-layer')?.addEventListener('click', () => {
   catch (error) { status(error.message, 'error'); }
 });
 function safeName(value) { return (value || 'pixelforge-artwork').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'pixelforge-artwork'; }
+async function createVectorOverlayImage(model = doc.getVectorModel()) {
+  if (!model?.objects?.length) return null;
+  const url = URL.createObjectURL(new Blob([vectorModelToSVG(model)], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    const image = new Image();
+    image.src = url;
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('Could not rasterize vector artwork for export.'));
+    });
+    return { image, url };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+function drawVectorOverlay(context, overlay, width = doc.width, height = doc.height, x = 0, y = 0) {
+  if (overlay) context.drawImage(overlay.image, x, y, width, height);
+}
+function disposeVectorOverlay(overlay) {
+  if (overlay?.url) URL.revokeObjectURL(overlay.url);
+}
 function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);

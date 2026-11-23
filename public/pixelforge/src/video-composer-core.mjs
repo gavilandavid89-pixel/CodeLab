@@ -9,6 +9,91 @@ const MAX_CENTRAL_BYTES = 8 * 1024 * 1024;
 function u16(view, offset) { return view.getUint16(offset, true); }
 function u32(view, offset) { return view.getUint32(offset, true); }
 
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let value = n;
+    for (let bit = 0; bit < 8; bit++) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    table[n] = value >>> 0;
+  }
+  return table;
+})();
+
+async function crc32Blob(blob) {
+  let crc = 0xffffffff;
+  const consume = bytes => {
+    for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  };
+  if (typeof blob.stream === 'function') {
+    const reader = blob.stream().getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        consume(value);
+      }
+    } finally { reader.releaseLock(); }
+  } else consume(new Uint8Array(await blob.arrayBuffer()));
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function crc32Bytes(bytes, start, end) {
+  let crc = 0xffffffff;
+  for (let index = start; index < end; index++) crc = CRC_TABLE[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function validatePng(blob, expectedWidth, expectedHeight) {
+  if (blob.size < 57) throw new TypeError('Frame image is not a complete PNG file.');
+  const signature = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+  if (signature.length !== 8 || signature[0] !== 137 || signature[1] !== 80 ||
+      signature[2] !== 78 || signature[3] !== 71 || signature[4] !== 13 ||
+      signature[5] !== 10 || signature[6] !== 26 || signature[7] !== 10) {
+    throw new TypeError('Frame image is not a complete PNG file.');
+  }
+  let offset = 8, sawHeader = false, sawData = false, sawEnd = false;
+  while (offset < blob.size) {
+    if (offset + 12 > blob.size) throw new TypeError('PNG chunk header is truncated.');
+    const header = new Uint8Array(await blob.slice(offset, offset + 8).arrayBuffer());
+    const length = new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(0, false);
+    const dataStart = offset + 8, crcOffset = dataStart + length, chunkEnd = crcOffset + 4;
+    if (chunkEnd > blob.size) throw new TypeError('PNG chunk payload is truncated.');
+    const typeBytes = header.slice(4, 8);
+    const type = String.fromCharCode(...typeBytes);
+    const crcBytes = new Uint8Array(await blob.slice(crcOffset, chunkEnd).arrayBuffer());
+    const expectedCrc = new DataView(crcBytes.buffer, crcBytes.byteOffset, crcBytes.byteLength).getUint32(0, false);
+    const actualCrc = await crc32Blob(new Blob([typeBytes, blob.slice(dataStart, crcOffset)]));
+    if (actualCrc !== expectedCrc) throw new TypeError('PNG ' + type + ' chunk failed its CRC integrity check.');
+    if (!sawHeader) {
+      if (type !== 'IHDR' || length !== 13) throw new TypeError('PNG must begin with a valid IHDR chunk.');
+      const dimensions = new DataView(await blob.slice(dataStart, dataStart + 8).arrayBuffer());
+      const width = dimensions.getUint32(0, false), height = dimensions.getUint32(4, false);
+      if (width !== expectedWidth || height !== expectedHeight) {
+        throw new TypeError('PNG frame dimensions do not match the video manifest.');
+      }
+      sawHeader = true;
+    } else if (type === 'IHDR') throw new TypeError('PNG contains more than one IHDR chunk.');
+    if (type === 'IDAT') sawData = true;
+    if (type === 'IEND') {
+      if (length !== 0 || !sawData) throw new TypeError('PNG IEND is invalid or image data is missing.');
+      sawEnd = true;
+      if (chunkEnd !== blob.size) throw new TypeError('PNG contains data after its IEND chunk.');
+      break;
+    }
+    offset = chunkEnd;
+  }
+  if (!sawHeader || !sawData || !sawEnd) throw new TypeError('PNG is missing required image chunks.');
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      if (bitmap.width !== expectedWidth || bitmap.height !== expectedHeight) {
+        throw new TypeError('Decoded PNG dimensions do not match the video manifest.');
+      }
+    } finally { bitmap.close?.(); }
+  }
+}
+
+
 function safeName(name) {
   return typeof name === 'string' && name.length > 0 && !name.startsWith('/') &&
     !name.includes('\\') && !name.split('/').some(part => part === '..' || part === '.');
@@ -27,7 +112,9 @@ export async function readStoredZip(blob, { maxEntries = MAX_ENTRIES, maxTotalBy
   if (u16(tailView, eocd + 4) !== 0 || u16(tailView, eocd + 6) !== 0) {
     throw new TypeError('Multi-disk ZIP packages are not supported.');
   }
+  const countOnDisk = u16(tailView, eocd + 8);
   const count = u16(tailView, eocd + 10);
+  if (countOnDisk !== count) throw new TypeError('Split ZIP central directories are not supported.');
   const centralSize = u32(tailView, eocd + 12);
   const centralOffset = u32(tailView, eocd + 16);
   if (count < 1 || count > maxEntries) throw new RangeError('The ZIP package contains too many entries.');
@@ -54,6 +141,7 @@ export async function readStoredZip(blob, { maxEntries = MAX_ENTRIES, maxTotalBy
     const recordEnd = cursor + 46 + nameLength + extraLength + commentLength;
     if (recordEnd > centralBytes.length) throw new TypeError('The ZIP central directory entry is truncated.');
     if (flags & 1) throw new TypeError('Encrypted ZIP packages are not supported.');
+    if (flags & 8) throw new TypeError('ZIP data-descriptor entries are not supported.');
     if (method !== 0 || compressedSize !== uncompressedSize) {
       throw new TypeError('This package uses compression that PixelForge Video Composer cannot stream yet. Re-export it from PixelForge.');
     }
@@ -67,12 +155,21 @@ export async function readStoredZip(blob, { maxEntries = MAX_ENTRIES, maxTotalBy
       throw new TypeError('A ZIP file header is invalid.');
     }
     const localView = new DataView(localHeader.buffer);
+    if (u16(localView, 6) !== flags || u16(localView, 8) !== method ||
+        u32(localView, 14) !== crc || u32(localView, 18) !== compressedSize ||
+        u32(localView, 22) !== uncompressedSize) {
+      throw new TypeError('ZIP local and central entry metadata do not match.');
+    }
     const localNameLength = u16(localView, 26);
     const localExtraLength = u16(localView, 28);
+    const localName = decoder.decode(await blob.slice(localOffset + 30, localOffset + 30 + localNameLength).arrayBuffer());
+    if (localName !== name) throw new TypeError('ZIP local and central entry names do not match.');
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
     const dataEnd = dataStart + compressedSize;
     if (dataEnd > centralOffset || dataEnd > blob.size) throw new RangeError('A ZIP file entry extends beyond the data area.');
-    entries.set(name, { name, blob: blob.slice(dataStart, dataEnd), size: uncompressedSize, crc32: crc });
+    const entryBlob = blob.slice(dataStart, dataEnd);
+    if (await crc32Blob(entryBlob) !== crc) throw new TypeError('ZIP entry ' + name + ' failed its CRC integrity check.');
+    entries.set(name, { name, blob: entryBlob, size: uncompressedSize, crc32: crc });
     cursor = recordEnd;
   }
   if (cursor !== centralBytes.length) throw new TypeError('The ZIP central directory has unexpected trailing data.');
@@ -102,12 +199,8 @@ export async function parsePixelForgeVideoPackage(blob) {
       throw new TypeError('Frame ' + (index + 1) + ' has invalid metadata.');
     }
     const entry = entries.get(frame.file);
-    if (!entry || entry.size < 24) throw new TypeError('Frame image ' + (index + 1) + ' is missing or too small.');
-    const header = new Uint8Array(await entry.blob.slice(0, 8).arrayBuffer());
-    if (header.length !== 8 || header[0] !== 137 || header[1] !== 80 || header[2] !== 78 ||
-        header[3] !== 71 || header[4] !== 13 || header[5] !== 10 || header[6] !== 26 || header[7] !== 10) {
-      throw new TypeError('Frame ' + (index + 1) + ' is not a PNG image.');
-    }
+    if (!entry || entry.size < 57) throw new TypeError('Frame image ' + (index + 1) + ' is missing or too small.');
+    await validatePng(entry.blob, manifest.width, manifest.height);
     seen.add(frame.file);
     frames.push({ ...frame, blob: entry.blob });
   }
@@ -118,4 +211,43 @@ export async function parsePixelForgeVideoPackage(blob) {
     project: manifest.projectFile && entries.has(manifest.projectFile) ? entries.get(manifest.projectFile).blob : null,
     entryCount: entries.size,
   };
+}
+
+/**
+ * Convert a variable-duration source timeline into a constant-frame-rate sequence.
+ * Each output frame references the source image covering its presentation timestamp.
+ */
+export function buildConstantFrameRateSequence(frames, fps, { maxFrames = 24000 } = {}) {
+  if (!Array.isArray(frames) || frames.length < 1) throw new TypeError('A non-empty source frame sequence is required.');
+  if (!Number.isInteger(fps) || fps < 1 || fps > 60) throw new RangeError('Output FPS must be an integer from 1 to 60.');
+  if (!Number.isInteger(maxFrames) || maxFrames < 1) throw new RangeError('Maximum output frame count must be positive.');
+  const durations = frames.map(frame => Number(frame?.durationMs));
+  if (durations.some(duration => !Number.isFinite(duration) || duration < 1)) {
+    throw new TypeError('Every source frame must have a positive finite duration.');
+  }
+  const totalDurationMs = durations.reduce((sum, duration) => sum + duration, 0);
+  const frameIntervalMs = 1000 / fps;
+  const outputCount = Math.ceil(totalDurationMs / frameIntervalMs - 1e-10);
+  if (!Number.isSafeInteger(outputCount) || outputCount > maxFrames) {
+    throw new RangeError('The selected FPS would produce ' + outputCount + ' frames, exceeding the safe export limit of ' + maxFrames + '. Reduce the duration or output FPS.');
+  }
+  const cumulativeEnds = [];
+  let elapsed = 0;
+  for (const duration of durations) { elapsed += duration; cumulativeEnds.push(elapsed); }
+  const output = [];
+  let sourceIndex = 0;
+  for (let index = 0; index < outputCount; index++) {
+    const startUs = Math.round(index * frameIntervalMs * 1000);
+    const endUs = Math.min(Math.round(totalDurationMs * 1000), Math.round((index + 1) * frameIntervalMs * 1000));
+    const timestampMs = startUs / 1000;
+    while (sourceIndex < cumulativeEnds.length - 1 && timestampMs >= cumulativeEnds[sourceIndex] - 1e-8) sourceIndex++;
+    output.push({
+      ...frames[sourceIndex],
+      index,
+      sourceIndex,
+      timestampMs,
+      durationMs: (endUs - startUs) / 1000,
+    });
+  }
+  return output;
 }

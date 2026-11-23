@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
+import { ensureNativeArtifactSchema, stageNativeArtifact, readNativeArtifact, deleteNativeArtifact } from './native-agent-artifacts.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -15,12 +16,21 @@ export const NATIVE_ACTIONS = Object.freeze([
   'codelab_project_capture_png',
   'codelab_project_record_video',
   'codelab_ui_execute',
+  'codelab_project_import',
+  'codelab_validate',
+  'neon_function_invoke',
   'pixelforge_create',
   'pixelforge_list',
   'pixelforge_inspect',
+  'pixelforge_intelligence',
+  'pixelforge_animation_frame_context',
   'pixelforge_capture_interface',
+  'pixelforge_preview_evidence_video',
   'pixelforge_export_image',
   'pixelforge_export_animation_video',
+  'pixelforge_import_zip',
+  'pixelforge_export_zip',
+  'pixelforge_video_composer',
   'pixelforge_propose',
   'pixelforge_approve',
   'pixelforge_discard'
@@ -175,6 +185,9 @@ export function createAssistantHeadlessClient(options = {}) {
     wait,
     run,
     status: () => run('status'),
+    importCodeLabArtifact: payload => run('codelab_project_import', payload || {}, { ttlMs: payload?.ttlMs ?? 180000, timeoutMs: payload?.timeoutMs ?? 185000 }),
+    validateCodeLab: payload => run('codelab_validate', payload || {}),
+    invokeNeonFunction: payload => run('neon_function_invoke', payload || {}),
     createCodeLabProject: options => run('codelab_project_create', options || {}),
     convertCodeLabProjectToWeb: projectId => run('codelab_project_convert_to_web', { project_id: projectId }),
     inspectCodeLabProject: (projectId, options = {}) => run('codelab_project_inspect', {
@@ -202,9 +215,72 @@ export function createAssistantHeadlessClient(options = {}) {
       }, { ttlMs: options.ttlMs ?? 120000, timeoutMs: options.timeoutMs ?? 125000 });
     },
     createPixelForgeProject: options => run('pixelforge_create', options || {}),
+    importPixelForgeZip: async (input, options = {}) => {
+      const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input || []);
+      if (!bytes.length || bytes.length > 256 * 1024 * 1024) throw new RangeError('PixelForge ZIP import must be between 1 byte and 256 MiB.');
+      await ensureNativeArtifactSchema(pool);
+      const workspaceId = await getWorkspaceId();
+      const staged = await stageNativeArtifact(pool, {
+        workspaceId,
+        kind: 'pixelforge_zip_upload',
+        filename: options.filename || 'pixelforge-import.zip',
+        contentType: 'application/zip',
+        bytes,
+        metadata: { source: 'assistant-headless-client' },
+        ttlMs: options.ttlMs ?? 60 * 60 * 1000
+      });
+      try {
+        const outcome = await run('pixelforge_import_zip', {
+          artifact_id: staged.artifactId,
+          ...(options.name ? { name: options.name } : {})
+        }, { ttlMs: options.commandTtlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 });
+        if (outcome.status !== 'succeeded') await deleteNativeArtifact(pool, workspaceId, staged.artifactId).catch(() => {});
+        return outcome;
+      } catch (error) {
+        await deleteNativeArtifact(pool, workspaceId, staged.artifactId).catch(() => {});
+        throw error;
+      }
+    },
+    exportPixelForgeZip: async (projectId, options = {}) => {
+      const result = await run('pixelforge_export_zip', { project_id: projectId, ...options }, {
+        ttlMs: options.ttlMs ?? 15 * 60 * 1000,
+        timeoutMs: options.timeoutMs ?? 15 * 60 * 1000
+      });
+      const artifactId = result.result?.artifact?.artifactId;
+      if (result.status !== 'succeeded' || !artifactId) return result;
+      const artifact = await readNativeArtifact(pool, await getWorkspaceId(), artifactId, 'pixelforge_zip_export');
+      return { ...result, exportedArtifact: { ...artifact.metadata, bytes: artifact.bytes } };
+    },
+    downloadPixelForgeZip: async artifactId => {
+      await ensureNativeArtifactSchema(pool);
+      const workspaceId = await getWorkspaceId();
+      const artifact = await readNativeArtifact(pool, workspaceId, artifactId, 'pixelforge_zip_export');
+      await deleteNativeArtifact(pool, workspaceId, artifactId);
+      return { ...artifact.metadata, bytes: artifact.bytes };
+    },
+    controlPixelForgeVideoComposer: async (projectId, operations = [{ type: 'inspect' }], options = {}) => {
+      const outcome = await run('pixelforge_video_composer', {
+        project_id: projectId,
+        operations,
+        ...(options.viewport ? { viewport: options.viewport } : {})
+      }, { ttlMs: options.ttlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 });
+      if (!Array.isArray(outcome.result?.artifacts)) return outcome;
+      const workspaceId = await getWorkspaceId();
+      const evidenceArtifacts = [];
+      for (const reference of outcome.result.artifacts) {
+        const artifact = await readNativeArtifact(pool, workspaceId, reference.artifactId, reference.kind);
+        await deleteNativeArtifact(pool, workspaceId, reference.artifactId);
+        evidenceArtifacts.push({ ...artifact.metadata, bytes: artifact.bytes });
+      }
+      return { ...outcome, evidenceArtifacts };
+    },
     listPixelForgeProjects: () => run('pixelforge_list'),
-    inspectPixelForgeProject: projectId => run('pixelforge_inspect', { project_id: projectId }),
+    inspectPixelForgeProject: (projectId, options = {}) => run('pixelforge_inspect', { project_id: projectId, ...options }),
+    queryPixelForgeIntelligence: (projectId, operation = 'model', options = {}) => run('pixelforge_intelligence', { project_id: projectId, operation, ...options }),
+    previewPixelForgeEvidenceVideo: options => run('pixelforge_preview_evidence_video', options || {}),
     capturePixelForgeInterface: (options = {}) => run('pixelforge_capture_interface', options),
+    exportPixelForgeImage: (projectId, options = {}) => run('pixelforge_export_image', { project_id: projectId, ...options }),
+    proposePixelForgeChanges: (projectId, actions, summary) => run('pixelforge_propose', { project_id: projectId, actions, summary }),
     getPixelForgeAnimationFrameContext: (projectId, index, layerId, options = {}) => run('pixelforge_animation_frame_context', {
       project_id: projectId,
       index,

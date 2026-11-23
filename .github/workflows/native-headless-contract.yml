@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - fix/pixelforge-integrity-wave-1
 
 permissions:
   contents: read

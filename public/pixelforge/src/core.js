@@ -443,7 +443,11 @@ export class RasterDocument {
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
     const replacement = [...parseHexColor(color), 255], secondary = [...parseHexColor(secondaryColor), 255];
-    const seedOffset = (y * this.width + x) * 4;
+    const seedPixel = y * this.width + x;
+    // A fill must start inside the active selection. Treat the selection as a
+    // traversal boundary, not merely a paint-time clipping mask.
+    if (this.selectionMask && !this.selectionMask[seedPixel]) return 0;
+    const seedOffset = seedPixel * 4;
     const seed = Array.from(layer.pixels.subarray(seedOffset, seedOffset + 4));
     const matches = index => {
       // RGB values under zero alpha are invisible and must not split a transparent fill region.
@@ -484,6 +488,7 @@ export class RasterDocument {
         const px = pixel % this.width, py = Math.floor(pixel / this.width);
         const enqueue = neighbor => {
           if (neighbor < 0 || neighbor >= pixelCount || visited[neighbor]) return;
+          if (this.selectionMask && !this.selectionMask[neighbor]) return;
           visited[neighbor] = 1;
           if (matches(neighbor * 4)) queue[tail++] = neighbor;
         };
@@ -699,7 +704,12 @@ export class RasterDocument {
       throw new RangeError('Crop bounds must be positive integer dimensions fully inside the canvas.');
     }
     if (x === 0 && y === 0 && width === this.width && height === this.height) return false;
-    const snapshot = { width: this.width, height: this.height, activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer) };
+    const snapshot = {
+      width: this.width, height: this.height, name: this.name,
+      activeLayerId: this.activeLayerId, layers: this.layers.map(cloneLayer),
+      drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
+      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
+    };
     this.#cropTo(x, y, width, height);
     this.selectionMask = null;
     this.#record({ type: 'document-crop', before: snapshot, x, y, width, height });

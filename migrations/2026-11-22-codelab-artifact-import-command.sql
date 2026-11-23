@@ -16,6 +16,7 @@ ALTER TABLE public.codelab_agent_commands
     'pixelforge_export_image',
     'pixelforge_capture_interface',
     'pixelforge_export_animation_video',
+    'pixelforge_preview_evidence_video',
     'pixelforge_intelligence',
     'codelab_project_create',
     'codelab_project_convert_to_web',

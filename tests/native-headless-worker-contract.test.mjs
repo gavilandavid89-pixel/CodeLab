@@ -90,6 +90,12 @@ test('assistant headless client validates the supported command contract', () =>
   assert.ok(NATIVE_ACTIONS.includes('codelab_project_record_video'));
   assert.ok(NATIVE_ACTIONS.includes('codelab_ui_execute'));
   const clientSource = fs.readFileSync(path.join(root, 'assistant-headless-client.mjs'), 'utf8');
+  assert.match(clientSource, /importCodeLabArtifact: payload => run\('codelab_project_import'/);
+  assert.match(clientSource, /validateCodeLab: payload => run\('codelab_validate'/);
+  assert.match(clientSource, /invokeNeonFunction: payload => run\('neon_function_invoke'/);
+  assert.match(clientSource, /queryPixelForgeIntelligence: \(projectId, operation = 'model'/);
+  assert.match(clientSource, /previewPixelForgeEvidenceVideo: options => run\('pixelforge_preview_evidence_video'/);
+  assert.match(clientSource, /proposePixelForgeChanges: \(projectId, actions, summary\)/);
   assert.match(clientSource, /executeCodeLabUi: \(actions, options = \{\}\) =>/);
   assert.match(clientSource, /\/api\/health/);
   assert.match(clientSource, /CODELAB_BASE_URL/);
@@ -168,4 +174,48 @@ test('assistant client wakes CodeLab and submits/polls a command through the ADM
     globalThis.fetch = originalFetch;
     await client.close();
   }
+});
+
+
+test('worker SQL allowlist and assistant client cover every executable native mailbox action', () => {
+  const cases = [...source.matchAll(/case '([^']+)'\s*:/g)].map(match => match[1]);
+  const migrationStart = source.indexOf("ADD CONSTRAINT codelab_agent_commands_action_check");
+  const migrationEnd = source.indexOf("));", migrationStart);
+  const sqlAllowlist = source.slice(migrationStart, migrationEnd);
+  const migration = fs.readFileSync(path.join(root, 'migrations/2026-11-23-pixelforge-agent-artifacts.sql'), 'utf8');
+  for (const action of cases) {
+    assert.ok(sqlAllowlist.includes("'" + action + "'"), 'SQL CHECK must allow worker action ' + action);
+    assert.ok(NATIVE_ACTIONS.includes(action), 'assistant client must expose worker action ' + action);
+    assert.ok(migration.includes("'" + action + "'"), 'versioned SQL migration must allow worker action ' + action);
+  }
+  for (const action of [
+    'codelab_project_import', 'codelab_validate', 'pixelforge_intelligence',
+    'pixelforge_preview_evidence_video', 'pixelforge_import_zip',
+    'pixelforge_export_zip', 'pixelforge_video_composer'
+  ]) assert.ok(NATIVE_ACTIONS.includes(action), action + ' must be available to the assistant');
+});
+
+
+test('mailbox inspection exposes vector model, audit and SVG export without mutation approval', () => {
+  assert.match(source, /vector_model:\s*\{ name: 'vector\.model\.get' \}/);
+  assert.match(source, /vector_audit:\s*\{ name: 'vector\.audit' \}/);
+  assert.match(source, /vector_svg:\s*\{ name: 'vector\.svg\.export' \}/);
+});
+
+
+test('vector-generated IDs are normalized once and replayed identically at approval', () => {
+  assert.match(source, /function normalizeHeadlessProposalActions\(actions\)/);
+  assert.match(source, /const normalizedActions = normalizeHeadlessProposalActions\(payload\.actions\)/);
+  assert.match(source, /actions: normalizedActions/);
+});
+
+
+test('vector audit and object counts are part of the proposal review diff', () => {
+  assert.match(source, /vector: diff\.vector/);
+});
+
+
+test('Video Composer and animation export command status reflects validated browser evidence', () => {
+  assert.match(source, /finish\(command\.command_id, result\.ok \? 'succeeded' : 'failed', result\)/);
+  assert.match(source, /finish\(command\.command_id, result\.videoExport\?\.passed \? 'succeeded' : 'failed', result\)/);
 });

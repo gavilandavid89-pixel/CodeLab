@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, fix/pixelforge-integrity-wave-1]
   issues:
     types: [opened]
   issue_comment:

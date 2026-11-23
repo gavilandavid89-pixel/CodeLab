@@ -63,6 +63,20 @@ export function createReferenceCenterUI({
   const prevValue = host.querySelector('#reference-prev-opacity-value');
   const nextValue = host.querySelector('#reference-next-opacity-value');
 
+  function confirmStaticCanvasMutation(action) {
+    if (!animation()) return true;
+    if (typeof setAnimation !== 'function') {
+      status('Cannot safely modify raster layers while an animation timeline is active.', 'error');
+      return false;
+    }
+    const accepted = window.confirm(
+      action + ' will keep the currently displayed frame as static artwork and close the multi-frame timeline. Continue?'
+    );
+    if (!accepted) return false;
+    setAnimation(null);
+    return true;
+  }
+
   function contextOpacity() {
     const d = doc();
     const active = d.layers.findIndex(layer => layer.id === d.activeLayerId);
@@ -71,12 +85,10 @@ export function createReferenceCenterUI({
     const next = Number(nextRange.value) / 100;
     d.layers.forEach((layer, index) => {
       const distance = index - active;
-      if (distance === 0) layer.opacity = 1;
-      else if (distance < 0) layer.opacity = previous;
-      else layer.opacity = next;
+      const opacity = distance === 0 ? 1 : distance < 0 ? previous : next;
+      d.setLayerOpacity(layer.id, opacity);
     });
     d.dirty = true;
-    d.saveVersion++;
     prevValue.textContent = Math.round(previous * 100) + '%';
     nextValue.textContent = Math.round(next * 100) + '%';
     render();
@@ -164,6 +176,7 @@ export function createReferenceCenterUI({
       targetContext.imageSmoothingEnabled = false;
       targetContext.drawImage(source, x, y, width, height);
       const pixels = targetContext.getImageData(0, 0, d.width, d.height).data;
+      if (!confirmStaticCanvasMutation('Copying a reference image')) return;
       const layer = d.addLayer(entry.name || 'Reference image');
       d.setLayerPixels(layer.id, new Uint8Array(pixels));
       d.setActiveLayer(layer.id);
@@ -209,6 +222,7 @@ export function createReferenceCenterUI({
   }
 
   function copyPart(entry, part) {
+    if (!confirmStaticCanvasMutation('Copying a reference part')) return;
     const d = doc();
     const layer = d.addLayer(`${entry.name} · ${part.name}`);
     const pixels = part.pixels ? Uint8Array.from(atob(part.pixels), c => c.charCodeAt(0)) : null;
@@ -225,7 +239,7 @@ export function createReferenceCenterUI({
 
   function copyFrame(entry, frameIndex) {
     const frame = entry.frames?.find(item => Number(item.index) === Number(frameIndex));
-    if (!frame) return;
+    if (!frame || !confirmStaticCanvasMutation('Copying a reference frame')) return;
     const d = doc();
     for (const layer of [...d.layers]) if (layer.id !== d.layers[0].id) d.deleteLayer(layer.id);
     const base = d.layers[0];

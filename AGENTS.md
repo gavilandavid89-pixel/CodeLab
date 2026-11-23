@@ -52,6 +52,16 @@ El flujo actual usa el bridge y el estado persistido en Neon, con activación ba
 7. No cambies ni despliegues servicios ajenos al alcance solicitado.
 8. No declares que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
 
+## Sincronización obligatoria de documentación técnica
+
+Cualquier cambio en conexión PostgreSQL, DATABASE_URL/TLS, pools, endpoint pooled/directo, LISTEN/NOTIFY, triggers, cola, acciones, estados, reconexión, ciclo de vida del worker, API de control, workspace, persistencia, revisiones, evidencia o consumo de datos debe actualizarse **en el mismo PR** en:
+- `docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md` (documento técnico de referencia y diagramas);
+- `docs/CODELAB-NEON-ARCHITECTURE.md` (resumen de arquitectura);
+- `README.md` (resumen operativo y enlace);
+- pruebas de contrato correspondientes.
+
+Antes de presentar el cambio al usuario, volver a leer los archivos modificados y comprobar que los diagramas representan el código real. Eliminar o corregir toda descripción obsoleta (por ejemplo, polling retirado, filtros de wake antiguos o rutas que ya no sean el mecanismo normal). Distinguir siempre CI, pruebas locales y producción.
+
 ## Documentos relacionados
 
 - [Comunicación CodeLab ↔ Neon de extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)

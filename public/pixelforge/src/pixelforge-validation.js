@@ -1,6 +1,36 @@
 import { auditVectorModel } from './vector-studio.js';
+import { MAX_DIMENSION, MAX_PIXELS, MAX_DOCUMENT_BYTES } from './core.js';
 
-export const PIXELFORGE_VALIDATION_VERSION = 1;
+export const PIXELFORGE_VALIDATION_VERSION = 2;
+
+function expectedBase64Length(byteLength) {
+  return Math.ceil(byteLength / 3) * 4;
+}
+
+function base64ContainsNonZeroByte(value, byteLength) {
+  const paddingLength = byteLength % 3 === 0 ? 0 : byteLength % 3 === 1 ? 2 : 1;
+  const dataEnd = value.length - paddingLength;
+  for (let index = 0; index < dataEnd; index++) {
+    if (value.charCodeAt(index) !== 65) return true;
+  }
+  return false;
+}
+
+function validBase64Buffer(value, byteLength) {
+  if (typeof value !== 'string' || value.length !== expectedBase64Length(byteLength)) return false;
+  const padding = byteLength % 3 === 0 ? '' : byteLength % 3 === 1 ? '==' : '=';
+  const dataEnd = value.length - padding.length;
+  // Avoid a large backtracking regular expression on multi-megabyte layer buffers.
+  for (let index = 0; index < dataEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  for (let index = dataEnd; index < value.length; index++) {
+    if (value.charCodeAt(index) !== 61) return false;
+  }
+  return true;
+}
 
 function issue(code, severity, message, details = {}) {
   return { code, severity, message, ...details };
@@ -14,8 +44,19 @@ function validateRasterProject(project) {
     return { ok: false, score: 0, issues: [issue('invalid_project', 'error', 'Project must be an object.')] };
   }
   if (project.format !== 'pixelforge-project') issues.push(issue('invalid_format', 'error', 'Unsupported PixelForge project format.'));
-  if (!Number.isInteger(project.width) || project.width < 1) issues.push(issue('invalid_width', 'error', 'Project width must be a positive integer.', { actual: project.width }));
-  if (!Number.isInteger(project.height) || project.height < 1) issues.push(issue('invalid_height', 'error', 'Project height must be a positive integer.', { actual: project.height }));
+  if (!Number.isInteger(project.width) || project.width < 1 || project.width > MAX_DIMENSION) issues.push(issue('invalid_width', 'error', 'Project width must be a positive integer within the raster limit.', { actual: project.width }));
+  if (!Number.isInteger(project.height) || project.height < 1 || project.height > MAX_DIMENSION) issues.push(issue('invalid_height', 'error', 'Project height must be a positive integer within the raster limit.', { actual: project.height }));
+  const dimensionsValid = Number.isInteger(project.width) && Number.isInteger(project.height) &&
+    project.width > 0 && project.height > 0 && project.width <= MAX_DIMENSION &&
+    project.height <= MAX_DIMENSION && project.width * project.height <= MAX_PIXELS;
+  if (Number.isInteger(project.width) && Number.isInteger(project.height) &&
+      project.width > 0 && project.height > 0 && project.width * project.height > MAX_PIXELS) {
+    issues.push(issue('pixel_count_limit_exceeded', 'error', 'Project exceeds the maximum pixel count.', { actual: project.width * project.height, maximum: MAX_PIXELS }));
+  }
+  if (dimensionsValid && Array.isArray(project.layers) &&
+      project.width * project.height * 4 * project.layers.length > MAX_DOCUMENT_BYTES) {
+    issues.push(issue('raster_memory_limit_exceeded', 'error', 'Project layers exceed the total RGBA memory budget.', { maximumBytes: MAX_DOCUMENT_BYTES }));
+  }
   if (!Array.isArray(project.layers) || project.layers.length < 1) issues.push(issue('missing_layers', 'error', 'Project must contain at least one layer.'));
   if (Array.isArray(project.layers)) {
     const ids = new Set();
@@ -33,10 +74,36 @@ function validateRasterProject(project) {
       }
       if (typeof layer.visible !== 'boolean') issues.push(issue('invalid_layer_visibility', 'error', 'Layer visibility must be boolean.', { layerId: layer.id }));
       if (typeof layer.locked !== 'boolean') issues.push(issue('invalid_layer_lock', 'error', 'Layer lock flag must be boolean.', { layerId: layer.id }));
-      if (typeof layer.pixels !== 'string' || !layer.pixels) issues.push(issue('missing_layer_pixels', 'error', 'Layer pixel buffer is missing.', { layerId: layer.id }));
+      if (typeof layer.pixels !== 'string' || !layer.pixels) {
+        issues.push(issue('missing_layer_pixels', 'error', 'Layer pixel buffer is missing.', { layerId: layer.id }));
+      } else if (dimensionsValid) {
+        const expectedBytes = project.width * project.height * 4;
+        if (!validBase64Buffer(layer.pixels, expectedBytes)) {
+          issues.push(issue('invalid_layer_pixel_buffer', 'error', 'Layer pixel data must be canonical Base64 containing exactly width × height × 4 RGBA bytes.', {
+            layerId: layer.id, expectedBytes, expectedBase64Length: expectedBase64Length(expectedBytes),
+            actualBase64Length: layer.pixels.length,
+          }));
+        }
+      }
     }
     if (project.activeLayerId && !ids.has(project.activeLayerId)) {
       issues.push(issue('invalid_active_layer', 'error', 'Active layer does not exist.', { layerId: project.activeLayerId }));
+    }
+  }
+  if (dimensionsValid && Array.isArray(project.layers)) {
+    const rasterBuffers = project.layers.map(layer => layer?.pixels).filter(value => typeof value === 'string');
+    const animationBuffers = Array.isArray(project.animation?.frames)
+      ? project.animation.frames.flatMap(frame => Array.isArray(frame?.cels) ? frame.cels.map(cel => cel?.pixels) : [])
+        .filter(value => typeof value === 'string')
+      : [];
+    const allBuffers = [...rasterBuffers, ...animationBuffers];
+    const hasRasterContent = allBuffers.some(value => {
+      const byteLength = project.width * project.height * 4;
+      return value.length === expectedBase64Length(byteLength) && base64ContainsNonZeroByte(value, byteLength);
+    });
+    const hasVectorContent = Array.isArray(project.vectorModel?.objects) && project.vectorModel.objects.length > 0;
+    if (allBuffers.length && !hasRasterContent && !hasVectorContent) {
+      issues.push(issue('empty_artwork', 'warning', 'All raster layers and animation cels are completely transparent; the project has no visible pixel content.'));
     }
   }
   const vector = project.vectorModel;
