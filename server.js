@@ -2408,7 +2408,7 @@ const server = http.createServer(async (req, res) => {
             // Expiring capability URL for native artifacts produced by the ADMIN bridge.
       // The 128-bit random artifact ID is the bearer capability; records are workspace- and kind-scoped.
       const nativeArtifactDownload = (req.method === 'GET' || req.method === 'HEAD')
-        ? pathname.match(/^\\/api\\/agent\\/artifacts\\/([a-f0-9]{32})$/) : null;
+        ? pathname.match(/^\/api\/agent\/artifacts\/([a-f0-9]{32})$/) : null;
       if (nativeArtifactDownload) {
         if (!accountPool) return sendJson(res, 503, { error: 'database_not_configured' });
         try {
