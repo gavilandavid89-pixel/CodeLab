@@ -148,6 +148,60 @@ Reglas:
 
 La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado permanentemente como vía especializada y obligatoria del empaquetador de vídeo**.
 
+## 6.3 Ciclo de animación: Headless + Xvfb + vídeo real + corrección
+
+Para animaciones, el ciclo operativo es iterativo y debe ejecutarse sobre el proyecto real. **Xvfb es el display virtual del entorno de ejecución cuando el Headless necesita un navegador/display; no es un sustituto del Headless ni de la inspección real.**
+
+```text
+Referencia / proyecto inicial
+        ↓
+Headless propio del agente
+        ↓
+Xvfb (display virtual, si el runtime lo requiere)
+        ↓
+PixelForge Headless: crear/ajustar timeline
+        ↓
+validar timeline (FPS, frames, duración, cels)
+        ↓
+.codelab
+        ↓
+Neon (proyecto + orden + revisión)
+        ↓
+CodeLab / sesión real
+        ↓
+A/B de vídeo (siempre y exclusivamente para vídeo)
+        ↓
+PixelForge + Video Composer
+        ↓
+WebM/MP4 + evidencia visual
+        ↓
+Neon
+        ↓
+Agente inspecciona el vídeo real
+        ↓
+¿Movimiento/frames/composición correctos?
+      ↙                         ↘
+    NO                           SÍ
+     ↓                            ↓
+Headless propio                  cerrar ciclo
+     ↓                            ↓
+corregir timeline                entregar resultado
+     ↓
+repetir desde validación
+```
+
+Reglas específicas:
+
+- El objetivo de cada iteración es producir una animación real en el proyecto editable; un vídeo generado localmente fuera de este circuito **no cuenta como evidencia del ciclo**.
+- Xvfb solo aporta el display virtual necesario para ejecutar componentes que dependen de una pantalla/navegador. El trabajo de edición y la lógica de animación siguen perteneciendo al Headless propio del agente.
+- La animación se valida primero en el estado del proyecto (timeline, FPS, número de frames, duración y cels) y después mediante el vídeo real.
+- Para el objetivo de referencia de este proyecto, **120 frames a 12 FPS = 10 segundos**, siempre que el proyecto y el render mantengan esos valores.
+- El vídeo debe generarse mediante la ruta A/B obligatoria de vídeo y corresponder a la revisión real enviada a Neon.
+- La inspección visual del WebM/MP4 forma parte de la verificación: comprobar movimiento, continuidad entre frames, composición, duración/FPS y defectos visibles.
+- Si el vídeo no demuestra una animación correcta, **no se entrega**: se vuelve al Headless propio, se corrige el timeline y se repite el ciclo.
+- No presentar un harness local, una animación simulada o un vídeo de prueba como si fuera resultado del Headless real.
+- El ciclo termina solo cuando la revisión del proyecto y la evidencia de vídeo corresponden entre sí y el resultado esperado queda verificado.
+
 ## 7. Principio de cierre
 
 Un trabajo se declara terminado cuando el proyecto y el resultado esperado están verificados según el objetivo. Si requirió inspección del proyecto real, la evidencia solicitada debe haber sido inspeccionada. Si necesita correcciones, el agente continúa en su headless propio; si está listo, entrega el proyecto al usuario. Si algo no pudo probarse, debe indicarse expresamente como no verificado.
