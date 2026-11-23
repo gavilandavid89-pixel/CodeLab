@@ -169,3 +169,19 @@ test('assistant client wakes CodeLab and submits/polls a command through the ADM
     await client.close();
   }
 });
+
+
+test('worker SQL allowlist and assistant client cover every executable native mailbox action', () => {
+  const cases = [...source.matchAll(/case '([^']+)'\s*:/g)].map(match => match[1]);
+  const migrationStart = source.indexOf("ADD CONSTRAINT codelab_agent_commands_action_check");
+  const migrationEnd = source.indexOf("));", migrationStart);
+  const sqlAllowlist = source.slice(migrationStart, migrationEnd);
+  for (const action of cases) {
+    assert.ok(sqlAllowlist.includes("'" + action + "'"), 'SQL CHECK must allow worker action ' + action);
+    assert.ok(NATIVE_ACTIONS.includes(action), 'assistant client must expose worker action ' + action);
+  }
+  for (const action of [
+    'codelab_project_import', 'codelab_validate', 'pixelforge_intelligence',
+    'pixelforge_preview_evidence_video'
+  ]) assert.ok(NATIVE_ACTIONS.includes(action), action + ' must be available to the assistant');
+});
