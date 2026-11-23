@@ -2850,6 +2850,9 @@ async function processCommand(command) {
           layer: { name: 'drawing.layer.inspect', layerId: payload.layer_id, includeCoordinates: payload.include_coordinates !== false, gridStep: payload.grid_step ?? 8 },
           references: { name: 'drawing.reference.list' },
           reference: { name: 'drawing.reference.get', referenceId: payload.reference_id },
+          vector_model: { name: 'vector.model.get' },
+          vector_audit: { name: 'vector.audit' },
+          vector_svg: { name: 'vector.svg.export' },
         };
         const action = actionByOperation[operation];
         if (!action) throw new Error('Unsupported intelligence operation.');
@@ -2894,6 +2897,9 @@ async function processCommand(command) {
         },
         references: { name: 'drawing.reference.list' },
         reference: { name: 'drawing.reference.get', referenceId: payload.reference_id },
+        vector_model: { name: 'vector.model.get' },
+        vector_audit: { name: 'vector.audit' },
+        vector_svg: { name: 'vector.svg.export' },
       };
       const action = actionByOperation[operation];
       if (!action) throw new Error('Unsupported intelligence operation.');
