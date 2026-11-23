@@ -2,14 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 
 export const NATIVE_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 export const NATIVE_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;
-const ALLOWED_KINDS = new Set(['pixelforge_zip_upload', 'pixelforge_zip_export']);
+const ALLOWED_KINDS = new Set(['pixelforge_zip_upload', 'pixelforge_zip_export', 'pixelforge_composer_video', 'pixelforge_composer_png']);
 
 export async function ensureNativeArtifactSchema(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.codelab_agent_artifacts (
       artifact_id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK (kind = ANY (ARRAY['pixelforge_zip_upload','pixelforge_zip_export'])),
+      kind TEXT NOT NULL CHECK (kind = ANY (ARRAY['pixelforge_zip_upload','pixelforge_zip_export','pixelforge_composer_video','pixelforge_composer_png'])),
       filename TEXT NOT NULL,
       content_type TEXT NOT NULL,
       total_bytes BIGINT NOT NULL CHECK (total_bytes > 0 AND total_bytes <= 268435456),
