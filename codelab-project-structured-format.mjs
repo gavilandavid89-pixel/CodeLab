@@ -264,6 +264,22 @@ function installReferenceCenter(project, files, centerManifest) {
   return { referenceCount, embeddedReferenceBytes: embeddedBytes, categories: [...categoryIds] };
 }
 
+function validateIntegrityManifest(files, integrity) {
+  if (!integrity || integrity.format !== 'codelab-integrity' || Number(integrity.version) !== 1 ||
+      !integrity.files || typeof integrity.files !== 'object' || Array.isArray(integrity.files)) {
+    fail('integrity.json must declare format codelab-integrity version 1 and a files map.');
+  }
+  for (const [filePath, declaration] of Object.entries(integrity.files)) {
+    const safePath = requireSafeRelativePath(filePath, 'integrity file path');
+    const bytes = files.get(safePath);
+    if (!bytes) fail('integrity.json references a missing file: ' + safePath);
+    if (!declaration || declaration.sha256 !== sha256(bytes) || Number(declaration.byteSize) !== bytes.length) {
+      fail('integrity verification failed for ' + safePath + '.');
+    }
+  }
+  return Object.keys(integrity.files).length;
+}
+
 export function installStructuredCodeLabV2({ project, files, manifest }) {
   if (!project || typeof project !== 'object' || Array.isArray(project)) fail('project.json is invalid.');
   if (!manifest || Number(manifest.version) !== 2 || Number(manifest.schemaVersion) !== 2 || manifest.layout !== 'structured') {
@@ -271,7 +287,11 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
   }
   if (!['web', 'design', 'pixelforge'].includes(String(manifest.editor))) fail('structured .codelab requires a supported editor.');
   if (!project.id || !project.name) fail('structured project must declare project.id and project.name.');
+  if (!manifest.integrityPath) fail('structured manifest must declare integrityPath.');
+  const integrityPath = requireSafeRelativePath(manifest.integrityPath, 'manifest.integrityPath');
+  const integrityEntries = validateIntegrityManifest(files, jsonFile(files, integrityPath, 'integrity manifest'));
   const result = {
+    integrityEntries,
     frames: { frameCount: 0, celCount: 0 },
     references: { referenceCount: 0, embeddedReferenceBytes: 0, categories: [] },
   };
