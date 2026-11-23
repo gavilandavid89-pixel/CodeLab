@@ -9,9 +9,18 @@ function expectedBase64Length(byteLength) {
 
 function validBase64Buffer(value, byteLength) {
   if (typeof value !== 'string' || value.length !== expectedBase64Length(byteLength)) return false;
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return false;
   const padding = byteLength % 3 === 0 ? '' : byteLength % 3 === 1 ? '==' : '=';
-  return value.endsWith(padding);
+  const dataEnd = value.length - padding.length;
+  // Avoid a large backtracking regular expression on multi-megabyte layer buffers.
+  for (let index = 0; index < dataEnd; index++) {
+    const code = value.charCodeAt(index);
+    if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) || code === 43 || code === 47)) return false;
+  }
+  for (let index = dataEnd; index < value.length; index++) {
+    if (value.charCodeAt(index) !== 61) return false;
+  }
+  return true;
 }
 
 function issue(code, severity, message, details = {}) {
