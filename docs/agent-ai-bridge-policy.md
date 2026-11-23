@@ -260,7 +260,7 @@ Reglas:
 - Esta separación **no cambia** la regla anterior de que A/B está reservado permanentemente para el empaquetado/render de vídeo.
 - Si no existe un intermediario soportado para una transferencia concreta, el agente debe detener esa transferencia e indicarlo explícitamente; **no debe crear una conexión directa al sistema como workaround**.
 
-## 6.3 Uso de Xvfb durante la animación en Headless
+## 6.5 Uso de Xvfb durante la animación en Headless
 
 Cuando el **Headless propio del agente** necesita un display gráfico para ejecutar el navegador o los componentes de PixelForge durante una tarea de animación, se utiliza **Xvfb como display virtual**.
 
