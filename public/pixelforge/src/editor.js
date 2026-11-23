@@ -12,7 +12,7 @@ import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 import { createReferenceCenterUI } from './reference-center-ui.js';
-import { VectorStudio } from './vector-studio.js';
+import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -2230,20 +2230,38 @@ $('#export-sprite-sheet').addEventListener('click', async () => {
     status(`Sprite sheet exported as one ZIP: ${frames.length} layers, ${layout.width} × ${layout.height}`, 'success');
   } catch (error) { status(`Sprite sheet export failed: ${error.message}`, 'error'); }
 });
-$('#export-png').addEventListener('click', () => {
+$('#export-png').addEventListener('click', async () => {
+  let vectorUrl = null;
   try {
     settleActiveInput();
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = doc.width; exportCanvas.height = doc.height;
     const exportName = `${safeName(doc.name)}.png`;
-    const exportContext = exportCanvas.getContext('2d');
+    const exportContext = exportCanvas.getContext('2d', { alpha: true });
     if (!exportContext) throw new Error('Could not create the PNG export surface.');
     exportContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
-    exportCanvas.toBlob(blob => {
-      if (blob) { downloadBlob(blob, exportName); status('PNG exported', 'success'); }
-      else status('PNG export failed', 'error');
-    }, 'image/png');
-  } catch (error) { status(`PNG export failed: ${error.message}`, 'error'); }
+    const vectorModel = doc.getVectorModel();
+    if (vectorModel?.objects?.length) {
+      const vectorBlob = new Blob([vectorModelToSVG(vectorModel)], { type: 'image/svg+xml;charset=utf-8' });
+      vectorUrl = URL.createObjectURL(vectorBlob);
+      const vectorImage = new Image();
+      vectorImage.src = vectorUrl;
+      await new Promise((resolve, reject) => {
+        vectorImage.onload = resolve;
+        vectorImage.onerror = () => reject(new Error('Could not rasterize the vector layer for PNG export.'));
+      });
+      exportContext.drawImage(vectorImage, 0, 0, doc.width, doc.height);
+    }
+    const blob = await new Promise((resolve, reject) => exportCanvas.toBlob(
+      value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'
+    ));
+    downloadBlob(blob, exportName);
+    status('PNG exported' + (vectorModel?.objects?.length ? ' with vector artwork' : ''), 'success');
+  } catch (error) {
+    status(`PNG export failed: ${error.message}`, 'error');
+  } finally {
+    if (vectorUrl) URL.revokeObjectURL(vectorUrl);
+  }
 });
 $('#import-file').addEventListener('change', async event => {
   const file = event.target.files?.[0]; if (!file) return;
