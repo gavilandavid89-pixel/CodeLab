@@ -1,6 +1,8 @@
 name: Inspect black PixelForge video
 
 on:
+  push:
+    branches: [debug/inspect-black-video]
   workflow_dispatch:
 
 jobs:
