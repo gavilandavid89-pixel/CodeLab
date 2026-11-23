@@ -140,3 +140,59 @@ test('rejects a frame that declares the wrong layer count instead of inventing m
   pkg.files.set('integrity.json', Buffer.from(JSON.stringify(integrity)));
   assert.throws(() => installCodeLabPackage(pkg), /must declare exactly 2 layers/);
 });
+
+function makeGenericPackage(editor) {
+  const asset = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>');
+  const files = new Map([['assets/mark.svg', asset]]);
+  const integrityFiles = Object.fromEntries([...files.entries()].map(([path, bytes]) => [path, {
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    byteSize: bytes.length,
+  }]));
+  files.set('integrity.json', Buffer.from(JSON.stringify({ format: 'codelab-integrity', version: 1, files: integrityFiles })));
+  return {
+    manifest: {
+      format: 'codelab', version: 2, schemaVersion: 2, layout: 'structured',
+      editor, projectType: editor, entry: 'project.json', integrityPath: 'integrity.json',
+      resources: [{ path: 'assets/mark.svg', destination: 'assets' }],
+    },
+    project: {
+      id: 'generic-' + editor,
+      name: 'Generic ' + editor + ' project',
+      code: { html: '<main>Loaded</main>', css: 'main { display:block }', js: 'console.log("loaded")' },
+      ...(editor === 'design' ? { design: {
+        elements: [{ id: 'hero', type: 'heading', text: 'Loaded', x: 10, y: 20, width: 200, height: 40 }],
+        frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false,
+      } } : {}),
+    },
+    files,
+  };
+}
+
+test('installs structured CodeLab v2 Web projects without PixelForge-only manifests', () => {
+  const result = installCodeLabPackage(makeGenericPackage('web'));
+  assert.equal(result.project.type, 'web');
+  assert.deepEqual(result.project.code, {
+    html: '<main>Loaded</main>', css: 'main { display:block }', js: 'console.log("loaded")',
+  });
+  assert.equal(result.project.hasWebSpace, true);
+  assert.equal(result.project.hasDesignSpace, true);
+  assert.equal(result.project.packageResources.some(item => item.path === 'assets/mark.svg'), true);
+  assert.equal(result.project.codelabSchema.framesManifest, null);
+  assert.equal(result.installed.animationFrames, 0);
+});
+
+test('installs structured CodeLab v2 Design projects as native editable design documents', () => {
+  const result = installCodeLabPackage(makeGenericPackage('design'));
+  assert.equal(result.project.type, 'design');
+  assert.equal(result.project.design.elements.length, 1);
+  assert.equal(result.project.design.elements[0].id, 'hero');
+  assert.equal(result.project.code.html, '<main>Loaded</main>');
+  assert.equal(result.project.hasDesignSpace, true);
+});
+
+test('rejects a structured Design package with no design element list', () => {
+  const pkg = makeGenericPackage('design');
+  delete pkg.project.design;
+  assert.throws(() => installCodeLabPackage(pkg), /design.elements as an array/);
+});
+
