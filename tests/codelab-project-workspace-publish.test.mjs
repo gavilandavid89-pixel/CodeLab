@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { publishImportedCodeLabProjectToWorkspace } from '../codelab-project-artifact-import.mjs';
+import { publishImportedCodeLabProjectToWorkspace, stableJsonStringify } from '../codelab-project-artifact-import.mjs';
 
 function mockWorkspacePool(initialState, initialRevision = 3) {
   const calls = [];
@@ -71,4 +71,10 @@ test('does not publish PixelForge documents into the Web/Design workspace', asyn
   const result = await publishImportedCodeLabProjectToWorkspace(pool, 'ws_test', {}, 'pixelforge');
   assert.deepEqual(result, { published: false, reason: 'editor_uses_dedicated_workspace' });
   assert.equal(pool.calls.length, 0);
+});
+
+test('canonical project JSON is stable when PostgreSQL JSONB reorders object keys', () => {
+  const before = { id: 'stable', code: { html: '<h1>x</h1>', js: '', css: '' }, design: { frame: 'desktop', elements: [] } };
+  const after = { design: { elements: [], frame: 'desktop' }, code: { css: '', js: '', html: '<h1>x</h1>' }, id: 'stable' };
+  assert.equal(stableJsonStringify(before), stableJsonStringify(after));
 });
