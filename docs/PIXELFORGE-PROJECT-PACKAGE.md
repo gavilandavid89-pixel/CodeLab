@@ -252,7 +252,7 @@ Para el paquete estructurado v2, el comportamiento esperado es:
 3. Instalar los cels declarados por frames/frames.tscn dentro de project.animation.
 4. Instalar las referencias declaradas por center.op/center.json dentro de project.drawingModel.referenceCenter.
 5. Resolver recursos adicionales y mantener packageResources y rutas de procedencia.
-6. Hidratar el documento PixelForge real/Headless que utilizan las herramientas de edición.
+6. Hidratar el documento PixelForge real/Headless que utilizan las herramientas de edición, manteniendo el timeline v1 y el sidecar de metadatos por frame/capa.
 7. Guardar por el mecanismo normal de persistencia del proyecto.
 8. Exportar el paquete de nuevo, regenerando hashes y manifiestos.
 9. Importar otra vez y comparar la semántica editable: capas, píxeles, IDs/referencias internas, animación, partes, metadatos y recursos.
