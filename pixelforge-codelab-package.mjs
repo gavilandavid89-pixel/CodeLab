@@ -117,6 +117,59 @@ function addReferenceEntries(project, files) {
   return { format: 'codelab-reference-center', version: 1, categories: [...categories.values()] };
 }
 
+const SCENE_SECTIONS = [
+  { key: 'environment', folder: 'Entorno', filename: 'entorno.tscn', role: 'environment' },
+  { key: 'effects', folder: 'Efectos', filename: 'efectos.tscn', role: 'effect' },
+  { key: 'details', folder: 'Detalles', filename: 'detalles.tscn', role: 'detail' },
+  { key: 'elements', folder: 'Elementos', filename: 'elementos.tscn', role: 'element' },
+  { key: 'objects', folder: 'Objetos', filename: 'objetos.tscn', role: 'object' },
+];
+
+function explicitSectionMatch(item, key) {
+  return [item?.sceneSection, item?.category, item?.role].some(value => String(value || '').toLowerCase() === key);
+}
+
+function addSceneSections(project, files) {
+  const drawing = project.drawingModel || {};
+  const layerRoles = drawing.layerRoles || {};
+  const sceneDeclarations = {};
+  for (const section of SCENE_SECTIONS) {
+    const path = section.folder + '/' + section.filename;
+    const layerIds = project.layers
+      .filter(layer => String(layerRoles[layer.id]?.role || '').toLowerCase() === section.role)
+      .map(layer => String(layer.id));
+    const drawingObjectIds = (Array.isArray(drawing.objects) ? drawing.objects : [])
+      .filter(item => explicitSectionMatch(item, section.key))
+      .map(item => String(item.id));
+    const vectorObjectIds = (Array.isArray(project.vectorModel?.objects) ? project.vectorModel.objects : [])
+      .filter(item => explicitSectionMatch(item, section.key))
+      .map(item => String(item.id));
+    const sectionData = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
+      ? drawing.sceneSections[section.key] : {};
+    const declaration = {
+      format: 'codelab-pixelforge-scene',
+      version: 1,
+      sceneType: section.key,
+      projectId: String(project.id),
+      canvas: { width: project.width, height: project.height },
+      layerIds,
+      drawingObjectIds,
+      vectorObjectIds,
+      environmentHistory: section.key === 'environment'
+        ? structuredClone(drawing.environmentHistory || { version: 1, entries: [], activeEntryId: null })
+        : undefined,
+      data: structuredClone(sectionData),
+    };
+    files.set(path, Buffer.from(JSON.stringify(declaration, null, 2), 'utf8'));
+    sceneDeclarations[section.key] = { manifestPath: path };
+  }
+  return {
+    format: 'codelab-pixelforge-scenes',
+    version: 1,
+    sections: sceneDeclarations,
+  };
+}
+
 function addAnimation(project, files) {
   const source = project.animation;
   const frames = source?.frames?.length
@@ -129,7 +182,7 @@ function addAnimation(project, files) {
   const frameRefs = [];
   let totalBytes = 0;
   frames.forEach((frame, index) => {
-    const directory = 'frames/frame-' + String(index + 1).padStart(4, '0');
+    const directory = 'Frames/frame-' + String(index + 1).padStart(4, '0');
     const layers = frameLayers(frame, project, source?.frames?.length ? index : -1);
     const frameLayersMetadata = layers.map(({ layer, pixels }) => {
       totalBytes += pixels.length;
@@ -170,7 +223,7 @@ function addAnimation(project, files) {
     playbackSpeed: Number.isFinite(Number(source?.playbackSpeed)) ? Number(source.playbackSpeed) : 1,
     frames: frameRefs,
   };
-  files.set('frames/frames.tscn', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
+  files.set('Frames/frames.tscn', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
   return manifest;
 }
 
@@ -215,7 +268,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
   const projectBytes = Buffer.from(JSON.stringify(project), 'utf8');
   if (projectBytes.length > 96 * 1024 * 1024) throw new RangeError('PixelForge project JSON exceeds the 96 MiB limit.');
   files.set('project.json', projectBytes);
-  files.set('frames/frames.tscn', Buffer.from(JSON.stringify(frames, null, 2), 'utf8'));
+  files.set('Frames/frames.tscn', Buffer.from(JSON.stringify(frames, null, 2), 'utf8'));
   files.set('center.op/center.json', Buffer.from(JSON.stringify(referenceCenter, null, 2), 'utf8'));
 
   const manifest = {
@@ -227,7 +280,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
     projectType: 'pixelforge',
     entry: 'project.json',
     integrityPath: 'integrity.json',
-    frames: { manifestPath: 'frames/frames.tscn' },
+    frames: { manifestPath: 'Frames/frames.tscn' },
     referenceCenter: { manifestPath: 'center.op/center.json' },
     resources: resourceDeclarations,
   };
@@ -259,7 +312,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
       frameCount: frames.frames.length,
       referenceCount: referenceCenter.categories.reduce((sum, category) => sum + category.references.length, 0),
       resourceCount: resourceDeclarations.length,
-      entryCount: entries.length,
+      sceneSectionCount: Object.keys(scenes.sections).length,\n      entryCount: entries.length,
     },
   };
 }
