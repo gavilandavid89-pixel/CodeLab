@@ -3643,7 +3643,7 @@ const server = http.createServer(async (req, res) => {
 
       // Imported Web/Design package files. Every request is bound to the authenticated
       // workspace and the project registry; file paths are treated as opaque relative paths.
-      const projectFilesMatch = pathname.match(/^\\/api\\/workspace\\/([^/]+)\\/projects\\/([^/]+)\\/files(?:\\/(.*))?$/);
+      const projectFilesMatch = pathname.match(/^\/api\/workspace\/([^/]+)\/projects\/([^/]+)\/files(?:\/(.*))?$/);
       if (projectFilesMatch && req.method === 'GET') {
         const id = safeId(projectFilesMatch[1]);
         const projectId = safeId(projectFilesMatch[2]);
@@ -3673,7 +3673,7 @@ const server = http.createServer(async (req, res) => {
             return sendJson(res, 400, { error: 'invalid_file_path' });
           }
           if (!filePath || filePath.length > 500 || filePath.startsWith('/') ||
-              filePath.split('/').some(part => !part || part === '.' || part === '..' || part.includes('\\\\'))) {
+              filePath.split('/').some(part => !part || part === '.' || part === '..' || part.includes('\\'))) {
             return sendJson(res, 400, { error: 'invalid_file_path' });
           }
           const file = await accountPool.query(
