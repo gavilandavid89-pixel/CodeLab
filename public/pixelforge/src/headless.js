@@ -336,7 +336,7 @@ function executeVectorModelAction(document, action) {
     const selected = model.objects.filter(object => ids.includes(object.id));
     if (selected.length !== ids.length) throw new TypeError('All grouped objects must be top-level objects in the document.');
     model.objects = model.objects.filter(object => !ids.includes(object.id));
-    model.objects.push({ id: action.group_id || crypto.randomUUID(), name: action.name || 'Group', type: 'group', children: selected, transform: {} });
+    model.objects.push({ id: action.group_id || crypto.randomUUID(), name: action.group_name || 'Group', type: 'group', children: selected, transform: {} });
   } else if (name === 'vector.group.ungroup') {
     const index = model.objects.findIndex(object => object.id === action.object_id && object.type === 'group');
     if (index < 0) throw new Error('Vector group was not found.');
