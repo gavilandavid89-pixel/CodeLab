@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
+import { ensureNativeArtifactSchema, stageNativeArtifact, readNativeArtifact, deleteNativeArtifact } from './native-agent-artifacts.mjs';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
@@ -27,6 +28,9 @@ export const NATIVE_ACTIONS = Object.freeze([
   'pixelforge_preview_evidence_video',
   'pixelforge_export_image',
   'pixelforge_export_animation_video',
+  'pixelforge_import_zip',
+  'pixelforge_export_zip',
+  'pixelforge_video_composer',
   'pixelforge_propose',
   'pixelforge_approve',
   'pixelforge_discard'
@@ -211,6 +215,52 @@ export function createAssistantHeadlessClient(options = {}) {
       }, { ttlMs: options.ttlMs ?? 120000, timeoutMs: options.timeoutMs ?? 125000 });
     },
     createPixelForgeProject: options => run('pixelforge_create', options || {}),
+    importPixelForgeZip: async (input, options = {}) => {
+      const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input || []);
+      if (!bytes.length || bytes.length > 256 * 1024 * 1024) throw new RangeError('PixelForge ZIP import must be between 1 byte and 256 MiB.');
+      await ensureNativeArtifactSchema(pool);
+      const workspaceId = await getWorkspaceId();
+      const staged = await stageNativeArtifact(pool, {
+        workspaceId,
+        kind: 'pixelforge_zip_upload',
+        filename: options.filename || 'pixelforge-import.zip',
+        contentType: 'application/zip',
+        bytes,
+        metadata: { source: 'assistant-headless-client' },
+        ttlMs: options.ttlMs ?? 60 * 60 * 1000
+      });
+      try {
+        return await run('pixelforge_import_zip', {
+          artifact_id: staged.artifactId,
+          ...(options.name ? { name: options.name } : {})
+        }, { ttlMs: options.commandTtlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 });
+      } catch (error) {
+        await deleteNativeArtifact(pool, workspaceId, staged.artifactId).catch(() => {});
+        throw error;
+      }
+    },
+    exportPixelForgeZip: async (projectId, options = {}) => {
+      const result = await run('pixelforge_export_zip', { project_id: projectId, ...options }, {
+        ttlMs: options.ttlMs ?? 15 * 60 * 1000,
+        timeoutMs: options.timeoutMs ?? 15 * 60 * 1000
+      });
+      const artifactId = result.result?.artifact?.artifactId;
+      if (result.status !== 'succeeded' || !artifactId) return result;
+      const artifact = await readNativeArtifact(pool, await getWorkspaceId(), artifactId, 'pixelforge_zip_export');
+      return { ...result, exportedArtifact: { ...artifact.metadata, bytes: artifact.bytes } };
+    },
+    downloadPixelForgeZip: async artifactId => {
+      await ensureNativeArtifactSchema(pool);
+      const workspaceId = await getWorkspaceId();
+      const artifact = await readNativeArtifact(pool, workspaceId, artifactId, 'pixelforge_zip_export');
+      await deleteNativeArtifact(pool, workspaceId, artifactId);
+      return { ...artifact.metadata, bytes: artifact.bytes };
+    },
+    controlPixelForgeVideoComposer: (projectId, operations = [{ type: 'inspect' }], options = {}) => run('pixelforge_video_composer', {
+      project_id: projectId,
+      operations,
+      ...(options.viewport ? { viewport: options.viewport } : {})
+    }, { ttlMs: options.ttlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 }),
     listPixelForgeProjects: () => run('pixelforge_list'),
     inspectPixelForgeProject: (projectId, options = {}) => run('pixelforge_inspect', { project_id: projectId, ...options }),
     queryPixelForgeIntelligence: (projectId, operation = 'model', options = {}) => run('pixelforge_intelligence', { project_id: projectId, operation, ...options }),
