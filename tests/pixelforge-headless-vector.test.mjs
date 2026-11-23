@@ -84,6 +84,12 @@ test('Headless SVG import and precision metadata are validated', () => {
   });
   assert.equal(invalid.ok, false);
   assert.equal(invalid.error.code, 'invalid_arguments');
+  const externalReference = runtime.execute({
+    name: 'vector.object.create',
+    object: { type: 'rect', x: 1, y: 1, width: 4, height: 4, fill: 'url(https://example.invalid/paint.svg)' }
+  });
+  assert.equal(externalReference.ok, false);
+  assert.match(externalReference.error.message, /external resources/);
 });
 
 
