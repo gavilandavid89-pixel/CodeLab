@@ -75,6 +75,16 @@ function composite(project, frame) {
 export function createPixelForgeProjectZip(sourceProject) {
   if (!sourceProject || typeof sourceProject !== 'object') throw new TypeError('A PixelForge project object is required.');
   const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
+  if (sourceProject.vectorModel) {
+    const vectorModel = sourceProject.vectorModel;
+    const vectorCheck = runtime.execute({
+      name: 'vector.model.configure',
+      grid: vectorModel.grid,
+      snap: vectorModel.snap,
+      metadata: vectorModel.metadata
+    });
+    if (!vectorCheck.ok) throw new TypeError('Project vector model failed Headless validation: ' + vectorCheck.error.message);
+  }
   const project = runtime.toJSON();
   const projectBytes = Buffer.from(JSON.stringify(project), 'utf8');
   if (projectBytes.length > MAX_PROJECT_BYTES) throw new RangeError('PixelForge project exceeds the 96 MiB JSON limit.');
