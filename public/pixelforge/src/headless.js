@@ -225,13 +225,13 @@ function executeVectorModelAction(document, action) {
     if (!audit.ok) throw new TypeError('Vector model failed validation: ' + audit.issues.filter(issue => issue.severity === 'error').map(issue => issue.code).join(', '));
     for (const object of flatten(candidate.objects)) {
       for (const key of ['fill', 'stroke', 'fontFamily']) {
-        const value = object[key];
+        if (typeof value === 'string' && (/url\(\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
         if (typeof value === 'string' && (/url\\(\\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
           throw new TypeError('Vector styles cannot reference external resources or executable URLs.');
         }
       }
       for (const stop of object.gradient?.stops || []) {
-        if (typeof stop.color === 'string' && /url\\(|(?:javascript|https?|file|data):/i.test(stop.color)) {
+        if (typeof stop.color === 'string' && /url\(|(?:javascript|https?|file|data):/i.test(stop.color)) {
           throw new TypeError('Vector gradients cannot reference external resources.');
         }
       }
