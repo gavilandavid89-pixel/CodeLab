@@ -256,11 +256,22 @@ export function createAssistantHeadlessClient(options = {}) {
       await deleteNativeArtifact(pool, workspaceId, artifactId);
       return { ...artifact.metadata, bytes: artifact.bytes };
     },
-    controlPixelForgeVideoComposer: (projectId, operations = [{ type: 'inspect' }], options = {}) => run('pixelforge_video_composer', {
-      project_id: projectId,
-      operations,
-      ...(options.viewport ? { viewport: options.viewport } : {})
-    }, { ttlMs: options.ttlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 }),
+    controlPixelForgeVideoComposer: async (projectId, operations = [{ type: 'inspect' }], options = {}) => {
+      const outcome = await run('pixelforge_video_composer', {
+        project_id: projectId,
+        operations,
+        ...(options.viewport ? { viewport: options.viewport } : {})
+      }, { ttlMs: options.ttlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 });
+      if (outcome.status !== 'succeeded' || !Array.isArray(outcome.result?.artifacts)) return outcome;
+      const workspaceId = await getWorkspaceId();
+      const evidenceArtifacts = [];
+      for (const reference of outcome.result.artifacts) {
+        const artifact = await readNativeArtifact(pool, workspaceId, reference.artifactId, reference.kind);
+        await deleteNativeArtifact(pool, workspaceId, reference.artifactId);
+        evidenceArtifacts.push({ ...artifact.metadata, bytes: artifact.bytes });
+      }
+      return { ...outcome, evidenceArtifacts };
+    },
     listPixelForgeProjects: () => run('pixelforge_list'),
     inspectPixelForgeProject: (projectId, options = {}) => run('pixelforge_inspect', { project_id: projectId, ...options }),
     queryPixelForgeIntelligence: (projectId, operation = 'model', options = {}) => run('pixelforge_intelligence', { project_id: projectId, operation, ...options }),
