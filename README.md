@@ -12,6 +12,8 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 
 **Runtime:** Node.js 22.17.0 o superior. El servidor utiliza `pg`, `@sparticuz/chromium` y `playwright-core`. Ejecuta `npm install` para instalar las dependencias y su postinstall de navegador; después inicia con `npm start`.
 
+> Documentación técnica de conexión y funcionamiento: [CodeLab ↔ Neon extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). El diagrama y los detalles deben reflejar siempre el código actual.
+
 ## 🧠 Arquitectura principal: agente → Neon → Cloudflare → CodeLab → evidencia → Neon → agente
 
 **Esta es la arquitectura de ejecución que debe considerarse la fuente de verdad del sistema. No debe sustituirse por un flujo basado en clics, deslizamientos, commits intermedios o intervención manual del navegador.**
@@ -147,32 +149,44 @@ El snapshot también conserva el último comando ejecutado y un resumen de su re
 
 El consumidor nativo mantiene en Neon la tabla `codelab_agent_bridge_state` y emite una **última señal persistente antes de apagarse**. La señal usa `state=sleeping`, `wake_required=true`, `wake_reason` y un `signal_version` monotónico. Así el agente puede consultar el estado antes de crear la siguiente orden y, si `wake_required=true`, incluir `wake:true` en el payload de esa orden.
 
-El servidor también escucha las inserciones/transiciones a `queued` de `codelab_agent_commands`. Cuando llega una orden, puede levantar el bridge bajo demanda; no se utiliza un temporizador para mantenerlo despierto. Al arrancar, el bridge marca `wake_required=false` y vuelve a estado `running`.
+El servidor mantiene un listener PostgreSQL dedicado con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT OR UPDATE OF status publica `NOTIFY` cuando una orden pasa a `queued`; el listener arranca `agent-bridge-worker.mjs` bajo demanda. Al iniciar/reconectar el listener, CodeLab reconcilia **todas** las órdenes queued no expiradas, aunque el payload no incluya `wake:true`.
 
-El orden recomendado queda:
+El worker mantiene su propio listener PostgreSQL. Reclama la orden desde la tabla durable mediante una transacción y `FOR UPDATE SKIP LOCKED`; cuando no hay trabajo, espera la notificación sin sondear la cola. **No existe polling de 150 ms ni un cron de keep-alive.** Si se pierde la conexión del listener, se reconecta y vuelve a consultar la cola persistente.
+
+El worker no se inicia incondicionalmente al arrancar el servidor: se inicia al llegar una notificación queued. También existe la operación de control explícita `POST /api/agent/bridge/ensure` (GET aceptado como fallback), protegida por `x-codelab-agent-bridge-token` y `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`, para iniciar el worker bajo demanda cuando el agente lo necesite. No es el mecanismo normal de entrega de órdenes ni un temporizador.
+
+El servidor y el worker usan `DATABASE_URL`. Los pools SQL normales pueden usar el endpoint pooled de Neon. Los clientes dedicados de LISTEN convierten el hostname `-pooler.` al endpoint directo equivalente para mantener la suscripción estable. Ambos usan `CODELAB_DATABASE_SSL`: TLS está habilitado por defecto; `disable` solo para pruebas locales explícitas.
+
+### Diagrama resumido del despertar
 
 ```text
-CodeLab → señal final en Neon (sleeping + wake_required=true)
-       ↓
-Agente consulta estado
-       ↓
-Nueva orden Neon (+ wake:true si corresponde)
-       ↓
-Neon → CodeLab wake → ejecución
-       ↓
-CodeLab → resultado/evidencia → Neon
+Agente → INSERT command(status=queued) en Neon
+                     │
+                     ▼
+           trigger PostgreSQL
+                     │ pg_notify
+                     ▼
+        LISTEN de server.js (pg.Client)
+                     │ spawn si no existe
+                     ▼
+       agent-bridge-worker.mjs
+                     │
+          LISTEN + claimCommand()
+                     │
+        ┌────────────┴────────────┐
+        │ hay orden               │ no hay orden
+        ▼                         ▼
+  ejecutar/validar          esperar NOTIFY
+        │                         │
+        └──────────┬──────────────┘
+                   ▼
+        guardar resultado/evidencia
+                   │
+                   ▼
+             Neon → agente
 ```
 
-La señal es de coordinación, no reemplaza el estado persistente de proyectos ni convierte el vídeo de evidencia en fuente de verdad.
-
-El consumidor `agent-bridge-worker.mjs` **no se levanta por intervalo ni por cron**. El servidor expone una operación controlada para que el agente lo inicie únicamente cuando vaya a enviar/ejecutar trabajos por Neon:
-
-`POST /api/agent/bridge/ensure`
-
-Requiere el header `x-codelab-agent-bridge-token` con `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`. Si ya está activo, la operación no crea otro proceso; devuelve su estado. Si el proceso termina, no se relanza mediante un temporizador: el siguiente `ensure` solicitado por el agente vuelve a levantarlo.
-
-Esto mantiene separado el **control de ciclo de vida** del consumidor de cualquier polling de aplicación. No hay una pulsación periódica del agente para mantenerlo despierto.
-
+La documentación técnica completa, con el diagrama de componentes/secuencia, topología de conexiones, variables, esquema SQL, reconexión, claim, heartbeat, persistencia, seguridad y consumo de datos, está en [CodeLab ↔ Neon: comunicación técnica extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). Ese documento es la referencia que debe actualizarse junto con cualquier cambio de esta arquitectura.
 
 ## Login OAuth (recomendado en Render)
 
