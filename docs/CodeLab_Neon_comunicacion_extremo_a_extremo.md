@@ -568,4 +568,71 @@ La autoprueba opcional `AGENT_INLINE_ARTIFACT_SMOKE_TEST=1` usa las mismas rutas
 
 Para el procedimiento detallado, ejemplos de solicitudes, límites, seguridad, alcance de la prueba y casos de uso, consultar [Transporte inline de artefactos Headless → CodeLab](inline-artifact-bridge.md).
 
+
+## 20. Transporte binario de artefactos .codelab y retirada de Neon Object Storage
+
+### 20.1 Por qué se retiró Object Storage del flujo de .codelab
+
+El flujo de importación de proyectos CodeLab **no debe depender de Neon Object Storage/S3**. El intento anterior de usar el endpoint S3-compatible de Neon para transportar artefactos produjo un problema de resolución de DNS desde el runtime de CodeLab:
+
+`curl: (6) Could not resolve host: br-sweet-waterfall-bea35bjz.storage.c-9.us-east-2.aws.neon.tech`
+
+A partir de esa incidencia, la importación de .codelab se modificó para usar PostgreSQL/Neon como almacenamiento durable del artefacto durante la importación, sin requerir credenciales S3, firmas AWS ni variables `NEON_STORAGE_*`.
+
+En concreto, `codelab-project-artifact-import.mjs` dejó de depender de `neon-pixelforge-evidence.js` para el almacenamiento del paquete y vuelve a insertar/leer los bytes del artefacto directamente mediante la columna `artifact BYTEA` de `codelab_project_artifacts`.
+
+**Importante:** esta decisión se aplica al transporte/importación del paquete editable .codelab. El sistema de evidencia visual puede tener su propio proveedor de almacenamiento configurado; no se debe mezclar ambos flujos.
+
+### 20.2 Cambio posterior: evitar Base64 para .codelab
+
+El transporte anterior podía incluir el paquete como `artifact_base64` dentro del JSON de una orden. Eso añadía aproximadamente un 33 % de representación respecto de los bytes binarios originales.
+
+El flujo actual admite una ruta binaria:
+
+`Headless → codelab_zip_upload → chunks BYTEA en Neon → worker → Buffer → codelab_project_artifacts.artifact BYTEA → unzip/validación → proyecto`
+
+Archivos implicados:
+
+- `native-agent-artifacts.mjs`: reconoce el tipo `codelab_zip_upload`.
+- `server.js`: acepta y registra artefactos de ese tipo y, al hacer commit, genera una orden `codelab_project_import` con `native_artifact_id`.
+- `agent-bridge-worker.mjs`: recupera los bytes del staging binario mediante `readNativeArtifact(..., 'codelab_zip_upload')` y los entrega como `artifactBuffer`.
+- `codelab-project-artifact-import.mjs`: valida tamaño/SHA y persiste el Buffer directamente como `BYTEA`; conserva `artifact_base64` únicamente como compatibilidad para clientes/rutas antiguas.
+
+El objetivo es que el paquete no tenga que convertirse a Base64 dentro del payload JSON antes de llegar a Neon.
+
+### 20.3 Prueba extremo a extremo realizada
+
+El 23-11-2026 se verificó el camino binario con un .codelab válido:
+
+- tamaño del paquete: **653 bytes**;
+- SHA-256 de origen: `cd90a4810df7b58571502b44018d17c86ab6727b47e76295bbffded443a9f2e0`;
+- staging: `codelab_agent_artifacts` + `codelab_agent_artifact_chunks`;
+- tipo: `codelab_zip_upload`;
+- chunks: **1**;
+- el worker recuperó el Buffer desde Neon;
+- la importación terminó con `status = succeeded`;
+- el artefacto final quedó con `status = imported`, **653 bytes** y el mismo SHA-256;
+- el proyecto persistido fue `binary-staging-smoke`;
+- se verificó el archivo `assets/binary.txt` persistido dentro del proyecto.
+
+Resultado observado:
+
+`binary staging → Neon chunk BYTEA → worker → Buffer → Neon artifact BYTEA → unzip/validación → registry/files → succeeded`
+
+Esto demuestra el funcionamiento del camino binario **desde el staging de Neon hasta la persistencia final**, sin Neon Object Storage/S3.
+
+Esta prueba no debe describirse como prueba completa del endpoint HTTP de subida: la preparación de los datos de staging se realizó directamente en las tablas de Neon. Para declarar validado también el cliente HTTP completo hay que ejecutar una prueba que use `POST /api/agent/bridge/artifacts`, los `PUT` binarios de chunks y `POST /commit`.
+
+### 20.4 Restricción de mantenimiento
+
+Cuando se cambie el transporte de artefactos, mantener estas invariantes:
+
+1. El Headless nunca recibe credenciales de Neon ni S3.
+2. El paquete .codelab se verifica mediante SHA-256 antes de considerarlo importado.
+3. El staging binario es temporal y se elimina después de una importación exitosa.
+4. La persistencia final del proyecto debe verificarse leyendo el proyecto/archivos resultantes, no solamente por un HTTP 202 o por la existencia del staging.
+5. Si se vuelve a cambiar el tipo permitido de `codelab_agent_artifacts.kind`, actualizar también la constraint/migración de esquema versionada; no depender de un `ALTER TABLE` manual ejecutado únicamente en Neon.
+6. No reintroducir `NEON_STORAGE_*`, credenciales AWS/SigV4 o `object_key/storage_url` en el flujo de importación .codelab salvo que exista una decisión arquitectónica explícita y una prueba de conectividad desde el runtime.
+
+
 Este transporte no reemplaza la cola/worker ni el flujo de vídeo. **A/B sigue reservado exclusiva y permanentemente al empaquetado/renderizado de vídeo**; inline se usa para entregar el paquete editable del proyecto.
