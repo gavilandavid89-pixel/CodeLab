@@ -182,7 +182,7 @@ test('worker SQL allowlist and assistant client cover every executable native ma
   const migrationStart = source.indexOf("ADD CONSTRAINT codelab_agent_commands_action_check");
   const migrationEnd = source.indexOf("));", migrationStart);
   const sqlAllowlist = source.slice(migrationStart, migrationEnd);
-  const migration = fs.readFileSync(path.join(root, 'migrations/2026-11-22-codelab-artifact-import-command.sql'), 'utf8');
+  const migration = fs.readFileSync(path.join(root, 'migrations/2026-11-23-pixelforge-agent-artifacts.sql'), 'utf8');
   for (const action of cases) {
     assert.ok(sqlAllowlist.includes("'" + action + "'"), 'SQL CHECK must allow worker action ' + action);
     assert.ok(NATIVE_ACTIONS.includes(action), 'assistant client must expose worker action ' + action);
@@ -190,6 +190,7 @@ test('worker SQL allowlist and assistant client cover every executable native ma
   }
   for (const action of [
     'codelab_project_import', 'codelab_validate', 'pixelforge_intelligence',
-    'pixelforge_preview_evidence_video'
+    'pixelforge_preview_evidence_video', 'pixelforge_import_zip',
+    'pixelforge_export_zip', 'pixelforge_video_composer'
   ]) assert.ok(NATIVE_ACTIONS.includes(action), action + ' must be available to the assistant');
 });
