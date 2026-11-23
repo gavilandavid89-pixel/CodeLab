@@ -21,7 +21,15 @@ async function importPackage(bytes) {
 function addCharacterReference(project) {
   const layer = project.layers[0];
   project.drawingModel ||= {};
-  project.drawingModel.layerRoles = Object.fromEntries(project.layers.map((layer, index) => [layer.id, { role: ['environment', 'effect', 'detail', 'element', 'object'][index % 5] }]));\n  project.drawingModel.sceneSections = {\n    environment: { label: 'Main world', resourceFolders: ['Entorno/assets'] },\n    effects: { blendMode: 'normal' },\n    details: { precision: 'pixel' },\n    elements: { ordering: 'z-index' },\n    objects: { origin: 'native-object-list' },\n  };\n  project.drawingModel.referenceCenter = {
+  project.drawingModel.layerRoles = Object.fromEntries(project.layers.map((layer, index) => [layer.id, { role: ['environment', 'effect', 'detail', 'element', 'object'][index % 5] }]));
+  project.drawingModel.sceneSections = {
+    environment: { label: 'Main world', resourceFolders: ['Entorno/assets'] },
+    effects: { blendMode: 'normal' },
+    details: { precision: 'pixel' },
+    elements: { ordering: 'z-index' },
+    objects: { origin: 'native-object-list' },
+  };
+  project.drawingModel.referenceCenter = {
     version: 3,
     entries: [{
       id: 'hero-master',
@@ -70,7 +78,15 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.manifest.layout, 'structured');
   assert.equal(imported.manifest.editor, 'pixelforge');
   assert.equal(imported.entries.has('project.codelab-pixelforge'), true);
-  assert.equal(imported.entries.has('Frames/frames.tscn'), true);\n  assert.equal(imported.entries.has('Entorno/entorno.tscn'), true);\n  assert.equal(imported.entries.has('Efectos/efectos.tscn'), true);\n  assert.equal(imported.entries.has('Detalles/detalles.tscn'), true);\n  assert.equal(imported.entries.has('Elementos/elementos.tscn'), true);\n  assert.equal(imported.entries.has('Objetos/objetos.tscn'), true);\n  assert.equal(imported.manifest.frames.manifestPath, 'Frames/frames.tscn');\n  assert.equal(Object.keys(imported.manifest.scenes.sections).length, 5);\n  assert.equal(imported.installed.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
+  assert.equal(imported.entries.has('Frames/frames.tscn'), true);
+  assert.equal(imported.entries.has('Entorno/entorno.tscn'), true);
+  assert.equal(imported.entries.has('Efectos/efectos.tscn'), true);
+  assert.equal(imported.entries.has('Detalles/detalles.tscn'), true);
+  assert.equal(imported.entries.has('Elementos/elementos.tscn'), true);
+  assert.equal(imported.entries.has('Objetos/objetos.tscn'), true);
+  assert.equal(imported.manifest.frames.manifestPath, 'Frames/frames.tscn');
+  assert.equal(Object.keys(imported.manifest.scenes.sections).length, 5);
+  assert.equal(imported.installed.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
   assert.equal(imported.entries.has('center.op/center.json'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
