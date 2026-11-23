@@ -154,7 +154,7 @@ function addAnimation(project, files) {
       index,
       width: project.width,
       height: project.height,
-      durationMs: Math.round(Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12))))),
+      durationMs: Math.round(Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12)))))),
       layerCount: frameLayersMetadata.length,
       layers: frameLayersMetadata,
     }, null, 2), 'utf8'));
