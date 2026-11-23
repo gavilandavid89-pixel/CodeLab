@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib';
 import { randomUUID } from 'node:crypto';
 import { createZip } from './public/pixelforge/src/zip-export.js';
-import { readStoredZip } from './public/pixelforge/src/video-composer-core.mjs';
+import { parsePixelForgeVideoPackage } from './public/pixelforge/src/video-composer-core.mjs';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
 
 const MAX_PROJECT_BYTES = 96 * 1024 * 1024;
@@ -138,25 +138,16 @@ export function createPixelForgeProjectZip(sourceProject) {
 export async function parsePixelForgeProjectZip(input, { importedName } = {}) {
   const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input || []);
   if (bytes.length < 22 || bytes.length > MAX_ZIP_BYTES) throw new RangeError('PixelForge ZIP must be between 22 bytes and 256 MiB.');
-  const entries = await readStoredZip(new Blob([bytes]), { maxEntries: 512, maxTotalBytes: MAX_ZIP_BYTES });
-  const manifestEntry = entries.get('manifest.json');
-  if (!manifestEntry || manifestEntry.size > 2 * 1024 * 1024) throw new TypeError('PixelForge ZIP is missing a valid manifest.json.');
-  let manifest;
-  try { manifest = JSON.parse(await manifestEntry.blob.text()); }
-  catch { throw new TypeError('PixelForge ZIP manifest is invalid JSON.'); }
+  const parsedPackage = await parsePixelForgeVideoPackage(new Blob([bytes]));
+  const manifest = parsedPackage.manifest;
   if (!manifest || manifest.format !== 'pixelforge-video-package' || manifest.version !== 1 ||
       typeof manifest.projectFile !== 'string' || manifest.projectFile.startsWith('/') ||
-      manifest.projectFile.includes('\\') || manifest.projectFile.split('/').some(part => part === '..' || part === '.') ||
-      !Number.isInteger(manifest.width) || !Number.isInteger(manifest.height) ||
-      manifest.width < 1 || manifest.height < 1 || manifest.width > 4096 || manifest.height > 4096 ||
-      !Number.isInteger(manifest.frameCount) || manifest.frameCount < 1 || manifest.frameCount > 240 ||
-      !Array.isArray(manifest.frames) || manifest.frames.length !== manifest.frameCount) {
-    throw new TypeError('PixelForge ZIP manifest has an unsupported format or invalid dimensions/timeline.');
+      manifest.projectFile.includes('\\\\') || manifest.projectFile.split('/').some(part => part === '..' || part === '.') ||
+      !parsedPackage.project || parsedPackage.project.size > MAX_PROJECT_BYTES) {
+    throw new TypeError('PixelForge ZIP does not contain a safe editable .pforge project entry.');
   }
-  const projectEntry = entries.get(manifest.projectFile);
-  if (!projectEntry || projectEntry.size > MAX_PROJECT_BYTES) throw new TypeError('PixelForge ZIP does not contain its editable .pforge project file.');
   let project;
-  try { project = JSON.parse(await projectEntry.blob.text()); }
+  try { project = JSON.parse(await parsedPackage.project.text()); }
   catch { throw new TypeError('Editable .pforge project is invalid JSON.'); }
   if (project.width !== manifest.width || project.height !== manifest.height) throw new TypeError('ZIP manifest and editable project dimensions do not match.');
   if ((project.animation?.frames?.length || 1) !== manifest.frameCount) throw new TypeError('ZIP manifest and editable project frame counts do not match.');
@@ -171,15 +162,15 @@ export async function parsePixelForgeProjectZip(input, { importedName } = {}) {
   return {
     project: verified.toJSON(),
     metadata: {
-      filename: projectEntry.name,
+      filename: manifest.projectFile,
       projectName: canonical.name,
       width: canonical.width,
       height: canonical.height,
       layerCount: canonical.layers.length,
       frameCount: canonical.animation?.frames?.length || 0,
-      entryCount: entries.size,
+      entryCount: parsedPackage.entryCount,
       zipBytes: bytes.length,
-      projectBytes: projectEntry.size,
+      projectBytes: parsedPackage.project.size,
       inspection
     }
   };
