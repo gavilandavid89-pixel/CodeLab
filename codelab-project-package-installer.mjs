@@ -325,7 +325,8 @@ function normalizeEditorProject(project, editor) {
 
 export function installCodeLabPackage({ manifest, project, files }) {
   if (!manifest || !project || !(files instanceof Map)) fail('manifest, project and file map are required.');
-  normalizeEditorProject(project, manifest.editor);\n  const declaredResources = Array.isArray(manifest.resources) ? manifest.resources : [];
+  normalizeEditorProject(project, manifest.editor);
+  const declaredResources = Array.isArray(manifest.resources) ? manifest.resources : [];
   const declaredPaths = new Set();
   for (const resource of declaredResources) {
     if (!resource || !safeResourcePath(resource.path) || declaredPaths.has(resource.path)) {
