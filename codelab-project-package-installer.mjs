@@ -285,9 +285,47 @@ function installPackageResourceCatalog(project, destinations, files, manifest) {
   return { resourceCount: catalog.length, referenceImages, embeddedReferenceBytes: embeddedBytes };
 }
 
+function normalizeEditorProject(project, editor) {
+  if (!['web', 'design'].includes(String(editor))) return;
+  const rawCode = project.code && typeof project.code === 'object' && !Array.isArray(project.code)
+    ? project.code : project;
+  const code = {
+    html: typeof rawCode.html === 'string' ? rawCode.html : '',
+    css: typeof rawCode.css === 'string' ? rawCode.css : '',
+    js: typeof rawCode.js === 'string' ? rawCode.js : '',
+  };
+  for (const [key, value] of Object.entries(code)) {
+    if (value.length > 500_000) fail('project code.' + key + ' exceeds the 500000-character limit.');
+  }
+  project.type = editor;
+  project.code = code;
+  project.hasWebSpace = true;
+  project.hasDesignSpace = true;
+  if (editor === 'design') {
+    if (!project.design || typeof project.design !== 'object' || Array.isArray(project.design) ||
+        !Array.isArray(project.design.elements)) {
+      fail('design project must contain design.elements as an array.');
+    }
+    if (project.design.elements.length > 2000) fail('design project exceeds the 2000-element limit.');
+    project.design = {
+      ...project.design,
+      frame: ['desktop', 'tablet', 'mobile'].includes(project.design.frame) ? project.design.frame : 'desktop',
+      background: typeof project.design.background === 'string' ? project.design.background : '#ffffff',
+      elements: project.design.elements,
+      grid: project.design.grid !== false,
+      gridSize: [4, 8, 16, 32].includes(Number(project.design.gridSize)) ? Number(project.design.gridSize) : 8,
+      snapToGrid: !!project.design.snapToGrid,
+    };
+  } else {
+    project.design = project.design && typeof project.design === 'object' && !Array.isArray(project.design)
+      ? { ...project.design, elements: Array.isArray(project.design.elements) ? project.design.elements : [], frame: project.design.frame || 'desktop', background: project.design.background || '#ffffff' }
+      : { elements: [], frame: 'desktop', background: '#ffffff', grid: true, gridSize: 8, snapToGrid: false };
+  }
+}
+
 export function installCodeLabPackage({ manifest, project, files }) {
   if (!manifest || !project || !(files instanceof Map)) fail('manifest, project and file map are required.');
-  const declaredResources = Array.isArray(manifest.resources) ? manifest.resources : [];
+  normalizeEditorProject(project, manifest.editor);\n  const declaredResources = Array.isArray(manifest.resources) ? manifest.resources : [];
   const declaredPaths = new Set();
   for (const resource of declaredResources) {
     if (!resource || !safeResourcePath(resource.path) || declaredPaths.has(resource.path)) {
