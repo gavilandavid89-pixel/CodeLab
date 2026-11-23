@@ -1,4 +1,4 @@
-name: CodeLab Independent Session B
+name: CodeLab Single Video Processor B
 
 on:
   issue_comment:
@@ -104,7 +104,7 @@ jobs:
 
       - name: Run B→A→context→B→A walking animation cycle
         id: walk
-        if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step')) || (github.event_name == 'repository_dispatch' && (github.event.client_payload.mode == 'walk' || github.event.client_payload.mode == 'walk-step')) || (github.event_name == 'issue_comment' && (startsWith(github.event.comment.body, '[Start Independent B walk]') || startsWith(github.event.comment.body, '[Start Independent B walk-step]'))) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step')) || (github.event_name == 'repository_dispatch' && (github.event.client_payload.mode == '' || github.event.client_payload.mode == 'walk' || github.event.client_payload.mode == 'walk-step')) || (github.event_name == 'issue_comment' && (startsWith(github.event.comment.body, '[Start Independent B walk]') || startsWith(github.event.comment.body, '[Start Independent B walk-step]'))) }}
         env:
           CODELAB_SESSION_TIMEOUT_MS: "1800000"
           CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || github.event.client_payload.mailbox_transport || 'relay' }}
