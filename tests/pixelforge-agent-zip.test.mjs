@@ -18,6 +18,7 @@ test('editable PixelForge ZIP round-trips raster, vector, animation and Video Co
   const exported = await createPixelForgeProjectZip(project);
   assert.ok(exported.bytes.length > 1000);
   assert.equal(exported.metadata.frameCount, project.animation.frames.length);
+  assert.equal(exported.metadata.vectorOverlayIncluded, true);
   const entries = await readStoredZip(new Blob([exported.bytes]));
   assert.ok(entries.has('manifest.json'));
   assert.ok(entries.has(exported.metadata.projectFile));
