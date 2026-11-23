@@ -201,3 +201,10 @@ test('mailbox inspection exposes vector model, audit and SVG export without muta
   assert.match(source, /vector_audit:\s*\{ name: 'vector\.audit' \}/);
   assert.match(source, /vector_svg:\s*\{ name: 'vector\.svg\.export' \}/);
 });
+
+
+test('vector-generated IDs are normalized once and replayed identically at approval', () => {
+  assert.match(source, /function normalizeHeadlessProposalActions\(actions\)/);
+  assert.match(source, /const normalizedActions = normalizeHeadlessProposalActions\(payload\.actions\)/);
+  assert.match(source, /actions: normalizedActions/);
+});
