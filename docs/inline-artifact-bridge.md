@@ -142,7 +142,7 @@ Los artefactos son staging temporal, no almacenamiento definitivo de proyectos. 
 - El Headless aislado no obtiene `DATABASE_URL`, credenciales Neon ni tokens internos.
 - CodeLab valida workspace, tipo, expiración, tamaños, índices y hashes antes de aceptar la importación.
 - La metadata del destino no autoriza por sí sola al agente a acceder a ese workspace; el worker aplica las reglas de persistencia/importación existentes.
-- No se debe usar este canal para enviar vídeos finales o evidencia pesada como sustituto del flujo de vídeo. La regla del proyecto sigue vigente: **A/B se reserva exclusivamente y de forma permanente para empaquetar/renderizar vídeo**, por la limitación de memoria de Render. El inline sirve para transferir el paquete editable del proyecto a CodeLab, no para reemplazar A/B.
+- No se debe usar este canal para enviar vídeos finales o evidencia pesada como sustituto del flujo de vídeo. La regla del proyecto sigue vigente: **A/B se reserva exclusivamente para empaquetar/renderizar/capturar vídeo**, por la limitación de memoria de Render, usando una sola B procesadora por trabajo. El inline sirve para transferir el paquete editable del proyecto a CodeLab, no para reemplazar ese flujo. Consulta [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md).
 
 ## 6. Prueba técnica y qué demuestra
 
