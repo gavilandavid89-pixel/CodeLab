@@ -2,13 +2,22 @@
 
 **Estado:** documentación basada en el importador estructurado v2, el runtime Headless y las pruebas presentes en main. Distingue el paquete CodeLab estructurado del ZIP de agente/Video Composer. No son intercambiables.
 
-## 1. Nombres que no significan lo mismo
+## 1. Extensiones, marcadores y namespaces
 
-| Nombre | Significado |
+Las extensiones y nombres estructurales no son decorativos: indican a qué sistema pertenece cada archivo y cómo debe interpretarlo CodeLab.
+
+| Extensión / nombre | Significado |
 |---|---|
-| .codelab-pixelforge | Extensión canónica del artefacto de proyecto CodeLab para PixelForge. |
-| project.codelab-pixelforge | Marcador obligatorio en la raíz interna del ZIP CodeLab. Identifica al editor. |
+| .codelab-pixelforge | Extensión canónica del paquete de proyecto CodeLab para PixelForge. |
+| project.codelab-pixelforge | Marcador raíz obligatorio dentro del ZIP. Le dice a CodeLab que el paquete pertenece al editor PixelForge. |
+| .tscn | Archivo estructural propio de CodeLab para contenido de escena/editor. No es una escena nativa de Godot en este formato. |
+| .center | Identificador estructural del Reference Center. Lo que termina en .center se carga como contenido del centro de referencias, no como contenido del editor/lienzo. |
+| .reference | Identificador de una referencia individual que vive dentro de una categoría del Reference Center. No es un frame. |
 | .pforge | Documento nativo PixelForge serializado como JSON. En el ZIP de agente actual se guarda dentro de project/. |
+| .json | Datos, índices y contratos auxiliares. Su significado depende del archivo que lo declare. |
+| .rgba | Datos de píxeles RGBA8; no es una escena ni una referencia por sí mismo. |
+
+Regla de interpretación: .tscn → editor/escena/lienzo; .center → Reference Center; .reference → referencia individual. CodeLab no debe cambiar de sistema basándose en el contenido interno o en un nombre parecido.
 
 También se acepta el marcador heredado project.codelab, pero un paquete debe tener exactamente un marcador de editor en la raíz. Los marcadores project.codelab-web, project.codelab-design y project.codelab-pixelforge no se pueden mezclar. Un marcador dentro de una subcarpeta no cuenta.
 
@@ -28,39 +37,56 @@ mi-proyecto.codelab-pixelforge
     ├── project.json                 # documento nativo PixelForge
     ├── integrity.json               # SHA-256 y tamaño de cada archivo protegido
     ├── Frames/
-    │   ├── frames.tscn              # índice/manifest de la línea de tiempo
-    │   ├── frame-0001/
-    │   │   ├── frame.json           # metadatos del frame y sus capas
-    │   │   ├── layer-base.rgba      # píxeles RGBA8 sin comprimir
-    │   │   └── layer-detail.rgba
-    │   └── frame-0002/
-    │       ├── frame.json
-    │       ├── layer-base.rgba
-    │       └── layer-detail.rgba
+    │   ├── frames.tscn              # organiza la secuencia que va al lienzo
+    │   ├── frame-0001/              # frame completo, ordenado por número
+    │   │   ├── frame.json           # esquema completo del frame
+    │   │   ├── pixels.rgba          # píxeles del frame, si existen
+    │   │   └── ...                  # datos/recursos declarados por el esquema
+    │   ├── frame-0002/
+    │   │   ├── frame.json
+    │   │   ├── pixels.rgba
+    │   │   └── ...
+    │   └── ...
     ├── Entorno/
     │   ├── entorno.tscn
-    │   └── assets/                  # recursos exclusivos del entorno
+    │   └── ...                      # datos propios de la sección
     ├── Efectos/
     │   ├── efectos.tscn
-    │   └── assets/                  # sprites, texturas y recursos de efectos
+    │   └── ...
     ├── Detalles/
     │   ├── detalles.tscn
-    │   └── assets/                  # detalles y recursos auxiliares
+    │   └── ...
     ├── Elementos/
     │   ├── elementos.tscn
-    │   └── assets/                  # recursos propios de elementos
+    │   └── ...
     ├── Objetos/
     │   ├── objetos.tscn
-    │   └── assets/                  # modelos, texturas y recursos de objetos
-    ├── center.op/
-    │   └── center.json              # índice de categorías y referencias
-    ├── reference.personaje/
-    │   └── hero/
-    │       ├── reference.json       # definición de la referencia
-    │       └── parts/
-    │           ├── body.rgba
-    │           ├── head.rgba
-    │           └── equipment.rgba
+    │   └── ...
+    └── reference.center/
+        ├── reference.center
+        ├── reference.personaje/
+        │   ├── reference.personaje1/
+        │   │   └── personaje.reference
+        │   ├── reference.personaje2/
+        │   │   └── personaje.reference
+        │   └── ...
+        ├── entorno.reference/
+        │   ├── entorno.reference1/
+        │   │   └── entorno.reference
+        │   └── ...
+        ├── elementos.reference/
+        │   ├── elemento.reference1/
+        │   │   └── elemento.reference
+        │   └── ...
+        ├── detalles.reference/
+        │   ├── detalle.reference1/
+        │   └── ...
+        ├── objetos.reference/
+        │   ├── objeto.reference1/
+        │   └── ...
+        └── efectos.reference/
+            ├── efecto.reference1/
+            └── ...
     ├── reference.escena/
     │   └── forest/
     │       ├── reference.json
@@ -105,6 +131,51 @@ Es el documento nativo serializado. Contiene identidad/nombre del proyecto, dime
 No reemplazar project.json por una imagen PNG compuesta: eso elimina la estructura editable.
 
 ## 3. Animación: Frames/frames.tscn
+
+Frames es contenido directo del editor/lienzo. Los frames no usan .reference y no pertenecen al Reference Center. frames.tscn organiza la secuencia y cada frame se resuelve por su número/índice.
+
+### 3.1 Esquema maestro de cada frame
+
+Cada frame debe seguir un esquema maestro fijo y completo. La presencia o ausencia de un dato no cambia la estructura: todos los frames conservan los mismos campos posibles y expresan el estado de cada dato mediante valores explícitos como un valor real, inexistente, no_aplicable o equivalente definido por el contrato.
+
+El esquema debe contemplar toda la información que CodeLab pueda necesitar para reconstruir el frame, incluyendo como mínimo:
+
+- identidad e índice del frame.
+- dimensiones del canvas.
+- píxeles y formato.
+- colores/paleta.
+- capas y orden de capas.
+- coordenadas y posición.
+- escala, rotación y ángulo.
+- opacidad, visibilidad y bloqueo.
+- transformaciones.
+- referencias utilizadas.
+- assets y rutas de recursos.
+- configuración y metadatos.
+- duración/tiempo y relación con la línea de tiempo cuando corresponda.
+
+Por ejemplo, angle = 90° y angle = inexistente son estados distintos. El segundo no significa 0° ni dato perdido.
+
+Cada capa del frame sigue el mismo principio: declara todos los campos que pueden ser necesarios para reconstruirla, aunque determinados valores sean inexistentes o no aplicables.
+
+### 3.2 Organización de los datos
+
+frame.json describe qué existe y cómo se relaciona; los datos pesados pueden vivir en archivos binarios o recursos separados y deben estar enlazados mediante rutas explícitas. La organización puede verse así:
+
+~~~text
+frame-0001/
+├── frame.json
+├── pixels.rgba
+├── layers/
+│   ├── layer-001/
+│   │   └── pixels.rgba
+│   └── layer-002/
+│       └── pixels.rgba
+└── assets/
+    └── ...
+~~~
+
+La estructura interna concreta se determina por las rutas declaradas en frame.json, pero el principio es obligatorio: ningún frame debe quedar vacío o depender de que CodeLab invente información.
 
 El índice declara:
 
@@ -181,7 +252,19 @@ Los manifiestos apuntan a los IDs del documento nativo; no duplican la imagen co
 
 El id de categoría y el sufijo de carpeta son campos separados: el instalador valida que folder empiece por reference., pero no exige que el texto después del punto coincida con id. Conviene mantener una convención explícita, por ejemplo id = character y folder = reference.personaje, o id = personaje y folder = reference.personaje. Cada reference.json debe permanecer dentro de la carpeta que declara su categoría.
 
-### 4.1 reference.center
+### 5.1 reference.center
+
+reference.center identifica el contenido que debe cargarse en el Reference Center. No debe tratarse como una escena .tscn del editor. El sufijo .center es una señal estructural del sistema de referencias.
+
+La jerarquía de categorías es explícita:
+- reference.center/reference.personaje/reference.personaje1/ = referencia 1 de personaje.
+- reference.center/entorno.reference/entorno.reference1/ = referencia 1 de entorno.
+- reference.center/elementos.reference/elemento.reference1/ = referencia 1 de elementos.
+- reference.center/detalles.reference/detalle.reference1/ = referencia 1 de detalles.
+- reference.center/objetos.reference/objeto.reference1/ = referencia 1 de objetos.
+- reference.center/efectos.reference/efecto.reference1/ = referencia 1 de efectos.
+
+Un .tscn no debe sustituir estos identificadores.
 
 `reference.center` identifica el contenido que debe cargarse en el **Reference Center**. No debe tratarse como una escena `.tscn` del editor.
 
@@ -196,11 +279,11 @@ La jerarquía de categorías es explícita. Por ejemplo:
 
 La terminación `.center` tiene semántica propia: **Reference Center**. La terminación `.tscn` pertenece al contenido de escena/editor y no debe usarse para marcar una referencia del centro.
 
-Cada referencia individual usa `.reference` y conserva el mismo principio de esquema completo que los frames: todos los campos posibles permanecen definidos y sus valores indican si el dato existe, no aplica o está ausente.
+Cada referencia individual usa .reference y conserva el mismo principio de esquema completo que los frames: todos los campos posibles permanecen definidos y sus valores indican si el dato existe, no aplica o está ausente. Una referencia nunca debe convertirse en .tscn solo porque contenga información parecida a una escena.
 
 El contrato del centro debe mantener categorías, IDs y rutas explícitas. CodeLab no debe decidir una categoría por el nombre de un archivo ni mover una referencia a `.tscn` solo porque contenga datos parecidos a una escena.
 
-### 4.2 reference.json
+### 5.2 .reference y datos de cada referencia
 
 Cada referencia declara identidad id, name, dimensiones width/height, parts[] y opcionalmente:
 
@@ -213,7 +296,7 @@ Cada elemento de parts[] identifica un componente editable con id, name, role, p
 
 Los píxeles se guardan fuera del JSON en archivos RGBA8 y se enlazan mediante pixelsPath. Por ejemplo, body.rgba puede ser el cuerpo y head.rgba la cabeza; los nombres son descriptivos, pero la identidad real se establece por id y por la ruta declarada.
 
-### 4.3 Función dentro de PixelForge
+### 5.3 Función dentro de PixelForge
 
 Reference Center es una biblioteca de **referencias maestras inmutables**. Conserva diseños reutilizables (personajes, partes, objetos, efectos o escenas) sin que editar una copia destruya el original.
 
@@ -258,8 +341,8 @@ Destinos reconocidos incluyen reference-center, assets, scenes, animations, fram
 | Parte editable de personaje | reference.personaje/hero/parts/body.rgba |
 | Definición de esa referencia | reference.personaje/hero/reference.json |
 | Índice de categorías | center.op/center.json |
-| Índice de animación | frames/frames.tscn |
-| Cel de una capa/frame | Ruta pixelsPath declarada en frame.json |
+| Índice de animación | Frames/frames.tscn |
+| Datos de un frame/capa | Rutas declaradas por el esquema del frame |\n| Entrada del Reference Center | reference.center/reference.center |\n| Referencia individual | Ruta .reference dentro de reference.center |
 | Fuente | fonts/brand.woff2 |
 | Imagen auxiliar | assets/texture.png |
 
@@ -296,7 +379,7 @@ Para el paquete estructurado v2, el comportamiento esperado es:
 1. Reconocer exactamente un marcador raíz project.codelab-pixelforge (o el marcador legacy admitido).
 2. Leer y validar manifest.json, project.json e integrity.json.
 3. Instalar los cels declarados por frames/frames.tscn dentro de project.animation.
-4. Instalar las referencias declaradas por center.op/center.json dentro de project.drawingModel.referenceCenter.
+4. Instalar la entrada reference.center y las referencias .reference declaradas dentro de project.drawingModel.referenceCenter.
 5. Resolver recursos adicionales y mantener packageResources y rutas de procedencia.
 6. Hidratar el documento PixelForge real/Headless que utilizan las herramientas de edición, manteniendo el timeline v1 y el sidecar de metadatos por frame/capa.
 7. Guardar por el mecanismo normal de persistencia del proyecto.
