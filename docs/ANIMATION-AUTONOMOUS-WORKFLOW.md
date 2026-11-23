@@ -211,3 +211,47 @@ Además de conservar los archivos en `codelab_project_files`, los proyectos Pixe
 Las imágenes ubicadas en `reference-center` (o carpetas alias como `reference/`, `refs/`, `moodboard/`) se incorporan como entradas inmutables de `drawingModel.referenceCenter.entries`. PNG, JPEG, GIF y WebP se reconocen por su firma binaria y se muestran como miniaturas en Reference Center. El usuario puede copiarlas al lienzo como una capa editable; se ajustan al canvas manteniendo la proporción y sin modificar el original. La incrustación está limitada a 4 MiB por imagen y 12 MiB acumulados; los archivos de referencia que exceden esos límites siguen en el catálogo de recursos y en el almacenamiento de archivos del proyecto.
 
 El editor refresca Reference Center después de cargar un proyecto, no solo al crear la interfaz. Así las referencias importadas aparecen en la primera apertura y al cambiar de proyecto. La conversión de imágenes no las inserta en la línea de tiempo: los frames continúan sujetos al mapeo explícito frame/capa del manifiesto.
+
+
+## Formato .codelab estructurado v2
+
+La importación de proyectos admite el esquema estructurado v2 para que CodeLab pueda reconstruir el proyecto sin inferir estructura desde nombres de archivos o desde una transferencia de datos plana.
+
+La forma canónica es:
+
+```
+project.codelab
+├── manifest.json
+├── project.json
+├── frames/
+│   ├── frames.tscn
+│   ├── frame.001/
+│   │   ├── frame.json
+│   │   └── layer.001/
+│   │       └── pixels.bin
+│   └── frame.002/
+│       └── ...
+└── center.op/
+    ├── center.json
+    ├── reference.personaje/
+    │   └── reference.personaje1/
+    │       ├── reference.json
+    │       └── image.bin
+    ├── reference.entorno/
+    ├── reference.efectos/
+    ├── reference.detalles/
+    ├── reference.objetos/
+    └── reference.elementos/
+```
+
+Cada frame declara explícitamente su `id`, índice, duración, dimensiones y `layerCount`. Cada layer declara su identidad, posición, opacidad, visibilidad, z-index y el archivo RGBA8 que contiene sus píxeles. No se debe deducir qué layer pertenece a qué frame por el nombre del archivo.
+
+El Reference Center usa `center.op/center.json` como índice y carpetas `reference.<categoria>` como ubicación declarativa. Cada referencia declara su identidad, categoría, geometría, transformación y partes editables. Cada parte conserva sus propios píxeles y SHA-256. La copia Reference → Canvas debe usar estos datos como fuente de verdad y producir una copia profunda editable; nunca una capa vacía o una referencia externa frágil.
+
+### Regla de persistencia
+
+Después de instalar el paquete, CodeLab vuelve a leer el proyecto y todos sus archivos desde PostgreSQL/Neon y verifica SHA-256 y bytes contra lo que acaba de persistir. El resultado de la importación marca `reloadedFromPersistence=true`. Esto convierte la persistencia de CodeLab en la siguiente fuente de verdad y evita que una operación posterior dependa del payload de transferencia original.
+
+La validación v2 es estricta: IDs duplicados, paths inseguros, dimensiones inconsistentes, cels ausentes, capas desconocidas, píxeles con tamaño incorrecto o referencias fuera de su categoría hacen fallar la importación en lugar de inventar o completar datos.
+
+El esquema v1 existente continúa aceptándose para compatibilidad.
