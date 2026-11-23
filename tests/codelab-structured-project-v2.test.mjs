@@ -107,10 +107,11 @@ test('installs structured CodeLab v2 frames with explicit per-layer RGBA data', 
   const result = installCodeLabPackage(pkg);
   assert.equal(result.installed.animationFrames, 2);
   assert.equal(result.installed.animationCels, 4);
-  assert.equal(result.project.animation.version, 2);
+  assert.equal(result.project.animation.version, 1);
   assert.equal(result.project.animation.frames[0].cels[0].pixels.length > 0, true);
-  assert.equal(result.project.animation.frames[0].cels[0].metadata.position.x, 1);
-  assert.equal(result.project.animation.frames[1].cels[1].metadata.pixelsSha256.length, 64);
+  assert.equal(result.project.drawingModel.animationLayerMetadata.format, 'pixelforge-frame-layer-metadata');
+  assert.equal(result.project.drawingModel.animationLayerMetadata.frames[0].layers[0].position.x, 1);
+  assert.equal(result.project.drawingModel.animationLayerMetadata.frames[1].layers[1].pixelsSha256.length, 64);
 });
 
 test('installs Reference Center categories and deep-copyable editable parts', () => {
