@@ -97,7 +97,7 @@ Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.m
 - Tras inspeccionarla, puede continuar trabajando en su headless propio, corregir y volver a empaquetar, o entregar el proyecto al usuario.
 - La evidencia visual es evidencia de inspección; no sustituye al proyecto editable ni se convierte en la fuente canónica del proyecto.
 
-## 6. Workflows A/B: históricos para el flujo general y reservados para vídeo
+## 6. Workflows A/B: históricos para el flujo general y reservados permanentemente para vídeo
 
 Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instancia/sesión de la web y B se conectaba a ella para enviar solicitudes. **No son el flujo general de ejecución de CodeLab.**
 
@@ -108,9 +108,11 @@ Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instan
 - No aplicar la antigua regla de ventanas independientes de 10 minutos/30 segundos como límite del flujo actual.
 - Los workflows y scripts antiguos pueden conservarse para reproducibilidad o pruebas históricas.
 
-### 6.2 Excepción: empaquetado/render de vídeo
+### 6.2 Regla permanente: empaquetado/render de vídeo mediante A/B
 
-Existe una excepción operativa: **A/B se utiliza exclusivamente para el empaquetador/renderizador de vídeo cuando el procesamiento de vídeo no puede ser soportado de forma fiable por el entorno Render de CodeLab.**
+**A/B se utilizará siempre y exclusivamente para el empaquetador/renderizador de vídeo.** Esto no es un fallback ocasional ni una medida que se active únicamente cuando Render falle.
+
+La razón operativa es estructural: **el entorno Render de CodeLab dispone de poca memoria para el procesamiento de vídeo y ese límite hace que el empaquetado/render de vídeo falle de forma recurrente.** Por ese motivo, el empaquetador de vídeo queda separado permanentemente del procesamiento normal de CodeLab y se ejecuta mediante A/B.
 
 ```text
 Headless propio del agente
@@ -121,7 +123,7 @@ Neon / orden canónica
         ↓
 CodeLab / sesión necesaria
         ↓
-workflow A/B de vídeo (solo empaquetador)
+workflow A/B de vídeo (siempre, solo empaquetador)
         ↓
 PixelForge + Video Composer
         ↓
@@ -137,12 +139,14 @@ Reglas:
 - A/B **no sustituye** Neon como fuente de verdad.
 - A/B **no sustituye** el bridge/worker para operaciones normales.
 - A/B **no se convierte** en una segunda cola general de comandos.
-- Su uso queda limitado al empaquetado/render de vídeo que requiera una capacidad que Render no pueda ejecutar de forma fiable.
+- A/B queda reservado **permanentemente** al empaquetado/render de vídeo.
+- Render no debe utilizarse como ruta del empaquetador de vídeo; su baja memoria hace que ese procesamiento falle de forma recurrente.
+- El uso de A/B para vídeo no depende de que una ejecución concreta de Render haya fallado: **la ruta A/B es la ruta establecida por diseño para todo empaquetado/render de vídeo.**
 - El vídeo debe corresponder al proyecto/revisión reales y regresar como evidencia asociada a la orden.
 - El agente debe abrir/analizar la evidencia antes de declarar correcta la animación.
 - Si la evidencia muestra movimiento incorrecto, frames faltantes, composición incorrecta u otro defecto, el agente vuelve a su Headless propio, corrige y repite el ciclo.
 
-La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado como vía especializada del empaquetador de vídeo**.
+La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado permanentemente como vía especializada y obligatoria del empaquetador de vídeo**.
 
 ## 7. Principio de cierre
 
