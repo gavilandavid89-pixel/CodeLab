@@ -395,6 +395,92 @@ function setSyncStatus(state, text) {
   statusText.innerText = text;
 }
 
+// ---------- Imported project resources ----------
+function closeProjectFiles() {
+  document.getElementById('projectFilesModal')?.classList.add('hidden');
+}
+async function openProjectFiles() {
+  const project = projects.find(item => item && item.id === currentProjectId);
+  if (!project || !workspaceId || !workspaceToken) {
+    showToast('No se pudo identificar el proyecto o el workspace.', 'warn');
+    return;
+  }
+  const modal = document.getElementById('projectFilesModal');
+  const list = document.getElementById('projectFilesList');
+  const subtitle = document.getElementById('projectFilesSubtitle');
+  if (!modal || !list) return;
+  if (subtitle) subtitle.textContent = project.name + ' · recursos importados';
+  list.textContent = 'Cargando archivos…';
+  modal.classList.remove('hidden');
+  try {
+    const response = await fetch('/api/workspace/' + encodeURIComponent(workspaceId) + '/projects/' +
+      encodeURIComponent(project.id) + '/files', {
+      credentials: 'same-origin',
+      headers: { 'x-workspace-token': workspaceToken }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los archivos.');
+    list.replaceChildren();
+    const files = Array.isArray(data.files) ? data.files : [];
+    if (!files.length) {
+      const empty = document.createElement('p');
+      empty.className = 'text-xs text-slate-500 p-3';
+      empty.textContent = 'Este proyecto no contiene archivos adicionales.';
+      list.appendChild(empty);
+      return;
+    }
+    files.forEach(file => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'w-full text-left rounded-lg px-3 py-2 hover:bg-slate-800 text-xs text-slate-200 flex items-center gap-2';
+      const icon = document.createElement('i');
+      icon.className = 'fa-solid ' + (/\\.(png|jpe?g|gif|webp|svg)$/i.test(file.path) ? 'fa-image text-violet-300' : 'fa-file-code text-cyan-300');
+      const name = document.createElement('span');
+      name.className = 'min-w-0 flex-1 truncate';
+      name.textContent = file.path;
+      const size = document.createElement('span');
+      size.className = 'text-[10px] text-slate-500 shrink-0';
+      size.textContent = file.byteSize < 1024 ? file.byteSize + ' B' : (file.byteSize / 1024).toFixed(1) + ' KB';
+      button.append(icon, name, size);
+      button.addEventListener('click', () => openProjectPackageFile(project.id, file.path));
+      list.appendChild(button);
+    });
+  } catch (error) {
+    list.textContent = error.message || 'Error cargando archivos.';
+  }
+}
+async function openProjectPackageFile(projectId, filePath) {
+  const preview = document.getElementById('projectFilePreview');
+  const image = document.getElementById('projectFileImagePreview');
+  const unsupported = document.getElementById('projectFileUnsupported');
+  const meta = document.getElementById('projectFilePreviewMeta');
+  if (!preview || !image || !unsupported || !meta) return;
+  preview.classList.add('hidden'); image.classList.add('hidden'); unsupported.classList.add('hidden');
+  meta.textContent = filePath + ' · cargando…';
+  try {
+    const url = '/api/workspace/' + encodeURIComponent(workspaceId) + '/projects/' +
+      encodeURIComponent(projectId) + '/files/' + encodeURIComponent(filePath);
+    const response = await fetch(url, { credentials: 'same-origin', headers: { 'x-workspace-token': workspaceToken } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'No se pudo abrir el archivo.');
+    const bytes = Uint8Array.from(atob(data.contentBase64 || ''), char => char.charCodeAt(0));
+    const type = String(data.contentType || 'application/octet-stream').toLowerCase();
+    meta.textContent = filePath + ' · ' + Number(data.byteSize || bytes.length).toLocaleString() + ' bytes';
+    if (type.startsWith('image/')) {
+      image.src = 'data:' + type + ';base64,' + data.contentBase64;
+      image.classList.remove('hidden');
+    } else if (type.startsWith('text/') || /json|javascript|xml|svg|css|html/.test(type) ||
+      /\\.(json|js|mjs|css|html|htm|md|txt|svg|xml|yml|yaml|csv)$/i.test(filePath)) {
+      preview.textContent = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      preview.classList.remove('hidden');
+    } else {
+      unsupported.classList.remove('hidden');
+    }
+  } catch (error) {
+    meta.textContent = error.message || 'No se pudo abrir el archivo.';
+  }
+}
+
 // ---------- Boot ----------
 window.addEventListener('DOMContentLoaded', () => {
   workspaceId = lsGet(STORAGE_KEY_WORKSPACE);
