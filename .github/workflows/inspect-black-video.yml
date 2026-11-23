@@ -5,6 +5,8 @@ on:
     branches: [debug/inspect-black-video]
   workflow_dispatch:
 
+# Auto-trigger marker: this branch is intentionally push-triggered for inspection.
+
 jobs:
   inspect:
     runs-on: ubuntu-latest
