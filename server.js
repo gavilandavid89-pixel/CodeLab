@@ -1531,7 +1531,7 @@ async function commitInlineAgentArtifact(artifactId, expectedSha256) {
     artifact_id: artifactId,
     name: row.metadata?.projectName || row.filename.replace(/\\.codelab$/i, '').replace(/\\.zip$/i, ''),
     target_workspace_id: row.metadata?.targetWorkspaceId || PIXELFORGE_GUEST_WORKSPACE_ID,
-    wake: true
+    wake: row.metadata?.selfTest ? false : true
   };
   await accountPool.query(
     `INSERT INTO public.codelab_agent_commands
@@ -2413,7 +2413,7 @@ const server = http.createServer(async (req, res) => {
                 (artifact_id,workspace_id,kind,filename,content_type,total_bytes,total_chunks,sha256,metadata,expires_at)
                VALUES ($1,$2,'pixelforge_zip_upload',$3,'application/zip',$4,$5,$6,$7::jsonb,now()+interval '1 hour')`,
               [artifactId, workspaceId, filename, totalBytes, totalChunks, sha256,
-               JSON.stringify({ targetWorkspaceId, projectName: body.project_name || null, transport: 'inline-bridge' })]
+               JSON.stringify({ targetWorkspaceId, projectName: body.project_name || null, selfTest: body.self_test === true, transport: 'inline-bridge' })]
             );
             return sendJson(res, 201, { ok: true, artifactId, chunkBytes: AGENT_INLINE_ARTIFACT_CHUNK_BYTES, totalBytes, totalChunks, sha256 });
           }
