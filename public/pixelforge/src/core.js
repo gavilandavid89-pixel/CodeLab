@@ -261,6 +261,8 @@ export class RasterDocument {
     this.selectionMask = null;
     this.drawingModel = null;
     this.vectorModel = null;
+    this.packageResourceFiles = [];
+    this.packageResources = [];
   }
   setDrawingModel(model) {
     if (model !== null && (typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Drawing model must be an object or null.');
@@ -1101,10 +1103,17 @@ export class RasterDocument {
     if (estimateRasterProjectJSONBytes(this.layers) > MAX_PROJECT_JSON_BYTES) {
       throw new RangeError('Project JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
-    return { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
+    const snapshot = { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
       layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })),
       drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
-      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)) };
+      vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
+      packageResourceFiles: JSON.parse(JSON.stringify(this.packageResourceFiles || [])),
+      packageResources: JSON.parse(JSON.stringify(this.packageResources || [])) };
+    const serializedBytes = new TextEncoder().encode(JSON.stringify(snapshot)).byteLength;
+    if (serializedBytes > MAX_PROJECT_JSON_BYTES) {
+      throw new RangeError('Project JSON including embedded package resources exceeds PixelForge’s 96 MiB safe serialization budget.');
+    }
+    return snapshot;
   }
   static fromJSON(data, { newIdentity = false } = {}) {
     if (!data || data.format !== 'pixelforge-project' || data.version !== 1 || !Array.isArray(data.layers)) throw new TypeError('Unsupported or invalid PixelForge project file.');
@@ -1144,6 +1153,10 @@ export class RasterDocument {
       ? JSON.parse(JSON.stringify(data.drawingModel)) : null;
     doc.vectorModel = data.vectorModel && typeof data.vectorModel === 'object' && !Array.isArray(data.vectorModel)
       ? JSON.parse(JSON.stringify(data.vectorModel)) : null;
+    doc.packageResourceFiles = Array.isArray(data.packageResourceFiles)
+      ? JSON.parse(JSON.stringify(data.packageResourceFiles)) : [];
+    doc.packageResources = Array.isArray(data.packageResources)
+      ? JSON.parse(JSON.stringify(data.packageResources)) : [];
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
     doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
