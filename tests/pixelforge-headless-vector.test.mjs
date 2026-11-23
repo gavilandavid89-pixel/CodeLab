@@ -76,3 +76,14 @@ test('Headless SVG import and precision metadata are validated', () => {
   assert.equal(invalid.ok, false);
   assert.equal(invalid.error.code, 'invalid_arguments');
 });
+
+
+test('vector inspection remains available while edits are blocked by a pending proposal', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 48, height: 48 });
+  assert.equal(runtime.execute({ name: 'vector.object.create', object: { type: 'rect', x: 2, y: 2, width: 10, height: 10 } }).ok, true);
+  const objectId = runtime.sandbox.getVectorModel().objects[0].id;
+  runtime.createProposal('Add a vector object');
+  assert.equal(runtime.execute({ name: 'vector.model.get' }).ok, true);
+  assert.equal(runtime.execute({ name: 'vector.audit' }).ok, true);
+  assert.equal(runtime.execute({ name: 'vector.object.update', object_id: objectId, patch: { fill: '#fff' } }).error.code, 'proposal_pending');
+});
