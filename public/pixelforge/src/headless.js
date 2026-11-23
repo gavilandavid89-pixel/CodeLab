@@ -415,7 +415,8 @@ export class HeadlessEditorRuntime {
 
   execute(action) {
     if (action && typeof action.name === 'string' && action.name.startsWith('vector.')) {
-      if (this.#workspace.hasProposal) return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more vector edits.' } };
+      const readOnlyVectorActions = new Set(['vector.model.get', 'vector.audit', 'vector.svg.export']);
+      if (this.#workspace.hasProposal && !readOnlyVectorActions.has(action.name)) return { ok: false, action: action.name, error: { code: 'proposal_pending', message: 'Accept or discard the pending proposal before making more vector edits.' } };
       try { return executeVectorModelAction(this.#workspace.sandbox, action); }
       catch (error) { return { ok: false, action: action.name, error: { code: error instanceof RangeError ? 'out_of_bounds_or_limit' : error instanceof TypeError ? 'invalid_arguments' : 'operation_failed', message: error instanceof Error ? error.message : 'Vector operation failed.' } }; }
     }
