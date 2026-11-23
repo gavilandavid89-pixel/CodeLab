@@ -238,6 +238,6 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 
 ### v2.6.6
 
-- Flujo de trabajo del agente IA documentado como ciclo persistente Neon → Cloudflare → CodeLab → evidencia → Neon → agente.
+- Flujo de trabajo del agente IA documentado como ciclo persistente Neon → CodeLab → evidencia → Neon → agente. Cloudflare/R2 queda como almacenamiento opcional de evidencia, no como transporte obligatorio de órdenes.
 - La evidencia visual de animaciones forma parte del cierre de cada trabajo.
 - El agente puede inspeccionar el resultado y encadenar nuevas decisiones sin depender de commits como mecanismo de transporte.
