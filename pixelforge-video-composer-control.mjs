@@ -44,7 +44,7 @@ export async function controlPixelForgeVideoComposer(payload, deps = {}) {
   const targetWorkspace = targetPixelForgeWorkspace(payload);
   const loaded = await loadProject(payload.project_id, targetWorkspace);
   const project = loaded.project;
-  const packageData = createPixelForgeProjectZip(project);
+  const packageData = await createPixelForgeProjectZip(project);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-vc-control-'));
   const packagePath = path.join(tempDir, 'pixelforge-control.zip');
   fs.writeFileSync(packagePath, packageData.bytes);
