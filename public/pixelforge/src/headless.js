@@ -181,10 +181,23 @@ function diffAnimationTimelines(before, after) {
  * Mutations stay in an isolated sandbox until an explicit proposal is accepted.
  */
 
-function cloneVectorObjectWithFreshIds(value) {
-  const copy = JSON.parse(JSON.stringify(value));
+function assignVectorObjectIds(value, rootId = crypto.randomUUID()) {
+  let index = 0;
   const visit = object => {
-    object.id = crypto.randomUUID();
+    if (!object.id) object.id = index === 0 ? rootId : rootId + '-' + index;
+    index++;
+    if (object.type === 'group') for (const child of object.children || []) visit(child);
+  };
+  visit(value);
+  return value;
+}
+
+function cloneVectorObjectWithFreshIds(value, rootId = crypto.randomUUID()) {
+  const copy = JSON.parse(JSON.stringify(value));
+  let index = 0;
+  const visit = object => {
+    object.id = index === 0 ? rootId : rootId + '-' + index;
+    index++;
     if (object.type === 'group') for (const child of object.children || []) visit(child);
   };
   visit(copy);
@@ -230,6 +243,12 @@ function executeVectorModelAction(document, action) {
       throw new TypeError('vector.svg.import requires SVG text between 1 byte and 2 MiB.');
     }
     const imported = parseSVGToVectorModel(action.svg, document.width, document.height);
+    let importedId = 0;
+    const assignImportedIds = object => {
+      object.id = (action.id_prefix || crypto.randomUUID()) + '-' + importedId++;
+      if (object.type === 'group') for (const child of object.children || []) assignImportedIds(child);
+    };
+    for (const object of imported.objects) assignImportedIds(object);
     if (action.replace === false) model.objects.push(...imported.objects);
     else {
       model.objects = imported.objects;
@@ -265,6 +284,7 @@ function executeVectorModelAction(document, action) {
     const object = JSON.parse(JSON.stringify(action.object));
     if (!['rect', 'ellipse', 'line', 'path', 'text', 'group'].includes(object.type)) throw new TypeError('Unsupported vector object type.');
     object.id = typeof object.id === 'string' && object.id ? object.id : crypto.randomUUID();
+    assignVectorObjectIds(object, object.id);
     if (flatten(model.objects).some(item => item.id === object.id)) throw new TypeError('Vector object ID already exists.');
     if (object.type === 'group' && !Array.isArray(object.children)) throw new TypeError('Vector group children must be an array.');
     model.objects.splice(Number.isInteger(action.index) ? Math.max(0, Math.min(model.objects.length, action.index)) : model.objects.length, 0, object);
@@ -290,7 +310,7 @@ function executeVectorModelAction(document, action) {
   } else if (name === 'vector.object.duplicate') {
     const object = findObject(action.object_id);
     if (!object) throw new Error('Vector object was not found.');
-    const duplicate = cloneVectorObjectWithFreshIds(object);
+    const duplicate = cloneVectorObjectWithFreshIds(object, action.new_id || crypto.randomUUID());
     duplicate.name = String(duplicate.name || duplicate.type) + ' copy';
     model.objects.splice(model.objects.indexOf(object) + 1, 0, duplicate);
   } else if (name === 'vector.object.reorder') {
@@ -316,7 +336,7 @@ function executeVectorModelAction(document, action) {
     const selected = model.objects.filter(object => ids.includes(object.id));
     if (selected.length !== ids.length) throw new TypeError('All grouped objects must be top-level objects in the document.');
     model.objects = model.objects.filter(object => !ids.includes(object.id));
-    model.objects.push({ id: crypto.randomUUID(), name: action.name || 'Group', type: 'group', children: selected, transform: {} });
+    model.objects.push({ id: action.group_id || crypto.randomUUID(), name: action.name || 'Group', type: 'group', children: selected, transform: {} });
   } else if (name === 'vector.group.ungroup') {
     const index = model.objects.findIndex(object => object.id === action.object_id && object.type === 'group');
     if (index < 0) throw new Error('Vector group was not found.');
