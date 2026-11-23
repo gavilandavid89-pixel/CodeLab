@@ -2841,7 +2841,7 @@ async function processCommand(command) {
       return;
     }
     case 'pixelforge_video_composer': {
-      await finish(command.command_id, 'succeeded', await controlPixelForgeVideoComposer(
+      const result = await controlPixelForgeVideoComposer(
         { ...payload, target_workspace_id: targetWorkspace },
         {
           loadProject,
@@ -2853,7 +2853,8 @@ async function processCommand(command) {
             ttlMs: 60 * 60 * 1000
           })
         }
-      ));
+      );
+      await finish(command.command_id, result.ok ? 'succeeded' : 'failed', result);
       return;
     }
     case 'pixelforge_create':
