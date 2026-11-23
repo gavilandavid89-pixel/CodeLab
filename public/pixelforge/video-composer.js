@@ -1,4 +1,4 @@
-import { parsePixelForgeVideoPackage } from './src/video-composer-core.mjs';
+import { parsePixelForgeVideoPackage, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { getCaptureDimensions, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 
@@ -428,7 +428,10 @@ async function exportVideo() {
     // durationMs is timeline data, not wall-clock sleep. Every timestamp is
     // calculated before/while encoding, so a 10-second animation does not
     // force a 10-second export.
-    const framesForEncode = sourceFrames.map(frame => frame);
+    const framesForEncode = buildConstantFrameRateSequence(sourceFrames, outputFps);
+    if (framesForEncode.length !== sourceFrames.length || framesForEncode.some((frame, index) => frame.sourceIndex !== index)) {
+      setStatus('Timeline remuestreada a ' + outputFps + ' FPS constantes · ' + framesForEncode.length + ' fotogramas de salida.', 'neutral');
+    }
 
     const video = await encodeWebMFrames(framesForEncode, {
       width,
