@@ -46,6 +46,42 @@ GitHub versiona el software y puede proporcionar el headless del agente; no es e
 - El worker espera `LISTEN/NOTIFY` cuando no hay órdenes; no mantiene polling de 150 ms, cron ni pings de keep-alive. Si Neon falla al arrancar, el listener del servidor reintenta con backoff y reconcilia órdenes queued al reconectar.
 - No confundas la ventana de supervisión del agente con un timeout del worker. Respeta los límites técnicos reales declarados por la operación; no mates procesos solo porque el agente dejó de esperar o la sesión de conversación se interrumpió.
 
+## 3.1 Obtención del Headless del agente mediante workflow y artefacto
+
+El **Headless que utiliza el agente no se obtiene clonando el repositorio ni reconstruyéndolo manualmente**. La fuente operativa es un **workflow de GitHub Actions dedicado a empaquetar el Headless más reciente**.
+
+Flujo obligatorio:
+
+```text
+Código Headless más reciente
+        ↓
+workflow de GitHub Actions
+        ↓
+empaqueta el Headless completo
+        ↓
+GitHub Actions publica el paquete como artefacto
+        ↓
+agente obtiene/descarga el artefacto
+        ↓
+Headless propio del agente (aislado)
+        ↓
+trabajo sobre el proyecto
+```
+
+Reglas:
+
+- El workflow debe empaquetar **la versión más reciente del Headless** disponible en el código que corresponda a la ejecución.
+- El resultado del empaquetado se publica como **artefacto de GitHub Actions**.
+- El agente obtiene su Headless **desde ese artefacto**, no mediante `git clone`, una copia parcial del repositorio ni una implementación alternativa.
+- El artefacto es la unidad de transferencia del Headless hacia el entorno aislado del agente.
+- Si el artefacto de la versión que se necesita todavía no existe, primero debe ejecutarse/generarse el workflow correspondiente para producirlo; después el agente obtiene ese artefacto.
+- Una vez descargado, el artefacto proporciona el Headless que el agente utiliza para trabajar. El Headless obtenido sigue estando **aislado** de Neon, CodeLab y del bridge/worker.
+- Este mecanismo no debe confundirse con los artefactos de evidencia de una ejecución ni con el artefacto `.codelab` del proyecto: aquí el artefacto contiene el **Headless del agente**.
+
+Por tanto, la regla operativa es:
+
+**Workflow → empaquetar Headless más reciente → publicar artefacto → obtener artefacto → usar ese Headless aislado.**
+
 ## 3. Identidad y separación de entornos
 
 - Para proyectos del usuario utiliza el workspace que proporciona la autenticación existente.
