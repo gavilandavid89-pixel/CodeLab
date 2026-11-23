@@ -98,7 +98,7 @@ function addReferenceEntries(project, files) {
         pixelsPath,
       };
     });
-    const { imageDataUrl, ...referenceMetadata } = entry;
+    const { imageDataUrl, layerSnapshot, frameLayerMap, ...referenceMetadata } = entry;
     files.set(referencePath, Buffer.from(JSON.stringify({
       ...referenceMetadata,
       id: entry.id || referenceId,
@@ -231,6 +231,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
 
   const integrity = { format: 'codelab-integrity', version: 1, files: {} };
   for (const [path, bytes] of files) {
+    if (['manifest.json', 'project.json', 'project.codelab-pixelforge'].includes(path)) continue;
     integrity.files[path] = { sha256: sha256(bytes), byteSize: bytes.length };
   }
   files.set('integrity.json', Buffer.from(JSON.stringify(integrity, null, 2), 'utf8'));
