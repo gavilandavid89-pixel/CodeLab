@@ -379,7 +379,8 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
   const result = {
     integrityEntries,
     frames: { frameCount: 0, celCount: 0 },
-    references: { referenceCount: 0, embeddedReferenceBytes: 0, categories: [] },\n    scenes: {},
+    references: { referenceCount: 0, embeddedReferenceBytes: 0, categories: [] },
+    scenes: {},
   };
 
   // The Web and Design editors store their native document in project.json.
@@ -391,7 +392,8 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
     } else {
       fail('PixelForge structured manifest must declare frames.manifestPath.');
     }
-    if (manifest.scenes) result.scenes = installSceneSections(project, files, manifest.scenes);\n    if (manifest.referenceCenter?.manifestPath) {
+    if (manifest.scenes) result.scenes = installSceneSections(project, files, manifest.scenes);
+    if (manifest.referenceCenter?.manifestPath) {
       const centerManifestPath = requireSafeRelativePath(manifest.referenceCenter.manifestPath, 'manifest.referenceCenter.manifestPath');
       result.references = installReferenceCenter(project, files, jsonFile(files, centerManifestPath, 'reference center manifest'));
     } else {
@@ -404,7 +406,8 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
     layout: 'structured',
     editor,
     framesManifest: manifest.frames?.manifestPath || null,
-    referenceCenterManifest: manifest.referenceCenter?.manifestPath || null,\n    sceneManifestVersion: manifest.scenes?.version || null,
+    referenceCenterManifest: manifest.referenceCenter?.manifestPath || null,
+    sceneManifestVersion: manifest.scenes?.version || null,
     integrityPath,
   };
   return result;
