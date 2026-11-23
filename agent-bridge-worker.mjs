@@ -2821,7 +2821,7 @@ async function processCommand(command) {
     case 'pixelforge_export_zip': {
       assertProjectId(payload.project_id);
       const loaded = await loadProject(payload.project_id, targetWorkspace);
-      const exported = createPixelForgeProjectZip(loaded.project);
+      const exported = await createPixelForgeProjectZip(loaded.project);
       const artifact = await stageNativeArtifact(pool, {
         workspaceId,
         kind: 'pixelforge_zip_export',
