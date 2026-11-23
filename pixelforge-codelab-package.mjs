@@ -270,7 +270,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
     }
     const bytes = Buffer.isBuffer(resource.bytes) ? resource.bytes : Buffer.from(resource.bytes || []);
     if (!bytes.length) throw new TypeError('Package resource is empty: ' + resource.path);
-    const destination = String(resource.destination || 'project-files');
+    const destination = String(resource.destination || inferResourceDestination(resource.path));
     files.set(resource.path, bytes);
     resourceDeclarations.push({
       path: resource.path,
