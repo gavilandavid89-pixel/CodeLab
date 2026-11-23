@@ -20,7 +20,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Download evidence video and extract frames
         env:
-          TARGET_URL: https://codelab-pbw9.onrender.com
+          TARGET_URL: https://codelab-qedi.onrender.com
           ADMIN_USERNAME: ${{ secrets.CODELAB_ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
           EVENT_ID: 933b85df-9126-4bd9-bb8c-19532f0ec8c2
