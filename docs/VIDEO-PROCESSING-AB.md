@@ -37,8 +37,9 @@ Evidencia de vídeo → agente inspecciona → resultado
 | `.github/workflows/codelab-independent-session-a.yml` | Inicia y mantiene la sesión A para el procesamiento de vídeo. |
 | `.github/workflows/codelab-independent-session-b.yml` | Ejecuta una B especializada; los modos admitidos son `walk` y `walk-step`, ambos para animación/captura de vídeo. El grupo de concurrencia evita B simultáneas. |
 | `.github/workflows/codelab-ab-animation.yml` | Prueba manual autocontenida con una A temporal y una sola petición B de animación/captura. |
+| `.github/workflows/codelab-b-a-context-cycle.yml` | Orquestador alternativo de una sola sesión A y una sola ejecución del procesador B para el ciclo de vídeo/contexto. |
 
-El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba cinco B concurrentes, cinco B en modo cola y otras tres B secuenciales. Ese comportamiento no pertenece al diseño del producto y no debe recuperarse.
+Los tres puntos de entrada de vídeo comparten el grupo GitHub Actions `codelab-video-processor`. Así, aunque se invoque un workflow distinto, solo puede ejecutarse un procesador B a la vez. El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba cinco B concurrentes, cinco B en modo cola y otras tres B secuenciales. Ese comportamiento no pertenece al diseño del producto y no debe recuperarse.
 
 ## Flujo operativo
 
