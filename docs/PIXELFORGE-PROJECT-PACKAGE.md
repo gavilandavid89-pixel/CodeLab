@@ -1,0 +1,275 @@
+# PixelForge: formato de proyecto, ZIP y Reference Center
+
+**Estado:** documentación basada en el importador estructurado v2, el runtime Headless y las pruebas presentes en main. Distingue el paquete CodeLab estructurado del ZIP de agente/Video Composer. No son intercambiables.
+
+## 1. Nombres que no significan lo mismo
+
+| Nombre | Significado |
+|---|---|
+| .codelab-pixelforge | Extensión canónica del artefacto de proyecto CodeLab para PixelForge. |
+| project.codelab-pixelforge | Marcador obligatorio en la raíz interna del ZIP CodeLab. Identifica al editor. |
+| .pforge | Documento nativo PixelForge serializado como JSON. En el ZIP de agente actual se guarda dentro de project/. |
+
+También se acepta el marcador heredado project.codelab, pero un paquete debe tener exactamente un marcador de editor en la raíz. Los marcadores project.codelab-web, project.codelab-design y project.codelab-pixelforge no se pueden mezclar. Un marcador dentro de una subcarpeta no cuenta.
+
+Cambiar el nombre externo del ZIP no transforma su contenido. El paquete CodeLab estructurado y el ZIP pixelforge-video-package son formatos diferentes.
+
+## 2. Paquete CodeLab estructurado v2: estructura canónica
+
+El instalador installStructuredCodeLabV2 espera manifest.version = 2, schemaVersion = 2, layout = structured, editor = pixelforge y projectType = pixelforge. El manifiesto debe señalar un documento de integridad y, para PixelForge, los manifiestos de frames y Reference Center.
+
+Estructura de referencia:
+
+~~~text
+mi-proyecto.codelab-pixelforge
+└── ZIP
+    ├── project.codelab-pixelforge   # marcador de editor; raíz
+    ├── manifest.json                # contrato, versión y rutas
+    ├── project.json                 # documento nativo PixelForge
+    ├── integrity.json               # SHA-256 y tamaño de cada archivo protegido
+    ├── frames/
+    │   ├── frames.tscn              # índice/manifest de la línea de tiempo
+    │   ├── frame-0001/
+    │   │   ├── frame.json           # metadatos del frame y sus capas
+    │   │   ├── layer-base.rgba      # píxeles RGBA8 sin comprimir
+    │   │   └── layer-detail.rgba
+    │   └── frame-0002/
+    │       ├── frame.json
+    │       ├── layer-base.rgba
+    │       └── layer-detail.rgba
+    ├── center.op/
+    │   └── center.json              # índice de categorías y referencias
+    ├── reference.personaje/
+    │   └── hero/
+    │       ├── reference.json       # definición de la referencia
+    │       └── parts/
+    │           ├── body.rgba
+    │           ├── head.rgba
+    │           └── equipment.rgba
+    ├── reference.escena/
+    │   └── forest/
+    │       ├── reference.json
+    │       └── parts/
+    │           └── background.rgba
+    ├── assets/
+    ├── fonts/
+    ├── audio/
+    ├── video/
+    ├── models/
+    └── project-files/
+~~~
+
+Es una estructura de referencia legible. Las rutas exactas de los archivos de píxeles se declaran en los manifiestos/JSON; el importador no deduce una capa o un frame a partir del nombre del archivo.
+
+### 2.1 manifest.json
+
+Campos principales del contrato v2:
+
+- format: codelab.
+- version y schemaVersion: ambos 2.
+- layout: structured.
+- editor y projectType: ambos pixelforge.
+- entry: normalmente project.json.
+- integrityPath: ruta de integrity.json.
+- frames.manifestPath: ruta del índice de frames; obligatorio para PixelForge.
+- referenceCenter.manifestPath: ruta del índice de referencias; obligatorio para PixelForge.
+
+El manifiesto identifica el editor. project.json conserva el documento editable e integrity.json permite comprobar que los archivos no cambiaron.
+
+### 2.2 project.json
+
+Es el documento nativo serializado. Contiene identidad/nombre del proyecto, dimensiones del canvas, capas, píxeles base64 y modelo de dibujo. En PixelForge también integra:
+
+- animation: línea de tiempo reconstruida a partir de los cels externos.
+- drawingModel.referenceCenter: referencias maestras importadas.
+- drawingModel.packageResources y packageResources: catálogo de recursos con origen, destino, ruta canónica, tamaño y MIME.
+- vectorModel: objetos y datos vectoriales cuando el proyecto los contiene.
+
+No reemplazar project.json por una imagen PNG compuesta: eso elimina la estructura editable.
+
+## 3. Animación: frames/frames.tscn
+
+El índice declara:
+
+- format = codelab-frames y version = 1.
+- canvas.width y canvas.height, iguales a las dimensiones del proyecto.
+- fps (1–60), activeFrameIndex, loop y opcionalmente playbackSpeed.
+- frames[]: referencias ordenadas a archivos frame.json.
+
+Cada frame.json declara id, index, width, height, durationMs, layerCount y layers[]. Cada capa declara:
+
+- id: debe coincidir exactamente con un project.layers[].id.
+- pixelsPath: ruta relativa al archivo de píxeles de esa celda.
+- name, position, opacity, visible, locked y zIndex: metadatos del cel.
+
+Reglas implementadas:
+
+- 1–240 frames; hasta 64 capas.
+- Cada frame debe contener exactamente un cel por cada ID de capa del proyecto; sin IDs desconocidos ni duplicados.
+- Todas las dimensiones deben coincidir con el canvas.
+- durationMs: 1–10.000 ms.
+- Los archivos .rgba deben contener exactamente width × height × 4 bytes.
+- El instalador también acepta cels PNG de 8 bits no entrelazados y los decodifica a RGBA8.
+- El presupuesto de memoria de píxeles de animación es 64 MiB.
+
+Al instalar, los bytes se convierten a base64 y se reconstruye project.animation en formato pixelforge-animation, con IDs de capa, FPS, frame activo, loop, duración y cels.
+
+**No inferir frames por carpeta/extensión:** un PNG bajo assets/ o reference.personaje/ es un recurso/parte, no un frame. Solo el mapeo explícito frame → layer → pixelsPath lo convierte en un cel.
+
+## 4. Reference Center: qué significa reference.personaje
+
+**reference.personaje es el nombre de una carpeta de categoría**, no una propiedad JavaScript ni un comando. El prefijo reference. es el namespace que el instalador estructurado exige para las carpetas de categorías. El texto posterior al punto es el identificador de categoría:
+
+- reference.personaje/ — personajes.
+- reference.escena/ — escenas/entornos.
+- reference.objeto/ — objetos/props.
+- reference.efecto/ — efectos.
+
+El ID puede estar en español; debe coincidir con el id de la categoría en center.op/center.json. La carpeta debe comenzar por reference.; cada reference.json debe permanecer dentro de la carpeta que declara su categoría.
+
+### 4.1 center.op/center.json
+
+Contrato:
+
+- format = codelab-reference-center.
+- version = 1.
+- categories[]: categorías únicas, cada una con id, folder y references[].
+- Cada referencia apunta a un path relativo a su folder.
+
+Ejemplo esquemático:
+
+~~~json
+{
+  "format": "codelab-reference-center",
+  "version": 1,
+  "categories": [
+    {
+      "id": "personaje",
+      "folder": "reference.personaje",
+      "references": [
+        { "path": "reference.personaje/hero/reference.json" }
+      ]
+    }
+  ]
+}
+~~~
+
+### 4.2 reference.json
+
+Cada referencia declara identidad id, name, dimensiones width/height, parts[] y opcionalmente:
+
+- type, version, createdAt, sourceRevision.
+- frames[] para muestras/frames asociados.
+- geometry y transform.
+- palette, preview y notes.
+
+Cada elemento de parts[] identifica un componente editable con id, name, role, pixelsPath, dimensiones opcionales, frameIndex, bounds, anchors, proportions, colorRoles y z.
+
+Los píxeles se guardan fuera del JSON en archivos RGBA8 y se enlazan mediante pixelsPath. Por ejemplo, body.rgba puede ser el cuerpo y head.rgba la cabeza; los nombres son descriptivos, pero la identidad real se establece por id y por la ruta declarada.
+
+### 4.3 Función dentro de PixelForge
+
+Reference Center es una biblioteca de **referencias maestras inmutables**. Conserva diseños reutilizables (personajes, partes, objetos, efectos o escenas) sin que editar una copia destruya el original.
+
+- immutableSnapshot: true conserva la referencia como snapshot.
+- parts[] permite materializar partes por separado.
+- frames[] / frameLayerMap[] conserva fotogramas y su relación con capas cuando la referencia procede de una animación.
+- layerSnapshot[] conserva capas originales y sus píxeles.
+- materialization.copyPolicy = deep-copy indica que al copiar se crea una copia editable independiente.
+- sourceProjectId y sourceRevision dan trazabilidad al proyecto/revisión de origen.
+
+En la UI, **Package current** captura el documento y la animación en la referencia maestra, la registra en drawingModel.referenceCenter.entries y después limpia el lienzo de trabajo a una capa vacía Layer 1. La animación capturada queda en la referencia; el editor vuelve a una línea de tiempo estática. No es una operación de exportar PNG.
+
+Al pulsar una parte, PixelForge crea una capa nueva con sus píxeles. Al copiar un frame, reconstruye las capas de ese frame. La referencia original no se modifica. El Headless ofrece drawing.reference.package_current, drawing.reference.list, drawing.reference.get, drawing.reference.apply, drawing.reference.copy_part, drawing.reference.copy_frame y drawing.reference.remove.
+
+**Diferencia importante:** las referencias de imagen simples importadas desde carpetas como reference/character/pose.png son recursos de imagen del Reference Center; no equivalen a una referencia estructurada reference.personaje/<id>/reference.json con partes RGBA editables. El importador legacy puede crear una tarjeta de imagen; el importador estructurado v2 reconstruye partes editables y sus metadatos.
+
+Límites del Reference Center estructurado: hasta 256 partes por referencia y 16 MiB de píxeles RGBA8 incrustados en total.
+
+## 5. Integridad y rutas
+
+- integrity.json usa format = codelab-integrity, version = 1 y un mapa files.
+- Para cada ruta protegida guarda sha256 y byteSize; el instalador recalcula ambos y rechaza discrepancias.
+- Las rutas deben ser relativas y seguras; se rechazan rutas absolutas, segmentos . / .., entradas duplicadas y escapes del directorio del paquete.
+- Los archivos referenciados por los manifiestos deben existir.
+- No inventar rutas: primero se declara la ruta en el JSON/manifest y luego se incluye exactamente ese archivo en el ZIP.
+
+## 6. Recursos y nombres
+
+El instalador organiza recursos adicionales por declaración explícita manifest.resources[].destination; si no existe, utiliza segmentos de carpeta, alias semánticos, extensión y firma binaria. Prioridad:
+
+1. manifest.resources[].destination.
+2. Carpeta/alias semántico.
+3. Extensión.
+4. Firma binaria/encabezado.
+5. project-files/ como destino genérico.
+
+Destinos reconocidos incluyen reference-center, assets, scenes, animations, frames, audio, video, fonts, documents, models, textures, scripts, styles, components, templates, pages, exports, backups, data y project-files.
+
+| Recurso | Ruta recomendada |
+|---|---|
+| Imagen de referencia suelta | reference-center/characters/pose.png |
+| Parte editable de personaje | reference.personaje/hero/parts/body.rgba |
+| Definición de esa referencia | reference.personaje/hero/reference.json |
+| Índice de categorías | center.op/center.json |
+| Índice de animación | frames/frames.tscn |
+| Cel de una capa/frame | Ruta pixelsPath declarada en frame.json |
+| Fuente | fonts/brand.woff2 |
+| Imagen auxiliar | assets/texture.png |
+
+No renombrar un archivo aislado sin actualizar todas las referencias que lo apuntan y el hash correspondiente en integrity.json.
+
+## 7. ZIP de agente/Video Composer actual: formato distinto
+
+pixelforge-agent-zip.mjs exporta actualmente pixelforge-video-package v1. Su ZIP contiene:
+
+~~~text
+archivo.zip
+├── manifest.json
+├── README.txt
+├── project/
+│   └── <nombre-seguro>.pforge   # JSON nativo editable
+└── frames/
+    ├── frame-0001.png           # composición visual transparente
+    ├── frame-0002.png
+    └── ...
+~~~
+
+Su manifiesto declara format, version, dimensiones, fps, loop, frameCount, totalDurationMs, projectFile y frames[] con ruta/duración. El exportador valida el proyecto con HeadlessEditorRuntime, serializa el documento nativo en .pforge y genera PNG compuestos para la vista previa/Video Composer. Si existe vectorModel, rasteriza el overlay vectorial sobre la composición PNG; el modelo vectorial original permanece en el JSON nativo.
+
+El parser valida manifiesto, dimensiones y frame count, carga el JSON .pforge, vuelve a normalizarlo con HeadlessEditorRuntime, asigna un ID nuevo y pone las revisiones de servidor en cero.
+
+**Limitación actual que no debe ocultarse:** este ZIP no incluye el marcador project.codelab-pixelforge, integrity.json, frames/frames.tscn ni center.op/center.json. Por eso no es el paquete CodeLab estructurado v2 y su parser no es el instalador estructurado. Sus PNG son composiciones de previsualización, no cels independientes editables. El documento .pforge sí contiene el modelo nativo serializado, sujeto a lo que HeadlessEditorRuntime.toJSON() preserve.
+
+Hasta que ambos flujos se integren explícitamente, no afirmar que un ZIP de Video Composer ha pasado el ciclo completo del paquete CodeLab .codelab-pixelforge.
+
+## 8. Flujo de importación/edición/guardado y aceptación
+
+Para el paquete estructurado v2, el comportamiento esperado es:
+
+1. Reconocer exactamente un marcador raíz project.codelab-pixelforge (o el marcador legacy admitido).
+2. Leer y validar manifest.json, project.json e integrity.json.
+3. Instalar los cels declarados por frames/frames.tscn dentro de project.animation.
+4. Instalar las referencias declaradas por center.op/center.json dentro de project.drawingModel.referenceCenter.
+5. Resolver recursos adicionales y mantener packageResources y rutas de procedencia.
+6. Hidratar el documento PixelForge real/Headless que utilizan las herramientas de edición.
+7. Guardar por el mecanismo normal de persistencia del proyecto.
+8. Exportar el paquete de nuevo, regenerando hashes y manifiestos.
+9. Importar otra vez y comparar la semántica editable: capas, píxeles, IDs/referencias internas, animación, partes, metadatos y recursos.
+
+Prueba de aceptación obligatoria: **exportar → importar → editar una capa/parte → guardar → exportar → importar otra vez**. Comparar datos nativos, no solo el aspecto de los PNG.
+
+## 9. Código fuente y pruebas que son fuente de verdad
+
+| Área | Código / prueba |
+|---|---|
+| Marcadores y nombre externo | codelab-project-artifact-import.mjs, tests/codelab-artifact-filename.test.mjs |
+| Instalación ZIP y destinos de recursos | codelab-project-package-installer.mjs, tests/codelab-project-package-installer.test.mjs |
+| Esquema estructurado v2, frames y Reference Center | codelab-project-structured-format.mjs, tests/codelab-structured-project-v2.test.mjs |
+| Modelo de dibujo y referencias | public/pixelforge/src/drawing-intelligence.js |
+| Operaciones Headless de referencias | public/pixelforge/src/headless.js, tests/pixelforge-reference-center.test.mjs |
+| UI del Reference Center | public/pixelforge/src/reference-center-ui.js |
+| ZIP de agente/Video Composer | pixelforge-agent-zip.mjs, tests/pixelforge-agent-zip.test.mjs |
+| ZIP de bajo nivel | public/pixelforge/src/zip-export.js, public/pixelforge/src/video-composer-core.mjs |
+
+Si cambia un nombre de archivo, ruta, campo, límite o regla de instalación, actualizar este documento y las pruebas en el mismo cambio.
