@@ -57,11 +57,19 @@ test('Headless vector update, duplicate, reorder, ungroup and delete preserve un
 
 test('Headless SVG import and precision metadata are validated', () => {
   const runtime = new HeadlessEditorRuntime({ width: 80, height: 80 });
-  const imported = runtime.execute({
-    name: 'vector.svg.import',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect x="4" y="5" width="20" height="12" fill="#123456"/></svg>'
-  });
-  assert.equal(imported.ok, true);
+  const originalDomParser = globalThis.DOMParser;
+  let imported;
+  try {
+    globalThis.DOMParser = undefined;
+    imported = runtime.execute({
+      name: 'vector.svg.import',
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect x="4" y="5" width="20" height="12" fill="#123456"/></svg>'
+    });
+  } finally {
+    if (originalDomParser === undefined) delete globalThis.DOMParser;
+    else globalThis.DOMParser = originalDomParser;
+  }
+  assert.equal(imported.ok, true, JSON.stringify(imported));
   assert.equal(runtime.sandbox.getVectorModel().objects.length, 1);
   const precision = runtime.execute({
     name: 'vector.precision.configure',
