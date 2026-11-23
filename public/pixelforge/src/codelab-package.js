@@ -235,6 +235,28 @@ function addFrames(project, files) {
   return manifest;
 }
 
+function inferResourceDestination(path) {
+  const folder = String(path).split('/')[0].toLowerCase();
+  const folders = {
+    entorno: 'environment', environment: 'environment',
+    efectos: 'effects', effects: 'effects',
+    detalles: 'details', details: 'details',
+    elementos: 'elements', elements: 'elements',
+    objetos: 'objects', objects: 'objects',
+    frames: 'frames',
+    assets: 'assets', fonts: 'fonts', audio: 'audio', video: 'video',
+    models: 'models', textures: 'textures', documents: 'documents',
+  };
+  if (folders[folder]) return folders[folder];
+  if (folder.startsWith('reference.')) return 'reference-center';
+  const extension = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0];
+  if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(extension)) return 'assets';
+  if (['.ttf', '.otf', '.woff', '.woff2'].includes(extension)) return 'fonts';
+  if (['.mp3', '.wav', '.ogg', '.flac'].includes(extension)) return 'audio';
+  if (['.mp4', '.webm', '.mov'].includes(extension)) return 'video';
+  return 'project-files';
+}
+
 function addResources(project, files, resources) {
   const provided = [...(project.packageResourceFiles || []), ...(resources || [])];
   const declared = new Map();
@@ -254,7 +276,7 @@ function addResources(project, files, resources) {
     files.set(resource.path, bytes);
     declared.set(resource.path, {
       path: resource.path,
-      destination: String(resource.destination || 'project-files'),
+      destination: String(resource.destination || inferResourceDestination(resource.path)),
       contentType: String(resource.contentType || 'application/octet-stream'),
     });
   }
