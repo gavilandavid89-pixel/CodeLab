@@ -17,6 +17,7 @@ test('Headless vector object edits are isolated until proposal approval and surv
   assert.equal(runtime.sandbox.getVectorModel().objects.length, 1);
   const group = runtime.sandbox.getVectorModel().objects[0];
   assert.equal(group.type, 'group');
+  assert.equal(group.name, 'Character');
   assert.equal(group.children.length, 2);
   assert.equal(runtime.getDiff().vector.changed, true);
   assert.throws(() => runtime.toJSON(), /Unreviewed sandbox changes/);
