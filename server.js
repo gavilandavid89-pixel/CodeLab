@@ -3653,7 +3653,7 @@ const server = http.createServer(async (req, res) => {
         try {
           await enforceSessionWorkspaceOwner(id, await readState(id), await getSessionUser(req));
           const project = await accountPool.query(
-            "SELECT editor_id FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2 AND editor_id IN ('web','design') LIMIT 1",
+            "SELECT editor_id FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2 AND editor_id IN ('web','design','pixelforge') LIMIT 1",
             [id, projectId]
           );
           if (!project.rowCount) return sendJson(res, 404, { error: 'project_not_found' });
