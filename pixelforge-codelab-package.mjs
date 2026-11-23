@@ -333,7 +333,8 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
       frameCount: frames.frames.length,
       referenceCount: referenceCenter.categories.reduce((sum, category) => sum + category.references.length, 0),
       resourceCount: resourceDeclarations.length,
-      sceneSectionCount: Object.keys(scenes.sections).length,\n      entryCount: entries.length,
+      sceneSectionCount: Object.keys(scenes.sections).length,
+      entryCount: entries.length,
     },
   };
 }
