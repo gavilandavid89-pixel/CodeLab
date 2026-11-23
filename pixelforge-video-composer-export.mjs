@@ -201,7 +201,7 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
       timeout: 60000
     });
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
+      viewport: { width: 640, height: 480 },
       deviceScaleFactor: 1,
       colorScheme: 'dark',
       reducedMotion: 'reduce',
@@ -219,16 +219,15 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     page.on('console', message => { if (message.type() === 'error' && consoleErrors.length < 20) consoleErrors.push(message.text().slice(0, 300)); });
 
     const baseUrl = String(process.env.RENDER_EXTERNAL_URL || process.env.OAUTH_PUBLIC_URL || ('http://127.0.0.1:' + String(process.env.PORT || 3000))).replace(/\/$/, '');
-    const composerUrl = baseUrl + '/pixelforge/video-composer.html';
+    const composerUrl = baseUrl + '/pixelforge/video-composer.html?export=1';
     const response = await page.goto(composerUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     if (!response || !response.ok()) throw new Error('CodeLab Video Composer returned HTTP ' + (response?.status() || 'no response'));
     await page.locator('#vc-file').waitFor({ state: 'attached', timeout: 15000 });
     await page.setInputFiles('#vc-file', packagePath);
     await page.waitForFunction(() => {
-      const empty = document.querySelector('#vc-empty');
-      const canvas = document.querySelector('#vc-preview');
       const frames = Number(document.querySelector('#vc-stat-frames')?.textContent || 0);
-      return !!canvas && !canvas.hidden && !!empty && empty.hidden && frames > 0;
+      const button = document.querySelector('#vc-export');
+      return frames > 0 && !!button && !button.disabled;
     }, null, { timeout: 30000 });
     const imported = await page.evaluate(() => ({
       frames: Number(document.querySelector('#vc-stat-frames')?.textContent || 0),
