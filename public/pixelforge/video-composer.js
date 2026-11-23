@@ -409,7 +409,7 @@ async function exportVideo() {
   }
   let thumbnails = [];
   try {
-    thumbnails = await makeTimelineThumbnails();
+    // Thumbnails are UI-only; never decode them during video export.
     const sourceFrames = repeatCount === 1
       ? packageData.frames
       : [...packageData.frames, ...packageData.frames];
