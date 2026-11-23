@@ -361,9 +361,18 @@ async function seedAdminAccountIfConfigured() {
     return;
   }
   const salt = crypto.randomBytes(16).toString('hex');
+  const hash = passwordHash(ADMIN_BOOTSTRAP_PASSWORD, salt);
+  if (process.env.ADMIN_BOOTSTRAP_FORCE_RESET === 'true') {
+    await accountPool.query(
+      'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,password_changed_at,must_change_password) VALUES ($1,$2,$3,$4,$5,NOW(),FALSE) ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role=EXCLUDED.role, salt=EXCLUDED.salt, password_hash=EXCLUDED.password_hash, password_changed_at=NOW(), must_change_password=FALSE',
+      ['ADMIN','admin','admin',salt,hash]
+    );
+    console.log('ADMIN password synchronized from server environment.');
+    return;
+  }
   await accountPool.query(
     'INSERT INTO codelab_accounts (username,id,role,salt,password_hash,must_change_password) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (username) DO NOTHING',
-    ['ADMIN','admin','admin',salt,passwordHash(ADMIN_BOOTSTRAP_PASSWORD,salt),true]
+    ['ADMIN','admin','admin',salt,hash,true]
   );
 }
 
