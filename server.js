@@ -3060,20 +3060,22 @@ const server = http.createServer(async (req, res) => {
         const shareToken = String(url.searchParams.get('token') || '');
         if (!/^[a-f0-9]{48,128}$/i.test(shareToken)) return sendJson(res, 401, { error: 'invalid_video_share_token' });
         const result = await accountPool.query(
-          'SELECT video_data, video_mime_type, revision FROM codelab_pixelforge_change_events WHERE event_id = $1 AND metadata->>\'videoShareToken\' = $2',
+          'SELECT video_url, video_key, revision FROM codelab_pixelforge_change_events WHERE event_id = $1 AND metadata->>\'videoShareToken\' = $2',
           [neonEvidenceVideoShareMatch[1], shareToken]
         );
         const evidence = result.rows[0];
-        if (!evidence || !evidence.video_data) return sendJson(res, 404, { error: 'video_evidence_not_found' });
-        const video = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
-        res.writeHead(200, {
-          'Content-Type': evidence.video_mime_type || 'video/webm',
-          'Content-Length': video.length,
-          'Content-Disposition': 'inline; filename="pixelforge-evidence-r' + evidence.revision + '.webm"',
-          'Cache-Control': 'private, max-age=300',
+        if (!evidence) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+        let objectUrl = typeof evidence.video_url === 'string' ? evidence.video_url.trim() : '';
+        if (!objectUrl && evidence.video_key && process.env.CLOUDFLARE_EVIDENCE_BASE_URL) {
+          const base = String(process.env.CLOUDFLARE_EVIDENCE_BASE_URL).replace(/\/+$/, '');
+          objectUrl = base + '/evidence/' + String(evidence.video_key).split('/').map(encodeURIComponent).join('/');
+        }
+        if (!objectUrl) return sendJson(res, 404, { error: 'video_evidence_not_found' });
+        return res.writeHead(302, {
+          Location: objectUrl,
+          'Cache-Control': 'private, no-store',
           'X-Content-Type-Options': 'nosniff'
-        });
-        return res.end(video);
+        }).end();
       }
 
       // Stream the actual persisted video bytes (not only the evidence metadata).
@@ -3085,16 +3087,15 @@ const server = http.createServer(async (req, res) => {
         if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
         const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
         const result = await accountPool.query(
-          'SELECT video_data, video_mime_type, video_url, video_key, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
+          'SELECT video_url, video_key, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
           [workspaceId, neonEvidenceVideoMatch[1]]
         );
         const evidence = result.rows[0];
         if (!evidence) return sendJson(res, 404, { error: 'video_evidence_not_found' });
 
-        // Canonical delivery path: prefer the persisted inline bytes when present.
-        // If the evidence was stored in Cloudflare/R2, transparently hand the client
-        // the persisted object URL instead of forcing callers to know the storage layout.
-        if (!evidence.video_data) {
+        // Canonical delivery path: evidence bytes live in object storage.
+        // Never select or stream video_data from Neon; that would spend database egress.
+        {
           let objectUrl = typeof evidence.video_url === 'string' ? evidence.video_url.trim() : '';
           if (!objectUrl && evidence.video_key && process.env.CLOUDFLARE_EVIDENCE_BASE_URL) {
             const base = String(process.env.CLOUDFLARE_EVIDENCE_BASE_URL).replace(/\/+$/, '');
@@ -3114,15 +3115,7 @@ const server = http.createServer(async (req, res) => {
           }).end();
         }
 
-        const video = Buffer.isBuffer(evidence.video_data) ? evidence.video_data : Buffer.from(evidence.video_data);
-        res.writeHead(200, {
-          'Content-Type': evidence.video_mime_type || 'video/webm',
-          'Content-Length': video.length,
-          'Content-Disposition': 'inline; filename="pixelforge-evidence-r' + evidence.revision + '.webm"',
-          'Cache-Control': 'private, no-store',
-          'X-Content-Type-Options': 'nosniff'
-        });
-        return req.method === 'HEAD' ? res.end() : res.end(video);
+        return sendJson(res, 404, { error: 'video_evidence_object_missing' });
       }
 
       // Neon evidence API: each saved revision receives an event, and the browser can
@@ -3223,10 +3216,10 @@ const server = http.createServer(async (req, res) => {
             publicUrl: signed.publicUrl || null
           });
         } else {
-          artifact = await neonEvidence.attachEvidence(accountPool, {
-            workspaceId, eventId: evidence.eventId, kind: 'video', objectKey: null,
-            publicUrl: null, data: video, mimeType: 'video/webm'
-          });
+          // Large evidence must never fall back to Neon BYTEA. Persisting video bytes
+          // in Postgres turns every later read into Neon public-network transfer.
+          // Fail closed until object storage is configured instead of consuming quota.
+          throw new Error('remote_video_storage_required');
         }
         return sendJson(res, 201, { ok: true, eventId: evidence.eventId, projectId, revision: Number(project.serverRevision || 0), sizeBytes: video.length, artifact });
       }
