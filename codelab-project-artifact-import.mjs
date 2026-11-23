@@ -476,7 +476,9 @@ export async function importCodeLabArtifact(pool, {
       resourceDestinations: installation.destinations,
       reloadedFromPersistence: true,
       persistedAnimationFrameCount,
-      persistedReferenceCount,\n      workspacePublication,\n    };
+      persistedReferenceCount,
+      workspacePublication,
+    };
   } catch (error) {
     error.message = `codelab_artifact_import_failed: ${error.message}`;
     await queryChecked(pool, 'import_sql', 
