@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { installCodeLabPackage } from './codelab-project-package-installer.mjs';
+import neonEvidence from './neon-pixelforge-evidence.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -173,9 +174,13 @@ export async function importCodeLabArtifact(pool, {
     throw new Error('Import request is not importable in status: ' + request.status);
   }
 
-  // Inline transport fallback: durable command payload -> Neon BYTEA.
-  // This avoids requiring direct S3/Object Storage DNS reachability from a
-  // restricted agent runtime. The normal uploaded-artifact path remains intact.
+  // Inline transport is accepted at the API boundary, but large bytes are no longer persisted in Neon BYTEA.
+  // Small artifacts keep the legacy path; large artifacts go directly to Object Storage and Neon stores metadata.
+  await queryChecked(pool, 'artifact_storage_schema', 
+    'ALTER TABLE public.codelab_project_artifacts ADD COLUMN IF NOT EXISTS object_key TEXT, ADD COLUMN IF NOT EXISTS storage_url TEXT',
+    []
+  );
+
   if (artifactBase64) {
     if (typeof artifactBase64 !== 'string' || artifactBase64.length > 140_000_000) {
       throw new Error('Inline .codelab artifact exceeds the transport envelope.');
@@ -186,24 +191,59 @@ export async function importCodeLabArtifact(pool, {
       throw new Error(`Artifact exceeds maximum supported size of ${MAX_CODELAB_ARTIFACT_BYTES} bytes.`);
     }
     const inlineSha = sha256(inlineBuffer);
+    const LARGE_ARTIFACT_THRESHOLD = 8 * 1024 * 1024;
+    let artifactObjectKey = null;
+    let artifactInline = inlineBuffer;
+    if (inlineBuffer.length > LARGE_ARTIFACT_THRESHOLD) {
+      if (!neonEvidence.storageConfigured() || neonEvidence.cloudflareEvidenceConfigured()) {
+        throw new Error('large_codelab_artifact_storage_required');
+      }
+      artifactObjectKey = ['codelab-artifacts', String(workspaceId), String(importRequestId), inlineSha + '.codelab'].join('/');
+      const signed = neonEvidence.presignStorageObject({
+        objectKey: artifactObjectKey,
+        contentType: artifactContentType,
+        expiresInSeconds: 900,
+        operation: 'upload',
+        bucket: process.env.NEON_CODELAB_ARTIFACT_BUCKET || 'codelab-artifacts'
+      });
+      const upload = await fetch(signed.url, { method: 'PUT', headers: signed.headers, body: inlineBuffer });
+      if (!upload.ok) throw new Error('large_codelab_artifact_object_upload_failed:' + upload.status);
+      artifactInline = null;
+    }
     await queryChecked(pool, 'inline_artifact_sql',
       `INSERT INTO public.codelab_project_artifacts
-        (artifact_id, import_request_id, workspace_id, editor_id, source_project_id, filename, content_type, sha256, byte_size, artifact, status, created_at, updated_at)
-       SELECT gen_random_uuid(), import_request_id, workspace_id, editor_id, source_project_id, $2, $3, $4, $5, $6, 'uploaded', now(), now()
+        (artifact_id, import_request_id, workspace_id, editor_id, source_project_id, filename, content_type, sha256, byte_size, artifact, object_key, storage_url, status, created_at, updated_at)
+       SELECT gen_random_uuid(), import_request_id, workspace_id, editor_id, source_project_id, $2, $3, $4, $5, $6, $7, $8, 'uploaded', now(), now()
        FROM public.codelab_project_import_requests
        WHERE import_request_id=$1`,
-      [importRequestId, artifactFilename, artifactContentType, inlineSha, inlineBuffer.length, inlineBuffer]
+      [importRequestId, artifactFilename, artifactContentType, inlineSha, inlineBuffer.length, artifactInline, artifactObjectKey, null]
     );
   }
 
   const artifactResult = await queryChecked(pool, 'import_sql', 
-    'SELECT artifact_id, filename, content_type, sha256, byte_size, artifact FROM public.codelab_project_artifacts WHERE import_request_id=$1 AND status=\'uploaded\' ORDER BY created_at DESC LIMIT 1',
+    'SELECT artifact_id, filename, content_type, sha256, byte_size, artifact, object_key, storage_url FROM public.codelab_project_artifacts WHERE import_request_id=$1 AND status=\'uploaded\' ORDER BY created_at DESC LIMIT 1',
     [importRequestId]
   );
   if (!artifactResult.rowCount) throw new Error('No uploaded .codelab artifact is attached to import request ' + importRequestId);
 
   const artifact = artifactResult.rows[0];
-  const buffer = artifact.artifact;
+  let buffer = artifact.artifact;
+  if (!buffer && artifact.object_key) {
+    if (!neonEvidence.storageConfigured() || neonEvidence.cloudflareEvidenceConfigured()) {
+      throw new Error('large_codelab_artifact_download_storage_required');
+    }
+    const signed = neonEvidence.presignStorageObject({
+      objectKey: artifact.object_key,
+      contentType: artifact.content_type,
+      expiresInSeconds: 900,
+      operation: 'download',
+      bucket: process.env.NEON_CODELAB_ARTIFACT_BUCKET || 'codelab-artifacts'
+    });
+    const download = await fetch(signed.url);
+    if (!download.ok) throw new Error('large_codelab_artifact_object_download_failed:' + download.status);
+    buffer = Buffer.from(await download.arrayBuffer());
+  }
+  if (!buffer) throw new Error('Artifact bytes are missing from both Neon and Object Storage.');
   if (buffer.length > MAX_CODELAB_ARTIFACT_BYTES) throw new Error(`Artifact exceeds maximum supported size of ${MAX_CODELAB_ARTIFACT_BYTES} bytes.`);
   if (Number(artifact.byte_size) !== buffer.length) throw new Error('Artifact byte size mismatch.');
   const actualSha = sha256(buffer);
