@@ -82,6 +82,24 @@ function databaseUrlForWakeListener() {
   }
 }
 
+function scheduleAgentBridgeWakeReconnect(reason) {
+  if (!accountPool || agentBridgeWakeReconnectTimer || agentBridgeStopping) return;
+  const attempt = Math.min(++agentBridgeWakeReconnectAttempt, 6);
+  const delayMs = Math.min(60000, 1000 * Math.pow(2, attempt - 1));
+  console.error('[CodeLab Native Bridge] scheduling Neon wake listener reconnect:', {
+    attempt,
+    delayMs,
+    reason: reason ? String(reason.message || reason).slice(0, 300) : 'connection_unavailable'
+  });
+  agentBridgeWakeReconnectTimer = setTimeout(() => {
+    agentBridgeWakeReconnectTimer = null;
+    ensureAgentBridgeWakeListener().catch(reconnectError => {
+      console.error('[CodeLab Native Bridge] Neon wake listener reconnect failed:', reconnectError.message);
+      scheduleAgentBridgeWakeReconnect(reconnectError);
+    });
+  }, delayMs);
+}
+
 async function ensureAgentBridgeWakeListener() {
   if (!accountPool || agentBridgeWakeClient) return;
   if (agentBridgeWakeReconnectTimer) {
@@ -89,8 +107,8 @@ async function ensureAgentBridgeWakeListener() {
     agentBridgeWakeReconnectTimer = null;
   }
   const client = new Client({ connectionString: databaseUrlForWakeListener(), ssl: DATABASE_SSL, application_name: 'codelab-agent-bridge-wake-listener' });
-  await client.connect();
   try {
+    await client.connect();
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.codelab_agent_commands (
         command_id text PRIMARY KEY,
@@ -200,28 +218,7 @@ async function ensureAgentBridgeWakeListener() {
     client.on('error', error => {
       console.error('[CodeLab Native Bridge] Neon wake listener error:', error.message);
       if (agentBridgeWakeClient === client) agentBridgeWakeClient = null;
-      const attempt = Math.min(++agentBridgeWakeReconnectAttempt, 6);
-      const delayMs = Math.min(60000, 1000 * Math.pow(2, attempt - 1));
-      if (!agentBridgeWakeReconnectTimer && !agentBridgeStopping) {
-        console.error('[CodeLab Native Bridge] scheduling Neon wake listener reconnect:', {
-          attempt,
-          delayMs
-        });
-        agentBridgeWakeReconnectTimer = setTimeout(() => {
-          agentBridgeWakeReconnectTimer = null;
-          ensureAgentBridgeWakeListener().catch(reconnectError => {
-            console.error('[CodeLab Native Bridge] Neon wake listener reconnect failed:', reconnectError.message);
-            if (!agentBridgeWakeReconnectTimer && !agentBridgeStopping) {
-              const retryAttempt = Math.min(++agentBridgeWakeReconnectAttempt, 6);
-              const retryDelayMs = Math.min(60000, 1000 * Math.pow(2, retryAttempt - 1));
-              agentBridgeWakeReconnectTimer = setTimeout(() => {
-                agentBridgeWakeReconnectTimer = null;
-                ensureAgentBridgeWakeListener().catch(() => {});
-              }, retryDelayMs);
-            }
-          });
-        }, delayMs);
-      }
+      scheduleAgentBridgeWakeReconnect(error);
       void client.end().catch(() => {});
     });
     agentBridgeWakeClient = client;
@@ -229,6 +226,7 @@ async function ensureAgentBridgeWakeListener() {
     console.log('[CodeLab Native Bridge] Neon wake listener armed; no polling/interval is used to wake the bridge.');
   } catch (error) {
     try { await client.end(); } catch (_) {}
+    scheduleAgentBridgeWakeReconnect(error);
     throw error;
   }
 }
