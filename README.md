@@ -12,7 +12,8 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 
 **Runtime:** Node.js 22.17.0 o superior. El servidor utiliza `pg`, `@sparticuz/chromium` y `playwright-core`. Ejecuta `npm install` para instalar las dependencias y su postinstall de navegador; después inicia con `npm start`.
 
-> Documentación técnica de conexión y funcionamiento: [CodeLab ↔ Neon extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). El diagrama y los detalles deben reflejar siempre el código actual.\n> Catálogo de órdenes y operaciones del agente: [CodeLab + PixelForge command catalog](docs/CODELAB-PIXELFORGE-COMMAND-CATALOG.md), con contratos, capacidades Headless, aprobación y límites de cobertura.
+> Documentación técnica de conexión y funcionamiento: [CodeLab ↔ Neon extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). El diagrama y los detalles deben reflejar siempre el código actual.
+> Catálogo de órdenes y operaciones del agente: [CodeLab + PixelForge command catalog](docs/CODELAB-PIXELFORGE-COMMAND-CATALOG.md), con contratos, capacidades Headless, aprobación y límites de cobertura.
 
 ## 🧠 Arquitectura principal: agente → Neon → CodeLab → evidencia → Neon → agente
 
