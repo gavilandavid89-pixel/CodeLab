@@ -285,7 +285,9 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
   if (!manifest || Number(manifest.version) !== 2 || Number(manifest.schemaVersion) !== 2 || manifest.layout !== 'structured') {
     fail('manifest must declare codelab version 2, schemaVersion 2 and layout structured.');
   }
-  if (!['web', 'design', 'pixelforge'].includes(String(manifest.editor))) fail('structured .codelab requires a supported editor.');
+  const editor = String(manifest.editor || '');
+  if (!['web', 'design', 'pixelforge'].includes(editor)) fail('structured .codelab requires a supported editor.');
+  if (manifest.projectType !== editor) fail('manifest.projectType must match manifest.editor.');
   if (!project.id || !project.name) fail('structured project must declare project.id and project.name.');
   if (!manifest.integrityPath) fail('structured manifest must declare integrityPath.');
   const integrityPath = requireSafeRelativePath(manifest.integrityPath, 'manifest.integrityPath');
@@ -295,23 +297,31 @@ export function installStructuredCodeLabV2({ project, files, manifest }) {
     frames: { frameCount: 0, celCount: 0 },
     references: { referenceCount: 0, embeddedReferenceBytes: 0, categories: [] },
   };
-  if (manifest.frames?.manifestPath) {
-    const frameManifestPath = requireSafeRelativePath(manifest.frames.manifestPath, 'manifest.frames.manifestPath');
-    result.frames = installStructuredFrames(project, files, jsonFile(files, frameManifestPath, 'frames manifest'));
-  } else {
-    fail('structured manifest must declare frames.manifestPath.');
+
+  // The Web and Design editors store their native document in project.json.
+  // Frame cels and Reference Center are PixelForge-specific package sections.
+  if (editor === 'pixelforge') {
+    if (manifest.frames?.manifestPath) {
+      const frameManifestPath = requireSafeRelativePath(manifest.frames.manifestPath, 'manifest.frames.manifestPath');
+      result.frames = installStructuredFrames(project, files, jsonFile(files, frameManifestPath, 'frames manifest'));
+    } else {
+      fail('PixelForge structured manifest must declare frames.manifestPath.');
+    }
+    if (manifest.referenceCenter?.manifestPath) {
+      const centerManifestPath = requireSafeRelativePath(manifest.referenceCenter.manifestPath, 'manifest.referenceCenter.manifestPath');
+      result.references = installReferenceCenter(project, files, jsonFile(files, centerManifestPath, 'reference center manifest'));
+    } else {
+      fail('PixelForge structured manifest must declare referenceCenter.manifestPath.');
+    }
   }
-  if (manifest.referenceCenter?.manifestPath) {
-    const centerManifestPath = requireSafeRelativePath(manifest.referenceCenter.manifestPath, 'manifest.referenceCenter.manifestPath');
-    result.references = installReferenceCenter(project, files, jsonFile(files, centerManifestPath, 'reference center manifest'));
-  } else {
-    fail('structured manifest must declare referenceCenter.manifestPath.');
-  }
+
   project.codelabSchema = {
     version: 2,
     layout: 'structured',
-    framesManifest: manifest.frames.manifestPath,
-    referenceCenterManifest: manifest.referenceCenter.manifestPath,
+    editor,
+    framesManifest: manifest.frames?.manifestPath || null,
+    referenceCenterManifest: manifest.referenceCenter?.manifestPath || null,
+    integrityPath,
   };
   return result;
 }
