@@ -245,7 +245,7 @@ function parseSvgXmlFallback(source) {
   }
   const rootDocument = { documentElement: null, querySelector: () => null };
   const stack = [];
-  const tokens = input.match(/<!--[\\s\\S]*?-->|<\?[\\s\\S]*?\?>|<[^>]+>|[^<]+/g) || [];
+  const tokens = input.match(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<[^>]+>|[^<]+/g) || [];
   for (const token of tokens) {
     if (token.startsWith('<!--') || token.startsWith('<?')) continue;
     if (token.startsWith('</')) {
