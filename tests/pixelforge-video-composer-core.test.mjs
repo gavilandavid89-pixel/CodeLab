@@ -54,7 +54,7 @@ test('Video Composer web interface wires every referenced control and includes a
   assert.match(html, /video-composer\.js/);
   assert.match(css, /max-width:620px/);
   assert.match(js, /MediaRecorder/);
-  assert.match(js, /captureStream/);
+  assert.match(js, /getDisplayMedia/);
 });
 
 test('HD capture presets preserve aspect ratio and fit the full artwork without cropping', async () => {
