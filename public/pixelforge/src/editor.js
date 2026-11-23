@@ -66,7 +66,7 @@ function initReferenceCenterUI() {
     getDocument: () => doc,
     getAnimation: () => animation,
     setAnimation: value => { animation = value; animationLoop = value?.loop !== false; animationPlaybackSpeed = value?.playbackSpeed ?? 1; renderAnimationTimeline(); },
-    save: () => saveProject(doc.toJSON()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
+    save: () => saveProject(buildProjectSnapshot()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
     render: () => render(),
     renderLayers: () => renderLayers(),
     status: (message, kind) => status(message, kind),
