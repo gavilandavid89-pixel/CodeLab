@@ -2311,9 +2311,9 @@ const server = http.createServer(async (req, res) => {
       // chunked at 1 MiB and the final commit enqueues the existing native import command.
       const inlineArtifactBegin = req.method === 'POST' && pathname === '/api/agent/bridge/artifacts';
       const inlineArtifactChunk = req.method === 'PUT'
-        ? pathname.match(/^\\/api\\/agent\\/bridge\\/artifacts\\/([a-f0-9]{32})\\/(\\d+)$/) : null;
+        ? pathname.match(/^\/api\/agent\/bridge\/artifacts\/([a-f0-9]{32})\/(\d+)$/) : null;
       const inlineArtifactCommit = req.method === 'POST'
-        ? pathname.match(/^\\/api\\/agent\\/bridge\\/artifacts\\/([a-f0-9]{32})\\/commit$/) : null;
+        ? pathname.match(/^\/api\/agent\/bridge\/artifacts\/([a-f0-9]{32})\/commit$/) : null;
       if (inlineArtifactBegin || inlineArtifactChunk || inlineArtifactCommit) {
         const supplied = String(req.headers['x-codelab-agent-bridge-token'] || url.searchParams.get('token') || '');
         if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
