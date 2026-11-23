@@ -15,7 +15,7 @@ test('editable PixelForge ZIP round-trips raster, vector, animation and Video Co
     frames: [], precision: { tolerance: 0.001, anchors: [], guides: [], constraints: [], constructionGraph: { version: 1, nodes: [], edges: [] } },
     metadata: { intent: 'round-trip', tags: ['test'] }
   };
-  const exported = createPixelForgeProjectZip(project);
+  const exported = await createPixelForgeProjectZip(project);
   assert.ok(exported.bytes.length > 1000);
   assert.equal(exported.metadata.frameCount, project.animation.frames.length);
   const entries = await readStoredZip(new Blob([exported.bytes]));
@@ -38,7 +38,7 @@ test('ZIP importer rejects non-project video packages and corrupted central entr
   const project = showcase.doc.toJSON();
   project.id = 'zip_bad_source';
   project.animation = showcase.animation.toJSON();
-  const exported = createPixelForgeProjectZip(project);
+  const exported = await createPixelForgeProjectZip(project);
   const corrupt = Buffer.from(exported.bytes);
   corrupt[45] = corrupt[45] ^ 0xff;
   await assert.rejects(() => parsePixelForgeProjectZip(corrupt), /CRC|invalid|metadata|header|utf-8|encoded data/i);
