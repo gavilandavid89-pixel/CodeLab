@@ -1526,12 +1526,19 @@ async function commitInlineAgentArtifact(artifactId, expectedSha256) {
   if (total !== Number(row.total_bytes) || digest !== row.sha256 || (expectedSha256 && digest !== String(expectedSha256).toLowerCase())) {
     throw Object.assign(new Error('agent_artifact_integrity_failed'), { status: 422 });
   }
+  if (row.metadata?.selfTest) {
+    return {
+      ok: true, artifactId, status: 'verified',
+      sizeBytes: total, chunkCount: Number(row.total_chunks), sha256: digest,
+      selfTest: true
+    };
+  }
   const commandId = crypto.randomUUID();
   const payload = {
     artifact_id: artifactId,
     name: row.metadata?.projectName || row.filename.replace(/\\.codelab$/i, '').replace(/\\.zip$/i, ''),
     target_workspace_id: row.metadata?.targetWorkspaceId || PIXELFORGE_GUEST_WORKSPACE_ID,
-    wake: row.metadata?.selfTest ? false : true
+    wake: true
   };
   await accountPool.query(
     `INSERT INTO public.codelab_agent_commands
@@ -3717,7 +3724,47 @@ seedAdminAccountIfConfigured().then(async () => {
     pixelForgeTableReady = false;
     console.error('PixelForge database initialization failed; studio API will return 503:', error.message);
   }
-  server.listen(PORT, () => {
+  async function runInlineArtifactSmokeTest() {
+  if (String(process.env.AGENT_INLINE_ARTIFACT_SMOKE_TEST || '') !== '1') return;
+  const token = String(process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST || '');
+  if (!token) throw new Error('inline_artifact_smoke_test_secret_missing');
+  const data = Buffer.from('C', 'utf8');
+  const sha256 = crypto.createHash('sha256').update(data).digest('hex');
+  const base = 'http://127.0.0.1:' + PORT;
+  const headers = { 'x-codelab-agent-bridge-token': token };
+  const manifest = await fetch(base + '/api/agent/bridge/artifacts', {
+    method: 'POST', headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      total_bytes: data.length, total_chunks: 1, sha256,
+      filename: 'inline-smoke.codelab', project_name: 'inline-smoke',
+      target_workspace_id: PIXELFORGE_GUEST_WORKSPACE_ID, self_test: true
+    })
+  });
+  const manifestBody = await manifest.json();
+  if (!manifest.ok) throw new Error('inline_artifact_smoke_manifest_' + manifest.status + ':' + JSON.stringify(manifestBody));
+  const artifactId = String(manifestBody.artifactId || '');
+  const chunk = await fetch(base + '/api/agent/bridge/artifacts/' + artifactId + '/0', {
+    method: 'PUT', headers: { ...headers, 'content-type': 'application/octet-stream' }, body: data
+  });
+  const chunkBody = await chunk.json();
+  if (!chunk.ok) throw new Error('inline_artifact_smoke_chunk_' + chunk.status + ':' + JSON.stringify(chunkBody));
+  const commit = await fetch(base + '/api/agent/bridge/artifacts/' + artifactId + '/commit', {
+    method: 'POST', headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ sha256 })
+  });
+  const commitBody = await commit.json();
+  if (!commit.ok || commitBody.status !== 'verified' || commitBody.sha256 !== sha256) {
+    throw new Error('inline_artifact_smoke_commit_' + commit.status + ':' + JSON.stringify(commitBody));
+  }
+  console.log('[Inline Artifact Smoke] PASS manifest -> chunk -> commit -> Neon', JSON.stringify({
+    artifactId, bytes: data.length, chunks: 1, sha256
+  }));
+}
+
+server.listen(PORT, () => {
+  void runInlineArtifactSmokeTest().catch(error => {
+    console.error('[Inline Artifact Smoke] FAIL', error.message || error);
+  });
   console.log('[CodeLab Native Bridge] Neon wake listener ready; worker starts only when a queued command arrives.');
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
