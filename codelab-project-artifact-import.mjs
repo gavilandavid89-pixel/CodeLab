@@ -10,6 +10,22 @@ const execFileAsync = promisify(execFile);
 
 const MAX_CODELAB_ARTIFACT_BYTES = 100 * 1024 * 1024;
 
+export function canonicalCodeLabArtifactFilename(filename, editorId) {
+  const suffixByEditor = { web: 'web', design: 'design', pixelforge: 'pixelforge' };
+  const suffix = suffixByEditor[String(editorId || '').toLowerCase()];
+  if (!suffix) throw new Error('Unsupported CodeLab artifact editor: ' + String(editorId || ''));
+  const base = path.basename(String(filename || 'project.codelab')).slice(0, 180) || 'project.codelab';
+  const typed = base.match(/^(.*)\\.codelab-(web|design|pixelforge)$/i);
+  if (typed) {
+    if (typed[2].toLowerCase() !== suffix) {
+      throw new Error('Artifact filename editor suffix does not match the import request editor_id.');
+    }
+    return typed[1] + '.codelab-' + suffix;
+  }
+  if (/\\.codelab$/i.test(base)) return base + '-' + suffix;
+  throw new Error('CodeLab artifact filename must end in .codelab or .codelab-' + suffix + '.');
+}
+
 async function queryChecked(pool, label, text, values) {
   const placeholderMatches = [...text.matchAll(/\$(\d+)/g)];
   const maxPlaceholder = placeholderMatches.reduce((m, match) => Math.max(m, Number(match[1])), 0);
@@ -252,6 +268,7 @@ export async function importCodeLabArtifact(pool, {
   if (!requestResult.rowCount) throw new Error('Import request not found: ' + importRequestId);
 
   const request = requestResult.rows[0];
+  artifactFilename = canonicalCodeLabArtifactFilename(artifactFilename, request.editor_id);
   if (request.workspace_id !== workspaceId) throw new Error('Import request workspace is not authorized for this bridge.');
   if (request.confirmation_required && !request.confirmation_received && request.status !== 'approved') {
     return {
