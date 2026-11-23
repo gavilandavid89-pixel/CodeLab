@@ -230,10 +230,12 @@ export function createAssistantHeadlessClient(options = {}) {
         ttlMs: options.ttlMs ?? 60 * 60 * 1000
       });
       try {
-        return await run('pixelforge_import_zip', {
+        const outcome = await run('pixelforge_import_zip', {
           artifact_id: staged.artifactId,
           ...(options.name ? { name: options.name } : {})
         }, { ttlMs: options.commandTtlMs ?? 15 * 60 * 1000, timeoutMs: options.timeoutMs ?? 15 * 60 * 1000 });
+        if (outcome.status !== 'succeeded') await deleteNativeArtifact(pool, workspaceId, staged.artifactId).catch(() => {});
+        return outcome;
       } catch (error) {
         await deleteNativeArtifact(pool, workspaceId, staged.artifactId).catch(() => {});
         throw error;
