@@ -622,6 +622,7 @@
             <span class="text-[10px] uppercase tracking-wider text-cyan-400 font-bold">Web</span>
             <span class="h-4 w-px bg-slate-700"></span>
           </div>
+          <button type="button" onclick="openProjectFiles()" class="web-action flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition"><i class="fa-solid fa-folder-tree text-cyan-400"></i><span>Archivos</span></button>
           <button onclick="duplicateProject()" class="web-action flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-500/30 transition"><i class="fa-solid fa-clone"></i><span>Copiar</span></button>
           <button id="toggleCopyBranchBtn" disabled onclick="toggleCopyBranch()" class="web-action flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-800 text-slate-500 text-xs font-medium border border-slate-700 cursor-not-allowed transition"><i id="copyBranchIcon" class="fa-solid fa-code-fork"></i><span id="copyBranchText">Ir a la copia</span></button>
           <button id="undoMergeBtn" disabled onclick="undoLastMerge()" class="web-action flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-800 text-slate-500 text-xs font-medium border border-slate-700 cursor-not-allowed transition"><i class="fa-solid fa-rotate-left"></i><span>Deshacer</span></button>
@@ -1221,6 +1222,25 @@
         <p id="componentLibraryStatus" role="status" aria-live="polite" class="min-h-5 text-xs text-cyan-300"></p>
       </div>
       <footer class="sticky bottom-0 flex justify-end border-t border-slate-800 bg-slate-900/95 px-4 sm:px-6 py-3 backdrop-blur"><button id="componentLibraryCloseFooter" type="button" class="touch-target rounded-lg bg-slate-800 hover:bg-slate-700 px-4 py-2 text-xs font-bold text-slate-200">Cerrar biblioteca</button></footer>
+    </div>
+  </div>
+
+  <div id="projectFilesModal" class="hidden fixed inset-0 z-[100] bg-black/70 p-3 sm:p-6 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="projectFilesTitle">
+    <div class="w-full max-w-5xl max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+      <header class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-800">
+        <div><h2 id="projectFilesTitle" class="text-sm font-bold text-slate-100">Archivos del proyecto</h2><p id="projectFilesSubtitle" class="text-[11px] text-slate-500 mt-0.5">Recursos importados en el paquete</p></div>
+        <button type="button" onclick="closeProjectFiles()" class="p-2 rounded-lg hover:bg-slate-800 text-slate-400" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+      </header>
+      <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[minmax(180px,280px)_1fr]">
+        <aside id="projectFilesList" class="overflow-y-auto border-b md:border-b-0 md:border-r border-slate-800 p-2 space-y-1"><p class="text-xs text-slate-500 p-3">Cargando archivos…</p></aside>
+        <section class="min-h-[240px] overflow-auto p-3">
+          <div id="projectFilePreviewMeta" class="text-[11px] text-slate-500 mb-2">Selecciona un archivo para previsualizarlo.</div>
+          <pre id="projectFilePreview" class="hidden whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-200 font-mono bg-slate-950 rounded-lg p-3 min-h-40"></pre>
+          <img id="projectFileImagePreview" class="hidden max-w-full max-h-[65vh] mx-auto object-contain rounded-lg bg-slate-950" alt="Vista previa del recurso">
+          <p id="projectFileUnsupported" class="hidden text-xs text-slate-500">Este tipo de archivo está almacenado, pero no tiene vista previa en el navegador.</p>
+        </section>
+      </div>
+      <footer class="px-4 py-3 border-t border-slate-800 flex justify-end"><button type="button" onclick="closeProjectFiles()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200">Cerrar</button></footer>
     </div>
   </div>
 
