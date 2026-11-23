@@ -15,14 +15,14 @@ export function canonicalCodeLabArtifactFilename(filename, editorId) {
   const suffix = suffixByEditor[String(editorId || '').toLowerCase()];
   if (!suffix) throw new Error('Unsupported CodeLab artifact editor: ' + String(editorId || ''));
   const base = path.basename(String(filename || 'project.codelab')).slice(0, 180) || 'project.codelab';
-  const typed = base.match(/^(.*)\\.codelab-(web|design|pixelforge)$/i);
+  const typed = base.match(/^(.*)\.codelab-(web|design|pixelforge)$/i);
   if (typed) {
     if (typed[2].toLowerCase() !== suffix) {
       throw new Error('Artifact filename editor suffix does not match the import request editor_id.');
     }
     return typed[1] + '.codelab-' + suffix;
   }
-  if (/\\.codelab$/i.test(base)) return base + '-' + suffix;
+  if (/\.codelab$/i.test(base)) return base + '-' + suffix;
   throw new Error('CodeLab artifact filename must end in .codelab or .codelab-' + suffix + '.');
 }
 
