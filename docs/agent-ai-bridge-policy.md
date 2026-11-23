@@ -2,6 +2,8 @@
 
 **Estado: vigente.** Esta política describe el flujo actual Neon → bridge/worker → CodeLab. Los workflows A/B descritos en versiones anteriores son históricos y no forman parte de la ejecución normal. Para conexiones, esquema SQL, diagramas y detalles de implementación, consultar [la documentación técnica CodeLab ↔ Neon](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
+Para la transferencia de paquetes editables desde el Headless aislado del agente, consultar también [Transporte inline de artefactos Headless → CodeLab](inline-artifact-bridge.md). Inline es el intermediario HTTPS de staging/importación; no proporciona acceso directo del Headless a Neon y no altera la reserva permanente de A/B para vídeo.
+
 ## 1. Arquitectura y responsabilidades
 
 Flujo canónico:
