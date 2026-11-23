@@ -408,7 +408,13 @@ export class VectorStudio {
 
   translateObjectRaw(o, dx, dy) {
     if (o.type === 'line') { o.x1 += dx; o.x2 += dx; o.y1 += dy; o.y2 += dy; }
-    else if (o.type === 'path') o.points = (o.points || []).map(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+    else if (o.type === 'path') o.points = (o.points || []).map(p => ({
+      ...p,
+      x: p.x + dx,
+      y: p.y + dy,
+      ...(p.c1 ? { c1: { ...p.c1, x: p.c1.x + dx, y: p.c1.y + dy } } : {}),
+      ...(p.c2 ? { c2: { ...p.c2, x: p.c2.x + dx, y: p.c2.y + dy } } : {}),
+    }));
     else if (o.type === 'group') (o.children || []).forEach(c => this.translateObjectRaw(c, dx, dy));
     else { o.x = (o.x || 0) + dx; o.y = (o.y || 0) + dy; }
   }
