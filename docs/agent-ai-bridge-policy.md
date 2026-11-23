@@ -97,14 +97,52 @@ Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.m
 - Tras inspeccionarla, puede continuar trabajando en su headless propio, corregir y volver a empaquetar, o entregar el proyecto al usuario.
 - La evidencia visual es evidencia de inspección; no sustituye al proyecto editable ni se convierte en la fuente canónica del proyecto.
 
-## 6. Workflows A/B históricos
+## 6. Workflows A/B: históricos para el flujo general y reservados para vídeo
 
-Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instancia/sesión de la web y B se conectaba a ella para enviar solicitudes. Ese esquema ya no es el flujo operativo vigente.
+Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instancia/sesión de la web y B se conectaba a ella para enviar solicitudes. **No son el flujo general de ejecución de CodeLab.**
+
+### 6.1 Flujo normal
 
 - No iniciar A/B como requisito para trabajar con CodeLab.
+- El flujo normal de proyectos es **Headless propio del agente → `.codelab` → Neon → bridge/worker → CodeLab**.
 - No aplicar la antigua regla de ventanas independientes de 10 minutos/30 segundos como límite del flujo actual.
-- Los workflows y scripts antiguos pueden conservarse para reproducibilidad o pruebas históricas hasta que se decida retirarlos; su presencia en el repositorio no los convierte en la arquitectura actual.
-- El flujo vigente es el bridge/worker con coordinación y recuperación persistentes en Neon.
+- Los workflows y scripts antiguos pueden conservarse para reproducibilidad o pruebas históricas.
+
+### 6.2 Excepción: empaquetado/render de vídeo
+
+Existe una excepción operativa: **A/B se utiliza exclusivamente para el empaquetador/renderizador de vídeo cuando el procesamiento de vídeo no puede ser soportado de forma fiable por el entorno Render de CodeLab.**
+
+```text
+Headless propio del agente
+        ↓
+proyecto .codelab
+        ↓
+Neon / orden canónica
+        ↓
+CodeLab / sesión necesaria
+        ↓
+workflow A/B de vídeo (solo empaquetador)
+        ↓
+PixelForge + Video Composer
+        ↓
+WebM/MP4 + evidencia
+        ↓
+Neon
+        ↓
+Agente inspecciona visualmente
+```
+
+Reglas:
+
+- A/B **no sustituye** Neon como fuente de verdad.
+- A/B **no sustituye** el bridge/worker para operaciones normales.
+- A/B **no se convierte** en una segunda cola general de comandos.
+- Su uso queda limitado al empaquetado/render de vídeo que requiera una capacidad que Render no pueda ejecutar de forma fiable.
+- El vídeo debe corresponder al proyecto/revisión reales y regresar como evidencia asociada a la orden.
+- El agente debe abrir/analizar la evidencia antes de declarar correcta la animación.
+- Si la evidencia muestra movimiento incorrecto, frames faltantes, composición incorrecta u otro defecto, el agente vuelve a su Headless propio, corrige y repite el ciclo.
+
+La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado como vía especializada del empaquetador de vídeo**.
 
 ## 7. Principio de cierre
 
