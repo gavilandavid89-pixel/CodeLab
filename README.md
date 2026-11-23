@@ -231,6 +231,10 @@ Desde el panel principal, **Componentes** abre una biblioteca con secciones HTML
 ## Changelog
 
 ### v2.7.0
+- El bridge Neon usa LISTEN/NOTIFY en servidor y worker; se elimina el polling de cola de 150 ms y se reconcilian órdenes queued al armar/reconectar el listener.
+- El listener del servidor reintenta también ante fallos de conexión inicial con backoff exponencial; la recuperación no depende de reiniciar Render.
+- Se documenta la topología real de conexiones pooled/directas, TLS, trigger, claim transaccional, heartbeat, estados, persistencia, evidencia, seguridad y consumo de transferencia.
+- Se agregan pruebas de contrato para activación event-driven, reconciliación queued, reconexión inicial y consistencia de TLS/endpoints.
 
 - Se sincroniza la documentación de versión y dependencias con `package.json`.
 - Se actualiza CI a Node.js 22.17.0, acorde con el mínimo declarado por el proyecto.
