@@ -65,7 +65,8 @@ jobs:
           node --check codelab-project-artifact-import.mjs
           node --check codelab-project-package-installer.mjs
           node --check codelab-project-structured-format.mjs
-          node --test tests/codelab-artifact-filename.test.mjs tests/codelab-project-package-installer.test.mjs tests/codelab-structured-project-v2.test.mjs tests/codelab-project-workspace-publish.test.mjs
+          node --check pixelforge-codelab-package.mjs
+          node --test tests/codelab-artifact-filename.test.mjs tests/codelab-project-package-installer.test.mjs tests/codelab-structured-project-v2.test.mjs tests/codelab-project-workspace-publish.test.mjs tests/pixelforge-codelab-package.test.mjs
       - name: Test PixelForge showcase animation
         run: node --experimental-default-type=module --test tests/pixelforge-showcase-animation.test.mjs
       - name: Test Video Composer ZIP package reader
