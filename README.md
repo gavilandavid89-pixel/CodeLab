@@ -93,7 +93,7 @@ No consultarlo continuamente: los payload/result y documentos pueden ser grandes
 
 Los pools SQL normales de `server.js` y el worker usan `DATABASE_URL`. El pool del servidor tiene máximo 5 conexiones; el del worker, máximo 2. Los dos usan `CODELAB_DATABASE_SSL`: TLS por defecto y `disable` solo para pruebas locales. Los clientes dedicados LISTEN convierten el hostname `-pooler.` al endpoint directo equivalente y mantienen una conexión `pg.Client` estable.
 
-El listener del servidor reconecta con backoff exponencial limitado a 60 segundos. El listener del worker reintenta tras 5 segundos y vuelve a reclamar desde la cola durable. Durante una ejecución, el worker actualiza el heartbeat de la orden cada 30 segundos.
+El listener del servidor reintenta también si falla la conexión inicial y reconecta con backoff exponencial limitado a 60 segundos. El listener del worker reintenta tras 5 segundos y vuelve a reclamar desde la cola durable. Durante una ejecución, el worker actualiza el heartbeat de la orden cada 30 segundos.
 
 La documentación técnica completa, con diagramas de componentes/secuencia, SQL, esquemas, acciones, expiración, locks, recuperación, workspace ADMIN, persistencia, evidencia, seguridad y auditoría de transferencia, está en [CodeLab ↔ Neon: comunicación técnica extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
