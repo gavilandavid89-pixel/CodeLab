@@ -39,8 +39,8 @@ jobs:
       - name: Run CodeLab Video Composer worker
         env:
           TARGET_URL: https://codelab-pbw9.onrender.com
-          PROJECT_ID: ${{ github.event.inputs.project_id || "2b33ccf4-f70c-4649-bed8-df1707cfdc74" }}
-          KEEPALIVE_SECONDS: ${{ github.event.inputs.keepalive_seconds || "1800" }}
+          PROJECT_ID: ${{ inputs.project_id || '2b33ccf4-f70c-4649-bed8-df1707cfdc74' }}
+          KEEPALIVE_SECONDS: ${{ inputs.keepalive_seconds || '1800' }}
           CODELAB_ADMIN_USERNAME: ${{ secrets.CODELAB_ADMIN_USERNAME }}
           CODELAB_ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
         run: node .github/scripts/codelab-video-composer-actions-worker.mjs
