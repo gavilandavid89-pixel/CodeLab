@@ -158,6 +158,16 @@ export async function parsePixelForgeProjectZip(input, { importedName } = {}) {
   canonical.saveVersion = 0;
   canonical.serverRevision = 0;
   const verified = HeadlessEditorRuntime.fromJSON(canonical);
+  if (canonical.vectorModel) {
+    const vectorModel = canonical.vectorModel;
+    const vectorCheck = verified.execute({
+      name: 'vector.model.configure',
+      grid: vectorModel.grid,
+      snap: vectorModel.snap,
+      metadata: vectorModel.metadata
+    });
+    if (!vectorCheck.ok) throw new TypeError('Imported vector model failed Headless validation: ' + vectorCheck.error.message);
+  }
   const inspection = verified.inspect();
   return {
     project: verified.toJSON(),
