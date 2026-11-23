@@ -14,179 +14,88 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 
 > Documentación técnica de conexión y funcionamiento: [CodeLab ↔ Neon extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). El diagrama y los detalles deben reflejar siempre el código actual.
 
-## 🧠 Arquitectura principal: agente → Neon → Cloudflare → CodeLab → evidencia → Neon → agente
+## 🧠 Arquitectura principal: agente → Neon → CodeLab → evidencia → Neon → agente
 
-**Esta es la arquitectura de ejecución que debe considerarse la fuente de verdad del sistema. No debe sustituirse por un flujo basado en clics, deslizamientos, commits intermedios o intervención manual del navegador.**
+**Arquitectura implementada del flujo de órdenes:** Neon guarda la orden; PostgreSQL la notifica directamente a CodeLab mediante LISTEN/NOTIFY. Cloudflare/R2 es una ruta de almacenamiento de evidencia cuando está configurada, no un salto obligatorio para entregar cada orden.
 
-El ciclo completo funciona así:
-
-```text
+\`\`\`text
 AGENTE
-  │
-  │ 1. crea una petición/trabajo
+  │ INSERT orden (queued) / consulta resultado
   ▼
-NEON
-  │
-  │ 2. guarda la orden, estado, proyecto,
-  │    revisión y contexto
+NEON POSTGRESQL
+  │ tabla durable codelab_agent_commands
+  │ trigger AFTER INSERT/UPDATE → pg_notify()
   ▼
-CLOUDFLARE
-  │
-  │ 3. transporta la petición mediante el
-  │    puente de conexión
+CODELAB SERVER (server.js)
+  │ pg.Client: LISTEN codelab_agent_bridge_wake
+  │ spawn del worker si no existe
   ▼
-CODELAB
-  │
-  │ 4. recibe la orden y la ejecuta directamente
-  │    mediante sus interfaces de servidor
-  │    sin deslizar, clickear ni usar la UI
-  │    como mecanismo de automatización
+AGENT BRIDGE WORKER
+  │ reclama orden con transacción + SKIP LOCKED
+  │ ejecuta APIs/runtime headless de CodeLab
+  │ valida, persiste resultado y genera evidencia
   ▼
-CODELAB
+NEON POSTGRESQL
+  │ proyecto + revisión + hash + resultado + event_id
+  ├─────────────► CLOUDFLARE/R2 o S3 (bytes de evidencia, si está configurado)
   │
-  │ 5. termina el trabajo
-  │
-  ├── trabajo normal ───────────────► resultado
-  │
-  └── dibujo/animación
-          │
-          │ 6. renderiza y genera evidencia
-          │    visual (vídeo y/o imágenes)
-          ▼
-CLOUDFLARE
-  │
-  │ 7. empaqueta/transfiere la evidencia
-  │    por el mismo puente
-  ▼
-NEON
-  │
-  │ 8. guarda la confirmación, resultado,
-  │    revisión y referencia al vídeo
-  │
-  │ 9. notifica al agente si sigue conectado
   ▼
 AGENTE
-  │
-  │ 10. obtiene e inspecciona realmente
-  │     el vídeo/evidencia
-  │
-  │ 11. toma la siguiente decisión
-  └──────────────────────────────────────►
-                    repetir
-```
+  │ consulta snapshot, inspecciona vídeo/imagen
+  └─────────────► decide si envía otra orden
+\`\`\`
 
-### Reglas de este flujo
+### Reglas de esta arquitectura
 
-1. **Neon es el punto de coordinación y persistencia del trabajo.**
-2. **Cloudflare es el puente de transporte rápido entre Neon y CodeLab y el canal para la evidencia binaria.**
-3. **CodeLab ejecuta trabajos de forma programática.** La automatización no debe depender de que un agente humano abra la web, deslice, pulse botones o confirme manualmente.
-4. **Una animación no se considera terminada solo porque el código terminó.** Debe producir evidencia visual que permita comprobar el resultado.
-5. **El vídeo es feedback del agente.** Después de recibir la confirmación, el agente debe inspeccionarlo y decidir si hace otra modificación.
-6. **El ciclo puede repetirse tantas veces como sea necesario** hasta alcanzar el resultado correcto.
-7. **La desconexión del agente no debe perder el trabajo.** Neon conserva el estado y la evidencia para que el agente pueda continuar cuando vuelva.
-8. **Cada trabajo y cada evidencia deben estar correlacionados** mediante un identificador de trabajo/proyecto/revisión, evitando mezclar resultados de ejecuciones distintas.
-9. **Los estados del trabajo deben ser explícitos**, por ejemplo: `queued → dispatched → running → rendering → uploading → completed/failed`.
-10. **GitHub no es el transporte de cada cambio visual.** Los commits pueden servir para versionado del código, pero no deben ser un requisito para que una petición llegue a CodeLab o para entregar cada vídeo al agente.
+1. **Neon es la fuente durable** de órdenes, estado, proyectos persistentes, revisiones, resultados y metadatos de evidencia.
+2. **La notificación de PostgreSQL despierta CodeLab directamente.** NOTIFY no transporta el proyecto ni sustituye la fila de la orden.
+3. **Cloudflare/R2 no es un requisito para el transporte de órdenes.** Se utiliza para bytes grandes de evidencia cuando está configurado; Neon conserva las referencias.
+4. **CodeLab ejecuta trabajos de forma programática** mediante el worker y sus APIs/runtime. No depende de clicks o deslizamientos manuales para procesar una orden.
+5. **Una animación no se considera visualmente verificada solo porque la acción terminó.** Debe producir evidencia e inspeccionarse.
+6. **La evidencia no sustituye el documento editable.** Para continuar se usa project_id y la última server_revision.
+7. **El agente decide nuevas tareas.** El worker completa órdenes autorizadas; no inicia tareas autónomas nuevas.
+8. **GitHub versiona y prueba el software.** No es el transporte de cada modificación ni de cada vídeo.
+9. **No hay polling de cola cada 150 ms ni keep-alive por cron.** El worker espera LISTEN/NOTIFY cuando está ocioso.
+10. **La recuperación se basa en el estado durable.** Antes de reintentar, consultar órdenes activas para no duplicarlas.
 
-### Arquitectura de persistencia y evidencia
+### Persistencia y evidencia
 
-- **Neon Postgres:** estado canónico del proyecto y de los trabajos, órdenes, revisiones, resultados, metadatos y referencias a evidencias.
-- **Cloudflare Worker:** puente de transporte y punto de entrada/salida rápido para las operaciones del flujo.
-- **Cloudflare R2:** almacenamiento de vídeos/imágenes y otros artefactos binarios de evidencia.
-- **CodeLab:** ejecutor que modifica y procesa los proyectos.
-- **Agente:** controlador del ciclo; analiza los resultados y decide las siguientes operaciones.
-- **GitHub:** repositorio y versionado del software, no mecanismo obligatorio de transporte de cada trabajo.
+- **Neon Postgres:** cuentas, órdenes, proyectos, revisiones, hashes, resultados, eventos y referencias.
+- **CodeLab server.js:** API HTTP, autenticación/workspaces, pool SQL, listener y launcher del worker.
+- **agent-bridge-worker.mjs:** claim/execute/validate/finish, runtime headless y generación de evidencia.
+- **Cloudflare/R2 o S3-compatible:** almacenamiento de bytes de vídeo/imagen cuando está configurado.
+- **Agente:** inspección y decisión de la siguiente iteración.
+- **GitHub Actions:** pruebas de código/contratos; no certifica por sí solo el despliegue en Render ni la conectividad actual de Neon.
 
-> **Importante:** Neon Realtime es una posible vía de notificación en tiempo real, pero el sistema no debe depender exclusivamente de él. Si la infraestructura disponible no soporta Realtime, el estado persistido en Neon debe seguir permitiendo recuperar y continuar los trabajos.
+El flujo de animación es: petición → fila queued en Neon → NOTIFY → worker → edición/render → evento de evidencia → upload binario opcional → Neon guarda revisión/resultado/referencia → agente inspecciona → nueva decisión.
 
-### Flujo de una animación
+### Activación y ciclo de vida del bridge
 
-Para una animación, la unidad completa de trabajo es:
+El servidor arma al iniciar un cliente PostgreSQL dedicado con \`LISTEN codelab_agent_bridge_wake\`. Un trigger AFTER INSERT OR UPDATE OF status publica NOTIFY cuando una orden pasa a \`queued\`. El listener arranca \`agent-bridge-worker.mjs\` bajo demanda; si ya está activo, no crea otro proceso.
 
-```text
-petición
-  ↓
-Neon registra job
-  ↓
-Cloudflare entrega job
-  ↓
-CodeLab modifica proyecto
-  ↓
-CodeLab ejecuta/renderiza animación
-  ↓
-genera vídeo
-  ↓
-Cloudflare transporta/almacena evidencia
-  ↓
-Neon registra completion + vídeo + revisión
-  ↓
-agente recibe aviso
-  ↓
-agente inspecciona vídeo
-  ↓
-decisión
-  ↓
-nueva petición si hace falta
-```
+Al armar/reconectar LISTEN, el servidor reconcilia cualquier orden queued no expirada, aunque el payload no tenga \`wake:true\`. Esto cubre la ventana en la que una notificación pudo producirse antes de registrar el listener.
 
-**Una nueva decisión del agente puede iniciar inmediatamente otro ciclo. No debe ser necesario esperar un commit para cada iteración.**
-### Puesta en marcha bajo demanda del bridge
+El worker mantiene su propio listener. Reclama órdenes desde la tabla durable con una transacción y \`FOR UPDATE SKIP LOCKED\`. Si no encuentra trabajo, espera una notificación sin polling. El worker ocioso sigue siendo un proceso vivo esperando eventos; \`sleeping\` en \`codelab_agent_bridge_state\` indica que el proceso terminó y dejó señal para reactivación, no que esté simplemente sin órdenes.
 
-### Señal final de apagado del bridge
+También existe la operación explícita \`POST /api/agent/bridge/ensure\` (GET como fallback), protegida por \`x-codelab-agent-bridge-token\` y \`CODELAB_AGENT_BRIDGE_CONTROL_SECRET\`. Sirve para iniciar el worker de forma controlada; no es el mecanismo normal de entrega ni un cron.
 
-### Snapshot vital para el agente
+### Snapshot del bridge
 
-El agente dispone de una instantánea consolidada en `GET /api/agent/bridge/state` (protegida con el mismo token de control). Devuelve el estado de vida del bridge, `wake_required`, motivo y versión de señal, runtime, las últimas órdenes y resultados, los proyectos PixelForge persistidos (ID, revisión y SHA) y las últimas evidencias visuales. Así el agente no necesita reconstruir el contexto desde un vídeo.
+\`GET /api/agent/bridge/state\` requiere el mismo token y devuelve:
+- estado de bridge y señal \`wake_required\` / \`signal_version\`;
+- últimas 20 órdenes con payload/result;
+- últimos 20 proyectos PixelForge con revisión/hash;
+- últimas 20 evidencias cuando la tabla existe.
 
-La regla de decisión es:
+No consultarlo continuamente: los payload/result y documentos pueden ser grandes. Usar el snapshot al iniciar o recuperar una tarea y preferir consultas pequeñas para seguimiento.
 
-- `wake_required=false`: enviar la orden normalmente.
-- `wake_required=true`: incluir `wake:true` y el `signalVersion` observado para dejar trazabilidad.
-- Para continuar un proyecto existente, usar siempre `project_id` + su última `server_revision`; la evidencia visual es diagnóstico/auditoría, no la fuente de verdad.
-- Antes de corregir una tarea antigua, consultar el snapshot y recuperar el proyecto persistido más reciente.
+### Detalles de conexión
 
-El snapshot también conserva el último comando ejecutado y un resumen de su resultado, incluyendo error, revisión y `evidenceEventId` cuando estén disponibles.
+Los pools SQL normales de \`server.js\` y el worker usan \`DATABASE_URL\`. El pool del servidor tiene máximo 5 conexiones; el del worker, máximo 2. Los dos usan \`CODELAB_DATABASE_SSL\`: TLS por defecto y \`disable\` solo para pruebas locales. Los clientes dedicados LISTEN convierten el hostname \`-pooler.\` al endpoint directo equivalente y mantienen una conexión \`pg.Client\` estable.
 
-El consumidor nativo mantiene en Neon la tabla `codelab_agent_bridge_state` y emite una **última señal persistente antes de apagarse**. La señal usa `state=sleeping`, `wake_required=true`, `wake_reason` y un `signal_version` monotónico. Así el agente puede consultar el estado antes de crear la siguiente orden y, si `wake_required=true`, incluir `wake:true` en el payload de esa orden.
+El listener del servidor reconecta con backoff exponencial limitado a 60 segundos. El listener del worker reintenta tras 5 segundos y vuelve a reclamar desde la cola durable. Durante una ejecución, el worker actualiza el heartbeat de la orden cada 30 segundos.
 
-El servidor mantiene un listener PostgreSQL dedicado con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT OR UPDATE OF status publica `NOTIFY` cuando una orden pasa a `queued`; el listener arranca `agent-bridge-worker.mjs` bajo demanda. Al iniciar/reconectar el listener, CodeLab reconcilia **todas** las órdenes queued no expiradas, aunque el payload no incluya `wake:true`.
-
-El worker mantiene su propio listener PostgreSQL. Reclama la orden desde la tabla durable mediante una transacción y `FOR UPDATE SKIP LOCKED`; cuando no hay trabajo, espera la notificación sin sondear la cola. **No existe polling de 150 ms ni un cron de keep-alive.** Si se pierde la conexión del listener, se reconecta y vuelve a consultar la cola persistente.
-
-El worker no se inicia incondicionalmente al arrancar el servidor: se inicia al llegar una notificación queued. También existe la operación de control explícita `POST /api/agent/bridge/ensure` (GET aceptado como fallback), protegida por `x-codelab-agent-bridge-token` y `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`, para iniciar el worker bajo demanda cuando el agente lo necesite. No es el mecanismo normal de entrega de órdenes ni un temporizador.
-
-El servidor y el worker usan `DATABASE_URL`. Los pools SQL normales pueden usar el endpoint pooled de Neon. Los clientes dedicados de LISTEN convierten el hostname `-pooler.` al endpoint directo equivalente para mantener la suscripción estable. Ambos usan `CODELAB_DATABASE_SSL`: TLS está habilitado por defecto; `disable` solo para pruebas locales explícitas.
-
-### Diagrama resumido del despertar
-
-```text
-Agente → INSERT command(status=queued) en Neon
-                     │
-                     ▼
-           trigger PostgreSQL
-                     │ pg_notify
-                     ▼
-        LISTEN de server.js (pg.Client)
-                     │ spawn si no existe
-                     ▼
-       agent-bridge-worker.mjs
-                     │
-          LISTEN + claimCommand()
-                     │
-        ┌────────────┴────────────┐
-        │ hay orden               │ no hay orden
-        ▼                         ▼
-  ejecutar/validar          esperar NOTIFY
-        │                         │
-        └──────────┬──────────────┘
-                   ▼
-        guardar resultado/evidencia
-                   │
-                   ▼
-             Neon → agente
-```
-
-La documentación técnica completa, con el diagrama de componentes/secuencia, topología de conexiones, variables, esquema SQL, reconexión, claim, heartbeat, persistencia, seguridad y consumo de datos, está en [CodeLab ↔ Neon: comunicación técnica extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). Ese documento es la referencia que debe actualizarse junto con cualquier cambio de esta arquitectura.
+La documentación técnica completa, con diagramas de componentes/secuencia, SQL, esquemas, acciones, expiración, locks, recuperación, workspace ADMIN, persistencia, evidencia, seguridad y auditoría de transferencia, está en [CodeLab ↔ Neon: comunicación técnica extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
 ## Login OAuth (recomendado en Render)
 
