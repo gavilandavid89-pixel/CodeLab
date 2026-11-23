@@ -29,7 +29,7 @@ entrega el proyecto al usuario
 ```
 
 - **Agente IA:** trabaja sobre el proyecto en su propio headless, decide cuándo empaquetarlo, transferirlo e inspeccionarlo mediante evidencia y decide si continúa o entrega.
-- **Headless propio del agente:** entorno principal de trabajo. Si no existe, puede obtenerse desde el repositorio.
+- **Headless propio del agente:** entorno principal de trabajo. El agente **no debe clonar ni descargar el repositorio para obtener el Headless**. Debe obtener el Headless mediante la descarga de su **artefacto del editor**. Si el artefacto todavía no existe, primero debe generarlo usando el propio Headless/editor; después descarga ese artefacto y continúa con él.
 - **Headless/bridge de CodeLab:** componente distinto que permite controlar CodeLab. El headless propio del agente **nunca lo sustituye ni lo modifica**.
 - **Neon:** estado canónico de órdenes, proyectos, revisiones, artefactos, resultados y evidencias.
 - **CodeLab:** proyecto real e interfaz real donde se entrega el proyecto y, cuando hace falta, se obtiene la evidencia solicitada.
@@ -50,7 +50,7 @@ GitHub versiona el software y puede proporcionar el headless del agente; no es e
 
 - Para proyectos del usuario utiliza el workspace que proporciona la autenticación existente.
 - El headless del agente y el headless/bridge de CodeLab son componentes distintos.
-- Si el agente obtiene su headless desde el repositorio, eso solo proporciona su entorno de trabajo y **no reemplaza** el mecanismo que controla CodeLab.
+- El agente **no debe clonar el repositorio** para obtener o reconstruir su Headless. El mecanismo válido es descargar el **artefacto generado por el editor**. Si no existe un artefacto disponible, debe generarse uno mediante el Headless/editor y luego descargarse.
 - Una sesión local aislada no demuestra persistencia en el workspace real.
 - No registres ni expongas credenciales, cookies, tokens o secretos.
 
@@ -88,8 +88,9 @@ Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.m
 ## 5. Trabajo en headless propio e inspección real
 
 - El trabajo principal se realiza en el **headless propio del agente**.
-- Si el agente no tiene ese headless, puede obtenerlo desde el repositorio.
-- Obtenerlo desde el repositorio **no significa reemplazar** el headless/bridge que controla CodeLab. Son dos componentes diferentes.
+- El agente **no debe clonar el repositorio para obtener ese Headless**.
+- Debe descargar el **artefacto del editor** correspondiente al Headless. Si no existe, primero debe generarlo mediante el propio Headless/editor y después descargarlo.
+- El artefacto descargado proporciona el entorno de trabajo del agente y **no reemplaza** el headless/bridge que controla CodeLab. Son dos componentes diferentes.
 - El agente empaqueta el proyecto trabajado en `.codelab` y lo sube/entrega a CodeLab a través de Neon cuando corresponde.
 - Si el agente no puede continuar sin inspeccionar el proyecto real en una interfaz real, debe solicitar la evidencia visual que necesite.
 - La evidencia debe corresponder al proyecto real y a la inspección solicitada.
