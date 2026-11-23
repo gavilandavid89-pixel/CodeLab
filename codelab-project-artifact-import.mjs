@@ -290,6 +290,47 @@ export async function importCodeLabArtifact(pool, {
       }
     }
 
+    // Persistence is the next source of truth: re-read what CodeLab just stored instead of
+    // trusting the transferred in-memory payload for the remainder of the import.
+    const rereadProjectResult = await queryChecked(pool, 'import_roundtrip_project_sql',
+      'SELECT project, content_sha256 FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3',
+      [request.workspace_id, projectId, request.editor_id]
+    );
+    if (rereadProjectResult.rowCount !== 1) throw new Error('Persisted CodeLab project could not be re-read after import.');
+    const rereadProject = rereadProjectResult.rows[0].project;
+    const rereadSerialized = JSON.stringify(rereadProject);
+    const rereadSha = sha256(Buffer.from(rereadSerialized));
+    if (rereadSha !== contentSha || rereadProjectResult.rows[0].content_sha256 !== contentSha) {
+      throw new Error('Persisted CodeLab project round-trip SHA-256 verification failed.');
+    }
+    const rereadFilesResult = await queryChecked(pool, 'import_roundtrip_files_sql',
+      'SELECT file_path, byte_size, sha256, content FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 ORDER BY file_path',
+      [request.workspace_id, projectId, request.editor_id]
+    );
+    const expectedFiles = packageFiles
+      .map(file => ({ path: destinationPathByPath.get(file.relative), bytes: packageFileMap.get(file.relative) }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    if (rereadFilesResult.rows.length !== expectedFiles.length) {
+      throw new Error('Persisted CodeLab file count does not match the imported package.');
+    }
+    for (let index = 0; index < expectedFiles.length; index++) {
+      const expected = expectedFiles[index];
+      const actual = rereadFilesResult.rows[index];
+      const expectedSha = sha256(expected.bytes);
+      if (actual.file_path !== expected.path || Number(actual.byte_size) !== expected.bytes.length ||
+          actual.sha256 !== expectedSha || !Buffer.from(actual.content).equals(expected.bytes)) {
+        throw new Error('Persisted CodeLab file round-trip verification failed for ' + expected.path + '.');
+      }
+    }
+    const persistedProject = rereadProject;
+    if (Number(manifest.version) === 2 && persistedProject.codelabSchema?.version !== 2) {
+      throw new Error('Persisted structured CodeLab project lost its schema declaration.');
+    }
+    const persistedAnimationFrameCount = Array.isArray(persistedProject.animation?.frames)
+      ? persistedProject.animation.frames.length : 0;
+    const persistedReferenceCount = Array.isArray(persistedProject.drawingModel?.referenceCenter?.entries)
+      ? persistedProject.drawingModel.referenceCenter.entries.length : 0;
+
     if (request.editor_id === 'pixelforge') {
       const width = Number(project.width || 128);
       const height = Number(project.height || 128);
@@ -323,7 +364,7 @@ export async function importCodeLabArtifact(pool, {
         JSON.stringify(manifest),
         actualSha,
         serialized,
-        JSON.stringify({ importedFromArtifactId: artifact.artifact_id, importRequestId, contentSha256: contentSha }),
+        JSON.stringify({ importedFromArtifactId: artifact.artifact_id, importRequestId, contentSha256: contentSha, reloadedFromPersistence: true, persistedAnimationFrameCount, persistedReferenceCount }),
       ]
     );
 
@@ -351,6 +392,9 @@ export async function importCodeLabArtifact(pool, {
       installedResources: installation.installed,
       resourceSummary: installation.resources,
       resourceDestinations: installation.destinations,
+      reloadedFromPersistence: true,
+      persistedAnimationFrameCount,
+      persistedReferenceCount,
     };
   } catch (error) {
     error.message = `codelab_artifact_import_failed: ${error.message}`;
