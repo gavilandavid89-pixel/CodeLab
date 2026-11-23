@@ -197,56 +197,37 @@ Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.m
 - Tras inspeccionarla, puede continuar trabajando en su headless propio, corregir y volver a empaquetar, o entregar el proyecto al usuario.
 - La evidencia visual es evidencia de inspección; no sustituye al proyecto editable ni se convierte en la fuente canónica del proyecto.
 
-## 6. Workflows A/B: históricos para el flujo general y reservados permanentemente para vídeo
+## 6. A/B: una sola B dedicada exclusivamente al vídeo
 
-Los workflows A/B se diseñaron para un entorno anterior: A mantenía una instancia/sesión de la web y B se conectaba a ella para enviar solicitudes. **No son el flujo general de ejecución de CodeLab.**
+El flujo general de CodeLab **no utiliza A/B**. Las órdenes normales siguen el camino **Headless propio del agente → Neon → bridge/worker → CodeLab**. A/B es un subsistema especializado, separado y reservado al procesamiento de vídeo por la limitación de memoria de Render.
 
-### 6.1 Flujo normal
+### 6.1 Responsabilidades
 
-- No iniciar A/B como requisito para trabajar con CodeLab.
-- El flujo normal de proyectos es **Headless propio del agente → `.codelab` → Neon → bridge/worker → CodeLab**.
-- No aplicar la antigua regla de ventanas independientes de 10 minutos/30 segundos como límite del flujo actual.
-- Los workflows y scripts antiguos pueden conservarse para reproducibilidad o pruebas históricas.
+- **A (host):** una única sesión temporal de CodeLab/PixelForge, ejecutada en GitHub Actions. Mantiene el navegador y el contexto necesario, recibe la petición de vídeo y devuelve el resultado/evidencia.
+- **B (procesador):** una única ejecución de trabajo a la vez. Envía a A la operación de animación/captura, espera el resultado y recoge la evidencia de vídeo.
+- **Neon:** conserva el estado canónico del proyecto, órdenes, revisiones y referencias de evidencia. A/B no sustituye Neon ni la cola/worker normal.
 
-### 6.2 Regla permanente: empaquetado/render de vídeo mediante A/B
+**B no es una flota de agentes ni un pool de workers.** No se deben lanzar cinco B simultáneas, crear lotes en cola para B ni usar A/B como prueba de carga. Para cada trabajo de vídeo se utiliza una sola B conectada a la sesión A correspondiente.
 
-**A/B se utilizará siempre y exclusivamente para el empaquetador/renderizador de vídeo.** Esto no es un fallback ocasional ni una medida que se active únicamente cuando Render falle.
+### 6.2 Flujo normal y flujo de vídeo
 
-La razón operativa es estructural: **el entorno Render de CodeLab dispone de poca memoria para el procesamiento de vídeo y ese límite hace que el empaquetado/render de vídeo falle de forma recurrente.** Por ese motivo, el empaquetador de vídeo queda separado permanentemente del procesamiento normal de CodeLab y se ejecuta mediante A/B.
+- Para dibujo, edición, persistencia e importación normal: **Headless propio del agente → `.codelab` → Neon → bridge/worker → CodeLab**. No iniciar A/B como requisito.
+- Para empaquetar/renderizar o capturar vídeo: **una A anfitriona + una B procesadora**, exclusivamente para ese trabajo de vídeo.
+- El empaquetado/render de vídeo no debe ejecutarse en Render: su límite de memoria es la razón por la que esta ruta especializada utiliza GitHub Actions.
+- La implementación de referencia del procesador persistente es `.github/workflows/codelab-independent-session-b.yml`; el host A correspondiente es `.github/workflows/codelab-independent-session-a.yml`.
+- La prueba manual autocontenida de una única sesión A y una única petición B está en `.github/workflows/codelab-ab-animation.yml`.
 
-```text
-Headless propio del agente
-        ↓
-proyecto .codelab
-        ↓
-Neon / orden canónica
-        ↓
-CodeLab / sesión necesaria
-        ↓
-workflow A/B de vídeo (siempre, solo empaquetador)
-        ↓
-PixelForge + Video Composer
-        ↓
-WebM/MP4 + evidencia
-        ↓
-Neon
-        ↓
-Agente inspecciona visualmente
-```
+### 6.3 Reglas obligatorias
 
-Reglas:
+1. **Una sola B activa por vez.** El grupo de concurrencia del workflow B debe mantenerse para impedir ejecuciones simultáneas.
+2. B solo procesa operaciones de vídeo/animación y captura la evidencia correspondiente. No usarla como worker genérico de navegador ni como segunda cola de comandos.
+3. No lanzar B en paralelo, no crear batches concurrentes y no hacer pruebas de estrés A/B.
+4. A conserva el contexto temporal de navegador; B solicita la operación y espera el resultado. No se debe iniciar una segunda A para la misma sesión.
+5. El vídeo debe corresponder al proyecto/revisión reales y regresar como evidencia asociada al trabajo.
+6. El agente debe abrir/analizar la evidencia antes de declarar correcta la animación. Si detecta defectos, corrige el proyecto por el flujo normal y solicita una nueva ejecución de vídeo.
+7. A/B no sustituye Neon como fuente de verdad ni el bridge/worker para operaciones normales.
 
-- A/B **no sustituye** Neon como fuente de verdad.
-- A/B **no sustituye** el bridge/worker para operaciones normales.
-- A/B **no se convierte** en una segunda cola general de comandos.
-- A/B queda reservado **permanentemente** al empaquetado/render de vídeo.
-- Render no debe utilizarse como ruta del empaquetador de vídeo; su baja memoria hace que ese procesamiento falle de forma recurrente.
-- El uso de A/B para vídeo no depende de que una ejecución concreta de Render haya fallado: **la ruta A/B es la ruta establecida por diseño para todo empaquetado/render de vídeo.**
-- El vídeo debe corresponder al proyecto/revisión reales y regresar como evidencia asociada a la orden.
-- El agente debe abrir/analizar la evidencia antes de declarar correcta la animación.
-- Si la evidencia muestra movimiento incorrecto, frames faltantes, composición incorrecta u otro defecto, el agente vuelve a su Headless propio, corrige y repite el ciclo.
-
-La documentación debe distinguir siempre **A/B histórico como arquitectura general** de **A/B reservado permanentemente como vía especializada y obligatoria del empaquetador de vídeo**.
+El workflow de estrés que lanzaba múltiples B queda retirado. No debe recrearse ni documentarse como parte de la arquitectura.
 
 ## 6.4 Aislamiento del Headless propio del agente y transferencia al sistema
 
