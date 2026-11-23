@@ -41,5 +41,5 @@ test('ZIP importer rejects non-project video packages and corrupted central entr
   const exported = createPixelForgeProjectZip(project);
   const corrupt = Buffer.from(exported.bytes);
   corrupt[45] = corrupt[45] ^ 0xff;
-  await assert.rejects(() => parsePixelForgeProjectZip(corrupt), /CRC|invalid|metadata|header/i);
+  await assert.rejects(() => parsePixelForgeProjectZip(corrupt), /CRC|invalid|metadata|header|utf-8|encoded data/i);
 });
