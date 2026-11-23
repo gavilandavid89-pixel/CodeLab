@@ -224,7 +224,7 @@ function executeVectorModelAction(document, action) {
     const audit = auditVectorModel(candidate);
     if (!audit.ok) throw new TypeError('Vector model failed validation: ' + audit.issues.filter(issue => issue.severity === 'error').map(issue => issue.code).join(', '));
     for (const object of flatten(candidate.objects)) {
-      for (const key of ['fill', 'stroke', 'fontFamily']) {
+        const value = object[key];
         if (typeof value === 'string' && (/url\(\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
         if (typeof value === 'string' && (/url\\(\\s*(?!#)/i.test(value) || /(?:javascript|https?|file|data):/i.test(value))) {
           throw new TypeError('Vector styles cannot reference external resources or executable URLs.');
