@@ -55,6 +55,8 @@ function categoryFolder(category) {
     scene: 'escena', scenes: 'escena', environment: 'escena', escena: 'escena',
     object: 'objeto', objects: 'objeto', prop: 'objeto', objeto: 'objeto',
     effect: 'efecto', effects: 'efecto', efecto: 'efecto',
+    detail: 'detalle', details: 'detalle', detalle: 'detalle',
+    element: 'elemento', elements: 'elemento', elemento: 'elemento',
     part: 'parte', parts: 'parte', parte: 'parte',
   };
   return aliases[String(category || 'object').toLowerCase()] || safeSlug(category, 'objeto');
@@ -279,8 +281,10 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
       contentType: String(resource.contentType || 'application/octet-stream'),
     });
   }
-  if (Array.isArray(project.packageResources) && project.packageResources.length && !resources.length) {
-    throw new Error('The project declares external packageResources; provide their bytes in the resources option instead of silently dropping them.');
+  for (const declared of project.packageResources || []) {
+    if (!resourceDeclarations.some(resource => resource.path === declared.path)) {
+      throw new Error('The project declares a resource without supplied bytes: ' + String(declared.path || 'unknown'));
+    }
   }
 
   delete project.animation;
