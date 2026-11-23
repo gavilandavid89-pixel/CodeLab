@@ -2405,7 +2405,48 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, body);
       }
 
-            // Inline native artifact transport: the isolated Headless sends the .codelab
+            // Expiring capability URL for native artifacts produced by the ADMIN bridge.
+      // The 128-bit random artifact ID is the bearer capability; records are workspace- and kind-scoped.
+      const nativeArtifactDownload = (req.method === 'GET' || req.method === 'HEAD')
+        ? pathname.match(/^\\/api\\/agent\\/artifacts\\/([a-f0-9]{32})$/) : null;
+      if (nativeArtifactDownload) {
+        if (!accountPool) return sendJson(res, 503, { error: 'database_not_configured' });
+        try {
+          const admin = await accountPool.query("SELECT id FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1");
+          if (!admin.rowCount) return sendJson(res, 404, { error: 'artifact_not_found' });
+          const workspaceId = 'ws_local_' + String(admin.rows[0].id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+          const meta = await accountPool.query(
+            "SELECT filename,content_type,total_bytes,total_chunks,sha256 FROM public.codelab_agent_artifacts WHERE artifact_id=$1 AND workspace_id=$2 AND kind='codelab_project_png' AND expires_at>now()",
+            [nativeArtifactDownload[1], workspaceId]
+          );
+          if (!meta.rowCount) return sendJson(res, 404, { error: 'artifact_not_found_or_expired' });
+          const row = meta.rows[0];
+          const chunks = await accountPool.query('SELECT chunk_index,chunk_data,chunk_sha256 FROM public.codelab_agent_artifact_chunks WHERE artifact_id=$1 ORDER BY chunk_index', [nativeArtifactDownload[1]]);
+          if (chunks.rowCount !== Number(row.total_chunks)) return sendJson(res, 409, { error: 'artifact_incomplete' });
+          const parts = []; const hash = crypto.createHash('sha256'); let total = 0;
+          for (let i=0;i<chunks.rows.length;i++) {
+            const chunk = chunks.rows[i]; const bytes = Buffer.from(chunk.chunk_data);
+            const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+            if (Number(chunk.chunk_index)!==i || digest!==chunk.chunk_sha256) return sendJson(res, 422, { error: 'artifact_integrity_failed' });
+            hash.update(bytes); total += bytes.length; parts.push(bytes);
+          }
+          if (total!==Number(row.total_bytes) || hash.digest('hex')!==row.sha256) return sendJson(res, 422, { error: 'artifact_integrity_failed' });
+          const bytes = Buffer.concat(parts);
+          setSecurityHeaders(res);
+          res.writeHead(200, {
+            'Content-Type': row.content_type,
+            'Content-Length': String(bytes.length),
+            'Content-Disposition': 'attachment; filename="' + String(row.filename).replace(/["\\\\\\r\\n]/g, '_') + '"',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff'
+          });
+          return req.method === 'HEAD' ? res.end() : res.end(bytes);
+        } catch (error) {
+          return sendJson(res, 503, { error: String(error.message || 'artifact_download_failed') });
+        }
+      }
+
+      // Inline native artifact transport: the isolated Headless sends the .codelab
       // through CodeLab itself, never directly to Neon Storage/S3. The payload is
       // chunked at 1 MiB and the final commit enqueues the existing native import command.
       const inlineArtifactBegin = req.method === 'POST' && pathname === '/api/agent/bridge/artifacts';
