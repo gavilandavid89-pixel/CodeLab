@@ -1,24 +1,24 @@
 # CodeLab ↔ Neon: arquitectura y comunicación técnica extremo a extremo
 
-> **Documento de referencia del comportamiento implementado.** Se mantiene sincronizado con \`server.js\`, \`agent-bridge-worker.mjs\`, los módulos de persistencia/evidencia y las pruebas. Describe el código de esta rama; no implica que la rama esté desplegada en producción.
+> **Documento de referencia del comportamiento implementado.** Se mantiene sincronizado con `server.js`, `agent-bridge-worker.mjs`, los módulos de persistencia/evidencia y las pruebas. Describe el código de esta rama; no implica que la rama esté desplegada en producción.
 >
-> Última revisión: 2026-11-23. Rama de trabajo: \`fix/pixelforge-integrity-wave-1\`.
+> Última revisión: 2026-11-23. Rama de trabajo: `fix/pixelforge-integrity-wave-1`.
 
 ## 1. Resumen ejecutivo
 
 CodeLab es una aplicación Node.js que usa PostgreSQL de Neon para identidad/cuentas, órdenes del agente, proyectos persistentes, revisiones y metadatos de evidencia. El servidor web y el worker nativo son procesos distintos:
 
-- **\`server.js\`** atiende HTTP, gestiona autenticación/workspaces y mantiene un listener PostgreSQL que recibe notificaciones de nuevas órdenes.
-- **\`agent-bridge-worker.mjs\`** reclama órdenes persistidas, ejecuta acciones de forma programática, valida resultados y escribe estados/resultados/evidencias.
+- **`server.js`** atiende HTTP, gestiona autenticación/workspaces y mantiene un listener PostgreSQL que recibe notificaciones de nuevas órdenes.
+- **`agent-bridge-worker.mjs`** reclama órdenes persistidas, ejecuta acciones de forma programática, valida resultados y escribe estados/resultados/evidencias.
 - **Neon PostgreSQL** es la fuente de verdad durable. Una notificación solo despierta procesos; no contiene ni reemplaza la orden.
 - **Cloudflare/R2 u otro almacenamiento compatible**, cuando está configurado, transporta/almacena bytes grandes de evidencia. Neon conserva los metadatos y la relación con proyecto/revisión/evento.
 - **GitHub** versiona el código y ejecuta CI. No es el buzón de cada edición de proyecto ni el transporte normal de vídeos.
 
-El worker ya no consulta la cola cada 150 ms. Usa \`LISTEN/NOTIFY\` y espera bloqueado hasta recibir una señal. La consulta SQL se ejecuta al iniciar y después de cada despertar; no existe un intervalo de sondeo en reposo.
+El worker ya no consulta la cola cada 150 ms. Usa `LISTEN/NOTIFY` y espera bloqueado hasta recibir una señal. La consulta SQL se ejecuta al iniciar y después de cada despertar; no existe un intervalo de sondeo en reposo.
 
 ## 2. Diagrama de componentes
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A[Agente / controlador] -->|INSERT orden queued| DB[(Neon PostgreSQL)]
     A <-->|consulta estado, resultado y evidencia| API[API CodeLab]
@@ -34,12 +34,12 @@ flowchart TD
     DB -->|snapshot / resultados| A
     GH[GitHub: código y CI] -. versiona y prueba .-> S
     GH -. versiona y prueba .-> W
-\`\`\`
+```
 
 ### Límites importantes
 
 1. El listener del servidor no ejecuta el trabajo: solo recibe la notificación y arranca el worker.
-2. PostgreSQL NOTIFY es una señal efímera y de tamaño limitado. La fila en \`codelab_agent_commands\` es la orden durable.
+2. PostgreSQL NOTIFY es una señal efímera y de tamaño limitado. La fila en `codelab_agent_commands` es la orden durable.
 3. El worker no es una VM persistente ni un servicio independiente de hosting: es un proceso Node hijo del servidor CodeLab.
 4. El agente conserva la responsabilidad de decidir qué tarea nueva iniciar. El worker solo completa órdenes ya autorizadas y persistidas.
 5. Las capturas/vídeos son evidencia de inspección. El documento de proyecto y su revisión en Neon son la fuente canónica del estado editable.
@@ -48,88 +48,88 @@ flowchart TD
 
 ### 3.1 Variable de conexión
 
-La conexión se configura mediante \`DATABASE_URL\` en el entorno del servidor. Contiene el endpoint PostgreSQL, puerto, base, usuario y credencial. Nunca se debe imprimir la URL completa en logs ni incluirla en documentación.
+La conexión se configura mediante `DATABASE_URL` en el entorno del servidor. Contiene el endpoint PostgreSQL, puerto, base, usuario y credencial. Nunca se debe imprimir la URL completa en logs ni incluirla en documentación.
 
 El modo TLS se controla con:
 
 | Variable | Comportamiento |
 |---|---|
-| \`CODELAB_DATABASE_SSL\` ausente o distinto de \`disable\` | \`ssl: { rejectUnauthorized: false }\` |
-| \`CODELAB_DATABASE_SSL=disable\` | TLS desactivado; reservado para entornos locales de prueba que lo necesiten |
+| `CODELAB_DATABASE_SSL` ausente o distinto de `disable` | `ssl: { rejectUnauthorized: false }` |
+| `CODELAB_DATABASE_SSL=disable` | TLS desactivado; reservado para entornos locales de prueba que lo necesiten |
 
-**Nota de seguridad:** \`rejectUnauthorized: false\` cifra la conexión TLS, pero no valida la cadena/certificado del servidor. No equivale a verificación estricta de identidad del servidor. Antes de cambiarlo en producción hay que confirmar la compatibilidad de certificados/CA del proveedor y probarlo en CI/hosting.
+**Nota de seguridad:** `rejectUnauthorized: false` cifra la conexión TLS, pero no valida la cadena/certificado del servidor. No equivale a verificación estricta de identidad del servidor. Antes de cambiarlo en producción hay que confirmar la compatibilidad de certificados/CA del proveedor y probarlo en CI/hosting.
 
 ### 3.2 Pool del servidor
 
-En \`server.js\`:
+En `server.js`:
 
-- Driver: paquete \`pg\` (Node PostgreSQL).
-- Objeto: \`accountPool\`.
+- Driver: paquete `pg` (Node PostgreSQL).
+- Objeto: `accountPool`.
 - Máximo: 5 conexiones.
-- \`idleTimeoutMillis\`: 30 000 ms.
-- \`connectionTimeoutMillis\`: 10 000 ms.
-- Usa \`DATABASE_URL\` y la constante \`DATABASE_SSL\`.
+- `idleTimeoutMillis`: 30 000 ms.
+- `connectionTimeoutMillis`: 10 000 ms.
+- Usa `DATABASE_URL` y la constante `DATABASE_SSL`.
 
 El pool sirve las operaciones SQL del servidor: cuentas, autenticación/workspaces, snapshots del bridge y endpoints que consultan o actualizan datos persistentes.
 
 ### 3.3 Pool del worker
 
-En \`agent-bridge-worker.mjs\`:
+En `agent-bridge-worker.mjs`:
 
-- Driver: \`pg.Pool\`.
-- Usa la misma \`DATABASE_URL\` y el mismo criterio \`CODELAB_DATABASE_SSL\`.
+- Driver: `pg.Pool`.
+- Usa la misma `DATABASE_URL` y el mismo criterio `CODELAB_DATABASE_SSL`.
 - Máximo: 2 conexiones.
-- \`idleTimeoutMillis\`: 15 000 ms.
-- \`connectionTimeoutMillis\`: 10 000 ms.
+- `idleTimeoutMillis`: 15 000 ms.
+- `connectionTimeoutMillis`: 10 000 ms.
 
 El pool del worker se usa para reclamar órdenes, mantener heartbeats durante una ejecución, leer/guardar proyectos y escribir resultados/estado.
 
 ### 3.4 Conexiones dedicadas para LISTEN
 
-PostgreSQL \`LISTEN\` debe permanecer asociado a una conexión backend estable. Por eso no se usa una conexión prestada y devuelta al pool para mantener la suscripción.
+PostgreSQL `LISTEN` debe permanecer asociado a una conexión backend estable. Por eso no se usa una conexión prestada y devuelta al pool para mantener la suscripción.
 
 Hay dos clientes dedicados:
 
-- En el servidor: \`pg.Client\`, aplicación \`codelab-agent-bridge-wake-listener\`.
-- En el worker: \`pg.Client\`, aplicación \`codelab-agent-bridge-command-listener\`.
+- En el servidor: `pg.Client`, aplicación `codelab-agent-bridge-wake-listener`.
+- En el worker: `pg.Client`, aplicación `codelab-agent-bridge-command-listener`.
 
-Ambos escuchan el canal \`codelab_agent_bridge_wake\`. El primero arranca el proceso worker si no existe; el segundo despierta el bucle del worker que ya está activo.
+Ambos escuchan el canal `codelab_agent_bridge_wake`. El primero arranca el proceso worker si no existe; el segundo despierta el bucle del worker que ya está activo.
 
 ### 3.5 Endpoint pooled frente a endpoint directo
 
-La variable \`DATABASE_URL\` puede apuntar a un hostname Neon con \`-pooler\`. Los pools SQL normales pueden usar ese endpoint pooled. Para los clientes dedicados de LISTEN, el código ejecuta \`databaseUrlForWakeListener()\` / \`directDatabaseUrl()\`: si el hostname contiene \`-pooler.\`, reemplaza ese fragmento por \`.\` y conserva el resto de la URL.
+La variable `DATABASE_URL` puede apuntar a un hostname Neon con `-pooler`. Los pools SQL normales pueden usar ese endpoint pooled. Para los clientes dedicados de LISTEN, el código ejecuta `databaseUrlForWakeListener()` / `directDatabaseUrl()`: si el hostname contiene `-pooler.`, reemplaza ese fragmento por `.` y conserva el resto de la URL.
 
 Ejemplo conceptual (no usar credenciales reales):
 
-- pooled: \`ep-example-pooler.region.aws.neon.tech\`
-- directo: \`ep-example.region.aws.neon.tech\`
+- pooled: `ep-example-pooler.region.aws.neon.tech`
+- directo: `ep-example.region.aws.neon.tech`
 
-La conversión se hace solo para los clientes LISTEN; no modifica \`DATABASE_URL\` ni los pools normales. Debe mantenerse coordinada entre servidor y worker.
+La conversión se hace solo para los clientes LISTEN; no modifica `DATABASE_URL` ni los pools normales. Debe mantenerse coordinada entre servidor y worker.
 
 ## 4. Esquema del buzón de órdenes
 
-La tabla central es \`public.codelab_agent_commands\`.
+La tabla central es `public.codelab_agent_commands`.
 
 | Columna | Tipo / propósito |
 |---|---|
-| \`command_id\` | \`text\`, clave primaria e identificador único de orden |
-| \`workspace_id\` | workspace propietario/objetivo |
-| \`action\` | operación autorizada a ejecutar |
-| \`payload\` | \`jsonb\`, argumentos de la operación |
-| \`status\` | estado del ciclo de vida |
-| \`result\` | \`jsonb\`, salida, error, referencias y validación |
-| \`proposal\` | propuesta aislada cuando requiere aprobación |
-| \`proposal_token\` | token de aprobación temporal |
-| \`created_at\`, \`updated_at\` | trazabilidad temporal |
-| \`started_at\`, \`finished_at\` | inicio y fin |
-| \`expires_at\` | vencimiento de la orden |
+| `command_id` | `text`, clave primaria e identificador único de orden |
+| `workspace_id` | workspace propietario/objetivo |
+| `action` | operación autorizada a ejecutar |
+| `payload` | `jsonb`, argumentos de la operación |
+| `status` | estado del ciclo de vida |
+| `result` | `jsonb`, salida, error, referencias y validación |
+| `proposal` | propuesta aislada cuando requiere aprobación |
+| `proposal_token` | token de aprobación temporal |
+| `created_at`, `updated_at` | trazabilidad temporal |
+| `started_at`, `finished_at` | inicio y fin |
+| `expires_at` | vencimiento de la orden |
 
-Estados reconocidos por el worker: \`queued\`, \`running\`, \`awaiting_approval\`, \`succeeded\`, \`rejected\`, \`failed\`, \`expired\`.
+Estados reconocidos por el worker: `queued`, `running`, `awaiting_approval`, `succeeded`, `rejected`, `failed`, `expired`.
 
 Índices relevantes:
 
-- \`(status, created_at)\` parcial para filas \`queued\`.
-- \`(workspace_id, created_at DESC)\` para historial por workspace.
+- `(status, created_at)` parcial para filas `queued`.
+- `(workspace_id, created_at DESC)` para historial por workspace.
 
 La lista exacta de acciones permitidas está protegida por una constraint CHECK que se crea/actualiza desde el código. Al agregar una acción hay que actualizar la migración/constraint, el dispatcher del worker, validaciones, documentación y pruebas.
 
@@ -137,16 +137,16 @@ La lista exacta de acciones permitidas está protegida por una constraint CHECK 
 
 ### 5.1 Trigger transaccional
 
-Durante \`ensureAgentBridgeWakeListener()\`, \`server.js\` crea/asegura:
+Durante `ensureAgentBridgeWakeListener()`, `server.js` crea/asegura:
 
-- \`codelab_agent_commands\`
-- \`codelab_agent_bridge_state\`
-- función PostgreSQL \`codelab_agent_bridge_wake()\`
-- trigger \`codelab_agent_bridge_wake_trigger\`
+- `codelab_agent_commands`
+- `codelab_agent_bridge_state`
+- función PostgreSQL `codelab_agent_bridge_wake()`
+- trigger `codelab_agent_bridge_wake_trigger`
 
-El trigger es \`AFTER INSERT OR UPDATE OF status\` sobre \`codelab_agent_commands\`. Si \`NEW.status = 'queued'\`, ejecuta:
+El trigger es `AFTER INSERT OR UPDATE OF status` sobre `codelab_agent_commands`. Si `NEW.status = 'queued'`, ejecuta:
 
-\`\`\`sql
+```sql
 SELECT pg_notify(
   'codelab_agent_bridge_wake',
   json_build_object(
@@ -154,7 +154,7 @@ SELECT pg_notify(
     'workspaceId', NEW.workspace_id
   )::text
 );
-\`\`\`
+```
 
 PostgreSQL entrega la notificación después de confirmar la transacción. El payload de NOTIFY es una pista compacta; el contenido completo sigue en la fila JSONB.
 
@@ -162,23 +162,23 @@ PostgreSQL entrega la notificación después de confirmar la transacción. El pa
 
 Al iniciar el servidor, este arma el listener dedicado con:
 
-\`\`\`sql
+```sql
 LISTEN codelab_agent_bridge_wake;
-\`\`\`
+```
 
-Cuando recibe una notificación válida, llama \`startAgentBridge()\`. Esa función hace \`spawn(process.execPath, [workerPath])\` y evita crear un segundo hijo si \`agentBridgeWorker\` ya existe.
+Cuando recibe una notificación válida, llama `startAgentBridge()`. Esa función hace `spawn(process.execPath, [workerPath])` y evita crear un segundo hijo si `agentBridgeWorker` ya existe.
 
-El servidor no inicia el worker incondicionalmente al arrancar. Mantiene armado el listener y levanta el worker cuando una orden queued lo requiere. También existe la ruta autenticada \`POST /api/agent/bridge/ensure\` (GET está soportado como fallback) para un arranque explícito controlado; no es un cron ni un mecanismo de polling.
+El servidor no inicia el worker incondicionalmente al arrancar. Mantiene armado el listener y levanta el worker cuando una orden queued lo requiere. También existe la ruta autenticada `POST /api/agent/bridge/ensure` (GET está soportado como fallback) para un arranque explícito controlado; no es un cron ni un mecanismo de polling.
 
 ### 5.3 Reconciliación al armar/reconectar
 
-NOTIFY no es una cola durable y una notificación emitida antes de que LISTEN quede activo puede perderse. Por eso, después de activar LISTEN, el servidor consulta la tabla por cualquier orden no expirada con \`status='queued'\` y arranca el worker si encuentra una.
+NOTIFY no es una cola durable y una notificación emitida antes de que LISTEN quede activo puede perderse. Por eso, después de activar LISTEN, el servidor consulta la tabla por cualquier orden no expirada con `status='queued'` y arranca el worker si encuentra una.
 
-La reconciliación **no debe filtrar por \`payload.wake\`**: todas las filas queued representan trabajo pendiente, tanto si llevan ese indicador como si no. El código actual aplica esta regla.
+La reconciliación **no debe filtrar por `payload.wake`**: todas las filas queued representan trabajo pendiente, tanto si llevan ese indicador como si no. El código actual aplica esta regla.
 
 ### 5.4 Diagrama de secuencia
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant Agent as Agente
     participant DB as Neon PostgreSQL
@@ -195,31 +195,31 @@ sequenceDiagram
     Worker->>Worker: ejecutar / validar / generar evidencia
     Worker->>DB: guardar result/status/evidence refs
     DB-->>Agent: agente consulta snapshot/resultado
-\`\`\`
+```
 
 ## 6. Ciclo interno del worker (sin polling de reposo)
 
 Al iniciar, el worker:
 
-1. valida que exista \`DATABASE_URL\`;
+1. valida que exista `DATABASE_URL`;
 2. crea su pool;
 3. asegura el esquema del buzón y sus índices/constraints;
-4. resuelve la cuenta ADMIN y su workspace \`ws_local_<id>\`;
-5. asegura \`codelab_agent_bridge_state\`;
-6. registra estado \`running\`;
-7. abre su propio \`LISTEN codelab_agent_bridge_wake\`;
-8. configura el workspace PixelForge según \`PIXELFORGE_GUEST_MODE\`;
+4. resuelve la cuenta ADMIN y su workspace `ws_local_<id>`;
+5. asegura `codelab_agent_bridge_state`;
+6. registra estado `running`;
+7. abre su propio `LISTEN codelab_agent_bridge_wake`;
+8. configura el workspace PixelForge según `PIXELFORGE_GUEST_MODE`;
 9. entra en el bucle de consumo.
 
 En cada iteración:
 
-1. guarda un contador local \`wakeVersion\`;
-2. llama \`claimCommand()\` una vez;
+1. guarda un contador local `wakeVersion`;
+2. llama `claimCommand()` una vez;
 3. si no hay orden, espera una notificación (Promise resuelta por el evento PostgreSQL);
 4. si llegó una notificación entre el claim y el inicio de espera, el contador detecta el cambio y evita perder el wake;
 5. si hay orden, la procesa y vuelve al claim.
 
-No hay \`POLL_MS\`, \`setInterval\` de sondeo de cola ni SELECT repetido cada 150 ms. Un worker ocioso permanece esperando en LISTEN. Los únicos temporizadores relacionados con actividad son:
+No hay `POLL_MS`, `setInterval` de sondeo de cola ni SELECT repetido cada 150 ms. Un worker ocioso permanece esperando en LISTEN. Los únicos temporizadores relacionados con actividad son:
 - heartbeat de una orden que está ejecutándose: cada 30 segundos;
 - reconexión del listener del worker si se pierde: espera de 5 segundos antes de reintentar;
 - espera corta de recuperación tras errores del bucle de mailbox: 2,5 segundos.
@@ -228,25 +228,25 @@ Esos temporizadores no son sondeo normal de órdenes ni keep-alive del worker.
 
 ### 6.1 Reclamo atómico
 
-\`claimCommand()\` obtiene una conexión del pool y abre una transacción:
+`claimCommand()` obtiene una conexión del pool y abre una transacción:
 
-1. marca \`expired\` las órdenes queued cuyo \`expires_at <= now()\`;
-2. recupera órdenes \`running\` abandonadas que todavía no expiraron (umbral general de 3 minutos; para exportación de vídeo, 10 minutos; \`codelab_validate\` se excluye de esa recuperación);
-3. selecciona una fila queued no expirada del workspace ADMIN, ordenada por \`created_at\`, con \`FOR UPDATE SKIP LOCKED LIMIT 1\`;
-4. si no hay fila, confirma y devuelve \`null\`;
-5. si la hay, actualiza \`status='running'\`, \`started_at\` y \`updated_at\`, confirma y devuelve la orden.
+1. marca `expired` las órdenes queued cuyo `expires_at <= now()`;
+2. recupera órdenes `running` abandonadas que todavía no expiraron (umbral general de 3 minutos; para exportación de vídeo, 10 minutos; `codelab_validate` se excluye de esa recuperación);
+3. selecciona una fila queued no expirada del workspace ADMIN, ordenada por `created_at`, con `FOR UPDATE SKIP LOCKED LIMIT 1`;
+4. si no hay fila, confirma y devuelve `null`;
+5. si la hay, actualiza `status='running'`, `started_at` y `updated_at`, confirma y devuelve la orden.
 
-\`FOR UPDATE SKIP LOCKED\` evita que consumidores concurrentes reclamen la misma fila.
+`FOR UPDATE SKIP LOCKED` evita que consumidores concurrentes reclamen la misma fila.
 
 ### 6.2 Heartbeat y recuperación
 
-Mientras se ejecuta una orden, se actualiza \`updated_at\` cada 30 segundos. Si el proceso desaparece y el heartbeat deja de avanzar, la lógica de recuperación puede volver a encolar la orden según los umbrales anteriores, siempre que no haya expirado. La expiración inicial por defecto es de 15 minutos; las rutas de creación pueden establecer su propia expiración dentro de las reglas de la aplicación.
+Mientras se ejecuta una orden, se actualiza `updated_at` cada 30 segundos. Si el proceso desaparece y el heartbeat deja de avanzar, la lógica de recuperación puede volver a encolar la orden según los umbrales anteriores, siempre que no haya expirado. La expiración inicial por defecto es de 15 minutos; las rutas de creación pueden establecer su propia expiración dentro de las reglas de la aplicación.
 
 ### 6.3 Ejecución y validación
 
-El dispatcher del worker enruta \`action\` a operaciones específicas: estado, proyectos PixelForge, propuestas/aprobaciones, importación/inspección de proyectos CodeLab, edición de código, captura PNG/vídeo, UI programática y operaciones de validación. Tras procesar, puede ejecutar \`validateAfterCommand()\`; una validación fatal puede marcar el resultado como fallido aunque la acción inicial haya devuelto salida.
+El dispatcher del worker enruta `action` a operaciones específicas: estado, proyectos PixelForge, propuestas/aprobaciones, importación/inspección de proyectos CodeLab, edición de código, captura PNG/vídeo, UI programática y operaciones de validación. Tras procesar, puede ejecutar `validateAfterCommand()`; una validación fatal puede marcar el resultado como fallido aunque la acción inicial haya devuelto salida.
 
-Para operaciones que requieren aprobación, la propuesta se prepara en memoria, calcula un diff y se guarda como \`awaiting_approval\`; el proyecto persistido no se modifica hasta que se aprueba con token vigente y revisión base coincidente.
+Para operaciones que requieren aprobación, la propuesta se prepara en memoria, calcula un diff y se guarda como `awaiting_approval`; el proyecto persistido no se modifica hasta que se aprueba con token vigente y revisión base coincidente.
 
 ### 6.4 Errores y reconexión
 
@@ -258,37 +258,37 @@ Para operaciones que requieren aprobación, la propuesta se prepara en memoria, 
 
 ## 7. Señal de estado del bridge
 
-Tabla: \`public.codelab_agent_bridge_state\`.
+Tabla: `public.codelab_agent_bridge_state`.
 
 Campos:
 
-- \`state_id\`: identificador lógico, actualmente \`native-bridge:<workspaceId>\`.
-- \`workspace_id\`: workspace ADMIN.
-- \`state\`: \`starting\`, \`running\`, \`sleeping\`, \`stopping\` o \`error\`.
-- \`wake_required\`: indica que hace falta reactivar el worker para continuar.
-- \`wake_reason\`: razón de la señal.
-- \`signal_version\`: contador monotónico incrementado en cada escritura.
-- \`last_signal_at\`, \`updated_at\`: tiempos de actualización.
-- \`metadata\`: JSON con PID/host/source y, cuando corresponde, commandId, status, revisión y resumen.
+- `state_id`: identificador lógico, actualmente `native-bridge:<workspaceId>`.
+- `workspace_id`: workspace ADMIN.
+- `state`: `starting`, `running`, `sleeping`, `stopping` o `error`.
+- `wake_required`: indica que hace falta reactivar el worker para continuar.
+- `wake_reason`: razón de la señal.
+- `signal_version`: contador monotónico incrementado en cada escritura.
+- `last_signal_at`, `updated_at`: tiempos de actualización.
+- `metadata`: JSON con PID/host/source y, cuando corresponde, commandId, status, revisión y resumen.
 
-Al iniciar, el worker escribe \`running\` y \`wake_required=false\`. Al completar una orden, escribe estado y resumen con \`wake_required=false\`. Al recibir SIGTERM/SIGINT o un error fatal, intenta escribir \`sleeping\`, \`wake_required=true\` y motivo antes de cerrar conexiones.
+Al iniciar, el worker escribe `running` y `wake_required=false`. Al completar una orden, escribe estado y resumen con `wake_required=false`. Al recibir SIGTERM/SIGINT o un error fatal, intenta escribir `sleeping`, `wake_required=true` y motivo antes de cerrar conexiones.
 
-**No confundir estado lógico con proceso:** \`sleeping\` significa que el worker terminó y dejó una señal para reactivarlo; cuando el worker está ocioso esperando LISTEN sigue siendo un proceso vivo y su estado lógico permanece running.
+**No confundir estado lógico con proceso:** `sleeping` significa que el worker terminó y dejó una señal para reactivarlo; cuando el worker está ocioso esperando LISTEN sigue siendo un proceso vivo y su estado lógico permanece running.
 
 El agente debe consultar el snapshot antes de reintentar. Nunca debe duplicar una orden que siga queued/running/awaiting_approval.
 
 ## 8. Endpoints de control del agente
 
-### \`POST /api/agent/bridge/ensure\`
+### `POST /api/agent/bridge/ensure`
 
-- Autenticación: header \`x-codelab-agent-bridge-token\` o parámetro \`token\` en fallback.
-- Secreto esperado: \`CODELAB_AGENT_BRIDGE_CONTROL_SECRET\`.
+- Autenticación: header `x-codelab-agent-bridge-token` o parámetro `token` en fallback.
+- Secreto esperado: `CODELAB_AGENT_BRIDGE_CONTROL_SECRET`.
 - Inicia el worker si no existe; si ya está activo, devuelve su estado.
 - GET también está aceptado como fallback de transporte.
 - Respuestas no cacheables.
 - No reemplaza el disparo automático por NOTIFY al insertar una orden.
 
-### \`GET /api/agent/bridge/state\`
+### `GET /api/agent/bridge/state`
 
 Devuelve un snapshot sin caché que incluye:
 - estado y señal del bridge;
@@ -302,23 +302,23 @@ El endpoint requiere el mismo token de control. Los resultados pueden contener p
 
 ## 9. Workspace interno y ADMIN
 
-El worker resuelve la fila \`codelab_accounts\` donde \`username='ADMIN'\` y \`role='admin'\`. Construye el workspace administrativo como \`ws_local_<id normalizado>\`. La persistencia de los proyectos que opera el bridge está asociada a ese workspace o al workspace PixelForge configurado para modo invitado.
+El worker resuelve la fila `codelab_accounts` donde `username='ADMIN'` y `role='admin'`. Construye el workspace administrativo como `ws_local_<id normalizado>`. La persistencia de los proyectos que opera el bridge está asociada a ese workspace o al workspace PixelForge configurado para modo invitado.
 
-Para acceder a la API interna del servidor, el worker llama endpoints locales de CodeLab y firma el acceso con el secreto \`CODELAB_WORKSPACE_SECRET\` mediante el mecanismo HMAC del workspace. Es una comunicación proceso-hijo → servidor local; no es una llamada pública a Internet. No escribir el secreto ni tokens firmados en logs.
+Para acceder a la API interna del servidor, el worker llama endpoints locales de CodeLab y firma el acceso con el secreto `CODELAB_WORKSPACE_SECRET` mediante el mecanismo HMAC del workspace. Es una comunicación proceso-hijo → servidor local; no es una llamada pública a Internet. No escribir el secreto ni tokens firmados en logs.
 
 Las sesiones headless temporales de pruebas no deben confundirse con el workspace ADMIN persistido. Para declarar que un cambio quedó guardado, hay que volver a leer el proyecto desde el servidor y comprobar revisión/hash.
 
 ## 10. Persistencia de proyectos PixelForge
 
-Tabla principal: \`codelab_pixelforge_projects\`.
+Tabla principal: `codelab_pixelforge_projects`.
 
 Campos usados por el worker incluyen:
-- \`workspace_id\`, \`project_id\`, \`name\`, \`width\`, \`height\`;
-- \`project\` JSONB con documento editable;
-- \`byte_size\`;
-- \`server_revision\`;
-- \`content_sha256\`;
-- \`updated_at\`, \`last_opened_at\`.
+- `workspace_id`, `project_id`, `name`, `width`, `height`;
+- `project` JSONB con documento editable;
+- `byte_size`;
+- `server_revision`;
+- `content_sha256`;
+- `updated_at`, `last_opened_at`.
 
 El worker valida dimensiones y límites de tamaño/proyectos, serializa el documento, calcula SHA-256 y guarda en transacción. Las escrituras críticas usan advisory lock por workspace y verifican la revisión esperada. Si la revisión base ya no coincide, devuelve conflicto en vez de sobrescribir cambios concurrentes.
 
@@ -326,7 +326,7 @@ La revisión y el hash son la referencia de integridad; una imagen/vídeo no sus
 
 ## 11. Evidencia visual y almacenamiento de objetos
 
-El módulo \`neon-pixelforge-evidence.js\` registra eventos de cambio/evidencia en \`codelab_pixelforge_change_events\`. El evento asocia workspace, proyecto, revisión, tipo de cambio, estado, metadata y referencias de imagen/vídeo. El resultado de la orden puede incluir \`evidenceEventId\`.
+El módulo `neon-pixelforge-evidence.js` registra eventos de cambio/evidencia en `codelab_pixelforge_change_events`. El evento asocia workspace, proyecto, revisión, tipo de cambio, estado, metadata y referencias de imagen/vídeo. El resultado de la orden puede incluir `evidenceEventId`.
 
 Cuando las variables de almacenamiento están configuradas, el módulo puede subir el objeto binario a Cloudflare/R2 mediante URL firmada, o a un endpoint S3-compatible según la configuración. Neon guarda la referencia (object key/URL, estado, MIME y metadata). En modos de respaldo, puede persistir bytes en columnas de la tabla, por lo que no debe asumirse que todos los despliegues usan exclusivamente R2.
 
@@ -343,7 +343,7 @@ No afirmar que Cloudflare está activo solo porque el código soporte sus variab
 El polling de 150 ms fue eliminado porque hacía que el worker ejecutara repetidamente transacciones/consultas incluso sin órdenes. El diseño actual está basado en eventos.
 
 Otras operaciones todavía pueden transferir muchos bytes:
-- \`GET /api/agent/bridge/state\` incluye las últimas 20 órdenes con payload/result y las últimas evidencias; un resultado que incluya datos grandes aumenta transferencia.
+- `GET /api/agent/bridge/state` incluye las últimas 20 órdenes con payload/result y las últimas evidencias; un resultado que incluya datos grandes aumenta transferencia.
 - Los endpoints que devuelven un proyecto PixelForge pueden incluir el JSON completo, capas, frames y datos raster codificados.
 - Las rutas de workspace/código pueden devolver contenido completo de proyectos.
 - La carga/descarga de vídeo e imágenes tiene un volumen proporcional al tamaño del artefacto.
@@ -362,18 +362,18 @@ La retirada del polling elimina una fuente constante de consultas, pero no demue
 
 | Variable | Uso |
 |---|---|
-| \`DATABASE_URL\` | conexión PostgreSQL principal |
-| \`CODELAB_DATABASE_SSL\` | TLS por defecto; \`disable\` solo para pruebas locales |
-| \`CODELAB_AGENT_BRIDGE_ENABLED\` | si vale \`0\`, bloquea el arranque del worker |
-| \`CODELAB_AGENT_BRIDGE_CONTROL_SECRET\` | protege endpoints ensure/state |
-| \`CODELAB_WORKSPACE_SECRET\` | firma HMAC de API interna de workspace |
-| \`PIXELFORGE_GUEST_MODE\` | determina si el worker opera el workspace PixelForge guest o el workspace ADMIN |
-| \`NEON_FUNCTIONS_ENABLED\` | habilita operación de Neon Functions permitida |
-| \`NEON_FUNCTIONS_URL\` | destino de función, validado contra allowlist del código |
-| \`NEON_FUNCTIONS_EXEC_SECRET\` | autenticación de la invocación permitida |
-| \`CLOUDFLARE_EVIDENCE_BASE_URL\` | base del endpoint de evidencia Cloudflare cuando se configura |
-| \`CLOUDFLARE_EVIDENCE_SIGNING_SECRET\` | firma de operaciones de evidencia |
-| \`NEON_STORAGE_ENDPOINT\` y credenciales S3 | almacenamiento S3-compatible alternativo, si está configurado |
+| `DATABASE_URL` | conexión PostgreSQL principal |
+| `CODELAB_DATABASE_SSL` | TLS por defecto; `disable` solo para pruebas locales |
+| `CODELAB_AGENT_BRIDGE_ENABLED` | si vale `0`, bloquea el arranque del worker |
+| `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` | protege endpoints ensure/state |
+| `CODELAB_WORKSPACE_SECRET` | firma HMAC de API interna de workspace |
+| `PIXELFORGE_GUEST_MODE` | determina si el worker opera el workspace PixelForge guest o el workspace ADMIN |
+| `NEON_FUNCTIONS_ENABLED` | habilita operación de Neon Functions permitida |
+| `NEON_FUNCTIONS_URL` | destino de función, validado contra allowlist del código |
+| `NEON_FUNCTIONS_EXEC_SECRET` | autenticación de la invocación permitida |
+| `CLOUDFLARE_EVIDENCE_BASE_URL` | base del endpoint de evidencia Cloudflare cuando se configura |
+| `CLOUDFLARE_EVIDENCE_SIGNING_SECRET` | firma de operaciones de evidencia |
+| `NEON_STORAGE_ENDPOINT` y credenciales S3 | almacenamiento S3-compatible alternativo, si está configurado |
 
 Los valores secretos nunca se documentan. Para variables adicionales de la aplicación, consultar el bloque de configuración de README y el código que las consume.
 
@@ -393,11 +393,11 @@ Los valores secretos nunca se documentan. Para variables adicionales de la aplic
 
 Cambios en el bridge deben cubrir, como mínimo:
 
-1. el servidor arma \`LISTEN codelab_agent_bridge_wake\`;
+1. el servidor arma `LISTEN codelab_agent_bridge_wake`;
 2. INSERT/UPDATE a queued produce NOTIFY después del commit;
 3. cualquier queued no expirada se detecta en la reconciliación de arranque;
 4. el worker usa el endpoint directo y el mismo criterio SSL del servidor;
-5. el worker reclama con transacción y \`SKIP LOCKED\`;
+5. el worker reclama con transacción y `SKIP LOCKED`;
 6. el worker espera LISTEN sin intervalo de polling;
 7. una notificación que llega justo antes de dormir no se pierde (contador de versión);
 8. la reconexión vuelve a reconciliar la cola durable;
@@ -411,8 +411,8 @@ Pruebas CI no equivalen a prueba en Render/Neon. Para una prueba real extremo a 
 Cada cambio que afecte a conexión, pool, TLS, listener, trigger, cola, acciones, estados, reconexión, API de control, workspace, persistencia, evidencia, storage o límites de transferencia debe actualizar este documento **en el mismo cambio de código**.
 
 Además:
-- actualizar el resumen de arquitectura de \`README.md\`;
-- actualizar \`docs/CODELAB-NEON-ARCHITECTURE.md\` si cambia persistencia/animación;
+- actualizar el resumen de arquitectura de `README.md`;
+- actualizar `docs/CODELAB-NEON-ARCHITECTURE.md` si cambia persistencia/animación;
 - actualizar pruebas/contratos junto con comportamiento;
 - revisar el diagrama antes de presentar la implementación al usuario;
 - indicar rama, commit y si se probó localmente, en CI o en producción;
@@ -423,7 +423,7 @@ Además:
 
 El sistema no es solo el bridge. La aplicación se divide en capas que cooperan:
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
     Browser[Navegador / UI pública] -->|HTTPS| HTTP[Node.js http server: server.js]
     HTTP --> Static[public/: HTML, CSS, JS]
@@ -442,57 +442,57 @@ flowchart TB
     Pixel --> Evidence[neon-pixelforge-evidence.js]
     Evidence --> DB
     Evidence --> Storage[Cloudflare R2 / S3 opcional]
-\`\`\`
+```
 
 ### 17.1 Servidor HTTP y frontend
 
-- El proceso de entrada es Node.js y usa el módulo nativo \`http.createServer\` en \`server.js\`; no es una aplicación Express.
-- El servidor enruta solicitudes \`/api/*\`, aplica límites generales, autenticación/autorización por ruta y respuestas JSON con \`Cache-Control: no-store\`.
-- Los archivos de interfaz se sirven desde \`public/\`. La UI se comunica con el backend por same-origin HTTP(S).
-- Se definen encabezados de seguridad como \`X-Content-Type-Options\`, \`X-Frame-Options\`, \`Referrer-Policy\`, \`Permissions-Policy\` y HSTS en producción.
-- \`CODELAB_MAX_BODY_BYTES\` limita el tamaño del cuerpo entrante (default documentado: 10 MiB). Las rutas pueden aplicar límites más estrictos por tipo de dato.
+- El proceso de entrada es Node.js y usa el módulo nativo `http.createServer` en `server.js`; no es una aplicación Express.
+- El servidor enruta solicitudes `/api/*`, aplica límites generales, autenticación/autorización por ruta y respuestas JSON con `Cache-Control: no-store`.
+- Los archivos de interfaz se sirven desde `public/`. La UI se comunica con el backend por same-origin HTTP(S).
+- Se definen encabezados de seguridad como `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` y HSTS en producción.
+- `CODELAB_MAX_BODY_BYTES` limita el tamaño del cuerpo entrante (default documentado: 10 MiB). Las rutas pueden aplicar límites más estrictos por tipo de dato.
 - El límite general por IP y el limitador dedicado de IA son independientes. La exención del límite general para ADMIN requiere una sesión local validada con rol admin; no acepta un header o parámetro enviado por el cliente como prueba de admin.
 
 ### 17.2 Autenticación, sesiones y workspaces
 
 - Proveedores OAuth implementados: GitHub y Google.
-- El inicio OAuth genera \`state\` y lo valida en el callback contra cookie HttpOnly de corta duración.
+- El inicio OAuth genera `state` y lo valida en el callback contra cookie HttpOnly de corta duración.
 - Tras callback válido, CodeLab crea/asegura el workspace del usuario y crea una sesión persistida.
-- La cookie de sesión se llama \`codelab_sid\`, es HttpOnly, SameSite=Lax y Secure cuando la solicitud es HTTPS; su duración se basa en \`SESSION_TTL_MS\`.
-- Los workspaces OAuth son deterministas por proveedor/usuario, por ejemplo \`ws_github_<id>\` o \`ws_google_<id>\`, de modo que el usuario puede recuperar su espacio desde otro dispositivo.
-- La API workspace autoriza mediante token HMAC \`x-workspace-token\` o por la sesión autenticada propietaria del workspace. La comparación de token se hace con \`timingSafeEqual\`.
-- Los IDs OAuth reservados no pueden ser ocupados anónimamente. Las escrituras validan estructura de proyectos y \`baseRevision\`; un conflicto devuelve HTTP 409 y no sobrescribe el estado nuevo.
-- La cuenta local ADMIN es distinta de la identidad OAuth de un usuario. El worker resuelve explícitamente \`codelab_accounts.username='ADMIN'\` y \`role='admin'\`.
+- La cookie de sesión se llama `codelab_sid`, es HttpOnly, SameSite=Lax y Secure cuando la solicitud es HTTPS; su duración se basa en `SESSION_TTL_MS`.
+- Los workspaces OAuth son deterministas por proveedor/usuario, por ejemplo `ws_github_<id>` o `ws_google_<id>`, de modo que el usuario puede recuperar su espacio desde otro dispositivo.
+- La API workspace autoriza mediante token HMAC `x-workspace-token` o por la sesión autenticada propietaria del workspace. La comparación de token se hace con `timingSafeEqual`.
+- Los IDs OAuth reservados no pueden ser ocupados anónimamente. Las escrituras validan estructura de proyectos y `baseRevision`; un conflicto devuelve HTTP 409 y no sobrescribe el estado nuevo.
+- La cuenta local ADMIN es distinta de la identidad OAuth de un usuario. El worker resuelve explícitamente `codelab_accounts.username='ADMIN'` y `role='admin'`.
 
 ### 17.3 Persistencia del workspace web
 
-La tabla principal es \`codelab_workspace_states\`; guarda workspace_id, revision, state JSONB, owner y updated_at. Cuando no hay pool PostgreSQL configurado, el servidor puede usar archivos locales dentro de \`CODELAB_DATA_DIR\` como modo de desarrollo/fallback.
+La tabla principal es `codelab_workspace_states`; guarda workspace_id, revision, state JSONB, owner y updated_at. Cuando no hay pool PostgreSQL configurado, el servidor puede usar archivos locales dentro de `CODELAB_DATA_DIR` como modo de desarrollo/fallback.
 
 Con PostgreSQL activo:
-- \`readState()\` intenta recuperar el estado de la tabla;
+- `readState()` intenta recuperar el estado de la tabla;
 - si existe un archivo legacy y aún no hay fila, normaliza e importa el estado a la tabla;
-- \`writeState()\` hace UPDATE condicionado a la revisión esperada;
+- `writeState()` hace UPDATE condicionado a la revisión esperada;
 - si la revisión no coincide, devuelve conflicto de escritura.
 
-En hosting con disco persistente, \`CODELAB_DATA_DIR\` puede apuntar a \`/var/data\` para conservar archivos auxiliares/backups. El estado principal del workspace autenticado se guarda en PostgreSQL cuando \`DATABASE_URL\` está configurado.
+En hosting con disco persistente, `CODELAB_DATA_DIR` puede apuntar a `/var/data` para conservar archivos auxiliares/backups. El estado principal del workspace autenticado se guarda en PostgreSQL cuando `DATABASE_URL` está configurado.
 
 ### 17.4 Copiloto IA y credenciales por usuario
 
-El endpoint principal es \`POST /api/ai/complete\`:
+El endpoint principal es `POST /api/ai/complete`:
 - valida prompt (máximo 8 000 caracteres);
 - limita el tamaño combinado de HTML/CSS/JS a 200 000 caracteres;
 - valida tamaño de API key suministrada por el cliente;
 - aplica un limitador dedicado de IA;
-- usa la key del usuario si se proporciona; si no, puede usar \`AI_API_KEY\` del servidor;
+- usa la key del usuario si se proporciona; si no, puede usar `AI_API_KEY` del servidor;
 - cuando se usa una key del usuario, el endpoint/modelo del proveedor se toma de la configuración asociada a esa key y no se mezcla con el secreto del servidor;
 - el proxy usa HTTPS, resuelve el destino y bloquea direcciones IP locales/privadas para reducir SSRF y DNS rebinding;
 - errores upstream se convierten en respuestas controladas (por ejemplo 429 del límite local o 502 por proveedor).
 
-Las preferencias/keys propias del usuario se administran en Ajustes del copiloto del navegador. No registrar keys en logs, ni trasladar credenciales entre cuentas OAuth. Las variables globales \`AI_API_KEY\`, \`AI_BASE_URL\`, \`AI_MODEL\`, \`AI_MAX_TOKENS\` y \`AI_RATE_MAX\` configuran el proveedor de servidor; no convierten la key privada de un usuario en una key global compartida.
+Las preferencias/keys propias del usuario se administran en Ajustes del copiloto del navegador. No registrar keys en logs, ni trasladar credenciales entre cuentas OAuth. Las variables globales `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `AI_MAX_TOKENS` y `AI_RATE_MAX` configuran el proveedor de servidor; no convierten la key privada de un usuario en una key global compartida.
 
 ### 17.5 PixelForge y runtime headless
 
-- La UI PixelForge vive bajo \`public/pixelforge/\`.
+- La UI PixelForge vive bajo `public/pixelforge/`.
 - El runtime headless comparte modelos/validadores con la lógica del editor para inspeccionar, aplicar acciones y exportar sin depender de interacción manual en la UI.
 - El worker crea/abre el runtime para ejecutar operaciones de dibujo, edición, exportación y vídeo.
 - Las propuestas de cambios pueden ejecutarse en memoria, producir diff y esperar aprobación antes de escribir el proyecto.
@@ -502,12 +502,12 @@ Las preferencias/keys propias del usuario se administran en Ajustes del copiloto
 ### 17.6 Arranque y apagado del servicio
 
 1. Node carga configuración y módulos.
-2. Si hay \`DATABASE_URL\`, inicializa pool PostgreSQL.
+2. Si hay `DATABASE_URL`, inicializa pool PostgreSQL.
 3. Siembra/verifica la cuenta ADMIN cuando está configurada.
 4. Asegura tabla de workspaces y sesiones; migra sesiones legacy y limpia expiradas.
 5. Arma el listener Neon; reconcilia queued pendientes.
 6. Asegura tabla PixelForge; si esta parte falla, la API de PixelForge puede responder 503 sin impedir que otras áreas web arranquen.
-7. Abre el puerto \`PORT\`.
+7. Abre el puerto `PORT`.
 8. En apagado, el servidor detiene el worker y escribe la señal de cierre del bridge cuando puede acceder a Neon.
 
 El servidor web puede estar operativo aunque el listener Neon falle temporalmente; en ese caso registra el error y debe reconectar. Sin Neon disponible no se puede afirmar que las operaciones de persistencia/bridge funcionen correctamente.
@@ -525,12 +525,12 @@ Al tocar cualquier capa, actualizar las piezas correspondientes:
 
 | Cambio | Código principal | Documentación/pruebas que se actualizan |
 |---|---|---|
-| HTTP/API/rate limit | \`server.js\` | README, este documento, tests de endpoint/seguridad |
-| OAuth/sesiones/ADMIN | \`server.js\`, migraciones | política de cuenta, este documento, tests de auth |
-| workspace web | \`server.js\`, almacenamiento | política de persistencia, este documento, tests de revisión |
-| Neon/bridge | \`server.js\`, \`agent-bridge-worker.mjs\` | diagrama, documento Neon, contrato event-driven |
-| PixelForge | \`public/pixelforge/\`, worker | \`PIXELFORGE_FUNCTIONS.md\`, matriz de cobertura, tests |
-| IA/proveedores | \`server.js\`, UI ajustes | README, seguridad, tests de aislamiento y SSRF |
+| HTTP/API/rate limit | `server.js` | README, este documento, tests de endpoint/seguridad |
+| OAuth/sesiones/ADMIN | `server.js`, migraciones | política de cuenta, este documento, tests de auth |
+| workspace web | `server.js`, almacenamiento | política de persistencia, este documento, tests de revisión |
+| Neon/bridge | `server.js`, `agent-bridge-worker.mjs` | diagrama, documento Neon, contrato event-driven |
+| PixelForge | `public/pixelforge/`, worker | `PIXELFORGE_FUNCTIONS.md`, matriz de cobertura, tests |
+| IA/proveedores | `server.js`, UI ajustes | README, seguridad, tests de aislamiento y SSRF |
 | vídeo/evidencia | composer, worker, evidence module | flujo de animación, almacenamiento, tests de evidencia |
 | despliegue/config | workflows, scripts, variables | README y notas operativas sin secretos |
 
