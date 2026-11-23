@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -9,7 +10,7 @@ const TARGET_URL = String(process.env.TARGET_URL || 'https://codelab-pbw9.onrend
 const PROJECT_ID = String(process.env.PROJECT_ID || '2b33ccf4-f70c-4649-bed8-df1707cfdc74');
 const ADMIN_USERNAME = String(process.env.CODELAB_ADMIN_USERNAME || '');
 const ADMIN_PASSWORD = String(process.env.CODELAB_ADMIN_PASSWORD || '');
-const KEEPALIVE_SECONDS = Number(process.env.KEEPALIVE_SECONDS || 1800);
+const COMPOSER_URL = String(process.env.COMPOSER_URL || 'http://127.0.0.1:4173').replace(/\/$/, '');
 
 if (ADMIN_USERNAME !== 'ADMIN' || !ADMIN_PASSWORD) throw new Error('ADMIN credentials are required.');
 
@@ -92,9 +93,48 @@ function makeZip(entries) {
   return Buffer.concat([l,c,end]);
 }
 
+
+function contentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return ({
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8', '.png': 'image/png',
+    '.svg': 'image/svg+xml', '.webm': 'video/webm'
+  })[ext] || 'application/octet-stream';
+}
+function startLocalComposerServer() {
+  const root = path.resolve(process.cwd(), 'public');
+  const server = http.createServer(async (req, res) => {
+    try {
+      const pathname = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname);
+      const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\\/+/, '');
+      const filePath = path.resolve(root, relative);
+      if (!filePath.startsWith(root + path.sep) && filePath !== root) {
+        res.writeHead(403); return res.end('Forbidden');
+      }
+      const data = await fs.readFile(filePath);
+      res.writeHead(200, { 'content-type': contentType(filePath), 'cache-control': 'no-store' });
+      res.end(data);
+    } catch (error) {
+      res.writeHead(error?.code === 'ENOENT' ? 404 : 500);
+      res.end(error?.code === 'ENOENT' ? 'Not found' : 'Server error');
+    }
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(4173, '127.0.0.1', () => {
+      console.log('[worker] local Video Composer server: ' + COMPOSER_URL);
+      resolve(server);
+    });
+  });
+}
+
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codelab-actions-vc-'));
 let browser;
+let composerServer;
 try {
+  composerServer = await startLocalComposerServer();
   console.log('[worker] starting CodeLab Video Composer Actions worker');
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -152,8 +192,8 @@ try {
   await fs.writeFile(packagePath, makeZip(entries));
   console.log('[worker] package ready: ' + fsSync.statSync(packagePath).size + ' bytes');
 
-  console.log('[worker] opening CodeLab Video Composer on Render');
-  const response = await page.goto(TARGET_URL + '/pixelforge/video-composer.html?export=1', {
+  console.log('[worker] opening CodeLab Video Composer locally (GitHub runner)');
+  const response = await page.goto(COMPOSER_URL + '/pixelforge/video-composer.html?export=1', {
     waitUntil: 'domcontentloaded', timeout: 45000
   });
   if (!response || !response.ok()) throw new Error('Video Composer returned HTTP ' + (response?.status() || 'no response'));
@@ -211,9 +251,8 @@ try {
     evidence: uploadData.artifact
   }, null, 2));
 
-  console.log('[worker] export complete; keeping runner alive for ' + KEEPALIVE_SECONDS + ' seconds');
-  await new Promise(resolve => setTimeout(resolve, KEEPALIVE_SECONDS * 1000));
 } finally {
   if (browser) await browser.close().catch(() => {});
+  if (composerServer) await new Promise(resolve => composerServer.close(resolve));
   await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 }
