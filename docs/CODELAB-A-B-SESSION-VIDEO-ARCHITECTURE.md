@@ -1,88 +1,79 @@
-# CodeLab A/B: sesión temporal y generación de video
+# CodeLab A/B — ADMIN Soldier Walk y Video Composer
 
-**Estado:** contrato funcional acordado; implementación y entrega del video del proyecto Soldier Walk pendientes de completar y verificar.
+**Contrato vigente:** A genera el vídeo con el Video Composer real. B solo solicita el trabajo a A, recibe el WebM, lo verifica y termina. A sigue vivo hasta su propio timeout, independientemente de B.
 
-## Responsabilidades, sin solapamiento
+## Responsabilidades
 
-### Workflow A — anfitrión de sesión
+### A — sesión persistente y generador
 
-A crea una máquina/sesión temporal, inicia CodeLab/PixelForge y mantiene esa sesión abierta durante el tiempo elegido por el usuario.
+A es el único proceso autorizado para acceder a la sesión ADMIN y generar el vídeo.
 
-A:
-- Inicia la sesión y publica su identificador/endpoint de mailbox cuando está lista.
-- Mantiene el proceso, el runtime y el contexto vivos durante el plazo configurado.
-- Atiende las solicitudes autenticadas que B le envía mientras la sesión está disponible.
-- Renueva el lease del mailbox mientras la sesión siga activa.
-- Cierra sus recursos temporales cuando vence el tiempo elegido o se produce una cancelación/fallo.
+1. Usa CODELAB_AGENT_BRIDGE_CONTROL_SECRET, disponible solo en el workflow A, para leer el snapshot del proyecto desde el bridge ADMIN.
+2. Fija project_id, workspace_id, serverRevision y contentSha256; no sustituye el proyecto por una demo ni por una copia local.
+3. Obtiene un handoff ADMIN de un solo uso y abre el proyecto real en PixelForge.
+4. Mantiene abiertas la sesión ADMIN de PixelForge y la página real de Video Composer en un contexto Chromium persistente.
+5. Cuando recibe una solicitud de B, ejecuta exportPixelForgeAnimationVideo dentro de ese contexto, usando el proyecto fijado y persist_evidence:false para devolver el archivo a B sin entregar credenciales.
+6. Envía el WebM a B en bloques de base64, junto con SHA-256 y metadatos de la exportación.
+7. Continúa atendiendo solicitudes y mantiene su sesión hasta CODELAB_SESSION_MINUTES, aunque B ya haya terminado.
 
-A **no**:
-- Decide cuándo termina B.
-- Genera, codifica, renderiza ni entrega el MP4.
-- Espera a que se agote su propio plazo para permitir que B entregue.
-- Usa su grabación de sesión como sustituto del video de la animación.
+A no recibe DATABASE_URL, claves de Neon ni claves de S3. El bridge token solo está en A. El handoff ADMIN es de un solo uso y no se comparte con B.
 
-La duración de A y la duración de B son independientes. Si B termina antes, A puede seguir viva hasta que venza su plazo.
+### B — solicitante y verificador
 
-### Workflow B — cliente, productor y entregador
+B no genera ni codifica animaciones.
 
-B se conecta a una sesión A que ya esté READY y comprueba que sigue viva. B es responsable de todo el ciclo de producción del video:
+1. Descubre o recibe el ID de una sesión A que ya está READY.
+2. Envía a A una solicitud con el ID del proyecto y la revisión/hash fijados por A.
+3. Recibe los bloques de vídeo, reconstruye el WebM y comprueba el SHA-256, tamaño y cabecera EBML.
+4. Abre el archivo en Chromium y verifica que el navegador pueda decodificarlo, leer duración y dimensiones, y buscar varios puntos del vídeo.
+5. Guarda el WebM y verification.json como artefacto de GitHub Actions.
+6. Publica el resultado y termina inmediatamente; no espera a que A expire.
 
-1. Identifica la sesión A correcta y valida su disponibilidad.
-2. Obtiene desde ADMIN, por el mecanismo autorizado, la revisión exacta del proyecto PixelForge que se va a procesar.
-3. Transfiere/restaura el proyecto en la sesión temporal A sin dar credenciales de Neon, S3 ni del bridge a Headless.
-4. Solicita a A los datos de los fotogramas/contexto necesarios y coordina el procesamiento.
-5. En la máquina B, codifica el resultado final a MP4 (por ejemplo, con FFmpeg); la sesión A no realiza la codificación.
-6. Comprueba existencia, tamaño, duración, códec y decodificación del MP4; inspecciona visualmente el resultado.
-7. Publica y entrega el artefacto final al usuario.
-8. Finaliza su workflow inmediatamente después de la entrega verificada. No espera a que A termine su temporizador.
+B no recibe ni usa CODELAB_AGENT_BRIDGE_CONTROL_SECRET, DATABASE_URL, Neon, S3, R2, cookies ADMIN ni tickets de handoff. B no importa exportPixelForgeAnimationVideo, no usa FFmpeg y no construye fotogramas.
 
-B debe fallar de forma explícita si A expira, si no puede restaurarse el proyecto autorizado, si falta algún fotograma o si el MP4 no pasa la validación. Nunca debe sustituir silenciosamente el proyecto por una demo procedural.
+## Transporte A → B
 
-## Relación temporal
+El buzón es el issue 492 del repositorio. A publica un comentario [CodeLab A Ready], B publica [CodeLab B Request], y A devuelve comentarios [CodeLab A Video Chunk] y [CodeLab A Export Result]. Los bloques están limitados a 30.000 caracteres para mantenerse por debajo del límite de comentarios de GitHub. B los reúne por sessionId y requestId y valida el hash antes de escribir el archivo.
 
-- A se inicia y queda READY.
-- B se conecta a A y trabaja mientras A está disponible.
-- B termina al haber generado, validado y entregado el MP4.
-- A continúa independientemente hasta cumplir el tiempo elegido; entonces cierra la sesión.
-- Si una máquina temporal desaparece, una ejecución posterior reconstruye el estado desde la revisión persistida en ADMIN. No se depende de discos ni procesos de ejecuciones anteriores.
+## Workflows
 
-## Persistencia y seguridad
+| Workflow | Función |
+|---|---|
+| .github/workflows/codelab-independent-session-a.yml | Arranca A con el bridge secreto y mantiene la sesión hasta su timeout. |
+| .github/workflows/codelab-independent-session-b.yml | B solicita la exportación, recibe el archivo, lo verifica y termina. No contiene secretos de bridge/Neon. |
+| .github/workflows/codelab-ab-animation.yml | Prueba integrada: despacha A como workflow separado, ejecuta B y comprueba que A siga in_progress después de que B termina. |
+| .github/workflows/codelab-b-a-context-cycle.yml | Alias heredado que ahora despacha la prueba A/B real; ya no ejecuta el generador demo. |
 
-- ADMIN es la autoridad de propiedad, autorización, revisión y persistencia del proyecto.
-- A y B son máquinas efímeras. Los archivos temporales solo sirven durante la ejecución.
-- Headless no recibe credenciales de Neon, S3 ni del inline bridge, ni decide el destino del proyecto.
-- La restauración/transferencia debe usar el bridge autenticado y el flujo de importación autorizado existente.
-- Cada ejecución debe registrar el ID de proyecto, revisión, hash de contenido, ID de sesión A, run de B y hash del MP4 entregado.
-- La recuperación debe ser idempotente: repetir una ejecución no puede duplicar proyectos ni corromper el original en ADMIN.
+A puede durar hasta 360 minutos; B tiene su propio límite de espera. La concurrencia de B evita dos procesadores simultáneos.
 
-## Criterios de aceptación
+## Bridge ADMIN
 
-1. A mantiene la sesión durante el plazo elegido y no produce el MP4.
-2. B puede conectarse a A ya iniciada, procesar y entregar sin esperar el vencimiento de A.
-3. B genera el MP4 en su propio runner y termina después de validar y entregar.
-4. La fuente es la revisión real del proyecto recuperada de ADMIN, no un proyecto demo ni un ID local inexistente.
-5. El MP4 se puede abrir y decodificar; su duración y contenido visual se inspeccionan.
-6. La pérdida de A/B no pierde el proyecto persistido y permite una nueva ejecución limpia.
+El servidor expone dos operaciones protegidas por CODELAB_AGENT_BRIDGE_CONTROL_SECRET:
 
-## Estado técnico observado al documentar
+- POST /api/agent/bridge/admin-handoff: emite un ticket ADMIN de un solo uso y de corta duración.
+- GET /api/agent/bridge/pixelforge/projects/:projectId: devuelve el snapshot completo y metadatos del proyecto dentro del workspace ADMIN.
 
-El workflow `.github/workflows/codelab-independent-session-a.yml` ya permite elegir `session_minutes` (por defecto 360) y mantiene un host que atiende solicitudes del mailbox. El workflow B descubre una sesión READY y envía operaciones PixelForge/browser a A.
+Ambas operaciones comprueban el bridge token en el servidor. El snapshot se limita a ws_local_admin. B no conoce estas rutas ni recibe el token. El ticket se consume en GET /api/auth/native-handoff y se convierte en una cookie normal del navegador A.
 
-Sin embargo, el flujo actual **todavía no cumple el contrato completo**:
-- `scripts/codelab-session-host.mjs` crea un workspace guest local y efímero; no restaura por sí solo el proyecto ADMIN `soldier-walk-60f-20261124`.
-- A crea un contexto Playwright con grabación de video de la sesión; eso no es la codificación final del proyecto y no debe considerarse la entrega.
-- La acción `record_video` en `executeBrowser` solo espera el tiempo indicado; no genera ni devuelve un MP4.
-- `scripts/codelab-b-a-context-cycle.mjs` crea una demo procedural de 60 fotogramas si no recibe un proyecto local válido. Ese fallback no puede usarse para entregar el Soldier Walk real.
-- El workflow B actual publica un resultado JSON de verificación, pero no genera, valida ni adjunta un MP4 final.
-
-Por lo tanto, este documento fija el comportamiento esperado, pero **no declara que la generación/entrega del video ya esté implementada**. El trabajo pendiente es: restauración autenticada de la revisión ADMIN en A; extracción de fotogramas desde A; codificación y validación del MP4 en B; y publicación del artefacto desde B.
-
-## Proyecto al que se aplica ahora
+## Proyecto fijado
 
 - Proyecto: PixelForge — Soldier Walk.
-- ID histórico: `soldier-walk-60f-20261124` (la versión final guardada tiene 20 fotogramas, no 60).
-- Workspace ADMIN: `ws_local_admin`.
-- Revisión persistida documentada: SHA-256 `82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f`.
-- Animación: 20 fotogramas a 12 FPS.
+- ID: soldier-walk-60f-20261124 (el identificador histórico contiene “60f”; el proyecto persistido tiene 20 fotogramas).
+- Workspace: ws_local_admin.
+- Revisión documentada: 2.
+- Timeline documentado: 20 fotogramas, 12 FPS, 4 capas.
+- Hash de contenido documentado: 82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f.
 
-La entrega solo se considera terminada cuando B entrega el MP4 real y verificable, además del proyecto editable que ya está persistido en ADMIN.
+A fija la revisión y el hash al iniciar. Si el proyecto cambia, una sesión A nueva debe leer y fijar la nueva revisión; no se permite mezclar fotogramas de revisiones distintas.
+
+## Evidencia y estado
+
+Se ejecutó previamente una exportación real mediante el worker nativo de Render y pixelforge-video-composer-export.mjs:
+- Composer importó 20 fotogramas a 12 FPS.
+- WebM generado: 115.027 bytes.
+- Sin errores de página ni de consola.
+- El archivo se guardó como evidencia en Neon y se pudo decodificar para extraer muestras.
+
+Esa prueba confirma que el exportador real funciona, pero no sustituye la prueba integrada de los nuevos workflows A/B. La implementación de A/B descrita aquí está preparada en código, pero la aceptación queda pendiente hasta ejecutar codelab-ab-animation.yml, comprobar que B recibe y decodifica el archivo, y comprobar que A sigue activo después de que B termina.
+
+No se declara entregado un vídeo hasta que el artefacto de B exista y pase su verificación. Nunca se considera válido un createDemo, una grabación de pantalla de la sesión, un event ID aislado o un resultado success sin el WebM real.
