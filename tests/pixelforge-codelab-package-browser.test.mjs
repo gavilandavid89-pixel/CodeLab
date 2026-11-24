@@ -20,11 +20,26 @@ function fixture() {
     elements: { ordering: 'z-index' },
     objects: { collision: 'none' },
   };
-  const workspaceBase = structuredClone(project);
-  for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
-    const workspace = structuredClone(workspaceBase);
+  for (const [index, section] of ['environment', 'effects', 'details', 'elements', 'objects'].entries()) {
+    const sceneDocument = new RasterDocument(4, 4, section + ' workspace');
+    sceneDocument.layers[0].pixels.set([255, index * 20, 0, 255], 0);
+    const workspace = sceneDocument.toJSON();
     workspace.id = project.id + '-' + section;
     workspace.name = section + ' workspace';
+    const layer = workspace.layers[0];
+    const secondPixels = Uint8Array.from(atob(layer.pixels), char => char.charCodeAt(0));
+    secondPixels[1] = (secondPixels[1] + 1) & 0xff;
+    workspace.animation = {
+      format: 'pixelforge-animation', version: 1,
+      width: 4, height: 4, layerIds: [layer.id], fps: 12,
+      activeFrameIndex: 1, loop: true, playbackSpeed: 1,
+      frames: [
+        { id: section + '-frame-1', name: 'Idle', index: 0, durationMs: 100,
+          cels: [{ layerId: layer.id, pixels: layer.pixels }] },
+        { id: section + '-frame-2', name: 'Move', index: 1, durationMs: 120,
+          cels: [{ layerId: layer.id, pixels: btoa(String.fromCharCode(...secondPixels)) }] },
+      ],
+    };
     project.drawingModel.sceneSections[section].workspace = workspace;
   }
   const resource = new TextEncoder().encode('embedded palette bytes');
