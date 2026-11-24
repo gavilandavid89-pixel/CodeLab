@@ -181,8 +181,9 @@ export class TiledRasterProjectDocument {
   duplicateLayer(layerId, name) {
     const source = this.#cel(layerId);
     if (this.#layers.length >= MAX_LAYERS) throw new RangeError('Tiled project supports up to 64 layers.');
+    const { celId: sourceCelId, ...sourceMetadata } = source;
     const layer = {
-      ...structuredClone(({ celId, ...metadata }) => metadata)(source),
+      ...structuredClone(sourceMetadata),
       id: crypto.randomUUID(),
       name: typeof name === 'string' && name.trim() ? name.trim().slice(0, 180) : (source.name + ' copy').slice(0, 180),
       celId: this.#store.cloneCel(source.celId),
