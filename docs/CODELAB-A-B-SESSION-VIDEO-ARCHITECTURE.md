@@ -246,3 +246,20 @@ Artefacto de verificación del pulido:
 urlArtefacto de verificación 14909441239https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45371162667/artifacts/14909226433
 
 Este estado sustituye al anterior veredicto de «primer export funcional sin pulir». La revisión visual posterior confirma que el ciclo mantiene la estructura del Soldier Walk y que el pulido es conservador; no se consideró necesario inflar el timeline con frames duplicados.
+
+
+### Incidente de entrega y revisión detectado después de la prueba A/B
+
+La primera aceptación técnica del A/B no equivalía todavía a una entrega correcta al usuario. El agente que recibió el resultado de B cometió dos omisiones importantes:
+
+1. **No analizó visualmente el vídeo que B había entregado.** Se comprobó que el WebM existía, que tenía bytes, hash, duración y decodificación válida, pero el agente no realizó la inspección visual del contenido antes de darlo por terminado. Por eso la primera exportación pasó una aceptación técnica sin haber pasado todavía una aceptación visual real.
+2. **No entregó al usuario el vídeo final.** El usuario recibió un ZIP como artefacto, no el WebM completo como vídeo reproducible. La entrega no cumplió el objetivo aunque el WebM existiera dentro del proceso/artefacto.
+
+Esto es una diferencia importante entre **«A/B produjo y B verificó un archivo»** y **«el agente inspeccionó, aceptó y entregó el vídeo final al usuario»**. El segundo ciclo es el que debe considerarse completo.
+
+La prueba posterior de pulido corrigió el proyecto persistido y volvió a ejecutar A/B, pero el protocolo de aceptación queda reforzado: el agente receptor no puede saltarse la inspección visual ni sustituir la entrega del vídeo por el ZIP del workflow.
+
+**Orden obligatorio del cierre:** B entrega → agente obtiene el WebM desde el artefacto → agente inspecciona el vídeo → si detecta defectos, corrige el proyecto → vuelve a exportar y obtener el vídeo → vuelve a inspeccionarlo → solo después entrega el vídeo final al usuario.
+
+La inspección no debe limitarse a «hay movimiento». Debe comprobar continuidad temporal, coherencia de poses, que caminar realmente parezca caminar y no una sucesión de desplazamientos arbitrarios, y que el dibujo acompañe correctamente el movimiento: extremidades, pies, manos, cabeza, torso, proporciones, silueta y cualquier elemento que deba moverse junto al personaje. Un dibujo puede estar técnicamente bien formado y aun así animarse mal; esa diferencia debe detectarse antes de la entrega.
+
