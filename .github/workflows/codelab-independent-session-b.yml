@@ -40,6 +40,7 @@ jobs:
         if: ${{ github.event_name == 'issue_comment' || inputs.session_id == '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
