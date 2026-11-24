@@ -608,6 +608,14 @@ export class HeadlessEditorRuntime {
     }
     const commandResult = this.#commands.execute(action);
     if (commandResult.ok) {
+      if (['drawing.reference.copy_part', 'drawing.reference.copy_frame'].includes(action?.name) &&
+          this.#sandboxAnimation.frames.length) {
+        const activeLayer = this.#workspace.sandbox.activeLayer;
+        const activeFrame = this.#sandboxAnimation.frames[this.#sandboxAnimation.activeFrameIndex];
+        const activeCel = activeFrame?.cels?.find(cel => cel.layerId === activeLayer?.id);
+        if (activeCel && activeLayer) activeCel.pixels = encodeBase64(activeLayer.pixels);
+        this.#animationDirty = this.#animationDiffersFromCommitted();
+      }
       const before = JSON.stringify(this.#sandboxAnimation);
       const synchronized = synchronizeAnimationLayers(this.#sandboxAnimation, this.#workspace.sandbox);
       if (JSON.stringify(synchronized) !== before) {
