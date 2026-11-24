@@ -2476,8 +2476,15 @@ const server = http.createServer(async (req, res) => {
       // Trusted A-session readback: expose only the ADMIN-owned PixelForge project
       // snapshot to the authenticated session host. The B processor never receives
       // this bridge credential or direct Neon access.
-      const bridgePixelForgeProjectMatch = req.method === 'GET'
-        ? pathname.match(new RegExp('^/api/agent/bridge/pixelforge/projects/([A-Za-z0-9_-]{1,100})
+      const bridgePixelForgeProjectPrefix = '/api/agent/bridge/pixelforge/projects/';
+      const bridgePixelForgeProjectCandidate = req.method === 'GET' && pathname.startsWith(bridgePixelForgeProjectPrefix)
+        ? pathname.slice(bridgePixelForgeProjectPrefix.length)
+        : '';
+      const bridgePixelForgeProjectIdMatch = bridgePixelForgeProjectCandidate.match(/^[A-Za-z0-9_-]+/);
+      const bridgePixelForgeProjectMatch = bridgePixelForgeProjectIdMatch &&
+        bridgePixelForgeProjectIdMatch[0] === bridgePixelForgeProjectCandidate &&
+        bridgePixelForgeProjectCandidate.length <= 100
+        ? [null, bridgePixelForgeProjectCandidate]
         : null;
       if (bridgePixelForgeProjectMatch) {
         const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
