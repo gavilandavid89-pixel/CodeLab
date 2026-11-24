@@ -297,6 +297,22 @@ El procedimiento obligatorio es:
 10. **Reinspeccionar.** Obtener nuevamente el vídeo desde el artefacto de B y repetir la inspección. La corrección solo queda aceptada cuando el nuevo vídeo pasa la revisión.
 11. **Entregar al usuario.** Solo después de completar la inspección y, si correspondió, la corrección y reinspección, presentar al usuario el **vídeo WebM completo y reproducible**, no el ZIP del workflow como sustituto.
 
+### Regla reforzada: aceptación visual del vídeo A/B y límites de Xvfb
+
+**Una animación no puede declararse buena, correcta ni terminada basándose únicamente en el proyecto Headless, capturas de su interfaz, logs, hashes, metadatos o una decodificación técnica.** Cuando la tarea produce un vídeo final, la aceptación visual obligatoria se realiza sobre el **WebM exacto generado por A/B**, recuperado del artefacto de B.
+
+Xvfb solo proporciona un servidor gráfico virtual para ejecutar aplicaciones que necesitan display. Que Chromium, Headless o el exportador funcionen bajo Xvfb, o que se puedan tomar capturas de esa sesión, **no demuestra que el vídeo final se haya visto ni que la animación sea visualmente correcta**. Xvfb no sustituye la inspección del vídeo.
+
+El agente responsable debe, fuera del proceso Headless:
+
+1. Recuperar y abrir/reproducir el WebM completo producido por A/B, no una previsualización local ni una exportación anterior.
+2. Inspeccionar visualmente el movimiento a lo largo de toda la duración. Puede apoyarse en reproducción real y en una extracción de fotogramas distribuida temporalmente, ampliando a fotogramas consecutivos donde haya dudas o movimiento rápido.
+3. Examinar tanto el dibujo como la animación: anatomía/silueta, integridad de trazos y piezas, continuidad entre poses, timing, apoyos, deformaciones, elementos que aparecen/desaparecen y coherencia con la intención del usuario.
+4. Confirmar que el WebM inspeccionado corresponde exactamente a la revisión del proyecto y al archivo que se entregará, usando los metadatos/hash como trazabilidad adicional, nunca como sustituto de la inspección.
+5. Registrar qué vídeo/revisión se inspeccionó, qué evidencia visual se examinó, defectos encontrados y veredicto.
+
+Si no puede acceder al vídeo real o no puede inspeccionarlo visualmente con suficiente detalle, el estado será **pendiente de revisión visual**, nunca “buena animación” ni “aprobada”. Si detecta defectos, rechaza esa revisión, corrige el proyecto editable en Headless, vuelve a exportar/persistir según el flujo vigente, ejecuta A/B otra vez y repite la inspección sobre el nuevo WebM. No se aprueba una revisión anterior en nombre de la nueva.
+
 ### Criterio de aceptación visual mínimo
 
 Antes de presentar el vídeo, el agente debe poder responder afirmativamente a estas preguntas:
