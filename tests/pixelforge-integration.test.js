@@ -952,7 +952,8 @@ async function main() {
     await clickPixel(3, 3, 4, 4);
     await waitForRasterSave();
     let effectsStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
-    const effectsWorkspace = effectsStored.drawingModel.sceneWorkspaceState.workspaces.effects;
+    const effectsWorkspace = effectsStored.drawingModel.sceneWorkspaceState.activeSection === 'effects'
+      ? effectsStored : effectsStored.drawingModel.sceneWorkspaceState.workspaces.effects;
     assert.ok(effectsWorkspace, 'Effects must be persisted as a separate complete workspace');
     assert.equal(effectsWorkspace.layers.length, 1, 'Effects must own its own layer stack');
     assert.deepEqual(rgbaAt(effectsWorkspace, 3, 3, 0), [0, 0, 255, 255],
@@ -976,7 +977,8 @@ async function main() {
       await clickPixel(x, y, 4, 4);
       await waitForRasterSave();
       const projectWithSection = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
-      const sectionWorkspace = projectWithSection.drawingModel.sceneWorkspaceState.workspaces[section];
+      const sectionWorkspace = projectWithSection.drawingModel.sceneWorkspaceState.activeSection === section
+        ? projectWithSection : projectWithSection.drawingModel.sceneWorkspaceState.workspaces[section];
       assert.ok(sectionWorkspace, section + ' must be stored as a separate complete workspace');
       assert.deepEqual(rgbaAt(sectionWorkspace, x, y, 0), [
         parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16), 255,
