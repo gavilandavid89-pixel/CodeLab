@@ -160,7 +160,8 @@ export async function encodeWebMFrames(frames, options = {}) {
       worker.onerror = event => wrappedFinish(() => reject(new Error(event.message || 'Falló el worker de exportación.')));
       worker.postMessage({
         frames: transferableFrames, width:options.width, height:options.height, codec:options.codec,
-        fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor
+        fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor,
+        scalingMode:options.scalingMode
       });
     });
   }
