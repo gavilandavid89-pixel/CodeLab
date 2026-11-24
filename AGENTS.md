@@ -1,72 +1,88 @@
 # CodeLab — instrucciones obligatorias para agentes
 
-Antes de trabajar en el repositorio, lee esta entrada y la política completa:
-[docs/agent-ai-bridge-policy.md](docs/agent-ai-bridge-policy.md).
+**Entrada obligatoria:** antes de cualquier trabajo, leer este archivo y [la política operativa del agente](docs/agent-ai-bridge-policy.md). Para ubicar el resto, usar el [índice documental](docs/README.md).
 
-## Fuente de verdad operativa
+## 1. Modelo mental: hay dos entornos Headless distintos
 
-El flujo actual de trabajo es:
+No confundirlos:
 
-`usuario → agente → entorno headless del agente → paquete .codelab → Neon → bridge/worker → CodeLab → resultado/evidencia → Neon → agente`.
+- **Headless propio del agente:** se instala y ejecuta en el entorno de la IA que recibió la orden. Aquí el agente crea, edita y anima. La fuente de distribución es el artefacto real del workflow GitHub Actions. El entorno puede ser efímero; eso no elimina la obligación de instalarlo y usarlo.
+- **Headless/bridge/worker de CodeLab:** pertenece al sistema CodeLab. Recibe órdenes/paquetes, importa, persiste, genera evidencia y devuelve resultados. No sustituye el entorno creativo propio del agente.
 
-- El agente trabaja primero en **su propio entorno headless**. Ese headless es independiente del headless/bridge que controla CodeLab.
-- Si el entorno del agente no dispone de un headless compatible, puede obtenerlo desde el repositorio; eso no sustituye ni modifica el headless que permite controlar CodeLab.
-- Neon conserva el estado canónico de órdenes, proyectos, revisiones, resultados y referencias a evidencias.
-- El agente empaqueta el proyecto trabajado y lo transfiere a CodeLab mediante Neon cuando el flujo de entrega lo requiere.
-- Si el proyecto necesita inspección dentro de la interfaz real de CodeLab, el agente solicita y recibe la evidencia visual correspondiente; después la inspecciona y decide la siguiente operación.
-- La recuperación debe consultar el estado real antes de reintentar. Nunca dupliques una orden que siga activa.
+El agente es la IA que recibe la petición del usuario, no GitHub Actions, Render, Neon ni el worker.
 
-## Reglas de ejecución
+## 2. Flujo canónico de una tarea creativa
 
-1. Solo una petición explícita del usuario inicia una nueva tarea del agente. Los workers pueden completar órdenes ya autorizadas, pero no iniciar nuevas tareas autónomas del agente.
-2. Antes de actuar, consulta proyecto, revisión y órdenes activas.
-3. Usa `project_id` y la última `server_revision` para continuar proyectos existentes.
-4. Trabaja sobre el proyecto en el headless propio del agente y conserva allí el estado editable hasta que corresponda entregarlo.
-5. Si CodeLab necesita ser inspeccionado en su interfaz real, solicita la evidencia visual necesaria; no trates esa evidencia como la fuente canónica del proyecto.
-6. Inspecciona realmente la evidencia recibida y, según el resultado, continúa trabajando en el headless propio o entrega el proyecto al usuario.
-7. No registres secretos, cookies, tokens ni contraseñas.
-8. No cambies ni despliegues servicios ajenos al alcance solicitado.
-9. No declares que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
+Usuario → agente IA → Headless propio → crear/editar/animar → validar → exportar paquete .codelab → HTTPS inline bridge → staging Neon → worker CodeLab → workspace destino → lectura de vuelta → agente inspecciona resultado/evidencia → entrega.
 
-## A/B: uso exclusivo de vídeo
+1. Solo una petición explícita del usuario inicia una nueva tarea del agente.
+2. Al comenzar una tarea creativa, comprobar si el entorno actual tiene un Headless válido. Si falta o no corresponde a la versión requerida, obtener el artefacto oficial, instalarlo y ejecutarlo en el entorno propio del agente.
+3. Consultar el proyecto/revisión y las órdenes activas antes de continuar un trabajo existente. No duplicar órdenes activas.
+4. Crear y modificar en el Headless propio. No enviar cada fotograma a CodeLab como mecanismo normal de edición.
+5. Validar el proyecto y la animación en el Headless; generar e inspeccionar evidencia visual real.
+6. Exportar el paquete nativo requerido y transferirlo mediante el bridge HTTPS documentado.
+7. Esperar el resultado real del worker. HTTP 202 significa queued, no persistido.
+8. Verificar que el proyecto aparezca en el workspace destino, leerlo de vuelta y comprobar revisión/bytes/estructura; reabrir cuando el flujo lo permita.
+9. Inspeccionar evidencia visual de CodeLab cuando la tarea requiera comprobar la interfaz o el resultado desplegado.
+10. Informar con precisión qué quedó completado y qué no pudo verificarse.
 
-A/B no forma parte del flujo general de CodeLab. Se conserva únicamente como ruta especializada para procesamiento/render/captura de vídeo por el límite de memoria de Render. Para cada trabajo se usa **una sola sesión A y una sola B procesadora**; nunca se lanzan múltiples B en paralelo ni lotes de estrés. Consulta [docs/VIDEO-PROCESSING-AB.md](docs/VIDEO-PROCESSING-AB.md) antes de tocar estos workflows. No inicies A/B para tareas normales de edición, persistencia o importación.
+## 3. Arquitectura de órdenes: ruta separada
 
-El flujo actual usa el bridge y el estado persistido en Neon, con activación bajo demanda cuando el bridge informa que está dormido. No mantengas pings periódicos, cron de keep-alive ni procesos artificiales para simular actividad.
+Las órdenes de trabajo que el agente envía al sistema usan la cola durable de Neon y PostgreSQL LISTEN/NOTIFY para despertar al listener/worker de CodeLab. El worker reclama órdenes ya autorizadas y devuelve resultados. Esta cola no es el transporte binario del paquete creativo: la transferencia de artefactos usa el inline bridge y luego crea la orden de importación correspondiente.
 
-## Identidad y sesiones locales
+- Neon es la fuente durable de órdenes, proyectos, revisiones, resultados y metadatos.
+- LISTEN/NOTIFY despierta al consumidor; el payload de NOTIFY no transporta el proyecto.
+- El worker completa órdenes autorizadas; no inicia nuevas tareas autónomas del agente.
+- No mantener polling, cron de keep-alive ni pings periódicos.
+- No confundir una orden encolada con una orden completada.
 
-- Para operar sobre proyectos del usuario, conserva el contexto de cuenta/workspace que el sistema obtiene mediante la configuración y autenticación existentes del repositorio. No inventes, sustituyas ni hardcodees una identidad.
-- Las sesiones locales/headless son útiles como entorno auxiliar aislado para pruebas y automatización. No las elimines por considerarlas cuentas demo.
-- Una sesión local aislada no debe confundirse con una sesión autenticada del usuario ni utilizarse para afirmar que un cambio quedó guardado en su workspace real.
-- Distingue siempre entre persistencia local, persistencia en Neon/servidor y lectura de vuelta del proyecto del usuario.
+## 4. Seguridad, identidad y persistencia
 
-## Reglas de ejecución
+- Para proyectos reales, conservar la identidad/workspace que resuelve la autenticación existente. No inventar, sustituir ni hardcodear identidad.
+- No pasar al Headless propio DATABASE_URL, credenciales Neon/Object Storage, secretos internos, cookies ni tokens de CodeLab.
+- El Headless produce el paquete; CodeLab autentica la transferencia y realiza la persistencia.
+- Las pruebas aisladas deben usar PostgreSQL efímero/temporal. **No modificar Neon production** para validar.
+- Distinguir persistencia local, staging temporal, persistencia final en el workspace y lectura de vuelta.
+- No declarar que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
+- No desplegar ni modificar servicios ajenos al alcance solicitado.
 
-1. Solo una petición explícita del usuario inicia una nueva tarea del agente. Los workers pueden completar órdenes ya autorizadas, pero no iniciar nuevas tareas autónomas del agente.
-2. Antes de actuar, consulta proyecto, revisión y órdenes activas.
-3. Usa `project_id` y la última `server_revision` para continuar proyectos existentes.
-4. No uses screenshots o vídeos como fuente canónica del proyecto; son evidencia de inspección.
-5. En dibujo/animación, genera evidencia visual y revísala realmente. Un `success` no basta.
-6. No registres secretos, cookies, tokens ni contraseñas.
-7. No cambies ni despliegues servicios ajenos al alcance solicitado.
-8. No declares que Render/producción fue probado si solo se ejecutaron pruebas locales o CI.
+## 5. Evidencia y calidad
 
-## Sincronización obligatoria de documentación técnica
+- Para dibujo/animación, generar evidencia visual e inspeccionarla realmente. success, metadatos válidos o una exportación correcta no bastan.
+- Screenshots y vídeos son evidencia de inspección, no la fuente canónica del proyecto.
+- No reconstruir el estado editable desde memoria, screenshots o vídeo cuando el proyecto puede recuperarse desde su fuente persistida.
+- Si hay defectos, corregir en el Headless propio, volver a validar y transferir una nueva versión.
 
-Cualquier cambio en conexión PostgreSQL, DATABASE_URL/TLS, pools, endpoint pooled/directo, LISTEN/NOTIFY, triggers, cola, acciones, estados, reconexión, ciclo de vida del worker, API de control, workspace, persistencia, revisiones, evidencia o consumo de datos debe actualizarse **en el mismo PR** en:
-- `docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md` (documento técnico de referencia y diagramas);
-- `docs/CODELAB-NEON-ARCHITECTURE.md` (resumen de arquitectura);
-- `README.md` (resumen operativo y enlace);
+## 6. A/B: uso exclusivo de vídeo
+
+A/B no forma parte del flujo creativo normal ni del Headless propio del agente. Se reserva para procesamiento/render/captura de vídeo por la limitación de memoria de Render. Usar una sola sesión A y una sola B procesadora por trabajo. Nunca lanzar lotes de estrés ni usar A/B para edición, importación o persistencia. Consultar [VIDEO-PROCESSING-AB.md](docs/VIDEO-PROCESSING-AB.md).
+
+## 7. Recuperación de sesión
+
+Si la sesión del agente termina, no asumir que el worker se detuvo ni iniciar otra tarea automáticamente. Ante una nueva petición del usuario:
+1. consultar el estado del bridge/órdenes;
+2. recuperar project_id y última server_revision;
+3. comprobar si existe una orden activa;
+4. no duplicarla;
+5. continuar desde el último estado persistido válido.
+
+Seguir [SESSION-EXPIRATION-RECOVERY.md](docs/SESSION-EXPIRATION-RECOVERY.md).
+
+## 8. Sincronización obligatoria de documentación técnica
+
+Cualquier cambio en PostgreSQL, DATABASE_URL/TLS, pools, LISTEN/NOTIFY, triggers, cola, acciones, estados, reconexión, worker, APIs de bridge, workspace, persistencia, revisiones o evidencia debe actualizar en el mismo PR:
+- docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md;
+- docs/CODELAB-NEON-ARCHITECTURE.md;
+- README.md si afecta la descripción general;
 - pruebas de contrato correspondientes.
 
-Antes de presentar el cambio al usuario, volver a leer los archivos modificados y comprobar que los diagramas representan el código real. Eliminar o corregir toda descripción obsoleta (por ejemplo, polling retirado, filtros de wake antiguos o rutas que ya no sean el mecanismo normal). Distinguir siempre CI, pruebas locales y producción.
+Antes de finalizar, releer los archivos modificados y comprobar que diagramas y descripciones reflejen el código real.
 
-## Documentos relacionados
+## Documentos de entrada
 
-- [Comunicación CodeLab ↔ Neon de extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)
-- [Política del agente y bridge](docs/agent-ai-bridge-policy.md)
-- [Flujo autónomo de dibujo y animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
-- [Formato ZIP de PixelForge y Reference Center](docs/PIXELFORGE-PROJECT-PACKAGE.md)
-- [Recuperación de expiración de sesión](docs/SESSION-EXPIRATION-RECOVERY.md)
-- [Cuenta y persistencia](docs/account-admin-and-persistence-policy.md)
+- [Índice de documentación](docs/README.md)
+- [Política operativa del agente y bridge](docs/agent-ai-bridge-policy.md)
+- [Headless propio del agente](docs/HEADLESS-AGENT-RUNTIME.md)
+- [Flujo autónomo de animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
+- [Transporte inline de artefactos](docs/inline-artifact-bridge.md)
+- [Arquitectura CodeLab ↔ Neon](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)
