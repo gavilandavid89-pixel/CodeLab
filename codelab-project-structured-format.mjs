@@ -76,6 +76,55 @@ const SCENE_SECTION_LAYOUT = {
   objects: { folder: 'Objetos', filename: 'objetos.tscn', role: 'object' },
 };
 
+function validateSceneWorkspace(workspace, label) {
+  if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace) ||
+      workspace.format !== 'pixelforge-project' || typeof workspace.id !== 'string' ||
+      !workspace.id || typeof workspace.name !== 'string' || !workspace.name.trim()) {
+    fail(label + ' workspace must be a complete native pixelforge-project document.');
+  }
+  const width = Number(workspace.width), height = Number(workspace.height);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 ||
+      width > MAX_CANVAS || height > MAX_CANVAS || !Array.isArray(workspace.layers) ||
+      workspace.layers.length < 1 || workspace.layers.length > MAX_LAYERS) {
+    fail(label + ' workspace canvas or layer stack is invalid.');
+  }
+  const layerIds = workspace.layers.map(layer => String(layer?.id || ''));
+  if (layerIds.some(id => !id) || new Set(layerIds).size !== layerIds.length) {
+    fail(label + ' workspace contains missing or duplicate layer IDs.');
+  }
+  const expectedBytes = width * height * 4;
+  for (const layer of workspace.layers) {
+    if (typeof layer.pixels !== 'string' || Buffer.from(layer.pixels, 'base64').length !== expectedBytes) {
+      fail(label + ' workspace layer ' + layer.id + ' has invalid RGBA8 pixels.');
+    }
+  }
+  if (workspace.animation !== undefined && workspace.animation !== null) {
+    const animation = workspace.animation;
+    if (!Array.isArray(animation.frames) || animation.frames.length < 1 ||
+        animation.frames.length > MAX_FRAMES || Number(animation.width) !== width ||
+        Number(animation.height) !== height || !Number.isInteger(Number(animation.fps)) ||
+        Number(animation.fps) < 1 || Number(animation.fps) > 60) {
+      fail(label + ' workspace animation timeline is invalid.');
+    }
+    for (const [index, frame] of animation.frames.entries()) {
+      const cels = Array.isArray(frame.cels) ? frame.cels : [];
+      const celMap = new Map(cels.map(cel => [String(cel.layerId), cel]));
+      if (cels.length !== layerIds.length || celMap.size !== cels.length ||
+          layerIds.some(id => !celMap.has(id)) ||
+          !Number.isFinite(Number(frame.durationMs)) || Number(frame.durationMs) < 1 ||
+          Number(frame.durationMs) > 10000) {
+        fail(label + ' workspace frame ' + index + ' must contain one valid cel per layer.');
+      }
+      for (const cel of cels) {
+        if (typeof cel.pixels !== 'string' || Buffer.from(cel.pixels, 'base64').length !== expectedBytes) {
+          fail(label + ' workspace frame ' + index + ' contains invalid RGBA8 cel data.');
+        }
+      }
+    }
+  }
+  return structuredClone(workspace);
+}
+
 function installSceneSections(project, files, scenesManifest) {
   if (!scenesManifest || scenesManifest.format !== 'codelab-pixelforge-scenes' ||
       Number(scenesManifest.version) !== 1 || !scenesManifest.sections ||
@@ -103,7 +152,7 @@ function installSceneSections(project, files, scenesManifest) {
       fail('scene ' + key + ' must use canonical path ' + layout.folder + '/' + layout.filename + '.');
     }
     const scene = jsonFile(files, scenePath, key + ' scene manifest');
-    if (scene.format !== 'codelab-pixelforge-scene' || Number(scene.version) !== 1 ||
+    if (scene.format !== 'codelab-pixelforge-scene' || ![1, 2].includes(Number(scene.version)) ||
         scene.sceneType !== key || String(scene.projectId) !== String(project.id)) {
       fail(scenePath + ' must declare the matching PixelForge scene type, version and projectId.');
     }
@@ -125,7 +174,11 @@ function installSceneSections(project, files, scenesManifest) {
     if (!scene.data || typeof scene.data !== 'object' || Array.isArray(scene.data)) {
       fail(scenePath + ' data must be an object.');
     }
-    drawing.sceneSections[key] = structuredClone(scene.data);
+    const sectionData = structuredClone(scene.data);
+    if (scene.workspace !== undefined && scene.workspace !== null) {
+      sectionData.workspace = validateSceneWorkspace(scene.workspace, scenePath);
+    }
+    drawing.sceneSections[key] = sectionData;
     if (key === 'environment' && scene.environmentHistory !== undefined) {
       if (!scene.environmentHistory || typeof scene.environmentHistory !== 'object' ||
           !Array.isArray(scene.environmentHistory.entries)) {
