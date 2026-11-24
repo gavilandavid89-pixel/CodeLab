@@ -229,3 +229,49 @@
 .reference-center-context label{font-size:9px;color:var(--muted)}
 .reference-center-context input{display:block;width:100%}
 .reference-center-context span{font-size:9px;color:var(--text)}
+
+
+/* Independent PixelForge scene workspace navigation */
+.scene-workspace-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border, #2a2d38);
+  background: var(--panel, #171920);
+}
+.scene-workspace-label {
+  margin-right: 6px;
+  color: var(--muted, #8d93a5);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.scene-workspace-switcher button {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--border, #303341);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text, #dce2f0);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.scene-workspace-switcher button:hover { border-color: var(--accent, #9b8afb); }
+.scene-workspace-switcher button.active {
+  border-color: var(--accent, #9b8afb);
+  background: color-mix(in srgb, var(--accent, #9b8afb) 18%, transparent);
+  color: var(--text, #f2efff);
+}
+.scene-workspace-switcher button:focus-visible {
+  outline: 2px solid var(--accent, #9b8afb);
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  .scene-workspace-switcher { gap: 5px; padding: 7px 9px; }
+  .scene-workspace-label { flex-basis: 100%; }
+  .scene-workspace-switcher button { min-height: 32px; padding: 0 9px; font-size: 11px; }
+}
