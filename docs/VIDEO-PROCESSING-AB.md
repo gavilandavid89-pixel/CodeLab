@@ -89,6 +89,21 @@ El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba m
 10. Si hay defectos, el agente vuelve al proyecto editable, corrige en Headless, exporta y transfiere una nueva revisión; después repite A/B.
 11. Si todo es correcto, el agente entrega al usuario el vídeo final y el proyecto editable persistido en CodeLab.
 
+## Inspección de requisitos y ciclo de corrección obligatorio
+
+La inspección no consiste únicamente en comprobar que el MP4/WebM existe y se reproduce. El agente debe evaluar si **el contenido del vídeo cumple la petición concreta del usuario**. Antes de darlo por válido:
+
+1. Volver a leer los requisitos originales y convertirlos en una lista de criterios verificables (sujeto/escena, acciones, orden, apariencia, movimiento, continuidad, duración, ritmo, encuadre, resolución y formato, según corresponda).
+2. Reproducir e inspeccionar visualmente el vídeo final, de principio a fin cuando su duración lo permita. Revisar también frames individuales o puntos de transición si hay dudas.
+3. Comparar el resultado con cada criterio y detectar omisiones, errores visuales, movimientos imposibles, elementos incoherentes o sin sentido, cortes, frames repetidos/ausentes, deformaciones, timing incorrecto y cualquier discrepancia con lo pedido.
+4. Si un criterio falla, **retener la entrega**. Identificar el origen del defecto y corregir el proyecto editable existente con Headless.
+5. Priorizar una reparación incremental: reabrir la última revisión válida en Headless y modificar solo las capas, frames, cels, objetos, parámetros o segmentos afectados. Conservar el trabajo correcto y la estructura existente; no descartar el proyecto ni regenerarlo completo sin necesidad.
+6. Validar en Headless la corrección y exportar una nueva revisión nativa. El agente, fuera de Headless, la transfiere al bridge y verifica que quedó persistida en CodeLab.
+7. Ejecutar de nuevo A/B sobre esa nueva revisión, recuperar el nuevo archivo final y repetir la inspección de requisitos. No reutilizar como entrega el vídeo anterior a la corrección.
+8. Entregar únicamente cuando todos los criterios aplicables estén satisfechos. Si una limitación real impide corregir o verificar, explicar exactamente qué queda pendiente y no presentar el vídeo como terminado.
+
+Headless permite editar el proyecto existente; por tanto, **un defecto no implica empezar de cero**. La reconstrucción completa queda como último recurso, cuando la reparación incremental no sea viable, o cuando el usuario la solicite expresamente.
+
 ## Qué recibe el usuario
 
 - **Siempre:** el proyecto editable persistido en CodeLab, con confirmación de que se importó y se pudo leer de vuelta.
