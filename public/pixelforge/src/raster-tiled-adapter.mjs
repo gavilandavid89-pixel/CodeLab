@@ -100,6 +100,43 @@ export class TiledRasterProjectDocument {
     this.#projectMetadata = structuredClone(projectMetadata);
   }
 
+  /**
+   * Create a native blank tiled project. Unlike fromDocument(), this path never
+   * constructs or serializes a dense RasterDocument and is safe for large sparse
+   * canvases within the current geometry/layer limits.
+   */
+  static createBlank({
+    width = 128,
+    height = 128,
+    id = globalThis.crypto?.randomUUID?.(),
+    name = 'Untitled artwork',
+    layerName = 'Layer 1',
+    layerId = globalThis.crypto?.randomUUID?.(),
+    tileSize = DEFAULT_CEL_TILE_SIZE,
+    maxDecodedCacheBytes = 16 * 1024 * 1024,
+    drawingConfiguration,
+    projectMetadata = {},
+  } = {}) {
+    validateGeometry(width, height);
+    if (!id || !layerId) throw new Error('Secure UUID generation is required for tiled project identity.');
+    const store = new SparseTileCelStore({ maxDecodedCacheBytes });
+    const celId = store.createBlankCel({ width, height, tileSize });
+    try {
+      return new TiledRasterProjectDocument({
+        store, id, name, width, height,
+        layers: [{
+          id: layerId, name: layerName, visible: true, opacity: 1, locked: false, celId,
+        }],
+        activeLayerId: layerId,
+        drawingConfiguration,
+        projectMetadata,
+      });
+    } catch (error) {
+      store.releaseCel(celId);
+      throw error;
+    }
+  }
+
   static async fromDocument(document, {
     tileSize = DEFAULT_CEL_TILE_SIZE,
     maxDecodedCacheBytes = 16 * 1024 * 1024,
