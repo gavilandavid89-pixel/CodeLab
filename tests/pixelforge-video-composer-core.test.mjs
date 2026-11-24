@@ -59,6 +59,9 @@ test('Video Composer web interface wires every referenced control and includes a
 
 test('native CodeLab project drawing mode selects the matching Video Composer scaling default', () => {
   const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  const editor = fs.readFileSync(new URL('../public/pixelforge/src/editor.js', import.meta.url), 'utf8');
+  assert.match(editor, /sourceDrawingMode: drawingConfiguration\.activeMode/);
+  assert.match(editor, /scalingMode: getVideoScalingMode\(drawingConfiguration\.activeMode\)/);
   assert.match(js, /getVideoScalingMode\(project\.drawingConfiguration\?\.activeMode\)/);
   assert.match(js, /if \(\['smooth', 'pixelated'\]\.includes\(parsed\.manifest\.scalingMode\)\) \$\('#vc-scaling-mode'\)\.value = parsed\.manifest\.scalingMode/);
 });
