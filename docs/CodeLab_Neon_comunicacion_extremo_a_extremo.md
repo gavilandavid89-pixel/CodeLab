@@ -555,14 +555,14 @@ No se debe presentar al usuario un diagrama nuevo hasta verificarlo contra los a
 
 ## 19. Transporte inline de artefactos Headless → CodeLab
 
-El transporte inline permite que el agente entregue un paquete editable `.codelab` desde su Headless aislado sin exponer al Headless credenciales de Neon ni permitirle conexiones directas al almacenamiento de Neon/S3. CodeLab recibe el paquete por HTTPS, lo divide en partes binarias verificadas y lo guarda temporalmente en Neon. Al confirmar la integridad, inserta una orden normal `pixelforge_import_zip` en `codelab_agent_commands`; el listener/worker existente realiza la importación y persiste el proyecto.
+El transporte inline permite que el agente entregue un paquete editable `.codelab` desde su Headless aislado sin exponer al Headless credenciales de Neon ni permitirle conexiones directas al almacenamiento de Neon/S3. CodeLab recibe el paquete por HTTPS, lo divide en partes binarias verificadas y lo guarda temporalmente en Neon. Al confirmar la integridad, inserta una orden normal en `codelab_agent_commands`: `codelab_project_import` para paquetes `.codelab` o `pixelforge_import_zip` para ZIP PixelForge directos. Para `.codelab`, el endpoint crea también la solicitud de importación en el buzón ADMIN y devuelve su ID; el agente no necesita insertar filas ni conectarse directamente a Neon.
 
 - Rutas: `POST /api/agent/bridge/artifacts` (manifiesto), `PUT /api/agent/bridge/artifacts/{artifact_id}/{index}` (parte binaria), `POST /api/agent/bridge/artifacts/{artifact_id}/commit` (validación y encolado).
 - Límites actuales: 1 MiB por parte, 256 MiB por artefacto, máximo 256 partes y expiración temporal de 1 hora; la orden de importación se crea con expiración inicial de 15 minutos.
 - Integridad: SHA-256 individual por parte, secuencia contigua, bytes totales y SHA-256 global del archivo.
 - Tablas: `codelab_agent_artifacts` y `codelab_agent_artifact_chunks`. Son staging temporal; el proyecto final se guarda en la persistencia PixelForge habitual.
 - Autenticación: secreto de control del bridge mediante header `x-codelab-agent-bridge-token`; no publicar ni registrar secretos.
-- Resultado: el commit HTTP 202 solo confirma que se encoló la importación. El agente debe esperar el resultado de `pixelforge_import_zip` y verificar el proyecto persistido.
+- Resultado: el commit HTTP 202 solo confirma que se encoló la importación. El agente debe esperar el resultado de `codelab_project_import` o `pixelforge_import_zip`, según el tipo de artefacto, y verificar el proyecto persistido.
 
 La autoprueba opcional `AGENT_INLINE_ARTIFACT_SMOKE_TEST=1` usa las mismas rutas con un payload de un byte y `self_test=true`; valida el transporte/Neon, pero no encola una importación ficticia. La prueba real del 23-11-2026 confirmó manifiesto, parte y SHA en el Neon de Xsuperwarriorx. No debe confundirse con una importación completa de un proyecto real.
 
