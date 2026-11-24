@@ -408,6 +408,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
       height: project.height,
       layerCount: project.layers.length,
       frameCount: frames.frames.length,
+      fps: frames.fps,
       referenceCount: referenceCenter.categories.reduce((sum, category) => sum + category.references.length, 0),
       resourceCount: resourceDeclarations.length,
       sceneSectionCount: Object.keys(scenes.sections).length,
