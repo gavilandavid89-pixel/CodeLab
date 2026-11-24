@@ -270,8 +270,8 @@ La inspección no debe limitarse a «hay movimiento». Debe comprobar continuida
 Este documento es el **documento principal (owner) del flujo A/B y de su experiencia real de implementación, prueba, fallos, correcciones y cierre**.
 
 - El protocolo operativo general del agente está en [ANIMATION-AUTONOMOUS-WORKFLOW.md](./ANIMATION-AUTONOMOUS-WORKFLOW.md). Para el cierre específico de vídeo A/B, ese documento remite a este flujo y a la regla **5.2: recibir → obtener → inspeccionar → corregir → reinspeccionar → entregar**.
-- La arquitectura y transporte del bridge se documentan por separado; este documento no sustituye esa especificación, sino que registra cómo se usa en la ejecución A/B real.
-- Cuando exista una especificación dedicada al procesamiento de vídeo A/B, debe enlazarse desde aquí y tratarse como referencia técnica complementaria, mientras que **este documento conserva el historial y resultado real del flujo**.
+- La especificación técnica complementaria de A/B está en [VIDEO-PROCESSING-AB.md](./VIDEO-PROCESSING-AB.md): contrato de A/B, separación de credenciales, transporte, workflows y scripts. Ese documento debe remitir aquí para el historial, los fallos, las correcciones, la aceptación visual y la última revisión real.
+- La arquitectura y el transporte del bridge se detallan en [inline-artifact-bridge.md](./inline-artifact-bridge.md); este documento registra cómo se utilizan dentro del recorrido A/B real.
 
 La navegación entre documentos debe ser bidireccional cuando describan partes del mismo proceso: el documento operativo debe llevar a este documento para el caso A/B, y este documento debe llevar al protocolo operativo para las reglas de inspección y cierre.
 
