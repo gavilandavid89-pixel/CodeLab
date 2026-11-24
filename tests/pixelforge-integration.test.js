@@ -1180,6 +1180,14 @@ async function main() {
          ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role='admin'`,
         [adminAccountId]
       );
+      const staleFileBytes = Buffer.from('stale-import-file');
+      const staleFileSha = crypto.createHash('sha256').update(staleFileBytes).digest('hex');
+      await testSessionPool.query(
+        `INSERT INTO public.codelab_project_files
+          (workspace_id,project_id,editor_id,file_path,content_type,byte_size,sha256,content,updated_at)
+         VALUES ($1,$2,'pixelforge','obsolete/stale-bridge-import.bin','application/octet-stream',$3,$4,$5,$6)`,
+        [adminWorkspaceId, agentProjectId, staleFileBytes.length, staleFileSha, staleFileBytes, Date.now()]
+      );
       const worker = spawn(process.execPath, ['agent-bridge-worker.mjs'], {
         cwd: path.join(__dirname, '..'),
         env: {
@@ -1221,7 +1229,7 @@ async function main() {
             artifact_kind: 'codelab_zip_upload',
             editor_id: 'pixelforge',
             source_project_id: agentProjectId,
-            target_workspace_id: coreWorkspace.workspaceId,
+            target_workspace_id: adminWorkspaceId,
             project_name: 'Agent ZIP v2 native import'
           })
         });
@@ -1276,6 +1284,12 @@ async function main() {
         const agentImport = commandRow.result;
         assert.equal(agentImport.status, 'succeeded', 'agent ZIP v2 import should complete through importCodeLabArtifact');
         assert.equal(agentImport.reloadedFromPersistence, true, 'agent import must verify its PostgreSQL round-trip');
+        const staleFileCheck = await testSessionPool.query(
+          'SELECT COUNT(*)::int AS count FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND file_path=$3',
+          [adminWorkspaceId, agentProjectId, 'obsolete/stale-bridge-import.bin']
+        );
+        assert.equal(staleFileCheck.rows[0].count, 0,
+          'a successful re-import must remove stale files after the new package has been verified');
         assert.equal(agentImport.editorId, 'pixelforge');
         assert.equal(agentImport.projectId, agentProjectId);
         assert.equal(agentImport.targetWorkspaceId, coreWorkspace.workspaceId,

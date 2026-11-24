@@ -436,13 +436,16 @@ export async function importCodeLabArtifact(pool, {
     if (rereadSha !== contentSha || rereadProjectResult.rows[0].content_sha256 !== contentSha) {
       throw new Error('Persisted CodeLab project round-trip SHA-256 verification failed.');
     }
-    const rereadFilesResult = await queryChecked(pool, 'import_roundtrip_files_sql',
-      'SELECT file_path, byte_size, sha256, content FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 ORDER BY file_path',
-      [destinationWorkspaceId, projectId, request.editor_id]
-    );
     const expectedFiles = packageFiles
       .map(file => ({ path: destinationPathByPath.get(file.relative), bytes: packageFileMap.get(file.relative) }))
       .sort((a, b) => a.path.localeCompare(b.path));
+    const expectedPaths = expectedFiles.map(file => file.path);
+    // Verify every new file before removing stale paths from an earlier import of
+    // the same project. This keeps the previous file set intact if round-trip fails.
+    const rereadFilesResult = await queryChecked(pool, 'import_roundtrip_files_sql',
+      'SELECT file_path, byte_size, sha256, content FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 AND file_path = ANY($4::text[]) ORDER BY file_path',
+      [destinationWorkspaceId, projectId, request.editor_id, expectedPaths]
+    );
     if (rereadFilesResult.rows.length !== expectedFiles.length) {
       throw new Error('Persisted CodeLab file count does not match the imported package.');
     }
@@ -454,6 +457,19 @@ export async function importCodeLabArtifact(pool, {
           actual.sha256 !== expectedSha || !Buffer.from(actual.content).equals(expected.bytes)) {
         throw new Error('Persisted CodeLab file round-trip verification failed for ' + expected.path + '.');
       }
+    }
+    // A project can be re-imported with a smaller/different package. Remove only
+    // files that are not referenced by the newly verified package.
+    await queryChecked(pool, 'import_cleanup_stale_files_sql',
+      'DELETE FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 AND NOT (file_path = ANY($4::text[]))',
+      [destinationWorkspaceId, projectId, request.editor_id, expectedPaths]
+    );
+    const finalFileCountResult = await queryChecked(pool, 'import_roundtrip_file_count_sql',
+      'SELECT COUNT(*)::int AS file_count FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3',
+      [destinationWorkspaceId, projectId, request.editor_id]
+    );
+    if (Number(finalFileCountResult.rows[0]?.file_count || 0) !== expectedFiles.length) {
+      throw new Error('Persisted CodeLab file count does not match the imported package after stale-file cleanup.');
     }
     const persistedProject = rereadProject;
     const workspacePublication = await publishImportedCodeLabProjectToWorkspace(
