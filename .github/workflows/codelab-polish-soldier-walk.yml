@@ -5,6 +5,7 @@ on:
     paths:
       - 'scripts/codelab-polish-soldier-walk-direct.mjs'
       - 'scripts/codelab-inspect-soldier-walk.mjs'
+      - 'scripts/codelab-repair-soldier-walk.mjs'
       - '.github/workflows/codelab-polish-soldier-walk.yml'
   issue_comment:
     types: [created]
@@ -15,7 +16,7 @@ on:
         required: false
         default: 'inspect'
         type: choice
-        options: [inspect, polish]
+        options: [inspect, repair, polish]
       project_id:
         description: 'Persisted ADMIN PixelForge project'
         required: false
@@ -27,7 +28,7 @@ permissions:
 
 jobs:
   polish:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Inspect Soldier Walk]')) }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && (startsWith(github.event.comment.body, '[Inspect Soldier Walk]') || startsWith(github.event.comment.body, '[Repair Soldier Walk]'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -46,7 +47,7 @@ jobs:
           RUNNER_TEMP: ${{ runner.temp }}
         run: node scripts/codelab-inspect-soldier-walk.mjs
       - name: Upload ADMIN frame inspection
-        if: ${{ github.event_name == 'push' || github.event_name == 'issue_comment' || inputs.mode != 'polish' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '[Inspect Soldier Walk]')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'inspect') }}
         uses: actions/upload-artifact@v4
         with:
           name: codelab-soldier-walk-source-${{ github.run_id }}
@@ -54,6 +55,21 @@ jobs:
             ${{ runner.temp }}/soldier-walk-project.json
             ${{ runner.temp }}/soldier-walk-inspection.json
           retention-days: 3
+      - name: Repair persisted ADMIN animation
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'repair') || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '[Repair Soldier Walk]')) }}
+        env:
+          CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
+          CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: node scripts/codelab-repair-soldier-walk.mjs
+      - name: Upload repair verification
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'repair') || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '[Repair Soldier Walk]')) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-soldier-walk-repair-${{ github.run_id }}
+          path: ${{ runner.temp }}/soldier-walk-repair-verification.json
+          retention-days: 14
       - name: Polish persisted ADMIN animation
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'polish' }}
         env:
