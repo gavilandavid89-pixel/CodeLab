@@ -524,6 +524,25 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
   };
 }
 
+export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation = null, pixels } = {}) {
+  const layer = drawingDocument?.activeLayer;
+  if (!drawingDocument || !layer) throw new TypeError('An active PixelForge layer is required.');
+  if (layer.locked) throw new Error('The active PixelForge layer is locked.');
+  if (!(pixels instanceof Uint8Array) || pixels.length !== drawingDocument.width * drawingDocument.height * 4) {
+    throw new TypeError('Reference pixels must match the active canvas RGBA8 dimensions.');
+  }
+  const copy = new Uint8Array(pixels);
+  if (animation) {
+    if (typeof animation.setLayerPixels !== 'function' || !Number.isInteger(animation.activeFrameIndex)) {
+      throw new TypeError('The active animation frame cannot accept reference pixels.');
+    }
+    animation.setLayerPixels(animation.activeFrameIndex, layer.id, new Uint8Array(copy));
+  }
+  drawingDocument.setLayerPixels(layer.id, copy);
+  drawingDocument.dirty = true;
+  return { layerId: layer.id, frameIndex: animation?.activeFrameIndex ?? null, copiedBytes: copy.byteLength };
+}
+
 export function applyReferenceToDrawingModel(model, entry) {
   if (!entry || typeof entry !== 'object') throw new TypeError('reference entry is required.');
   const next = clone(model);
