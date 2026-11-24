@@ -2190,6 +2190,8 @@ $('#animation-export-zip').addEventListener('click', async () => {
       fps: animation?.fps ?? 1,
       loop: animationLoop,
       playbackSpeed: animationPlaybackSpeed,
+      sourceDrawingMode: drawingConfiguration.activeMode,
+      scalingMode: getVideoScalingMode(drawingConfiguration.activeMode),
       frameCount: animation?.frameCount ?? 1,
       frames: [],
       audio: [],
