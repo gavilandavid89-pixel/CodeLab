@@ -34,8 +34,18 @@ test('a project with one enabled mode cannot silently switch to a disabled mode'
 });
 
 test('drawing modes change presentation defaults, not source geometry', () => {
-  assert.equal(getDrawingModePresentation('illustration').imageSmoothingEnabled, true);
-  assert.equal(getDrawingModePresentation('pixel-art').imageSmoothingEnabled, false);
+  const illustration = getDrawingModePresentation('illustration');
+  const pixelArt = getDrawingModePresentation('pixel-art');
+  assert.equal(illustration.imageSmoothingEnabled, true);
+  assert.equal(illustration.brushSize, 5);
+  assert.equal(illustration.brushShape, 'circle');
+  assert.equal(illustration.brushHardness, 55);
+  assert.equal(illustration.interpolation, 'bilinear');
+  assert.equal(pixelArt.imageSmoothingEnabled, false);
+  assert.equal(pixelArt.brushSize, 1);
+  assert.equal(pixelArt.brushShape, 'square');
+  assert.equal(pixelArt.brushHardness, 100);
+  assert.equal(pixelArt.interpolation, 'nearest');
 });
 
 test('Video Composer inherits the source project drawing mode by default', () => {
