@@ -44,8 +44,8 @@ export function switchDrawingMode(configuration, mode) {
 
 export function getDrawingModePresentation(mode) {
   return mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
-    ? { imageSmoothingEnabled: true, imageSmoothingQuality: 'high', brushProfile: 'soft', interpolation: 'bilinear' }
-    : { imageSmoothingEnabled: false, imageSmoothingQuality: 'low', brushProfile: 'hard', interpolation: 'nearest' };
+    ? { imageSmoothingEnabled: true, imageSmoothingQuality: 'high', brushProfile: 'soft', brushSize: 5, brushShape: 'circle', brushHardness: 55, interpolation: 'bilinear' }
+    : { imageSmoothingEnabled: false, imageSmoothingQuality: 'low', brushProfile: 'hard', brushSize: 1, brushShape: 'square', brushHardness: 100, interpolation: 'nearest' };
 }
 
 
