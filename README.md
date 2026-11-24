@@ -4,7 +4,7 @@
 >
 > **Mapa de lectura:** [Índice de documentación](docs/README.md). Define qué documento corresponde a cada tarea y cuál prevalece si hay contradicciones.
 >
-> **Distinción crítica:** el Headless propio del agente es donde la IA crea y edita. El Headless/worker de CodeLab recibe, importa y persiste. Son entornos distintos.
+> **Distinción crítica:** el Headless propio del agente crea y exporta el proyecto, pero NO se conecta al intermediario. El agente IA recoge el archivo exportado fuera del Headless y lo transfiere a CodeLab. Si se pide vídeo, A/B es la etapa integrada que produce el vídeo final que recibe el usuario.
 
 # CodeLab XD Studio Pro v2.7.0
 
@@ -28,7 +28,7 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 > Documentación técnica de conexión y funcionamiento: [CodeLab ↔ Neon extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). El diagrama y los detalles deben reflejar siempre el código actual.
 > Catálogo de órdenes y operaciones del agente: [CodeLab + PixelForge command catalog](docs/CODELAB-PIXELFORGE-COMMAND-CATALOG.md), con contratos, capacidades Headless, aprobación y límites de cobertura.
 
-## 🧠 Arquitectura de órdenes: agente → Neon → CodeLab → evidencia → Neon → agente
+## 🧠 Arquitectura de órdenes y entregas: agente → Headless aislado → intermediario → CodeLab → A/B (si se pidió vídeo) → usuario
 
 **Importante: este diagrama describe la cola de órdenes del sistema, no el entorno donde el agente crea o anima.** El trabajo creativo se realiza en el Headless propio del agente y la entrega del paquete editable usa el HTTPS inline bridge; ambos están explicados en [el índice documental](docs/README.md).
 
