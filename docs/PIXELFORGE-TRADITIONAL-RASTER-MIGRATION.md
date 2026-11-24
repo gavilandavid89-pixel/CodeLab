@@ -182,3 +182,6 @@ The tiled adapter now has a proof test showing that a sparse 4096×4096 project 
 The tiled raster adapter now exposes `TiledRasterProjectDocument.createBlank()`, backed by `SparseTileCelStore.createBlankCel()`. New projects created through this API begin with an empty sparse cel: no full-canvas RGBA allocation and no intermediate legacy `RasterDocument.toJSON()` conversion. A 4096×4096 regression test edits one pixel, checks that only one tile resource is allocated, duplicates the layer through shared tile references, and verifies copy-on-write isolation plus manifest export.
 
 This is a migration milestone, not yet the default editor path. The UI still constructs the legacy dense document; tool/history/animation parity, sparse project open/save, ZIP/Headless support, and durable server persistence remain required before raising or removing legacy limits.
+
+
+The adapter's bounded region-write path now releases the replaced layer-owned cel after a successful copy-on-write operation. This prevents stale cel/resource references from accumulating while preserving references held by duplicated layers. The new lifecycle test checks live cel count and complete resource cleanup on disposal.
