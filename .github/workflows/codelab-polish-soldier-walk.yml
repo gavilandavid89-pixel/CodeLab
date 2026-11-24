@@ -3,7 +3,7 @@ name: CodeLab polish ADMIN Soldier Walk
 on:
   push:
     paths:
-      - 'scripts/codelab-polish-soldier-walk.mjs'
+      - 'scripts/codelab-polish-soldier-walk-direct.mjs'
       - '.github/workflows/codelab-polish-soldier-walk.yml'
   workflow_dispatch:
     inputs:
@@ -33,7 +33,7 @@ jobs:
           CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
           CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
           GITHUB_STEP_SUMMARY_FILE: ${{ runner.temp }}/polish-verification.json
-        run: node scripts/codelab-polish-soldier-walk.mjs
+        run: node scripts/codelab-polish-soldier-walk-direct.mjs
       - name: Upload polish verification
         uses: actions/upload-artifact@v4
         with:
