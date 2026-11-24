@@ -100,7 +100,7 @@ test('sparse cel store deduplicates immutable tiles and applies copy-on-write ed
   assert.equal(patch.operations.length, 1);
   assert.equal(patch.operations[0].type, 'tile.put');
   assert.deepEqual([patch.operations[0].x, patch.operations[0].y], [0, 0]);
-  assert.equal(patch.operations[0].rgba.length, 64 * 64 * 4 / 3 * 4);
+  assert.equal(patch.operations[0].rgba.length, Math.ceil((64 * 64 * 4) / 3) * 4);
   await assert.rejects(() => store.createPatch(first, second, {
     projectId: 'project-1', baseRevision: -1, operationId: 'operation-2',
     frameId: 'frame-1', layerId: 'layer-1',
