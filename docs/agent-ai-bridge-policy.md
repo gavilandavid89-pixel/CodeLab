@@ -4,7 +4,7 @@
 
 Para la transferencia de paquetes editables desde el Headless aislado del agente, consultar también [Transporte inline de artefactos Headless → CodeLab](inline-artifact-bridge.md). Inline es el intermediario HTTPS de staging/importación. El Headless no se conecta a él: el agente recoge el archivo exportado y lo transfiere fuera del Headless. A/B es una etapa integrada para producir el vídeo final cuando la tarea lo requiere.
 
-## 1. Arquitectura y responsabilidades
+## 0. Identidad ADMIN y autenticación existente\n\nAntes de diagnosticar un bloqueo de bridge, reutilizar y verificar la conexión administrativa ya disponible, resolver la cuenta y el workspace destino y revisar las acciones soportadas. No pedir al usuario secretos ni reconfigurar autenticación por la ausencia de una variable visible en el runtime Headless. La autenticación de la cuenta ADMIN y el token interno de una ruta HTTP son capas distintas: comprobar la capa que falla antes de concluir. Seguir [Recuperación de identidad ADMIN y continuidad del bridge](ADMIN-AUTH-AND-BRIDGE-RECOVERY.md).\n\n## 1. Arquitectura y responsabilidades
 
 Flujo canónico:
 
