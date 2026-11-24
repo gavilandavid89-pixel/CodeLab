@@ -175,3 +175,10 @@ The API has its own 32 MiB direct JSON limit and 6 MiB chunk protocol (9 MiB req
 The tiled adapter now has a proof test showing that a sparse 4096×4096 project can represent 17 layers (over 1 GiB of theoretical dense RGBA) using a single deduplicated 32×32 tile resource. This bypasses the legacy *aggregate dense allocation* limit inside that adapter only. The editor still creates and edits `RasterDocument` dense buffers; its migration adapter begins with `toJSON()`, and the v1 server/package path still rejects those larger dense projects. Therefore this is not yet an end-to-end larger-pixel feature.
 
 **Do not remove the v1 guards until the native editor, animation, history, compositing, package/ZIP, Headless and server persistence all consume the sparse tiled representation.** The exact audit and migration order live in [the high-resolution capacity audit](PIXELFORGE-HIGH-RESOLUTION-STORAGE-AND-INCREMENTAL-SYNC.md).
+
+
+### Native tiled project creation milestone
+
+The tiled raster adapter now exposes `TiledRasterProjectDocument.createBlank()`, backed by `SparseTileCelStore.createBlankCel()`. New projects created through this API begin with an empty sparse cel: no full-canvas RGBA allocation and no intermediate legacy `RasterDocument.toJSON()` conversion. A 4096×4096 regression test edits one pixel, checks that only one tile resource is allocated, duplicates the layer through shared tile references, and verifies copy-on-write isolation plus manifest export.
+
+This is a migration milestone, not yet the default editor path. The UI still constructs the legacy dense document; tool/history/animation parity, sparse project open/save, ZIP/Headless support, and durable server persistence remain required before raising or removing legacy limits.
