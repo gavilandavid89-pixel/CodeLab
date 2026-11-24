@@ -15,7 +15,7 @@ import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '
 import { sceneWorkspaceSections, readSceneWorkspaceState, stripSceneWorkspaceState, attachSceneWorkspaceState, createSceneWorkspaceSnapshot } from './scene-workspaces.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
-import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation } from './drawing-mode-config.mjs';
+import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation, getVideoScalingMode } from './drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
