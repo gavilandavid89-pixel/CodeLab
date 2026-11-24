@@ -327,3 +327,16 @@ Después de descargar el artefacto, se extrajeron e inspeccionaron visualmente l
 **Estado de cierre:** la revisión 5 pasó la verificación técnica A/B y la inspección visual del archivo exacto. El WebM de esta revisión es el resultado que se entrega; no se sustituye por el ZIP del workflow.
 
 La regla operativa permanece en [ANIMATION-AUTONOMOUS-WORKFLOW.md](./ANIMATION-AUTONOMOUS-WORKFLOW.md), sección 5.2: recibir → obtener → inspeccionar → corregir → reinspeccionar → entregar.
+
+## Catálogo externo de proyectos (inbox de PixelForge)
+
+Los proyectos fuente que deben aparecer en PixelForge ADMIN se alojan en `projects/animation-inbox/<slug>/project.codelab`. El workflow `.github/workflows/pixelforge-project-inbox.yml` importa esos paquetes mediante el bridge inline al workspace ADMIN. Esta fase ocurre antes de A/B y no cambia sus funciones.
+
+- El workflow de inbox, fuera de A/B, es quien lee el repositorio y transfiere el paquete.
+- A no lee GitHub ni el repositorio. A conserva su sesión web actual y ejecuta exclusivamente la operación que B le solicita.
+- B selecciona el proyecto y la operación, envía la petición a A, recibe el WebM y lo verifica. B no genera animaciones.
+- Solo después de comprobar la importación real se inicia el ciclo A/B existente.
+- La copia maestra del repositorio no se elimina. La copia temporal ADMIN solo se elimina tras terminar el trabajo y recibir confirmación explícita del usuario; el WebM y su evidencia se conservan.
+
+La guía de incorporación y el formato del paquete están en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md); el transporte y la automatización se describen en [inline-artifact-bridge.md](./inline-artifact-bridge.md).
+
