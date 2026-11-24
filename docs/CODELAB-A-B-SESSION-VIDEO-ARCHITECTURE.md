@@ -344,3 +344,83 @@ Los proyectos fuente que deben aparecer en PixelForge ADMIN se alojan en `projec
 
 La guía de incorporación y el formato del paquete están en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md); el transporte y la automatización se describen en [inline-artifact-bridge.md](./inline-artifact-bridge.md).
 
+## Puerta de entrada de proyectos PixelForge desde GitHub (inbox)
+
+El inbox es un **importador de catálogo externo a A/B**. Su función es tomar un paquete nativo que vive en el repositorio y crear una copia de trabajo persistida en el workspace ADMIN para que A/B pueda operar sobre ella. No convierte al inbox en un tercer agente y no cambia el contrato de responsabilidades.
+
+### Componentes y límites
+
+| Componente | Responsabilidad | Lo que no hace |
+|---|---|---|
+| `projects/animation-inbox/` | Conserva los paquetes fuente versionados; es la copia maestra. | No ejecuta A/B ni elimina proyectos. |
+| `pixelforge-project-inbox.yml` | Detecta carpetas, valida el ZIP y lo transfiere al bridge. | No abre PixelForge ni exporta vídeo. |
+| Bridge inline + worker CodeLab | Recibe el ZIP, crea la orden de importación y procesa la persistencia ADMIN. | No decide qué animación debe realizarse. |
+| A | Abre el proyecto ADMIN real y ejecuta la operación web que B solicita. | No consulta GitHub, el inbox ni el repositorio. |
+| B | Elige el proyecto/operación, solicita a A y verifica el WebM recibido. | No anima, genera frames, codifica ni usa FFmpeg. |
+
+### Estructura del inbox
+
+Cada proyecto ocupa una carpeta propia cuyo nombre es un slug en minúsculas, números y guiones:
+
+```text
+projects/animation-inbox/
+└── <slug>/
+    └── project.codelab
+```
+
+El archivo debe ser un ZIP exportado desde PixelForge como paquete nativo CodeLab. En la raíz del ZIP deben existir:
+
+- `project.codelab-pixelforge`
+- `manifest.json`, con `format: "codelab"` y `editor: "pixelforge"`
+- `project.json`, con el ID y nombre del proyecto.
+
+Los recursos que el paquete declare viajan dentro del mismo ZIP. El inbox rechaza paquetes que no sean de PixelForge o que no cumplan esta estructura. No se debe renombrar un ZIP genérico como `.codelab` para intentar hacerlo pasar por un paquete nativo.
+
+### Qué ocurre al hacer push
+
+1. Un push que cambia archivos bajo `projects/animation-inbox/**` dispara `.github/workflows/pixelforge-project-inbox.yml`. También puede ejecutarse manualmente desde Actions indicando `project_slug`; si se deja vacío, procesa las carpetas del inbox.
+2. El workflow obtiene las carpetas de proyecto afectadas. Los cambios en el README raíz o en archivos auxiliares del inbox no se interpretan como proyectos.
+3. Valida el slug, la existencia de `project.codelab`, la integridad ZIP y los tres archivos raíz requeridos. Comprueba los valores del manifiesto y extrae `id` y `name` desde `project.json`.
+4. Calcula tamaño, número de bloques y SHA-256. La transferencia se inicia mediante `POST /api/agent/bridge/artifacts`, con `artifact_kind: codelab_zip_upload`, `editor_id: pixelforge` y destino `ws_local_admin`.
+5. El paquete se envía en bloques de 1 MiB por las rutas PUT del bridge. Al hacer commit, el servidor valida el hash y encola la orden nativa de importación.
+6. El workflow exige que el commit responda `status: queued`. Ese estado significa **aceptado/encolado**, no que el worker ya terminó ni que el proyecto esté visible.
+7. El worker procesa la orden y persiste el proyecto y sus recursos en CodeLab. Antes de iniciar A/B, hay que comprobar el resultado de la orden y abrir/confirmar el proyecto en PixelForge ADMIN.
+
+El secreto `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` se usa únicamente como secreto del workflow de importación para autenticar el transporte. No se imprime en logs ni se entrega a A o B. La transferencia usa el bridge existente; no introduce una conexión directa desde el paquete o desde A/B a Neon.
+
+### Cómo ejecutar A/B con un proyecto importado
+
+Una vez que el proyecto ya aparece en PixelForge ADMIN:
+
+1. Copiar el `id` real del proyecto, que es el valor `project.json.id` del paquete y el identificador con el que quedó persistido en ADMIN. El slug de la carpeta del inbox **no sustituye** al ID del proyecto.
+2. En **Actions → CodeLab Independent Session A → Run workflow**, seleccionar la rama `main` y escribir ese ID en `project_id`. A debe iniciarse primero y alcanzar el estado READY.
+3. En **Actions → CodeLab Independent Session B → Run workflow**, seleccionar la misma rama y escribir exactamente el mismo ID en `project_id`. Se puede dejar `session_id` vacío para que B descubra una sesión A activa, o indicar la sesión concreta.
+4. B comprueba que el READY de A corresponde al mismo `project_id` y al workspace `ws_local_admin`. También exige revisión, hash y datos de timeline fijados por A. Si los IDs no coinciden, B falla antes de enviar la solicitud.
+5. B solicita a A la exportación de esa revisión. A opera la web real y el Video Composer; B recibe los bloques, reconstruye el WebM, comprueba SHA-256/EBML y valida decodificación, duración, dimensiones y muestras temporales con Chromium.
+6. B publica el resultado y sube el WebM junto con `verification.json` como artefacto de Actions. El cierre visual y la entrega al usuario siguen sujetos a la regla de inspección de la sección 5.2 de `ANIMATION-AUTONOMOUS-WORKFLOW.md`.
+
+El valor por defecto de ambos workflows sigue siendo `soldier-walk-60f-20261124` por compatibilidad histórica. Para cualquier otro proyecto se debe introducir el mismo ID en A y B; cambiar solo uno no cambia el proyecto de la sesión.
+
+### Ciclo de vida, limpieza y conservación
+
+- El ZIP dentro de `projects/animation-inbox/<slug>/project.codelab` es la copia maestra versionada. No se elimina cuando se importa, cuando B termina ni cuando se limpia ADMIN.
+- La importación crea una copia de trabajo dentro del workspace ADMIN. Esa copia puede borrarse desde la lista de proyectos PixelForge mediante la acción **Delete**, que requiere confirmación explícita del usuario.
+- La eliminación confirmada limpia, en la misma transacción, el registro principal y los archivos/entradas/órdenes de importación asociados al proyecto PixelForge en ese workspace, cuando esas tablas están disponibles.
+- **No borrar la copia ADMIN mientras A siga utilizando el proyecto.** A mantiene su sesión hasta su propio timeout aunque B haya terminado. Esperar a que A ya no necesite el proyecto antes de confirmar el borrado.
+- El WebM y `verification.json` son evidencias independientes y no forman parte de la copia de trabajo del proyecto. La limpieza del proyecto no debe borrar esos artefactos.
+- No hay borrado automático al terminar el importador ni al terminar B.
+
+### Diagnóstico rápido
+
+| Síntoma | Interpretación / acción |
+|---|---|
+| No aparece un run del inbox | Revisar que el cambio esté bajo una carpeta de proyecto en `projects/animation-inbox/` o ejecutar el workflow manualmente. |
+| Error de ZIP/manifiesto | Volver a exportar desde PixelForge como paquete nativo y comprobar los archivos raíz requeridos. |
+| El workflow termina en `queued` | La transferencia fue aceptada; todavía hay que esperar al worker y comprobar la importación en ADMIN. |
+| El proyecto no aparece en ADMIN | Revisar el estado/error de la orden del worker; no iniciar A/B todavía. |
+| B informa que A está fijada a otro proyecto | Volver a iniciar A con el ID correcto y pasar el mismo ID a B. |
+| B no encuentra A READY | Comprobar que A sigue `in_progress`, alcanzó READY y está usando el mismo issue/buzón. |
+| A/B termina técnicamente bien | Aún falta que el agente receptor obtenga e inspeccione visualmente el WebM antes de entregarlo. |
+
+La guía paso a paso del paquete está en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md). La especificación de transporte está en [inline-artifact-bridge.md](./inline-artifact-bridge.md), y el contrato A/B sigue definido en este documento y en [VIDEO-PROCESSING-AB.md](./VIDEO-PROCESSING-AB.md).
+
