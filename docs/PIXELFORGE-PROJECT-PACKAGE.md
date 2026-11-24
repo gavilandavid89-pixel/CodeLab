@@ -237,7 +237,7 @@ Estas cinco carpetas **no son bibliotecas de PNG ni filtros que apuntan a capas 
 
 ### 4.1 Cada sección es un documento PixelForge completo
 
-Cada manifiesto `.tscn` contiene una instancia autocontenida con el mismo contrato de edición que el proyecto principal. Su carga útil debe preservar, como mínimo:
+Cada manifiesto `.tscn` es JSON CodeLab y contiene el campo `workspace`, que guarda un documento nativo completo `pixelforge-project` e independiente. `workspace.layers[]` conserva las capas y sus píxeles; `workspace.animation.frames[]` conserva los frames y sus cels por capa. `data` queda reservado para metadatos propios de la sección. Su carga útil debe preservar, como mínimo:
 
 - Identidad de la instancia, nombre, dimensiones y configuración del lienzo.
 - Una pila ordenada de capas con IDs estables, nombres, píxeles RGBA, posición, escala, rotación/ángulo, opacidad, visibilidad, bloqueo, blend mode, máscaras, clipping, referencias, assets y metadatos.
@@ -251,46 +251,34 @@ Una sección sin contenido puede estar vacía, pero cuando se guarda una instanc
 
 ### 4.2 Organización interna del ZIP
 
-Cada `.tscn` es el manifiesto de su instancia y apunta a los datos completos de la misma. Los binarios RGBA pueden separarse en archivos por frame/capa para evitar JSON gigantes, pero deben estar enlazados por rutas relativas explícitas y protegidos por `integrity.json`.
+En la versión 2 del manifiesto de sección, la instancia completa vive dentro del campo `workspace` de su archivo `.tscn`. Los píxeles RGBA se serializan como datos de píxeles del documento nativo, y cada frame guarda sus cels asociados a los IDs de capa. No se generan PNG como sustitutos de las instancias ni se necesita un segundo ZIP dentro de cada carpeta.
 
-Ejemplo conceptual:
+Ejemplo conceptual del contenido de `Entorno/entorno.tscn`:
 
-~~~text
-Entorno/
-├── entorno.tscn
-└── frames/
-    ├── frames.tscn
-    ├── frame-0001/
-    │   ├── frame.json
-    │   └── layers/
-    │       └── layer-001/pixels.rgba
-    └── frame-0002/
-        ├── frame.json
-        └── layers/
-            └── layer-001/pixels.rgba
-
-Efectos/
-├── efectos.tscn
-└── frames/
-    └── ... misma estructura completa de frames y capas ...
-
-Detalles/
-├── detalles.tscn
-└── frames/
-    └── ...
-
-Elementos/
-├── elementos.tscn
-└── frames/
-    └── ...
-
-Objetos/
-├── objetos.tscn
-└── frames/
-    └── ...
+~~~json
+{
+  "format": "codelab-pixelforge-scene",
+  "version": 2,
+  "sceneType": "environment",
+  "projectId": "id-del-proyecto-principal",
+  "workspace": {
+    "format": "pixelforge-project",
+    "id": "id-independiente-del-entorno",
+    "name": "Pelota animada",
+    "width": 128,
+    "height": 128,
+    "layers": ["capas completas con sus píxeles y propiedades"],
+    "animation": {
+      "fps": 12,
+      "activeFrameIndex": 0,
+      "frames": ["frames completos con un cel por capa"]
+    }
+  },
+  "data": {}
+}
 ~~~
 
-El ejemplo muestra la estructura lógica requerida; los nombres y rutas definitivos deben declararse en cada manifiesto. No se permite convertir una instancia en una imagen compuesta ni guardar solo una miniatura. Los recursos externos adicionales pueden guardarse dentro de la carpeta de la instancia y declararse en `manifest.resources[]`.
+El ejemplo omite los bytes y campos internos por brevedad; el archivo real conserva el documento nativo completo. Los otros cuatro `.tscn` usan la misma estructura y solo cambia `sceneType`. `integrity.json` protege cada manifiesto de sección, incluida toda la información de su `workspace`. No se permite sustituir ese documento por una imagen compuesta ni por una miniatura.
 
 ### 4.3 Independencia y round-trip
 
