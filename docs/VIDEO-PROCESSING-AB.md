@@ -71,6 +71,8 @@ La tarea no termina al crear la animación, persistir el proyecto, iniciar A/B n
 
 Los puntos de entrada comparten el grupo GitHub Actions `codelab-video-processor`, para permitir una sola B a la vez. La inspección manual de un evento no sustituye la recuperación ni la entrega del archivo final. El workflow duplicado `inspect-black-video-force.yml` se retiró.
 
+**Dónde queda el vídeo según los workflows actuales:** la sesión A configura la grabación de Chromium en `scripts/codelab-session-host.mjs` (contexto Playwright con `recordVideo`, 1440×960 a 24 FPS) y al cerrar la sesión finaliza el archivo. `.github/workflows/codelab-independent-session-a.yml` sube el directorio como artefacto `codelab-independent-a-{run_id}`. La prueba autocontenida `.github/workflows/codelab-ab-animation.yml` sube `codelab-ab-animation-evidence`. La B publica un resumen de verificación en el issue; no debe confundirse ese comentario con el archivo de vídeo. El agente debe descargar el artefacto de vídeo de la ejecución A correspondiente y recuperar el archivo de vídeo real.
+
 El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba múltiples B concurrentes. No debe recuperarse.
 
 ## Flujo operativo obligatorio
@@ -81,7 +83,7 @@ El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba m
 4. El agente espera la importación, verifica el workspace destino y confirma la revisión persistida.
 5. El agente inicia una sesión A para esa revisión y una única B procesadora.
 6. B solicita a A la operación de render/captura/codificación y espera el resultado.
-7. A/B deben producir un archivo de vídeo final recuperable como artefacto. Una captura o un event_id aislado no bastan.
+7. La sesión A debe cerrar/finalizar la grabación y publicar el artefacto de vídeo asociado a esa ejecución. En el flujo persistente, recuperar `codelab-independent-a-{run_id}`; en la prueba autocontenida, recuperar `codelab-ab-animation-evidence`. La B puede publicar un resumen de estado, pero ese resumen no es el vídeo.
 8. El agente recupera el archivo, comprueba formato/tamaño, que se puede abrir y reproducir, y que corresponde al proyecto/revisión esperados.
 9. El agente inspecciona visualmente el vídeo completo o una muestra suficiente para detectar pantalla negra, cortes, frames ausentes, corrupción, movimiento incorrecto o problemas de duración.
 10. Si hay defectos, el agente vuelve al proyecto editable, corrige en Headless, exporta y transfiere una nueva revisión; después repite A/B.
@@ -93,7 +95,7 @@ El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba m
 - **Cuando pidió vídeo:** el archivo de vídeo final producido por A/B, no solamente un enlace a logs, un event_id, una captura o el estado success.
 - **GIF local:** solo se entrega si el usuario lo pidió expresamente. Un GIF local no sustituye el proyecto editable ni el vídeo final solicitado.
 
-Si el entorno de ejecución no permite recuperar el archivo de vídeo final, el agente debe declarar el bloqueo y no afirmar que entregó el vídeo.
+Si el entorno de ejecución no permite recuperar el artefacto o el archivo de vídeo final, el agente debe declarar el bloqueo y no afirmar que entregó el vídeo. No basta con enlazar el run de GitHub ni el comentario de resultado de B.
 
 ## Límites y seguridad
 
