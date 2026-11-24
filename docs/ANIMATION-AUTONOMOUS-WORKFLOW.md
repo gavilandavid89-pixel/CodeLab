@@ -95,13 +95,13 @@ Si aparece un bloqueo que realmente requiere intervención del usuario, debe exp
 
 ## Transporte de proyectos y persistencia
 
-La edición y animación se realiza en el Headless propio del agente. La entrega del proyecto editable a CodeLab se realiza mediante el **HTTPS inline bridge** descrito en [inline-artifact-bridge.md](inline-artifact-bridge.md).
+La edición y animación se realiza en el Headless propio del agente, completamente aislado. **El Headless no se conecta al intermediario.** Exporta el proyecto nativo y termina su participación; después, el agente IA recoge el archivo fuera del Headless y lo lleva al HTTPS inline bridge descrito en [inline-artifact-bridge.md](inline-artifact-bridge.md).
 
 Este documento no redefine el contrato de transporte. Para evitar divergencias, los endpoints, tipos de artefacto, límites, chunking, SHA-256, estados, staging y creación de órdenes se mantienen exclusivamente en el documento del bridge.
 
 Reglas operativas:
 
-- El Headless propio del agente no recibe credenciales de Neon, Object Storage/S3 ni secretos internos.
+- El Headless propio del agente no recibe credenciales de Neon, Object Storage/S3 ni secretos internos, y tampoco recibe endpoints/tokens ni se conecta al intermediario.
 - El bridge recibe el paquete en chunks y conserva temporalmente los bytes en Neon BYTEA; no necesita Object Storage para el transporte/importación documentado.
 - El commit verifica integridad y encola la importación. HTTP 202 significa queued, no importado ni persistido.
 - El worker importa al workspace destino indicado y elimina el staging temporal cuando corresponde.
@@ -109,6 +109,12 @@ Reglas operativas:
 - No declarar finalización basándose solo en un archivo local, un hash calculado, una respuesta HTTP o una orden encolada.
 
 Para obtener e instalar el Headless propio, seguir [HEADLESS-AGENT-RUNTIME.md](HEADLESS-AGENT-RUNTIME.md). Para la arquitectura de órdenes y worker, consultar [CodeLab_Neon_comunicacion_extremo_a_extremo.md](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
+
+## Regla de entrega GIF y vídeo final
+
+El GIF generado localmente por Headless solo se entrega cuando el usuario pide expresamente un GIF. Si no lo pide, no se adjunta ni se usa como sustituto del proyecto editable: el agente debe tomar el archivo exportado fuera de Headless, transferirlo al intermediario y verificar CodeLab.
+
+Cuando la petición incluya vídeo final, A/B es una etapa integrada posterior a la persistencia del proyecto. El agente coordina A/B, recupera el archivo de vídeo final, lo reproduce e inspecciona y lo entrega al usuario. No basta con la evidencia, event_id o estado success. Ver [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md).
 
 ## 8. Criterio de finalización
 
