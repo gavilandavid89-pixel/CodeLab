@@ -57,6 +57,12 @@ test('Video Composer web interface wires every referenced control and includes a
   assert.match(js, /getDisplayMedia/);
 });
 
+test('native CodeLab project drawing mode selects the matching Video Composer scaling default', () => {
+  const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  assert.match(js, /getVideoScalingMode\(project\.drawingConfiguration\?\.activeMode\)/);
+  assert.match(js, /if \(\['smooth', 'pixelated'\]\.includes\(parsed\.manifest\.scalingMode\)\) \$\('#vc-scaling-mode'\)\.value = parsed\.manifest\.scalingMode/);
+});
+
 test('HD capture presets preserve aspect ratio and fit the full artwork without cropping', async () => {
   const { getCaptureDimensions, containRect, getSourceQualityAssessment, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
   assert.deepEqual(getCaptureDimensions('1080', '16:9', 128, 128), { width: 1920, height: 1080 });
