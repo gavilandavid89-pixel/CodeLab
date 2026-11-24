@@ -1,13 +1,9 @@
-name: CodeLab B-A Context Feedback Cycle
+name: CodeLab B-A Context Cycle (real ADMIN export)
 
 on:
   workflow_dispatch:
   issue_comment:
     types: [created]
-
-concurrency:
-  group: codelab-video-processor
-  cancel-in-progress: false
 
 permissions:
   actions: write
@@ -15,52 +11,16 @@ permissions:
   issues: write
 
 jobs:
-  cycle:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Run B-A Context Cycle]')) }}
+  dispatch-real-ab:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Run B-A Context Cycle]')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Start persistent A
+      - name: Dispatch the real A/B export workflow
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run "CodeLab Independent Session A" --repo "$GH_REPO"
-          echo "A dispatched"
-
-      - name: Resolve A session
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          run_id=""
-          for i in $(seq 1 36); do
-            run_id="$(gh run list --repo "$GH_REPO" --workflow ".github/workflows/codelab-independent-session-a.yml" --limit 20 --json databaseId,status,event --jq '.[] | select((.status=="in_progress" or .status=="queued") and (.event=="workflow_dispatch" or .event=="issue_comment")) | .databaseId' | head -n 1)"
-            if [ -n "$run_id" ]; then break; fi
-            sleep 5
-          done
-          test -n "$run_id"
-          echo "CODELAB_SESSION_ID=independent-$run_id" >> "$GITHUB_ENV"
-          echo "CODELAB_MAILBOX_BASE_URL=https://codelab-pbw9.onrender.com" >> "$GITHUB_ENV"
-          echo "Resolved A session independent-$run_id"
-
-      - name: Execute B → A → context → B → A → context
-        env:
-          CODELAB_SESSION_TIMEOUT_MS: "180000"
-        run: node scripts/codelab-b-a-context-cycle.mjs
-
-      - name: Publish cycle result
-        if: always() && github.event_name == 'issue_comment'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh issue comment 492 --repo "$GH_REPO" --body "[CodeLab B-A Context Cycle Result] workflow=${{ github.run_id }} conclusion=${{ job.status }} session=${CODELAB_SESSION_ID:-unknown}"
+          gh workflow run ".github/workflows/codelab-ab-animation.yml" --repo "$GITHUB_REPOSITORY"
+          gh issue comment 492 --repo "$GITHUB_REPOSITORY" --body "[CodeLab B-A Context Cycle] Dispatched the real ADMIN → A → Video Composer → B verification workflow. No demo animation path is used."
