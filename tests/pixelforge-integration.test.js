@@ -987,7 +987,6 @@ async function main() {
 
     await accountPage.locator('[data-scene-workspace="environment"]').click();
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace');
-    await waitForRasterSave();
     environmentStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.deepEqual(rgbaAt(environmentStored, 0, 0, 0), [255, 0, 0, 255],
       'switching away and back must restore Environment pixels');
@@ -1000,7 +999,6 @@ async function main() {
       'the original project workspace must remain intact while section workspaces are edited');
     await accountPage.locator('[data-scene-workspace="environment"]').click();
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace');
-    await waitForRasterSave();
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace',
