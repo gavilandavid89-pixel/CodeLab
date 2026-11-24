@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
-import { createPixelForgeProjectZip } from './pixelforge-agent-zip.mjs';
+import { createPixelForgeCodeLabPackageZip } from './pixelforge-codelab-package.mjs';
 
 const ALLOWED_OPERATIONS = new Set(['inspect', 'seek', 'play', 'configure', 'capture_preview', 'capture_studio', 'record_studio']);
 
@@ -44,7 +44,7 @@ export async function controlPixelForgeVideoComposer(payload, deps = {}) {
   const targetWorkspace = targetPixelForgeWorkspace(payload);
   const loaded = await loadProject(payload.project_id, targetWorkspace);
   const project = loaded.project;
-  const packageData = await createPixelForgeProjectZip(project);
+  const packageData = createPixelForgeCodeLabPackageZip(project);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-vc-control-'));
   const packagePath = path.join(tempDir, 'pixelforge-control.zip');
   fs.writeFileSync(packagePath, packageData.bytes);
