@@ -155,13 +155,14 @@ try {
 } finally {
   await browser.close().catch(() => {});
 }
+const expectedDuration = result.frameCount / result.fps;
 if (!decoded || decoded.decodedSamples < 4 || decoded.width < 1 || decoded.height < 1 ||
-    Math.abs(decoded.duration - (result.videoBytes ? decoded.duration : decoded.duration)) > 0.01) {
+    !Number.isFinite(expectedDuration) || Math.abs(decoded.duration - expectedDuration) > 0.15) {
   throw new Error('Chromium did not decode enough frames from the delivered WebM.');
 }
 
 await fs.mkdir(outputDir, { recursive: true });
-const videoPath = path.join(outputDir, result.filename || 'PixelForge-Soldier-Walk.webm');
+const videoPath = path.join(outputDir, path.basename(result.filename || 'PixelForge-Soldier-Walk.webm'));
 await fs.writeFile(videoPath, videoBytes);
 const verification = {
   status: 'verified',
