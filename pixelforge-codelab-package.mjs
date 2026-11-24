@@ -220,10 +220,7 @@ function addSceneSections(project, files) {
       version: 2,
       sceneType: section.key,
       projectId: String(project.id),
-      canvas: { width: project.width, height: project.height },
-      layerIds,
-      drawingObjectIds,
-      vectorObjectIds,
+      canvas: { width: workspace?.width ?? project.width, height: workspace?.height ?? project.height },
       workspace,
       environmentHistory: section.key === 'environment'
         ? structuredClone(drawing.environmentHistory || { version: 1, entries: [], activeEntryId: null })
