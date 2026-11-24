@@ -219,6 +219,7 @@ function installStructuredFrames(project, files, framesManifest) {
       index: frameIndex,
       durationMs,
       cels,
+      layerMetadata: structuredClone(frameMetadata),
       layerCount: cels.length,
       sourcePath: framePath,
     });
