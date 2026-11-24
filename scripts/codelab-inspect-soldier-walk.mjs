@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 
 const projectId = process.env.CODELAB_PROJECT_ID || 'soldier-walk-60f-20261124';
-const baseUrl = String(process.env.CODELAB_PUBLIC_URL || 'https://codelab-qedi.onrender.com').replace(/\\/+$/, '');
+const baseUrl = String(process.env.CODELAB_PUBLIC_URL || 'https://codelab-qedi.onrender.com').replace(/\/+$/, '');
 const token = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '');
 const outDir = process.env.RUNNER_TEMP || '/tmp';
 if (!token) throw new Error('CODELAB_AGENT_BRIDGE_CONTROL_SECRET is required');
