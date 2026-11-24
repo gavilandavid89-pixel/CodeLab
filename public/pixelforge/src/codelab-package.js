@@ -195,16 +195,19 @@ function addFrames(project, files) {
         'Frame ' + (index + 1) + '/' + layer.id);
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) throw new RangeError('Animation exceeds the 64 MiB RGBA8 budget.');
-      const pixelsPath = directory + '/' + safeSlug(layer.name, layer.id) + '-' + safeSlug(layer.id, 'layer') + '.rgba';
+      const layerToken = 'layer' + index + '-' + (layers.length + 1);
+      const pixelsPath = directory + '/' + layerToken + '/pixels.rgba';
       files.set(pixelsPath, pixels);
       layers.push({
-        id: String(layer.id),
-        name: String(layer.name || layer.id),
-        pixelsPath,
-        position: { x: Number(layer.x || 0), y: Number(layer.y || 0) },
-        opacity: Number(layer.opacity ?? 1),
-        visible: layer.visible !== false,
-        locked: layer.locked === true,
+        id: String(layer.id), name: String(layer.name || layer.id),
+        parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layerIndex + 1,
+        pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
+        x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
+        rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
+        visible: layer.visible !== false, locked: layer.locked === true, blendMode: String(layer.blendMode || 'normal'),
+        blur: layer.blur ?? 0, brightness: layer.brightness ?? 0, contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0,
+        mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
+        references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}),
         zIndex: layerIndex,
       });
     }
@@ -322,7 +325,7 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
       .filter(entry => !Array.isArray(entry?.parts) || entry.parts.length === 0);
   }
   files.set('project.json', jsonBytes(project));
-  files.set('center.op/center.json', jsonBytes(referenceCenter));
+  files.set('reference.center/reference.center', jsonBytes(referenceCenter));
 
   const manifest = {
     format: 'codelab',
@@ -335,7 +338,7 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
     integrityPath: 'integrity.json',
     frames: { manifestPath: 'Frames/frames.tscn' },
     scenes,
-    referenceCenter: { manifestPath: 'center.op/center.json' },
+    referenceCenter: { manifestPath: 'reference.center/reference.center' },
     resources: resourceDeclarations,
   };
   files.set('manifest.json', jsonBytes(manifest));
@@ -444,19 +447,22 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
       if (bytes.length !== project.width * project.height * 4) throw new RangeError('Frame cel RGBA8 byte length is invalid.');
       totalFrameBytes += bytes.length;
       if (totalFrameBytes > 64 * 1024 * 1024) throw new RangeError('Animation exceeds the 64 MiB RGBA8 budget.');
-      cels.push({ layerId: id, pixels: base64FromBytes(bytes) });
+      cels.push({ layerId: id, pixels: base64FromBytes(bytes), metadata: structuredClone(layer) });
       metadata.push({
-        layerId: id, name: String(layer.name || id),
-        position: { x: Number(layer.position?.x || 0), y: Number(layer.position?.y || 0) },
-        opacity: Number(layer.opacity ?? 1), visible: layer.visible !== false,
-        locked: layer.locked === true, zIndex: Number(layer.zIndex ?? 0),
+        layerId: id, name: String(layer.name || id), parentFrameId: String(layer.parentFrameId || frame.id), index: Number(layer.index ?? 0),
+        position: { x: Number(layer.position?.x ?? layer.x ?? 0), y: Number(layer.position?.y ?? layer.y ?? 0) },
+        x: Number(layer.x ?? layer.position?.x ?? 0), y: Number(layer.y ?? layer.position?.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
+        rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1), visible: layer.visible !== false,
+        locked: layer.locked === true, blendMode: String(layer.blendMode || 'normal'), blur: layer.blur ?? 0, brightness: layer.brightness ?? 0,
+        contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0, mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
+        references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), zIndex: Number(layer.zIndex ?? 0),
         pixelsSha256: await sha256(bytes),
       });
     }
     if (seen.size !== layerIds.length) throw new TypeError('Frame is missing one or more project layers.');
     animationFrames.push({
       id: String(frame.id), name: String(frame.name || frame.id), index,
-      durationMs: Number(frame.durationMs), cels, layerCount: cels.length, sourcePath: frameRef.path,
+      durationMs: Number(frame.durationMs), cels, layerMetadata: cels.map(cel => structuredClone(cel.metadata)), layerCount: cels.length, sourcePath: frameRef.path,
     });
     frameMetadata.push({ id: String(frame.id), index, layers: metadata });
   }
@@ -481,7 +487,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
 
   const centerPath = manifest.referenceCenter?.manifestPath;
   if (!centerPath) throw new TypeError('manifest.referenceCenter.manifestPath is required.');
-  const center = await readJson(entries, centerPath, 'center.op/center.json');
+  const center = await readJson(entries, centerPath, 'reference.center/reference.center');
   if (center.format !== 'codelab-reference-center' || Number(center.version) !== 1 || !Array.isArray(center.categories)) {
     throw new TypeError('center.op/center.json is invalid.');
   }
