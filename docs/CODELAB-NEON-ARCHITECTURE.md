@@ -33,6 +33,12 @@ La inspección de solo lectura de la rama `production` encontró estas 16 tablas
 
 El inventario confirma que las estructuras existen en producción; no sustituye las pruebas de lectura/escritura funcionales ni autoriza a usar datos reales como fixtures. Las pruebas deben crear y limpiar sus propios datos en un entorno aislado, sin ejecutar limpieza sobre la rama de producción.
 
+### Persistencia de los cinco contextos de PixelForge
+
+Los cinco workspaces de escena se guardan dentro del documento del proyecto PixelForge asociado a `codelab_pixelforge_projects`; no requieren una tabla independiente. El selector del editor mantiene `drawingModel.sceneWorkspaceState` con el contexto activo, el documento principal cuando se edita una sección y los documentos de las secciones que están en segundo plano. El contexto activo ocupa el documento superior del proyecto para evitar duplicar sus buffers de píxeles.
+
+Cada cambio de contexto fuerza el guardado antes de confirmar la transición en la UI. Al recargar, el editor restaura el contexto activo y conserva las demás instancias. La exportación/importación de CodeLab Package lleva cada sección en su manifiesto `.tscn` y reconstruye el registro al importar. Las pruebas E2E usan PostgreSQL efímero o persistencia de archivos aislada; no escriben fixtures ni ejecutan limpiezas en Neon production.
+
 ## Comunicación y activación del worker
 
 El servidor `server.js` mantiene un pool PostgreSQL y un cliente dedicado `pg.Client` con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT/UPDATE de una orden a estado `queued` emite `pg_notify`. El listener arranca `agent-bridge-worker.mjs` bajo demanda si no está activo.
