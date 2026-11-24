@@ -48,6 +48,17 @@ async function bridgeGet(pathname) {
   if (!response.ok) throw new Error('ADMIN bridge HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
   return body;
 }
+async function bridgePost(pathname, payload = {}) {
+  const response = await fetch(baseUrl + pathname, {
+    method: 'POST',
+    headers: { 'x-codelab-agent-bridge-token': bridgeToken, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30000)
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error('ADMIN bridge HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
+  return body;
+}
 function parseMarkedJson(body, marker) {
   if (!String(body || '').startsWith(marker + '\n')) return null;
   try { return JSON.parse(String(body).slice(marker.length + 1)); } catch { return null; }
@@ -85,7 +96,10 @@ console.log('[A] ADMIN snapshot pinned:', JSON.stringify({
   frameCount, fps, layers: project.layers.length
 }));
 
-console.log('[A] Launching persistent Chromium and loading the real CodeLab Video Composer.');
+console.log('[A] Minting a one-use ADMIN browser handoff for the persistent CodeLab/PixelForge session.');
+const handoff = await bridgePost('/api/agent/bridge/admin-handoff');
+if (!handoff.ticket || handoff.oneTime !== true) throw new Error('ADMIN browser handoff was not issued.');
+console.log('[A] Launching persistent Chromium with ADMIN PixelForge and Video Composer pages.');
 chromiumBinary.setGraphicsMode = false;
 const browser = await playwrightChromium.launch({
   args: chromiumBinary.args,
@@ -100,6 +114,21 @@ const context = await browser.newContext({
   reducedMotion: 'reduce',
   acceptDownloads: true
 });
+const adminPage = await context.newPage();
+const handoffResponse = await adminPage.goto(baseUrl + '/api/auth/native-handoff?ticket=' + encodeURIComponent(handoff.ticket), { waitUntil: 'domcontentloaded', timeout: 30000 });
+if (!handoffResponse || ![200, 303].includes(handoffResponse.status())) throw new Error('ADMIN browser handoff could not be consumed.');
+await adminPage.goto(baseUrl + '/pixelforge/index.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
+await adminPage.locator('#canvas').waitFor({ state: 'attached', timeout: 45000 });
+const adminIdentity = await adminPage.evaluate(async () => {
+  const [authResponse, projectResponse] = await Promise.all([fetch('/api/auth/status'), fetch('/api/pixelforge/projects')]);
+  const auth = await authResponse.json();
+  const projects = await projectResponse.json();
+  return { user: auth.user || null, workspaceId: auth.workspaceId || null, projects: projects.projects || [] };
+});
+if (adminIdentity.user?.name !== 'ADMIN' || adminIdentity.user?.role !== 'admin' || adminIdentity.workspaceId !== pinned.workspaceId) {
+  throw new Error('Persistent PixelForge browser is not authenticated as the ADMIN workspace.');
+}
+if (!adminIdentity.projects.some(item => item.id === projectId)) throw new Error('Pinned Soldier Walk project is not visible in the ADMIN PixelForge session.');
 const sessionPage = await context.newPage();
 const composerUrl = baseUrl + '/pixelforge/video-composer.html?export=1';
 const pageErrors = [];
@@ -219,6 +248,7 @@ try {
   }
 } finally {
   await sessionPage.close().catch(() => {});
+  await adminPage.close().catch(() => {});
   await context.close().catch(() => {});
   await browser.close().catch(() => {});
 }
