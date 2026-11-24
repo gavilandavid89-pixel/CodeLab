@@ -263,3 +263,14 @@ La prueba posterior de pulido corrigió el proyecto persistido y volvió a ejecu
 
 La inspección no debe limitarse a «hay movimiento». Debe comprobar continuidad temporal, coherencia de poses, que caminar realmente parezca caminar y no una sucesión de desplazamientos arbitrarios, y que el dibujo acompañe correctamente el movimiento: extremidades, pies, manos, cabeza, torso, proporciones, silueta y cualquier elemento que deba moverse junto al personaje. Un dibujo puede estar técnicamente bien formado y aun así animarse mal; esa diferencia debe detectarse antes de la entrega.
 
+
+
+## Documentación complementaria y navegación
+
+Este documento es el **documento principal (owner) del flujo A/B y de su experiencia real de implementación, prueba, fallos, correcciones y cierre**.
+
+- El protocolo operativo general del agente está en [ANIMATION-AUTONOMOUS-WORKFLOW.md](./ANIMATION-AUTONOMOUS-WORKFLOW.md). Para el cierre específico de vídeo A/B, ese documento remite a este flujo y a la regla **5.2: recibir → obtener → inspeccionar → corregir → reinspeccionar → entregar**.
+- La arquitectura y transporte del bridge se documentan por separado; este documento no sustituye esa especificación, sino que registra cómo se usa en la ejecución A/B real.
+- Cuando exista una especificación dedicada al procesamiento de vídeo A/B, debe enlazarse desde aquí y tratarse como referencia técnica complementaria, mientras que **este documento conserva el historial y resultado real del flujo**.
+
+La navegación entre documentos debe ser bidireccional cuando describan partes del mismo proceso: el documento operativo debe llevar a este documento para el caso A/B, y este documento debe llevar al protocolo operativo para las reglas de inspección y cierre.
