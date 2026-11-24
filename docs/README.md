@@ -41,6 +41,7 @@ Leer en este orden:
 | Procesar/capturar vídeo | [Procesamiento A/B](VIDEO-PROCESSING-AB.md) | Única finalidad de A/B: una sesión A y una B procesadora por trabajo. |
 | Comprender el formato PixelForge | [Paquete de proyecto PixelForge](PIXELFORGE-PROJECT-PACKAGE.md) | Estructura editable, frames, capas, cels y Reference Center. |
 | Recuperar un ZIP del inbox PixelForge | [Recuperación del ZIP del inbox](PIXELFORGE-INBOX-ZIP-RECOVERY.md) | Reemplazo binario en la misma ruta, verificación SHA, Git Data API, workflow y límites de importación. |
+| Diagnosticar el incidente Neon/PixelForge (24-11-2026) | [Incidente de importación y diagnóstico de Neon](NEON-PIXELFORGE-IMPORT-INCIDENT-2026-11-24.md) | Cuenta correcta según el README, proyecto/branch reales, estado SQL de la orden, restricción CHECK y discrepancia con logs de Render. |
 | Consultar comandos disponibles | [Catálogo de comandos PixelForge](CODELAB-PIXELFORGE-COMMAND-CATALOG.md) | Contratos, capacidades y límites de operaciones. |
 | Recuperar una sesión interrumpida | [Recuperación de sesión](SESSION-EXPIRATION-RECOVERY.md) | Consultar estado persistido, evitar duplicados y reanudar. |
 | Identidad ADMIN y persistencia | [Política de cuenta y persistencia](account-admin-and-persistence-policy.md) | Contexto de cuenta/workspace y comprobación de guardado. |\n| Recuperar autenticación/bridge existente | [Recuperación ADMIN y bridge](ADMIN-AUTH-AND-BRIDGE-RECOVERY.md) | Reutilizar la conexión existente, resolver workspace y diagnosticar la capa exacta sin pedir secretos. |
