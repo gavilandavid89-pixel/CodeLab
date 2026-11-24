@@ -281,12 +281,20 @@ Las capas y frames de una instancia no se deducen de `drawingModel.layerRoles`, 
 
 Al exportar e importar, CodeLab debe reconstruir cada instancia con sus mismos IDs, orden de capas, píxeles, propiedades, frames, cels, duración, FPS, loop, referencias, modelos y recursos. Después de editar y volver a exportar, los mismos datos deben seguir presentes. El importador debe rechazar referencias a rutas inexistentes, IDs duplicados, cels faltantes, dimensiones incompatibles o datos incompletos; nunca debe inventarlos.
 
-### 4.4 Alcance de las pruebas y verificación de UI
+### 4.4 Contextos de edición en la UI, persistencia y pruebas
 
-Las pruebas de paquete Node y navegador comprueban la serialización, validación y round-trip de los cinco documentos `workspace`: dimensiones independientes, capas y sus metadatos, frames/cels y píxeles. Estas pruebas de formato no demuestran por sí solas que la interfaz permita abrir cada sección como un contexto de edición separado, cambiar entre secciones, editar su timeline propio y guardar/reabrir visualmente esa instancia.
+El editor PixelForge incluye un selector persistente con seis contextos: `Project` (lienzo principal) y los cinco workspaces `Environment`, `Effects`, `Details`, `Elements` y `Objects`. Cada sección se abre como un documento editable separado, con su propia dimensión de lienzo, pila de capas y timeline/cels. La primera apertura crea un lienzo transparente con las dimensiones del proyecto principal, una capa independiente y un frame/cel inicial; después, las dimensiones, capas, píxeles y animación se guardan por separado.
 
-La aceptación completa de la experiencia de usuario requiere una prueba E2E de navegador que, para cada sección, abra su workspace, verifique que el nombre/dimensiones/capas/timeline pertenecen a esa instancia, modifique un píxel o cel, guarde, cambie a otra sección, vuelva a la primera y compruebe que sus datos siguen aislados. También debe comprobar que volver al lienzo principal no mezcla ni reemplaza los datos de la sección. Hasta que esa prueba exista y pase, describir el round-trip del ZIP como verificado a nivel de datos, pero no afirmar que la edición visual independiente de las cinco secciones está validada de extremo a extremo.
+El estado vive en `drawingModel.sceneWorkspaceState`:
 
+- `activeSection` identifica el contexto que está abierto.
+- `parentWorkspace` conserva el documento principal mientras se edita una sección; queda vacío cuando `Project` es el contexto activo.
+- `workspaces` contiene los documentos de las secciones que están en segundo plano. La sección activa se guarda como documento superior del proyecto, evitando duplicar su buffer de píxeles dentro de su propio registro.
+- El cambio de contexto fuerza el guardado del documento actual y del nuevo antes de mostrar el cambio como terminado. Al recargar, se restaura el contexto activo y se conservan los demás.
+
+La exportación de CodeLab Package escribe cada documento de sección en su manifiesto `.tscn`. El `project.json` conserva el contexto activo y el documento principal cuando corresponde, pero no duplica el registro completo de cinco workspaces. Al importar, el editor reconstruye el registro a partir de los manifiestos de sección.
+
+La cobertura E2E de navegador abre y edita las cinco secciones, escribe píxeles distintos, verifica que no se mezclen, vuelve al proyecto principal y comprueba la persistencia después de cambiar de contexto y recargar. Las pruebas de paquete también verifican la exportación/importación de workspaces activos e inactivos. Cobertura principal: `tests/pixelforge-scene-workspaces.test.mjs`, `tests/pixelforge-codelab-package-browser.test.mjs` y `tests/pixelforge-integration.test.js`.
 
 ## 5. Reference Center: qué significa reference.personaje
 
