@@ -30,8 +30,9 @@ function gh(args) {
       : reject(new Error('gh ' + args.join(' ') + ' failed: ' + stderr.slice(0, 1500))));
   });
 }
-async function comments() {
-  return JSON.parse(await gh(['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`]));
+async function comments(since) {
+  if (!since) throw new Error('CODELAB_A_READY_SINCE is required to scope the B mailbox.');
+  return JSON.parse(await gh(['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100&since=${encodeURIComponent(since)}`]));
 }
 async function postComment(body) {
   await gh(['api', '-X', 'POST', `repos/${repository}/issues/${issueNumber}/comments`, '-f', 'body=' + body]);
@@ -41,9 +42,10 @@ function parseMarkedJson(body, marker) {
   try { return JSON.parse(String(body).slice(marker.length + 1)); } catch { return null; }
 }
 const startedAt = Date.now();
+const readySince = String(process.env.CODELAB_A_READY_SINCE || '');
 let ready = null;
 while (Date.now() - startedAt < timeoutMs) {
-  const allComments = await comments();
+  const allComments = await comments(readySince);
   ready = allComments
     .map(comment => parseMarkedJson(comment.body, '[CodeLab A Ready]'))
     .find(item => item && item.sessionId === sessionId && item.status === 'ready') || null;
@@ -58,6 +60,7 @@ if (!Number.isInteger(ready.serverRevision) || !/^[a-f0-9]{64}$/i.test(ready.con
   throw new Error('A READY metadata is missing the pinned project revision/hash/timeline.');
 }
 
+const requestStartedAt = new Date().toISOString();
 await postComment('[CodeLab B Request]\n' + JSON.stringify({
   sessionId, requestId, projectId: ready.projectId,
   serverRevision: ready.serverRevision, contentSha256: ready.contentSha256,
@@ -71,7 +74,7 @@ let result = null;
 let receivedChunks = new Map();
 const requestDeadline = Date.now() + timeoutMs;
 while (Date.now() < requestDeadline) {
-  const allComments = await comments();
+  const allComments = await comments(requestStartedAt);
   for (const comment of allComments) {
     const exportResult = parseMarkedJson(comment.body, '[CodeLab A Export Result]');
     if (exportResult?.sessionId === sessionId && exportResult?.requestId === requestId) result = exportResult;
