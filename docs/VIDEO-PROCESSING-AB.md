@@ -73,7 +73,7 @@ La prueba integrada se ejecutó el 2026-11-24 y pasó todos los puntos de acepta
 - SHA-256 del vídeo: 0abf2c19450625de90731b86740858859178ca57ca3120e6a17b3d47bcbec82f.
 - Chromium verificó 1080 × 1350, readyState 4 y 5 muestras temporales decodificadas.
 - B no ejecutó FFmpeg ni generó animación; únicamente recibió y verificó el WebM.
-- El paso de independencia confirmó que A seguía in_progress después de que B terminó. A continuó hasta su timeout independiente.
+- El paso de independencia confirmó que A seguía in_progress después de que B terminó. A siguió in_progress tras B; el run A permaneció activo y tenía expiración programada a las 09:43:35 UTC.
 
 La aceptación del transporte A→B y del flujo completo está superada. El artefacto de B incluye el WebM y verification.json.
 
