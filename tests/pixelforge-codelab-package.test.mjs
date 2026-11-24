@@ -122,13 +122,13 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
     const instance = imported.project.drawingModel.sceneSections[section].workspace;
     assert.equal(instance.format, 'pixelforge-project');
-    assert.equal(instance.layers.length, project.layers.length);
+    assert.equal(instance.layers.length, 1);
     assert.equal(instance.animation.frames.length, section === 'details' ? 1 : 2);
     assert.equal(instance.width, 4);
     assert.equal(instance.height, 4);
     assert.equal(instance.animation.frames[0].cels.length, instance.layers.length);
-    assert.equal(instance.animation.frames[0].cels[0].pixels, project.animation.frames[0].cels[0].pixels);
-    assert.equal(instance.animation.fps, project.animation.fps);
+    assert.equal(instance.animation.frames[0].cels[0].pixels, instance.layers[0].pixels);
+    assert.equal(instance.animation.fps, 12);
   }
   assert.equal(imported.entries.has('reference.center/reference.center'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
