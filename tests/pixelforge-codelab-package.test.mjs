@@ -86,7 +86,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.entries.has('Objetos/objetos.tscn'), true);
   assert.equal(imported.manifest.frames.manifestPath, 'Frames/frames.tscn');
   assert.equal(Object.keys(imported.manifest.scenes.sections).length, 5);
-  assert.equal(imported.installed.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
+  assert.equal(imported.structured.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
   assert.equal(imported.entries.has('reference.center/reference.center'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
