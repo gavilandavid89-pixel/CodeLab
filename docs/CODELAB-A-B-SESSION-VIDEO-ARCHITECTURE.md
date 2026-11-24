@@ -265,6 +265,16 @@ La inspección no debe limitarse a «hay movimiento». Debe comprobar continuida
 
 
 
+## Regla de aceptación visual: el WebM A/B es obligatorio
+
+La verificación técnica que realiza B (SHA-256, cabecera EBML, decodificación Chromium, duración, dimensiones y muestras temporales) demuestra integridad y reproducibilidad del archivo, **no que sea una buena animación**. El agente que recibe el resultado debe recuperar y examinar visualmente el WebM exacto generado por A/B antes de aprobarlo o entregarlo.
+
+Xvfb es únicamente un display virtual para ejecutar aplicaciones gráficas. Que Headless/Chromium se ejecute bajo Xvfb, que la interfaz se renderice o que se obtengan capturas de pantalla no equivale a inspeccionar el vídeo final. Tampoco sustituyen la revisión la existencia del archivo, los logs, el hash ni un estado `success`.
+
+La inspección debe reproducir/abrir el WebM y revisar el movimiento durante toda su duración, con muestras visuales distribuidas y revisión consecutiva de los tramos dudosos. Debe evaluar dibujo y movimiento: silueta, integridad de partes, continuidad entre poses, timing, apoyos, deformaciones, elementos que aparecen/desaparecen y cumplimiento de la intención del usuario. La evidencia inspeccionada debe corresponder al mismo WebM/hash y revisión que se entregarán.
+
+Si el vídeo no se puede examinar visualmente, la revisión queda **pendiente**, nunca aprobada. Si hay defectos, se rechaza esa revisión y se vuelve al proyecto editable en Headless para corregirlo; después se repite la exportación A/B y se inspecciona el nuevo WebM. No se debe declarar “buena animación” por una validación técnica.
+
 ## Documentación complementaria y navegación
 
 Este documento es el **documento principal (owner) del flujo A/B y de su experiencia real de implementación, prueba, fallos, correcciones y cierre**.
