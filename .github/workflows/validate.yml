@@ -43,6 +43,7 @@ jobs:
           node --input-type=module --check < public/pixelforge/video-composer.js
           node --check tests/pixelforge-video-composer.e2e.test.mjs
           node --input-type=module --check < public/pixelforge/src/editor.js
+          node --experimental-default-type=module --check public/pixelforge/src/scene-workspaces.js
           node --check tests/pixelforge-headless-vision.test.mjs
           node --check tests/assistant-tools-contract.test.js
           node --check tests/server-resilience.test.js
@@ -61,6 +62,8 @@ jobs:
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test PixelForge ZIP export package
         run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
+      - name: Test independent PixelForge scene workspaces
+        run: node --experimental-default-type=module --test tests/pixelforge-scene-workspaces.test.mjs
       - name: Test CodeLab package installation and strict import validation
         run: |
           node --check codelab-project-artifact-import.mjs
