@@ -139,9 +139,19 @@ test('sparse cel store removes empty tiles and rejects invalid cache budgets', a
   pixels.set([1, 2, 3, 255], 0);
   const store = new SparseTileCelStore();
   const celId = await store.createCelFromPixels(pixels, { width: 64, height: 64 });
+  const cloneId = store.cloneCel(celId);
   const blank = new Uint8Array(64 * 64 * 4);
-  const result = await store.updateTile(celId, 0, 0, blank);
+  const result = await store.updateTile(cloneId, 0, 0, blank);
   assert.equal(result.removed, true);
-  assert.equal((await store.exportCel(celId)).tiles.length, 0);
+  assert.equal((await store.exportCel(cloneId)).tiles.length, 0);
+  assert.equal(store.stats.resourceCount, 1);
+  const removalPatch = await store.createPatch(celId, cloneId, {
+    projectId: 'project-2', baseRevision: 3, operationId: 'operation-remove',
+    frameId: 'frame-2', layerId: 'layer-2',
+  });
+  assert.deepEqual(removalPatch.summary, { added: 0, changed: 0, removed: 1 });
+  assert.deepEqual(removalPatch.operations, [{ type: 'tile.remove', x: 0, y: 0 }]);
+  store.releaseCel(celId);
+  store.releaseCel(cloneId);
   assert.equal(store.stats.resourceCount, 0);
 });
