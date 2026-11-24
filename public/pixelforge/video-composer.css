@@ -12,3 +12,9 @@
 .vc-capture-mode .vc-export-button{width:100%;margin:0;font-size:10px}
 .vc-secondary-button{background:#292d39!important;color:#e6e7ef!important;border:1px solid #3a3e4b!important}
 .vc-stop-button{background:#8e3f4b!important;color:#fff!important}
+
+.vc-quality-note{margin:0;padding:10px 11px;border:1px solid var(--line);border-radius:8px;background:#20232d;color:var(--muted);font-size:10px;line-height:1.5}
+.vc-quality-note[data-kind=warning]{border-color:#9a7338;color:#f1ca83}
+.vc-quality-note[data-kind=success]{border-color:#426f5c;color:#a8dfbd}
+.vc-quality-note[data-kind=info]{border-color:#465d86;color:#b7cafa}
+#vc-motion-quality{min-height:2.5em}
