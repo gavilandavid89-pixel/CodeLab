@@ -1,14 +1,21 @@
 import { randomUUID, createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { chromium as playwrightChromium } from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 
 const projectId = process.env.CODELAB_PROJECT_ID || 'soldier-walk-60f-20261124';
 const baseUrl = String(process.env.CODELAB_PUBLIC_URL || 'https://codelab-qedi.onrender.com').replace(/\/+$/, '');
 const bridgeToken = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '');
+const githubToken = String(process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '');
+const repository = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
+const sourceRunId = '45464718903';
+const sourceArtifactName = 'codelab-soldier-walk-source-' + sourceRunId;
 const expectedWorkspace = 'ws_local_admin';
 const characterLayerName = 'Soldier · reference-guided';
-if (!bridgeToken) throw new Error('CODELAB_AGENT_BRIDGE_CONTROL_SECRET is required.');
+if (!bridgeToken || !githubToken) throw new Error('ADMIN bridge token and GitHub token are required.');
 
 async function bridgeGet(pathname) {
   const response = await fetch(baseUrl + pathname, {
@@ -47,6 +54,21 @@ function translateRgba(source, width, height, dx, dy) {
   return out;
 }
 
+function extractRegion(source, width, height, predicate) {
+  const body = Buffer.from(source);
+  const part = Buffer.alloc(source.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4;
+      const r = source[offset], g = source[offset + 1], b = source[offset + 2], a = source[offset + 3];
+      if (!a || !predicate(x, y, r, g, b, a)) continue;
+      source.copy(part, offset, offset, offset + 4);
+      body.fill(0, offset, offset + 4);
+    }
+  }
+  return { body, part };
+}
+
 function moveRegion(source, width, height, predicate, dx, dy) {
   if (!dx && !dy) return Buffer.from(source);
   const out = Buffer.from(source);
@@ -76,6 +98,25 @@ function moveRegion(source, width, height, predicate, dx, dy) {
       out[offset + 2] = Math.round((pixel.b * sa + out[offset + 2] * destA * (1 - sa)) / outA);
       out[offset + 3] = Math.round(outA * 255);
     }
+  }
+  return out;
+}
+
+function compositeLayer(destination, source) {
+  const out = Buffer.from(destination);
+  for (let i = 0; i < source.length; i += 4) {
+    const sa = source[i + 3] / 255;
+    if (!sa) continue;
+    const da = out[i + 3] / 255;
+    if (!da) {
+      source.copy(out, i, i, i + 4);
+      continue;
+    }
+    const outA = sa + da * (1 - sa);
+    out[i] = Math.round((source[i] * sa + out[i] * da * (1 - sa)) / outA);
+    out[i + 1] = Math.round((source[i + 1] * sa + out[i + 1] * da * (1 - sa)) / outA);
+    out[i + 2] = Math.round((source[i + 2] * sa + out[i + 2] * da * (1 - sa)) / outA);
+    out[i + 3] = Math.round(outA * 255);
   }
   return out;
 }
@@ -110,16 +151,26 @@ async function uploadProject(page, project, expectedRevision) {
   return commit.body;
 }
 
-const snapshot = await bridgeGet('/api/agent/bridge/pixelforge/projects/' + encodeURIComponent(projectId));
-if (snapshot.workspaceId !== expectedWorkspace) throw new Error('Refusing to modify a non-ADMIN workspace.');
-const project = JSON.parse(JSON.stringify(snapshot.project));
-const revision = Number(snapshot.serverRevision);
-const animation = project.animation;
-if (!animation || !Array.isArray(animation.frames) || animation.frames.length !== 20 || animation.fps !== 12) {
-  throw new Error('Expected the pinned 20-frame / 12-FPS Soldier Walk timeline.');
+// Revision 3 is the last clean source before the failed revision-4 pixel manipulation.
+const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'soldier-walk-source-'));
+execFileSync('gh', ['run', 'download', sourceRunId, '--repo', repository, '--name', sourceArtifactName, '--dir', sourceDir], {
+  env: { ...process.env, GH_TOKEN: githubToken }, stdio: 'inherit'
+});
+const sourceProject = JSON.parse(await fs.readFile(path.join(sourceDir, 'soldier-walk-project.json'), 'utf8'));
+if (sourceProject.id !== projectId || !Array.isArray(sourceProject.animation?.frames)) {
+  throw new Error('The clean revision-3 source artifact does not match the expected Soldier Walk project.');
 }
+
+const current = await bridgeGet('/api/agent/bridge/pixelforge/projects/' + encodeURIComponent(projectId));
+if (current.workspaceId !== expectedWorkspace) throw new Error('Refusing to modify a non-ADMIN workspace.');
+const currentRevision = Number(current.serverRevision);
+if (currentRevision !== 4) throw new Error('Expected the failed revision 4 to be current; found revision ' + currentRevision + '. Refusing an unsafe overwrite.');
+
+const project = sourceProject;
+const animation = project.animation;
+if (animation.frames.length !== 20 || animation.fps !== 12) throw new Error('Unexpected source timeline.');
 const characterLayer = project.layers.find(layer => layer.name === characterLayerName);
-if (!characterLayer || !animation.layerIds.includes(characterLayer.id)) throw new Error('Expected Soldier layer was not found in the persisted timeline.');
+if (!characterLayer || !animation.layerIds.includes(characterLayer.id)) throw new Error('Expected Soldier layer was not found.');
 const characterLayerId = characterLayer.id;
 let changedPixels = 0;
 const frameDiagnostics = [];
@@ -130,41 +181,50 @@ for (let index = 0; index < animation.frames.length; index++) {
   if (!cel || typeof cel.pixels !== 'string') throw new Error('Missing Soldier cel in frame ' + index);
   const source = Buffer.from(cel.pixels, 'base64');
   if (source.length !== project.width * project.height * 4) throw new Error('Unexpected RGBA cel size in frame ' + index);
-
   const phase = index / animation.frames.length * Math.PI * 2;
 
-  // Undo the previous whole-sprite translation exactly; it was not an articulation pass.
+  // Restore the pre-polish poses by undoing revision 3's global sprite offsets.
   const previousDx = Math.round(Math.sin(phase));
   const previousDy = Math.round(1.5 * Math.cos(phase * 2));
-  let output = translateRgba(source, project.width, project.height, -previousDx, -previousDy);
+  const base = translateRgba(source, project.width, project.height, -previousDx, -previousDy);
 
-  // Add a restrained upper-body counter-bob while keeping the waist and contact shadow anchored.
-  const bodyDy = Math.round(-Math.cos(phase * 2));
-  const beforeBody = output;
-  output = moveRegion(output, project.width, project.height, (x, y) => y < 88, 0, bodyDy);
+  const width = project.width, height = project.height;
+  const isGrey = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) < 15 && (r + g + b) / 3 > 60;
 
-  // Alternate the lower legs: the swing leg advances laterally and lifts one pixel;
-  // neutral grey pixels are excluded so the rifle remains attached to the torso/hand.
+  // Separate the lower legs from the one-piece sprite cel, move each leg independently,
+  // and keep the semi-transparent contact shadow fixed.
+  const left = extractRegion(base, width, height,
+    (x, y, r, g, b, a) => y >= 117 && y < 140 && a >= 200 && x < 64 && !isGrey(r, g, b));
+  const right = extractRegion(left.body, width, height,
+    (x, y, r, g, b, a) => y >= 117 && y < 140 && a >= 200 && x >= 64 && x <= 96 && !isGrey(r, g, b));
+
   const stride = Math.sin(phase);
-  const isGreyRiflePixel = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b) < 15 && (r + g + b) / 3 > 60;
-  output = moveRegion(output, project.width, project.height,
-    (x, y, r, g, b) => y >= 105 && y < 138 && x < 64 && !isGreyRiflePixel(r, g, b),
-    Math.round(2.5 * stride), stride > 0 ? -1 : 0);
-  output = moveRegion(output, project.width, project.height,
-    (x, y, r, g, b) => y >= 105 && y < 138 && x >= 64 && x <= 96 && !isGreyRiflePixel(r, g, b),
-    Math.round(-2.5 * stride), stride < 0 ? -1 : 0);
+  const bodyDy = Math.round(-Math.cos(phase * 2));
+  const leftDx = Math.round(2 * stride);
+  const rightDx = Math.round(-2 * stride);
+  const leftDy = bodyDy + (stride > 0 ? -1 : 0);
+  const rightDy = bodyDy + (stride < 0 ? -1 : 0);
+
+  let body = moveRegion(right.body, width, height,
+    (x, y, r, g, b) => y < 96 || (y < 130 && isGrey(r, g, b)),
+    0, bodyDy);
+
+  const movedLeft = translateRgba(left.part, width, height, leftDx, leftDy);
+  const movedRight = translateRgba(right.part, width, height, rightDx, rightDy);
+  body = compositeLayer(body, movedLeft);
+  body = compositeLayer(body, movedRight);
 
   for (let i = 0; i < source.length; i += 4) {
-    if (source[i] !== output[i] || source[i + 1] !== output[i + 1] || source[i + 2] !== output[i + 2] || source[i + 3] !== output[i + 3]) changedPixels++;
+    if (source[i] !== body[i] || source[i + 1] !== body[i + 1] || source[i + 2] !== body[i + 2] || source[i + 3] !== body[i + 3]) changedPixels++;
   }
-  cel.pixels = output.toString('base64');
-  frameDiagnostics.push({ index, bodyDy, stride: Number(stride.toFixed(3)), previousWholeSpriteUndo: [previousDx, previousDy] });
+  cel.pixels = body.toString('base64');
+  frameDiagnostics.push({ index, bodyDy, leftDx, rightDx, leftDy, rightDy, restoredOffset: [previousDx, previousDy] });
 }
 
-project.serverRevision = revision + 1;
-console.log('[REPAIR] Prepared:', JSON.stringify({
-  projectId, workspaceId: snapshot.workspaceId, fromRevision: revision,
-  frameCount: animation.frames.length, fps: animation.fps, changedPixels, frameDiagnostics
+project.serverRevision = currentRevision + 1;
+console.log('[REPAIR] Prepared revision:', JSON.stringify({
+  projectId, workspaceId: expectedWorkspace, fromRevision: currentRevision, sourceArtifactRun: sourceRunId,
+  restoredSourceRevision: 2, frameCount: animation.frames.length, fps: animation.fps, changedPixels, frameDiagnostics
 }));
 
 const browser = await playwrightChromium.launch({
@@ -178,24 +238,26 @@ try {
     waitUntil: 'domcontentloaded', timeout: 30000
   });
   if (!response || ![200, 303].includes(response.status())) throw new Error('ADMIN handoff failed.');
-  const saved = await uploadProject(page, project, revision);
+  const saved = await uploadProject(page, project, currentRevision);
   console.log('[REPAIR] Upload:', JSON.stringify(saved));
 } finally {
   await browser.close();
 }
 
 const persisted = await bridgeGet('/api/agent/bridge/pixelforge/projects/' + encodeURIComponent(projectId));
-if (persisted.workspaceId !== expectedWorkspace || Number(persisted.serverRevision) !== revision + 1) {
+if (persisted.workspaceId !== expectedWorkspace || Number(persisted.serverRevision) !== currentRevision + 1) {
   throw new Error('Persisted revision verification failed.');
 }
-if (persisted.contentSha256 === snapshot.contentSha256) throw new Error('Persisted content hash did not change.');
+if (persisted.contentSha256 === current.contentSha256) throw new Error('Persisted content hash did not change.');
 const verification = {
   status: 'persisted',
   projectId, workspaceId: persisted.workspaceId,
-  beforeRevision: revision, afterRevision: persisted.serverRevision,
-  beforeSha256: snapshot.contentSha256, afterSha256: persisted.contentSha256,
+  beforeRevision: currentRevision, afterRevision: persisted.serverRevision,
+  restoredFromRevision: 2, sourceArtifactRun: sourceRunId,
+  beforeSha256: current.contentSha256, afterSha256: persisted.contentSha256,
   frameCount: persisted.project.animation.frames.length, fps: persisted.project.animation.fps,
-  changedPixels, method: 'Undo whole-sprite offset; apply phase-based lower-leg alternation and upper-body counter-bob; preserve rifle pixels, background, ground and contact shadow.'
+  changedPixels,
+  method: 'Restore clean revision-2 poses; separate and alternate lower-leg cels; add a one-pixel upper-body counter-bob; preserve the contact shadow, rifle, background and ground.'
 };
 await fs.writeFile((process.env.RUNNER_TEMP || '/tmp') + '/soldier-walk-repair-verification.json', JSON.stringify(verification, null, 2));
 console.log('[REPAIR] Persisted verification:', JSON.stringify(verification));
