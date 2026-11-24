@@ -100,3 +100,12 @@ El inbox es externo a A/B: su workflow lee el repositorio y transfiere el paquet
 
 Ver [guía del inbox](../projects/animation-inbox/README.md) y el [documento owner A/B](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md).
 
+## Elegir el origen del proyecto antes de A/B
+
+El inbox del repositorio es una ruta alternativa de preparación, **no un requisito previo universal para A/B**.
+
+- Para un proyecto pequeño que ya tiene datos de transferencia normales, completos y válidos, utilizar el flujo habitual.
+- Para un proyecto grande (muchos archivos/recursos) o cuando no haya datos de transferencia utilizables, preparar el paquete nativo en el inbox e importarlo a ADMIN.
+- En ambos casos, A/B trabaja sobre el proyecto ya persistido en ADMIN: A recibe/fija el proyecto y ejecuta la exportación; B solicita y verifica el WebM.
+
+No confundir el origen del proyecto con el contrato A/B: el inbox solo resuelve la entrada de proyectos cuando hace falta.
