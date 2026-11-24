@@ -1253,6 +1253,26 @@ async function main() {
         assert.equal(agentImport.projectId, agentProjectId);
         assert.equal(agentImport.targetWorkspaceId, coreWorkspace.workspaceId,
           'the native worker must persist into the requested user workspace, not its ADMIN mailbox');
+        const registryRow = await testSessionPool.query(
+          'SELECT workspace_id,project FROM public.codelab_project_registry WHERE project_id=$1 AND editor_id=\'pixelforge\'',
+          [agentProjectId]
+        );
+        assert.equal(registryRow.rows[0]?.workspace_id, coreWorkspace.workspaceId,
+          'the canonical project registry must belong to the requested user workspace');
+        const pixelForgeRow = await testSessionPool.query(
+          'SELECT workspace_id,project,server_revision FROM public.codelab_pixelforge_projects WHERE project_id=$1',
+          [agentProjectId]
+        );
+        assert.equal(pixelForgeRow.rows[0]?.workspace_id, coreWorkspace.workspaceId,
+          'the native PixelForge project row must belong to the requested user workspace');
+        assert.equal(Number(pixelForgeRow.rows[0]?.server_revision), 1,
+          'the imported PixelForge project must start at server revision one');
+        const mailboxLeak = await testSessionPool.query(
+          'SELECT COUNT(*)::int AS count FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2',
+          [adminWorkspaceId, agentProjectId]
+        );
+        assert.equal(mailboxLeak.rows[0].count, 0,
+          'the internal ADMIN mailbox must not become the project destination');
 
         const agentList = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
         const agentMetadata = agentList.projects.find(project => project.id === agentProjectId);
