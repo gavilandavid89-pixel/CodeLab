@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 const { Pool } = require('pg');
 const { spawn } = require('node:child_process');
+const { pathToFileURL } = require('node:url');
 
 
 async function readZipDownload(download) {
@@ -1135,18 +1136,38 @@ async function main() {
     await accountContext.close();
 
     if (testSessionPool) {
-      // Exercise the real agent HTTP upload -> durable command -> native worker path,
-      // then verify the destination account's native list/open/save/reopen.
-      const { exportPixelForgeCodeLabPackage } = await import('../public/pixelforge/src/codelab-package.js');
-      const { createOrbitalShowcase } = await import('../public/pixelforge/src/showcase-animation.mjs');
+      // Downloaded GitHub Actions Headless artifact -> isolated Headless runtime ->
+      // editable .codelab package -> documented inline HTTP transfer -> durable worker import.
+      const headlessSourceDir = process.env.AGENT_HEADLESS_PACKAGE_DIR;
+      assert.ok(headlessSourceDir && fs.existsSync(path.join(headlessSourceDir, 'headless.js')),
+        'the integration must use the downloaded Agent Headless Package artifact, not repository source imports');
+      const fromHeadlessArtifact = name => import(pathToFileURL(path.join(headlessSourceDir, name)).href);
+      const [
+        { exportPixelForgeCodeLabPackage },
+        { createOrbitalShowcase },
+        { HeadlessEditorRuntime }
+      ] = await Promise.all([
+        fromHeadlessArtifact('codelab-package.js'),
+        fromHeadlessArtifact('showcase-animation.mjs'),
+        fromHeadlessArtifact('headless.js')
+      ]);
       const showcase = createOrbitalShowcase();
-      const agentProject = showcase.doc.toJSON();
       const agentProjectId = 'agent-import-e2e-' + sessionId.slice(0, 10);
-      let importRequestId = null;
+      const headlessRuntime = HeadlessEditorRuntime.fromJSON(showcase.doc.toJSON());
+      const sourceInspection = headlessRuntime.inspect();
+      assert.equal(sourceInspection.project.width, showcase.doc.width);
+      const editResult = headlessRuntime.execute({
+        name: 'canvas.draw_line', x0: 2, y0: 2, x1: 18, y1: 2, color: '#E8B65A', size: 1
+      });
+      assert.equal(editResult.ok, true, 'the downloaded Headless runtime must edit the project before export');
+      headlessRuntime.createProposal('Prepare the project for CodeLab import');
+      assert.equal(headlessRuntime.acceptProposal().status, 'applied');
+      const agentProject = headlessRuntime.toJSON();
       agentProject.id = agentProjectId;
-      agentProject.name = 'Agent ZIP v2 native import';
+      agentProject.name = 'Agent Headless artifact import';
       agentProject.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
       agentProject.drawingModel ||= { version: 2, palette: {}, objects: [] };
+      let importRequestId = null;
       const exportedAgentPackage = await exportPixelForgeCodeLabPackage(agentProject);
       const agentArtifactBytes = Buffer.from(await exportedAgentPackage.blob.arrayBuffer());
       const adminAccountId = 'agent-bridge-test-admin';
