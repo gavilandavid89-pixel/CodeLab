@@ -420,6 +420,14 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
       delete project.drawingModel.sceneSections[section.key].workspace;
     }
   }
+  if (project.drawingModel?.sceneWorkspaceState) {
+    const state = project.drawingModel.sceneWorkspaceState;
+    project.drawingModel.sceneWorkspaceState = {
+      version: 1,
+      activeSection: state.activeSection === 'main' ? 'main' : state.activeSection,
+      parentWorkspace: state.activeSection === 'main' ? null : (state.parentWorkspace || null),
+    };
+  }
   delete project.animation;
   delete project.packageResourceFiles;
   if (project.drawingModel?.referenceCenter) {
