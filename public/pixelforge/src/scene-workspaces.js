@@ -36,6 +36,10 @@ export function stripSceneWorkspaceState(snapshot) {
   const clean = clone(snapshot);
   if (clean?.drawingModel && typeof clean.drawingModel === 'object') {
     delete clean.drawingModel.sceneWorkspaceState;
+    for (const section of SECTION_DEFINITIONS) {
+      const sectionData = clean.drawingModel.sceneSections?.[section.key];
+      if (sectionData && typeof sectionData === 'object') delete sectionData.workspace;
+    }
   }
   return clean;
 }
@@ -70,7 +74,7 @@ export function createSceneWorkspaceSnapshot(baseSnapshot, sectionKey) {
   const section = SECTION_DEFINITIONS.find(item => item.key === sectionKey);
   const layerId = crypto.randomUUID();
   const pixels = transparentBase64(baseSnapshot.width * baseSnapshot.height * 4);
-  const drawingModel = clone(baseSnapshot.drawingModel) || {};
+  const drawingModel = stripSceneWorkspaceState(baseSnapshot).drawingModel || {};
   delete drawingModel.sceneWorkspaceState;
   drawingModel.layerRoles = {};
   drawingModel.currentState = { version: 1, entries: [], activeEntryId: null };
