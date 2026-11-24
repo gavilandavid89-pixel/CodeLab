@@ -7,6 +7,11 @@ on:
       - "public/pixelforge/src/animation.mjs"
       - "public/pixelforge/src/animation-tiles.mjs"
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
+      - "public/pixelforge/src/drawing-mode-config.mjs"
+      - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/index.html"
+      - "public/pixelforge/styles.css"
+      - "tests/pixelforge-drawing-mode-config.test.mjs"
       - "tests/pixelforge-animation-tiled-adapter.test.mjs"
       - "tests/pixelforge-animation.test.mjs"
       - "tests/pixelforge-zip-export.test.mjs"
@@ -47,6 +52,8 @@ jobs:
           node --check public/pixelforge/src/animation.mjs
           node --check public/pixelforge/src/animation-tiles.mjs
           node --check public/pixelforge/src/animation-tiled-adapter.mjs
+          node --check public/pixelforge/src/drawing-mode-config.mjs
+          node --check public/pixelforge/src/editor.js
           node --experimental-default-type=module --check public/pixelforge/src/zip-export.js
           node --input-type=module --check < public/pixelforge/src/editor.js
           node --input-type=module --check < public/pixelforge/src/persistence.js
@@ -57,6 +64,8 @@ jobs:
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test tile-backed animation migration adapter
         run: node --experimental-default-type=module --test tests/pixelforge-animation-tiled-adapter.test.mjs
+      - name: Test persisted drawing mode configuration
+        run: node --experimental-default-type=module --test tests/pixelforge-drawing-mode-config.test.mjs
       - name: Test ZIP archive export
         run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
       - name: Test 24-frame soldier reference-guided walk-to-crouch showcase animation
