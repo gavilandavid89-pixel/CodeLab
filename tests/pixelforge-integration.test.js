@@ -903,11 +903,15 @@ async function main() {
     await waitForRasterSave();
     assert.equal(await accountPage.locator('#layers .layer-row').count(), 1,
       'copying a reference part must write into the existing active layer without creating another layer');
+    let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    assert.equal(referenceStored.layers.length, 1, 'reference copy must preserve the original layer count');
+    assert.deepEqual(rgbaAt(referenceStored, 1, 1, 0), [210, 120, 40, 255],
+      'reference part pixels must be copied into the pre-existing active layer');
     await setForegroundColor('#00aa44');
     await accountPage.locator('#brush-tool').click();
     await clickPixel(2, 2, 4, 4);
     await waitForRasterSave();
-    let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(referenceStored.layers.length, 1, 'reference pixels must be persisted in the existing active raster layer');
     assert.deepEqual(rgbaAt(referenceStored, 2, 2, 0), [0, 170, 68, 255],
       'editing the copied reference pixels must persist on the active layer');
