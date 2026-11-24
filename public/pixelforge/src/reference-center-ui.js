@@ -63,18 +63,93 @@ export function createReferenceCenterUI({
   const prevValue = host.querySelector('#reference-prev-opacity-value');
   const nextValue = host.querySelector('#reference-next-opacity-value');
 
-  function confirmStaticCanvasMutation(action) {
-    if (!animation()) return true;
-    if (typeof setAnimation !== 'function') {
-      status('Cannot safely modify raster layers while an animation timeline is active.', 'error');
+  function fitReferencePixels(pixels, sourceWidth, sourceHeight, d, bounds = null) {
+    if (!(pixels instanceof Uint8Array) || pixels.length !== sourceWidth * sourceHeight * 4) {
+      throw new TypeError('Reference pixel dimensions are invalid.');
+    }
+    const source = document.createElement('canvas');
+    source.width = sourceWidth;
+    source.height = sourceHeight;
+    const sourceContext = source.getContext('2d', { willReadFrequently: true });
+    if (!sourceContext) throw new Error('Could not create the reference pixel surface.');
+    sourceContext.putImageData(new ImageData(new Uint8ClampedArray(pixels), sourceWidth, sourceHeight), 0, 0);
+
+    const target = document.createElement('canvas');
+    target.width = d.width;
+    target.height = d.height;
+    const targetContext = target.getContext('2d', { willReadFrequently: true });
+    if (!targetContext) throw new Error('Could not create the current frame surface.');
+    targetContext.imageSmoothingEnabled = false;
+    if (bounds && Number.isFinite(Number(bounds.x)) && Number.isFinite(Number(bounds.y)) &&
+        Number(bounds.width) > 0 && Number(bounds.height) > 0) {
+      targetContext.drawImage(source, Number(bounds.x), Number(bounds.y), Number(bounds.width), Number(bounds.height));
+    } else {
+      const scale = Math.min(d.width / sourceWidth, d.height / sourceHeight);
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      targetContext.drawImage(source, Math.floor((d.width - width) / 2), Math.floor((d.height - height) / 2), width, height);
+    }
+    return new Uint8Array(targetContext.getImageData(0, 0, d.width, d.height).data);
+  }
+
+  function writeToCurrentFrameLayer(pixels, message) {
+    const d = doc();
+    const layer = d.activeLayer;
+    if (!layer) {
+      status('Select a layer before copying a reference.', 'error');
       return false;
     }
-    const accepted = window.confirm(
-      action + ' will keep the currently displayed frame as static artwork and close the multi-frame timeline. Continue?'
-    );
-    if (!accepted) return false;
-    setAnimation(null);
+    if (layer.locked) {
+      status('The current layer is locked. Unlock it before copying a reference.', 'error');
+      return false;
+    }
+    if (!(pixels instanceof Uint8Array) || pixels.length !== d.width * d.height * 4) {
+      status('The reference does not match the current canvas dimensions.', 'error');
+      return false;
+    }
+    const currentAnimation = animation();
+    if (currentAnimation) {
+      currentAnimation.setLayerPixels(currentAnimation.activeFrameIndex, layer.id, new Uint8Array(pixels));
+    }
+    d.setLayerPixels(layer.id, new Uint8Array(pixels));
+    d.dirty = true;
+    status(message, 'success');
+    render();
+    renderLayers();
+    onDocumentChanged();
+    void save();
     return true;
+  }
+
+  function compositeReferenceFrame(entry, frame, d) {
+    const sourceWidth = Number(entry.geometry?.canvas?.width || d.width);
+    const sourceHeight = Number(entry.geometry?.canvas?.height || d.height);
+    const composite = document.createElement('canvas');
+    composite.width = sourceWidth;
+    composite.height = sourceHeight;
+    const context = composite.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Could not create the reference frame compositor.');
+    context.clearRect(0, 0, sourceWidth, sourceHeight);
+    for (const item of frame.layers || []) {
+      if (typeof item.pixels !== 'string') continue;
+      const pixels = Uint8Array.from(atob(item.pixels), char => char.charCodeAt(0));
+      if (pixels.length !== sourceWidth * sourceHeight * 4) continue;
+      const layerCanvas = document.createElement('canvas');
+      layerCanvas.width = sourceWidth;
+      layerCanvas.height = sourceHeight;
+      const layerContext = layerCanvas.getContext('2d');
+      if (!layerContext) continue;
+      layerContext.putImageData(new ImageData(new Uint8ClampedArray(pixels), sourceWidth, sourceHeight), 0, 0);
+      const layerMeta = entry.layerSnapshot?.find(layer => layer.id === item.layerId);
+      if (layerMeta?.visible === false) continue;
+      context.globalAlpha = Math.max(0, Math.min(1, Number(layerMeta?.opacity ?? 1)));
+      context.globalCompositeOperation = typeof layerMeta?.blendMode === 'string' ? layerMeta.blendMode : 'source-over';
+      context.drawImage(layerCanvas, 0, 0);
+    }
+    context.globalAlpha = 1;
+    context.globalCompositeOperation = 'source-over';
+    const pixels = new Uint8Array(context.getImageData(0, 0, sourceWidth, sourceHeight).data);
+    return fitReferencePixels(pixels, sourceWidth, sourceHeight, d);
   }
 
   function contextOpacity() {
@@ -176,13 +251,7 @@ export function createReferenceCenterUI({
       targetContext.imageSmoothingEnabled = false;
       targetContext.drawImage(source, x, y, width, height);
       const pixels = targetContext.getImageData(0, 0, d.width, d.height).data;
-      if (!confirmStaticCanvasMutation('Copying a reference image')) return;
-      const layer = d.addLayer(entry.name || 'Reference image');
-      d.setLayerPixels(layer.id, new Uint8Array(pixels));
-      d.setActiveLayer(layer.id);
-      d.dirty = true;
-      status('Copied reference image to the canvas as an editable layer', 'success');
-      render(); renderLayers(); onDocumentChanged(); void save();
+      writeToCurrentFrameLayer(new Uint8Array(pixels), 'Copied reference image into the current frame and layer');
     } catch (error) {
       status('Could not copy reference image: ' + error.message, 'error');
     }
@@ -222,39 +291,42 @@ export function createReferenceCenterUI({
   }
 
   function copyPart(entry, part) {
-    if (!confirmStaticCanvasMutation('Copying a reference part')) return;
     const d = doc();
-    const layer = d.addLayer(`${entry.name} · ${part.name}`);
-    const pixels = part.pixels ? Uint8Array.from(atob(part.pixels), c => c.charCodeAt(0)) : null;
-    if (pixels && pixels.length === layer.pixels.length) d.setLayerPixels(layer.id, pixels);
-    else if (part.layerId) {
+    let pixels = typeof part.pixels === 'string'
+      ? Uint8Array.from(atob(part.pixels), char => char.charCodeAt(0))
+      : null;
+    let sourceWidth = Number(part.width || entry.geometry?.canvas?.width || d.width);
+    let sourceHeight = Number(part.height || entry.geometry?.canvas?.height || d.height);
+    if (!pixels && part.layerId) {
       const source = entry.layerSnapshot?.find(item => item.id === part.layerId);
-      if (source?.pixels) d.setLayerPixels(layer.id, Uint8Array.from(atob(source.pixels), c => c.charCodeAt(0)));
+      if (typeof source?.pixels === 'string') {
+        pixels = Uint8Array.from(atob(source.pixels), char => char.charCodeAt(0));
+        sourceWidth = Number(entry.geometry?.canvas?.width || d.width);
+        sourceHeight = Number(entry.geometry?.canvas?.height || d.height);
+      }
     }
-    d.setActiveLayer(layer.id);
-    d.dirty = true;
-    status(`Copied “${part.name}” as editable layer`, 'success');
-    render(); renderLayers(); onDocumentChanged(); void save();
+    if (!pixels) {
+      status('This reference part has no editable pixel data.', 'error');
+      return;
+    }
+    try {
+      const fitted = fitReferencePixels(pixels, sourceWidth, sourceHeight, d, part.bounds);
+      writeToCurrentFrameLayer(fitted, `Copied “${part.name}” into the current frame and layer`);
+    } catch (error) {
+      status('Could not copy reference part: ' + error.message, 'error');
+    }
   }
 
   function copyFrame(entry, frameIndex) {
     const frame = entry.frames?.find(item => Number(item.index) === Number(frameIndex));
-    if (!frame || !confirmStaticCanvasMutation('Copying a reference frame')) return;
+    if (!frame) return;
     const d = doc();
-    for (const layer of [...d.layers]) if (layer.id !== d.layers[0].id) d.deleteLayer(layer.id);
-    const base = d.layers[0];
-    d.setLayerPixels(base.id, new Uint8Array(d.width * d.height * 4));
-    d.renameLayer(base.id, `${entry.name} · ${frameIndex + 1}`);
-    for (const item of frame.layers || []) {
-      const layer = d.layers[0].id === item.layerId ? d.layers[0] : d.addLayer(`${entry.name} · ${item.layerId}`);
-      if (item.pixels) {
-        const pixels = Uint8Array.from(atob(item.pixels), c => c.charCodeAt(0));
-        if (pixels.length === layer.pixels.length) d.setLayerPixels(layer.id, pixels);
-      }
+    try {
+      const pixels = compositeReferenceFrame(entry, frame, d);
+      writeToCurrentFrameLayer(pixels, `Copied reference frame ${Number(frameIndex) + 1} into the current frame and layer`);
+    } catch (error) {
+      status('Could not copy reference frame: ' + error.message, 'error');
     }
-    d.dirty = true;
-    status(`Copied frame ${Number(frameIndex) + 1} from “${entry.name}” as editable artwork`, 'success');
-    render(); renderLayers(); onDocumentChanged(); void save();
   }
 
   function saveCurrentState() {
