@@ -367,7 +367,7 @@ Reference Center es una biblioteca de **referencias maestras inmutables**. Conse
 
 En la UI, **Package current** captura el documento y la animación en la referencia maestra, la registra en drawingModel.referenceCenter.entries y después limpia el lienzo de trabajo a una capa vacía Layer 1. La animación capturada queda en la referencia; el editor vuelve a una línea de tiempo estática. No es una operación de exportar PNG.
 
-Al pulsar una parte, PixelForge crea una capa nueva con sus píxeles. Al copiar un frame, reconstruye las capas de ese frame. La referencia original no se modifica. El Headless ofrece drawing.reference.package_current, drawing.reference.list, drawing.reference.get, drawing.reference.apply, drawing.reference.copy_part, drawing.reference.copy_frame y drawing.reference.remove.
+Al copiar una imagen o una parte, PixelForge escribe sus píxeles en la capa activa del frame activo. Al copiar un frame completo de referencia, compone visualmente sus capas y escribe ese resultado en esa misma capa activa; no crea capas, no elimina otras capas y no cierra la línea de tiempo. La capa y el frame de destino conservan sus IDs y propiedades; solo cambian los píxeles del cel seleccionado. La referencia maestra permanece inmutable. La copia es una operación de deep-copy de los píxeles, no un vínculo vivo con la referencia.
 
 **Diferencia importante:** las referencias de imagen simples importadas desde carpetas como reference/character/pose.png son recursos de imagen del Reference Center; no equivalen a una referencia estructurada reference.personaje/<id>/reference.json con partes RGBA editables. El importador legacy puede crear una tarjeta de imagen; el importador estructurado v2 reconstruye partes editables y sus metadatos.
 
