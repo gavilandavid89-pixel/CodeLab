@@ -1,47 +1,130 @@
-name: Inline bridge smoke test
+name: Inline bridge end-to-end import test
 
 on:
   push:
     paths:
       - .github/workflows/inline-bridge-smoke-test.yml
       - server.js
+      - codelab-project-artifact-import.mjs
+      - codelab-project-package-installer.mjs
+      - agent-bridge-worker.mjs
 
 jobs:
-  smoke:
+  import:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
-      - name: Manifest
-        id: manifest
+      - name: Build a valid structured CodeLab Web package
+        id: package
         shell: bash
-        env:
-          BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
         run: |
           set -euo pipefail
-          test -n "$BRIDGE_TOKEN" || { echo "Missing CODELAB_AGENT_BRIDGE_CONTROL_SECRET GitHub secret"; exit 1; }
-          # Actual SHA-256 of the one-byte payload "x".
-          SHA=$(printf x | sha256sum | awk '{print $1}')
-          BODY=$(printf '{"total_bytes":1,"total_chunks":1,"sha256":"%s","filename":"inline-self-test.codelab","target_workspace_id":"ws_local_admin","project_name":"inline-self-test","self_test":true}' "$SHA")
-          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts"             -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "$BODY" | tee manifest.json
-          test "$(jq -r '.ok' manifest.json)" = "true"
+          ROOT="$RUNNER_TEMP/codelab-e2e"
+          mkdir -p "$ROOT/assets"
+          PROJECT_ID="bridge-e2e-web-${GITHUB_RUN_ID}"
+          cat > "$ROOT/project.codelab-web" <<'EOF'
+          CodeLab Web project marker
+          EOF
+          cat > "$ROOT/project.json" <<EOF
+          {
+            "id": "$PROJECT_ID",
+            "name": "Bridge E2E Web Import ${GITHUB_RUN_ID}",
+            "code": {
+              "html": "<main id=\\"bridge-e2e\\"><h1>ADMIN import verified</h1><p>Inline bridge end-to-end test.</p></main>",
+              "css": "main { font-family: sans-serif; padding: 24px; }",
+              "js": "document.documentElement.dataset.bridgeE2e = 'passed';"
+            }
+          }
+          EOF
+          printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#2563eb"/></svg>' > "$ROOT/assets/bridge-e2e.svg"
+          ASSET_SHA=$(sha256sum "$ROOT/assets/bridge-e2e.svg" | awk '{print $1}')
+          ASSET_SIZE=$(wc -c < "$ROOT/assets/bridge-e2e.svg" | tr -d ' ')
+          cat > "$ROOT/integrity.json" <<EOF
+          {
+            "format": "codelab-integrity",
+            "version": 1,
+            "files": {
+              "assets/bridge-e2e.svg": {"sha256": "$ASSET_SHA", "byteSize": $ASSET_SIZE}
+            }
+          }
+          EOF
+          cat > "$ROOT/manifest.json" <<'EOF'
+          {
+            "format": "codelab",
+            "version": 2,
+            "schemaVersion": 2,
+            "layout": "structured",
+            "editor": "web",
+            "projectType": "web",
+            "entry": "project.json",
+            "integrityPath": "integrity.json",
+            "resources": [{"path":"assets/bridge-e2e.svg","destination":"assets"}]
+          }
+          EOF
+          (cd "$ROOT" && zip -q -r "$RUNNER_TEMP/bridge-e2e.codelab" .)
+          BYTES=$(wc -c < "$RUNNER_TEMP/bridge-e2e.codelab" | tr -d ' ')
+          CHUNKS=$(((BYTES + 1048575) / 1048576))
+          SHA=$(sha256sum "$RUNNER_TEMP/bridge-e2e.codelab" | awk '{print $1}')
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+          echo "bytes=$BYTES" >> "$GITHUB_OUTPUT"
+          echo "chunks=$CHUNKS" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-      - name: Chunk
+          echo "archive=$RUNNER_TEMP/bridge-e2e.codelab" >> "$GITHUB_OUTPUT"
+          unzip -tq "$RUNNER_TEMP/bridge-e2e.codelab"
+
+      - name: Begin ADMIN import
+        id: begin
         shell: bash
         env:
           BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          TOTAL_BYTES: ${{ steps.package.outputs.bytes }}
+          TOTAL_CHUNKS: ${{ steps.package.outputs.chunks }}
+          SHA: ${{ steps.package.outputs.sha }}
+          PROJECT_ID: ${{ steps.package.outputs.project_id }}
         run: |
           set -euo pipefail
-          ID=$(jq -r '.artifactId' manifest.json)
-          curl --fail-with-body -sS -X PUT "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ID/0"             -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/octet-stream' --data-binary 'x' | tee chunk.json
-          test "$(jq -r '.ok' chunk.json)" = "true"
-      - name: Commit
+          test -n "$BRIDGE_TOKEN" || { echo "Missing CODELAB_AGENT_BRIDGE_CONTROL_SECRET"; exit 1; }
+          REQUEST_ID="codelab-e2e-web-${GITHUB_RUN_ID}"
+          BODY=$(jq -n --arg sha "$SHA" --arg filename "bridge-e2e.codelab" --arg project "$PROJECT_ID" --arg request "$REQUEST_ID" --argjson bytes "$TOTAL_BYTES" --argjson chunks "$TOTAL_CHUNKS" '{total_bytes:$bytes,total_chunks:$chunks,sha256:$sha,filename:$filename,target_workspace_id:"ws_local_admin",artifact_kind:"codelab_zip_upload",editor_id:"web",source_project_id:$project,import_request_id:$request,project_name:"Bridge E2E Web Import"}')
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "$BODY" | tee manifest-response.json
+          ID=$(jq -r '.artifactId' manifest-response.json)
+          test -n "$ID" && test "$ID" != "null"
+          echo "artifact_id=$ID" >> "$GITHUB_OUTPUT"
+          echo "import_request_id=$REQUEST_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Upload all artifact chunks
         shell: bash
         env:
           BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          ARTIFACT_ID: ${{ steps.begin.outputs.artifact_id }}
+          TOTAL_BYTES: ${{ steps.package.outputs.bytes }}
+          TOTAL_CHUNKS: ${{ steps.package.outputs.chunks }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
         run: |
           set -euo pipefail
-          ID=$(jq -r '.artifactId' manifest.json)
-          SHA=$(printf x | sha256sum | awk '{print $1}')
-          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ID/commit"             -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "{\"sha256\":\"$SHA\"}" | tee commit.json
-          test "$(jq -r '.ok' commit.json)" = "true"
-          test "$(jq -r '.status' commit.json)" = "verified"
-          cat commit.json
+          for ((i=0; i<TOTAL_CHUNKS; i++)); do
+            OFFSET=$((i * 1048576))
+            COUNT=$((TOTAL_BYTES - OFFSET))
+            if (( COUNT > 1048576 )); then COUNT=1048576; fi
+            dd if="$ARCHIVE" of="$RUNNER_TEMP/chunk.bin" bs=1 skip="$OFFSET" count="$COUNT" status=none
+            curl --fail-with-body -sS -X PUT "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ARTIFACT_ID/$i" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/octet-stream' --data-binary @"$RUNNER_TEMP/chunk.bin"
+          done
+
+      - name: Commit package and enqueue native import
+        shell: bash
+        env:
+          BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          ARTIFACT_ID: ${{ steps.begin.outputs.artifact_id }}
+          SHA: ${{ steps.package.outputs.sha }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ARTIFACT_ID/commit" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "{\\"sha256\\":\\"$SHA\\"}" | tee commit-response.json
+          test "$(jq -r '.ok' commit-response.json)" = "true"
+          test "$(jq -r '.status' commit-response.json)" = "queued"
+
+      - name: Record import identifiers
+        if: always()
+        run: |
+          echo "Import request: codelab-e2e-web-${GITHUB_RUN_ID}"
+          echo "Artifact: ${{ steps.begin.outputs.artifact_id }}"
+          echo "Project: ${{ steps.package.outputs.project_id }}"
