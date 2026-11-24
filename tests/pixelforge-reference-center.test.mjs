@@ -39,3 +39,53 @@ test('reference center remains source of truth after editor is cleared', () => {
   assert.equal(runtime.sandbox.layers.length, 2);
   assert.equal(runtime.sandbox.layers.find(layer => layer.name === 'Body restored').pixels.some(Boolean), true);
 });
+
+test('copying a reference part creates an isolated editable layer without changing the canvas or master reference', () => {
+  const runtime = makeRuntime();
+  const packaged = runtime.execute({ name: 'drawing.reference.package_current' });
+  assert.equal(packaged.ok, true);
+
+  const masterBefore = runtime.execute({
+    name: 'drawing.reference.get',
+    referenceId: packaged.result.referenceId,
+  });
+  assert.equal(masterBefore.ok, true);
+  const masterPartPixels = masterBefore.result.reference.parts.find(part => part.name === 'Body').pixels;
+  assert.equal(typeof masterPartPixels, 'string');
+
+  // Existing editor content must survive the copy as a separate layer.
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line',
+    x0: 1, y0: 12, x1: 6, y1: 12, color: '#00AAFF', size: 1,
+  }).ok, true);
+  const existingLayer = runtime.sandbox.layers[0];
+  const existingPixelsBefore = new Uint8Array(existingLayer.pixels);
+
+  const copied = runtime.execute({
+    name: 'drawing.reference.copy_part',
+    referenceId: packaged.result.referenceId,
+    partName: 'Body',
+    layerName: 'Body copy',
+  });
+  assert.equal(copied.ok, true);
+  assert.equal(runtime.sandbox.layers.length, 2);
+  assert.deepEqual(runtime.sandbox.layers[0].pixels, existingPixelsBefore);
+
+  const copiedLayer = runtime.sandbox.layers.find(layer => layer.name === 'Body copy');
+  assert.ok(copiedLayer);
+  assert.notEqual(copiedLayer.pixels, masterPartPixels);
+  assert.equal(Buffer.from(copiedLayer.pixels).some(Boolean), true);
+
+  // Editing the materialized layer must not mutate the immutable Reference Center entry.
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line',
+    x0: 10, y0: 10, x1: 14, y1: 10, color: '#00FF00', size: 1,
+  }).ok, true);
+  const masterAfter = runtime.execute({
+    name: 'drawing.reference.get',
+    referenceId: packaged.result.referenceId,
+  });
+  assert.equal(masterAfter.ok, true);
+  assert.equal(masterAfter.result.reference.immutableSnapshot, true);
+  assert.equal(masterAfter.result.reference.parts.find(part => part.name === 'Body').pixels, masterPartPixels);
+});
