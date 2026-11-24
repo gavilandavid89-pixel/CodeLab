@@ -12,6 +12,7 @@ import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
 import { readStoredZip } from './video-composer-core.mjs';
 import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from './codelab-package.js';
+import { sceneWorkspaceSections, readSceneWorkspaceState, stripSceneWorkspaceState, attachSceneWorkspaceState, createSceneWorkspaceSnapshot } from './scene-workspaces.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
 
@@ -38,6 +39,7 @@ let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = P
 
 let referenceCenterUI = null;
 let vectorStudio = null;
+let activeSceneWorkspace = 'main';
 function initVectorStudio() {
   if (vectorStudio) return vectorStudio;
   const toggle = $('#vector-mode-toggle');
@@ -354,6 +356,7 @@ function syncAIWorkspaceFromUser() {
   }
 }
 function updateTitle() {
+  updateSceneWorkspaceUI();
   $('#document-name').textContent = doc.name;
   $('#document-size').textContent = `${doc.width} × ${doc.height}`;
   $('#layer-count').textContent = `${doc.layers.length} layer${doc.layers.length === 1 ? '' : 's'}`;
@@ -896,8 +899,103 @@ function ensureAnimation() {
 function buildProjectSnapshot(targetDoc = doc) {
   if (targetDoc === doc && animation) captureAnimationFrame();
   const snapshot = targetDoc.toJSON();
-  if (targetDoc === doc && animation) { snapshot.animation = { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed }; }
+  if (targetDoc === doc) {
+    const state = readSceneWorkspaceState(targetDoc.drawingModel);
+    const workspaceSnapshot = stripSceneWorkspaceState(snapshot);
+    if (activeSceneWorkspace === 'main') state.parentWorkspace = workspaceSnapshot;
+    else state.workspaces[activeSceneWorkspace] = workspaceSnapshot;
+    state.activeSection = activeSceneWorkspace;
+    const withState = attachSceneWorkspaceState(snapshot, state, activeSceneWorkspace);
+    snapshot.drawingModel = withState.drawingModel;
+    targetDoc.drawingModel = withState.drawingModel;
+  }
+  if (targetDoc === doc && animation) {
+    snapshot.animation = { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed };
+  }
   return snapshot;
+}
+function updateSceneWorkspaceUI() {
+  const host = $('#scene-workspace-switcher');
+  if (!host) return;
+  for (const button of host.querySelectorAll('[data-scene-workspace]')) {
+    const active = button.dataset.sceneWorkspace === activeSceneWorkspace;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+}
+function restoreActiveSceneWorkspace() {
+  const state = readSceneWorkspaceState(doc.drawingModel);
+  activeSceneWorkspace = state.activeSection;
+  if (activeSceneWorkspace !== 'main') {
+    const savedWorkspace = state.workspaces[activeSceneWorkspace];
+    if (!savedWorkspace) {
+      activeSceneWorkspace = 'main';
+      state.activeSection = 'main';
+      doc.drawingModel = { ...(doc.drawingModel || {}), sceneWorkspaceState: state };
+      return;
+    }
+    const projectId = doc.id;
+    const serverRevision = doc.serverRevision;
+    const restoredSnapshot = {
+      ...savedWorkspace,
+      id: projectId,
+      serverRevision,
+      drawingModel: { ...(savedWorkspace.drawingModel || {}), sceneWorkspaceState: state },
+    };
+    doc = RasterDocument.fromJSON(restoredSnapshot);
+    animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
+    animationLoop = restoredSnapshot.animation?.loop !== false;
+    animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
+  }
+  updateSceneWorkspaceUI();
+}
+async function switchSceneWorkspace(nextSection) {
+  const valid = nextSection === 'main' || sceneWorkspaceSections().some(section => section.key === nextSection);
+  if (!valid || nextSection === activeSceneWorkspace) return;
+  try {
+    stopAnimationPlayback();
+    await flushAutosave({ force: true });
+    const currentSnapshot = buildProjectSnapshot();
+    const state = readSceneWorkspaceState(currentSnapshot.drawingModel);
+    const currentWorkspace = stripSceneWorkspaceState(currentSnapshot);
+    if (activeSceneWorkspace === 'main') state.parentWorkspace = currentWorkspace;
+    else state.workspaces[activeSceneWorkspace] = currentWorkspace;
+
+    let targetSnapshot;
+    if (nextSection === 'main') {
+      targetSnapshot = state.parentWorkspace || currentWorkspace;
+    } else {
+      targetSnapshot = state.workspaces[nextSection] || createSceneWorkspaceSnapshot(state.parentWorkspace || currentWorkspace, nextSection);
+      state.workspaces[nextSection] = stripSceneWorkspaceState(targetSnapshot);
+    }
+    state.activeSection = nextSection;
+    const restoredSnapshot = {
+      ...targetSnapshot,
+      id: currentSnapshot.id,
+      serverRevision: currentSnapshot.serverRevision,
+      drawingModel: { ...(targetSnapshot.drawingModel || {}), sceneWorkspaceState: state },
+    };
+    doc = RasterDocument.fromJSON(restoredSnapshot);
+    animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
+    animationLoop = restoredSnapshot.animation?.loop !== false;
+    animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
+    activeSceneWorkspace = nextSection;
+    animationFrameHistory.clear();
+    animationOrphanCels.clear();
+    clearSelectionState();
+    resetAIWorkspaceForDocument();
+    vectorStudio?.syncFromDocument();
+    fitCanvas();
+    updateTitle();
+    renderLayers();
+    renderAnimationTimeline();
+    referenceCenterUI?.refresh();
+    updateSceneWorkspaceUI();
+    scheduleAutosave();
+    status(nextSection === 'main' ? 'Returned to the main project workspace' : 'Opened independent ' + sceneWorkspaceSections().find(item => item.key === nextSection).label + ' workspace', 'success');
+  } catch (error) {
+    status('Could not switch scene workspace: ' + error.message, 'error');
+  }
 }
 function drawOnionSkinOverlay() {
   if (!animation || !$('#animation-onion')?.checked) return;
@@ -1898,6 +1996,11 @@ function redoDocument() {
 $('#undo').addEventListener('click', undoDocument);
 $('#redo').addEventListener('click', redoDocument);
 $('#fit').addEventListener('click', fitCanvas);
+$('#scene-workspace-switcher')?.addEventListener('click', event => {
+  const button = event.target.closest('[data-scene-workspace]');
+  if (!button || button.dataset.sceneWorkspace === activeSceneWorkspace) return;
+  void switchSceneWorkspace(button.dataset.sceneWorkspace);
+});
 $('#reference-guides-toggle').addEventListener('click', () => {
   referenceGuidesEnabled = !referenceGuidesEnabled;
   const button = $('#reference-guides-toggle');
@@ -2161,7 +2264,7 @@ async function renderProjects() {
         if (!saved) throw new Error('That saved project no longer exists.');
         stopAnimationPlayback({ save: false });
         doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
-        animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+        animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
         $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
       } catch (error) { status(`Could not open project: ${error.message}`, 'error'); }
@@ -2214,7 +2317,7 @@ $('#create-new').addEventListener('click', async () => {
     validateDimensions(width, height); await flushAutosave();
     const template = assetTemplates[$('#new-template').value] ?? assetTemplates.custom;
     stopAnimationPlayback({ save: false });
-    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); animation = null; animationLoop = true; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
+    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
     const firstLayer = doc.activeLayerId;
     if (template.layers[0] && template.layers[0] !== doc.activeLayer.name) doc.renameLayer(firstLayer, template.layers[0]);
     for (const layerName of template.layers.slice(1)) doc.addLayer(layerName);
@@ -2342,7 +2445,7 @@ $('#import-file').addEventListener('change', async event => {
     const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
-    doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+    doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
@@ -2652,6 +2755,7 @@ async function boot() {
       doc = RasterDocument.fromJSON(snapshot);
       animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
+      restoreActiveSceneWorkspace();
       animationPlaybackSpeed = snapshot.animation?.playbackSpeed ?? 1;
       animationFrameHistory.clear();
       animationOrphanCels.clear();
@@ -2664,6 +2768,7 @@ async function boot() {
         doc = RasterDocument.fromJSON(saved);
         animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
         animationLoop = saved.animation?.loop !== false;
+        restoreActiveSceneWorkspace();
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1;
         animationFrameHistory.clear();
         animationOrphanCels.clear();
