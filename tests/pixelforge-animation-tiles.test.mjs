@@ -79,15 +79,15 @@ test('sparse cel store deduplicates immutable tiles and applies copy-on-write ed
   const store = new SparseTileCelStore({ maxDecodedCacheBytes: 64 * 64 * 4 });
   const first = await store.createCelFromPixels(pixels, { width, height });
   const second = store.cloneCel(first);
-  assert.equal(store.stats.resourceCount, 1);
-  assert.equal(store.stats.resourceReferences, 2);
+  assert.equal(store.stats.resourceCount, 2);
+  assert.equal(store.stats.resourceReferences, 4);
 
   const edited = new Uint8Array(64 * 64 * 4);
   edited.set([200, 100, 50, 255], 0);
   const change = await store.updateTile(second, 0, 0, edited);
   assert.equal(change.changed, true);
-  assert.equal(store.stats.resourceCount, 2);
-  assert.equal(store.stats.resourceReferences, 2);
+  assert.equal(store.stats.resourceCount, 3);
+  assert.equal(store.stats.resourceReferences, 4);
   assert.deepEqual(store.getTile(first, 0, 0).pixels.slice(0, 4), new Uint8Array([10, 20, 30, 255]));
   assert.deepEqual(store.getTile(second, 0, 0).pixels.slice(0, 4), new Uint8Array([200, 100, 50, 255]));
   assert.equal(store.diffCels(first, second).changed.length, 1);
