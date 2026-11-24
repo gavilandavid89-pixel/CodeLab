@@ -1,6 +1,7 @@
 name: Validate CodeLab
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main", "fix/**", "feature/**", "feat/**", "integration/**"]
   pull_request:
