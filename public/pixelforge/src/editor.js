@@ -15,6 +15,7 @@ import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '
 import { sceneWorkspaceSections, readSceneWorkspaceState, stripSceneWorkspaceState, attachSceneWorkspaceState, createSceneWorkspaceSnapshot } from './scene-workspaces.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
+import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation } from './drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -22,6 +23,7 @@ const workArea = $('#work-area');
 const previewCanvas = document.createElement('canvas'), previewCtx = previewCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
+let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
@@ -467,7 +469,9 @@ function render() {
     // Animation playback is a presentation view: keep editable raster data intact,
     // but use browser interpolation while playing so the walking person reads as a
     // clean, defined figure instead of a blocky nearest-neighbour enlargement.
-    ctx.imageSmoothingEnabled = Boolean(animation && animationPlayback.playing);
+    const drawingPresentation = getDrawingModePresentation(drawingConfiguration.activeMode);
+    ctx.imageSmoothingEnabled = drawingPresentation.imageSmoothingEnabled || Boolean(animation && animationPlayback.playing);
+    if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = drawingPresentation.imageSmoothingQuality;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#20232d';
     ctx.fillRect(panX - 1, panY - 1, doc.width * zoom + 2, doc.height * zoom + 2);
@@ -896,9 +900,32 @@ function ensureAnimation() {
   }
   return animation;
 }
+function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWING_MODES.PIXEL_ART } = {}) {
+  drawingConfiguration = normalizeDrawingConfiguration(snapshot?.drawingConfiguration, { legacyDefault });
+  const control = $('#drawing-mode');
+  if (control) {
+    control.value = drawingConfiguration.activeMode;
+    for (const option of control.options) option.disabled = !drawingConfiguration.availableModes.includes(option.value);
+  }
+  return drawingConfiguration;
+}
+function setDrawingMode(mode, { persist = true } = {}) {
+  drawingConfiguration = switchDrawingMode(drawingConfiguration, mode);
+  const control = $('#drawing-mode');
+  if (control) control.value = mode;
+  const presentation = getDrawingModePresentation(mode);
+  ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
+  if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
+  render();
+  if (persist) scheduleAutosave();
+  status(mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
+    ? 'Illustration mode · smooth brush and high-quality preview'
+    : 'Pixel-art mode · hard edges and pixel-perfect preview', 'success');
+}
 function buildProjectSnapshot(targetDoc = doc) {
   if (targetDoc === doc && animation) captureAnimationFrame();
   const snapshot = targetDoc.toJSON();
+  if (targetDoc === doc) snapshot.drawingConfiguration = structuredClone(drawingConfiguration);
   if (targetDoc === doc) {
     const state = readSceneWorkspaceState(targetDoc.drawingModel);
     const workspaceSnapshot = stripSceneWorkspaceState(snapshot);
@@ -1647,6 +1674,10 @@ $('#line-tool').addEventListener('click', () => setTool('shape-line'));
 $('#rectangle-tool').addEventListener('click', () => setTool('shape-rect'));
 $('#ellipse-tool').addEventListener('click', () => setTool('shape-ellipse'));
 $('#gradient-tool').addEventListener('click', () => setTool('gradient'));
+$('#drawing-mode')?.addEventListener('change', event => {
+  try { setDrawingMode(event.target.value); }
+  catch (error) { event.target.value = drawingConfiguration.activeMode; status(error.message, 'error'); }
+});
 $('#symmetry-mode').addEventListener('change', event => {
   symmetryMode = Number(event.target.value) || 0;
   $('#symmetry-mode').setAttribute('aria-label', symmetryMode ? `Symmetry: ${symmetryMode} parts` : 'Symmetry: off');
@@ -2271,7 +2302,7 @@ async function renderProjects() {
         const saved = await loadProjectById(project.id);
         if (!saved) throw new Error('That saved project no longer exists.');
         stopAnimationPlayback({ save: false });
-        doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
+        doc = RasterDocument.fromJSON(saved); applyDrawingConfiguration(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
         $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
@@ -2325,7 +2356,7 @@ $('#create-new').addEventListener('click', async () => {
     validateDimensions(width, height); await flushAutosave();
     const template = assetTemplates[$('#new-template').value] ?? assetTemplates.custom;
     stopAnimationPlayback({ save: false });
-    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
+    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); drawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION }); applyDrawingConfiguration({ drawingConfiguration }); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
     const firstLayer = doc.activeLayerId;
     if (template.layers[0] && template.layers[0] !== doc.activeLayer.name) doc.renameLayer(firstLayer, template.layers[0]);
     for (const layerName of template.layers.slice(1)) doc.addLayer(layerName);
@@ -2420,6 +2451,7 @@ $('#import-file').addEventListener('change', async event => {
     if (zipProject || file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
       const parsed = zipProject || JSON.parse(await file.text());
       importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: !structuredCodeLabPackage });
+      applyDrawingConfiguration(parsed);
       if (structuredCodeLabPackage) importedDoc.id = crypto.randomUUID();
       importedDoc.animationLoop = parsed.animation?.loop !== false;
       if (parsed.animation) {
@@ -2725,6 +2757,7 @@ async function boot() {
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
         doc = RasterDocument.fromJSON(existingSnapshot);
+        applyDrawingConfiguration(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
         animationPlaybackSpeed = existingSnapshot.animation.playbackSpeed ?? 1;
