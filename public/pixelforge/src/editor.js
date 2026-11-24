@@ -912,9 +912,14 @@ function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWIN
   if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
   const hardness = $('#brush-hardness');
   if (hardness) {
-    hardness.value = drawingConfiguration.activeMode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION ? '55' : '100';
+    hardness.value = String(presentation.brushHardness);
     $('#brush-hardness-value').textContent = hardness.value + '%';
   }
+  brushSize = presentation.brushSize;
+  $('#brush-size').value = String(brushSize);
+  $('#brush-size-value').textContent = brushSize + ' px';
+  $('#brush-shape').value = presentation.brushShape;
+  $('#transform-interpolation').value = presentation.interpolation;
   return drawingConfiguration;
 }
 function setDrawingMode(mode, { persist = true } = {}) {
@@ -926,9 +931,14 @@ function setDrawingMode(mode, { persist = true } = {}) {
   if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
   const hardness = $('#brush-hardness');
   if (hardness) {
-    hardness.value = mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION ? '55' : '100';
+    hardness.value = String(presentation.brushHardness);
     $('#brush-hardness-value').textContent = hardness.value + '%';
   }
+  brushSize = presentation.brushSize;
+  $('#brush-size').value = String(brushSize);
+  $('#brush-size-value').textContent = brushSize + ' px';
+  $('#brush-shape').value = presentation.brushShape;
+  $('#transform-interpolation').value = presentation.interpolation;
   render();
   if (persist) scheduleAutosave();
   status(mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
