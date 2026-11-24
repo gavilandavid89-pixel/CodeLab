@@ -74,6 +74,18 @@ Se ejecutó previamente una exportación real mediante el worker nativo de Rende
 - Sin errores de página ni de consola.
 - El archivo se guardó como evidencia en Neon y se pudo decodificar para extraer muestras.
 
-Esa prueba confirma que el exportador real funciona, pero no sustituye la prueba integrada de los nuevos workflows A/B. La implementación de A/B descrita aquí está preparada en código, pero la aceptación queda pendiente hasta ejecutar codelab-ab-animation.yml, comprobar que B recibe y decodifica el archivo, y comprobar que A sigue activo después de que B termina.
+La prueba integrada A/B se ejecutó el 2026-11-24 y pasó:
 
-No se declara entregado un vídeo hasta que el artefacto de B exista y pase su verificación. Nunca se considera válido un createDemo, una grabación de pantalla de la sesión, un event ID aislado o un resultado success sin el WebM real.
+- Workflow A/B: [run 45363044941](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363044941).
+- Sesión A independiente: [run 45363094490](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363094490).
+- Artefacto B: [descargar codelab-soldier-walk-webm-45363044941](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363044941/artifacts/14904893307).
+- Proyecto ADMIN: revisión 2, hash 82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f.
+- Composer importó 20 fotogramas a 12 FPS; generó un WebM de 115.027 bytes y 1,66 s.
+- B verificó SHA-256 0abf2c19450625de90731b86740858859178ca57ca3120e6a17b3d47bcbec82f.
+- Chromium decodificó 1080 × 1350, readyState 4 y 5 de 5 muestras temporales.
+- A no reportó errores de página ni de consola. B no ejecutó FFmpeg ni el generador.
+- El paso “Verify A remains alive after B has finished” terminó correctamente. La sesión A seguía in_progress al comprobarla a las 09:14 UTC y tenía expiración prevista a las 09:43:35 UTC.
+
+La aceptación integrada A/B está superada. El artefacto de B contiene el WebM recibido y verification.json. La sesión A continúa de forma independiente hasta su timeout.
+
+No se considera válido un createDemo, una grabación de pantalla de la sesión, un event ID aislado o un resultado success sin el WebM real.
