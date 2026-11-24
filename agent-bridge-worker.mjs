@@ -3122,7 +3122,7 @@ async function main() {
     metadata: { pid: process.pid, hostname: os.hostname(), source: 'agent-bridge-worker' }
   });
   await connectCommandWakeListener();
-  if (String(process.env.PIXELFORGE_GUEST_MODE || 'true').toLowerCase() === 'false') {
+  if (String(process.env.PIXELFORGE_GUEST_MODE || 'false').toLowerCase() === 'false') {
     pixelForgeWorkspaceId = workspaceId;
   } else {
     await migrateAdminPixelForgeProjectsToGuest();
