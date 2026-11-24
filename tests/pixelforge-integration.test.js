@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 const { Pool } = require('pg');
+const { spawn } = require('node:child_process');
 
 
 async function readZipDownload(download) {
@@ -1138,7 +1139,6 @@ async function main() {
       // codelab_project_import command, then verify native list/open/save/reopen.
       const { exportPixelForgeCodeLabPackage } = await import('../public/pixelforge/src/codelab-package.js');
       const { createOrbitalShowcase } = await import('../public/pixelforge/src/showcase-animation.mjs');
-      const { importCodeLabArtifact } = await import('../codelab-project-artifact-import.mjs');
       const showcase = createOrbitalShowcase();
       const agentProject = showcase.doc.toJSON();
       const agentProjectId = 'agent-import-e2e-' + sessionId.slice(0, 10);
@@ -1149,21 +1149,104 @@ async function main() {
       agentProject.drawingModel ||= { version: 2, palette: {}, objects: [] };
       const exportedAgentPackage = await exportPixelForgeCodeLabPackage(agentProject);
       const agentArtifactBytes = Buffer.from(await exportedAgentPackage.blob.arrayBuffer());
+      const adminAccountId = 'agent-bridge-test-admin';
+      const adminWorkspaceId = 'ws_local_' + adminAccountId;
+      const bridgeSecret = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '');
+      assert.ok(bridgeSecret.length >= 16, 'PostgreSQL agent bridge E2E must have a test-only bridge secret');
+      await testSessionPool.query(
+        `INSERT INTO public.codelab_accounts (username,id,role,salt,password_hash)
+         VALUES ('ADMIN',$1,'admin','test-salt','test-hash')
+         ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role='admin'`,
+        [adminAccountId]
+      );
       await testSessionPool.query(
         `INSERT INTO public.codelab_project_import_requests
           (import_request_id, workspace_id, editor_id, source_project_id, manifest, status, confirmation_required, confirmation_received, work_score)
          VALUES ($1,$2,'pixelforge',$3,'{}'::jsonb,'queued',false,false,0)`,
-        [importRequestId, coreWorkspace.workspaceId, agentProjectId]
+        [importRequestId, adminWorkspaceId, agentProjectId]
       );
+      const worker = spawn(process.execPath, ['agent-bridge-worker.mjs'], {
+        cwd: path.join(__dirname, '..'),
+        env: {
+          ...process.env,
+          PIXELFORGE_GUEST_MODE: 'false',
+          CODELAB_DATABASE_SSL: 'disable',
+          CODELAB_NATIVE_VALIDATION_ENABLED: 'false'
+        },
+        stdio: 'ignore'
+      });
+      let agentArtifactId = null;
+      let agentCommandId = null;
       try {
-        const agentImport = await importCodeLabArtifact(testSessionPool, {
-          importRequestId,
-          workspaceId: coreWorkspace.workspaceId,
-          pixelForgeWorkspaceId: coreWorkspace.workspaceId,
-          artifactBuffer: agentArtifactBytes,
-          artifactFilename: exportedAgentPackage.filename,
-          artifactContentType: 'application/zip'
+        let workerReady = false;
+        for (let attempt = 0; attempt < 150; attempt++) {
+          if (worker.exitCode !== null) throw new Error('Native bridge worker exited before becoming ready: ' + worker.exitCode);
+          try {
+            const state = await testSessionPool.query(
+              'SELECT state FROM public.codelab_agent_bridge_state WHERE state_id=$1',
+              ['native-bridge:' + adminWorkspaceId]
+            );
+            if (state.rows[0]?.state === 'running') { workerReady = true; break; }
+          } catch {}
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        assert.equal(workerReady, true, 'native bridge worker must start and arm its PostgreSQL command listener');
+
+        const agentSha256 = crypto.createHash('sha256').update(agentArtifactBytes).digest('hex');
+        const totalChunks = Math.ceil(agentArtifactBytes.length / (1024 * 1024));
+        const bridgeHeaders = { 'x-codelab-agent-bridge-token': bridgeSecret };
+        const manifestResponse = await fetch(base + '/api/agent/bridge/artifacts', {
+          method: 'POST',
+          headers: { ...bridgeHeaders, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            total_bytes: agentArtifactBytes.length,
+            total_chunks: totalChunks,
+            sha256: agentSha256,
+            filename: exportedAgentPackage.filename,
+            artifact_kind: 'codelab_zip_upload',
+            import_request_id: importRequestId,
+            target_workspace_id: coreWorkspace.workspaceId,
+            project_name: 'Agent ZIP v2 native import'
+          })
         });
+        assert.equal(manifestResponse.status, 201, 'agent transfer must create a CodeLab artifact manifest');
+        const manifestBody = await manifestResponse.json();
+        agentArtifactId = manifestBody.artifactId;
+        for (let index = 0; index < totalChunks; index++) {
+          const start = index * 1024 * 1024;
+          const chunk = agentArtifactBytes.subarray(start, Math.min(agentArtifactBytes.length, start + 1024 * 1024));
+          const chunkResponse = await fetch(base + '/api/agent/bridge/artifacts/' + agentArtifactId + '/' + index, {
+            method: 'PUT',
+            headers: { ...bridgeHeaders, 'content-type': 'application/octet-stream' },
+            body: chunk
+          });
+          assert.equal(chunkResponse.status, 200, 'agent artifact chunk ' + index + ' must be accepted');
+        }
+        const commitResponse = await fetch(base + '/api/agent/bridge/artifacts/' + agentArtifactId + '/commit', {
+          method: 'POST',
+          headers: { ...bridgeHeaders, 'content-type': 'application/json' },
+          body: JSON.stringify({ sha256: agentSha256 })
+        });
+        assert.equal(commitResponse.status, 202, 'artifact commit must enqueue the native import command');
+        const commitBody = await commitResponse.json();
+        assert.equal(commitBody.status, 'queued');
+        assert.equal(commitBody.action, 'codelab_project_import');
+        agentCommandId = commitBody.commandId;
+
+        let commandRow = null;
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const command = await testSessionPool.query(
+            'SELECT status,result FROM public.codelab_agent_commands WHERE command_id=$1 AND workspace_id=$2',
+            [agentCommandId, adminWorkspaceId]
+          );
+          commandRow = command.rows[0] || null;
+          if (commandRow && ['succeeded','failed','expired'].includes(commandRow.status)) break;
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+        assert.ok(commandRow, 'queued import command must be visible in the durable mailbox');
+        assert.equal(commandRow.status, 'succeeded',
+          'native bridge worker must execute the queued import; result=' + JSON.stringify(commandRow.result));
+        const agentImport = commandRow.result;
         assert.equal(agentImport.status, 'succeeded', 'agent ZIP v2 import should complete through importCodeLabArtifact');
         assert.equal(agentImport.reloadedFromPersistence, true, 'agent import must verify its PostgreSQL round-trip');
         assert.equal(agentImport.editorId, 'pixelforge');
@@ -1208,6 +1291,16 @@ async function main() {
         assert.equal(agentReopened.animation.frames.length, agentProject.animation.frames.length,
           'the animation timeline must survive the save/reopen round-trip');
       } finally {
+        if (worker.exitCode === null) {
+          worker.kill('SIGTERM');
+          await new Promise(resolve => worker.once('exit', resolve));
+        }
+        if (agentCommandId) {
+          await testSessionPool.query('DELETE FROM public.codelab_agent_commands WHERE command_id=$1', [agentCommandId]).catch(() => {});
+        }
+        if (agentArtifactId) {
+          await testSessionPool.query('DELETE FROM public.codelab_agent_artifacts WHERE artifact_id=$1', [agentArtifactId]).catch(() => {});
+        }
         await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), {
           method: 'DELETE', headers: authHeaders
         }).catch(() => {});
