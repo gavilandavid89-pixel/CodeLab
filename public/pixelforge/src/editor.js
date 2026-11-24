@@ -862,7 +862,11 @@ function applyAnimationFramePixels(index) {
       layer.references = structuredClone(metadata.references || []);
       layer.assets = structuredClone(metadata.assets || []);
       layer.metadata = structuredClone(metadata.metadata || {});
+      layer.authoringMode = ['illustration', 'pixel-art'].includes(metadata.authoringMode) ? metadata.authoringMode : null;
+      layer.modeOverrides = metadata.modeOverrides && typeof metadata.modeOverrides === 'object' && !Array.isArray(metadata.modeOverrides)
+        ? structuredClone(metadata.modeOverrides) : {};
     }
+    applyActiveLayerModeProfile(drawingConfiguration.activeMode);
   } finally {
     for (const [layer, locked] of locks) layer.locked = locked;
   }
