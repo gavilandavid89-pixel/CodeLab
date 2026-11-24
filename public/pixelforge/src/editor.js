@@ -907,6 +907,14 @@ function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWIN
     control.value = drawingConfiguration.activeMode;
     for (const option of control.options) option.disabled = !drawingConfiguration.availableModes.includes(option.value);
   }
+  const presentation = getDrawingModePresentation(drawingConfiguration.activeMode);
+  ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
+  if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
+  const hardness = $('#brush-hardness');
+  if (hardness) {
+    hardness.value = drawingConfiguration.activeMode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION ? '55' : '100';
+    $('#brush-hardness-value').textContent = hardness.value + '%';
+  }
   return drawingConfiguration;
 }
 function setDrawingMode(mode, { persist = true } = {}) {
