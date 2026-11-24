@@ -1180,6 +1180,21 @@ async function main() {
          ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role='admin'`,
         [adminAccountId]
       );
+      // The imported project belongs to ADMIN, so verify it through an ADMIN
+      // session rather than the unrelated GitHub test user's workspace.
+      const adminSessionId = 'b'.repeat(48);
+      const adminSessionUser = {
+        id: adminAccountId, provider: 'local', name: 'ADMIN', role: 'admin'
+      };
+      fs.writeFileSync(path.join(sessionsDir, adminSessionId + '.json'), JSON.stringify({
+        id: adminSessionId, user: adminSessionUser,
+        createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000
+      }), { mode: 0o600 });
+      await testSessionPool.query(
+        'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + interval \'10 minutes\') ON CONFLICT (session_id) DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at',
+        [adminSessionId, JSON.stringify(adminSessionUser)]
+      );
+      const adminAuthHeaders = { cookie: 'codelab_sid=' + adminSessionId, 'x-forwarded-for': '198.51.100.80' };
       const staleFileBytes = Buffer.from('stale-import-file');
       const staleFileSha = crypto.createHash('sha256').update(staleFileBytes).digest('hex');
       await testSessionPool.query(
@@ -1315,10 +1330,13 @@ async function main() {
         assert.equal(nonAdminLeak.rows[0].count, 0,
           'the project must not be copied into a non-ADMIN workspace');
 
-        const agentList = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+        const normalUserList = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+        assert.equal(normalUserList.projects.some(project => project.id === agentProjectId), false,
+          'ADMIN-owned agent imports must not leak into an unrelated signed-in user\'s project selector');
+        const agentList = await (await fetch(base + '/api/pixelforge/projects', { headers: adminAuthHeaders })).json();
         const agentMetadata = agentList.projects.find(project => project.id === agentProjectId);
-        assert.ok(agentMetadata, 'agent-imported project must appear in the native PixelForge selector list');
-        const agentOpenResponse = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), { headers: authHeaders });
+        assert.ok(agentMetadata, 'ADMIN-owned agent import must appear in ADMIN\'s native PixelForge selector list');
+        const agentOpenResponse = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), { headers: adminAuthHeaders });
         assert.equal(agentOpenResponse.status, 200, 'agent-imported project must open through the native PixelForge project API');
         const agentOpened = (await agentOpenResponse.json()).project;
         assert.equal(agentOpened.serverRevision, 1, 'new agent imports must expose the initial server revision in project JSON');
