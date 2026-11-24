@@ -340,7 +340,7 @@ Destinos reconocidos incluyen reference-center, assets, scenes, animations, fram
 | Imagen de referencia suelta | reference-center/characters/pose.png |
 | Parte editable de personaje | reference.personaje/hero/parts/body.rgba |
 | Definición de esa referencia | reference.personaje/hero/reference.json |
-| Índice de categorías | center.op/center.json |
+| Índice de categorías | reference.center/reference.center |
 | Índice de animación | Frames/frames.tscn |
 | Datos de un frame/capa | Rutas declaradas por el esquema del frame |\n| Entrada del Reference Center | reference.center/reference.center |\n| Referencia individual | Ruta .reference dentro de reference.center |
 | Fuente | fonts/brand.woff2 |
@@ -368,7 +368,7 @@ Su manifiesto declara format, version, dimensiones, fps, loop, frameCount, total
 
 El parser valida manifiesto, dimensiones y frame count, carga el JSON .pforge, vuelve a normalizarlo con HeadlessEditorRuntime, asigna un ID nuevo y pone las revisiones de servidor en cero.
 
-**Limitación actual que no debe ocultarse:** este ZIP no incluye el marcador project.codelab-pixelforge, integrity.json, frames/frames.tscn ni center.op/center.json. Por eso no es el paquete CodeLab estructurado v2 y su parser no es el instalador estructurado. Sus PNG son composiciones de previsualización, no cels independientes editables. El documento .pforge sí contiene el modelo nativo serializado, sujeto a lo que HeadlessEditorRuntime.toJSON() preserve.
+**Limitación actual que no debe ocultarse:** este ZIP no incluye el marcador project.codelab-pixelforge, integrity.json, frames/frames.tscn ni reference.center/reference.center. Por eso no es el paquete CodeLab estructurado v2 y su parser no es el instalador estructurado. Sus PNG son composiciones de previsualización, no cels independientes editables. El documento .pforge sí contiene el modelo nativo serializado, sujeto a lo que HeadlessEditorRuntime.toJSON() preserve.
 
 Hasta que ambos flujos se integren explícitamente, no afirmar que un ZIP de Video Composer ha pasado el ciclo completo del paquete CodeLab .codelab-pixelforge.
 
