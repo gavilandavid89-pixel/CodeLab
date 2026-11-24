@@ -38,6 +38,21 @@ CodeLab → Neon staging → worker
 workspace destino
 ```
 
+## El entorno del agente no necesita ser persistente
+
+La ausencia de un entorno persistente **no es una excepción ni una razón para omitir la instalación**. El agente debe instalar y ejecutar Headless en el entorno de ejecución que tenga disponible para atender la orden, aunque ese entorno sea temporal, efímero, se destruya al terminar la sesión o no conserve archivos entre conversaciones.
+
+Reglas obligatorias:
+
+- Al comenzar cada nueva sesión/tarea en la que necesite editar o animar, el agente comprueba si dispone de una instalación utilizable de Headless en su entorno actual.
+- Si no existe, está incompleta, no corresponde al artefacto requerido o el entorno fue recreado, descarga el artefacto vigente, lo extrae e instala allí sus dependencias.
+- Inicia y utiliza esa instalación durante la tarea. No debe limitarse a inspeccionar el artefacto, importar fuentes desde el checkout, delegar la edición normal a CI ni afirmar que está instalado porque GitHub Actions lo empaquetó.
+- Si el entorno es efímero, trabaja en él igualmente. Antes de que desaparezca, exporta el proyecto `.codelab` y transfiere el resultado por el bridge HTTPS; el proyecto persistido en CodeLab es lo que permite continuar después.
+- En una sesión posterior o tras perderse el entorno, vuelve a descargar/instalar Headless. La instalación puede repetirse; no se exige conservar el runtime entre sesiones.
+- Si la plataforma no proporciona ningún entorno donde el agente pueda ejecutar procesos e instalar dependencias, debe informar esa limitación concreta y no simular que ejecutó Headless. Debe solicitar/habilitar el entorno de ejecución necesario; la falta de persistencia por sí sola nunca justifica saltarse el paso.
+
+**Persistencia del trabajo y persistencia del entorno son cosas distintas:** el runtime Headless puede ser temporal; el proyecto y sus resultados deben persistirse mediante el flujo CodeLab/bridge/worker documentado. No se debe introducir Neon ni credenciales internas en el entorno Headless para resolver esta diferencia.
+
 ## Por qué debe ejecutarse allí
 
 El agente necesita control directo del runtime mientras trabaja. La animación no debe depender de transportar continuamente el proyecto a CodeLab para cada operación.
