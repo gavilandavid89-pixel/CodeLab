@@ -76,6 +76,8 @@ jobs:
         run: node --experimental-default-type=module --test tests/pixelforge-showcase-animation.test.mjs
       - name: Test Video Composer ZIP package reader
         run: node --experimental-default-type=module --test tests/pixelforge-video-composer-core.test.mjs
+      - name: Install Playwright FFmpeg runtime for Video Composer
+        run: npx playwright-core install ffmpeg
       - name: Test native CodeLab v2 Video Composer integration
         run: node --test tests/pixelforge-video-composer-control.test.mjs
       - name: Test PixelForge Headless runtime, authenticated bridge and vision
