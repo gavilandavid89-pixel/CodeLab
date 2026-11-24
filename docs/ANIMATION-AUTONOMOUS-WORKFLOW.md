@@ -347,3 +347,12 @@ La fuente del inbox permanece versionada. La copia de trabajo ADMIN requiere Del
 
 Ver [guía del inbox](../projects/animation-inbox/README.md), [arquitectura owner A/B](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md) y [bridge inline](./inline-artifact-bridge.md).
 
+## Criterio de selección: transferencia normal o inbox
+
+No se debe enviar todo proyecto automáticamente al inbox. La ruta del repositorio está pensada sobre todo para proyectos grandes o para situaciones en las que el flujo habitual no ofrece datos de transferencia suficientes para reconstruir/importar el proyecto.
+
+- Si el proyecto es pequeño y hay un paquete/snapshot normal, completo y utilizable, usar la transferencia habitual.
+- Si el proyecto es grande, con muchos recursos, o no existen datos de transferencia utilizables (o están incompletos), usar el inbox para transportar el paquete nativo completo.
+- No iniciar A/B hasta confirmar que el proyecto está persistido y visible en ADMIN, independientemente del método de entrada.
+
+El inbox resuelve el transporte/importación del proyecto; no cambia la función de A ni de B.
