@@ -1,6 +1,10 @@
 name: CodeLab polish ADMIN Soldier Walk
 
 on:
+  push:
+    paths:
+      - 'scripts/codelab-polish-soldier-walk.mjs'
+      - '.github/workflows/codelab-polish-soldier-walk.yml'
   workflow_dispatch:
     inputs:
       project_id:
