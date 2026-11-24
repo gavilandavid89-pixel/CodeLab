@@ -20,7 +20,7 @@ jobs:
           test -n "$BRIDGE_TOKEN" || { echo "Missing CODELAB_AGENT_BRIDGE_CONTROL_SECRET GitHub secret"; exit 1; }
           # Actual SHA-256 of the one-byte payload "x".
           SHA=$(printf x | sha256sum | awk '{print $1}')
-          BODY=$(printf '{"total_bytes":1,"total_chunks":1,"sha256":"%s","filename":"inline-self-test.codelab","target_workspace_id":"ws_guest_pixelforge","project_name":"inline-self-test","self_test":true}' "$SHA")
+          BODY=$(printf '{"total_bytes":1,"total_chunks":1,"sha256":"%s","filename":"inline-self-test.codelab","target_workspace_id":"ws_local_admin","project_name":"inline-self-test","self_test":true}' "$SHA")
           curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts"             -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "$BODY" | tee manifest.json
           test "$(jq -r '.ok' manifest.json)" = "true"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
