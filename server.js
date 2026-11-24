@@ -2446,6 +2446,49 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // Trusted A-session readback: expose only the ADMIN-owned PixelForge project
+      // snapshot to the authenticated session host. The B processor never receives
+      // this bridge credential or direct Neon access.
+      const bridgePixelForgeProjectMatch = req.method === 'GET'
+        ? pathname.match(/^\\/api\\/agent\\/bridge\\/pixelforge\\/projects\\/([A-Za-z0-9_-]{1,100})$/)
+        : null;
+      if (bridgePixelForgeProjectMatch) {
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
+        if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
+          return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
+        }
+        if (!accountPool) return sendJson(res, 503, { error: 'database_not_configured' });
+        try {
+          const workspaceId = await resolveAdminAgentWorkspace();
+          const projectId = bridgePixelForgeProjectMatch[1];
+          const stored = await accountPool.query(
+            'SELECT project_id, name, width, height, server_revision, content_sha256, project, updated_at FROM public.codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2 LIMIT 1',
+            [workspaceId, projectId]
+          );
+          if (!stored.rowCount) return sendJson(res, 404, { error: 'admin_pixelforge_project_not_found' });
+          const row = stored.rows[0];
+          const project = row.project && typeof row.project === 'object' ? row.project : null;
+          if (!project || project.id !== row.project_id || !Array.isArray(project.layers) || !project.animation || !Array.isArray(project.animation.frames)) {
+            return sendJson(res, 409, { error: 'admin_pixelforge_project_snapshot_invalid' });
+          }
+          return sendJson(res, 200, {
+            ok: true,
+            workspaceId,
+            projectId: row.project_id,
+            name: row.name,
+            width: Number(row.width),
+            height: Number(row.height),
+            serverRevision: Number(row.server_revision),
+            contentSha256: String(row.content_sha256 || ''),
+            updatedAt: row.updated_at,
+            project: { ...project, serverRevision: Number(row.server_revision) }
+          }, { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
+        } catch (error) {
+          console.error('admin_pixelforge_bridge_read_failed:', error.message);
+          return sendJson(res, 503, { error: 'admin_pixelforge_project_read_failed' });
+        }
+      }
+
       // Inline native artifact transport: the isolated Headless sends the .codelab
       // through CodeLab itself, never directly to Neon Storage/S3. The payload is
       // chunked at 1 MiB and the final commit enqueues the existing native import command.
