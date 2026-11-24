@@ -238,8 +238,15 @@ export class TiledRasterProjectDocument {
   async writeRegion(layerId, region, pixels) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
-    const result = await this.#store.writeRegion(layer.celId, region, pixels);
-    if (result.changed) layer.celId = result.celId;
+    const previousCelId = layer.celId;
+    const result = await this.#store.writeRegion(previousCelId, region, pixels);
+    if (result.changed) {
+      layer.celId = result.celId;
+      // writeRegion creates a copy-on-write cel. Once the layer points at the
+      // replacement, release its old ownership reference; duplicated layers
+      // retain their own references to that immutable cel.
+      this.#store.releaseCel(previousCelId);
+    }
     return {
       changed: result.changed, changedTiles: result.changedTiles,
       removedTiles: result.removedTiles, celId: result.celId,
