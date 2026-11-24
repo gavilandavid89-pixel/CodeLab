@@ -106,6 +106,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   const project = addCharacterReference(showcase.doc.toJSON());
   project.id = 'structured_pixelforge_source';
   project.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
+  project.drawingConfiguration = { version: 1, availableModes: ['illustration', 'pixel-art'], initialMode: 'illustration', activeMode: 'pixel-art' };
   attachSceneWorkspaces(project);
   const exported = createPixelForgeCodeLabPackageZip(project, {
     resources: [{ path: 'Entorno/assets/palette.txt', contentType: 'text/plain', bytes: Buffer.from('palette=warm') }],
@@ -153,6 +154,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   }
   assert.equal(imported.entries.has('reference.center/reference.center'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
+  assert.deepEqual(imported.project.drawingConfiguration, project.drawingConfiguration, 'project drawing modes must survive CodeLab ZIP round-trip');
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
   assert.equal(imported.project.animation.frames[0].cels.length, project.layers.length);
   assert.equal(imported.project.animation.frames[0].layerMetadata[0].parentFrameId, imported.project.animation.frames[0].id);
