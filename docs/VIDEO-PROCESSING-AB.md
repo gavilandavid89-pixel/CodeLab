@@ -67,6 +67,7 @@ La prueba integrada se ejecutó el 2026-11-24 y pasó todos los puntos de acepta
 
 - Workflow A/B: [run 45363044941](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363044941).
 - Sesión A independiente: [run 45363094490](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363094490).
+- Workflow B independiente: [run 45364091746](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45364091746), completado con éxito; [artefacto B](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45364091746/artifacts/14906281619).
 - Artefacto de B: [codelab-soldier-walk-webm-45363044941](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363044941/artifacts/14904893307).
 - Proyecto: revisión 2; 20 fotogramas; 12 FPS; 4 capas.
 - Composer exportó WebM de 115.027 bytes, duración 1,66 s.
