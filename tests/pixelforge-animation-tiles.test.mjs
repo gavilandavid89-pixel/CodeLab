@@ -155,3 +155,39 @@ test('sparse cel store removes empty tiles and rejects invalid cache budgets', a
   store.releaseCel(cloneId);
   assert.equal(store.stats.resourceCount, 0);
 });
+
+
+test('reads and copy-on-write edits bounded regions across tile boundaries', async () => {
+  const store = new SparseTileCelStore({ maxDecodedCacheBytes: 1024 * 1024 });
+  const width = 130, height = 70, tileSize = 64;
+  const blank = new Uint8Array(width * height * 4);
+  const sourceId = await store.createCelFromPixels(blank, { width, height, tileSize });
+  const region = { x: 60, y: 60, width: 10, height: 10 };
+  const patch = new Uint8Array(region.width * region.height * 4);
+  for (let pixel = 0; pixel < region.width * region.height; pixel++) {
+    patch.set([pixel + 1, 77, 123, 255], pixel * 4);
+  }
+
+  const edited = await store.writeRegion(sourceId, region, patch);
+  assert.equal(edited.changed, true);
+  assert.equal(edited.changedTiles, 4, 'the region intersects four 64px tiles');
+  assert.equal(edited.removedTiles, 0);
+  assert.notEqual(edited.celId, sourceId);
+  assert.deepEqual(store.readRegion(sourceId, region), new Uint8ClampedArray(region.width * region.height * 4));
+  assert.deepEqual(store.readRegion(edited.celId, region), new Uint8ClampedArray(patch));
+
+  const noOp = await store.writeRegion(edited.celId, region, patch);
+  assert.equal(noOp.changed, false);
+  assert.equal(noOp.celId, edited.celId);
+
+  const erased = await store.writeRegion(edited.celId, region, new Uint8Array(patch.length));
+  assert.equal(erased.changed, true);
+  assert.equal(erased.removedTiles, 4);
+  assert.deepEqual(store.readRegion(erased.celId, region), new Uint8ClampedArray(patch.length));
+  assert.deepEqual(store.readRegion(edited.celId, region), new Uint8ClampedArray(patch));
+
+  assert.throws(() => store.readRegion(sourceId, { x: 129, y: 69, width: 2, height: 2 }), /inside the canvas/);
+  assert.throws(() => store.writeRegion(sourceId, { x: -1, y: 0, width: 1, height: 1 }, new Uint8Array(4)), /inside the canvas/);
+  for (const id of [sourceId, edited.celId, erased.celId]) store.releaseCel(id);
+  assert.equal(store.stats.resourceCount, 0);
+});
