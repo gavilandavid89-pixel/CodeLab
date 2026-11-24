@@ -8,6 +8,25 @@ function projectFixture() {
   return runtime.toJSON();
 }
 
+test('headless runtime preserves project drawing modes through edits and serialization', () => {
+  const fixture = projectFixture();
+  fixture.drawingConfiguration = {
+    version: 1,
+    availableModes: ['illustration', 'pixel-art'],
+    initialMode: 'illustration',
+    activeMode: 'pixel-art',
+  };
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const before = runtime.toJSON();
+  assert.deepEqual(before.drawingConfiguration, fixture.drawingConfiguration);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 8, y1: 1, color: '#123456', size: 1,
+  }).ok, true);
+  runtime.createProposal('Preserve project drawing mode');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  assert.deepEqual(runtime.toJSON().drawingConfiguration, fixture.drawingConfiguration);
+});
+
 test('headless runtime opens a persisted PixelForge project without changing its identity', () => {
   const fixture = projectFixture();
   fixture.serverRevision = 7;
