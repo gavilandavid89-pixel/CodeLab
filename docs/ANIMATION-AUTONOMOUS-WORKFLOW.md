@@ -93,19 +93,22 @@ Si aparece un bloqueo que realmente requiere intervención del usuario, debe exp
 - No exponer secretos, tokens, cookies ni credenciales en documentación, logs o mensajes.
 - Antes de reiniciar, desplegar o cambiar configuración, identificar el servicio exacto y confirmar que la acción es necesaria y está dentro del alcance autorizado.
 
-## Transporte de proyectos: Neon BYTEA, sin Object Storage
+## Transporte de proyectos y persistencia
 
-El flujo de proyectos y animaciones **no utiliza Object Storage como dependencia del transporte o importación**.
+La edición y animación se realiza en el Headless propio del agente. La entrega del proyecto editable a CodeLab se realiza mediante el **HTTPS inline bridge** descrito en [inline-artifact-bridge.md](inline-artifact-bridge.md).
 
-El transporte canónico es un archivo ZIP cuyo contenido incluye un marcador `project.codelab` en la raíz del proyecto:
+Este documento no redefine el contrato de transporte. Para evitar divergencias, los endpoints, tipos de artefacto, límites, chunking, SHA-256, estados, staging y creación de órdenes se mantienen exclusivamente en el documento del bridge.
 
-`cualquier-nombre.zip (project.codelab + archivos del proyecto) → comando/endpoint → Neon BYTEA → importador → proyecto CodeLab`
+Reglas operativas:
 
-El importador admite el transporte inline mediante `artifactBase64` y persiste los bytes directamente en `public.codelab_project_artifacts.artifact`. Object Storage puede existir en la infraestructura, pero **no debe ser requerido, consultado ni usado como condición para completar una importación**.
+- El Headless propio del agente no recibe credenciales de Neon, Object Storage/S3 ni secretos internos.
+- El bridge recibe el paquete en chunks y conserva temporalmente los bytes en Neon BYTEA; no necesita Object Storage para el transporte/importación documentado.
+- El commit verifica integridad y encola la importación. HTTP 202 significa queued, no importado ni persistido.
+- El worker importa al workspace destino indicado y elimina el staging temporal cuando corresponde.
+- El agente espera el resultado, verifica el workspace destino, lee el proyecto de vuelta y comprueba que la estructura y los datos editables se conservaron.
+- No declarar finalización basándose solo en un archivo local, un hash calculado, una respuesta HTTP o una orden encolada.
 
-Si Object Storage no está disponible, el flujo debe continuar mediante el transporte inline de Neon. Una incidencia de DNS, disponibilidad o acceso a Object Storage no debe bloquear una tarea de CodeLab.
-
-El importador identifica un proyecto exclusivamente por la presencia de `project.codelab` en la raíz del ZIP. El nombre y la extensión del ZIP son irrelevantes, y los demás archivos conservan sus nombres y rutas normales. Se exige además el manifiesto y el documento de proyecto del formato CodeLab; se permiten archivos de proyecto en carpetas arbitrarias siempre que sus rutas sean seguras. La integridad del paquete se verifica sobre los bytes reales almacenados en Neon mediante tamaño y SHA-256 antes de iniciar la importación.
+Para obtener e instalar el Headless propio, seguir [HEADLESS-AGENT-RUNTIME.md](HEADLESS-AGENT-RUNTIME.md). Para la arquitectura de órdenes y worker, consultar [CodeLab_Neon_comunicacion_extremo_a_extremo.md](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
 ## 8. Criterio de finalización
 
