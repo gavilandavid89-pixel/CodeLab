@@ -900,26 +900,27 @@ async function main() {
     assert.equal(await referenceCard.locator('.reference-parts .file-button').count(), 1,
       'Reference Center should render the imported reference part as an actionable item');
     await referenceCard.locator('.reference-parts .file-button').first().click();
-    await accountPage.waitForFunction(() => document.querySelectorAll('#layers .layer-row').length === 2);
+    await accountPage.waitForFunction(() => document.querySelectorAll('#layers .layer-row').length === 1);
     await waitForRasterSave();
-    const materializedLayer = accountPage.locator('#layers .layer-row').filter({ hasText: 'Orange reference · Orange part' });
-    assert.equal(await materializedLayer.count(), 1, 'copying a reference part must create a real editable layer in the layer stack');
+    assert.equal(await accountPage.locator('#layers .layer-row').count(), 1,
+      'copying a reference part must write into the existing active layer without creating another layer');
     await setForegroundColor('#00aa44');
     await accountPage.locator('#brush-tool').click();
     await clickPixel(2, 2, 4, 4);
     await waitForRasterSave();
     let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
-    assert.equal(referenceStored.layers.length, 2, 'materialized reference must be persisted as a second raster layer');
+    assert.equal(referenceStored.layers.length, 1, 'reference pixels must be persisted in the existing active raster layer');
     assert.deepEqual(rgbaAt(referenceStored, 2, 2, 1), [0, 170, 68, 255],
-      'editing the materialized reference must persist the changed raster pixel on that layer');
+      'editing the copied reference pixels must persist on the active layer');
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Reference materialization fixture');
-    await accountPage.locator('#layers .layer-row').filter({ hasText: 'Orange reference · Orange part' }).waitFor({ state: 'visible' });
+    assert.equal(await accountPage.locator('#layers .layer-row').count(), 1,
+      'the active layer stack must remain unchanged after a full browser reload');
     referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
-    assert.equal(referenceStored.layers.length, 2, 'the materialized reference layer must survive a full browser reload');
+    assert.equal(referenceStored.layers.length, 1, 'the active layer must survive a full browser reload without an added reference layer');
     assert.deepEqual(rgbaAt(referenceStored, 2, 2, 1), [0, 170, 68, 255],
-      'the edited materialized reference pixels must survive reload and account persistence');
+      'the edited active-layer pixels must survive reload and account persistence');
     await accountPage.locator('#reference-refresh').click();
     assert.equal(await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).count(), 1,
       'Reference Center must still expose the immutable source reference after materialization');
