@@ -1,8 +1,8 @@
 # Política operativa del agente IA y del bridge de CodeLab
 
-**Estado: vigente.** Esta política describe el flujo actual Neon → bridge/worker → CodeLab. Los workflows A/B descritos en versiones anteriores son históricos y no forman parte de la ejecución normal. Para conexiones, esquema SQL, diagramas y detalles de implementación, consultar [la documentación técnica CodeLab ↔ Neon](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
+**Estado: vigente.** Esta política describe el flujo integrado: Headless propio aislado → transferencia por el agente al intermediario → CodeLab/Neon/worker → procesamiento A/B cuando la petición incluye vídeo → entrega final al usuario. A/B no es obligatorio para tareas sin vídeo. Para conexiones, esquema SQL, diagramas y detalles de implementación, consultar [la documentación técnica CodeLab ↔ Neon](CodeLab_Neon_comunicacion_extremo_a_extremo.md).
 
-Para la transferencia de paquetes editables desde el Headless aislado del agente, consultar también [Transporte inline de artefactos Headless → CodeLab](inline-artifact-bridge.md). Inline es el intermediario HTTPS de staging/importación; no proporciona acceso directo del Headless a Neon y no altera la reserva permanente de A/B para vídeo.
+Para la transferencia de paquetes editables desde el Headless aislado del agente, consultar también [Transporte inline de artefactos Headless → CodeLab](inline-artifact-bridge.md). Inline es el intermediario HTTPS de staging/importación. El Headless no se conecta a él: el agente recoge el archivo exportado y lo transfiere fuera del Headless. A/B es una etapa integrada para producir el vídeo final cuando la tarea lo requiere.
 
 ## 1. Arquitectura y responsabilidades
 
@@ -257,7 +257,7 @@ Reglas:
 - El intermediario es el límite entre el entorno aislado del agente y el sistema. El Headless no debe obtener credenciales del sistema ni abrir conexiones directas para saltarse ese límite.
 - El proyecto editable debe conservarse como proyecto real (por ejemplo, `.codelab`) al realizar la transferencia; no se debe reducir la transferencia a capturas, frames sueltos o un vídeo cuando se necesita el proyecto editable.
 - Una vez que el proyecto ha sido entregado al mecanismo soportado, CodeLab/bridge puede continuar con su procesamiento normal.
-- Esta separación **no cambia** la regla anterior de que A/B está reservado permanentemente para el empaquetado/render de vídeo.
+- A/B es el procesador especializado de vídeo integrado en la tarea. No crea ni importa el proyecto editable; procesa una revisión ya persistida y produce el vídeo final que se entrega al usuario.
 - Si no existe un intermediario soportado para una transferencia concreta, el agente debe detener esa transferencia e indicarlo explícitamente; **no debe crear una conexión directa al sistema como workaround**.
 
 ## 6.5 Uso de Xvfb durante la animación en Headless
