@@ -981,6 +981,7 @@ function restoreActiveSceneWorkspace() {
       drawingModel: { ...(savedWorkspace.drawingModel || {}), sceneWorkspaceState: state },
     };
     doc = RasterDocument.fromJSON(restoredSnapshot);
+    applyDrawingConfiguration(restoredSnapshot);
     animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
     animationLoop = restoredSnapshot.animation?.loop !== false;
     animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
@@ -2813,6 +2814,7 @@ async function boot() {
       const snapshot = await loadProjectById(projectId);
       if (!snapshot) throw new Error('No se encontró ese proyecto PixelForge.');
       doc = RasterDocument.fromJSON(snapshot);
+      applyDrawingConfiguration(snapshot);
       animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
       restoreActiveSceneWorkspace();
@@ -2826,6 +2828,7 @@ async function boot() {
       const saved = await loadMostRecentProject();
       if (saved) {
         doc = RasterDocument.fromJSON(saved);
+        applyDrawingConfiguration(saved);
         animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
         animationLoop = saved.animation?.loop !== false;
         restoreActiveSceneWorkspace();
