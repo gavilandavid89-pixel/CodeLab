@@ -906,7 +906,7 @@ function readActiveLayerModeProfile(mode) {
 }
 function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
   const layer = doc?.activeLayer;
-  if (!layer) return;
+  if (!layer) return false;
   const defaults = getDrawingModePresentation(mode);
   const profile = {
     brushSize,
@@ -915,7 +915,12 @@ function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
     brushOpacity: Number($('#brush-opacity')?.value ?? 100),
     interpolation: $('#transform-interpolation')?.value || defaults.interpolation,
   };
-  layer.modeOverrides = updateDrawingModeOverrides(layer.modeOverrides, mode, profile);
+  const nextOverrides = updateDrawingModeOverrides(layer.modeOverrides, mode, profile);
+  if (JSON.stringify(layer.modeOverrides || {}) === JSON.stringify(nextOverrides)) return false;
+  layer.modeOverrides = nextOverrides;
+  doc.dirty = true;
+  doc.saveVersion++;
+  return true;
 }
 function applyActiveLayerModeProfile(mode) {
   const defaults = getDrawingModePresentation(mode);
@@ -2006,20 +2011,20 @@ $('#replace-color').addEventListener('click', () => {
 });
 $('#fill-scale').addEventListener('input', event => { $('#fill-scale-value').textContent = `${event.target.value} px`; });
 $('#brush-opacity').addEventListener('input', event => { $('#brush-opacity-value').textContent = `${event.target.value}%`; });
-$('#brush-hardness').addEventListener('input', event => { $('#brush-hardness-value').textContent = `${event.target.value}%`; captureActiveLayerModeProfile(); });
+$('#brush-hardness').addEventListener('input', event => { $('#brush-hardness-value').textContent = `${event.target.value}%`; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
 $('#brush-size').addEventListener('input', event => {
-  brushSize = Number(event.target.value); $('#brush-size-value').textContent = `${brushSize} px`; captureActiveLayerModeProfile();
+  brushSize = Number(event.target.value); $('#brush-size-value').textContent = `${brushSize} px`; if (captureActiveLayerModeProfile()) scheduleAutosave();
 });
-$('#brush-shape').addEventListener('change', () => captureActiveLayerModeProfile());
-$('#brush-opacity').addEventListener('input', () => captureActiveLayerModeProfile());
-$('#transform-interpolation').addEventListener('change', () => captureActiveLayerModeProfile());
+$('#brush-shape').addEventListener('change', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#brush-opacity').addEventListener('input', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#transform-interpolation').addEventListener('change', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
 const brushScrub = $('#brush-scrub');
 let scrubStartX = 0, scrubStartSize = brushSize, scrubPointerId = null;
 function syncBrushSize(value) {
   brushSize = Math.max(1, Math.min(32, Math.round(value)));
   $('#brush-size').value = String(brushSize);
   $('#brush-size-value').textContent = `${brushSize} px`;
-  captureActiveLayerModeProfile();
+  if (captureActiveLayerModeProfile()) scheduleAutosave();
   brushScrub.setAttribute('aria-valuenow', String(brushSize));
   brushScrub.setAttribute('aria-valuetext', `${brushSize} pixel${brushSize === 1 ? '' : 's'}. Drag left for thicker, right for thinner.`);
 }
