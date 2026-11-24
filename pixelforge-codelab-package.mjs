@@ -214,7 +214,8 @@ function addSceneSections(project, files) {
       ? structuredClone(drawing.sceneSections[section.key]) : {};
     let workspace = sectionData.workspace ?? null;
     if (workspace !== null) {
-      workspace = HeadlessEditorRuntime.fromJSON(workspace).toJSON();
+      HeadlessEditorRuntime.fromJSON(workspace);
+      workspace = structuredClone(workspace);
       if (!workspace.animation) {
         workspace.animation = {
           format: 'pixelforge-animation', version: 1,
