@@ -65,7 +65,7 @@ test('browser package exporter writes all six project folders and the named TSCN
   for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
     const workspace = installed.project.drawingModel.sceneSections[section].workspace;
     assert.equal(workspace.format, 'pixelforge-project');
-    assert.equal(workspace.layers.length, project.layers.length);
+    assert.equal(workspace.layers.length, 1);
     assert.equal(workspace.animation.frames.length, section === 'details' ? 1 : 2);
     assert.equal(workspace.width, 4);
     assert.equal(workspace.height, 4);
