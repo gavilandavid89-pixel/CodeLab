@@ -53,8 +53,9 @@ export class TiledRasterProjectDocument {
   #name;
   #activeLayerId;
   #drawingConfiguration;
+  #projectMetadata;
 
-  constructor({ store, id, name, width, height, layers, activeLayerId, drawingConfiguration }) {
+  constructor({ store, id, name, width, height, layers, activeLayerId, drawingConfiguration, projectMetadata = {} }) {
     if (!(store instanceof SparseTileCelStore)) throw new TypeError('A SparseTileCelStore is required.');
     validateGeometry(width, height);
     if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) {
@@ -79,6 +80,10 @@ export class TiledRasterProjectDocument {
     this.#layers = normalized;
     this.#activeLayerId = activeLayerId;
     this.#drawingConfiguration = normalizeDrawingConfiguration(drawingConfiguration);
+    if (!projectMetadata || typeof projectMetadata !== 'object' || Array.isArray(projectMetadata)) {
+      throw new TypeError('Tiled project metadata must be an object.');
+    }
+    this.#projectMetadata = structuredClone(projectMetadata);
   }
 
   static async fromDocument(document, {
@@ -90,6 +95,8 @@ export class TiledRasterProjectDocument {
       throw new TypeError('fromDocument requires a RasterDocument-compatible source.');
     }
     validateGeometry(document.width, document.height);
+    const sourceSnapshot = document.toJSON();
+    const { layers: _sourceLayers, ...projectMetadata } = sourceSnapshot;
     const store = new SparseTileCelStore({ maxDecodedCacheBytes });
     const layers = [];
     try {
@@ -101,7 +108,9 @@ export class TiledRasterProjectDocument {
       }
       return new TiledRasterProjectDocument({
         store, id: document.id, name: document.name, width: document.width, height: document.height,
-        layers, activeLayerId: document.activeLayerId, drawingConfiguration,
+        layers, activeLayerId: document.activeLayerId,
+        drawingConfiguration: drawingConfiguration ?? sourceSnapshot.drawingConfiguration,
+        projectMetadata,
       });
     } catch (error) {
       for (const layer of layers) store.releaseCel(layer.celId);
@@ -132,6 +141,7 @@ export class TiledRasterProjectDocument {
       return new TiledRasterProjectDocument({
         store, id: manifest.id, name: manifest.name, width: manifest.width, height: manifest.height,
         layers, activeLayerId: manifest.activeLayerId, drawingConfiguration: manifest.drawingConfiguration,
+        projectMetadata: manifest.projectMetadata || {},
       });
     } catch (error) {
       for (const layer of layers) store.releaseCel(layer.celId);
@@ -215,6 +225,7 @@ export class TiledRasterProjectDocument {
       id: this.#id, name: this.#name, width: this.#width, height: this.#height,
       activeLayerId: this.#activeLayerId,
       drawingConfiguration: structuredClone(this.#drawingConfiguration),
+      projectMetadata: structuredClone(this.#projectMetadata),
       layers,
     };
   }
@@ -225,6 +236,7 @@ export class TiledRasterProjectDocument {
       layers.push({ ...structuredClone(metadata), pixels: encodeBase64(this.#store.composeCel(celId)) });
     }
     return {
+      ...structuredClone(this.#projectMetadata),
       format: 'pixelforge-project', version: 1,
       id: this.#id, name: this.#name, width: this.#width, height: this.#height,
       activeLayerId: this.#activeLayerId, layers,
