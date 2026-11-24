@@ -62,7 +62,8 @@ export function drawContentComposition(context, bitmap, frameIndex, dimensions, 
   const sourceWidth = options.sourceWidth || bitmap.width;
   const sourceHeight = options.sourceHeight || bitmap.height;
   context.save();
-  context.imageSmoothingEnabled = false;
+  context.imageSmoothingEnabled = options.scalingMode !== 'pixelated';
+  if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
   context.fillStyle = options.background || '#101116';
   context.fillRect(0, 0, width, height);
   const unit = Math.max(1, Math.round(Math.min(width, height) / 720));
