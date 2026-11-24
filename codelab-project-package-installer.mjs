@@ -226,7 +226,13 @@ function resourceContentType(filePath, file) {
 }
 
 function installPackageResourceCatalog(project, destinations, files, manifest) {
-  const catalog = destinations.map(item => {
+  // In the structured v2 contract, only manifest.resources[] are external
+  // package resources. Structural files (frames, scenes, references, manifests)
+  // belong to the project itself and must never enter packageResources.
+  const source = Number(manifest?.version) === 2 && Number(manifest?.schemaVersion) === 2
+    ? destinations.filter(item => (manifest.resources || []).some(resource => resource?.path === item.path))
+    : destinations;
+  const catalog = source.map(item => {
     const bytes = files.get(item.path);
     return {
       path: item.path,
