@@ -78,12 +78,14 @@ Campos aceptados por la implementación:
 | `target_workspace_id` | Workspace destino con formato `ws_...`; por defecto el workspace PixelForge guest configurado |
 | `project_name` | Nombre opcional para el proyecto importado |
 | `artifact_kind` | `pixelforge_zip_upload` para ZIP PixelForge directo; `codelab_zip_upload` para paquete `.codelab` importable |
-| `import_request_id` | Obligatorio para `codelab_zip_upload`; identifica la solicitud de importación del buzón ADMIN |
+| `editor_id` | Para `.codelab`: `web`, `design` o `pixelforge`; debe coincidir con el manifiesto del paquete |
+| `source_project_id` | ID de origen opcional para la solicitud de importación |
+| `import_request_id` | Opcional; si se omite para `.codelab`, CodeLab crea la solicitud y devuelve su ID en la respuesta del manifiesto |
 | `self_test` | Solo para la prueba técnica: si es `true`, el commit valida y no encola importación |
 
 El servidor verifica el manifiesto y que `total_chunks = ceil(total_bytes / 1 MiB)`. Responde HTTP 201 con `artifactId`, `chunkBytes`, tamaño, cantidad de partes y SHA esperado.
 
-El artefacto queda asociado al workspace interno ADMIN que posee el buzón del bridge. El workspace de destino del proyecto se conserva en metadata; no se confunde con el workspace propietario del registro temporal.
+El artefacto queda asociado al workspace interno ADMIN que posee el buzón del bridge. Para `codelab_zip_upload`, CodeLab también crea una solicitud de importación en ese buzón si el agente no envía `import_request_id`; el ID se devuelve junto con `artifactId`. El workspace de destino del proyecto se conserva en metadata; no se confunde con el workspace propietario del registro temporal.
 
 ### 3.2 Subir cada parte
 
