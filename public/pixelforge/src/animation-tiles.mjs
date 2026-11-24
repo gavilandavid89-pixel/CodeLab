@@ -436,6 +436,44 @@ export class SparseTileCelStore {
     return diffSparseTiles(this.#documentForDiff(previousCelId), this.#documentForDiff(nextCelId));
   }
 
+  async createPatch(previousCelId, nextCelId, {
+    projectId, baseRevision, operationId, frameId, layerId,
+  } = {}) {
+    for (const [name, value] of Object.entries({ projectId, operationId, frameId, layerId })) {
+      if (typeof value !== 'string' || !value.trim() || value.length > 180) {
+        throw new TypeError(`Sparse cel patch ${name} must be non-empty text up to 180 characters.`);
+      }
+    }
+    if (!Number.isSafeInteger(baseRevision) || baseRevision < 0) {
+      throw new RangeError('Sparse cel patch baseRevision must be a non-negative safe integer.');
+    }
+    const previous = await this.exportCel(previousCelId);
+    const next = await this.exportCel(nextCelId);
+    if (previous.width !== next.width || previous.height !== next.height ||
+        previous.tileSize !== next.tileSize) {
+      throw new RangeError('Sparse cel patch requires matching canvas dimensions and tile size.');
+    }
+    const diff = diffSparseTiles(previous, next);
+    const put = [...diff.added, ...diff.changed]
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map(tile => ({
+        type: 'tile.put',
+        x: tile.x, y: tile.y, width: tile.width, height: tile.height,
+        sha256: tile.sha256, rgba: tile.rgba,
+      }));
+    const remove = [...diff.removed]
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map(tile => ({ type: 'tile.remove', x: tile.x, y: tile.y }));
+    return {
+      format: 'pixelforge-cel-patch',
+      version: 1,
+      projectId, baseRevision, operationId, frameId, layerId,
+      canvas: { width: next.width, height: next.height, tileSize: next.tileSize },
+      operations: [...put, ...remove],
+      summary: { added: diff.added.length, changed: diff.changed.length, removed: diff.removed.length },
+    };
+  }
+
   #documentForDiff(celId) {
     const cel = this.#cel(celId);
     return {
