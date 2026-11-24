@@ -100,6 +100,59 @@ export class TiledAnimationDocument {
     }
   }
 
+  static async fromManifest(manifest, { maxDecodedCacheBytes = 8 * 1024 * 1024 } = {}) {
+    if (!manifest || manifest.format !== PIXELFORGE_TILED_ANIMATION_FORMAT ||
+        manifest.version !== PIXELFORGE_TILED_ANIMATION_VERSION ||
+        !Array.isArray(manifest.layerIds) || !Array.isArray(manifest.frames)) {
+      throw new TypeError('Unsupported or invalid PixelForge tiled animation manifest.');
+    }
+    if (!Number.isInteger(manifest.fps) || manifest.fps < 1 || manifest.fps > 60 ||
+        manifest.frames.length < 1 || manifest.frames.length > 240 ||
+        !Number.isInteger(manifest.activeFrameIndex) || manifest.activeFrameIndex < 0 ||
+        manifest.activeFrameIndex >= manifest.frames.length) {
+      throw new RangeError('Tiled animation timeline metadata is outside supported limits.');
+    }
+    if (!manifest.layerIds.length || manifest.layerIds.length > 64 ||
+        manifest.layerIds.some(id => typeof id !== 'string' || !id.trim() || id.length > 180) ||
+        new Set(manifest.layerIds).size !== manifest.layerIds.length) {
+      throw new TypeError('Tiled animation layer IDs must be valid and unique.');
+    }
+    const frameIds = new Set();
+    const store = new SparseTileCelStore({ maxDecodedCacheBytes });
+    const frames = [];
+    try {
+      for (const frame of manifest.frames) {
+        if (!frame || typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180 ||
+            frameIds.has(frame.id) || !Number.isFinite(frame.durationMs) ||
+            frame.durationMs < 1 || frame.durationMs > 10000 ||
+            !Array.isArray(frame.cels) || frame.cels.length !== manifest.layerIds.length) {
+          throw new TypeError('Tiled animation frame metadata is invalid.');
+        }
+        frameIds.add(frame.id);
+        const cels = new Map();
+        const layerMetadata = {};
+        for (const entry of frame.cels) {
+          if (!entry || !manifest.layerIds.includes(entry.layerId) || cels.has(entry.layerId) ||
+              !entry.cel || entry.cel.width !== manifest.width || entry.cel.height !== manifest.height) {
+            throw new TypeError('Tiled animation cel references do not match the project geometry/layers.');
+          }
+          const celId = await store.createCel(entry.cel);
+          cels.set(entry.layerId, celId);
+          layerMetadata[entry.layerId] = structuredClone(entry.metadata || {});
+        }
+        if (cels.size !== manifest.layerIds.length) throw new TypeError('Tiled animation frame is missing a layer cel.');
+        frames.push({ id: frame.id, durationMs: frame.durationMs, cels, layerMetadata });
+      }
+      return new TiledAnimationDocument({
+        store, width: manifest.width, height: manifest.height, fps: manifest.fps,
+        layerIds: manifest.layerIds, frames, activeFrameIndex: manifest.activeFrameIndex,
+      });
+    } catch (error) {
+      for (const frame of frames) for (const celId of frame.cels.values()) store.releaseCel(celId);
+      throw error;
+    }
+  }
+
   get width() { return this.#width; }
   get height() { return this.#height; }
   get fps() { return this.#fps; }
