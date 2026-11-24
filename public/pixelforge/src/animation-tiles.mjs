@@ -216,6 +216,16 @@ export class SparseTileCelStore {
     this.#maxDecodedCacheBytes = maxDecodedCacheBytes;
   }
 
+  /** Create an empty sparse cel without allocating a width × height RGBA buffer. */
+  createBlankCel({ width, height, tileSize = DEFAULT_CEL_TILE_SIZE } = {}) {
+    assertDimensions(width, height);
+    assertTileSize(tileSize);
+    const celId = globalThis.crypto?.randomUUID?.();
+    if (!celId) throw new Error('Secure UUID generation is required for sparse cel IDs.');
+    this.#cels.set(celId, { width, height, tileSize, tiles: new Map() });
+    return celId;
+  }
+
   get stats() {
     let references = 0;
     for (const resource of this.#resources.values()) references += resource.refs;
