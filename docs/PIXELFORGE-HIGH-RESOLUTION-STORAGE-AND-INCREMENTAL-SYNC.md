@@ -175,3 +175,11 @@ A new contract test constructs a 4096×4096 tiled project with 17 sparse layers 
 ### Safe removal order
 
 Do not delete the 64 MiB checks in v1 as a shortcut. First make the editor create/open tiled projects natively (without a dense v1 migration), then migrate brush/eraser/fill/selection/transforms/compositing and history to tile-level copy-on-write. Next make animation frames and layer cels share tile resources, and migrate ZIP/Headless readers and writers to a versioned sparse package. Only then add authenticated private tile persistence and incremental patch/CAS APIs. Raise geometry, layer, JSON, request and account limits independently after desktop/mobile stress tests, quota accounting, and end-to-end read-back. Until each gate is migrated, it must continue rejecting payloads it cannot safely process.
+
+
+### Native sparse project creation and bounded edit proof
+
+- Added `SparseTileCelStore.createBlankCel()`: it registers canvas geometry and an empty tile map without allocating a dense RGBA canvas.
+- Added `TiledRasterProjectDocument.createBlank()`: it creates a first-class tiled project and layer directly, without constructing `RasterDocument`, calling `toJSON()`, or passing through the legacy dense migration path.
+- Added a 4096×4096 contract test that writes a single pixel in the middle of the canvas, verifies only one tile resource is created, duplicates the layer with shared resources, edits the duplicate, and verifies copy-on-write isolation and manifest export.
+- This removes the dense-v1 migration dependency for *new projects created through this adapter only*. It does not yet make the visible editor create/open tiled projects, migrate tools/history/animation, or persist manifests to the server. Geometry and 64-layer limits remain unchanged.
