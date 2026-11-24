@@ -211,20 +211,23 @@ function addSceneSections(project, files) {
       .filter(item => explicitSectionMatch(item, section.key))
       .map(item => String(item.id));
     const sectionData = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
-      ? drawing.sceneSections[section.key] : {};
+      ? structuredClone(drawing.sceneSections[section.key]) : {};
+    const workspace = sectionData.workspace ?? null;
+    delete sectionData.workspace;
     const declaration = {
       format: 'codelab-pixelforge-scene',
-      version: 1,
+      version: 2,
       sceneType: section.key,
       projectId: String(project.id),
       canvas: { width: project.width, height: project.height },
       layerIds,
       drawingObjectIds,
       vectorObjectIds,
+      workspace,
       environmentHistory: section.key === 'environment'
         ? structuredClone(drawing.environmentHistory || { version: 1, entries: [], activeEntryId: null })
         : undefined,
-      data: structuredClone(sectionData),
+      data: sectionData,
     };
     files.set(path, Buffer.from(JSON.stringify(declaration, null, 2), 'utf8'));
     sceneDeclarations[section.key] = { manifestPath: path };
