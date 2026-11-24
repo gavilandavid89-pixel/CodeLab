@@ -4,7 +4,7 @@
 >
 > **Mapa de lectura:** [Índice de documentación](docs/README.md). Define qué documento corresponde a cada tarea y cuál prevalece si hay contradicciones.
 >
-> **Distinción crítica:** el Headless propio del agente crea y exporta el proyecto, pero NO se conecta al intermediario. El agente IA recoge el archivo exportado fuera del Headless y lo transfiere a CodeLab. Si se pide vídeo, A/B es la etapa integrada que produce el vídeo final que recibe el usuario.
+> **Distinción crítica:** el Headless propio del agente crea y exporta el proyecto, pero NO se conecta al intermediario. El agente IA recoge el archivo exportado fuera del Headless y lo transfiere a CodeLab. El GIF local solo se entrega si el usuario lo pide expresamente. Si se pide vídeo, A/B es la etapa integrada que produce el vídeo final que recibe el usuario.
 
 # CodeLab XD Studio Pro v2.7.0
 
