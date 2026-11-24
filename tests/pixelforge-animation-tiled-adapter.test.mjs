@@ -23,6 +23,11 @@ test('tile-backed animation adapter migrates v1 frames and preserves frame/layer
   assert.equal(manifest.format, 'pixelforge-tiled-animation');
   assert.equal(manifest.frames[0].cels.length, 2);
   assert.equal(manifest.frames[0].cels[0].cel.tiles.length, 1);
+  const tiledReloaded = await TiledAnimationDocument.fromManifest(manifest, { maxDecodedCacheBytes: 1024 * 1024 });
+  assert.deepEqual(tiledReloaded.readRegion(0, 'ink', { x: 68, y: 68, width: 4, height: 4 }),
+    tiled.readRegion(0, 'ink', { x: 68, y: 68, width: 4, height: 4 }));
+  assert.equal(tiledReloaded.getFrame(0).id, tiled.getFrame(0).id);
+  tiledReloaded.dispose();
 
   const legacy = await tiled.toLegacyAnimationJSON();
   const restored = PixelForgeAnimation.fromJSON(legacy);
@@ -50,5 +55,18 @@ test('tile-backed animation duplicates by shared resources and edits only the cl
   assert.deepEqual(tiled.readRegion(0, 'paint', { x: 4, y: 4, width: 2, height: 2 }), new Uint8ClampedArray(16));
   assert.deepEqual(tiled.readRegion(1, 'paint', { x: 4, y: 4, width: 2, height: 2 }), patch);
   tiled.deleteFrame(1);
+  tiled.dispose();
+});
+
+
+test('tiled animation manifest reader rejects corrupt tile resources', async () => {
+  const animation = new PixelForgeAnimation({ width: 32, height: 32, layerIds: ['paint'] });
+  const pixels = new Uint8ClampedArray(32 * 32 * 4);
+  pixels.set([2, 4, 6, 255], 0);
+  animation.setLayerPixels(0, 'paint', pixels);
+  const tiled = await TiledAnimationDocument.fromAnimation(animation);
+  const manifest = await tiled.toManifest();
+  manifest.frames[0].cels[0].cel.tiles[0].sha256 = '0'.repeat(64);
+  await assert.rejects(() => TiledAnimationDocument.fromManifest(manifest), /SHA-256 integrity check failed/);
   tiled.dispose();
 });
