@@ -53,6 +53,15 @@ Las órdenes de trabajo que el agente envía al sistema usan la cola durable de 
 - No reconstruir el estado editable desde memoria, screenshots o vídeo cuando el proyecto puede recuperarse desde su fuente persistida.
 - Si hay defectos, corregir en el Headless propio, volver a validar y transferir una nueva versión.
 
+## 5.1. Inspección y reparación antes de entregar vídeo
+
+- Todo vídeo final debe compararse explícitamente con los requisitos originales del usuario: contenido, acciones, continuidad, composición, duración, ritmo, resolución/formato y cualquier detalle solicitado.
+- La inspección visual del archivo final es obligatoria; comprobar solo que existe, abre o reproduce no demuestra que cumpla el pedido.
+- Si hay errores, omisiones, elementos incoherentes, frames defectuosos o resultados que no tienen sentido, **no entregar todavía**. Volver al proyecto editable y usar Headless para corregirlo de forma incremental.
+- Headless puede trabajar sobre el proyecto existente: abrir la última revisión, modificar los frames/capas/elementos afectados, conservar las partes correctas, validar y exportar una nueva revisión. No reiniciar desde cero por defecto.
+- Tras corregir, transferir y persistir la nueva revisión, volver a generar el vídeo A/B e inspeccionar otra vez el archivo final. Repetir hasta cumplir los requisitos o identificar un bloqueo real.
+- Solo reconstruir desde cero si la reparación incremental no es viable o si el usuario lo pide. No afirmar que se corrigió algo sin comprobar el vídeo resultante.
+
 ## 6. A/B: etapa integrada de entrega de vídeo
 
 A/B no es un sistema aislado ni un flujo alternativo de creación. Es la etapa de procesamiento/render/captura de vídeo integrada en la misma tarea del usuario, después de que el proyecto editable y su revisión estén disponibles en CodeLab. El agente coordina A/B, espera el vídeo final, lo inspecciona y entrega ese vídeo al usuario. A/B no reemplaza la persistencia del proyecto editable. Usar una sola sesión A y una sola B procesadora por trabajo. Nunca lanzar lotes de estrés ni usar A/B para edición, importación o persistencia. Consultar [VIDEO-PROCESSING-AB.md](docs/VIDEO-PROCESSING-AB.md).
