@@ -6,6 +6,8 @@ on:
       - 'scripts/codelab-polish-soldier-walk-direct.mjs'
       - 'scripts/codelab-inspect-soldier-walk.mjs'
       - '.github/workflows/codelab-polish-soldier-walk.yml'
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       mode:
@@ -25,6 +27,7 @@ permissions:
 
 jobs:
   polish:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Inspect Soldier Walk]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -35,7 +38,7 @@ jobs:
       - name: Install runtime dependencies
         run: npm install --no-save --no-package-lock --ignore-scripts
       - name: Inspect persisted ADMIN animation
-        if: ${{ inputs.mode != 'polish' }}
+        if: ${{ inputs.mode != 'polish' || github.event_name == 'issue_comment' }}
         env:
           CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
           CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
@@ -52,7 +55,7 @@ jobs:
             ${{ runner.temp }}/soldier-walk-inspection.json
           retention-days: 3
       - name: Polish persisted ADMIN animation
-        if: ${{ inputs.mode == 'polish' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'polish' }}
         env:
           CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
           CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
