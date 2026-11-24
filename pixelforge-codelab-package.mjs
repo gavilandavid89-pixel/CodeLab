@@ -212,8 +212,23 @@ function addSceneSections(project, files) {
       .map(item => String(item.id));
     const sectionData = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
       ? structuredClone(drawing.sceneSections[section.key]) : {};
-    const workspace = sectionData.workspace ?? null;
-    if (workspace !== null) HeadlessEditorRuntime.fromJSON(workspace);
+    let workspace = sectionData.workspace ?? null;
+    if (workspace !== null) {
+      workspace = HeadlessEditorRuntime.fromJSON(workspace).toJSON();
+      if (!workspace.animation) {
+        workspace.animation = {
+          format: 'pixelforge-animation', version: 1,
+          width: workspace.width, height: workspace.height,
+          layerIds: workspace.layers.map(layer => String(layer.id)),
+          fps: 12, activeFrameIndex: 0, loop: true, playbackSpeed: 1,
+          frames: [{
+            id: 'scene-' + section.key + '-frame-0001',
+            name: 'Frame 1', index: 0, durationMs: 1000,
+            cels: workspace.layers.map(layer => ({ layerId: String(layer.id), pixels: layer.pixels })),
+          }],
+        };
+      }
+    }
     delete sectionData.workspace;
     const declaration = {
       format: 'codelab-pixelforge-scene',
