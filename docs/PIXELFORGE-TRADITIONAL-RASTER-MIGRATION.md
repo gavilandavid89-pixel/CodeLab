@@ -135,7 +135,7 @@ The v1 configuration contract is:
 - Exported project ZIPs retain this configuration because it is embedded in `project.json`; importing the ZIP restores the selected mode before the editor is shown. Video Composer inherits the matching smooth/pixelated scaling default from native project mode, while allowing the user to change it for a specific export.
 - Legacy projects without this metadata receive a compatibility default of pixel art. New blank documents start in illustration mode with both modes enabled. Importing a raster image starts from illustration defaults unless a native project contains its own saved configuration.
 
-**Current implementation boundary:** the persisted configuration, editor selector, restore path, mode-specific preview sampling and brush-hardness defaults are implemented. The complete tiled raster engine and all per-tool mode-specific rasterization semantics are still under migration; this selector does not yet convert the dense editor document to a tile-backed document. A project mode switch is lossless metadata/presentation state, not a destructive conversion.
+**Current implementation boundary:** the persisted configuration, editor selector, restore path, mode-specific preview sampling, brush size/shape/hardness defaults and transform interpolation defaults are implemented. The complete tiled raster engine and all per-tool mode-specific rasterization semantics are still under migration; this selector does not yet convert the dense editor document to a tile-backed document. A project mode switch is lossless metadata/presentation state, not a destructive conversion.
 
 ## Incremental implementation: tiled raster project adapter
 
