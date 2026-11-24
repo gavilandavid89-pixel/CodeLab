@@ -156,28 +156,31 @@ function installSceneSections(project, files, scenesManifest) {
         scene.sceneType !== key || String(scene.projectId) !== String(project.id)) {
       fail(scenePath + ' must declare the matching PixelForge scene type, version and projectId.');
     }
-    if (!scene.canvas || Number(scene.canvas.width) !== Number(project.width) ||
-        Number(scene.canvas.height) !== Number(project.height)) {
-      fail(scenePath + ' canvas dimensions must match project.json.');
+    const workspace = scene.workspace !== undefined && scene.workspace !== null
+      ? validateSceneWorkspace(scene.workspace, scenePath) : null;
+    const expectedCanvas = workspace || project;
+    if (!scene.canvas || Number(scene.canvas.width) !== Number(expectedCanvas.width) ||
+        Number(scene.canvas.height) !== Number(expectedCanvas.height)) {
+      fail(scenePath + ' canvas dimensions must match its complete workspace.');
     }
-    for (const [field, validIds, label] of [
-      ['layerIds', layerIds, 'layer'],
-      ['drawingObjectIds', drawingObjects, 'drawing object'],
-      ['vectorObjectIds', vectorObjects, 'vector object'],
-    ]) {
-      const ids = scene[field] ?? [];
-      if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !validIds.has(id)) ||
-          new Set(ids).size !== ids.length) {
-        fail(scenePath + ' contains an unknown or duplicate ' + label + ' ID in ' + field + '.');
+    if (Number(scene.version) === 1) {
+      for (const [field, validIds, label] of [
+        ['layerIds', layerIds, 'layer'],
+        ['drawingObjectIds', drawingObjects, 'drawing object'],
+        ['vectorObjectIds', vectorObjects, 'vector object'],
+      ]) {
+        const ids = scene[field] ?? [];
+        if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !validIds.has(id)) ||
+            new Set(ids).size !== ids.length) {
+          fail(scenePath + ' contains an unknown or duplicate ' + label + ' ID in ' + field + '.');
+        }
       }
     }
     if (!scene.data || typeof scene.data !== 'object' || Array.isArray(scene.data)) {
       fail(scenePath + ' data must be an object.');
     }
     const sectionData = structuredClone(scene.data);
-    if (scene.workspace !== undefined && scene.workspace !== null) {
-      sectionData.workspace = validateSceneWorkspace(scene.workspace, scenePath);
-    }
+    if (workspace) sectionData.workspace = workspace;
     drawing.sceneSections[key] = sectionData;
     if (key === 'environment' && scene.environmentHistory !== undefined) {
       if (!scene.environmentHistory || typeof scene.environmentHistory !== 'object' ||
