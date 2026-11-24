@@ -198,14 +198,17 @@ function installStructuredFrames(project, files, framesManifest) {
       if (totalBytes > 64 * 1024 * 1024) fail('structured animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
       cels.push({ layerId, pixels: pixels.toString('base64') });
       frameMetadata.push({
-        layerId,
-        name: String(layer.name || ''),
-        position: { x: requireFinite(layer.position?.x ?? 0, frameId + '/' + layerId + '.position.x'), y: requireFinite(layer.position?.y ?? 0, frameId + '/' + layerId + '.position.y') },
-        opacity: requireFinite(layer.opacity ?? 1, frameId + '/' + layerId + '.opacity'),
-        visible: layer.visible !== false,
-        locked: layer.locked === true,
-        zIndex: Number.isFinite(Number(layer.zIndex)) ? Number(layer.zIndex) : 0,
-        pixelsSha256: sha256(pixels),
+        layerId, name: String(layer.name || ''), parentFrameId: String(layer.parentFrameId || frameId), index: requireInt(Number(layer.index ?? frameMetadata.length + 1), frameId + '/' + layerId + '.index', 1, MAX_LAYERS),
+        position: { x: requireFinite(layer.position?.x ?? layer.x ?? 0, frameId + '/' + layerId + '.position.x'), y: requireFinite(layer.position?.y ?? layer.y ?? 0, frameId + '/' + layerId + '.position.y') },
+        x: requireFinite(layer.x ?? layer.position?.x ?? 0, frameId + '/' + layerId + '.x'), y: requireFinite(layer.y ?? layer.position?.y ?? 0, frameId + '/' + layerId + '.y'),
+        scaleX: requireFinite(layer.scaleX ?? 1, frameId + '/' + layerId + '.scaleX'), scaleY: requireFinite(layer.scaleY ?? 1, frameId + '/' + layerId + '.scaleY'),
+        rotation: requireFinite(layer.rotation ?? 0, frameId + '/' + layerId + '.rotation'), angle: layer.angle ?? 0,
+        opacity: requireFinite(layer.opacity ?? 1, frameId + '/' + layerId + '.opacity'), visible: layer.visible !== false, locked: layer.locked === true,
+        blendMode: String(layer.blendMode || 'normal'), blur: layer.blur ?? 0, brightness: layer.brightness ?? 0, contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0,
+        mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
+        references: Array.isArray(layer.references) ? structuredClone(layer.references) : [], assets: Array.isArray(layer.assets) ? structuredClone(layer.assets) : [],
+        metadata: layer.metadata && typeof layer.metadata === 'object' ? structuredClone(layer.metadata) : {},
+        zIndex: Number.isFinite(Number(layer.zIndex)) ? Number(layer.zIndex) : frameMetadata.length, pixelsSha256: sha256(pixels),
       });
     }
     if (seenLayers.size !== layerIds.length) fail(frameId + ' does not provide every project layer.');
@@ -244,10 +247,10 @@ function installStructuredFrames(project, files, framesManifest) {
 
 function installReferenceCenter(project, files, centerManifest) {
   if (!centerManifest || centerManifest.format !== 'codelab-reference-center' || Number(centerManifest.version) !== 1) {
-    fail('center.op/center.json must declare format codelab-reference-center version 1.');
+    fail('reference.center/reference.center must declare format codelab-reference-center version 1.');
   }
   const categories = centerManifest.categories;
-  if (!Array.isArray(categories)) fail('center.op/center.json categories must be an array.');
+  if (!Array.isArray(categories)) fail('reference.center/reference.center categories must be an array.');
   const categoryIds = new Set();
   const entries = [];
   let embeddedBytes = 0;
