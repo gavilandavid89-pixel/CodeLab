@@ -63,6 +63,8 @@ test('Video Composer remote controls import, inspect, seek, configure and captur
     });
     assert.equal(result.projectId, project.id);
     assert.equal(result.serverRevision, 7);
+    assert.equal(result.package.format, 'codelab');
+    assert.equal(result.package.version, 2);
     assert.equal(result.imported.frames, 1);
     assert.equal(result.operations.length, 6);
     assert.equal(result.operations[0].state.frameCount, 1);
