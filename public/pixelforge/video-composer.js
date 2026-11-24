@@ -414,6 +414,7 @@ async function importPackage(file) {
     $('#vc-loop').checked = parsed.manifest.loop !== false;
     $('#vc-loop-export').checked = false;
     $('#vc-output-fps').value = String(parsed.manifest.fps);
+    refreshMotionCadence();
     setEnabled(true);
     refreshFormatSupport();
     // Server-side Video Composer exports do not need the interactive timeline.
