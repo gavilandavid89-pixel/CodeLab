@@ -2472,7 +2472,7 @@ const server = http.createServer(async (req, res) => {
             const totalChunks = Number(body.total_chunks);
             const sha256 = String(body.sha256 || '').toLowerCase();
             const filename = String(body.filename || 'pixelforge.codelab').slice(0, 180);
-            const targetWorkspaceId = String(body.target_workspace_id || PIXELFORGE_GUEST_WORKSPACE_ID);
+            const targetWorkspaceId = String(body.target_workspace_id || workspaceId);
             const artifactKind = String(body.artifact_kind || 'pixelforge_zip_upload');
             let importRequestId = body.import_request_id == null ? null : String(body.import_request_id);
             const editorId = String(body.editor_id || 'pixelforge');
