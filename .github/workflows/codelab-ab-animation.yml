@@ -14,10 +14,6 @@ on:
         default: 'soldier-walk-60f-20261124'
         type: string
 
-concurrency:
-  group: codelab-video-processor
-  cancel-in-progress: false
-
 permissions:
   actions: write
   contents: read
