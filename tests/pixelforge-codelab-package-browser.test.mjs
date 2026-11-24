@@ -20,6 +20,13 @@ function fixture() {
     elements: { ordering: 'z-index' },
     objects: { collision: 'none' },
   };
+  const workspaceBase = structuredClone(project);
+  for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
+    const workspace = structuredClone(workspaceBase);
+    workspace.id = project.id + '-' + section;
+    workspace.name = section + ' workspace';
+    project.drawingModel.sceneSections[section].workspace = workspace;
+  }
   const resource = new TextEncoder().encode('embedded palette bytes');
   project.packageResourceFiles = [{
     path: 'Entorno/assets/palette.txt',
@@ -38,6 +45,13 @@ test('browser package exporter writes all six project folders and the named TSCN
   assert.equal(installed.metadata.sceneSectionCount, 5);
   assert.equal(installed.project.drawingModel.sceneSections.environment.label, 'Night forest');
   assert.equal(installed.project.drawingModel.sceneSections.effects.entries[0].id, 'spark-01');
+  for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
+    const workspace = installed.project.drawingModel.sceneSections[section].workspace;
+    assert.equal(workspace.format, 'pixelforge-project');
+    assert.equal(workspace.layers.length, project.layers.length);
+    assert.equal(workspace.animation.frames.length, project.animation.frames.length);
+    assert.equal(workspace.animation.frames[0].cels.length, workspace.layers.length);
+  }
   assert.equal(installed.project.packageResourceFiles[0].path, 'Entorno/assets/palette.txt');
   assert.equal(installed.project.packageResources[0].byteSize, new TextEncoder().encode('embedded palette bytes').length);
   assert.equal(installed.manifest.resources[0].destination, 'environment');
@@ -57,6 +71,11 @@ test('browser import preserves package resources and scene metadata through nati
   assert.equal(restored.project.packageResourceFiles[0].path, 'Entorno/assets/palette.txt');
   assert.equal(restored.project.packageResourceFiles[0].base64, imported.project.packageResourceFiles[0].base64);
   assert.equal(restored.project.drawingModel.sceneSections.environment.label, 'Night forest');
+  for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
+    const workspace = restored.project.drawingModel.sceneSections[section].workspace;
+    assert.equal(workspace.animation.frames.length, imported.project.animation.frames.length);
+    assert.equal(workspace.animation.frames[0].cels.length, workspace.layers.length);
+  }
   assert.equal(restored.project.animation.frames.length, imported.project.animation.frames.length);
   for (const layer of restored.project.layers) {
     assert.equal(layer.pixels, saved.layers.find(item => item.id === layer.id)?.pixels);
