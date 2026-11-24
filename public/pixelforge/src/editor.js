@@ -2493,8 +2493,14 @@ $('#import-file').addEventListener('change', async event => {
         importedDoc.activeLayer.pixels.set(tctx.getImageData(0, 0, bitmap.width, bitmap.height).data);
       } finally { bitmap.close?.(); }
     }
+    if (!zipProject && !file.name.toLowerCase().endsWith('.pforge') && file.type !== 'application/json') {
+      drawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
+      applyDrawingConfiguration({ drawingConfiguration });
+    }
     await flushAutosave();
-    const importSnapshot = importedDoc.toJSON(); if (importedDoc.animationData) importSnapshot.animation = importedDoc.animationData;
+    const importSnapshot = importedDoc.toJSON();
+    importSnapshot.drawingConfiguration = structuredClone(drawingConfiguration);
+    if (importedDoc.animationData) importSnapshot.animation = importedDoc.animationData;
     const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
