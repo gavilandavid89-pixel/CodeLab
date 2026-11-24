@@ -901,6 +901,7 @@ async function main() {
       'Reference Center should render the imported reference part as an actionable item');
     await referenceCard.locator('.reference-parts .file-button').first().click();
     await accountPage.waitForFunction(() => document.querySelectorAll('#layers .layer-row').length === 2);
+    await waitForRasterSave();
     const materializedLayer = accountPage.locator('#layers .layer-row').filter({ hasText: 'Orange reference · Orange part' });
     assert.equal(await materializedLayer.count(), 1, 'copying a reference part must create a real editable layer in the layer stack');
     await setForegroundColor('#00aa44');
