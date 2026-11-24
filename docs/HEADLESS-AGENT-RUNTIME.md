@@ -156,6 +156,14 @@ La validación del flujo de persistencia debe seguir usando PostgreSQL efímero.
 - `docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md`: arquitectura de comunicación y persistencia.
 
 
+## La ejecución Headless y la aceptación visual son cosas distintas
+
+Headless es el entorno aislado donde el agente crea y modifica el proyecto editable. Su ejecución bajo Xvfb permite disponer de un display virtual para aplicaciones gráficas, pero **Xvfb no es un revisor visual ni acredita la calidad de una animación**. Una captura de la ventana, una ejecución sin errores o una previsualización local no bastan para aprobar el resultado final.
+
+Cuando se solicite vídeo final, el agente debe salir del contexto Headless, recuperar el WebM exacto producido por el flujo A/B y realizar la inspección visual real descrita en [ANIMATION-AUTONOMOUS-WORKFLOW.md](ANIMATION-AUTONOMOUS-WORKFLOW.md), sección 5.2. La aprobación debe basarse en ese vídeo A/B, no solo en el estado del proyecto dentro de Headless.
+
+Si el WebM de A/B no está disponible o no puede examinarse visualmente, el resultado permanece pendiente. No se puede afirmar que sea una buena animación ni entregar una aprobación artística basándose en Xvfb, logs, hashes, metadatos o decodificación técnica.
+
 ## Regla de salida visual: GIF solo bajo petición explícita
 
 El GIF que pueda generarse localmente en el entorno Headless es una vista previa opcional, no la entrega por defecto. **Solo entregar un GIF local si el usuario pidió expresamente un GIF.** Si no lo pidió, el agente debe exportar el proyecto editable, tomarlo fuera del Headless y completar la transferencia al intermediario para persistirlo en CodeLab. Pedir un vídeo final no equivale a pedir un GIF; para vídeo, seguir `docs/VIDEO-PROCESSING-AB.md`.
