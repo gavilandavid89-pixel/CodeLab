@@ -79,6 +79,14 @@ Ver [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.md).
 A/B no es un sistema aislado ni reemplaza el flujo de creación/persistencia. Cuando la petición incluye un vídeo final, el agente primero persiste el proyecto editable en CodeLab y luego coordina A/B sobre esa revisión. Recupera el archivo de vídeo final, lo reproduce, lo inspecciona y lo entrega al usuario. Consultar [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md).
 
 
+## 7.1. Revisión del vídeo y corrección sin reiniciar
+
+Antes de entregar un vídeo A/B, el agente debe contrastar el archivo reproducible con los requisitos concretos del usuario e inspeccionar visualmente el resultado. Debe detectar contenido omitido, acciones incorrectas, incoherencias, elementos sin sentido, defectos de continuidad, frames problemáticos y duración/timing incorrectos.
+
+Si encuentra un defecto, debe volver a Headless y corregir la última versión editable de forma incremental: tocar solo los frames, cels, capas u objetos afectados y preservar lo que ya está bien. Headless no obliga a reconstruir el proyecto desde cero; la reparación del proyecto existente es la opción predeterminada. Después se exporta y persiste una nueva revisión, se vuelve a ejecutar A/B y se inspecciona el nuevo vídeo. El vídeo anterior a la corrección no se entrega como resultado final.
+
+La entrega solo se autoriza cuando la inspección confirma que el vídeo cumple los requisitos. Si no puede corregirse o verificarse, se informa el bloqueo y no se declara éxito.
+
 ## 8. Regla de entrega visual
 
 El Headless no se conecta al intermediario: solo exporta el proyecto. El agente recoge el archivo fuera del Headless y completa la transferencia. El GIF local solo se entrega cuando el usuario lo solicita expresamente; de lo contrario, el proyecto editable debe llegar a CodeLab. Si se pidió vídeo, se entrega el vídeo final A/B, no una vista previa GIF.
