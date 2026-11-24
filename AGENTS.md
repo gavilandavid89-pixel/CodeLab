@@ -2,7 +2,7 @@
 
 **Entrada obligatoria:** antes de cualquier trabajo, leer este archivo y [la política operativa del agente](docs/agent-ai-bridge-policy.md). Para ubicar el resto, usar el [índice documental](docs/README.md).
 
-## 1. Modelo mental: hay dos entornos Headless distintos
+## 0. Identidad y autenticación ya configuradas\n\nReutilizar la conexión administrativa existente para resolver la cuenta ADMIN y el workspace destino. No pedir al usuario secretos ni reconfigurar autenticación por una variable ausente en el runtime Headless. La identidad ADMIN en Neon y el token de una ruta HTTP son capas distintas; diagnosticar la operación real y usar las acciones autorizadas disponibles antes de declarar un bloqueo. Seguir [la guía de recuperación ADMIN/bridge](docs/ADMIN-AUTH-AND-BRIDGE-RECOVERY.md).\n\n## 1. Modelo mental: hay dos entornos Headless distintos
 
 No confundirlos:
 
@@ -90,7 +90,7 @@ Antes de finalizar, releer los archivos modificados y comprobar que diagramas y 
 ## Documentos de entrada
 
 - [Índice de documentación](docs/README.md)
-- [Política operativa del agente y bridge](docs/agent-ai-bridge-policy.md)
+- [Política operativa del agente y bridge](docs/agent-ai-bridge-policy.md)\n- [Recuperación de identidad ADMIN y continuidad del bridge](docs/ADMIN-AUTH-AND-BRIDGE-RECOVERY.md)
 - [Headless propio del agente](docs/HEADLESS-AGENT-RUNTIME.md)
 - [Referencia completa de capacidades Headless](docs/HEADLESS-CAPABILITIES-REFERENCE.md)
 - [Flujo autónomo de animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
