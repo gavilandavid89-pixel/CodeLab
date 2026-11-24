@@ -148,3 +148,10 @@ The branch now also includes `public/pixelforge/src/raster-tiled-adapter.mjs` an
 - The adapter enforces current canvas geometry and layer-count limits and uses a bounded decoded-tile cache.
 
 **Boundary:** this is still an opt-in migration adapter. `RasterDocument`, the editor brush/fill/selection/transform pipeline, undo/redo, compositing, project serializer, ZIP package and Headless raster actions have not yet switched to this as their canonical storage. The one-time migration from v1 must materialize the existing dense source layers. Existing 64 MiB document/animation constraints remain until the editor's actual working set and history are tile-backed and stress-tested.
+
+
+### Guarded mode transitions and per-cel exceptions
+
+The tiled project adapter now exposes a metadata-only mode transition. Switching illustration ↔ pixel art changes only the project's active drawing mode; it does not clear, resample, quantize, rewrite, or discard any cel/tile bytes. Each layer/cel may retain an optional `authoringMode` and `modeOverrides` record. Those values represent non-default settings that must survive when the project changes modes and later switches back. The adapter reports `pixelsChanged: false` and `celsRewritten: 0` for a transition, and tests compare tile SHA-256 values before and after both directions.
+
+This is the safe interpretation of a mode-switch guard: deactivate the previous mode's defaults for new editing operations, but preserve source pixels and per-cel exceptions as dormant metadata. Do not physically delete “extra” pixels or settings. The editor's dense v1 model still needs the same contract wired into its canonical per-cel/tile storage before this guard can be considered end-to-end.
