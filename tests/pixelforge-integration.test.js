@@ -928,6 +928,65 @@ async function main() {
       'the original active layer identity must survive reload');
     assert.deepEqual(rgbaAt(referenceStored, 2, 2, 0), [0, 170, 68, 255],
       'the edited active-layer pixels must survive reload and account persistence');
+
+    // Each scene section is a real editor context with its own layer stack,
+    // dimensions and timeline/cels, not a package-only metadata snapshot.
+    await accountPage.locator('[data-scene-workspace="environment"]').click();
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace');
+    assert.equal(await accountPage.locator('#layers .layer-row').count(), 1,
+      'a new Environment workspace should open with its own independent layer stack');
+    assert.match(await accountPage.locator('#animation-frame-count').innerText(), /1/,
+      'a new Environment workspace should own an independent one-frame timeline');
+    await setForegroundColor('#ff0000');
+    await clickPixel(0, 0, 4, 4);
+    await waitForRasterSave();
+    let environmentStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    assert.deepEqual(rgbaAt(environmentStored, 0, 0, 0), [255, 0, 0, 255],
+      'Environment workspace edits must persist in its own active document');
+    assert.equal(environmentStored.animation.frames.length, 1,
+      'Environment workspace timeline/cels must persist with the project');
+
+    await accountPage.locator('[data-scene-workspace="effects"]').click();
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Effects workspace');
+    await setForegroundColor('#0000ff');
+    await clickPixel(3, 3, 4, 4);
+    await waitForRasterSave();
+    let effectsStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    const effectsWorkspace = effectsStored.drawingModel.sceneWorkspaceState.workspaces.effects;
+    assert.ok(effectsWorkspace, 'Effects must be persisted as a separate complete workspace');
+    assert.equal(effectsWorkspace.layers.length, 1, 'Effects must own its own layer stack');
+    assert.deepEqual(rgbaAt(effectsWorkspace, 3, 3, 0), [0, 0, 255, 255],
+      'Effects pixels must be stored in its own workspace snapshot');
+    assert.deepEqual(rgbaAt(effectsWorkspace, 0, 0, 0), [0, 0, 0, 0],
+      'Effects must not inherit Environment pixels');
+
+    await accountPage.locator('[data-scene-workspace="environment"]').click();
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace');
+    await waitForRasterSave();
+    environmentStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    assert.deepEqual(rgbaAt(environmentStored, 0, 0, 0), [255, 0, 0, 255],
+      'switching away and back must restore Environment pixels');
+    assert.deepEqual(rgbaAt(environmentStored, 3, 3, 0), [0, 0, 0, 0],
+      'Environment must not inherit Effects pixels');
+
+    await accountPage.locator('[data-scene-workspace="main"]').click();
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Reference materialization fixture');
+    assert.deepEqual(rgbaAt({ ...environmentStored.drawingModel.sceneWorkspaceState.parentWorkspace, id: 'parent' }, 2, 2, 0), [0, 170, 68, 255],
+      'the original project workspace must remain intact while section workspaces are edited');
+    await accountPage.locator('[data-scene-workspace="environment"]').click();
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace');
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace',
+      null, { timeout: 15000 });
+    environmentStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    assert.equal(environmentStored.drawingModel.sceneWorkspaceState.activeSection, 'environment',
+      'the active scene workspace should be restored after a full browser reload');
+    assert.deepEqual(rgbaAt(environmentStored, 0, 0, 0), [255, 0, 0, 255],
+      'the active section workspace pixels must survive reload');
+    assert.deepEqual(rgbaAt(environmentStored.drawingModel.sceneWorkspaceState.workspaces.effects, 3, 3, 0), [0, 0, 255, 255],
+      'inactive section workspace pixels must survive reload too');
+
     await accountPage.locator('#reference-refresh').click();
     assert.equal(await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).count(), 1,
       'Reference Center must still expose the immutable source reference after materialization');
