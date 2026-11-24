@@ -177,6 +177,13 @@ function buildSceneSections(project, files) {
     let workspace = drawing.sceneWorkspaceState?.workspaces?.[section.key] ?? (drawing.sceneWorkspaceState?.activeSection === section.key ? project : null) ?? data.workspace ?? null;
     if (workspace !== null) {
       workspace = structuredClone(workspace);
+      if (workspace.drawingModel && typeof workspace.drawingModel === 'object') {
+        delete workspace.drawingModel.sceneWorkspaceState;
+        for (const nestedSection of SCENE_SECTIONS) {
+          const nestedData = workspace.drawingModel.sceneSections?.[nestedSection.key];
+          if (nestedData && typeof nestedData === 'object') delete nestedData.workspace;
+        }
+      }
       if (!workspace.animation) {
         workspace.animation = {
           format: 'pixelforge-animation', version: 1,
