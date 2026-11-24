@@ -148,11 +148,18 @@ console.log('[POLISH] Source pinned:', JSON.stringify({
 
 const runtime = HeadlessEditorRuntime.fromJSON(source);
 const frameCels = new Map();
-const stats = source.layers.map(layer => ({ layer, bounds: null, samples: [] }));
+const sandboxContext = runtime.execute({ name: 'animation.frame.get_context', index: 0 });
+if (!sandboxContext.ok) throw new Error('Could not inspect animation layer mapping: ' + sandboxContext.error?.message);
+const sandboxLayerIds = sandboxContext.result?.guidance?.availableLayerIds || [];
+const animatedSourceLayerIds = Array.isArray(source.animation.layerIds) ? source.animation.layerIds : [];
+if (!animatedSourceLayerIds.length || animatedSourceLayerIds.length !== sandboxLayerIds.length) throw new Error('Animation layer mapping is incomplete.');
+const sandboxBySourceLayer = new Map(animatedSourceLayerIds.map((sourceId, index) => [sourceId, sandboxLayerIds[index]]));
+const animatedLayers = animatedSourceLayerIds.map(id => source.layers.find(layer => layer.id === id)).filter(Boolean);
+const stats = animatedLayers.map(layer => ({ layer, bounds: null, samples: [] }));
 
 for (let index = 0; index < frames.length; index++) {
   for (const stat of stats) {
-    const result = runtime.execute({ name: 'animation.frame.get_cel', index, layerId: stat.layer.id });
+    const result = runtime.execute({ name: 'animation.frame.get_cel', index, layerId: sandboxBySourceLayer.get(stat.layer.id) });
     if (!result.ok) throw new Error('Could not read frame ' + index + ' layer ' + stat.layer.id + ': ' + result.error?.message);
     const pixels = result.result.pixels;
     if (!frameCels.has(index)) frameCels.set(index, new Map());
@@ -187,7 +194,7 @@ for (const stat of stats) {
     if (next !== pixels) actions.push({
       name: 'animation.frame.set_cel',
       index,
-      layerId: stat.layer.id,
+      layerId: sandboxBySourceLayer.get(stat.layer.id),
       pixels: next
     });
   }
