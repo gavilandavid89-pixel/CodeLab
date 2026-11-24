@@ -106,6 +106,7 @@ test('content capture includes a frame strip and keeps pixel-art rendering unsmo
   assert.match(js, /requestAnimationFrame\(playbackTick\)/);
   assert.match(js, /performance\.now\(\) - playbackStartedAt/);
   assert.doesNotMatch(js, /playbackTimer/);
+  assert.match(js, /\$\('#vc-output-fps'\)\.value = String\(parsed\.manifest\.fps\);\s*refreshMotionCadence\(\);/);
 });
 
 test('rejects PNG frames with broken chunk CRC or dimensions that differ from the manifest', async () => {
