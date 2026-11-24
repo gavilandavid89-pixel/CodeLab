@@ -110,3 +110,29 @@ The branch now includes `public/pixelforge/src/animation-tiled-adapter.mjs` and 
 - `dispose()` releases the adapter's in-memory resource references.
 
 **Boundary:** this is a migration/working-model adapter, not yet the editor's canonical animation model. The current editor, undo/redo, brush pipeline, native project serializer, ZIP package, Headless and server persistence still use their existing paths. The initial v1-to-tile conversion reads dense cels once and therefore does not remove the current v1 memory/size limits during import. No higher default canvas size or quota is enabled by this adapter.
+
+## Project-persisted drawing modes and mid-project switching
+
+A PixelForge project owns its drawing-mode configuration. It is serialized with the native project snapshot and therefore travels with autosave, account save/load, legacy editable project JSON, and the structured CodeLab ZIP package's `project.json`. The editor must restore it automatically when opening a project; users must not have to reselect the mode after import.
+
+The v1 configuration contract is:
+
+```json
+{
+  "version": 1,
+  "availableModes": ["illustration", "pixel-art"],
+  "initialMode": "illustration",
+  "activeMode": "illustration"
+}
+```
+
+- `availableModes` declares which modes this project supports.
+- `initialMode` is the project's preferred starting mode when no valid active selection exists.
+- `activeMode` records the current selection and is restored when the project is reopened.
+- When both modes are enabled, PixelForge opens in the saved active/initial mode and offers an immediate switch in the editor. A project may restrict itself to one mode; the UI disables modes not enabled by that project.
+- Users may switch illustration ↔ pixel art at any point, including during an animation project. The selection is project state and autosaves.
+- The mode switch changes presentation/tool defaults (smooth vs nearest-neighbor canvas preview and soft vs hard brush hardness defaults). It must not resize, resample, quantize, flatten, or rewrite existing pixels, cels, frame timing, or tile hashes.
+- Exported project ZIPs retain this configuration because it is embedded in `project.json`; importing the ZIP restores the selected mode before the editor is shown.
+- Legacy projects without this metadata receive a compatibility default of pixel art. New blank documents start in illustration mode with both modes enabled. Importing a raster image starts from illustration defaults unless a native project contains its own saved configuration.
+
+**Current implementation boundary:** the persisted configuration, editor selector, restore path, mode-specific preview sampling and brush-hardness defaults are implemented. The complete tiled raster engine and all per-tool mode-specific rasterization semantics are still under migration; this selector does not yet convert the dense editor document to a tile-backed document. A project mode switch is lossless metadata/presentation state, not a destructive conversion.
