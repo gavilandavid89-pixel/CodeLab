@@ -406,3 +406,353 @@ Prueba de aceptación obligatoria: **exportar → importar → editar una capa/p
 El exportador de referencia de Node se implementa en pixelforge-codelab-package.mjs. La interfaz PixelForge usa public/pixelforge/src/codelab-package.js: export-project genera .codelab-pixelforge e import-file reconoce el marcador raíz, valida integridad, reconstruye frames y referencias y guarda el documento con saveProject. El ZIP de Video Composer sigue siendo un formato separado para secuencias PNG de vídeo.
 
 Si cambia un nombre de archivo, ruta, campo, límite o regla de instalación, actualizar este documento y las pruebas en el mismo cambio.
+
+## 11. Modelo maestro de capas: contenido completo y composición
+
+Una capa no es solamente un efecto, una máscara, un puntero o un contenedor vacío. La definición adoptada es que **una capa es una unidad gráfica completa, equivalente conceptualmente a otro frame superpuesto dentro del frame padre**.
+
+Esto significa que una capa puede dibujar por sí misma y contener la información normal necesaria para reconstruir su contenido. Además, incorpora propiedades específicas para decidir cómo ese contenido se compone respecto de las capas inferiores.
+
+### 11.1 Información normal que debe conservar una capa
+
+Una capa debe conservar el mismo tipo de información gráfica fundamental que un frame. Como mínimo, el contrato debe poder representar:
+
+- identidad y nombre;
+- frame padre al que pertenece;
+- índice/posición de la capa;
+- píxeles y formato de píxel;
+- dimensiones;
+- colores y paleta;
+- coordenadas y posición;
+- escala;
+- rotación;
+- ángulo;
+- opacidad;
+- visibilidad;
+- bloqueo;
+- transformaciones;
+- referencias utilizadas;
+- assets y recursos;
+- configuración;
+- metadatos;
+- y cualquier otro campo definido por el esquema maestro del frame.
+
+El hecho de que una capa sea una capa **no elimina** estos campos. Por ejemplo, una capa de fondo puede contener todos sus píxeles y transformaciones; una capa de personaje puede contener sus propios píxeles; y una capa de efecto puede contener sus píxeles además de propiedades de composición.
+
+Los estados explícitos siguen siendo obligatorios. `angle = 90°`, `angle = 0°`, `angle = inexistente` y `angle = no_aplicable` no deben tratarse como equivalentes si el contrato los distingue.
+
+### 11.2 Propiedades adicionales de composición
+
+Además de la información gráfica normal, una capa puede tener propiedades destinadas a su composición, por ejemplo:
+
+- orden/z;
+- modo de mezcla;
+- blur/desenfoque;
+- brillo;
+- contraste;
+- saturación;
+- máscara;
+- clipping/recorte;
+- intensidad de efecto;
+- composición respecto a otra capa;
+- y otras propiedades que sean incorporadas formalmente al esquema maestro.
+
+Estas propiedades no sustituyen los datos gráficos. `opacity = 40%` significa que el contenido de la capa se muestra con 40 % de opacidad; no significa que sus píxeles desaparezcan. Del mismo modo, `blur = 8px` modifica la forma en que se compone el contenido, pero no reemplaza el contenido raster de la capa.
+
+## 12. Identidad de capa y pertenencia al frame
+
+La convención legible propuesta para las capas es:
+
+`layer<frameIndex>-<layerIndex>`
+
+Ejemplos:
+
+- `layer0-1` = capa 1 del frame 0.
+- `layer0-2` = capa 2 del frame 0.
+- `layer1-1` = capa 1 del frame 1.
+- `layer3-4` = capa 4 del frame 3.
+
+El primer número identifica el frame real al que pertenece la capa y el segundo representa su posición lógica dentro de ese frame.
+
+Esta nomenclatura ayuda a que un agente o una persona pueda identificar rápidamente la relación. Sin embargo, la identidad estructural no debe depender exclusivamente del nombre: el contrato debe mantener una relación explícita equivalente a `parentFrameId` y un `index` para la posición actual.
+
+Por ello conviene separar:
+
+- `id` = identidad estable de la capa;
+- `parentFrameId` = frame propietario;
+- `index` = posición actual;
+- `name` = nombre legible opcional;
+- representación `layer<frame>-<index>` = convención humana útil.
+
+Si una capa cambia de posición, su identidad estable no debe romper las referencias internas que apunten hacia ella.
+
+## 13. Organización física de las capas
+
+Como cada capa puede contener tanta información como un frame, no es conveniente introducir todos los datos de todas las capas dentro de un único `frame.json` gigante.
+
+La organización recomendada es:
+
+```text
+Frames/
+├── frames.tscn
+├── frame-0000/
+│   ├── frame.json
+│   └── layers/
+│       ├── layer0-1/
+│       │   ├── layer.json
+│       │   ├── pixels.rgba
+│       │   ├── palette.json
+│       │   ├── transform.json
+│       │   ├── appearance.json
+│       │   └── ...
+│       ├── layer0-2/
+│       │   └── ...
+│       └── layer0-3/
+│           └── ...
+└── frame-0001/
+    └── ...
+```
+
+`frame.json` funciona como índice y contexto del frame: identidad, dimensiones, relación temporal, lista de capas, orden y referencias a los datos de cada capa.
+
+Cada `layer.json` contiene la identidad, pertenencia, índice y configuración estructural de su capa. Los datos pesados pueden permanecer separados.
+
+Especialmente, los píxeles rasterizados deben mantenerse en archivos RGBA declarados, como `pixels.rgba`, en lugar de convertir un frame o una capa en un JSON enorme.
+
+La separación física no cambia la semántica: **la capa sigue siendo una unidad gráfica completa aunque sus datos estén distribuidos en varios archivos**.
+
+## 14. Orden, visibilidad y composición acumulativa
+
+Las capas se componen de abajo hacia arriba. Por ejemplo:
+
+```text
+layer0-1  ← fondo
+layer0-2  ← personaje
+layer0-3  ← elementos
+layer0-4  ← detalles/efectos
+```
+
+Al visualizar el frame, el resultado es la composición acumulada de esas capas.
+
+Por defecto, las capas pueden permanecer visibles y permitir que las capas inferiores se vean mediante las zonas transparentes de las superiores. Esto permite construir una imagen progresivamente:
+
+`fondo → personaje → elementos → detalles → efectos`.
+
+Pero la visibilidad debe ser configurable. Una capa puede estar invisible sin ser eliminada:
+
+```text
+layer0-1 → visible
+layer0-2 → visible
+layer0-3 → invisible
+layer0-4 → visible
+```
+
+En este caso `layer0-3` sigue existiendo, conserva sus píxeles y puede volver a activarse.
+
+También debe ser posible configurar otras propiedades de composición para que una capa no tenga que afectar visualmente a las inferiores de la manera predeterminada.
+
+## 15. Navegación y capa activa
+
+El editor debe permitir saltar entre capas de un mismo frame.
+
+Por ejemplo, si el usuario está dibujando en `layer0-2`, debe poder pasar directamente a `layer0-1`, `layer0-3` o `layer0-4`.
+
+La capa activa determina el destino de las operaciones de dibujo. Cambiar de capa no debe fusionar, borrar ni sobrescribir automáticamente el contenido de las otras.
+
+Esto es especialmente importante para evitar el problema de dibujar accidentalmente sobre la capa equivocada. La navegación debe poder hacerse hacia capas anteriores y posteriores y también mediante selección directa.
+
+El editor debe tratar la selección de capa como estado explícito de edición, no como una consecuencia accidental del último objeto que se tocó.
+
+## 16. Inserción de capas y desplazamiento de índices
+
+Debe ser posible insertar una nueva capa entre dos capas existentes.
+
+Si inicialmente existe:
+
+```text
+layer0-1
+layer0-2
+layer0-3
+layer0-4
+```
+
+y el usuario solicita una nueva capa en la posición 3, el resultado lógico será:
+
+```text
+layer0-1
+layer0-2
+layer0-3  ← nueva capa
+layer0-4  ← antes era la 3
+layer0-5  ← antes era la 4
+```
+
+Por tanto, las capas que ocupaban las posiciones posteriores se desplazan consecutivamente.
+
+El índice representa el orden actual. La identidad estable de una capa debe permanecer separada de ese índice para que una inserción no rompa referencias existentes.
+
+Ejemplo conceptual:
+
+```text
+id = layer0-a8f31
+parentFrameId = frame-0000
+index = 3
+```
+
+Si se inserta otra capa delante, el `index` puede pasar a 4 sin cambiar el `id`.
+
+Esto también permite reordenar capas sin perder su identidad.
+
+## 17. Relación entre capas y frames
+
+Un frame puede tener una o muchas capas:
+
+```text
+frame0
+├── layer0-1
+├── layer0-2
+├── layer0-3
+└── ...
+```
+
+Otro frame puede tener una cantidad diferente:
+
+```text
+frame1
+├── layer1-1
+└── layer1-2
+```
+
+La cantidad de capas no cambia la naturaleza del frame. Cada capa editable pertenece a un único frame padre.
+
+El mismo contenido puede reutilizarse mediante una referencia o mediante una copia explícita, pero una capa editable no debe pertenecer simultáneamente a dos frames.
+
+## 18. Capas como herramienta para construir fondos, personajes y elementos
+
+Esta arquitectura permite separar visualmente una composición sin inventar escenas artificiales:
+
+```text
+Frame 0
+│
+├── layer0-1 → fondo
+├── layer0-2 → personaje
+├── layer0-3 → árbol/elemento
+├── layer0-4 → detalles
+└── layer0-5 → efectos
+```
+
+Cada una de esas capas puede ser dibujada y editada de manera independiente.
+
+Esto es especialmente útil para fondos y personajes porque permite modificar el fondo sin tocar el personaje, modificar un personaje sin tocar los elementos y activar/desactivar efectos sin destruir el dibujo.
+
+El agente debe preferir esta estructura cuando la operación solicitada sea naturalmente una composición por capas, en lugar de crear una nueva escena o mezclar contenido que debería permanecer separado.
+
+## 19. Capas y Reference Center
+
+Una capa puede utilizar una referencia del Reference Center, pero la relación no convierte una cosa en la otra:
+
+```text
+Reference Center
+      ↓
+reference.personaje1
+      ↓
+frame0
+      ↓
+layer0-2
+```
+
+La referencia es el recurso maestro reutilizable. La capa es el contenido editable dentro del frame. El frame es la unidad temporal/visual del lienzo.
+
+Al materializar una referencia en una capa, la capa puede recibir sus propios píxeles y metadatos editables mediante la política de copia correspondiente, mientras que la referencia maestra permanece intacta.
+
+## 20. Relación con la organización por secciones
+
+La separación existente entre `Entorno`, `Efectos`, `Detalles`, `Elementos` y `Objetos` continúa siendo válida.
+
+Estas secciones describen categorías o roles del proyecto. Las capas de un frame describen cómo se compone el contenido visual en ese frame.
+
+Por ejemplo, un elemento clasificado como `Objetos` puede terminar materializado en `layer0-3`. La sección indica la categoría del contenido; la capa indica dónde y cómo participa en la composición del frame.
+
+Una capa no debe convertirse automáticamente en una sección ni una sección en una capa. Las relaciones entre ambos sistemas deben quedar explícitas.
+
+## 21. Reglas maestras para agentes
+
+Un agente que cree o modifique PixelForge debe respetar estas reglas:
+
+1. No confundir `.tscn`, `.center` y `.reference`.
+2. No convertir una capa en una referencia ni una referencia en un frame.
+3. Tratar cada capa como una unidad gráfica completa y dibujable.
+4. Conservar en la capa la información normal que requiere el modelo maestro del frame.
+5. Añadir propiedades de composición sin eliminar los datos gráficos.
+6. Mantener explícita la pertenencia de cada capa a su frame.
+7. Mantener el orden de las capas.
+8. Permitir saltar entre capas antes de dibujar.
+9. Permitir insertar una capa entre dos existentes.
+10. Desplazar los índices posteriores cuando se inserta una capa.
+11. Mantener IDs estables cuando una capa cambia de posición.
+12. No dibujar sobre otra capa por accidente.
+13. No eliminar campos porque su valor sea actualmente `inexistente` o `no_aplicable`.
+14. No inventar propiedades fuera del esquema maestro.
+15. No introducir innecesariamente datos pesados dentro de JSON.
+16. Mantener rutas y relaciones explícitas y verificables.
+17. No modificar una referencia maestra al editar una copia materializada.
+18. Validar la estructura editable, no solamente la imagen compuesta.
+
+## 22. Ejemplo integral
+
+```text
+Frames/
+└── frame-0000/
+    ├── frame.json
+    └── layers/
+        ├── layer0-1/
+        │   ├── layer.json
+        │   └── pixels.rgba
+        ├── layer0-2/
+        │   ├── layer.json
+        │   └── pixels.rgba
+        ├── layer0-3/
+        │   ├── layer.json
+        │   └── pixels.rgba
+        └── layer0-4/
+            ├── layer.json
+            ├── pixels.rgba
+            └── effects.json
+```
+
+Interpretación:
+
+- `layer0-1` contiene el fondo dibujable.
+- `layer0-2` contiene el personaje dibujable.
+- `layer0-3` contiene elementos adicionales.
+- `layer0-4` contiene detalles/efectos y puede tener configuración de composición adicional.
+
+El usuario puede seleccionar `layer0-2`, dibujar, saltar a `layer0-3`, dibujar allí, ocultar `layer0-3`, volver a mostrarla y regresar a `layer0-2` sin mezclar los píxeles.
+
+## 23. Pruebas de aceptación específicas de capas
+
+El ciclo de prueba debe comprobar no solo la imagen final sino la estructura editable.
+
+Como mínimo debe comprobarse:
+
+1. crear un frame con varias capas;
+2. dibujar contenido diferente en cada capa;
+3. cambiar la capa activa;
+4. comprobar que dibujar en una capa no modifica otra;
+5. ocultar y volver a mostrar una capa;
+6. comprobar la composición acumulativa;
+7. aplicar propiedades de composición sin perder los píxeles;
+8. insertar una capa entre dos existentes;
+9. verificar el desplazamiento de índices;
+10. verificar que los IDs estables no se rompen;
+11. reordenar capas;
+12. guardar y exportar;
+13. importar nuevamente;
+14. comprobar frame padre, orden, píxeles, propiedades y metadatos de todas las capas.
+
+Una prueba que solamente compare un PNG final no es suficiente para validar el modelo de capas.
+
+## 24. Regla de cierre del modelo de capas
+
+**Las capas son contenido gráfico completo, dibujable y editable, superpuesto dentro de un frame concreto.** Conservan la información normal del modelo de frame y añaden propiedades de composición. Cada capa tiene una pertenencia explícita a su frame, una posición lógica dentro de ese frame y una identidad estable para permitir inserciones y reordenamientos.
+
+Esta regla permite construir fondos, personajes, elementos, detalles y efectos de forma independiente, saltar entre capas sin perder el contexto de dibujo y mantener la separación estructural que ya existe entre Frames, secciones del proyecto y Reference Center.
