@@ -59,15 +59,22 @@ Los workflows A/B ya no llaman al host local guest ni al fallback de demo de scr
 
 El ID histórico menciona 60f, pero la revisión persistida tiene 20 fotogramas. A fija una revisión y un hash; si cambian, se inicia una sesión A nueva para la revisión actual. No se mezcla contenido de distintas revisiones.
 
-## Evidencia previa y aceptación pendiente
+## Evidencia y aceptación A/B superada
 
 Una exportación manual previa con el worker nativo de Render y el exportador real de Video Composer importó 20 fotogramas a 12 FPS y produjo un WebM de 115.027 bytes sin errores de página ni consola. El archivo quedó guardado en Neon como evidencia y se decodificó para obtener muestras.
 
-Esta prueba confirma el generador real, pero no equivale a la aceptación del nuevo transporte A→B. La aceptación final requiere ejecutar codelab-ab-animation.yml y confirmar simultáneamente:
-- A restaura la revisión ADMIN correcta y mantiene PixelForge/Composer abiertos.
-- A genera el WebM con el Composer real.
-- B recibe todos los bloques, reconstruye el mismo SHA-256 y decodifica el archivo.
-- B publica el artefacto y termina.
-- A continúa in_progress después de terminar B y solo expira al llegar a su timeout.
+La prueba integrada se ejecutó el 2026-11-24 y pasó todos los puntos de aceptación:
 
-Un run verde, un comentario de estado, un event_id o una grabación de pantalla no sustituyen el WebM recibido y verificado. No se debe declarar entregado el vídeo hasta que el artefacto de B exista y pase las comprobaciones.
+- Workflow A/B: [run 45363044941](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363044941).
+- Sesión A independiente: [run 45363094490](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363094490).
+- Artefacto de B: [codelab-soldier-walk-webm-45363044941](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45363044941/artifacts/14904893307).
+- Proyecto: revisión 2; 20 fotogramas; 12 FPS; 4 capas.
+- Composer exportó WebM de 115.027 bytes, duración 1,66 s.
+- SHA-256 del vídeo: 0abf2c19450625de90731b86740858859178ca57ca3120e6a17b3d47bcbec82f.
+- Chromium verificó 1080 × 1350, readyState 4 y 5 muestras temporales decodificadas.
+- B no ejecutó FFmpeg ni generó animación; únicamente recibió y verificó el WebM.
+- El paso de independencia confirmó que A seguía in_progress después de que B terminó. A continuó hasta su timeout independiente.
+
+La aceptación del transporte A→B y del flujo completo está superada. El artefacto de B incluye el WebM y verification.json.
+
+Un run verde, un comentario de estado, un event_id o una grabación de pantalla no sustituyen el WebM recibido y verificado.
