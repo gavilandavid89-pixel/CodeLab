@@ -168,7 +168,8 @@ La referencia original debe permanecer intacta. Las operaciones de copia al canv
 - Pruebas del instalador legacy y clasificación: `tests/codelab-project-package-installer.test.mjs`
 - Pruebas de manifiestos y datos estructurados v2: `tests/codelab-structured-project-v2.test.mjs`
 - Pruebas de exportación/importación y workspaces de navegador: `tests/pixelforge-codelab-package-browser.test.mjs`
+- E2E de UI con PostgreSQL, importación ZIP del editor, guardado, reapertura y edición raster: `tests/pixelforge-integration.test.js`
 - Pruebas del paquete PixelForge: `tests/pixelforge-codelab-package.test.mjs`
 - Pruebas de nombre/transporte del artefacto: `tests/codelab-artifact-filename.test.mjs`
 
-La cobertura de estos archivos valida el formato, la instalación estructurada y los round-trips de navegador. No debe afirmarse que por sí sola prueba la apertura y reapertura del proyecto a través de toda la UI real.
+La cobertura combinada valida el formato y la instalación estructurada, el round-trip del paquete y, en la integración de UI, el flujo ZIP del editor hacia guardado/reapertura en PostgreSQL. La prueba E2E de UI importa el ZIP desde el editor; no equivale a recorrer el comando de agente `codelab_project_import` y su backend `importCodeLabArtifact`. Ese trayecto agente→solicitud→BYTEA→importador→selector nativo debe quedar cubierto por una prueba de integración específica antes de declarar cerrado el flujo de importación del agente.
