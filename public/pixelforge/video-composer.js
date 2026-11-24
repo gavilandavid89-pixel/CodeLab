@@ -315,7 +315,7 @@ async function composeNativeFrame(project, frame) {
     const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
     const rotation = Number(meta.rotation ?? 0);
     context.save();
-    context.globalAlpha = Math.max(0, Math.min(1, Number(layer.opacity ?? 1) * Number(meta.opacity ?? 1)));
+    context.globalAlpha = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
     const blend = String(meta.blendMode || layer.blendMode || 'normal');
     if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blend)) context.globalCompositeOperation = blend;
     context.translate(width / 2 + x, height / 2 + y);
