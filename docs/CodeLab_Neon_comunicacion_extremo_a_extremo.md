@@ -340,6 +340,8 @@ El worker valida dimensiones y límites de tamaño/proyectos, serializa el docum
 
 La revisión y el hash son la referencia de integridad; una imagen/vídeo no sustituye el documento JSON persistido.
 
+En importación/reimportación de paquetes, el worker verifica cada archivo esperado (ruta, tamaño, SHA-256 y bytes leídos de vuelta) antes de eliminar archivos obsoletos del mismo workspace/proyecto/editor. Después confirma el recuento exacto. La limpieza no se ejecuta antes de validar los archivos nuevos, por lo que una reimportación no acumula fotogramas/cels antiguos ni elimina la versión previa antes de verificar el reemplazo.
+
 ## 11. Evidencia visual y almacenamiento de objetos
 
 El módulo `neon-pixelforge-evidence.js` registra eventos de cambio/evidencia en `codelab_pixelforge_change_events`. El evento asocia workspace, proyecto, revisión, tipo de cambio, estado, metadata y referencias de imagen/vídeo. El resultado de la orden puede incluir `evidenceEventId`.

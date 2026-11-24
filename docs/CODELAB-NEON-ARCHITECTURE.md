@@ -62,6 +62,10 @@ Para dibujo/animación:
 - relacionar cada evidencia con proyecto, revisión y event_id;
 - inspeccionar realmente el vídeo/captura antes de afirmar que la animación se ve correcta.
 
+La importación/reimportación de un paquete editable verifica primero cada archivo esperado por ruta, tamaño, SHA-256 y bytes leídos de vuelta. Solo después elimina archivos obsoletos del mismo workspace/proyecto/editor y comprueba el recuento final. Así una revisión nueva sustituye el conjunto de archivos anterior sin dejar fotogramas ni cels huérfanos.
+
+Importación PixelForge nativa verificada en producción el 24-11-2026: [GitHub Actions 45344660920](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45344660920). El proyecto `PixelForge — Soldier Walk` quedó persistido en `ws_local_admin` con 20 fotogramas a 12 FPS, cuatro capas, cinco espacios de trabajo independientes y una referencia maestra. La lectura de vuelta confirmó `reloadedFromPersistence: true`.
+
 ## Recuperación y límites
 
 NOTIFY puede perderse si se produce antes de que LISTEN esté activo; por eso el servidor consulta órdenes queued no expiradas al terminar de armar el listener. El worker también vuelve a consultar la cola al reconectar. Las órdenes tienen expiración, heartbeat durante ejecución y recuperación limitada de filas running abandonadas.
