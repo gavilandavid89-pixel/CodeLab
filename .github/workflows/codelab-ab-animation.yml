@@ -1,6 +1,12 @@
 name: CodeLab A/B real ADMIN Soldier Walk export
 
 on:
+  push:
+    paths:
+      - '.github/workflows/codelab-ab-animation.yml'
+      - 'scripts/codelab-ab-session-host.mjs'
+      - 'scripts/codelab-ab-session-request.mjs'
+      - 'pixelforge-video-composer-export.mjs'
   workflow_dispatch:
     inputs:
       session_minutes:
