@@ -42,6 +42,21 @@ function sortPackageEntries(entries) {
   });
 }
 
+function isStructuralPackagePath(path) {
+  return path === 'project.codelab-pixelforge' ||
+    path === 'manifest.json' ||
+    path === 'project.json' ||
+    path === 'integrity.json' ||
+    path === 'Frames/frames.tscn' ||
+    path === 'Entorno/entorno.tscn' ||
+    path === 'Efectos/efectos.tscn' ||
+    path === 'Detalles/detalles.tscn' ||
+    path === 'Elementos/elementos.tscn' ||
+    path === 'Objetos/objetos.tscn' ||
+    path === 'reference.center/reference.center' ||
+    path.startsWith('reference.');
+}
+
 function safeRelativePath(value) {
   return typeof value === 'string' && value.length > 0 && !value.startsWith('/') &&
     !value.includes('\\') && !value.includes('\0') &&
@@ -314,6 +329,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
   }
   for (const declared of project.packageResources || []) {
     const declaredPath = String(declared?.path || '');
+    if (!declaredPath || isStructuralPackagePath(declaredPath)) continue;
     if (files.has(declaredPath)) continue;
     if (!resourceDeclarations.some(resource => resource.path === declaredPath)) {
       throw new Error('The project declares a resource without supplied bytes: ' + String(declared.path || 'unknown'));
