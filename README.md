@@ -1,24 +1,25 @@
 # 🚨 POLÍTICA DEL AGENTE IA — ENTRADA OBLIGATORIA
 
-> **Antes de cualquier trabajo sobre CodeLab, el agente debe leer `AGENTS.md`.** Ese archivo lleva a la política completa de `docs/agent-ai-bridge-policy.md` y resume las reglas que deben respetarse durante toda la sesión.
+> Antes de cualquier trabajo sobre CodeLab, leer [AGENTS.md](AGENTS.md) y [la política operativa completa](docs/agent-ai-bridge-policy.md).
 >
-> **Solo el usuario puede iniciar al agente IA.** La evidencia visual debe inspeccionarse realmente. En dibujo/animación, las referencias pueden buscarse dinámicamente en Internet; no se debe depender de una imagen implantada como fuente obligatoria.
-
-**[Abrir la política completa →](docs/agent-ai-bridge-policy.md)**
+> **Mapa de lectura:** [Índice de documentación](docs/README.md). Define qué documento corresponde a cada tarea y cuál prevalece si hay contradicciones.
+>
+> **Distinción crítica:** el Headless propio del agente es donde la IA crea y edita. El Headless/worker de CodeLab recibe, importa y persiste. Son entornos distintos.
 
 # CodeLab XD Studio Pro v2.7.0
 
 ## Documentos clave para agentes
 
-> **Antes de trabajar en animación, Headless o la integración CodeLab/Neon, revisar estos 3 documentos:**
->
-> 1. [`docs/ANIMATION-AUTONOMOUS-WORKFLOW.md`](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md) — **Flujo autónomo de animación.** Define el ciclo real de trabajo: preparar, ejecutar, esperar, verificar el estado persistido, inspeccionar visualmente, corregir y finalizar. También contiene los criterios técnicos de aceptación de una animación.
-> 2. [`docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md`](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md) — **Arquitectura CodeLab ↔ Neon ↔ Worker ↔ agente.** Explica cómo se envían las órdenes, cómo Neon mantiene el estado durable, cómo el worker las ejecuta y cómo se recuperan resultados y evidencias.
-> 3. [`docs/agent-ai-bridge-policy.md`](docs/agent-ai-bridge-policy.md) — **Obtención y aislamiento del Headless del agente.** Es el documento clave para saber cómo conseguir el Headless propio: mediante un artefacto real de GitHub Actions; no clonando ni reconstruyendo el repositorio. También define la separación entre el Headless del agente y CodeLab, el uso de Xvfb y las reglas de transferencia al sistema.
-> 4. [`docs/VIDEO-PROCESSING-AB.md`](docs/VIDEO-PROCESSING-AB.md) — **Procesamiento de vídeo A/B.** Define el único uso permitido de A/B: una sesión A y una sola B para procesar/capturar vídeo; no es un sistema multiagente ni de carga.
-> 5. [`docs/PIXELFORGE-PROJECT-PACKAGE.md`](docs/PIXELFORGE-PROJECT-PACKAGE.md) — **Formato ZIP PixelForge.** Define la estructura CodeLab v2, nombres de archivos, frames, Reference Center y la diferencia con el ZIP de Video Composer.
->
-> **Importante:** estos documentos son complementarios, no sustitutos entre sí. El tercero contiene específicamente el procedimiento de obtención del Headless; el primero contiene el flujo operativo de animación y el segundo la arquitectura extremo a extremo.
+- [AGENTS.md](AGENTS.md) — reglas obligatorias y flujo canónico.
+- [Índice de documentación](docs/README.md) — mapa por tarea, orden de autoridad y documentos especializados.
+- [Política del agente y bridge](docs/agent-ai-bridge-policy.md) — límites y responsabilidades entre agente, Neon, CodeLab y worker.
+- [Headless propio del agente](docs/HEADLESS-AGENT-RUNTIME.md) — cómo obtener, instalar y ejecutar el artefacto en el entorno de la IA.
+- [Flujo autónomo de animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md) — ciclo de creación, verificación y aceptación.
+- [Transporte inline](docs/inline-artifact-bridge.md) — entrega del paquete, staging, importación y persistencia.
+- [Arquitectura CodeLab ↔ Neon](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md) — órdenes, LISTEN/NOTIFY, worker y estado durable.
+- [Procesamiento A/B](docs/VIDEO-PROCESSING-AB.md) — ruta especializada exclusivamente para vídeo.
+
+> Los documentos son complementarios, pero no tienen la misma autoridad. Si un resumen o una guía antigua contradice AGENTS.md o los procedimientos canónicos, prevalecen las reglas de entrada y debe corregirse el documento obsoleto.
 
 Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAuth (GitHub / Google)**.
 
