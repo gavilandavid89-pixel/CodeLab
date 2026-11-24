@@ -1,135 +1,73 @@
-# Procesamiento de vídeo con A/B — etapa integrada de entrega
+# Procesamiento de vídeo A/B — exportación real y verificación
 
-## Propósito y lugar en el flujo
+## Propósito
 
-A/B es la infraestructura especializada que produce el **archivo de vídeo final** cuando una tarea requiere renderizar/capturar vídeo fuera de Render, debido al límite de memoria disponible allí.
+A/B es la etapa que exporta el vídeo final del proyecto PixelForge persistido en ADMIN. El contrato vigente es deliberadamente asimétrico:
 
-**A/B no es un sistema aislado ni un producto independiente para el usuario.** Es una etapa posterior del mismo trabajo que el usuario pidió. El agente es responsable de orquestar la tarea completa y entregar el vídeo final, no solo una evidencia técnica.
+- A mantiene la sesión completa de CodeLab/PixelForge, abre el Video Composer real y genera el WebM.
+- B solo solicita a A la exportación, recibe el archivo, lo verifica y termina.
+- A sigue vivo hasta su propio timeout aunque B haya terminado.
 
-A/B no reemplaza el Headless propio del agente, el intermediario HTTPS ni Neon/worker/CodeLab. El proyecto editable se crea en Headless, el agente lo transfiere a CodeLab y CodeLab lo importa/persiste. A/B procesa después la revisión real persistida.
+No se permite que B cree animaciones, construya fotogramas, ejecute el exportador, use FFmpeg ni tenga acceso a Neon, S3 o al bridge.
 
-## Flujo completo del trabajo con vídeo
+## Flujo
 
-```text
-Usuario solicita proyecto/animación y vídeo final
-                  │
-                  ▼
-Agente IA → Headless propio aislado
-                  │
-                  └─ crea/edita y exporta .codelab
-                              │
-                              ▼
-Agente IA (fuera de Headless)
-                  │
-                  └─ recoge el archivo y lo transfiere al intermediario HTTPS
-                              │
-                              ▼
-CodeLab / Neon staging / worker
-                  │
-                  └─ importa y persiste proyecto + revisión
-                              │
-                              ▼
-Agente IA coordina A/B para esa revisión
-                  │
-                  ▼
-A — una sesión host en GitHub Actions
-                  ▲
-                  │ petición de procesamiento de vídeo
-B — un único procesador por trabajo
-                  │
-                  ▼
-Render / captura / codificación de vídeo final
-                  │
-                  ▼
-Artefacto de vídeo final recuperable
-                  │
-                  ▼
-Agente IA recupera, reproduce e inspecciona el vídeo
-                  │
-                  ▼
-Usuario recibe el vídeo final y el proyecto editable persistido
-```
+1. El proyecto editable queda persistido en el workspace ADMIN de Neon.
+2. El workflow A usa el bridge autenticado para leer y fijar el snapshot exacto del proyecto, incluyendo workspace, ID, serverRevision y contentSha256.
+3. A obtiene un handoff ADMIN de un solo uso, abre el proyecto en PixelForge y mantiene un contexto Chromium persistente con PixelForge y Video Composer cargados.
+4. B se conecta a una sesión A que ya está READY y publica una petición con sessionId, projectId, serverRevision y contentSha256.
+5. A ejecuta exportPixelForgeAnimationVideo en su contexto persistente. El generador importa el paquete real en CodeLab Video Composer y exporta WebM.
+6. A transfiere el WebM a B en bloques de base64 por el buzón del issue 492. A incluye tamaño, hash, revisión, FPS, fotogramas y metadatos del Composer.
+7. B reúne los bloques, comprueba SHA-256 y cabecera EBML, decodifica el vídeo en Chromium y verifica duración, dimensiones y varios puntos temporales.
+8. B guarda el WebM y verification.json como artefacto de GitHub Actions, publica el resultado y termina.
+9. A no se detiene cuando B termina; mantiene la sesión hasta que venza su propio tiempo configurado.
 
-La tarea no termina al crear la animación, persistir el proyecto, iniciar A/B ni producir un event_id. Cuando el usuario pidió vídeo, el agente debe recuperar el **archivo final de vídeo**, comprobar que se puede abrir/reproducir, inspeccionarlo visualmente y entregarlo al usuario.
+## Separación de credenciales
 
-## Topología: una A + una B
+| Recurso | A | B |
+|---|---:|---:|
+| CODELAB_AGENT_BRIDGE_CONTROL_SECRET | Sí | No |
+| Snapshot ADMIN a través del bridge | Sí | No |
+| Handoff/cookie de ADMIN | Sí, temporal | No |
+| DATABASE_URL / Neon credentials | No | No |
+| S3 / R2 credentials | No | No |
+| Exportador Video Composer | Sí | No |
+| Decodificación de verificación Chromium | Opcional | Sí |
+| FFmpeg / codificación | No | No |
 
-- **A (host):** mantiene un navegador temporal de PixelForge, registra el vídeo y atiende la petición de B mediante el buzón de sesión.
-- **B (procesador):** envía una única operación de vídeo/animación a A, espera su resultado y comprueba que el archivo de vídeo final se haya generado.
-- **Una B por trabajo:** no se lanzan cinco B simultáneas, no se generan lotes concurrentes y no se usa esta infraestructura para pruebas de carga.
-- **Neon sigue siendo la fuente de verdad del proyecto:** A/B procesa una revisión identificada y no sustituye almacenamiento, órdenes ni bridge/worker.
+El servidor protege POST /api/agent/bridge/admin-handoff y GET /api/agent/bridge/pixelforge/projects/:projectId con CODELAB_AGENT_BRIDGE_CONTROL_SECRET. A es el único workflow que recibe ese secreto. El ticket de handoff expira y se consume una sola vez. B recibe únicamente los bytes del WebM y metadatos de la exportación.
 
-## Workflows
+## Workflows y scripts
 
-| Workflow | Responsabilidad |
-|---|---|
-| `.github/workflows/codelab-independent-session-a.yml` | Inicia y mantiene la sesión A para el procesamiento de vídeo. |
-| `.github/workflows/codelab-independent-session-b.yml` | Ejecuta una B especializada; los modos admitidos son `walk` y `walk-step`. El grupo de concurrencia evita B simultáneas. |
-| `.github/workflows/codelab-ab-animation.yml` | Prueba manual autocontenida con una A temporal y una sola petición B de animación/captura. |
-| `.github/workflows/codelab-b-a-context-cycle.yml` | Orquestador alternativo de una sola sesión A y una sola ejecución del procesador B. |
-| `.github/workflows/inspect-black-video.yml` | Inspección manual posterior de un evento de evidencia de vídeo existente; requiere su `event_id`. |
+- .github/workflows/codelab-independent-session-a.yml — inicia A y la mantiene viva.
+- .github/workflows/codelab-independent-session-b.yml — solicita a A, verifica el WebM y termina.
+- .github/workflows/codelab-ab-animation.yml — prueba integrada que inicia A como workflow independiente y luego ejecuta B; comprueba que A siga in_progress tras terminar B.
+- .github/workflows/codelab-b-a-context-cycle.yml — alias para la prueba A/B real.
+- scripts/codelab-ab-session-host.mjs — host A, lectura autenticada del snapshot ADMIN, sesión Chromium persistente y exportación real.
+- scripts/codelab-ab-session-request.mjs — cliente B, transferencia, hash y decodificación de WebM.
 
-Los puntos de entrada comparten el grupo GitHub Actions `codelab-video-processor`, para permitir una sola B a la vez. La inspección manual de un evento no sustituye la recuperación ni la entrega del archivo final. El workflow duplicado `inspect-black-video-force.yml` se retiró.
+Los workflows A/B ya no llaman al host local guest ni al fallback de demo de scripts/codelab-b-a-context-cycle.mjs. El código antiguo queda fuera de este flujo y no puede considerarse evidencia de la animación Soldier Walk.
 
-**Dónde queda el vídeo según los workflows actuales:** la sesión A configura la grabación de Chromium en `scripts/codelab-session-host.mjs` (contexto Playwright con `recordVideo`, 1440×960 a 24 FPS) y al cerrar la sesión finaliza el archivo. `.github/workflows/codelab-independent-session-a.yml` sube el directorio como artefacto `codelab-independent-a-{run_id}`. La prueba autocontenida `.github/workflows/codelab-ab-animation.yml` sube `codelab-ab-animation-evidence`. La B publica un resumen de verificación en el issue; no debe confundirse ese comentario con el archivo de vídeo. El agente debe descargar el artefacto de vídeo de la ejecución A correspondiente y recuperar el archivo de vídeo real.
+## Proyecto de validación
 
-El antiguo `.github/workflows/codelab-ab-stress.yml` se retiró porque lanzaba múltiples B concurrentes. No debe recuperarse.
+- PixelForge — Soldier Walk.
+- project_id: soldier-walk-60f-20261124.
+- workspace ADMIN: ws_local_admin.
+- revisión documentada: 2.
+- 20 fotogramas, 12 FPS, 4 capas.
+- content SHA-256 documentado: 82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f.
 
-## Flujo operativo obligatorio
+El ID histórico menciona 60f, pero la revisión persistida tiene 20 fotogramas. A fija una revisión y un hash; si cambian, se inicia una sesión A nueva para la revisión actual. No se mezcla contenido de distintas revisiones.
 
-1. El agente crea/edita la animación en su Headless propio aislado.
-2. Headless exporta el proyecto nativo y termina su participación. **No se conecta al intermediario.**
-3. El agente, fuera de Headless, recoge el archivo y lo transfiere mediante el intermediario HTTPS inline.
-4. El agente espera la importación, verifica el workspace destino y confirma la revisión persistida.
-5. El agente inicia una sesión A para esa revisión y una única B procesadora.
-6. B solicita a A la operación de render/captura/codificación y espera el resultado.
-7. La sesión A debe cerrar/finalizar la grabación y publicar el artefacto de vídeo asociado a esa ejecución. En el flujo persistente, recuperar `codelab-independent-a-{run_id}`; en la prueba autocontenida, recuperar `codelab-ab-animation-evidence`. La B puede publicar un resumen de estado, pero ese resumen no es el vídeo.
-8. El agente recupera el archivo, comprueba formato/tamaño, que se puede abrir y reproducir, y que corresponde al proyecto/revisión esperados.
-9. El agente inspecciona visualmente el vídeo completo o una muestra suficiente para detectar pantalla negra, cortes, frames ausentes, corrupción, movimiento incorrecto o problemas de duración.
-10. Si hay defectos, el agente vuelve al proyecto editable, corrige en Headless, exporta y transfiere una nueva revisión; después repite A/B.
-11. Si todo es correcto, el agente entrega al usuario el vídeo final y el proyecto editable persistido en CodeLab.
+## Evidencia previa y aceptación pendiente
 
-## Inspección de requisitos y ciclo de corrección obligatorio
+Una exportación manual previa con el worker nativo de Render y el exportador real de Video Composer importó 20 fotogramas a 12 FPS y produjo un WebM de 115.027 bytes sin errores de página ni consola. El archivo quedó guardado en Neon como evidencia y se decodificó para obtener muestras.
 
-La inspección no consiste únicamente en comprobar que el MP4/WebM existe y se reproduce. El agente debe evaluar si **el contenido del vídeo cumple la petición concreta del usuario**. Antes de darlo por válido:
+Esta prueba confirma el generador real, pero no equivale a la aceptación del nuevo transporte A→B. La aceptación final requiere ejecutar codelab-ab-animation.yml y confirmar simultáneamente:
+- A restaura la revisión ADMIN correcta y mantiene PixelForge/Composer abiertos.
+- A genera el WebM con el Composer real.
+- B recibe todos los bloques, reconstruye el mismo SHA-256 y decodifica el archivo.
+- B publica el artefacto y termina.
+- A continúa in_progress después de terminar B y solo expira al llegar a su timeout.
 
-1. Volver a leer los requisitos originales y convertirlos en una lista de criterios verificables (sujeto/escena, acciones, orden, apariencia, movimiento, continuidad, duración, ritmo, encuadre, resolución y formato, según corresponda).
-2. Reproducir e inspeccionar visualmente el vídeo final, de principio a fin cuando su duración lo permita. Revisar también frames individuales o puntos de transición si hay dudas.
-3. Comparar el resultado con cada criterio y detectar omisiones, errores visuales, movimientos imposibles, elementos incoherentes o sin sentido, cortes, frames repetidos/ausentes, deformaciones, timing incorrecto y cualquier discrepancia con lo pedido.
-4. Si un criterio falla, **retener la entrega**. Identificar el origen del defecto y corregir el proyecto editable existente con Headless.
-5. Priorizar una reparación incremental: reabrir la última revisión válida en Headless y modificar solo las capas, frames, cels, objetos, parámetros o segmentos afectados. Conservar el trabajo correcto y la estructura existente; no descartar el proyecto ni regenerarlo completo sin necesidad.
-6. Validar en Headless la corrección y exportar una nueva revisión nativa. El agente, fuera de Headless, la transfiere al bridge y verifica que quedó persistida en CodeLab.
-7. Ejecutar de nuevo A/B sobre esa nueva revisión, recuperar el nuevo archivo final y repetir la inspección de requisitos. No reutilizar como entrega el vídeo anterior a la corrección.
-8. Entregar únicamente cuando todos los criterios aplicables estén satisfechos. Si una limitación real impide corregir o verificar, explicar exactamente qué queda pendiente y no presentar el vídeo como terminado.
-
-Headless permite editar el proyecto existente; por tanto, **un defecto no implica empezar de cero**. La reconstrucción completa queda como último recurso, cuando la reparación incremental no sea viable, o cuando el usuario la solicite expresamente.
-
-## Qué recibe el usuario
-
-- **Siempre:** el proyecto editable persistido en CodeLab, con confirmación de que se importó y se pudo leer de vuelta.
-- **Cuando pidió vídeo:** el archivo de vídeo final producido por A/B, no solamente un enlace a logs, un event_id, una captura o el estado success.
-- **GIF local:** solo se entrega si el usuario lo pidió expresamente. Un GIF local no sustituye el proyecto editable ni el vídeo final solicitado.
-
-Si el entorno de ejecución no permite recuperar el artefacto o el archivo de vídeo final, el agente debe declarar el bloqueo y no afirmar que entregó el vídeo. No basta con enlazar el run de GitHub ni el comentario de resultado de B.
-
-## Límites y seguridad
-
-- No ejecutar procesamiento pesado de vídeo en el servicio Render.
-- No usar A/B para tareas normales de navegador, edición, importación de ZIP o persistencia.
-- No iniciar más de una B para el mismo trabajo.
-- No convertir el buzón A/B en una segunda cola general.
-- No declarar un vídeo correcto sin inspección visual del archivo final.
-- No incluir contraseñas, tokens ni secretos en inputs, logs o artefactos.
-- No pasar credenciales del intermediario ni de Neon al Headless del agente.
-
-## Pruebas y aceptación
-
-Las pruebas de contrato/CI validan el código de los workflows, pero no demuestran por sí solas que un vídeo real se haya generado y entregado. La aceptación real exige archivo de vídeo final presente y recuperable, correspondencia con proyecto/revisión, reproducción comprobada, inspección visual y entrega al usuario.
-
-## Archivos relacionados
-
-- `scripts/codelab-session-host.mjs` — host A y captura Playwright.
-- `scripts/codelab-session-request.mjs` — envío de una petición a la sesión A.
-- `scripts/codelab-b-a-context-cycle.mjs` — ciclo de animación/captura usado por B.
-- `docs/agent-ai-bridge-policy.md` — política general de ejecución, aislamiento y entrega.
-- `docs/inline-artifact-bridge.md` — transporte del proyecto editable; separado del archivo de vídeo final.
+Un run verde, un comentario de estado, un event_id o una grabación de pantalla no sustituyen el WebM recibido y verificado. No se debe declarar entregado el vídeo hasta que el artefacto de B exista y pase las comprobaciones.
