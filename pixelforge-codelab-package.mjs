@@ -340,6 +340,11 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
     }
   }
 
+  for (const section of SCENE_SECTIONS) {
+    if (project.drawingModel?.sceneSections?.[section.key]) {
+      delete project.drawingModel.sceneSections[section.key].workspace;
+    }
+  }
   delete project.animation;
   if (project.drawingModel?.referenceCenter) {
     project.drawingModel.referenceCenter.entries = project.drawingModel.referenceCenter.entries.filter(entry => !entry?.parts?.length);
