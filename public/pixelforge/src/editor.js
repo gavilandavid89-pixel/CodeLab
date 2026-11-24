@@ -811,17 +811,50 @@ function captureAnimationFrame() {
   if (!animation) return;
   syncAnimationLayerStack();
   const index = animation.activeFrameIndex;
-  for (const layer of doc.layers) animation.setLayerPixels(index, layer.id, layer.pixels);
+  for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
+    const layer = doc.layers[layerIndex];
+    animation.setLayerPixels(index, layer.id, layer.pixels);
+    animation.setLayerMetadata(index, layer.id, {
+      ...layer,
+      parentFrameId: animationFrameId(index), index: layerIndex + 1,
+      id: layer.id, name: layer.name,
+    });
+  }
 }
 function applyAnimationFramePixels(index) {
   if (!animation) return;
   const frameId = animationFrameId(index);
   const previousRevision = doc.revision, previousSaveVersion = doc.saveVersion;
   const replacements = doc.layers.map(layer => ({ layerId: layer.id, pixels: animation.getLayerPixels(index, layer.id) }));
+  const frameLayerMetadata = doc.layers.map((layer, layerIndex) => animation.getLayerMetadata(index, layer.id) || { id: layer.id, index: layerIndex + 1 });
   const locks = doc.layers.map(layer => [layer, layer.locked]);
   try {
     for (const [layer] of locks) layer.locked = false;
     doc.replaceLayerPixelsBatch(replacements);
+    for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
+      const layer = doc.layers[layerIndex], metadata = frameLayerMetadata[layerIndex];
+      if (!metadata) continue;
+      layer.name = String(metadata.name || layer.name).slice(0, 180);
+      layer.x = Number.isFinite(Number(metadata.x)) ? Number(metadata.x) : 0;
+      layer.y = Number.isFinite(Number(metadata.y)) ? Number(metadata.y) : 0;
+      layer.scaleX = Number.isFinite(Number(metadata.scaleX)) ? Number(metadata.scaleX) : 1;
+      layer.scaleY = Number.isFinite(Number(metadata.scaleY)) ? Number(metadata.scaleY) : 1;
+      layer.rotation = Number.isFinite(Number(metadata.rotation)) ? Number(metadata.rotation) : 0;
+      layer.angle = metadata.angle ?? 0;
+      layer.opacity = Number.isFinite(Number(metadata.opacity)) ? Math.max(0, Math.min(1, Number(metadata.opacity))) : 1;
+      layer.visible = metadata.visible !== false;
+      layer.locked = metadata.locked === true;
+      layer.blendMode = String(metadata.blendMode || 'normal');
+      layer.blur = metadata.blur ?? 0;
+      layer.brightness = metadata.brightness ?? 0;
+      layer.contrast = metadata.contrast ?? 0;
+      layer.saturation = metadata.saturation ?? 0;
+      layer.mask = structuredClone(metadata.mask ?? 'inexistente');
+      layer.clipping = structuredClone(metadata.clipping ?? 'inexistente');
+      layer.references = structuredClone(metadata.references || []);
+      layer.assets = structuredClone(metadata.assets || []);
+      layer.metadata = structuredClone(metadata.metadata || {});
+    }
   } finally {
     for (const [layer, locked] of locks) layer.locked = locked;
   }
