@@ -37,11 +37,12 @@ test('reference center remains source of truth after editor is cleared', () => {
     layerName: 'Body restored',
   });
   assert.equal(restored.ok, true);
-  assert.equal(runtime.sandbox.layers.length, 2);
-  assert.equal(runtime.sandbox.layers.find(layer => layer.name === 'Body restored').pixels.some(Boolean), true);
+  assert.equal(runtime.sandbox.layers.length, 1);
+  assert.equal(runtime.sandbox.layers[0].id, runtime.sandbox.activeLayerId);
+  assert.equal(runtime.sandbox.layers[0].pixels.some(Boolean), true);
 });
 
-test('copying a reference part creates an isolated editable layer without changing the canvas or master reference', () => {
+test('copying a reference part replaces only the active layer pixels and preserves the master reference', () => {
   const runtime = makeRuntime();
   const packaged = runtime.execute({ name: 'drawing.reference.package_current' });
   assert.equal(packaged.ok, true);
@@ -54,26 +55,22 @@ test('copying a reference part creates an isolated editable layer without changi
   const masterPartPixels = masterBefore.result.reference.parts.find(part => part.name === 'Body').pixels;
   assert.equal(typeof masterPartPixels, 'string');
 
-  // Existing editor content must survive the copy as a separate layer.
+  // Copying replaces pixels in the selected layer without creating or deleting layers.
   assert.equal(runtime.execute({
     name: 'canvas.draw_line',
     x0: 1, y0: 12, x1: 6, y1: 12, color: '#00AAFF', size: 1,
   }).ok, true);
-  const existingLayer = runtime.sandbox.layers[0];
-  const existingPixelsBefore = new Uint8Array(existingLayer.pixels);
+  const activeLayerId = runtime.sandbox.activeLayerId;
 
   const copied = runtime.execute({
     name: 'drawing.reference.copy_part',
     referenceId: packaged.result.referenceId,
     partName: 'Body',
-    layerName: 'Body copy',
   });
   assert.equal(copied.ok, true);
-  assert.equal(runtime.sandbox.layers.length, 2);
-  assert.deepEqual(runtime.sandbox.layers[0].pixels, existingPixelsBefore);
-
-  const copiedLayer = runtime.sandbox.layers.find(layer => layer.name === 'Body copy');
-  assert.ok(copiedLayer);
+  assert.equal(runtime.sandbox.layers.length, 1);
+  assert.equal(runtime.sandbox.activeLayerId, activeLayerId);
+  const copiedLayer = runtime.sandbox.layers[0];
   assert.deepEqual(copiedLayer.pixels, Uint8Array.from(atob(masterPartPixels), char => char.charCodeAt(0)));
   assert.equal(Buffer.from(copiedLayer.pixels).some(Boolean), true);
 
