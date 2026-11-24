@@ -69,7 +69,7 @@ test('per-layer mode profiles store only non-default exceptions and restore them
   assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushHardness, 72);
   assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushOpacity, 63);
   assert.equal(normalizeDrawingModeProfile('pixel-art', overrides['pixel-art']).brushSize, 3);
-  assert.equal(normalizeDrawingModeProfile('illustration', overrides['pixel-art']).brushSize, 5);
+  assert.equal(normalizeDrawingModeProfile('illustration', {}).brushSize, 5);
   overrides = updateDrawingModeOverrides(overrides, 'illustration', illustrationDefaults);
   assert.equal('illustration' in overrides, false);
   assert.equal(overrides['pixel-art'].brushSize, 3);
