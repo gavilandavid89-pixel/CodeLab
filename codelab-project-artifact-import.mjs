@@ -523,6 +523,7 @@ export async function importCodeLabArtifact(pool, {
       artifactId: artifact.artifact_id,
       editorId: request.editor_id,
       projectId,
+      targetWorkspaceId: destinationWorkspaceId,
       contentSha256: contentSha,
       sourceSha256: actualSha,
       installedResources: installation.installed,
