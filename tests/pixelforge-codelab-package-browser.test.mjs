@@ -122,6 +122,36 @@ test('browser package export serializes live editor workspaces once and rehydrat
   }
 });
 
+test('browser package export uses the active top-level section when its registry entry is omitted', async () => {
+  const project = fixture();
+  const keys = ['environment', 'effects', 'details', 'elements', 'objects'];
+  const parentWorkspace = structuredClone(project);
+  const workspaces = {};
+  for (const key of keys) {
+    const workspace = structuredClone(project.drawingModel.sceneSections[key].workspace);
+    if (key !== 'effects') workspaces[key] = workspace;
+    delete parentWorkspace.drawingModel.sceneSections[key].workspace;
+    delete project.drawingModel.sceneSections[key].workspace;
+  }
+  const activeEffects = structuredClone(project.drawingModel.sceneSections.effects?.workspace || fixture().drawingModel.sceneSections.effects.workspace);
+  Object.assign(project, activeEffects);
+  project.id = 'browser-package-active-effects';
+  project.drawingModel = {
+    ...(parentWorkspace.drawingModel || {}),
+    sceneSections: parentWorkspace.drawingModel.sceneSections,
+    sceneWorkspaceState: { version: 1, activeSection: 'effects', parentWorkspace, workspaces },
+  };
+
+  const exported = await exportPixelForgeCodeLabPackage(project);
+  const imported = await importPixelForgeCodeLabPackage(exported.blob);
+  const restored = readSceneWorkspaceState(imported.project.drawingModel);
+  assert.equal(restored.activeSection, 'effects');
+  assert.equal(restored.workspaces.effects.name, 'effects workspace');
+  assert.equal(restored.workspaces.effects.width, 4);
+  assert.equal(restored.workspaces.effects.height, 4);
+  assert.equal(restored.workspaces.effects.drawingModel?.sceneWorkspaceState, undefined);
+});
+
 test('browser import preserves package resources and scene metadata through native save and a second export', async () => {
   const first = await exportPixelForgeCodeLabPackage(fixture());
   const imported = await importPixelForgeCodeLabPackage(first.blob);
