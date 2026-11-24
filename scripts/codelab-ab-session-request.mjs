@@ -138,11 +138,16 @@ try {
     const sampleTimes = [0, duration * 0.25, duration * 0.5, duration * 0.75, Math.max(0, duration - 0.04)];
     let decodedSamples = 0;
     for (const time of sampleTimes) {
-      video.currentTime = time;
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('video_seek_timeout')), 8000);
-        video.addEventListener('seeked', () => { clearTimeout(timer); resolve(); }, { once: true });
-      });
+      if (time > 0.02) {
+        const seeked = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('video_seek_timeout')), 8000);
+          video.addEventListener('seeked', () => { clearTimeout(timer); resolve(); }, { once: true });
+        });
+        video.currentTime = time;
+        await seeked;
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       if (video.readyState >= 2) decodedSamples++;
     }
     return {
