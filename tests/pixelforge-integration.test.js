@@ -1133,6 +1133,107 @@ async function main() {
     await demoPage.close();
     await accountContext.close();
 
+    if (testSessionPool) {
+      // Exercise the backend importer called by the agent's
+      // codelab_project_import command, then verify native list/open/save/reopen.
+      const { exportPixelForgeCodeLabPackage } = await import('../public/pixelforge/src/codelab-package.js');
+      const { createOrbitalShowcase } = await import('../public/pixelforge/src/showcase-animation.mjs');
+      const { importCodeLabArtifact } = await import('../codelab-project-artifact-import.mjs');
+      const showcase = createOrbitalShowcase();
+      const agentProject = showcase.doc.toJSON();
+      const agentProjectId = 'agent-import-e2e-' + sessionId.slice(0, 10);
+      const importRequestId = 'agent-import-e2e-' + sessionId.slice(0, 16);
+      agentProject.id = agentProjectId;
+      agentProject.name = 'Agent ZIP v2 native import';
+      agentProject.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
+      agentProject.drawingModel ||= { version: 2, palette: {}, objects: [] };
+      const exportedAgentPackage = await exportPixelForgeCodeLabPackage(agentProject);
+      const agentArtifactBytes = Buffer.from(await exportedAgentPackage.blob.arrayBuffer());
+      await testSessionPool.query(
+        `INSERT INTO public.codelab_project_import_requests
+          (import_request_id, workspace_id, editor_id, source_project_id, manifest, status, confirmation_required, confirmation_received, work_score)
+         VALUES ($1,$2,'pixelforge',$3,'{}'::jsonb,'queued',false,false,0)`,
+        [importRequestId, coreWorkspace.workspaceId, agentProjectId]
+      );
+      try {
+        const agentImport = await importCodeLabArtifact(testSessionPool, {
+          importRequestId,
+          workspaceId: coreWorkspace.workspaceId,
+          pixelForgeWorkspaceId: coreWorkspace.workspaceId,
+          artifactBuffer: agentArtifactBytes,
+          artifactFilename: exportedAgentPackage.filename,
+          artifactContentType: 'application/zip'
+        });
+        assert.equal(agentImport.status, 'succeeded', 'agent ZIP v2 import should complete through importCodeLabArtifact');
+        assert.equal(agentImport.reloadedFromPersistence, true, 'agent import must verify its PostgreSQL round-trip');
+        assert.equal(agentImport.editorId, 'pixelforge');
+        assert.equal(agentImport.projectId, agentProjectId);
+
+        const agentList = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
+        const agentMetadata = agentList.projects.find(project => project.id === agentProjectId);
+        assert.ok(agentMetadata, 'agent-imported project must appear in the native PixelForge selector list');
+        const agentOpenResponse = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), { headers: authHeaders });
+        assert.equal(agentOpenResponse.status, 200, 'agent-imported project must open through the native PixelForge project API');
+        const agentOpened = (await agentOpenResponse.json()).project;
+        assert.equal(agentOpened.serverRevision, 1, 'new agent imports must expose the initial server revision in project JSON');
+        assert.equal(agentOpened.animation.frames.length, agentProject.animation.frames.length,
+          'agent import must retain the complete editable animation timeline');
+
+        const editedAgentProject = structuredClone(agentOpened);
+        editedAgentProject.name = 'Agent ZIP v2 native import edited';
+        editedAgentProject.revision = Number(editedAgentProject.revision || 0) + 1;
+        editedAgentProject.saveVersion = Number(editedAgentProject.saveVersion || 0) + 1;
+        const firstLayerPixels = Buffer.from(editedAgentProject.layers[0].pixels, 'base64');
+        firstLayerPixels[0] = (firstLayerPixels[0] + 1) & 0xff;
+        editedAgentProject.layers[0].pixels = firstLayerPixels.toString('base64');
+        const agentSaveResponse = await fetch(base + '/api/pixelforge/projects', {
+          method: 'PUT',
+          headers: { ...authHeaders, 'content-type': 'application/json' },
+          body: JSON.stringify({ project: editedAgentProject })
+        });
+        assert.equal(agentSaveResponse.status, 200,
+          'the first normal editor save after agent import must not conflict with the imported revision');
+        assert.equal((await agentSaveResponse.json()).project.serverRevision, 2,
+          'saving an edited agent import must advance the server revision exactly once');
+        const agentReopenResponse = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), { headers: authHeaders });
+        assert.equal(agentReopenResponse.status, 200, 'the edited agent project must reopen from native persistence');
+        const agentReopened = (await agentReopenResponse.json()).project;
+        assert.equal(agentReopened.name, editedAgentProject.name, 'edited project metadata must survive a second open');
+        assert.equal(agentReopened.serverRevision, 2, 'the second open must return the saved server revision');
+        assert.deepEqual(
+          Buffer.from(agentReopened.layers[0].pixels, 'base64'),
+          firstLayerPixels,
+          'edited raster pixels must survive the save/reopen round-trip'
+        );
+        assert.equal(agentReopened.animation.frames.length, agentProject.animation.frames.length,
+          'the animation timeline must survive the save/reopen round-trip');
+      } finally {
+        await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), {
+          method: 'DELETE', headers: authHeaders
+        }).catch(() => {});
+        await testSessionPool.query(
+          "DELETE FROM public.codelab_project_imports WHERE result->>'importRequestId'=$1",
+          [importRequestId]
+        ).catch(() => {});
+        await testSessionPool.query(
+          'DELETE FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2',
+          [coreWorkspace.workspaceId, agentProjectId]
+        ).catch(() => {});
+        await testSessionPool.query(
+          'DELETE FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2',
+          [coreWorkspace.workspaceId, agentProjectId]
+        ).catch(() => {});
+        await testSessionPool.query(
+          'DELETE FROM public.codelab_project_artifacts WHERE import_request_id=$1',
+          [importRequestId]
+        ).catch(() => {});
+        await testSessionPool.query(
+          'DELETE FROM public.codelab_project_import_requests WHERE import_request_id=$1',
+          [importRequestId]
+        ).catch(() => {});
+      }
+    }
+
     // Reaching the per-account project cap must never silently evict an older project.
     const capHeaders = { ...authHeaders, 'x-forwarded-for': '198.51.100.78' };
     const status = await (await fetch(base + '/api/ai/status', { headers: capHeaders })).json();
