@@ -3122,11 +3122,9 @@ async function main() {
     metadata: { pid: process.pid, hostname: os.hostname(), source: 'agent-bridge-worker' }
   });
   await connectCommandWakeListener();
-  if (String(process.env.PIXELFORGE_GUEST_MODE || 'false').toLowerCase() === 'false') {
-    pixelForgeWorkspaceId = workspaceId;
-  } else {
-    await migrateAdminPixelForgeProjectsToGuest();
-  }
+  // Personal deployment: ADMIN is the sole PixelForge owner and destination.
+  // Never migrate projects out of ADMIN into the temporary guest workspace.
+  pixelForgeWorkspaceId = workspaceId;
   console.log('[CodeLab Native Bridge] online for mailbox workspace', workspaceId, 'and PixelForge workspace', pixelForgeWorkspaceId);
   while (!stopping) {
     try {
