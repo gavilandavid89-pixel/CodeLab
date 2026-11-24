@@ -34,6 +34,8 @@ jobs:
           node-version: '22.17.0'
       - name: Install B Chromium decoder runtime
         run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Check A/B session contract tests
+        run: node --test tests/codelab-ab-session-contract.test.mjs
       - name: Start independent A workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 120); do
-            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100&sort=created&direction=desc" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | last | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
+            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100&sort=created&direction=desc" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | first | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
             session_id="$(printf '%s' "$candidate" | cut -f1)"
             run_id="$(printf '%s' "$candidate" | cut -f2)"
             if [ "$session_id" = "$CODELAB_SESSION_ID" ] && [ -n "$run_id" ]; then
