@@ -72,6 +72,19 @@ No crear polling permanente, bucles de pings ni despertares periódicos. Un ping
 - Corregir y repetir los pasos necesarios hasta alcanzar el objetivo o identificar un bloqueo no resoluble.
 - Para la entrega, comprobar la cantidad de frames, FPS, duración, loop, archivo exportado y reproducción visual real, además de completar la revisión visual obligatoria. La existencia del archivo por sí sola no demuestra que la animación esté bien.
 
+## 5.1. Reparación incremental del proyecto existente
+
+Cuando la inspección detecte defectos, el agente debe intentar corregir el proyecto que ya creó, no descartarlo automáticamente. Headless puede reabrir la última versión editable y aplicar cambios sobre frames, cels, capas, objetos, parámetros y timing existentes.
+
+- Localizar el defecto y determinar qué elementos/frames lo causan.
+- Conservar intactas las partes que ya cumplen el objetivo.
+- Modificar solo los elementos afectados siempre que sea posible.
+- Validar el cambio y revisar los frames vecinos para evitar romper continuidad.
+- Exportar una nueva revisión y repetir la inspección visual.
+- Si la tarea incluye vídeo final, volver a procesar A/B desde la nueva revisión y revisar el nuevo archivo antes de entregarlo.
+
+No empezar desde cero como reacción predeterminada a un error. Hacerlo solo si la estructura está irrecuperablemente dañada, la reparación incremental no es técnicamente viable o el usuario lo pide. Si Headless no puede resolver el defecto, comunicar el bloqueo con precisión en lugar de simular una corrección.
+
 ## 6. Comunicación con el usuario: solo resultado final
 
 Durante la ejecución normal, el agente **no debe enviar informes de progreso, mensajes de "sigo trabajando", solicitudes de confirmación por cada paso ni actualizaciones intermedias**.
