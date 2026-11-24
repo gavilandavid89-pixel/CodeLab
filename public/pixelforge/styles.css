@@ -280,4 +280,4 @@
 .drawing-mode-control select{max-width:126px;padding:3px 5px;border:1px solid #414555;border-radius:5px;background:#171922;color:#e8eaf2;font:inherit}
 .drawing-mode-control select:disabled{opacity:.55}
 @media(max-width:760px){.drawing-mode-control{gap:3px;padding:3px 5px;font-size:8px}.drawing-mode-control select{max-width:88px;padding:2px;font-size:9px}.context-right{gap:4px}}
-@media(max-width:420px){.drawing-mode-control{font-size:0;gap:2px}.drawing-mode-control select{max-width:82px;font-size:9px}}
+@media(max-width:420px){.drawing-mode-control{font-size:0;gap:2px;padding:2px 3px}.drawing-mode-control select{width:58px;max-width:58px;padding:2px;font-size:8px}}
