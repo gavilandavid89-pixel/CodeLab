@@ -8,11 +8,13 @@ import chromiumBinary from '@sparticuz/chromium';
 const repository = process.env.GITHUB_REPOSITORY || 'gavilandavid89-pixel/CodeLab';
 const issueNumber = Number(process.env.CODELAB_SESSION_ISSUE || 492);
 const sessionId = String(process.env.CODELAB_SESSION_ID || '');
+const requestedProjectId = String(process.env.CODELAB_REQUESTED_PROJECT_ID || 'soldier-walk-60f-20261124').trim();
 const timeoutMs = Math.max(30000, Math.min(30 * 60 * 1000, Number(process.env.CODELAB_SESSION_TIMEOUT_MS || 20 * 60 * 1000)));
 const outputDir = path.resolve(process.env.CODELAB_AB_OUTPUT_DIR || 'artifacts/codelab-ab-video');
 const requestId = randomUUID();
 
 if (!sessionId) throw new Error('CODELAB_SESSION_ID is required; B cannot start or replace A.');
+if (!/^[A-Za-z0-9_-]{1,100}$/.test(requestedProjectId)) throw new Error('CODELAB_REQUESTED_PROJECT_ID is invalid.');
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE must be a positive issue number.');
 
 function gh(args) {
@@ -53,8 +55,8 @@ while (Date.now() - startedAt < timeoutMs) {
   await new Promise(resolve => setTimeout(resolve, 2500));
 }
 if (!ready) throw new Error('A session was not READY before B timeout.');
-if (ready.projectId !== 'soldier-walk-60f-20261124' || ready.workspaceId !== 'ws_local_admin') {
-  throw new Error('A READY metadata does not identify the expected ADMIN Soldier Walk project.');
+if (ready.projectId !== requestedProjectId || ready.workspaceId !== 'ws_local_admin') {
+  throw new Error('A READY session is not pinned to the ADMIN project requested by B. Start A with the same project_id input.');
 }
 if (!Number.isInteger(ready.serverRevision) || !/^[a-f0-9]{64}$/i.test(ready.contentSha256 || '') || ready.frameCount < 2) {
   throw new Error('A READY metadata is missing the pinned project revision/hash/timeline.');
@@ -66,7 +68,7 @@ await postComment('[CodeLab B Request]\n' + JSON.stringify({
   serverRevision: ready.serverRevision, contentSha256: ready.contentSha256,
   requestedAt: new Date().toISOString()
 }));
-console.log('[B] Requested A to export the pinned ADMIN project:', JSON.stringify({
+console.log('[B] Requested A to export the selected ADMIN project:', JSON.stringify({
   sessionId, requestId, projectId: ready.projectId, serverRevision: ready.serverRevision
 }));
 
