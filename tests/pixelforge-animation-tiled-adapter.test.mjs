@@ -17,7 +17,7 @@ test('tile-backed animation adapter migrates v1 frames and preserves frame/layer
   const tiled = await TiledAnimationDocument.fromAnimation(animation, { tileSize: 32 });
   assert.equal(tiled.frameCount, 1);
   assert.equal(tiled.getFrame(0).durationMs, 83);
-  assert.deepEqual(tiled.readRegion(0, 'ink', { x: 68, y: 68, width: 4, height: 4 }).slice(3 * 4, 3 * 4 + 4),
+  assert.deepEqual(tiled.readRegion(0, 'ink', { x: 68, y: 68, width: 4, height: 4 }).slice((2 * 4 + 2) * 4, (2 * 4 + 2) * 4 + 4),
     new Uint8ClampedArray([31, 64, 127, 255]));
   const manifest = await tiled.toManifest();
   assert.equal(manifest.format, 'pixelforge-tiled-animation');
