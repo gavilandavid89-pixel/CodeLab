@@ -26,10 +26,13 @@ Entorno aislado del agente (IA que recibió la orden del usuario)
   ├─ inicia el runtime Headless
   ├─ crea/abre el proyecto nativo
   ├─ anima y edita con control directo del runtime
-  └─ exporta el .codelab
+  └─ exporta el archivo nativo .codelab
           │
           ▼
-HTTPS inline bridge
+El Headless termina aquí
+
+Agente IA (fuera del Headless)
+  └─ toma el archivo exportado y lo transfiere por HTTPS inline bridge
           │
           ▼
 CodeLab → Neon staging → worker
@@ -47,7 +50,7 @@ Reglas obligatorias:
 - Al comenzar cada nueva sesión/tarea en la que necesite editar o animar, el agente comprueba si dispone de una instalación utilizable de Headless en su entorno actual.
 - Si no existe, está incompleta, no corresponde al artefacto requerido o el entorno fue recreado, descarga el artefacto vigente, lo extrae e instala allí sus dependencias.
 - Inicia y utiliza esa instalación durante la tarea. No debe limitarse a inspeccionar el artefacto, importar fuentes desde el checkout, delegar la edición normal a CI ni afirmar que está instalado porque GitHub Actions lo empaquetó.
-- Si el entorno es efímero, trabaja en él igualmente. Antes de que desaparezca, exporta el proyecto `.codelab` y transfiere el resultado por el bridge HTTPS; el proyecto persistido en CodeLab es lo que permite continuar después.
+- Si el entorno es efímero, trabaja en él igualmente. Antes de que desaparezca, exporta el proyecto `.codelab`. Después, el agente, fuera del Headless, recoge el archivo y lo transfiere por el intermediario HTTPS; el proyecto persistido en CodeLab es lo que permite continuar después.
 - En una sesión posterior o tras perderse el entorno, vuelve a descargar/instalar Headless. La instalación puede repetirse; no se exige conservar el runtime entre sesiones.
 - Si la plataforma no proporciona ningún entorno donde el agente pueda ejecutar procesos e instalar dependencias, debe informar esa limitación concreta y no simular que ejecutó Headless. Debe solicitar/habilitar el entorno de ejecución necesario; la falta de persistencia por sí sola nunca justifica saltarse el paso.
 
@@ -94,8 +97,9 @@ Cuando el usuario entrega una orden al agente, el agente debe ser capaz de reali
 4. realizar las operaciones de edición/animación necesarias;
 5. validar el resultado;
 6. exportar el `.codelab`;
-7. transferirlo mediante el bridge;
-8. comprobar el resultado en el workspace destino.
+7. salir del contexto Headless y, como agente IA, tomar el archivo exportado;
+8. transferirlo mediante el intermediario HTTPS;
+9. comprobar el resultado en el workspace destino.
 
 El agente no debe considerar que una prueba de CI, por sí sola, equivale a haber ejecutado el Headless como agente IA.
 
@@ -112,15 +116,15 @@ El Headless del agente **no debe recibir**:
 - credenciales de Neon Object Storage/S3;
 - secretos internos de CodeLab.
 
-La transferencia continúa usando el intermediario HTTPS inline documentado en `docs/inline-artifact-bridge.md`.
+**El Headless no participa en la transferencia.** No conoce el intermediario, no hace llamadas de red al sistema CodeLab y no recibe tokens ni credenciales. La transferencia HTTPS inline es una acción posterior realizada por el agente IA, que toma el archivo exportado desde su entorno y lo envía siguiendo `docs/inline-artifact-bridge.md`.
 
 ## Transferencia
 
-Cuando el agente termina una edición:
+Cuando el Headless termina una edición, su única salida es el archivo nativo. A continuación, el agente IA (no el Headless):
 
-1. exporta el proyecto nativo `.codelab`;
+1. recoge el proyecto nativo `.codelab` exportado;
 2. calcula tamaño y SHA-256;
-3. inicia el transporte inline;
+3. inicia el transporte inline desde fuera del Headless;
 4. envía manifiesto y chunks binarios;
 5. confirma el commit;
 6. espera el resultado real de la orden;
@@ -150,3 +154,8 @@ La validación del flujo de persistencia debe seguir usando PostgreSQL efímero.
 - `docs/inline-artifact-bridge.md`: transporte Headless → CodeLab.
 - `docs/agent-ai-bridge-policy.md`: política del agente y obtención del artefacto.
 - `docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md`: arquitectura de comunicación y persistencia.
+
+
+## Regla de salida visual: GIF solo bajo petición explícita
+
+El GIF que pueda generarse localmente en el entorno Headless es una vista previa opcional, no la entrega por defecto. **Solo entregar un GIF local si el usuario pidió expresamente un GIF.** Si no lo pidió, el agente debe exportar el proyecto editable, tomarlo fuera del Headless y completar la transferencia al intermediario para persistirlo en CodeLab. Pedir un vídeo final no equivale a pedir un GIF; para vídeo, seguir `docs/VIDEO-PROCESSING-AB.md`.
