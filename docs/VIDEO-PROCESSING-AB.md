@@ -89,3 +89,14 @@ La prueba integrada se ejecutó el 2026-11-24 y pasó todos los puntos de acepta
 La aceptación del transporte A→B y del flujo completo está superada. El artefacto de B incluye el WebM y verification.json.
 
 Un run verde, un comentario de estado, un event_id o una grabación de pantalla no sustituyen el WebM recibido y verificado.
+
+## Uso con el catálogo PixelForge del repositorio
+
+Para utilizar un proyecto que todavía no está en ADMIN, primero importarlo mediante `projects/animation-inbox/<slug>/project.codelab` y `.github/workflows/pixelforge-project-inbox.yml`. Esperar a que el worker complete la orden y comprobar que el proyecto aparece en PixelForge ADMIN; `queued` solo significa que el servidor aceptó la orden.
+
+El ID que se introduce en los inputs `project_id` de A y B es el ID interno de `project.json`, no el slug de la carpeta. Iniciar A con ese ID, esperar READY y ejecutar B con exactamente el mismo ID. B valida el ID/workspace/revisión fijados por A antes de solicitar el WebM.
+
+El inbox es externo a A/B: su workflow lee el repositorio y transfiere el paquete; A no lee GitHub ni el inbox, y B no importa proyectos ni genera animaciones. La copia maestra del repositorio no se borra. La copia ADMIN solo se elimina con confirmación explícita y cuando A ya no la necesite; WebM y evidencias permanecen independientes.
+
+Ver [guía del inbox](../projects/animation-inbox/README.md) y el [documento owner A/B](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md).
+
