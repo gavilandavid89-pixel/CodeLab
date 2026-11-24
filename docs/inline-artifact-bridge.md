@@ -249,3 +249,28 @@ La carpeta fuente del repositorio es la copia maestra y no se elimina. La import
 
 **Separación invariable:** el workflow de inbox es un importador de catálogo externo al sistema A/B. A no lee GitHub ni el repositorio; A solo ejecuta la web real y la operación concreta solicitada por B. B decide qué proyecto/operación pedir, envía la orden a A y recibe/verifica el WebM; B no genera ni anima.
 
+## 10. Inbox Git → importación de proyecto PixelForge en ADMIN
+
+El inbox `projects/animation-inbox/<slug>/project.codelab` es una entrada de catálogo que reutiliza este bridge; no es un modo nuevo de A/B ni una conexión directa desde PixelForge a la base de datos.
+
+El workflow `.github/workflows/pixelforge-project-inbox.yml`:
+1. Detecta carpetas de proyecto modificadas bajo el inbox o recibe un `project_slug` manual.
+2. Valida el slug, el ZIP y los archivos raíz `project.codelab-pixelforge`, `manifest.json` y `project.json`. El manifiesto debe declarar `format: codelab` y `editor: pixelforge`.
+3. Extrae el ID/nombre del proyecto y calcula el tamaño, los bloques y el SHA-256 del ZIP.
+4. Crea el artefacto mediante `POST /api/agent/bridge/artifacts`, con `artifact_kind: codelab_zip_upload`, `editor_id: pixelforge` y `target_workspace_id: ws_local_admin`.
+5. Envía bloques de 1 MiB mediante `PUT /api/agent/bridge/artifacts/:artifactId/:index` y confirma el paquete mediante `POST /api/agent/bridge/artifacts/:artifactId/commit`.
+6. El servidor valida el hash y encola la orden de importación. La respuesta `queued` solo indica que la orden fue aceptada; el worker debe completarla y el proyecto debe comprobarse en PixelForge ADMIN antes de iniciar A/B.
+
+El secreto `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` se utiliza en este workflow para autenticar la transferencia. No se entrega a A ni a B. El importador no exporta WebM, no opera la interfaz de PixelForge y no elige la tarea creativa.
+
+### Límites de responsabilidad y ciclo de vida
+
+- El repositorio conserva la copia maestra; el worker crea la copia de trabajo en ADMIN.
+- A no lee GitHub ni el inbox. A solo abre el proyecto ADMIN indicado y ejecuta la orden que recibe de B.
+- B elige el proyecto y la operación, solicita a A, recibe el WebM y lo verifica. B no anima ni codifica.
+- La importación no borra la fuente ni la copia ADMIN automáticamente.
+- La copia ADMIN se elimina desde PixelForge mediante Delete y confirmación explícita. Esperar a que la sesión A ya no necesite el proyecto; B puede terminar antes que A.
+- La limpieza confirmada elimina recursos y registros asociados de la copia ADMIN. El WebM y las evidencias de B se conservan por separado.
+
+La guía de uso está en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md). El documento owner de A/B es [CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md).
+
