@@ -174,7 +174,7 @@ function buildSceneSections(project, files) {
       .filter(item => explicitSectionMatch(item, section.key)).map(item => String(item.id));
     const data = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
       ? structuredClone(drawing.sceneSections[section.key]) : {};
-    let workspace = drawing.sceneWorkspaceState?.workspaces?.[section.key] ?? data.workspace ?? null;
+    let workspace = drawing.sceneWorkspaceState?.workspaces?.[section.key] ?? (drawing.sceneWorkspaceState?.activeSection === section.key ? project : null) ?? data.workspace ?? null;
     if (workspace !== null) {
       workspace = structuredClone(workspace);
       if (!workspace.animation) {
