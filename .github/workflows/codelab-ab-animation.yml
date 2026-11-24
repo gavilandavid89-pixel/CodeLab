@@ -46,6 +46,7 @@ jobs:
           set -euo pipefail
           session_id="ab-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "CODELAB_SESSION_ID=$session_id" >> "$GITHUB_ENV"
+          echo "CODELAB_A_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           gh workflow run ".github/workflows/codelab-independent-session-a.yml" \
             --repo "$GITHUB_REPOSITORY" \
             -f issue_number=492 \
@@ -60,13 +61,15 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 120); do
-            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100&sort=created&direction=desc" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | first | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
+            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100&since=$CODELAB_A_STARTED_AT" | jq -r --arg expected "$CODELAB_SESSION_ID" '[.[] | select(.body | startswith("[CodeLab A Ready]\n")) | {created_at, payload: (.body | split("\n")[1] | fromjson)} | select(.payload.sessionId == $expected)] | last | [.payload.sessionId, (.payload.runId|tostring), .created_at] | @tsv' 2>/dev/null || true)"
             session_id="$(printf '%s' "$candidate" | cut -f1)"
             run_id="$(printf '%s' "$candidate" | cut -f2)"
-            if [ "$session_id" = "$CODELAB_SESSION_ID" ] && [ -n "$run_id" ]; then
+            ready_since="$(printf '%s' "$candidate" | cut -f3)"
+            if [ "$session_id" = "$CODELAB_SESSION_ID" ] && [ -n "$run_id" ] && [ -n "$ready_since" ]; then
               status="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
               if [ "$status" = "in_progress" ]; then
                 echo "CODELAB_A_RUN_ID=$run_id" >> "$GITHUB_ENV"
+                echo "CODELAB_A_READY_SINCE=$ready_since" >> "$GITHUB_ENV"
                 echo "A READY: session=$session_id run=$run_id"
                 exit 0
               fi
@@ -81,6 +84,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
+          CODELAB_A_READY_SINCE: ${{ env.CODELAB_A_READY_SINCE }}
           CODELAB_SESSION_TIMEOUT_MS: "1200000"
           CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
         run: node scripts/codelab-ab-session-request.mjs
