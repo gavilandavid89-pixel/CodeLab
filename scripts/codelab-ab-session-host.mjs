@@ -12,6 +12,7 @@ const baseUrl = String(process.env.CODELAB_PUBLIC_URL || 'https://codelab-qedi.o
 const bridgeToken = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '');
 const maxMinutes = Math.max(1, Math.min(360, Number(process.env.CODELAB_SESSION_MINUTES || 360)));
 const pollMs = 2500;
+const sessionStartedAt = new Date().toISOString();
 
 if (!Number.isInteger(issueNumber) || issueNumber < 1) throw new Error('CODELAB_SESSION_ISSUE must be a positive issue number.');
 if (!bridgeToken) throw new Error('CODELAB_AGENT_BRIDGE_CONTROL_SECRET is required by A; it is never passed to B.');
@@ -34,7 +35,7 @@ function gh(args) {
   });
 }
 async function comments() {
-  return JSON.parse(await gh(['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`]));
+  return JSON.parse(await gh(['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100&since=${encodeURIComponent(sessionStartedAt)}`]));
 }
 async function postComment(body) {
   await gh(['api', '-X', 'POST', `repos/${repository}/issues/${issueNumber}/comments`, '-f', 'body=' + body]);
