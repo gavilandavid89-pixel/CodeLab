@@ -16,10 +16,6 @@ on:
   issue_comment:
     types: [created]
 
-concurrency:
-  group: codelab-video-processor
-  cancel-in-progress: false
-
 permissions:
   contents: read
   issues: write
