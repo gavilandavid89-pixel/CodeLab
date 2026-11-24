@@ -1,94 +1,104 @@
-name: CodeLab A/B temporary-session video verification
+name: CodeLab A/B real ADMIN Soldier Walk export
 
 on:
   workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: 'How long A remains alive after B finishes'
+        required: false
+        default: '30'
+        type: string
+      project_id:
+        description: 'Persisted ADMIN PixelForge project'
+        required: false
+        default: 'soldier-walk-60f-20261124'
+        type: string
 
 concurrency:
   group: codelab-video-processor
   cancel-in-progress: false
 
 permissions:
+  actions: write
   contents: read
   issues: write
 
 jobs:
-  a-and-b:
+  request-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Install Chromium
-        run: |
-          npm install --no-save --no-package-lock playwright
-          npx playwright install --with-deps chromium
-      - name: Start A temporary CodeLab session (30-minute maximum)
+          node-version: '22.17.0'
+      - name: Install B Chromium decoder runtime
+        run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Start independent A workflow
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          CODELAB_SESSION_ISSUE: "492"
-          CODELAB_SESSION_ID: independent-ab-${{ github.run_id }}-${{ github.run_attempt }}
-          CODELAB_SESSION_MINUTES: "30"
-          CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-ab-video
+          SESSION_MINUTES: ${{ inputs.session_minutes || '30' }}
+          PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
         run: |
-          mkdir -p "${{ runner.temp }}/codelab-ab-video"
-          node scripts/codelab-session-host.mjs > "${{ runner.temp }}/codelab-host.log" 2>&1 &
-          echo $! > "${{ runner.temp }}/codelab-host.pid"
-          for i in $(seq 1 600); do
-            if grep -q "\[CodeLab Session Ready\]" "${{ runner.temp }}/codelab-host.log" 2>/dev/null; then
-              echo "A is ready"
-              break
+          set -euo pipefail
+          session_id="ab-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "CODELAB_SESSION_ID=$session_id" >> "$GITHUB_ENV"
+          gh workflow run ".github/workflows/codelab-independent-session-a.yml" \
+            --repo "$GITHUB_REPOSITORY" \
+            -f issue_number=492 \
+            -f session_id="$session_id" \
+            -f minutes="$SESSION_MINUTES" \
+            -f project_id="$PROJECT_ID"
+          echo "Dispatched A session $session_id"
+      - name: Wait for A READY and confirm its workflow is live
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 120); do
+            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | last | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
+            session_id="$(printf '%s' "$candidate" | cut -f1)"
+            run_id="$(printf '%s' "$candidate" | cut -f2)"
+            if [ "$session_id" = "$CODELAB_SESSION_ID" ] && [ -n "$run_id" ]; then
+              status="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
+              if [ "$status" = "in_progress" ]; then
+                echo "CODELAB_A_RUN_ID=$run_id" >> "$GITHUB_ENV"
+                echo "A READY: session=$session_id run=$run_id"
+                exit 0
+              fi
             fi
-            sleep 1
+            echo "Waiting for A READY ($i/120)..."
+            sleep 5
           done
-          if ! grep -Fq "[CodeLab Session Ready]" "${{ runner.temp }}/codelab-host.log"; then
-            echo "A did not become ready within 10 minutes; host log follows:"
-            cat "${{ runner.temp }}/codelab-host.log" || true
-            exit 1
-          fi
-      - name: B sends animation request into A
+          echo "A did not become READY."
+          exit 1
+      - name: B requests the real Video Composer export and verifies the delivered file
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
-          CODELAB_SESSION_ID: independent-ab-${{ github.run_id }}-${{ github.run_attempt }}
-          CODELAB_SESSION_TIMEOUT_MS: "90000"
-          CODELAB_SESSION_REQUEST: >-
-            {"kind":"browser","start_path":"/pixelforge/index.html?createDemo=walk-crouch-24&capture=video","actions":[
-              {"type":"wait_for","selector":"#canvas","state":"visible","timeoutMs":30000},
-              {"type":"wait_for","selector":"#animation-frame-count","state":"visible","timeoutMs":30000},
-              {"type":"click","selector":"#animation-play","timeoutMs":30000},
-              {"type":"wait_for","selector":"#animation-frame-count","state":"visible","timeoutMs":10000},
-              {"type":"record_video","durationMs":5350},
-              {"type":"screenshot","fullPage":false}
-            ]}
-        run: node scripts/codelab-session-request.mjs
-      - name: Stop A cleanly after B returns
+          CODELAB_SESSION_TIMEOUT_MS: "1200000"
+          CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
+        run: node scripts/codelab-ab-session-request.mjs
+      - name: Verify A remains alive after B has finished
         if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          A_RUN_ID: ${{ env.CODELAB_A_RUN_ID }}
         run: |
-          if test -f "${{ runner.temp }}/codelab-host.pid"; then
-            kill -TERM "$(cat "${{ runner.temp }}/codelab-host.pid")" || true
-            for i in $(seq 1 20); do
-              if ! kill -0 "$(cat "${{ runner.temp }}/codelab-host.pid")" 2>/dev/null; then break; fi
-              sleep 1
-            done
-          fi
-          cat "${{ runner.temp }}/codelab-host.log" || true
-      - name: Inspect A/B evidence
-        if: always()
-        run: |
-          find "${{ runner.temp }}/codelab-ab-video" -maxdepth 2 -type f -printf '%p %s bytes\n' || true
-      - name: Upload A/B animation evidence
+          set -euo pipefail
+          test -n "$A_RUN_ID"
+          status="$(gh run view "$A_RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+          echo "A status after B: $status"
+          test "$status" = "in_progress"
+      - name: Upload the video received and verified by B
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codelab-ab-animation-evidence
-          path: |
-            ${{ runner.temp }}/codelab-ab-video
-            ${{ runner.temp }}/codelab-host.log
+          name: codelab-soldier-walk-webm-${{ github.run_id }}
+          path: ${{ runner.temp }}/codelab-ab-video
           if-no-files-found: warn
           retention-days: 14
