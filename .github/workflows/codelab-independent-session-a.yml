@@ -46,6 +46,7 @@ jobs:
         run: |
           node --check scripts/codelab-ab-session-host.mjs
           node --check pixelforge-video-composer-export.mjs
+          node --test tests/codelab-ab-session-contract.test.mjs
       - name: Keep ADMIN-backed CodeLab and Video Composer session alive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
