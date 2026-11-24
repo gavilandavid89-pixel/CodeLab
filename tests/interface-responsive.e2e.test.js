@@ -77,8 +77,13 @@ const DESIGN_NAME = 'UI móvil diseño ' + suffix;
     await page.locator('#mobileDropdown').waitFor({ state: 'visible' });
     await page.locator('#mobileDropdown button[onclick*="toggleAiPanel"]').click();
     await page.locator('#aiDrawer').waitFor({ state: 'visible' });
-    await page.locator('#aiPromptInput').fill('Crea una tarjeta accesible');
-    assert.equal(await page.locator('#aiPromptInput').inputValue(), 'Crea una tarjeta accesible');
+    const aiPrompt = page.locator('#aiPromptInput');
+    await aiPrompt.waitFor({ state: 'visible' });
+    await aiPrompt.click();
+    await aiPrompt.fill('Crea una tarjeta accesible');
+    await page.waitForFunction(() =>
+      document.getElementById('aiPromptInput')?.value === 'Crea una tarjeta accesible', null, { timeout: 5000 });
+    assert.equal(await aiPrompt.inputValue(), 'Crea una tarjeta accesible');
     await page.locator('#aiSendBtn').waitFor({ state: 'visible' });
     await page.evaluate(() => {
       if (typeof toggleAiPanel === 'function') toggleAiPanel();
