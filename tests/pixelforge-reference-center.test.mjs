@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
+import { copyReferencePixelsToActiveFrameLayer } from '../public/pixelforge/src/drawing-intelligence.js';
 
 function makeRuntime() {
   const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Reference package test' });
@@ -88,4 +89,67 @@ test('copying a reference part creates an isolated editable layer without changi
   assert.equal(masterAfter.ok, true);
   assert.equal(masterAfter.result.reference.immutableSnapshot, true);
   assert.equal(masterAfter.result.reference.parts.find(part => part.name === 'Body').pixels, masterPartPixels);
+});
+
+
+test('reference copy writes only to the active frame-layer and preserves the timeline and layer stack', () => {
+  const sourcePixels = Uint8Array.from([255, 0, 0, 255, 0, 255, 0, 255]);
+  const activeLayer = { id: 'layer-active', locked: false, pixels: new Uint8Array(8) };
+  const otherLayer = { id: 'layer-other', locked: false, pixels: new Uint8Array(8).fill(7) };
+  const layers = [activeLayer, otherLayer];
+  const writes = [];
+  const drawingDocument = {
+    width: 2,
+    height: 1,
+    layers,
+    activeLayer,
+    dirty: false,
+    setLayerPixels(layerId, pixels) {
+      const target = layers.find(layer => layer.id === layerId);
+      assert.ok(target);
+      target.pixels = new Uint8Array(pixels);
+      writes.push({ layerId, pixels: new Uint8Array(pixels) });
+    },
+  };
+  const animationWrites = [];
+  const animation = {
+    activeFrameIndex: 4,
+    setLayerPixels(frameIndex, layerId, pixels) {
+      animationWrites.push({ frameIndex, layerId, pixels: new Uint8Array(pixels) });
+    },
+  };
+
+  const result = copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation, pixels: sourcePixels });
+  assert.deepEqual(result, { layerId: 'layer-active', frameIndex: 4, copiedBytes: 8 });
+  assert.equal(drawingDocument.layers.length, 2);
+  assert.deepEqual(activeLayer.pixels, sourcePixels);
+  assert.deepEqual(otherLayer.pixels, new Uint8Array(8).fill(7));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].layerId, 'layer-active');
+  assert.equal(animationWrites.length, 1);
+  assert.equal(animationWrites[0].frameIndex, 4);
+  assert.equal(animationWrites[0].layerId, 'layer-active');
+  assert.deepEqual(animationWrites[0].pixels, sourcePixels);
+  assert.equal(drawingDocument.dirty, true);
+});
+
+test('reference copy refuses a locked active layer without mutating the document or animation', () => {
+  const activeLayer = { id: 'locked-layer', locked: true, pixels: new Uint8Array(4) };
+  const drawingDocument = {
+    width: 1, height: 1, activeLayer, dirty: false,
+    setLayerPixels() { throw new Error('must not write'); },
+  };
+  let animationWrites = 0;
+  const animation = {
+    activeFrameIndex: 0,
+    setLayerPixels() { animationWrites++; },
+  };
+  assert.throws(
+    () => copyReferencePixelsToActiveFrameLayer({
+      drawingDocument, animation, pixels: new Uint8Array([1, 2, 3, 4]),
+    }),
+    /locked/,
+  );
+  assert.equal(animationWrites, 0);
+  assert.equal(drawingDocument.dirty, false);
 });
