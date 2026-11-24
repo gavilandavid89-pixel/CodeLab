@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createZip } from './public/pixelforge/src/zip-export.js';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
+import { normalizeDrawingConfiguration } from './public/pixelforge/src/drawing-mode-config.mjs';
 
 const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
 const MAX_FRAMES = 240;
@@ -319,6 +320,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
   }
   const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
   const project = runtime.toJSON();
+  project.drawingConfiguration = normalizeDrawingConfiguration(sourceProject.drawingConfiguration);
   if (project.format !== 'pixelforge-project' || !project.id || !project.name ||
       !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
       project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096) {
