@@ -82,6 +82,20 @@ The operations below are **not separate SQL mailbox actions**. They are the `nam
 - Selection: `selection.clear`, `selection.create_rect`, `selection.create_ellipse`, `selection.create_lasso`, `selection.create_magic`, `selection.modify`, `selection.combine`, `selection.translate`.
 - History: `history.undo`, `history.redo`.
 
+#### Reference copy contract
+
+The only supported copy destinations for Reference Center content are the **currently active layer in the currently active frame**:
+
+- `drawing.reference.copy_part` copies the selected part's pixels into that active layer, replacing its previous pixels.
+- `drawing.reference.copy_frame` composites the reference frame's visible layers using their visibility, opacity and alpha, then replaces the active layer's pixels with that composite.
+- There is no destination selector and no separate per-source-layer copy mode. The removed `drawing.reference.copy_frame_layer` action must not be reintroduced as an alternative.
+- Copying never creates, deletes, duplicates or reorders project layers. Existing layer IDs and layer properties remain unchanged.
+- The active frame/timeline is not closed, reset or replaced. The active animation cel is updated with the copied pixels.
+- The source reference remains immutable. Copying duplicates pixel data; it does not create a live link to the Reference Center entry.
+- Browser and Headless behavior must match. Integration tests should verify the unchanged layer count/IDs, active-cel persistence after save/reload, and continued availability of the original reference.
+
+Do not confuse this behavior with creating a new layer explicitly through `layer.add` or `layer.duplicate`; those are separate user-requested layer operations.
+
 ### Vector studio and geometry model
 
 The vector document is stored in `RasterDocument.vectorModel`, so it participates in the same sandbox revision, proposal diff, approval and PostgreSQL project JSON as raster layers. These actions are Headless batch operations (not SQL mailbox actions):
