@@ -263,6 +263,7 @@ export async function importCodeLabArtifact(pool, {
   importRequestId,
   workspaceId,
   pixelForgeWorkspaceId,
+  targetWorkspaceId = null,
   artifactBase64 = null,
   artifactBuffer = null,
   artifactFilename = 'project.codelab',
@@ -279,6 +280,10 @@ export async function importCodeLabArtifact(pool, {
   const request = requestResult.rows[0];
   artifactFilename = canonicalCodeLabArtifactFilename(artifactFilename, request.editor_id);
   if (request.workspace_id !== workspaceId) throw new Error('Import request workspace is not authorized for this bridge.');
+  const destinationWorkspaceId = targetWorkspaceId || request.workspace_id || pixelForgeWorkspaceId;
+  if (typeof destinationWorkspaceId !== 'string' || !/^ws_[a-zA-Z0-9_-]{1,140}$/.test(destinationWorkspaceId)) {
+    throw new Error('Import target workspace is invalid.');
+  }
   if (request.confirmation_required && !request.confirmation_received && request.status !== 'approved') {
     return {
       status: 'awaiting_confirmation',
@@ -371,7 +376,7 @@ export async function importCodeLabArtifact(pool, {
     if (request.editor_id === 'pixelforge') {
       const existingPixelForge = await queryChecked(pool, 'pixelforge_import_revision_read',
         'SELECT server_revision FROM public.codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2',
-        [request.workspace_id || pixelForgeWorkspaceId, projectId]
+        [destinationWorkspaceId, projectId]
       );
       pixelForgeServerRevision = existingPixelForge.rowCount
         ? Number(existingPixelForge.rows[0].server_revision || 0) + 1
@@ -394,7 +399,7 @@ export async function importCodeLabArtifact(pool, {
          content_sha256=EXCLUDED.content_sha256,
          work_score=EXCLUDED.work_score,
          updated_at=now()`,
-      [request.workspace_id, projectId, request.editor_id, name, serialized, contentSha, workScore]
+      [destinationWorkspaceId, projectId, request.editor_id, name, serialized, contentSha, workScore]
     );
 
     if (packageFiles.length) {
@@ -412,7 +417,7 @@ export async function importCodeLabArtifact(pool, {
             sha256=EXCLUDED.sha256,
             content=EXCLUDED.content,
             updated_at=EXCLUDED.updated_at`,
-          [request.workspace_id, projectId, request.editor_id,
+          [destinationWorkspaceId, projectId, request.editor_id,
             destinationPathByPath.get(file.relative),
             contentTypeForPath(file.relative), fileBuffer.length, fileSha, fileBuffer, now]
         );
@@ -423,7 +428,7 @@ export async function importCodeLabArtifact(pool, {
     // trusting the transferred in-memory payload for the remainder of the import.
     const rereadProjectResult = await queryChecked(pool, 'import_roundtrip_project_sql',
       'SELECT project, content_sha256 FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3',
-      [request.workspace_id, projectId, request.editor_id]
+      [destinationWorkspaceId, projectId, request.editor_id]
     );
     if (rereadProjectResult.rowCount !== 1) throw new Error('Persisted CodeLab project could not be re-read after import.');
     const rereadProject = rereadProjectResult.rows[0].project;
@@ -433,7 +438,7 @@ export async function importCodeLabArtifact(pool, {
     }
     const rereadFilesResult = await queryChecked(pool, 'import_roundtrip_files_sql',
       'SELECT file_path, byte_size, sha256, content FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND editor_id=$3 ORDER BY file_path',
-      [request.workspace_id, projectId, request.editor_id]
+      [destinationWorkspaceId, projectId, request.editor_id]
     );
     const expectedFiles = packageFiles
       .map(file => ({ path: destinationPathByPath.get(file.relative), bytes: packageFileMap.get(file.relative) }))
@@ -452,7 +457,7 @@ export async function importCodeLabArtifact(pool, {
     }
     const persistedProject = rereadProject;
     const workspacePublication = await publishImportedCodeLabProjectToWorkspace(
-      pool, request.workspace_id, persistedProject, request.editor_id
+      pool, destinationWorkspaceId, persistedProject, request.editor_id
     );
     if (Number(manifest.version) === 2 && persistedProject.codelabSchema?.version !== 2) {
       throw new Error('Persisted structured CodeLab project lost its schema declaration.');
@@ -489,7 +494,7 @@ export async function importCodeLabArtifact(pool, {
         (workspace_id, project_id, editor_id, format, format_version, manifest, source_sha256, payload, status, result)
        VALUES ($1,$2,$3,'codelab',1,$4::jsonb,$5,$6::jsonb,'succeeded',$7::jsonb)`,
       [
-        request.workspace_id,
+        destinationWorkspaceId,
         projectId,
         request.editor_id,
         JSON.stringify(manifest),
