@@ -238,3 +238,14 @@ El Headless del agente **no se conecta al intermediario**. No debe contener clie
 La secuencia obligatoria tiene dos fases: (1) Headless crea/edita y exporta un archivo nativo `.codelab`, y termina; (2) fuera del Headless, el agente recoge ese archivo, calcula el manifiesto/hash, envía chunks al intermediario HTTPS y sigue el resultado hasta verificar la persistencia. El bridge es un límite de confianza que solo cruza el agente mediante una acción de transferencia separada.
 
 Este documento regula el transporte del proyecto editable. No transporta el vídeo final ni sustituye A/B. Si la tarea incluye vídeo, seguir `VIDEO-PROCESSING-AB.md`, recuperar el archivo de vídeo producido y entregárselo al usuario.
+
+## 8. Catálogo de proyectos PixelForge del repositorio
+
+El inbox canónico es `projects/animation-inbox/<slug>/project.codelab`. Cada paquete debe ser un `.codelab` nativo de PixelForge, con `project.codelab-pixelforge`, `manifest.json` y `project.json` en la raíz del ZIP.
+
+El workflow `.github/workflows/pixelforge-project-inbox.yml` se activa al cambiar archivos dentro de una carpeta de proyecto o manualmente con `project_slug`. El workflow (no A ni B) lee el paquete del repositorio, valida su estructura, calcula SHA-256 y lo transfiere por las rutas inline ya existentes como `codelab_zip_upload`, con destino ADMIN `ws_local_admin`. El commit crea la orden nativa `codelab_project_import`; HTTP 202/`queued` no demuestra que ya se haya importado. Debe comprobarse la orden y la aparición del proyecto en PixelForge antes de iniciar A/B.
+
+La carpeta fuente del repositorio es la copia maestra y no se elimina. La importación crea una copia de trabajo ADMIN. Esa copia no se elimina automáticamente al terminar A o B: después de la entrega del WebM, la aplicación debe solicitar confirmación explícita antes de borrar la copia temporal. El WebM y `verification.json` se conservan independientemente. Nunca borrar la carpeta fuente como parte de la limpieza.
+
+**Separación invariable:** el workflow de inbox es un importador de catálogo externo al sistema A/B. A no lee GitHub ni el repositorio; A solo ejecuta la web real y la operación concreta solicitada por B. B decide qué proyecto/operación pedir, envía la orden a A y recibe/verifica el WebM; B no genera ni anima.
+
