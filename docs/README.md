@@ -41,7 +41,7 @@ Leer en este orden:
 | Comprender el formato PixelForge | [Paquete de proyecto PixelForge](PIXELFORGE-PROJECT-PACKAGE.md) | Estructura editable, frames, capas, cels y Reference Center. |
 | Consultar comandos disponibles | [Catálogo de comandos PixelForge](CODELAB-PIXELFORGE-COMMAND-CATALOG.md) | Contratos, capacidades y límites de operaciones. |
 | Recuperar una sesión interrumpida | [Recuperación de sesión](SESSION-EXPIRATION-RECOVERY.md) | Consultar estado persistido, evitar duplicados y reanudar. |
-| Identidad ADMIN y persistencia | [Política de cuenta y persistencia](account-admin-and-persistence-policy.md) | Contexto de cuenta/workspace y comprobación de guardado. |
+| Identidad ADMIN y persistencia | [Política de cuenta y persistencia](account-admin-and-persistence-policy.md) | Contexto de cuenta/workspace y comprobación de guardado. |\n| Recuperar autenticación/bridge existente | [Recuperación ADMIN y bridge](ADMIN-AUTH-AND-BRIDGE-RECOVERY.md) | Reutilizar la conexión existente, resolver workspace y diagnosticar la capa exacta sin pedir secretos. |
 | Operar el bridge UI de GitHub | [Agent Space GitHub Bridge](agent-space-github-bridge.md) | Comandos UI allowlisted, navegador temporal y evidencia. |
 
 ## 4. Modelo operativo resumido
