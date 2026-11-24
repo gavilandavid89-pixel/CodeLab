@@ -97,12 +97,18 @@
         <small id="vc-format-support">La compatibilidad depende del navegador.</small>
       </div>
       <div class="vc-form-group">
-        <label for="vc-output-fps">Frecuencia de salida</label>
-        <select id="vc-output-fps"><option value="12">12 FPS · Pixel art</option><option value="24">24 FPS · Cine</option><option value="30" selected>30 FPS · Estándar</option><option value="60">60 FPS · Fluido</option></select>
+        <label for="vc-output-fps">Cadencia de salida</label>
+        <select id="vc-output-fps"><option value="12">12 FPS · Animación tradicional</option><option value="24">24 FPS · Cine</option><option value="30" selected>30 FPS · Estándar</option><option value="60">60 FPS · Alta cadencia</option></select>
+        <small id="vc-motion-quality">La fluidez real depende también de los fotogramas y tiempos originales.</small>
       </div>
       <div class="vc-form-group">
-        <label for="vc-resolution">Resolución del vídeo</label>
-        <select id="vc-resolution"><option value="720">720p · móvil y redes</option><option value="1080" selected>1080p · alta calidad</option></select>
+        <label for="vc-resolution">Tamaño del vídeo (contenedor)</label>
+        <select id="vc-resolution"><option value="720">720p · 1280 × 720 (16:9)</option><option value="1080" selected>1080p · 1920 × 1080 (16:9)</option></select>
+        <small>El tamaño de salida no agrega detalle que no exista en el dibujo original.</small>
+      </div>
+      <div class="vc-form-group">
+        <label for="vc-scaling-mode">Tratamiento del escalado</label>
+        <select id="vc-scaling-mode"><option value="smooth" selected>Suave · ilustración y dibujo HD</option><option value="pixelated">Pixel perfecto · pixel art</option></select>
       </div>
       <div class="vc-form-group">
         <label for="vc-aspect">Formato de pantalla</label>
@@ -121,7 +127,8 @@
         <label><input id="vc-loop-export" type="checkbox"> Duplicar secuencia (2 vueltas)</label>
         <label><input id="vc-solid-bg" type="checkbox" checked> Fondo sólido oscuro</label>
       </div>
-      <div class="vc-export-summary"><div><span>Duración</span><strong id="vc-export-duration">—</strong></div><div><span>Dimensiones</span><strong id="vc-export-dimensions">—</strong></div></div>
+      <div class="vc-export-summary"><div><span>Duración</span><strong id="vc-export-duration">—</strong></div><div><span>Dimensiones de salida</span><strong id="vc-export-dimensions">—</strong></div></div>
+      <p class="vc-quality-note" id="vc-source-quality" aria-live="polite">Importa un proyecto para comparar su resolución original con la salida.</p>
       <button class="vc-export-button" id="vc-export" type="button" disabled><span>⇩</span> Exportar vídeo</button>
       <div class="vc-progress" id="vc-progress" hidden><div><span id="vc-progress-label">Preparando…</span><span class="vc-progress-actions"><strong id="vc-progress-value">0%</strong><button id="vc-cancel-export" type="button" hidden>Cancelar</button></span></div><div class="vc-progress-track"><i id="vc-progress-bar"></i></div></div>
       <p class="vc-export-note" id="vc-export-note">Importa una secuencia para habilitar la exportación. El vídeo se genera localmente y se descarga como un solo archivo.</p>
