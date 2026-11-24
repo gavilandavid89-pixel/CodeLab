@@ -28,7 +28,9 @@ Editor web multiproyecto con autoguardado, ramas, merge de 3 vías y **login OAu
 > Documentación técnica de conexión y funcionamiento: [CodeLab ↔ Neon extremo a extremo](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md). El diagrama y los detalles deben reflejar siempre el código actual.
 > Catálogo de órdenes y operaciones del agente: [CodeLab + PixelForge command catalog](docs/CODELAB-PIXELFORGE-COMMAND-CATALOG.md), con contratos, capacidades Headless, aprobación y límites de cobertura.
 
-## 🧠 Arquitectura principal: agente → Neon → CodeLab → evidencia → Neon → agente
+## 🧠 Arquitectura de órdenes: agente → Neon → CodeLab → evidencia → Neon → agente
+
+**Importante: este diagrama describe la cola de órdenes del sistema, no el entorno donde el agente crea o anima.** El trabajo creativo se realiza en el Headless propio del agente y la entrega del paquete editable usa el HTTPS inline bridge; ambos están explicados en [el índice documental](docs/README.md).
 
 **Arquitectura implementada del flujo de órdenes:** Neon guarda la orden; PostgreSQL la notifica directamente a CodeLab mediante LISTEN/NOTIFY. Cloudflare/R2 es una ruta de almacenamiento de evidencia cuando está configurada, no un salto obligatorio para entregar cada orden.
 
