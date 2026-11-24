@@ -48,20 +48,15 @@ mi-proyecto.codelab-pixelforge
     │   │   └── ...
     │   └── ...
     ├── Entorno/
-    │   ├── entorno.tscn
-    │   └── frames/                  # frames, capas, cels y datos completos de la instancia
+    │   └── entorno.tscn             # documento completo: capas + timeline + frames
     ├── Efectos/
-    │   ├── efectos.tscn
-    │   └── frames/
+    │   └── efectos.tscn             # documento completo e independiente
     ├── Detalles/
-    │   ├── detalles.tscn
-    │   └── frames/
+    │   └── detalles.tscn            # documento completo e independiente
     ├── Elementos/
-    │   ├── elementos.tscn
-    │   └── frames/
+    │   └── elementos.tscn           # documento completo e independiente
     ├── Objetos/
-    │   ├── objetos.tscn
-    │   └── frames/
+    │   └── objetos.tscn             # documento completo e independiente
     └── reference.center/
         ├── reference.center
         ├── reference.personaje/
