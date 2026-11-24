@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import {
   encodeSparseTiles, decodeSparseTiles, diffSparseTiles,
-  DEFAULT_CEL_TILE_SIZE,
+  DEFAULT_CEL_TILE_SIZE, SparseTileCelStore,
 } from '../public/pixelforge/src/animation-tiles.mjs';
 
 globalThis.crypto ||= webcrypto;
@@ -68,4 +68,66 @@ test('decoder rejects duplicate coordinates and corrupted tile hashes', async ()
 test('tile codec validates dimensions and tile sizes', async () => {
   await assert.rejects(() => encodeSparseTiles(new Uint8Array(4), { width: 1, height: 1, tileSize: 16 }), /Tile size/);
   await assert.rejects(() => encodeSparseTiles(new Uint8Array(4), { width: 0, height: 1 }), /dimensions/);
+});
+
+
+test('sparse cel store deduplicates immutable tiles and applies copy-on-write edits', async () => {
+  const width = 128, height = 64;
+  const pixels = makePixels(width, height);
+  pixels.set([10, 20, 30, 255], 0);
+  pixels.set([40, 50, 60, 255], (width * 64 + 64) * 4 - (width * 64 * 4));
+  const store = new SparseTileCelStore({ maxDecodedCacheBytes: 64 * 64 * 4 });
+  const first = await store.createCelFromPixels(pixels, { width, height });
+  const second = store.cloneCel(first);
+  assert.equal(store.stats.resourceCount, 1);
+  assert.equal(store.stats.resourceReferences, 2);
+
+  const edited = new Uint8Array(64 * 64 * 4);
+  edited.set([200, 100, 50, 255], 0);
+  const change = await store.updateTile(second, 0, 0, edited);
+  assert.equal(change.changed, true);
+  assert.equal(store.stats.resourceCount, 2);
+  assert.equal(store.stats.resourceReferences, 2);
+  assert.deepEqual(store.getTile(first, 0, 0).pixels.slice(0, 4), new Uint8Array([10, 20, 30, 255]));
+  assert.deepEqual(store.getTile(second, 0, 0).pixels.slice(0, 4), new Uint8Array([200, 100, 50, 255]));
+  assert.equal(store.diffCels(first, second).changed.length, 1);
+  assert.deepEqual(await store.exportCel(first), await encodeSparseTiles(pixels, { width, height }));
+
+  store.releaseCel(first);
+  store.releaseCel(second);
+  assert.equal(store.stats.celCount, 0);
+  assert.equal(store.stats.resourceCount, 0);
+  assert.equal(store.stats.resourceReferences, 0);
+});
+
+test('sparse cel store bounds decoded tile cache with LRU eviction', async () => {
+  const width = 128, height = 64;
+  const pixels = makePixels(width, height);
+  pixels.set([1, 2, 3, 255], 0);
+  pixels.set([4, 5, 6, 255], 64 * 4);
+  const cacheBudget = 64 * 64 * 4;
+  const store = new SparseTileCelStore({ maxDecodedCacheBytes: cacheBudget });
+  const celId = await store.createCelFromPixels(pixels, { width, height });
+  store.getTile(celId, 0, 0);
+  assert.equal(store.stats.decodedCacheEntries, 1);
+  store.getTile(celId, 64, 0);
+  assert.equal(store.stats.decodedCacheEntries, 1);
+  assert.equal(store.stats.decodedCacheBytes, cacheBudget);
+  store.getTile(celId, 0, 0);
+  assert.equal(store.stats.decodedCacheEntries, 1);
+  assert.ok(store.stats.decodedCacheBytes <= cacheBudget);
+  assert.deepEqual(store.composeCel(celId), pixels);
+});
+
+test('sparse cel store removes empty tiles and rejects invalid cache budgets', async () => {
+  assert.throws(() => new SparseTileCelStore({ maxDecodedCacheBytes: -1 }), /cache budget/);
+  const pixels = makePixels(64, 64);
+  pixels.set([1, 2, 3, 255], 0);
+  const store = new SparseTileCelStore();
+  const celId = await store.createCelFromPixels(pixels, { width: 64, height: 64 });
+  const blank = new Uint8Array(64 * 64 * 4);
+  const result = await store.updateTile(celId, 0, 0, blank);
+  assert.equal(result.removed, true);
+  assert.equal((await store.exportCel(celId)).tiles.length, 0);
+  assert.equal(store.stats.resourceCount, 0);
 });
