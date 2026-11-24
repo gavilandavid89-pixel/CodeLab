@@ -1,5 +1,11 @@
 # Procesamiento de vídeo A/B — exportación real y verificación
 
+## Documentos relacionados y fuente de estado actual
+
+Este archivo es la **especificación técnica complementaria** del mecanismo A/B. Para el recorrido real de implementación, diagnóstico, fallos, correcciones, inspección visual y entrega, consultar [CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md), que es el documento owner y la fuente de verdad del estado más reciente. Las reglas operativas que debe seguir el agente están en [ANIMATION-AUTONOMOUS-WORKFLOW.md](./ANIMATION-AUTONOMOUS-WORKFLOW.md), especialmente la sección 5.2.
+
+**Importante:** la evidencia y los hashes históricos que aparecen más abajo describen la primera prueba de revisión 2. No representan la última revisión aceptada. El estado actual y la evidencia A/B más reciente están registrados en el documento owner.
+
 ## Propósito
 
 A/B es la etapa que exporta el vídeo final del proyecto PixelForge persistido en ADMIN. El contrato vigente es deliberadamente asimétrico:
