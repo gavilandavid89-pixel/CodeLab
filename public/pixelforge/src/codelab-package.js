@@ -129,7 +129,10 @@ function validateSceneWorkspace(workspace, label) {
       throw new TypeError(label + ' workspace layer ' + layer.id + ' has invalid RGBA8 pixels.');
     }
   }
-  if (workspace.animation !== undefined && workspace.animation !== null) {
+  if (!workspace.animation || typeof workspace.animation !== 'object') {
+    throw new TypeError(label + ' workspace must contain at least one complete frame.');
+  }
+  {
     const animation = workspace.animation;
     if (!Array.isArray(animation.frames) || animation.frames.length < 1 ||
         animation.frames.length > MAX_FRAMES || Number(animation.width) !== width ||
@@ -171,8 +174,24 @@ function buildSceneSections(project, files) {
       .filter(item => explicitSectionMatch(item, section.key)).map(item => String(item.id));
     const data = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
       ? structuredClone(drawing.sceneSections[section.key]) : {};
-    const workspace = data.workspace ?? null;
-    if (workspace !== null) validateSceneWorkspace(workspace, path);
+    let workspace = data.workspace ?? null;
+    if (workspace !== null) {
+      workspace = structuredClone(workspace);
+      if (!workspace.animation) {
+        workspace.animation = {
+          format: 'pixelforge-animation', version: 1,
+          width: workspace.width, height: workspace.height,
+          layerIds: workspace.layers.map(layer => String(layer.id)),
+          fps: 12, activeFrameIndex: 0, loop: true, playbackSpeed: 1,
+          frames: [{
+            id: 'scene-' + section.key + '-frame-0001',
+            name: 'Frame 1', index: 0, durationMs: 1000,
+            cels: workspace.layers.map(layer => ({ layerId: String(layer.id), pixels: layer.pixels })),
+          }],
+        };
+      }
+      workspace = validateSceneWorkspace(workspace, path);
+    }
     delete data.workspace;
     files.set(path, jsonBytes({
       format: 'codelab-pixelforge-scene',
