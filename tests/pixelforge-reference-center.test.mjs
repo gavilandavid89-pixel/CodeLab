@@ -6,7 +6,7 @@ import { copyReferencePixelsToActiveFrameLayer } from '../public/pixelforge/src/
 function makeRuntime() {
   const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Reference package test' });
   assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 2, y0: 2, x1: 5, y1: 2, color: '#FFFFFF', size: 1 }).ok, true);
-  assert.equal(runtime.execute({ name: 'layer.add', name: 'Body' }).ok, true);
+  assert.equal(runtime.execute({ name: 'layer.add', layerName: 'Body' }).ok, true);
   assert.equal(runtime.execute({ name: 'canvas.draw_line', x0: 4, y0: 4, x1: 8, y1: 8, color: '#FF0000', size: 1 }).ok, true);
   return runtime;
 }
