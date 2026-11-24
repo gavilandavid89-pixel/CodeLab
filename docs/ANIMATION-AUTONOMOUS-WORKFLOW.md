@@ -337,3 +337,13 @@ Para proyectos preparados en `projects/animation-inbox/<slug>/project.codelab`, 
 
 Ver [guía del inbox](../projects/animation-inbox/README.md), [contrato A/B](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md) y [transporte inline](./inline-artifact-bridge.md).
 
+## Catálogo de proyectos PixelForge: importación y uso con A/B
+
+El inbox `projects/animation-inbox/<slug>/project.codelab` permite versionar paquetes PixelForge nativos y preparar una copia de trabajo en el workspace ADMIN. El workflow `pixelforge-project-inbox.yml` valida el ZIP/manifiesto, lo transfiere por el bridge inline y encola la importación. Un estado `queued` no confirma que el worker haya terminado: comprobar que el proyecto aparece en PixelForge antes de arrancar A/B.
+
+Después de importar, iniciar A con el ID interno `project.json.id` como `project_id` y B con el mismo ID. A ejecuta la web real; B elige el proyecto, envía la orden y recibe/verifica el WebM. El slug del inbox no reemplaza al ID interno. A no lee el repositorio y B no genera animaciones.
+
+La fuente del inbox permanece versionada. La copia de trabajo ADMIN requiere Delete y confirmación explícita para limpiarse. Esperar a que A ya no necesite el proyecto; que B haya terminado no implica que la sesión A haya expirado. El WebM y las evidencias se conservan aparte.
+
+Ver [guía del inbox](../projects/animation-inbox/README.md), [arquitectura owner A/B](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md) y [bridge inline](./inline-artifact-bridge.md).
+
