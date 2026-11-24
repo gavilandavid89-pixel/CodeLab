@@ -42,6 +42,7 @@ test('browser package exporter writes all six project folders and the named TSCN
   assert.equal(installed.project.packageResources[0].byteSize, new TextEncoder().encode('embedded palette bytes').length);
   assert.equal(installed.manifest.resources[0].destination, 'environment');
   assert.equal(installed.project.animation.frames.length, fixture().animation.frames.length);
+  assert.equal(installed.project.animation.frames[0].layerMetadata[0].parentFrameId, installed.project.animation.frames[0].id);
 });
 
 test('browser import preserves package resources and scene metadata through native save and a second export', async () => {
