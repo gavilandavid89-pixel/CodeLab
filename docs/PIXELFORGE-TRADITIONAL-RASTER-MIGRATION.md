@@ -106,7 +106,7 @@ The branch now includes `public/pixelforge/src/animation-tiled-adapter.mjs` and 
 - `TiledAnimationDocument.fromAnimation()` performs an explicit, lossless one-time migration from the current `PixelForgeAnimation` dense model into the sparse tile store. It preserves canvas dimensions, FPS, frame IDs/durations, layer IDs, active frame and layer metadata.
 - `readRegion()` and `writeRegion()` expose bounded tile-backed editing for a frame/layer. A changed region replaces only intersecting tile resources; unchanged frames/layers remain shared.
 - `cloneFrame()` shares immutable tile resources (copy-on-write); `deleteFrame()` releases its references.
-- `toManifest()` emits a tiled animation manifest without flattening cels. `toLegacyAnimationJSON()` is an explicit compatibility export and intentionally materializes dense v1 cels.
+- `toManifest()` emits a tiled animation manifest without flattening cels; `fromManifest()` validates timeline/layer/frame structure and every tile hash before rebuilding the in-memory tiled model. `toLegacyAnimationJSON()` is an explicit compatibility export and intentionally materializes dense v1 cels.
 - `dispose()` releases the adapter's in-memory resource references.
 
 **Boundary:** this is a migration/working-model adapter, not yet the editor's canonical animation model. The current editor, undo/redo, brush pipeline, native project serializer, ZIP package, Headless and server persistence still use their existing paths. The initial v1-to-tile conversion reads dense cels once and therefore does not remove the current v1 memory/size limits during import. No higher default canvas size or quota is enabled by this adapter.
