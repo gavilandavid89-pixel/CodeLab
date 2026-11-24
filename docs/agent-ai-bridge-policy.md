@@ -190,7 +190,7 @@ Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.m
 - El agente **no debe clonar el repositorio para obtener ese Headless**.
 - Debe descargar el **artefacto del editor** correspondiente al Headless. Si no existe, primero debe generarlo mediante el propio Headless/editor y después descargarlo.
 - El artefacto descargado proporciona el entorno de trabajo del agente y **no reemplaza** el headless/bridge que controla CodeLab. Son dos componentes diferentes.
-- El agente empaqueta el proyecto trabajado en `.codelab` y lo sube/entrega a CodeLab a través de Neon cuando corresponde.
+- El agente empaqueta el proyecto trabajado en `.codelab` y lo entrega a CodeLab mediante el intermediario HTTPS inline documentado; CodeLab valida y usa Neon como staging durable antes de que el bridge/worker lo importe.
 - Si el agente no puede continuar sin inspeccionar el proyecto real en una interfaz real, debe solicitar la evidencia visual que necesite.
 - La evidencia debe corresponder al proyecto real y a la inspección solicitada.
 - El agente debe inspeccionarla realmente antes de decidir.
