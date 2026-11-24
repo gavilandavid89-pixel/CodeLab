@@ -125,6 +125,15 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.entries.has('Elementos/elementos.tscn'), true);
   assert.equal(imported.entries.has('Objetos/objetos.tscn'), true);
   assert.equal(imported.manifest.frames.manifestPath, 'Frames/frames.tscn');
+  const firstFrame = JSON.parse(await imported.entries.get('Frames/frame-0001/frame.json').blob.text());
+  const firstFramePaths = firstFrame.layers.map(layer => layer.pixelsPath);
+  assert.equal(new Set(firstFramePaths).size, project.layers.length, 'every editable layer must have a distinct cel file');
+  for (const layer of firstFrame.layers) {
+    const sourceCel = project.animation.frames[0].cels.find(cel => cel.layerId === layer.id);
+    assert.ok(sourceCel, 'every exported frame layer must map to its source cel');
+    const storedCel = Buffer.from(await imported.entries.get(layer.pixelsPath).blob.arrayBuffer());
+    assert.deepEqual(storedCel, Buffer.from(sourceCel.pixels, 'base64'), 'each layer must preserve its own RGBA pixels');
+  }
   assert.equal(Object.keys(imported.manifest.scenes.sections).length, 5);
   assert.equal(imported.structured.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
   for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {

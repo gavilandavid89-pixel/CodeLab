@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "public/pixelforge/src/**"
+      - "pixelforge-codelab-package.mjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/agent-headless-package.yml"

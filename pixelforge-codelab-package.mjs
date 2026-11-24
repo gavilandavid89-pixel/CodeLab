@@ -267,15 +267,15 @@ function addAnimation(project, files) {
   frames.forEach((frame, index) => {
     const directory = 'Frames/frame-' + String(index + 1).padStart(4, '0');
     const layers = frameLayers(frame, project, source?.frames?.length ? index : -1);
-    const frameLayersMetadata = layers.map(({ layer, pixels }) => {
+    const frameLayersMetadata = layers.map(({ layer, pixels }, layerIndex) => {
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) throw new RangeError('PixelForge animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
-      const layerToken = 'layer' + index + '-' + (layers.length + 1);
+      const layerToken = 'layer' + index + '-' + (layerIndex + 1);
       const pixelsPath = directory + '/' + layerToken + '/pixels.rgba';
       files.set(pixelsPath, pixels);
       return {
         id: String(layer.id), name: String(layer.name || layer.id),
-        parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layers.length + 1,
+        parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layerIndex + 1,
         pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
         x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
@@ -283,7 +283,7 @@ function addAnimation(project, files) {
         blur: layer.blur ?? 0, brightness: layer.brightness ?? 0, contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0,
         mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
         references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}),
-        zIndex: layers.length,
+        zIndex: layerIndex,
       };
     });
     const framePath = directory + '/frame.json';
