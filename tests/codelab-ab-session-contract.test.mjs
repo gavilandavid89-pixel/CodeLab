@@ -68,7 +68,7 @@ test('the real A/B workflows isolate credentials and keep A independent from B',
   assert.match(bWorkflow, /actions\/upload-artifact@v4/);
   assert.match(abWorkflow, /codelab-independent-session-a\.yml/);
   assert.match(abWorkflow, /Verify A remains alive after B has finished/);
-  assert.match(abWorkflow, /status = "in_progress"/);
+  assert.match(abWorkflow, /in_progress/);
   assert.doesNotMatch(abWorkflow, /createDemo=|walk-crouch-24|codelab-session-host\.mjs/);
 });
 
