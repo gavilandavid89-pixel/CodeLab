@@ -91,6 +91,19 @@ test('workspaces imported from the package section manifests hydrate the editor 
   assert.equal(state.workspaces.environment.layers[0].id, environment.layers[0].id);
 });
 
+test('captured workspace snapshots do not recursively embed package section documents', () => {
+  const environment = createSceneWorkspaceSnapshot(makeProject(), 'environment');
+  const project = {
+    ...makeProject(),
+    drawingModel: { sceneSections: { environment: { workspace: environment, note: 'preserve metadata' } } },
+  };
+  const registry = readSceneWorkspaceState(project.drawingModel);
+  const clean = stripSceneWorkspaceState(project);
+  assert.equal(registry.workspaces.environment.name, 'Environment workspace');
+  assert.equal(clean.drawingModel.sceneSections.environment.workspace, undefined);
+  assert.equal(clean.drawingModel.sceneSections.environment.note, 'preserve metadata');
+});
+
 test('unknown section names are rejected and invalid active section falls back to main', () => {
   assert.throws(() => createSceneWorkspaceSnapshot(makeProject(), 'characters'), /Unknown PixelForge scene workspace/);
   const state = readSceneWorkspaceState({ sceneWorkspaceState: { activeSection: 'unknown', workspaces: { unknown: {} } } });
