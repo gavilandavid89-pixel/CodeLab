@@ -103,6 +103,9 @@ test('content capture includes a frame strip and keeps pixel-art rendering unsmo
   assert.match(html, /id="vc-motion-quality"/);
   assert.match(js, /no inventa movimiento intermedio/i);
   assert.match(js, /getSourceQualityAssessment/);
+  assert.match(js, /requestAnimationFrame\(playbackTick\)/);
+  assert.match(js, /performance\.now\(\) - playbackStartedAt/);
+  assert.doesNotMatch(js, /playbackTimer/);
 });
 
 test('rejects PNG frames with broken chunk CRC or dimensions that differ from the manifest', async () => {
