@@ -15,7 +15,7 @@ import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '
 import { sceneWorkspaceSections, readSceneWorkspaceState, stripSceneWorkspaceState, attachSceneWorkspaceState, createSceneWorkspaceSnapshot } from './scene-workspaces.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
-import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation, getVideoScalingMode } from './drawing-mode-config.mjs';
+import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation, getVideoScalingMode, normalizeDrawingModeProfile, updateDrawingModeOverrides } from './drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
@@ -920,27 +920,19 @@ function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
     profile.brushHardness === defaults.brushHardness &&
     profile.brushOpacity === 100 &&
     profile.interpolation === defaults.interpolation;
-  const overrides = { ...(layer.modeOverrides || {}) };
-  if (isDefault) delete overrides[mode];
-  else overrides[mode] = profile;
-  layer.modeOverrides = overrides;
+  layer.modeOverrides = updateDrawingModeOverrides(layer.modeOverrides, mode, profile);
 }
 function applyActiveLayerModeProfile(mode) {
   const defaults = getDrawingModePresentation(mode);
-  const saved = readActiveLayerModeProfile(mode);
-  const size = Number(saved.brushSize);
-  brushSize = Number.isFinite(size) ? Math.max(1, Math.min(32, Math.round(size))) : defaults.brushSize;
+  const saved = normalizeDrawingModeProfile(mode, readActiveLayerModeProfile(mode));
+  brushSize = saved.brushSize;
   $('#brush-size').value = String(brushSize);
   $('#brush-size-value').textContent = brushSize + ' px';
-  const shape = ['square', 'circle'].includes(saved.brushShape) ? saved.brushShape : defaults.brushShape;
-  $('#brush-shape').value = shape;
-  const hardness = Number(saved.brushHardness);
-  $('#brush-hardness').value = String(Number.isFinite(hardness) ? Math.max(0, Math.min(100, hardness)) : defaults.brushHardness);
-  $('#brush-hardness-value').textContent = $('#brush-hardness').value + '%';
-  const opacity = Number(saved.brushOpacity);
-  $('#brush-opacity').value = String(Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) : 100);
-  const interpolation = typeof saved.interpolation === 'string' &&
-    $('#transform-interpolation').querySelector(`option[value="${saved.interpolation}"]`)
+  $('#brush-shape').value = saved.brushShape;
+  $('#brush-hardness').value = String(saved.brushHardness);
+  $('#brush-hardness-value').textContent = saved.brushHardness + '%';
+  $('#brush-opacity').value = String(saved.brushOpacity);
+  const interpolation = $('#transform-interpolation').querySelector(`option[value="${saved.interpolation}"]`)
     ? saved.interpolation : defaults.interpolation;
   $('#transform-interpolation').value = interpolation;
 }
