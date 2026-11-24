@@ -228,6 +228,43 @@ jobs:
         run: npm install --no-save --package-lock=false playwright
       - name: Install Chromium
         run: npx playwright install chromium
+      - name: Package the isolated Agent Headless runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/agent-headless"
+          mkdir -p "$RUNNER_TEMP/agent-headless/pixelforge/src"
+          cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/pixelforge/src/"
+          cp package.json "$RUNNER_TEMP/agent-headless/"
+          if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
+          printf '%s\\n' \
+            "repository=$GITHUB_REPOSITORY" \
+            "commit=$GITHUB_SHA" \
+            "ref=$GITHUB_REF_NAME" \
+            "headless_source=public/pixelforge/src" \
+            "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
+          tar -C "$RUNNER_TEMP/agent-headless" -czf "$RUNNER_TEMP/agent-headless-$GITHUB_SHA.tar.gz" .
+      - name: Publish the Headless artifact for the agent-import test
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-headless-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-headless-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+      - name: Download the published Headless artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-headless-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-headless-download
+      - name: Extract downloaded Headless artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/agent-headless-extracted"
+          tar -xzf "$RUNNER_TEMP/agent-headless-download/agent-headless-$GITHUB_SHA.tar.gz" -C "$RUNNER_TEMP/agent-headless-extracted"
+          test -f "$RUNNER_TEMP/agent-headless-extracted/pixelforge/src/headless.js"
+          echo "AGENT_HEADLESS_PACKAGE_DIR=$RUNNER_TEMP/agent-headless-extracted/pixelforge/src" >> "$GITHUB_ENV"
       - name: Run PixelForge integration against real PostgreSQL
         shell: bash
         run: |
