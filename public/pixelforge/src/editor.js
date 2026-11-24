@@ -1001,6 +1001,12 @@ async function switchSceneWorkspace(nextSection) {
     updateSceneWorkspaceUI();
     status(nextSection === 'main' ? 'Returned to the main project workspace' : 'Opened independent ' + sceneWorkspaceSections().find(item => item.key === nextSection).label + ' workspace', 'success');
   } catch (error) {
+    if (activeSceneWorkspace === nextSection) {
+      updateTitle();
+      renderLayers();
+      renderAnimationTimeline();
+      referenceCenterUI?.refresh();
+    }
     status('Could not switch scene workspace: ' + error.message, 'error');
   }
 }
