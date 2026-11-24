@@ -47,3 +47,8 @@ export function getDrawingModePresentation(mode) {
     ? { imageSmoothingEnabled: true, imageSmoothingQuality: 'high', brushProfile: 'soft', interpolation: 'bilinear' }
     : { imageSmoothingEnabled: false, imageSmoothingQuality: 'low', brushProfile: 'hard', interpolation: 'nearest' };
 }
+
+
+export function getVideoScalingMode(drawingMode) {
+  return drawingMode === PIXELFORGE_DRAWING_MODES.PIXEL_ART ? 'pixelated' : 'smooth';
+}
