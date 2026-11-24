@@ -382,6 +382,8 @@ async function parseComposerPackage(file) {
         width: project.width, height: project.height, fps: animation.fps,
         loop: animation.loop !== false, frameCount: frames.length, totalDurationMs,
         projectName: project.name,
+        sourceDrawingMode: project.drawingConfiguration?.activeMode === 'pixel-art' ? 'pixel-art' : 'illustration',
+        scalingMode: project.drawingConfiguration?.activeMode === 'pixel-art' ? 'pixelated' : 'smooth',
       },
       frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
       entryCount: entries.size,
@@ -399,6 +401,7 @@ async function importPackage(file) {
     const parsed = await parseComposerPackage(file);
     if (requestId !== activeImport) return;
     packageData = parsed;
+    if (['smooth', 'pixelated'].includes(parsed.manifest.scalingMode)) $('#vc-scaling-mode').value = parsed.manifest.scalingMode;
     $('#vc-project-name').textContent = file.name.replace(/\.zip$/i, '') || 'Animación PixelForge';
     $('#vc-project-meta').textContent = parsed.manifest.width + ' × ' + parsed.manifest.height + ' · ' + parsed.manifest.frameCount + ' fotogramas';
     $('#vc-source-card').hidden = false;
