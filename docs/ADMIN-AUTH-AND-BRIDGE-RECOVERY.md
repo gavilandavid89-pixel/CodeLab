@@ -67,3 +67,18 @@ No declarar terminado el trabajo si solo existe un ZIP local, un hash, una orden
 El error que este documento evita es concluir que falta `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` en el entorno del agente y pedir al usuario que lo configure, sin haber comprobado primero la conexión administrativa existente, la cuenta ADMIN, el workspace y las acciones autorizadas disponibles.
 
 **Regla final:** primero reutilizar y verificar la autenticación/conexión existente; después diagnosticar la capa concreta que falla. Nunca trasladar al usuario una solicitud de secreto basada en una suposición.
+
+
+## 7. Verificación de producción — 24 de noviembre de 2026
+
+Se corrigieron los valores predeterminados para evitar que una importación del bridge sin `target_workspace_id` explícito termine en un workspace invitado:
+
+- `server.js`: el destino por defecto del manifiesto inline ahora es el workspace ADMIN resuelto por el servidor (`workspaceId`), en vez de un identificador invitado fijo.
+- `agent-bridge-worker.mjs`: el modo invitado solo se activa si `PIXELFORGE_GUEST_MODE` está explícitamente configurado como `true`; el valor por defecto del código es `false`.
+- Commits desplegados: `333f6905ed973683137ebda75c8d2c054e12c2ff` y `5d294e8930fbd1d53df35d45afe7d3d246645a8e`. Render confirmó el segundo despliegue como `live`.
+- La orden de estado posterior al despliegue se ejecutó con `succeeded` y devolvió `workspaceId: ws_local_admin`, runtime Headless y persistencia PostgreSQL.
+- Una inspección de solo lectura del proyecto existente, pasando `target_workspace_id: ws_local_admin`, terminó `succeeded` y devolvió revisión de servidor `8`, hash `ee37520bd62b6710ec4ce120c3a2b21c058f22f73b394de92c1580d4ee31dbbc` y validación nativa `passed` (100 puntos, cero incidencias).
+
+**Alcance de esta verificación:** queda comprobado el despliegue, la comunicación Neon → worker y el acceso/lectura de un proyecto cuando la orden especifica el workspace ADMIN. El log también mostró que el proceso general mantiene `ws_pixelforge_guest` como workspace PixelForge predeterminado porque el servicio tiene el modo invitado habilitado en su configuración actual. Por eso, las operaciones administrativas deben enviar explícitamente `target_workspace_id: ws_local_admin`; no se debe interpretar el estado general del worker como prueba de que todo el modo invitado fue desactivado.
+
+La prueba de inspección no ejercitó una carga HTTP real contra `/api/agent/bridge/artifacts` ni verificó el valor/aceptación del secreto `x-codelab-agent-bridge-token`. Por tanto, no afirmar que esa autorización HTTP específica está probada por esta prueba. Para certificarla se requiere una transferencia end-to-end autorizada, seguida de importación y lectura de vuelta del proyecto en ADMIN; nunca exponer el secreto ni saltarse el bridge escribiendo chunks directamente en Neon.
