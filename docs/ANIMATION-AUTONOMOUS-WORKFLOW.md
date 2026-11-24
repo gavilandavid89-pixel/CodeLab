@@ -325,3 +325,15 @@ Por tanto:
 Nunca:
 
 **B termina → ZIP → «success» → entregar sin mirar el vídeo.**
+
+## Catálogo de proyectos de repositorio para A/B
+
+Para proyectos preparados en `projects/animation-inbox/<slug>/project.codelab`, usar el workflow `.github/workflows/pixelforge-project-inbox.yml` para importarlos al workspace ADMIN antes de iniciar A/B. El workflow de catálogo es externo a A/B: lee el repositorio y usa el bridge inline; no cambia las responsabilidades de los agentes.
+
+- A no lee el repositorio; ejecuta la web real y cumple la operación concreta que B le envía.
+- B elige el proyecto y formula la orden, la envía a A y después recibe/verifica el WebM. B no crea la animación.
+- Esperar y comprobar que la importación quedó persistida y que el proyecto aparece en PixelForge antes de pedir la exportación a A.
+- Tras terminar A/B, conservar el WebM y sus evidencias. La copia fuente del repositorio permanece intacta; la copia temporal ADMIN requiere confirmación explícita del usuario antes de eliminarse.
+
+Ver [guía del inbox](../projects/animation-inbox/README.md), [contrato A/B](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md) y [transporte inline](./inline-artifact-bridge.md).
+
