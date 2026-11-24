@@ -900,6 +900,50 @@ function ensureAnimation() {
   }
   return animation;
 }
+function readActiveLayerModeProfile(mode) {
+  const value = doc?.activeLayer?.modeOverrides?.[mode];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
+  const layer = doc?.activeLayer;
+  if (!layer) return;
+  const defaults = getDrawingModePresentation(mode);
+  const profile = {
+    brushSize,
+    brushShape: $('#brush-shape')?.value || defaults.brushShape,
+    brushHardness: Number($('#brush-hardness')?.value ?? defaults.brushHardness),
+    brushOpacity: Number($('#brush-opacity')?.value ?? 100),
+    interpolation: $('#transform-interpolation')?.value || defaults.interpolation,
+  };
+  const isDefault = profile.brushSize === defaults.brushSize &&
+    profile.brushShape === defaults.brushShape &&
+    profile.brushHardness === defaults.brushHardness &&
+    profile.brushOpacity === 100 &&
+    profile.interpolation === defaults.interpolation;
+  const overrides = { ...(layer.modeOverrides || {}) };
+  if (isDefault) delete overrides[mode];
+  else overrides[mode] = profile;
+  layer.modeOverrides = overrides;
+}
+function applyActiveLayerModeProfile(mode) {
+  const defaults = getDrawingModePresentation(mode);
+  const saved = readActiveLayerModeProfile(mode);
+  const size = Number(saved.brushSize);
+  brushSize = Number.isFinite(size) ? Math.max(1, Math.min(32, Math.round(size))) : defaults.brushSize;
+  $('#brush-size').value = String(brushSize);
+  $('#brush-size-value').textContent = brushSize + ' px';
+  const shape = ['square', 'circle'].includes(saved.brushShape) ? saved.brushShape : defaults.brushShape;
+  $('#brush-shape').value = shape;
+  const hardness = Number(saved.brushHardness);
+  $('#brush-hardness').value = String(Number.isFinite(hardness) ? Math.max(0, Math.min(100, hardness)) : defaults.brushHardness);
+  $('#brush-hardness-value').textContent = $('#brush-hardness').value + '%';
+  const opacity = Number(saved.brushOpacity);
+  $('#brush-opacity').value = String(Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) : 100);
+  const interpolation = typeof saved.interpolation === 'string' &&
+    $('#transform-interpolation').querySelector(`option[value="${saved.interpolation}"]`)
+    ? saved.interpolation : defaults.interpolation;
+  $('#transform-interpolation').value = interpolation;
+}
 function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWING_MODES.PIXEL_ART } = {}) {
   drawingConfiguration = normalizeDrawingConfiguration(snapshot?.drawingConfiguration, { legacyDefault });
   const control = $('#drawing-mode');
@@ -920,9 +964,11 @@ function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWIN
   $('#brush-size-value').textContent = brushSize + ' px';
   $('#brush-shape').value = presentation.brushShape;
   $('#transform-interpolation').value = presentation.interpolation;
+  applyActiveLayerModeProfile(drawingConfiguration.activeMode);
   return drawingConfiguration;
 }
 function setDrawingMode(mode, { persist = true } = {}) {
+  captureActiveLayerModeProfile(drawingConfiguration.activeMode);
   drawingConfiguration = switchDrawingMode(drawingConfiguration, mode);
   const control = $('#drawing-mode');
   if (control) control.value = mode;
@@ -939,6 +985,7 @@ function setDrawingMode(mode, { persist = true } = {}) {
   $('#brush-size-value').textContent = brushSize + ' px';
   $('#brush-shape').value = presentation.brushShape;
   $('#transform-interpolation').value = presentation.interpolation;
+  applyActiveLayerModeProfile(mode);
   render();
   if (persist) scheduleAutosave();
   status(mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
@@ -946,6 +993,7 @@ function setDrawingMode(mode, { persist = true } = {}) {
     : 'Pixel-art mode · hard edges and pixel-perfect preview', 'success');
 }
 function buildProjectSnapshot(targetDoc = doc) {
+  if (targetDoc === doc) captureActiveLayerModeProfile();
   if (targetDoc === doc && animation) captureAnimationFrame();
   const snapshot = targetDoc.toJSON();
   if (targetDoc === doc) snapshot.drawingConfiguration = structuredClone(drawingConfiguration);
@@ -1971,16 +2019,20 @@ $('#replace-color').addEventListener('click', () => {
 });
 $('#fill-scale').addEventListener('input', event => { $('#fill-scale-value').textContent = `${event.target.value} px`; });
 $('#brush-opacity').addEventListener('input', event => { $('#brush-opacity-value').textContent = `${event.target.value}%`; });
-$('#brush-hardness').addEventListener('input', event => { $('#brush-hardness-value').textContent = `${event.target.value}%`; });
+$('#brush-hardness').addEventListener('input', event => { $('#brush-hardness-value').textContent = `${event.target.value}%`; captureActiveLayerModeProfile(); });
 $('#brush-size').addEventListener('input', event => {
-  brushSize = Number(event.target.value); $('#brush-size-value').textContent = `${brushSize} px`;
+  brushSize = Number(event.target.value); $('#brush-size-value').textContent = `${brushSize} px`; captureActiveLayerModeProfile();
 });
+$('#brush-shape').addEventListener('change', () => captureActiveLayerModeProfile());
+$('#brush-opacity').addEventListener('input', () => captureActiveLayerModeProfile());
+$('#transform-interpolation').addEventListener('change', () => captureActiveLayerModeProfile());
 const brushScrub = $('#brush-scrub');
 let scrubStartX = 0, scrubStartSize = brushSize, scrubPointerId = null;
 function syncBrushSize(value) {
   brushSize = Math.max(1, Math.min(32, Math.round(value)));
   $('#brush-size').value = String(brushSize);
   $('#brush-size-value').textContent = `${brushSize} px`;
+  captureActiveLayerModeProfile();
   brushScrub.setAttribute('aria-valuenow', String(brushSize));
   brushScrub.setAttribute('aria-valuetext', `${brushSize} pixel${brushSize === 1 ? '' : 's'}. Drag left for thicker, right for thinner.`);
 }
