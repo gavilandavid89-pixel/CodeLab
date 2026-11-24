@@ -109,6 +109,30 @@ function makeBlankCels(layerIds, byteLength) {
   return new Map(layerIds.map(id => [id, new Uint8ClampedArray(byteLength)]));
 }
 
+function normalizeLayerMetadata(metadata = {}, layerId, index = 0) {
+  const value = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const finite = (input, fallback) => Number.isFinite(Number(input)) ? Number(input) : fallback;
+  const state = input => ['inexistente', 'no_aplicable'].includes(input) ? input : input;
+  return {
+    id: String(value.id || layerId), parentFrameId: String(value.parentFrameId || ''), index: Number.isInteger(value.index) ? value.index : index,
+    name: String(value.name || layerId),
+    visible: value.visible !== false, opacity: Math.max(0, Math.min(1, finite(value.opacity, 1))), locked: value.locked === true,
+    x: finite(value.x, 0), y: finite(value.y, 0), scaleX: finite(value.scaleX, 1), scaleY: finite(value.scaleY, 1),
+    rotation: finite(value.rotation, 0), angle: state(value.angle ?? 0),
+    blendMode: String(value.blendMode || 'normal'), blur: state(value.blur ?? 0),
+    brightness: state(value.brightness ?? 0), contrast: state(value.contrast ?? 0), saturation: state(value.saturation ?? 0),
+    mask: value.mask === undefined ? 'inexistente' : structuredClone(value.mask),
+    clipping: value.clipping === undefined ? 'inexistente' : structuredClone(value.clipping),
+    references: Array.isArray(value.references) ? structuredClone(value.references) : [],
+    assets: Array.isArray(value.assets) ? structuredClone(value.assets) : [],
+    metadata: value.metadata && typeof value.metadata === 'object' ? structuredClone(value.metadata) : {},
+  };
+}
+
+function cloneLayerMetadata(metadata, layerId, index) {
+  return normalizeLayerMetadata(metadata, layerId, index);
+}
+
 function cloneFrame(frame, layerIds, byteLength, { id = crypto.randomUUID(), durationMs = frame.durationMs } = {}) {
   return {
     id,
@@ -118,6 +142,7 @@ function cloneFrame(frame, layerIds, byteLength, { id = crypto.randomUUID(), dur
       if (!pixels) throw new Error('Animation frame is missing a required layer cel.');
       return [layerId, clonePixels(pixels, byteLength)];
     })),
+    layerMetadata: new Map(layerIds.map((layerId, index) => [layerId, cloneLayerMetadata(frame.layerMetadata?.get(layerId), layerId, index)])),
   };
 }
 
@@ -170,6 +195,7 @@ export class PixelForgeAnimation {
           id: frame.id,
           durationMs: frame.durationMs,
           cels: new Map(this.#layerIds.map(id => [id, clonePixels(sourceCels.get(id), byteLength)])),
+          layerMetadata: new Map(this.#layerIds.map((id, index) => [id, cloneLayerMetadata(frame.layerMetadata?.get?.(id) ?? frame.layerMetadata?.find?.(item => item?.id === id), id, index)])),
         };
       });
       if (new Set(this.#frames.map(frame => frame.id)).size !== this.#frames.length) {
@@ -198,6 +224,7 @@ export class PixelForgeAnimation {
         id: crypto.randomUUID(),
         durationMs: Math.round(1000 / fps),
         cels: document.layers.map(layer => ({ layerId: layer.id, pixels: layer.pixels })),
+        layerMetadata: document.layers.map((layer, index) => ({ ...structuredClone(layer), id: layer.id, index, parentFrameId: '' })),
       }],
     });
   }
@@ -226,6 +253,21 @@ export class PixelForgeAnimation {
     const pixels = frame.cels.get(layerId);
     if (!pixels) throw new Error('Unknown animation layer ID.');
     return new Uint8ClampedArray(pixels);
+  }
+
+  getLayerMetadata(frameIndex, layerId) {
+    const frame = this.#frameAt(frameIndex);
+    if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
+    return structuredClone(frame.layerMetadata?.get(layerId) || normalizeLayerMetadata({}, layerId, this.#layerIds.indexOf(layerId)));
+  }
+
+  setLayerMetadata(frameIndex, layerId, metadata) {
+    const frame = this.#frameAt(frameIndex);
+    const index = this.#layerIds.indexOf(layerId);
+    if (index < 0) throw new Error('Unknown animation layer ID.');
+    if (!frame.layerMetadata) frame.layerMetadata = new Map();
+    frame.layerMetadata.set(layerId, normalizeLayerMetadata(metadata, layerId, index));
+    return this.getLayerMetadata(frameIndex, layerId);
   }
   compositeThumbnail(frameIndex, layerSettings = null, maxDimension = 48) {
     const frame = this.#frameAt(frameIndex);
@@ -391,6 +433,9 @@ export class PixelForgeAnimation {
     for (const frame of this.#frames) {
       const source = copyFromLayerId === null ? null : frame.cels.get(copyFromLayerId);
       frame.cels.set(layerId, source ? new Uint8ClampedArray(source) : new Uint8ClampedArray(byteLength));
+      const sourceMetadata = copyFromLayerId === null ? null : frame.layerMetadata?.get(copyFromLayerId);
+      frame.layerMetadata ||= new Map();
+      frame.layerMetadata.set(layerId, normalizeLayerMetadata(sourceMetadata || {}, layerId, this.#layerIds.length - 1));
     }
     return this.#layerIds.length;
   }
@@ -404,7 +449,7 @@ export class PixelForgeAnimation {
     this.#layerIds = this.#layerIds.filter(id => id !== layerId);
     this.#thumbnailCache.clear();
     this.#thumbnailCacheBytes = 0;
-    for (const frame of this.#frames) frame.cels.delete(layerId);
+    for (const frame of this.#frames) { frame.cels.delete(layerId); frame.layerMetadata?.delete(layerId); }
     return this.#layerIds.length;
   }
 
@@ -417,7 +462,10 @@ export class PixelForgeAnimation {
       throw new RangeError('The environment layer (index 0) must remain first.');
     }
     if (layerIds.every((id, index) => id === this.#layerIds[index])) return false;
-    for (const frame of this.#frames) frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
+    for (const frame of this.#frames) {
+      frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
+      frame.layerMetadata = new Map(layerIds.map((id, index) => [id, normalizeLayerMetadata(frame.layerMetadata?.get(id), id, index)]));
+    }
     this.#layerIds = [...layerIds];
     this.#thumbnailCache.clear();
     this.#thumbnailCacheBytes = 0;
@@ -523,13 +571,15 @@ export class PixelForgeAnimation {
       layerIds: [...this.#layerIds],
       fps: this.#fps,
       activeFrameIndex: this.#activeFrameIndex,
-      frames: this.#frames.map(frame => ({
+      frames: this.#frames.map((frame, frameIndex) => ({
         id: frame.id,
         durationMs: frame.durationMs,
-        cels: this.#layerIds.map(layerId => ({
+        cels: this.#layerIds.map((layerId, layerIndex) => ({
           layerId,
           pixels: encodeBase64(frame.cels.get(layerId)),
+          metadata: normalizeLayerMetadata(frame.layerMetadata?.get(layerId), layerId, layerIndex),
         })),
+        layerMetadata: this.#layerIds.map((layerId, layerIndex) => normalizeLayerMetadata(frame.layerMetadata?.get(layerId), layerId, layerIndex)),
       })),
     };
   }
@@ -578,6 +628,7 @@ export class PixelForgeAnimation {
         layerId: cel.layerId,
         pixels: decodeBase64(cel.pixels, byteLength),
       })),
+      layerMetadata: new Map(frame.layerMetadata?.map((metadata, index) => [metadata.id, normalizeLayerMetadata(metadata, metadata.id, index)]) || frame.cels.map((cel, index) => [cel.layerId, normalizeLayerMetadata(cel.metadata, cel.layerId, index)])),
     }));
     return new PixelForgeAnimation({
       width: data.width,
