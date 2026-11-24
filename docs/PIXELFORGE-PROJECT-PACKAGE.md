@@ -223,23 +223,81 @@ Al instalar, los datos se convierten a la representación de animación de Pixel
 
 **No inferir frames por carpeta/extensión:** un recurso bajo assets/ o Reference Center no se convierte en frame por su nombre. Solo el mapeo explícito del contrato lo convierte en parte del frame.
 
-## 4. Secciones de escena: Entorno, Efectos, Detalles, Elementos y Objetos
+## 4. Instancias de escena: Entorno, Efectos, Detalles, Elementos y Objetos
 
-Además del timeline y del Reference Center, cada proyecto nuevo lleva cinco manifiestos de sección:
+Estas cinco carpetas **no son bibliotecas de PNG ni filtros que apuntan a capas del lienzo principal**. Cada una representa una instancia de trabajo PixelForge independiente, capaz de guardar un dibujo estático o una animación completa.
 
-| Carpeta y archivo | Contenido |
+| Carpeta y archivo | Instancia |
 |---|---|
-| Entorno/entorno.tscn | Capas marcadas con role = environment, historial de entornos y datos propios de esa sección |
-| Efectos/efectos.tscn | Capas marcadas con role = effect y datos explícitos de efectos |
-| Detalles/detalles.tscn | Capas marcadas con role = detail y datos explícitos de detalles |
-| Elementos/elementos.tscn | Referencias a objetos de dibujo/vector etiquetados explícitamente como elements |
-| Objetos/objetos.tscn | Referencias a objetos de dibujo/vector etiquetados explícitamente como objects |
+| `Entorno/entorno.tscn` | Proyecto/escena editable de entorno, con frames y capas propios |
+| `Efectos/efectos.tscn` | Proyecto/escena editable de efectos, con frames y capas propios |
+| `Detalles/detalles.tscn` | Proyecto/escena editable de detalles, con frames y capas propios |
+| `Elementos/elementos.tscn` | Proyecto/escena editable de elementos, con frames y capas propios |
+| `Objetos/objetos.tscn` | Proyecto/escena editable de objetos, con frames y capas propios |
 
-Cada archivo usa el contrato JSON CodeLab `codelab-pixelforge-scene` version 1: `sceneType`, `projectId`, `canvas`, `layerIds`, `drawingObjectIds`, `vectorObjectIds` y `data`. Entorno también conserva `environmentHistory`.
+### 4.1 Cada sección es un documento PixelForge completo
 
-**No se clasifican cosas por adivinanza.** Las capas de Entorno/Efectos/Detalles se identifican mediante `drawingModel.layerRoles[layerId].role`. Elementos y Objetos solo incluyen objetos que ya llevan una etiqueta explícita `sceneSection`, `category` o `role` con el valor correspondiente. El contenido propio de cada sección se guarda en `drawingModel.sceneSections[section]` y se restaura al importar. Así, un objeto no termina en la carpeta equivocada por su nombre.
+Cada manifiesto `.tscn` contiene una instancia autocontenida con el mismo contrato de edición que el proyecto principal. Su carga útil debe preservar, como mínimo:
 
-Los manifiestos apuntan a los IDs del documento nativo; no duplican la imagen compuesta. Los recursos binarios específicos se guardan debajo de su carpeta, por ejemplo `Efectos/assets/spark.png` o `Objetos/textures/metal.png`, y se declaran en `manifest.resources[]`. Si el paquete se importa, CodeLab conserva los bytes en `packageResourceFiles` para que un guardado y una exportación posteriores no los pierdan.
+- Identidad de la instancia, nombre, dimensiones y configuración del lienzo.
+- Una pila ordenada de capas con IDs estables, nombres, píxeles RGBA, posición, escala, rotación/ángulo, opacidad, visibilidad, bloqueo, blend mode, máscaras, clipping, referencias, assets y metadatos.
+- Una línea de tiempo propia: frames ordenados, IDs, nombres, duración por frame, cels por capa, frame activo, FPS, loop y velocidad de reproducción.
+- Paleta, modelo de dibujo, objetos, modelo vectorial, transformaciones y cualquier dato editable que el documento PixelForge principal pueda contener.
+- Referencias a recursos y sus rutas/bytes, sin aplanar la escena.
+
+El contrato de frame y capa descrito en la sección 3 se aplica también a cada frame y capa de estas cinco instancias. No se crea un esquema reducido especial para Entorno, Efectos, Detalles, Elementos u Objetos.
+
+Una sección sin contenido puede estar vacía, pero cuando se guarda una instancia debe contener todos los datos necesarios para reconstruirla sin consultar el lienzo principal ni inferir información. Una instancia con un solo dibujo sigue teniendo un frame y su pila de capas; una instancia animada conserva todos sus frames y cels.
+
+### 4.2 Organización interna del ZIP
+
+Cada `.tscn` es el manifiesto de su instancia y apunta a los datos completos de la misma. Los binarios RGBA pueden separarse en archivos por frame/capa para evitar JSON gigantes, pero deben estar enlazados por rutas relativas explícitas y protegidos por `integrity.json`.
+
+Ejemplo conceptual:
+
+~~~text
+Entorno/
+├── entorno.tscn
+└── frames/
+    ├── frames.tscn
+    ├── frame-0001/
+    │   ├── frame.json
+    │   └── layers/
+    │       └── layer-001/pixels.rgba
+    └── frame-0002/
+        ├── frame.json
+        └── layers/
+            └── layer-001/pixels.rgba
+
+Efectos/
+├── efectos.tscn
+└── frames/
+    └── ... misma estructura completa de frames y capas ...
+
+Detalles/
+├── detalles.tscn
+└── frames/
+    └── ...
+
+Elementos/
+├── elementos.tscn
+└── frames/
+    └── ...
+
+Objetos/
+├── objetos.tscn
+└── frames/
+    └── ...
+~~~
+
+El ejemplo muestra la estructura lógica requerida; los nombres y rutas definitivos deben declararse en cada manifiesto. No se permite convertir una instancia en una imagen compuesta ni guardar solo una miniatura. Los recursos externos adicionales pueden guardarse dentro de la carpeta de la instancia y declararse en `manifest.resources[]`.
+
+### 4.3 Independencia y round-trip
+
+Las capas y frames de una instancia no se deducen de `drawingModel.layerRoles`, ni se reconstruyen filtrando IDs del documento principal. Cada sección conserva su propia pila de capas y su propia animación. `layerRoles` puede servir como metadato/clasificación auxiliar, pero no sustituye el documento de la instancia.
+
+Al exportar e importar, CodeLab debe reconstruir cada instancia con sus mismos IDs, orden de capas, píxeles, propiedades, frames, cels, duración, FPS, loop, referencias, modelos y recursos. Después de editar y volver a exportar, los mismos datos deben seguir presentes. El importador debe rechazar referencias a rutas inexistentes, IDs duplicados, cels faltantes, dimensiones incompatibles o datos incompletos; nunca debe inventarlos.
+
 
 ## 5. Reference Center: qué significa reference.personaje
 
