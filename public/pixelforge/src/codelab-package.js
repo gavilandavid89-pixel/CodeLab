@@ -561,6 +561,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
   }
 
   const resources = [];
+  const resourcePaths = new Set();
   let resourceBytes = 0;
   for (const declaration of manifest.resources || []) {
     if (!declaration || !safePath(declaration.path) || resourcePaths.has(declaration.path)) throw new TypeError('manifest.resources contains an unsafe or duplicate path.');
