@@ -14,7 +14,10 @@ let packageData = null;
 let currentIndex = 0;
 let currentBitmap = null;
 let playing = false;
-let playbackTimer = 0;
+let playbackRaf = 0;
+let playbackStartedAt = 0;
+let playbackElapsedMs = 0;
+let playbackRenderPending = false;
 let activeImport = 0;
 let exportBusy = false;
 let cancelRequested = false;
@@ -223,6 +226,7 @@ function resetComposer() {
   ui.export.textContent = '⇩ Exportar vídeo';
   packageData = null;
   currentIndex = 0;
+  playbackElapsedMs = 0;
   currentBitmap?.close?.();
   currentBitmap = null;
   ui.canvas.hidden = true;
@@ -251,6 +255,7 @@ async function renderFrame(index) {
   if (!packageData) return;
   index = Math.max(0, Math.min(packageData.frames.length - 1, index));
   currentIndex = index;
+  if (!playing) playbackElapsedMs = frameStart(index);
   const frame = packageData.frames[index];
   currentBitmap?.close?.();
   currentBitmap = await createImageBitmap(frame.blob);
@@ -432,8 +437,10 @@ async function importPackage(file) {
   }
 }
 function stopPlayback() {
+  if (playing) playbackElapsedMs = Math.max(0, performance.now() - playbackStartedAt);
   playing = false;
-  clearTimeout(playbackTimer);
+  if (playbackRaf) cancelAnimationFrame(playbackRaf);
+  playbackRaf = 0;
   ui.play.textContent = '▶';
   ui.play.setAttribute('aria-label', 'Reproducir');
   if (packageData) {
@@ -443,25 +450,48 @@ function stopPlayback() {
     $('#vc-last').disabled = currentIndex === packageData.frames.length - 1;
   }
 }
-function schedulePlayback() {
+function playbackTick(now) {
   if (!playing || !packageData) return;
-  const next = currentIndex + 1;
-  if (next >= packageData.frames.length) {
-    if ($('#vc-loop').checked) {
-      renderFrame(0).then(() => schedulePlayback()).catch(error => { stopPlayback(); setStatus(error.message, 'error'); });
-    } else stopPlayback();
+  const total = totalDuration();
+  const elapsed = Math.max(0, now - playbackStartedAt);
+  const looping = $('#vc-loop').checked;
+  if (!looping && elapsed >= total) {
+    playbackElapsedMs = total;
+    const lastIndex = packageData.frames.length - 1;
+    if (currentIndex !== lastIndex && !playbackRenderPending) {
+      playbackRenderPending = true;
+      renderFrame(lastIndex).catch(error => setStatus(error.message, 'error')).finally(() => {
+        playbackRenderPending = false;
+        stopPlayback();
+      });
+    } else if (!playbackRenderPending) stopPlayback();
     return;
   }
-  playbackTimer = setTimeout(() => {
-    renderFrame(next).then(() => schedulePlayback()).catch(error => { stopPlayback(); setStatus(error.message, 'error'); });
-  }, packageData.frames[currentIndex].durationMs);
+  const timelineTime = looping && total > 0 ? elapsed % total : Math.min(elapsed, total);
+  let low = 0, high = packageData.frames.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (frameStart(middle + 1) <= timelineTime) low = middle + 1;
+    else high = middle;
+  }
+  const targetIndex = Math.min(packageData.frames.length - 1, low);
+  if (targetIndex !== currentIndex && !playbackRenderPending) {
+    playbackRenderPending = true;
+    renderFrame(targetIndex).catch(error => {
+      stopPlayback();
+      setStatus(error.message, 'error');
+    }).finally(() => { playbackRenderPending = false; });
+  }
+  playbackRaf = requestAnimationFrame(playbackTick);
 }
 function startPlayback() {
   if (!packageData || playing) return;
-  if (currentIndex === packageData.frames.length - 1) renderFrame(0).then(() => {
-    playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback();
-  });
-  else { playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback(); }
+  if (playbackElapsedMs >= totalDuration()) playbackElapsedMs = 0;
+  playbackStartedAt = performance.now() - playbackElapsedMs;
+  playing = true;
+  ui.play.textContent = 'Ⅱ';
+  ui.play.setAttribute('aria-label', 'Pausar');
+  playbackRaf = requestAnimationFrame(playbackTick);
 }
 function webCodecsSupport() {
   if (!('VideoEncoder' in globalThis) || !('VideoFrame' in globalThis)) return '';
