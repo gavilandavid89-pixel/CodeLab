@@ -1290,30 +1290,36 @@ async function main() {
         );
         assert.equal(staleFileCheck.rows[0].count, 0,
           'a successful re-import must remove stale files after the new package has been verified');
+        const staleFileCheck = await testSessionPool.query(
+          'SELECT COUNT(*)::int AS count FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND file_path=$3',
+          [adminWorkspaceId, agentProjectId, 'obsolete/stale-bridge-import.bin']
+        );
+        assert.equal(staleFileCheck.rows[0].count, 0,
+          'a successful re-import must remove stale files after the new package has been verified');
         assert.equal(agentImport.editorId, 'pixelforge');
         assert.equal(agentImport.projectId, agentProjectId);
-        assert.equal(agentImport.targetWorkspaceId, coreWorkspace.workspaceId,
-          'the native worker must persist into the requested user workspace, not its ADMIN mailbox');
+        assert.equal(agentImport.targetWorkspaceId, adminWorkspaceId,
+          'ADMIN is the authoritative workspace for imported PixelForge projects');
         const registryRow = await testSessionPool.query(
           'SELECT workspace_id,project FROM public.codelab_project_registry WHERE project_id=$1 AND editor_id=\'pixelforge\'',
           [agentProjectId]
         );
-        assert.equal(registryRow.rows[0]?.workspace_id, coreWorkspace.workspaceId,
-          'the canonical project registry must belong to the requested user workspace');
+        assert.equal(registryRow.rows[0]?.workspace_id, adminWorkspaceId,
+          'the canonical project registry must belong to ADMIN');
         const pixelForgeRow = await testSessionPool.query(
           'SELECT workspace_id,project,server_revision FROM public.codelab_pixelforge_projects WHERE project_id=$1',
           [agentProjectId]
         );
-        assert.equal(pixelForgeRow.rows[0]?.workspace_id, coreWorkspace.workspaceId,
-          'the native PixelForge project row must belong to the requested user workspace');
+        assert.equal(pixelForgeRow.rows[0]?.workspace_id, adminWorkspaceId,
+          'the native PixelForge project row must belong to ADMIN');
         assert.equal(Number(pixelForgeRow.rows[0]?.server_revision), 1,
           'the imported PixelForge project must start at server revision one');
-        const mailboxLeak = await testSessionPool.query(
+        const nonAdminLeak = await testSessionPool.query(
           'SELECT COUNT(*)::int AS count FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2',
-          [adminWorkspaceId, agentProjectId]
+          [coreWorkspace.workspaceId, agentProjectId]
         );
-        assert.equal(mailboxLeak.rows[0].count, 0,
-          'the internal ADMIN mailbox must not become the project destination');
+        assert.equal(nonAdminLeak.rows[0].count, 0,
+          'the project must not be copied into a non-ADMIN workspace');
 
         const agentList = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
         const agentMetadata = agentList.projects.find(project => project.id === agentProjectId);
