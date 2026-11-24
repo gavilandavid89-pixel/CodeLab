@@ -905,6 +905,8 @@ async function main() {
       'copying a reference part must write into the existing active layer without creating another layer');
     let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(referenceStored.layers.length, 1, 'reference copy must preserve the original layer count');
+    assert.equal(referenceStored.layers[0].id, 'layer-reference-materialization-fixture',
+      'reference copy must preserve the existing active layer ID');
     assert.deepEqual(rgbaAt(referenceStored, 1, 1, 0), [210, 120, 40, 255],
       'reference part pixels must be copied into the pre-existing active layer');
     await setForegroundColor('#00aa44');
@@ -922,6 +924,8 @@ async function main() {
       'the active layer stack must remain unchanged after a full browser reload');
     referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(referenceStored.layers.length, 1, 'the active layer must survive a full browser reload without an added reference layer');
+    assert.equal(referenceStored.layers[0].id, 'layer-reference-materialization-fixture',
+      'the original active layer identity must survive reload');
     assert.deepEqual(rgbaAt(referenceStored, 2, 2, 0), [0, 170, 68, 255],
       'the edited active-layer pixels must survive reload and account persistence');
     await accountPage.locator('#reference-refresh').click();
