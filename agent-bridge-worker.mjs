@@ -2744,6 +2744,7 @@ async function processCommand(command) {
         importRequestId: payload.import_request_id,
         workspaceId,
         pixelForgeWorkspaceId,
+        targetWorkspaceId: targetWorkspace,
         artifactBuffer: stagedArtifact?.bytes || null,
         artifactBase64: stagedArtifact ? null : (payload.artifact_base64 || payload.artifact?.dataBase64 || null),
         artifactFilename: stagedArtifact?.metadata?.filename || payload.artifact_filename || payload.artifact?.filename || 'project.codelab',
