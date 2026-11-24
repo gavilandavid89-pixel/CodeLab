@@ -2446,6 +2446,33 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // The trusted A session may mint one short-lived, one-use ADMIN browser handoff.
+      // Only A receives the bridge secret; B receives neither this ticket nor the cookie.
+      if (req.method === 'POST' && pathname === '/api/agent/bridge/admin-handoff') {
+        const supplied = String(req.headers['x-codelab-agent-bridge-token'] || '');
+        if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
+          return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
+        }
+        if (!accountPool) return sendJson(res, 503, { error: 'handoff_unavailable' });
+        try {
+          const accountResult = await accountPool.query(
+            "SELECT id, username, role FROM codelab_accounts WHERE username='ADMIN' AND role='admin' LIMIT 1"
+          );
+          if (!accountResult.rowCount) return sendJson(res, 404, { error: 'admin_account_not_found' });
+          const account = accountResult.rows[0];
+          const ticket = crypto.randomBytes(24).toString('hex');
+          const userData = { id: String(account.id), provider: 'local', name: account.username, role: 'admin' };
+          await accountPool.query(
+            'INSERT INTO codelab_auth_sessions (session_id, user_data, created_at, expires_at) VALUES ($1, $2::jsonb, NOW(), NOW() + INTERVAL \'10 minutes\')',
+            [ticket, JSON.stringify(userData)]
+          );
+          return sendJson(res, 201, { ok: true, ticket, expiresInSeconds: 600, oneTime: true }, { 'Cache-Control': 'no-store, max-age=0' });
+        } catch (error) {
+          console.error('agent_bridge_admin_handoff_failed:', error.message);
+          return sendJson(res, 503, { error: 'handoff_unavailable' });
+        }
+      }
+
       // Trusted A-session readback: expose only the ADMIN-owned PixelForge project
       // snapshot to the authenticated session host. The B processor never receives
       // this bridge credential or direct Neon access.
