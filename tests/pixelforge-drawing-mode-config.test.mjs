@@ -5,6 +5,7 @@ import {
   normalizeDrawingConfiguration,
   switchDrawingMode,
   getDrawingModePresentation,
+  getVideoScalingMode,
 } from '../public/pixelforge/src/drawing-mode-config.mjs';
 
 test('legacy projects restore a compatible pixel-art mode without changing canvas data', () => {
@@ -35,4 +36,9 @@ test('a project with one enabled mode cannot silently switch to a disabled mode'
 test('drawing modes change presentation defaults, not source geometry', () => {
   assert.equal(getDrawingModePresentation('illustration').imageSmoothingEnabled, true);
   assert.equal(getDrawingModePresentation('pixel-art').imageSmoothingEnabled, false);
+});
+
+test('Video Composer inherits the source project drawing mode by default', () => {
+  assert.equal(getVideoScalingMode(PIXELFORGE_DRAWING_MODES.ILLUSTRATION), 'smooth');
+  assert.equal(getVideoScalingMode(PIXELFORGE_DRAWING_MODES.PIXEL_ART), 'pixelated');
 });
