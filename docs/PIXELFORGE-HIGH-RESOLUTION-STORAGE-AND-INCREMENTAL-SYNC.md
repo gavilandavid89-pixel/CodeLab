@@ -67,6 +67,8 @@ The current isolated implementation is `SparseTileCelStore` in `public/pixelforg
 | `cloneCel(celId)` | Clone the coordinate map while retaining the same immutable tile resources. |
 | `updateTile(celId, x, y, pixels)` | Replace or remove one tile. Only that coordinate receives a new content hash; the source cel remains unchanged. |
 | `getTile(celId, x, y)` | Return a defensive copy of one decoded tile, or `null` for a sparse/empty coordinate. |
+| `readRegion(celId, region)` | Read a bounded rectangle by decoding only intersecting tiles; does not materialize the full canvas. |
+| `writeRegion(celId, region, pixels)` | Copy-on-write update of intersecting tiles; returns a new cel ID only when pixels change and leaves the source cel untouched. |
 | `composeCel(celId)` | Materialize a full RGBA buffer for compatibility with current raster tools. |
 | `exportCel(celId)` | Export the versioned sparse cel document. |
 | `diffCels(previousId, nextId)` | Return changed, added, and removed tile resources/coordinates. |
@@ -132,7 +134,7 @@ No production database schema, R2 bucket, Render service, or account quota shoul
 
 - **Implemented as an isolated v2 building block:** `public/pixelforge/src/animation-tiles.mjs` encodes dense RGBA cels into sparse 64×64 tiles (with 32/128 benchmark options), omits all-zero tiles, preserves exact RGBA bytes, validates each tile with SHA-256, and computes added/changed/removed tile diffs.
 - **In-memory resource store implemented:** `SparseTileCelStore` deduplicates immutable tile resources by SHA-256, shares tile references when cloning a cel, applies copy-on-write when a tile changes, removes references when cels are released, and exposes a bounded LRU cache for decoded tiles. It also offers a full-RGBA composition adapter for legacy raster consumers.
-- Contract tests in `tests/pixelforge-animation-tiles.test.mjs` cover exact round trips, edge tiles, integrity rejection, tile diffs, copy-on-write sharing, resource reference cleanup, and LRU eviction. They are included in `npm run test:pixelforge`.
+- Contract tests in `tests/pixelforge-animation-tiles.test.mjs` cover exact round trips, edge tiles, integrity rejection, tile diffs, copy-on-write sharing, resource reference cleanup, and LRU eviction. They also verify bounded region reads/edits across tile boundaries, no-op updates, sparse erasure, source immutability, and resource cleanup. They are included in `npm run test:pixelforge`.
 - **Integration boundary:** this store remains an isolated in-memory primitive. It is not yet wired into `PixelForgeAnimation`, undo/redo, project serialization, Headless persistence, or private object storage. It does not change the current 64 MiB animation budget or enable larger canvas defaults.
 - Video Composer aspect-safe scaling, source-quality assessment, scaling-mode selection, source-vs-output disclosure, named 16:9/9:16 presets, and timeline-clock preview are implemented in the source-quality/motion export branch; CI has passed the PixelForge validation, animation-core, and Headless runtime workflows for the current tested revision.
 - Dense RGBA cels, full-project JSON serialization, 96 MiB project envelope, 64 MiB raster/animation budgets, and 512 MiB account quota remain current constraints.
