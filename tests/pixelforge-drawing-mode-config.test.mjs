@@ -6,6 +6,8 @@ import {
   switchDrawingMode,
   getDrawingModePresentation,
   getVideoScalingMode,
+  normalizeDrawingModeProfile,
+  updateDrawingModeOverrides,
 } from '../public/pixelforge/src/drawing-mode-config.mjs';
 
 test('legacy projects restore a compatible pixel-art mode without changing canvas data', () => {
@@ -51,4 +53,24 @@ test('drawing modes change presentation defaults, not source geometry', () => {
 test('Video Composer inherits the source project drawing mode by default', () => {
   assert.equal(getVideoScalingMode(PIXELFORGE_DRAWING_MODES.ILLUSTRATION), 'smooth');
   assert.equal(getVideoScalingMode(PIXELFORGE_DRAWING_MODES.PIXEL_ART), 'pixelated');
+});
+
+test('per-layer mode profiles store only non-default exceptions and restore them independently', () => {
+  const illustrationDefaults = getDrawingModePresentation('illustration');
+  let overrides = updateDrawingModeOverrides({}, 'illustration', illustrationDefaults);
+  assert.deepEqual(overrides, {});
+  overrides = updateDrawingModeOverrides(overrides, 'illustration', {
+    ...illustrationDefaults, brushSize: 9, brushHardness: 72, brushOpacity: 63,
+  });
+  overrides = updateDrawingModeOverrides(overrides, 'pixel-art', {
+    ...getDrawingModePresentation('pixel-art'), brushSize: 3,
+  });
+  assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushSize, 9);
+  assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushHardness, 72);
+  assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushOpacity, 63);
+  assert.equal(normalizeDrawingModeProfile('pixel-art', overrides['pixel-art']).brushSize, 3);
+  assert.equal(normalizeDrawingModeProfile('illustration', overrides['pixel-art']).brushSize, 5);
+  overrides = updateDrawingModeOverrides(overrides, 'illustration', illustrationDefaults);
+  assert.equal('illustration' in overrides, false);
+  assert.equal(overrides['pixel-art'].brushSize, 3);
 });
