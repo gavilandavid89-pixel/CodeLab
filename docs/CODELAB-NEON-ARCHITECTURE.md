@@ -11,6 +11,28 @@ Este archivo es el resumen de arquitectura de persistencia. La especificación t
 - Cloudflare/R2 o almacenamiento S3-compatible guarda bytes de evidencia cuando está configurado; Neon conserva las referencias y metadata.
 - GitHub versiona el software y ejecuta CI; no es el transporte normal de cada edición de proyecto.
 
+## Entorno de producción y límites de persistencia
+
+La topología de producción verificada para CodeLab es:
+
+- **Aplicación:** servicio web Render `codelab`, en el workspace `Xsuperwarriorx`, desplegado desde el repositorio `gavilandavid89-pixel/CodeLab` y la rama `main`. Render realiza el despliegue automático de los commits de esa rama.
+- **Base de datos:** proyecto Neon `Codelab`, rama `production`. La conexión de la aplicación se configura mediante `DATABASE_URL`; nunca documentar aquí el valor ni credenciales.
+- **Separación de entornos:** el contenedor PostgreSQL de los workflows de integración es efímero y aislado. Un fallo de un test E2E contra ese contenedor no demuestra por sí solo una caída, corrupción o problema de cuota de la base Neon de producción.
+- **Disco de Render:** `CODELAB_DATA_DIR` no está configurado en el servicio auditado. El directorio local por defecto queda en el filesystem efímero del servicio; no debe tratarse como almacenamiento duradero. Los logs del servidor indican que sesiones y proyectos del workspace se guardan en PostgreSQL. Los archivos locales de desarrollo y el secreto local de respaldo no sobreviven necesariamente a un redeploy. Todo dato que deba persistir debe usar Neon o el almacenamiento de objetos configurado.
+
+### Inventario de tablas observado en Neon
+
+La inspección de solo lectura de la rama `production` encontró estas 16 tablas públicas. El inventario se agrupa por responsabilidad; las migraciones siguen siendo la fuente de verdad de columnas, índices y restricciones.
+
+| Área | Tablas |
+|---|---|
+| Identidad y workspace | `codelab_accounts`, `codelab_auth_sessions`, `codelab_workspace_states` |
+| Buzón y puente de agentes | `codelab_agent_commands`, `codelab_agent_bridge_state`, `codelab_agent_artifacts`, `codelab_agent_artifact_chunks` |
+| PixelForge | `codelab_pixelforge_projects`, `codelab_pixelforge_change_events`, `codelab_pixelforge_project_uploads`, `codelab_pixelforge_project_upload_chunks` |
+| Archivos e importaciones | `codelab_project_artifacts`, `codelab_project_files`, `codelab_project_import_requests`, `codelab_project_imports`, `codelab_project_registry` |
+
+El inventario confirma que las estructuras existen en producción; no sustituye las pruebas de lectura/escritura funcionales ni autoriza a usar datos reales como fixtures. Las pruebas deben crear y limpiar sus propios datos en un entorno aislado, sin ejecutar limpieza sobre la rama de producción.
+
 ## Comunicación y activación del worker
 
 El servidor `server.js` mantiene un pool PostgreSQL y un cliente dedicado `pg.Client` con `LISTEN codelab_agent_bridge_wake`. Un trigger AFTER INSERT/UPDATE de una orden a estado `queued` emite `pg_notify`. El listener arranca `agent-bridge-worker.mjs` bajo demanda si no está activo.
