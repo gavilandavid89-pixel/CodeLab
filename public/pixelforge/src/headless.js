@@ -1,4 +1,5 @@
 import { RasterDocument } from './core.js';
+import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration } from './drawing-mode-config.mjs';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
@@ -375,11 +376,15 @@ export class HeadlessEditorRuntime {
   #animationFuture = [];
   #animationHistoryBytes = 0;
   #hasAnimation = false;
+  #drawingConfiguration;
 
   constructor({ width = 128, height = 128, name = 'Untitled artwork', project = null } = {}) {
     this.#document = project === null
       ? new RasterDocument(width, height, name)
       : RasterDocument.fromJSON(project);
+    this.#drawingConfiguration = normalizeDrawingConfiguration(project?.drawingConfiguration, {
+      legacyDefault: project ? PIXELFORGE_DRAWING_MODES.PIXEL_ART : PIXELFORGE_DRAWING_MODES.ILLUSTRATION,
+    });
     this.#hasAnimation = Boolean(project?.animation);
     this.#animation = validateAnimationTimeline(project?.animation, this.#document.width, this.#document.height, this.#document.layers);
     this.#resetWorkspace();
@@ -749,6 +754,7 @@ export class HeadlessEditorRuntime {
       throw new Error('Unreviewed sandbox changes cannot be serialized. Create and accept a proposal first.');
     }
     const project = this.#document.toJSON();
+    project.drawingConfiguration = structuredClone(this.#drawingConfiguration);
     if (this.#hasAnimation || this.#animation.frames.length > 0) project.animation = JSON.parse(JSON.stringify(this.#animation));
     return project;
   }
