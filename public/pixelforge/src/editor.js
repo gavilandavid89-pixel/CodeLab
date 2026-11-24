@@ -903,10 +903,7 @@ function buildProjectSnapshot(targetDoc = doc) {
     const state = readSceneWorkspaceState(targetDoc.drawingModel);
     const workspaceSnapshot = stripSceneWorkspaceState(snapshot);
     if (activeSceneWorkspace === 'main') state.parentWorkspace = null;
-    else {
-      workspaceSnapshot.id = 'scene-' + activeSceneWorkspace + '-' + targetDoc.id;
-      state.workspaces[activeSceneWorkspace] = workspaceSnapshot;
-    }
+    else delete state.workspaces[activeSceneWorkspace];
     state.activeSection = activeSceneWorkspace;
     const withState = attachSceneWorkspaceState(snapshot, state, activeSceneWorkspace);
     snapshot.drawingModel = withState.drawingModel;
@@ -932,9 +929,7 @@ function restoreActiveSceneWorkspace() {
   if (activeSceneWorkspace !== 'main') {
     const savedWorkspace = state.workspaces[activeSceneWorkspace];
     if (!savedWorkspace) {
-      activeSceneWorkspace = 'main';
-      state.activeSection = 'main';
-      doc.drawingModel = { ...(doc.drawingModel || {}), sceneWorkspaceState: state };
+      updateSceneWorkspaceUI();
       return;
     }
     const projectId = doc.id;
