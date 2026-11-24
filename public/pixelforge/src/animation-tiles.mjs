@@ -241,7 +241,7 @@ export class SparseTileCelStore {
       if (existing.rgba !== rgba) throw new Error('SHA-256 resource collision detected.');
       existing.refs++;
     } else {
-      this.#resources.set(hash, { rgba, refs: 1 });
+      this.#resources.set(hash, { rgba, byteLength: Math.floor(rgba.length * 3 / 4) - (rgba.endsWith('==') ? 2 : rgba.endsWith('=') ? 1 : 0), refs: 1 });
     }
   }
 
@@ -269,7 +269,7 @@ export class SparseTileCelStore {
     }
     const resource = this.#resources.get(hash);
     if (!resource) throw new Error('Sparse tile resource is unavailable.');
-    const expectedBytes = Math.floor(resource.rgba.length * 3 / 4);
+    const expectedBytes = resource.byteLength;
     const bytes = base64ToBytes(resource.rgba, expectedBytes);
     if (this.#maxDecodedCacheBytes > 0 && bytes.byteLength <= this.#maxDecodedCacheBytes) {
       this.#decoded.set(hash, bytes);
@@ -321,11 +321,14 @@ export class SparseTileCelStore {
       for (const byte of bytes) if (byte !== 0) { hasAnyByte = true; break; }
       if (!hasAnyByte) throw new TypeError('Sparse tiled cel must not store an empty tile.');
       tiles.set(key, { x: tile.x, y: tile.y, width: tileWidth, height: tileHeight, hash: tile.sha256 });
-      pending.push({ hash: tile.sha256, rgba: tile.rgba });
+      pending.push({ hash: tile.sha256, rgba: tile.rgba, byteLength: bytes.byteLength });
     }
     const celId = globalThis.crypto?.randomUUID?.();
     if (!celId) throw new Error('Secure UUID generation is required for sparse cel IDs.');
-    for (const resource of pending) this.#retain(resource.hash, resource.rgba);
+    for (const resource of pending) {
+      this.#retain(resource.hash, resource.rgba);
+      this.#resources.get(resource.hash).byteLength = resource.byteLength;
+    }
     this.#cels.set(celId, { width, height, tileSize, tiles });
     return celId;
   }
@@ -363,7 +366,7 @@ export class SparseTileCelStore {
     };
   }
 
-  updateTile(celId, x, y, pixels) {
+  async updateTile(celId, x, y, pixels) {
     const cel = this.#cel(celId);
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 ||
         x % cel.tileSize !== 0 || y % cel.tileSize !== 0 || x >= cel.width || y >= cel.height) {
@@ -388,6 +391,7 @@ export class SparseTileCelStore {
     const rgba = bytesToBase64(bytes);
     if (previous?.hash === hash) return { changed: false, removed: false, sha256: hash };
     this.#retain(hash, rgba);
+    this.#resources.get(hash).byteLength = bytes.byteLength;
     cel.tiles.set(key, { x, y, width, height, hash });
     if (previous) this.#release(previous.hash);
     return { changed: true, removed: false, sha256: hash };
