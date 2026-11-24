@@ -72,46 +72,78 @@ En la misma lectura había otras dos órdenes `codelab_project_import` antiguas 
 
 **Criterio de finalización:** solo declarar completada una importación cuando la orden tenga resultado exitoso y la persistencia del proyecto/revisión pueda leerse de vuelta en el workspace destino. `queued`, HTTP 202 y una notificación emitida no satisfacen ese criterio.
 
-## 4. Restricción SQL y discrepancia con los logs de Render
+## 4. Causa raíz confirmada y corrección del listener
 
-Los logs de arranque de Render del servicio CodeLab registraron repetidamente un error al crear/reconectar el listener de Neon:
+Los logs de Render mostraban repetidamente:
 
 ```text
 check constraint "codelab_agent_commands_action_check"
 of relation "codelab_agent_commands" is violated by some row
 ```
 
-Se inspeccionó directamente la restricción en el proyecto Neon correcto. La definición observada es un `CHECK` sobre `action` que admite, entre otros valores, `codelab_project_import`. La restricción aparece con `convalidated = true`.
+La comparación del código desplegado con el esquema real de Neon permitió identificar la causa:
 
-También se agruparon las filas existentes por `action` y `status`. Los valores observados estaban dentro de la lista permitida; en particular, la orden de este incidente usa `codelab_project_import`, que está expresamente permitido.
+- La restricción CHECK vigente en Neon permitía `pixelforge_preview_evidence_video`, `pixelforge_import_zip`, `pixelforge_export_zip` y `pixelforge_video_composer`.
+- El bloque de inicialización del listener en `server.js` reconstruía esa restricción con una lista antigua que omitía esos cuatro valores.
+- Ya existía una orden histórica con `action='pixelforge_preview_evidence_video'`. Al intentar añadir de nuevo el CHECK sin permitir ese valor, PostgreSQL rechazaba la operación y revertía la transacción. Por eso el listener no podía completar su inicialización/reconexión.
+- El worker ya contemplaba esas acciones; el desfase estaba en la lista duplicada de `server.js`.
 
-**Conclusión limitada por la evidencia:** el mensaje de Render y el estado actual de la tabla no coinciden de forma directa. La fila de esta importación no viola la restricción según su valor `action`, y la restricción actual está validada. No se identificó qué fila, operación, conexión o versión de esquema originó el error del listener. No atribuirlo a esta orden ni modificar/borrar filas para intentar silenciarlo.
+**Corrección aplicada:** se sincronizó la allowlist del listener con las acciones admitidas por el worker y se añadió una prueba de contrato para impedir que vuelvan a faltar esas cuatro acciones.
 
-La discrepancia requiere comprobar que el `DATABASE_URL` efectivo del servicio Render apunta al mismo proyecto/branch, inspeccionar la consulta exacta de arranque/reconexión y revisar el historial de migraciones/DDL que administra esa restricción. No registrar ni exponer el valor secreto de `DATABASE_URL`; basta comparar el host/proyecto de forma saneada.
+- Commit del arreglo: `136e4743fc74d77145e2934934b1fb5c0c5f02b2`.
+- Commit de la prueba: `752a8493bc9beeb2b1accfbb2715fa2095d67e2e`.
+- Deploy Render del arreglo: `dep-dc2vkm8ae00c73fmu0vg` (live).
+- Tras el despliegue, los logs confirmaron `Neon wake listener armed`, reconciliación de una orden durable y arranque del worker. En el nuevo arranque no volvió a aparecer el error CHECK.
 
-## 5. Qué queda sin verificar
+No se modificó la restricción directamente en producción, no se borraron filas y no se relajó ninguna validación SQL.
 
-- Si el worker reclamó posteriormente la orden existente.
-- Si la orden alcanzó un estado terminal y generó un resultado.
-- Si el proyecto `inbox-smoke-test-sunrise` se publicó en `ws_local_admin`.
-- Si su revisión y recursos quedaron persistidos.
-- Si PixelForge ADMIN puede leerlo de vuelta y reabrirlo.
-- Qué originó exactamente el error de la restricción en los logs del listener.
+## 5. Expiración de la orden original y recuperación sin duplicar trabajo
 
-El hecho de que otros comandos `codelab_project_import` hayan terminado exitosamente en horas anteriores demuestra que hubo importaciones funcionales antes, pero no demuestra que esta orden concreta se haya procesado.
+La orden original `7f4a2d3e-7044-4bdc-a542-c38cbff48f82` no fue importada: cuando el worker volvió a estar operativo ya había superado su expiración. El worker la marcó explícitamente como `expired`, con resultado `command_expired`.
 
-## 6. Próximo procedimiento seguro
+Antes de reintentar se comprobó de forma individual que:
 
-1. Leer siempre la cuenta indicada al principio de `README.md` antes de usar Neon o Render.
-2. Verificar el proyecto `Codelab` y la rama `production` de esa cuenta.
-3. Comparar de forma saneada el destino de `DATABASE_URL` del servicio Render con ese proyecto/branch.
-4. Inspeccionar el código y migraciones que crean o modifican `codelab_agent_commands_action_check`, además del SQL exacto usado por el listener.
-5. Consultar por `command_id` las órdenes existentes y registrar su estado antes de cualquier reintento.
-6. No borrar órdenes, relajar la restricción, ejecutar DDL ni crear una importación duplicada sin identificar primero la causa y confirmar el alcance.
-7. Declarar la importación completada únicamente tras confirmar el estado exitoso, la publicación en `ws_local_admin`, la revisión persistida y la lectura de vuelta/reapertura en ADMIN.
+- no existía el proyecto `inbox-smoke-test-sunrise-20261124` en `codelab_pixelforge_projects`;
+- no existía una fila de importación exitosa correspondiente en `codelab_project_imports`;
+- la solicitud de importación original seguía en estado `queued`;
+- el ZIP canónico permanecía en la misma ruta y conservaba su SHA-256 original.
 
-## 7. Evidencia de referencia
+Con esa evidencia, se volvió a ejecutar el workflow del inbox sobre el mismo paquete fuente, sin crear otra carpeta ni modificar el ZIP. El nuevo intento generó una nueva orden porque la anterior ya estaba expirada y no había persistido el proyecto.
 
-- Workflow que encoló la orden: [GitHub Actions run 45481804170](https://github.com/gavilandavid-pixel/CodeLab/actions/runs/45481804170).
-- Paquete y hash publicados: [PIXELFORGE-INBOX-ZIP-RECOVERY.md](PIXELFORGE-INBOX-ZIP-RECOVERY.md).
-- Cuenta y orden de lectura: `README.md`, primera sección; proyecto `withered-violet-39964819`, rama `br-sweet-waterfall-bea35bjz`.
+## 6. Resultado verificado de la recuperación
+
+<badge>Importación completada</badge>
+
+- Workflow: [Import PixelForge project inbox — run 45486594896](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45486594896) — `success`.
+- Orden nueva: `c714677b-ac84-4357-b550-43cc38d5b0fe` — `succeeded`.
+- Solicitud: `repo-inbox-inbox-smoke-test-sunrise-45486594896`.
+- Proyecto: `inbox-smoke-test-sunrise-20261124`.
+- Workspace destino: `ws_local_admin`.
+- Editor: `pixelforge`.
+- Nombre: `Inbox Smoke Test — Sunrise`.
+- Revisión persistida: `1`.
+- Tamaño persistido: `20,211` bytes.
+- Frames de animación persistidos: `2`.
+- SHA-256 de origen: `e5b7eb45b0564fd35c3bcdb82f94460cfb26c3c6977bdb4cc5dba5f76bd6f49b`.
+- SHA-256 del contenido persistido: `ddfcf968c225518620475b64a059cd976ef36f28cf115db8fcbef3873f8c5fa3`.
+- Resultado del worker: `reloadedFromPersistence=true`, `persistedAnimationFrameCount=2`.
+
+La lectura SQL posterior confirmó una fila en `codelab_pixelforge_projects` bajo el workspace ADMIN y una fila correspondiente en `codelab_project_imports` con `status='succeeded'` y el SHA de origen esperado.
+
+La respuesta del importador indicó `workspacePublication.published=false` con motivo `editor_uses_dedicated_workspace`. Esto es esperado para el editor PixelForge: el proyecto se guarda en la tabla/workspace dedicado de PixelForge, no en el registro genérico de proyectos web de CodeLab. No debe interpretarse como un fallo de persistencia.
+
+El listener también volvió a arrancar correctamente después del deploy posterior; los logs muestran `Neon wake listener armed` sin el error CHECK.
+
+## 7. Verificaciones de CI y despliegue
+
+- [CodeLab QA and command mailbox](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45486594801) — `success`.
+- [Agent Space Browser Runner](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45486594763) — `success`.
+- [CodeLab 5s soldier animation](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45486594626) — `success`.
+- La ejecución amplia [Validate CodeLab](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45486594925) seguía en curso al registrar esta actualización; no se declara completada aquí.
+
+## 8. Evidencia de referencia
+
+- Workflow inicial que encoló la orden expirada: [run 45481804170](https://github.com/gavilandavid-pixel/CodeLab/actions/runs/45481804170).
+- Workflow que completó la importación recuperada: [run 45486594896](https://github.com/gavilandavid-pixel/CodeLab/actions/runs/45486594896).
+- Paquete fuente y hash original: [PIXELFORGE-INBOX-ZIP-RECOVERY.md](PIXELFORGE-INBOX-ZIP-RECOVERY.md).
+- La cuenta activa sigue obteniéndose dinámicamente de la primera sección de `README.md`; este informe no copia ninguna identidad de cuenta.
