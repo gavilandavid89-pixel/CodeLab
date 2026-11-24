@@ -464,7 +464,9 @@ function playbackTick(now) {
         playbackRenderPending = false;
         stopPlayback();
       });
-    } else if (!playbackRenderPending) stopPlayback();
+    } else if (playbackRenderPending) {
+      playbackRaf = requestAnimationFrame(playbackTick);
+    } else stopPlayback();
     return;
   }
   const timelineTime = looping && total > 0 ? elapsed % total : Math.min(elapsed, total);
