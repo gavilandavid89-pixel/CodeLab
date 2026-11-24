@@ -237,7 +237,7 @@ jobs:
           cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/pixelforge/src/"
           cp package.json "$RUNNER_TEMP/agent-headless/"
           if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
-          printf '%s\\n' \
+          printf '%s\n' \
             "repository=$GITHUB_REPOSITORY" \
             "commit=$GITHUB_SHA" \
             "ref=$GITHUB_REF_NAME" \
