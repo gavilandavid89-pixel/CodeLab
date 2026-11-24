@@ -37,35 +37,46 @@ jobs:
       - name: Install Chromium decoder runtime
         run: npm install --no-save --no-package-lock --ignore-scripts
       - name: Discover a live READY A session
-        if: ${{ github.event_name == 'issue_comment' || inputs.session_id == '' }}
+        if: \${{ github.event_name == 'issue_comment' || inputs.session_id == '' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
         run: |
           set -euo pipefail
-          for i in $(seq 1 120); do
-            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100&sort=created&direction=desc" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | first | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
-            session_id="$(printf '%s' "$candidate" | cut -f1)"
-            run_id="$(printf '%s' "$candidate" | cut -f2)"
-            if [ -n "$session_id" ] && [ -n "$run_id" ]; then
-              status="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
-              if [ "$status" = "in_progress" ]; then
-                echo "CODELAB_SESSION_ID=$session_id" >> "$GITHUB_ENV"
-                echo "Discovered live A session $session_id (run $run_id)"
-                exit 0
-              fi
+          comments="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100")"
+          candidates="$(printf '%s' "$comments" | jq -r 'add | [.[] | select(.body | startswith("[CodeLab A Ready]\n")) | {created_at, payload: (.body | split("\n")[1] | fromjson)}] | sort_by(.created_at) | reverse | .[] | [.payload.sessionId, (.payload.runId|tostring), .created_at] | @tsv')"
+          while IFS=$'\t' read -r session_id run_id ready_since; do
+            [ -n "$session_id" ] && [ -n "$run_id" ] && [ -n "$ready_since" ] || continue
+            status="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
+            if [ "$status" = "in_progress" ]; then
+              echo "CODELAB_SESSION_ID=$session_id" >> "$GITHUB_ENV"
+              echo "CODELAB_A_READY_SINCE=$ready_since" >> "$GITHUB_ENV"
+              echo "Discovered live A session $session_id (run $run_id)"
+              exit 0
             fi
-            echo "Waiting for an active READY A session ($i/120)..."
-            sleep 5
-          done
-          echo "No active A session became READY."
+          done <<< "$candidates"
+          echo "No active READY A session found."
           exit 1
       - name: Use supplied A session ID
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.session_id != '' }}
+        if: \${{ github.event_name == 'workflow_dispatch' && inputs.session_id != '' }}
         env:
-          SUPPLIED_SESSION_ID: ${{ inputs.session_id }}
-        run: echo "CODELAB_SESSION_ID=$SUPPLIED_SESSION_ID" >> "$GITHUB_ENV"
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          SUPPLIED_SESSION_ID: \${{ inputs.session_id }}
+        run: |
+          set -euo pipefail
+          comments="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100")"
+          candidate="$(printf '%s' "$comments" | jq -r --arg expected "$SUPPLIED_SESSION_ID" 'add | [.[] | select(.body | startswith("[CodeLab A Ready]\n")) | {created_at, payload: (.body | split("\n")[1] | fromjson)} | select(.payload.sessionId == $expected)] | sort_by(.created_at) | reverse | first | [.payload.sessionId, (.payload.runId|tostring), .created_at] | @tsv')"
+          session_id="$(printf '%s' "$candidate" | cut -f1)"
+          run_id="$(printf '%s' "$candidate" | cut -f2)"
+          ready_since="$(printf '%s' "$candidate" | cut -f3)"
+          [ "$session_id" = "$SUPPLIED_SESSION_ID" ] && [ -n "$run_id" ] && [ -n "$ready_since" ]
+          status="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+          [ "$status" = "in_progress" ]
+          echo "CODELAB_SESSION_ID=$session_id" >> "$GITHUB_ENV"
+          echo "CODELAB_A_READY_SINCE=$ready_since" >> "$GITHUB_ENV"
       - name: Configure B wait timeout
         env:
           TIMEOUT_MINUTES: ${{ inputs.timeout_minutes || '20' }}
