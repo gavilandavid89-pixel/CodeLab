@@ -145,3 +145,44 @@ test('sparse tiled projects exceed the legacy 64 MiB dense-layer budget without 
   assert.equal(manifest.layers[16].cel.tiles[0].sha256, sha256);
   tiled.dispose();
 });
+
+
+test('creates a native large sparse project and edits only the touched tile without dense migration', async () => {
+  const tiled = TiledRasterProjectDocument.createBlank({
+    width: 4096,
+    height: 4096,
+    name: 'Native sparse blank',
+    maxDecodedCacheBytes: 0,
+    tileSize: 64,
+  });
+  const layerId = tiled.activeLayerId;
+  assert.equal(tiled.stats.resourceCount, 0);
+  assert.equal(tiled.stats.celCount, 1);
+  assert.equal(tiled.layers.length, 1);
+
+  const patch = new Uint8Array([91, 82, 73, 255]);
+  const result = await tiled.writeRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }, patch);
+  assert.equal(result.changed, true);
+  assert.equal(result.changedTiles, 1);
+  assert.equal(tiled.stats.resourceCount, 1);
+  assert.deepEqual(tiled.readRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }), new Uint8ClampedArray(patch));
+
+  const duplicate = tiled.duplicateLayer(layerId, 'Shared sparse copy');
+  assert.equal(tiled.stats.resourceCount, 1);
+  assert.equal(tiled.stats.resourceReferences, 2);
+  const duplicatePatch = new Uint8Array([1, 2, 3, 255]);
+  await tiled.writeRegion(duplicate.id, { x: 2049, y: 1027, width: 1, height: 1 }, duplicatePatch);
+  assert.equal(tiled.stats.resourceCount, 2);
+  assert.deepEqual(tiled.readRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }), new Uint8ClampedArray(patch));
+  assert.deepEqual(tiled.readRegion(duplicate.id, { x: 2049, y: 1027, width: 1, height: 1 }), new Uint8ClampedArray(duplicatePatch));
+
+  const manifest = await tiled.toManifest();
+  assert.equal(manifest.width, 4096);
+  assert.equal(manifest.height, 4096);
+  assert.equal(manifest.layers.length, 2);
+  assert.equal(manifest.layers[0].cel.tiles.length, 1);
+  assert.equal(manifest.layers[1].cel.tiles.length, 1);
+  tiled.dispose();
+  assert.equal(tiled.stats.celCount, 0);
+  assert.equal(tiled.stats.resourceCount, 0);
+});
