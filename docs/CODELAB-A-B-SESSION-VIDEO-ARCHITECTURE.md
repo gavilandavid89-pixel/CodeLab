@@ -340,7 +340,7 @@ Los proyectos fuente que deben aparecer en PixelForge ADMIN se alojan en `projec
 - A no lee GitHub ni el repositorio. A conserva su sesión web actual y ejecuta exclusivamente la operación que B le solicita.
 - B selecciona el proyecto y la operación, envía la petición a A, recibe el WebM y lo verifica. B no genera animaciones.
 - Solo después de comprobar la importación real se inicia el ciclo A/B existente.
-- La copia maestra del repositorio no se elimina. La copia temporal ADMIN solo se elimina tras terminar el trabajo y recibir confirmación explícita del usuario; el WebM y su evidencia se conservan.
+- La copia maestra del repositorio no se elimina. La copia temporal ADMIN se elimina desde la acción Delete de la lista de proyectos PixelForge, que solicita confirmación explícita en la interfaz. La eliminación confirmada también limpia los recursos empaquetados y los registros de importación PixelForge asociados en la misma transacción. No se borra automáticamente al terminar B. El WebM y verification.json se conservan como artefactos independientes.
 
 La guía de incorporación y el formato del paquete están en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md); el transporte y la automatización se describen en [inline-artifact-bridge.md](./inline-artifact-bridge.md).
 
