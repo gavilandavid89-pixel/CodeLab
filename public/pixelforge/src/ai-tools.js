@@ -7,7 +7,7 @@ import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, exte
 import { parseSVGToVectorModel } from './vector-studio.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
+import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, copyReferencePixelsToActiveFrameLayer, compositeReferenceFramePixels, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -467,29 +467,31 @@ export class AICommandSession {
           const part = entry.parts.find(item => item.id === action.partId || item.name === action.partName);
           if (!part) throw new Error('Reference part was not found.');
           if (typeof part.pixels !== 'string') throw new Error('Reference part has no packaged raster data.');
-          const targetName = String(action.layerName || part.name || 'Reference part').slice(0, 180);
-          const target = doc.addLayer(targetName);
-          doc.setLayerPixels(target.id, deserializePixels(part.pixels));
-          if (action.opacity !== undefined) doc.setLayerOpacity(target.id, Number(action.opacity));
-          if (action.locked !== undefined) doc.setLayerLocked(target.id, Boolean(action.locked));
-          result = { copied: true, referenceId: entry.id, partId: part.id, sourceLayerId: part.layerId, targetLayerId: target.id, targetLayerName: target.name, source: 'reference-center' };
+          const copied = copyReferencePixelsToActiveFrameLayer({
+            drawingDocument: doc,
+            pixels: deserializePixels(part.pixels),
+          });
+          result = {
+            copied: true, referenceId: entry.id, partId: part.id,
+            sourceLayerId: part.layerId, targetLayerId: copied.layerId,
+            targetLayerName: doc.activeLayer?.name || null,
+            frameIndex: copied.frameIndex, source: 'reference-center',
+          };
           break;
         }
         case 'drawing.reference.copy_frame': {
           const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
           const entry = getReferenceEntry(model, action.referenceId);
           if (!entry) throw new Error('Reference entry was not found.');
-          const frame = entry.frames.find(item => item.index === integer(action.frameIndex, 'frameIndex'));
-          if (!frame) throw new Error('Reference frame was not found.');
-          const targets = [];
-          for (const source of frame.layers || []) {
-            if (typeof source.pixels !== 'string') continue;
-            const target = doc.addLayer(String(action.layerNamePrefix || entry.name).slice(0, 150) + ' · ' + String(source.layerId).slice(0, 24));
-            doc.setLayerPixels(target.id, deserializePixels(source.pixels));
-            targets.push({ sourceLayerId: source.layerId, targetLayerId: target.id, targetLayerName: target.name });
-          }
-          if (!targets.length) throw new Error('Reference frame has no packaged raster layers.');
-          result = { copied: true, referenceId: entry.id, frameIndex: frame.index, targets, source: 'reference-center' };
+          const frameIndex = integer(action.frameIndex, 'frameIndex');
+          const pixels = compositeReferenceFramePixels(entry, frameIndex, doc.width, doc.height);
+          const copied = copyReferencePixelsToActiveFrameLayer({ drawingDocument: doc, pixels });
+          result = {
+            copied: true, referenceId: entry.id, frameIndex,
+            targetLayerId: copied.layerId, targetLayerName: doc.activeLayer?.name || null,
+            frameLayerCount: frameIndex >= 0 ? entry.frames.find(item => item.index === frameIndex)?.layers?.length || 0 : 0,
+            source: 'reference-center',
+          };
           break;
         }
         case 'drawing.layer.context.set': {
@@ -501,19 +503,6 @@ export class AICommandSession {
           model.referenceCenter.viewContext = { previousOpacity, nextOpacity, previousCount, nextCount };
           doc.setDrawingModel(model);
           result = { viewContext: model.referenceCenter.viewContext, activeLayerId: doc.activeLayerId, rule: 'active layer remains at full visual emphasis; surrounding layers use contextual opacity' };
-          break;
-        }
-        case 'drawing.reference.copy_frame_layer': {
-          const model = normalizeDrawingModel(doc.getDrawingModel(), { width: doc.width, height: doc.height });
-          const entry = getReferenceEntry(model, action.referenceId);
-          if (!entry) throw new Error('Reference entry was not found.');
-          const frame = entry.frames.find(item => item.index === integer(action.frameIndex, 'frameIndex'));
-          if (!frame) throw new Error('Reference frame was not found.');
-          const source = frame.layers.find(item => item.layerId === action.layerId || item.name === action.layerName);
-          if (!source || typeof source.pixels !== 'string') throw new Error('Reference frame layer has no packaged raster data.');
-          const target = doc.addLayer(String(action.targetLayerName || action.layerName || action.layerId || 'Reference frame layer').slice(0, 180));
-          doc.setLayerPixels(target.id, deserializePixels(source.pixels));
-          result = { copied: true, referenceId: entry.id, frameIndex: frame.index, sourceLayerId: source.layerId, targetLayerId: target.id, targetLayerName: target.name, source: 'reference-center' };
           break;
         }
         case 'drawing.reference.apply': {
