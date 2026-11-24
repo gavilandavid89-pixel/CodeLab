@@ -1,7 +1,8 @@
 import { encodeWebMFromChunks } from './video-webm-encoder.mjs';
+import { drawFrameToCanvas } from './video-capture-layout.mjs';
 
 self.onmessage = async (event) => {
-  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null } = event.data || {};
+  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null, scalingMode = 'smooth' } = event.data || {};
   try {
     if (!Array.isArray(frames) || !frames.length) throw new Error('El codificador no recibió fotogramas.');
     if (!self.OffscreenCanvas || !self.VideoEncoder || !self.VideoFrame) {
@@ -30,7 +31,6 @@ self.onmessage = async (event) => {
     encoder.configure(config);
     const canvas = new OffscreenCanvas(width, height);
     const context = canvas.getContext('2d', { alpha: true });
-    context.imageSmoothingEnabled = false;
     let timestampUs = 0;
     for (let index = 0; index < frames.length; index++) {
       if (event.data.cancelled) throw new DOMException('Exportación cancelada.', 'AbortError');
@@ -38,9 +38,7 @@ self.onmessage = async (event) => {
       const bitmap = await createImageBitmap(frame.blob);
       try {
         const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
-        context.clearRect(0, 0, width, height);
-        if (backgroundColor) { context.fillStyle = backgroundColor; context.fillRect(0, 0, width, height); }
-        context.drawImage(bitmap, 0, 0, width, height);
+        drawFrameToCanvas(context, bitmap, width, height, { backgroundColor, scalingMode });
         const vf = new VideoFrame(canvas, { timestamp: timestampUs, duration: durationUs });
         encoder.encode(vf, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
         vf.close();
