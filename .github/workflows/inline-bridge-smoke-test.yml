@@ -118,7 +118,7 @@ jobs:
           SHA: ${{ steps.package.outputs.sha }}
         run: |
           set -euo pipefail
-          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ARTIFACT_ID/commit" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "{\\"sha256\\":\\"$SHA\\"}" | tee commit-response.json
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ARTIFACT_ID/commit" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "$(jq -n --arg sha "$SHA" '{sha256:$sha}')" | tee commit-response.json
           test "$(jq -r '.ok' commit-response.json)" = "true"
           test "$(jq -r '.status' commit-response.json)" = "queued"
 
