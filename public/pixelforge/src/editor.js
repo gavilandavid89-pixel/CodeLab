@@ -470,7 +470,7 @@ function render() {
     // but use browser interpolation while playing so the walking person reads as a
     // clean, defined figure instead of a blocky nearest-neighbour enlargement.
     const drawingPresentation = getDrawingModePresentation(drawingConfiguration.activeMode);
-    ctx.imageSmoothingEnabled = drawingPresentation.imageSmoothingEnabled || Boolean(animation && animationPlayback.playing);
+    ctx.imageSmoothingEnabled = drawingPresentation.imageSmoothingEnabled;
     if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = drawingPresentation.imageSmoothingQuality;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#20232d';
@@ -916,6 +916,11 @@ function setDrawingMode(mode, { persist = true } = {}) {
   const presentation = getDrawingModePresentation(mode);
   ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
   if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
+  const hardness = $('#brush-hardness');
+  if (hardness) {
+    hardness.value = mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION ? '55' : '100';
+    $('#brush-hardness-value').textContent = hardness.value + '%';
+  }
   render();
   if (persist) scheduleAutosave();
   status(mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
