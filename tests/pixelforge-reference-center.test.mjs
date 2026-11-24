@@ -89,6 +89,86 @@ test('copying a reference part replaces only the active layer pixels and preserv
 });
 
 
+function makeAnimatedReferenceRuntime(entry) {
+  const initial = new HeadlessEditorRuntime({ width: 2, height: 1, name: 'Animated reference target' }).toJSON();
+  const layer = initial.layers[0];
+  const blank = Buffer.alloc(2 * 1 * 4).toString('base64');
+  initial.animation = {
+    format: 'pixelforge-animation', version: 1,
+    width: 2, height: 1, layerIds: [layer.id],
+    fps: 12, activeFrameIndex: 0, loop: true, playbackSpeed: 1,
+    frames: [{
+      id: 'target-frame-1', name: 'Target frame', index: 0, durationMs: 100,
+      cels: [{ layerId: layer.id, pixels: blank }],
+    }],
+  };
+  const runtime = HeadlessEditorRuntime.fromJSON(initial);
+  assert.equal(runtime.execute({ name: 'drawing.reference.create', entry }).ok, true);
+  return runtime;
+}
+
+
+test('Headless copies a reference part into the active animation cel without creating a layer', () => {
+  const partPixels = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]).toString('base64');
+  const entry = {
+    id: 'reference-part-copy', name: 'Part source', category: 'object',
+    geometry: { canvas: { width: 2, height: 1 } },
+    parts: [{ id: 'part-body', name: 'Body', layerId: 'source-body', pixels: partPixels }],
+    frames: [], layerSnapshot: [],
+  };
+  const runtime = makeAnimatedReferenceRuntime(entry);
+  const activeLayerId = runtime.sandbox.activeLayerId;
+  const copied = runtime.execute({
+    name: 'drawing.reference.copy_part',
+    referenceId: entry.id,
+    partId: 'part-body',
+  });
+  assert.equal(copied.ok, true, JSON.stringify(copied));
+  assert.equal(runtime.sandbox.layers.length, 1);
+  assert.equal(runtime.sandbox.activeLayerId, activeLayerId);
+  assert.equal(Buffer.from(runtime.sandbox.layers[0].pixels).toString('base64'), partPixels);
+  runtime.createProposal('Accept active-layer reference part copy');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.equal(saved.animation.frames[0].cels[0].pixels, partPixels);
+});
+
+test('Headless copies a whole reference frame flattened into the active cel', () => {
+  const red = Buffer.from([255, 0, 0, 255, 255, 0, 0, 255]).toString('base64');
+  const blue = Buffer.from([0, 0, 255, 128, 0, 0, 255, 128]).toString('base64');
+  const entry = {
+    id: 'reference-frame-copy', name: 'Frame source', category: 'object',
+    geometry: { canvas: { width: 2, height: 1 } },
+    parts: [],
+    frames: [{
+      index: 0, durationMs: 100,
+      layers: [
+        { layerId: 'source-red', pixels: red },
+        { layerId: 'source-blue', pixels: blue },
+      ],
+    }],
+    layerSnapshot: [
+      { id: 'source-red', visible: true, opacity: 1 },
+      { id: 'source-blue', visible: true, opacity: 1 },
+    ],
+  };
+  const runtime = makeAnimatedReferenceRuntime(entry);
+  const activeLayerId = runtime.sandbox.activeLayerId;
+  const copied = runtime.execute({
+    name: 'drawing.reference.copy_frame',
+    referenceId: entry.id,
+    frameIndex: 0,
+  });
+  assert.equal(copied.ok, true, JSON.stringify(copied));
+  assert.equal(runtime.sandbox.layers.length, 1);
+  assert.equal(runtime.sandbox.activeLayerId, activeLayerId);
+  assert.deepEqual([...runtime.sandbox.layers[0].pixels], [127, 0, 128, 255, 127, 0, 128, 255]);
+  runtime.createProposal('Accept flattened active-cel reference frame copy');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.deepEqual([...Buffer.from(saved.animation.frames[0].cels[0].pixels, 'base64')], [127, 0, 128, 255, 127, 0, 128, 255]);
+});
+
 test('reference copy writes only to the active frame-layer and preserves the timeline and layer stack', () => {
   const sourcePixels = Uint8Array.from([255, 0, 0, 255, 0, 255, 0, 255]);
   const activeLayer = { id: 'layer-active', locked: false, pixels: new Uint8Array(8) };
