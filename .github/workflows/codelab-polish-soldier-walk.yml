@@ -38,6 +38,8 @@ jobs:
           node-version: '22.17.0'
       - name: Install runtime dependencies
         run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Validate repair script syntax
+        run: node --check scripts/codelab-repair-soldier-walk.mjs
       - name: Inspect persisted ADMIN animation
         if: ${{ inputs.mode != 'polish' || github.event_name == 'issue_comment' }}
         env:
