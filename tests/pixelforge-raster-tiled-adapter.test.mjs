@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
+import { SparseTileCelStore, PIXELFORGE_TILED_CEL_FORMAT, PIXELFORGE_TILED_CEL_VERSION } from '../public/pixelforge/src/animation-tiles.mjs';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
@@ -105,4 +106,42 @@ test('native RasterDocument JSON preserves per-layer authoring mode exceptions',
   assert.equal(restored.activeLayer.authoringMode, 'illustration');
   assert.deepEqual(restored.activeLayer.modeOverrides, { brushHardness: 42, interpolation: 'bilinear' });
   assert.deepEqual(restored.activeLayer.pixels, pixelsBefore);
+});
+
+test('sparse tiled projects exceed the legacy 64 MiB dense-layer budget without allocating full canvases', async () => {
+  const width = 4096;
+  const height = 4096;
+  const tileSize = 32;
+  const tilePixels = new Uint8Array(tileSize * tileSize * 4);
+  tilePixels.set([11, 22, 33, 255], (7 * tileSize + 9) * 4);
+  const digest = await webcrypto.subtle.digest('SHA-256', tilePixels);
+  const sha256 = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  const store = new SparseTileCelStore({ maxDecodedCacheBytes: 0 });
+  const firstCelId = await store.createCel({
+    format: PIXELFORGE_TILED_CEL_FORMAT,
+    version: PIXELFORGE_TILED_CEL_VERSION,
+    width, height, tileSize,
+    tiles: [{ x: 0, y: 0, width: tileSize, height: tileSize, sha256, rgba: Buffer.from(tilePixels).toString('base64') }],
+  });
+  const layers = [];
+  for (let index = 0; index < 17; index++) {
+    layers.push({
+      id: `layer-${index}`, name: `Sparse layer ${index + 1}`,
+      visible: true, opacity: 1, locked: false,
+      celId: index === 0 ? firstCelId : store.cloneCel(firstCelId),
+    });
+  }
+  const tiled = new TiledRasterProjectDocument({
+    store, id: 'sparse-over-64mib', name: 'Sparse high-resolution proof',
+    width, height, layers, activeLayerId: layers[0].id,
+  });
+  assert.ok(width * height * 4 * layers.length > 64 * 1024 * 1024);
+  assert.equal(tiled.layerIds.length, 17);
+  assert.equal(tiled.stats.resourceCount, 1, 'identical immutable tiles deduplicate across layers');
+  assert.equal(tiled.stats.resourceReferences, 17);
+  assert.deepEqual(tiled.readRegion('layer-16', { x: 9, y: 7, width: 1, height: 1 }), new Uint8ClampedArray([11, 22, 33, 255]));
+  const manifest = await tiled.toManifest();
+  assert.equal(manifest.layers.length, 17);
+  assert.equal(manifest.layers[16].cel.tiles[0].sha256, sha256);
+  tiled.dispose();
 });
