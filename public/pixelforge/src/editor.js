@@ -902,7 +902,7 @@ function buildProjectSnapshot(targetDoc = doc) {
   if (targetDoc === doc) {
     const state = readSceneWorkspaceState(targetDoc.drawingModel);
     const workspaceSnapshot = stripSceneWorkspaceState(snapshot);
-    if (activeSceneWorkspace === 'main') state.parentWorkspace = workspaceSnapshot;
+    if (activeSceneWorkspace === 'main') state.parentWorkspace = null;
     else {
       workspaceSnapshot.id = 'scene-' + activeSceneWorkspace + '-' + targetDoc.id;
       state.workspaces[activeSceneWorkspace] = workspaceSnapshot;
