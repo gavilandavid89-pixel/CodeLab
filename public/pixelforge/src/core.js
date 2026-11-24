@@ -222,7 +222,7 @@ function makeLayer(id, name, width, height) {
     id, name, visible: true, opacity: 1, locked: false,
     x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, angle: 0,
     blendMode: 'normal', blur: 0, brightness: 0, contrast: 0, saturation: 0,
-    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {},
+    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {}, authoringMode: null, modeOverrides: {},
     pixels: new Uint8ClampedArray(width * height * 4),
   };
 }
@@ -1125,7 +1125,7 @@ export class RasterDocument {
         x: layer.x, y: layer.y, scaleX: layer.scaleX, scaleY: layer.scaleY, rotation: layer.rotation, angle: layer.angle,
         blendMode: layer.blendMode, blur: layer.blur, brightness: layer.brightness, contrast: layer.contrast, saturation: layer.saturation,
         mask: structuredClone(layer.mask), clipping: structuredClone(layer.clipping), references: structuredClone(layer.references || []),
-        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), pixels: bytesToBase64(layer.pixels)
+        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), authoringMode: layer.authoringMode ?? null, modeOverrides: structuredClone(layer.modeOverrides || {}), pixels: bytesToBase64(layer.pixels)
       })),
       drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
       vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
@@ -1172,6 +1172,8 @@ export class RasterDocument {
         mask: item.mask === undefined ? 'inexistente' : structuredClone(item.mask), clipping: item.clipping === undefined ? 'inexistente' : structuredClone(item.clipping),
         references: Array.isArray(item.references) ? structuredClone(item.references) : [], assets: Array.isArray(item.assets) ? structuredClone(item.assets) : [],
         metadata: item.metadata && typeof item.metadata === 'object' ? structuredClone(item.metadata) : {},
+        authoringMode: ['illustration', 'pixel-art'].includes(item.authoringMode) ? item.authoringMode : null,
+        modeOverrides: item.modeOverrides && typeof item.modeOverrides === 'object' && !Array.isArray(item.modeOverrides) ? structuredClone(item.modeOverrides) : {},
       };
     });
     doc.compositeCache = new Uint8ClampedArray(doc.width * doc.height * 4);
