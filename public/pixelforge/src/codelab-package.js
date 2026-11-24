@@ -627,18 +627,24 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
       if (path !== section.folder + '/' + section.filename) throw new TypeError('Scene manifest path is not canonical for ' + section.key + '.');
       const scene = await readJson(entries, path, section.filename);
       if (scene.format !== 'codelab-pixelforge-scene' || ![1, 2].includes(Number(scene.version)) ||
-          scene.sceneType !== section.key || String(scene.projectId) !== String(project.id) ||
-          Number(scene.canvas?.width) !== project.width || Number(scene.canvas?.height) !== project.height) {
+          scene.sceneType !== section.key || String(scene.projectId) !== String(project.id)) {
         throw new TypeError(path + ' does not match this project.');
       }
-      validateIds(scene.layerIds || [], availableLayers, path + '.layerIds');
-      validateIds(scene.drawingObjectIds || [], drawingObjects, path + '.drawingObjectIds');
-      validateIds(scene.vectorObjectIds || [], vectorObjects, path + '.vectorObjectIds');
+      const workspace = scene.workspace !== undefined && scene.workspace !== null
+        ? validateSceneWorkspace(scene.workspace, path) : null;
+      const expectedCanvas = workspace || project;
+      if (Number(scene.canvas?.width) !== Number(expectedCanvas.width) ||
+          Number(scene.canvas?.height) !== Number(expectedCanvas.height)) {
+        throw new TypeError(path + ' canvas dimensions do not match its complete workspace.');
+      }
+      if (Number(scene.version) === 1) {
+        validateIds(scene.layerIds || [], availableLayers, path + '.layerIds');
+        validateIds(scene.drawingObjectIds || [], drawingObjects, path + '.drawingObjectIds');
+        validateIds(scene.vectorObjectIds || [], vectorObjects, path + '.vectorObjectIds');
+      }
       if (!scene.data || typeof scene.data !== 'object' || Array.isArray(scene.data)) throw new TypeError(path + '.data must be an object.');
       const sectionData = structuredClone(scene.data);
-      if (scene.workspace !== undefined && scene.workspace !== null) {
-        sectionData.workspace = validateSceneWorkspace(scene.workspace, path);
-      }
+      if (workspace) sectionData.workspace = workspace;
       project.drawingModel.sceneSections[section.key] = sectionData;
       if (section.key === 'environment' && scene.environmentHistory) {
         project.drawingModel.environmentHistory = scene.environmentHistory;
