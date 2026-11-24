@@ -101,6 +101,8 @@ test('content capture includes a frame strip and keeps pixel-art rendering unsmo
   assert.match(js, /getDisplayMedia/);
   assert.match(html, /id="vc-source-quality"/);
   assert.match(html, /id="vc-motion-quality"/);
+  assert.match(html, /id="vc-scaling-mode"/);
+  assert.match(css, /data-scaling-mode="smooth"\}\{image-rendering:auto/);
   assert.match(js, /no inventa movimiento intermedio/i);
   assert.match(js, /getSourceQualityAssessment/);
   assert.match(js, /requestAnimationFrame\(playbackTick\)/);
