@@ -136,3 +136,15 @@ The v1 configuration contract is:
 - Legacy projects without this metadata receive a compatibility default of pixel art. New blank documents start in illustration mode with both modes enabled. Importing a raster image starts from illustration defaults unless a native project contains its own saved configuration.
 
 **Current implementation boundary:** the persisted configuration, editor selector, restore path, mode-specific preview sampling and brush-hardness defaults are implemented. The complete tiled raster engine and all per-tool mode-specific rasterization semantics are still under migration; this selector does not yet convert the dense editor document to a tile-backed document. A project mode switch is lossless metadata/presentation state, not a destructive conversion.
+
+## Incremental implementation: tiled raster project adapter
+
+The branch now also includes `public/pixelforge/src/raster-tiled-adapter.mjs` and dedicated contract tests.
+
+- `TiledRasterProjectDocument.fromDocument()` migrates all existing raster layers into sparse tile cels, preserving project identity, dimensions, layer order/IDs, visibility, opacity, lock state, blend/mask/clipping metadata and drawing configuration.
+- `readRegion()` / `writeRegion()` operate on a specific layer without composing a full project image. Locked layers reject writes.
+- Layer duplication shares immutable tile resources; a subsequent edit uses copy-on-write. Deleting a layer releases its cel references.
+- `toManifest()` and `fromManifest()` provide a validated versioned tiled project representation. `toLegacyProjectJSON()` is an explicit compatibility export that materializes dense v1 layer buffers.
+- The adapter enforces current canvas geometry and layer-count limits and uses a bounded decoded-tile cache.
+
+**Boundary:** this is still an opt-in migration adapter. `RasterDocument`, the editor brush/fill/selection/transform pipeline, undo/redo, compositing, project serializer, ZIP package and Headless raster actions have not yet switched to this as their canonical storage. The one-time migration from v1 must materialize the existing dense source layers. Existing 64 MiB document/animation constraints remain until the editor's actual working set and history are tile-backed and stress-tested.
