@@ -1,0 +1,101 @@
+name: Import PixelForge project inbox
+
+on:
+  push:
+    paths:
+      - "projects/animation-inbox/**"
+      - ".github/workflows/pixelforge-project-inbox.yml"
+  workflow_dispatch:
+    inputs:
+      project_slug:
+        description: "Folder inside projects/animation-inbox (leave empty to import all valid projects)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pixelforge-project-inbox
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout project catalog
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find changed project folders
+        id: projects
+        shell: bash
+        env:
+          INPUT_SLUG: ${{ inputs.project_slug }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/project-slugs"
+          if [[ -n "$INPUT_SLUG" ]]; then
+            [[ "$INPUT_SLUG" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "Invalid project_slug"; exit 1; }
+            printf '%s\n' "$INPUT_SLUG" > "$RUNNER_TEMP/project-slugs/list"
+          elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ "$EVENT_BEFORE" =~ ^0+$ ]]; then
+              git ls-tree -d --name-only HEAD:projects/animation-inbox 2>/dev/null || true
+            else
+              git diff --name-only "$EVENT_BEFORE" "$EVENT_SHA" -- projects/animation-inbox/ |
+                awk -F/ 'NF >= 3 {print $3}' | sort -u
+            fi > "$RUNNER_TEMP/project-slugs/list"
+          else
+            find projects/animation-inbox -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort > "$RUNNER_TEMP/project-slugs/list"
+          fi
+          if [[ ! -s "$RUNNER_TEMP/project-slugs/list" ]]; then
+            echo "No project folders changed."
+            echo "has_projects=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_projects=true" >> "$GITHUB_OUTPUT"
+            cat "$RUNNER_TEMP/project-slugs/list"
+          fi
+
+      - name: Import each project into PixelForge ADMIN
+        if: steps.projects.outputs.has_projects == 'true'
+        shell: bash
+        env:
+          BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$BRIDGE_TOKEN" || { echo "::error::Missing CODELAB_AGENT_BRIDGE_CONTROL_SECRET"; exit 1; }
+          while IFS= read -r SLUG; do
+            [[ -n "$SLUG" ]] || continue
+            [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "::error::Invalid project folder: $SLUG"; exit 1; }
+            PACKAGE="projects/animation-inbox/$SLUG/project.codelab"
+            test -f "$PACKAGE" || { echo "::error::Missing $PACKAGE"; exit 1; }
+            unzip -tq "$PACKAGE"
+            ROOT="$RUNNER_TEMP/pixelforge-inbox-$SLUG"
+            rm -rf "$ROOT" && mkdir -p "$ROOT"
+            unzip -oq "$PACKAGE" -d "$ROOT"
+            test -f "$ROOT/manifest.json" && test -f "$ROOT/project.json" && test -f "$ROOT/project.codelab-pixelforge"
+            test "$(jq -r '.format' "$ROOT/manifest.json")" = "codelab"
+            test "$(jq -r '.editor' "$ROOT/manifest.json")" = "pixelforge"
+            PROJECT_ID=$(jq -r '.id // empty' "$ROOT/project.json")
+            PROJECT_NAME=$(jq -r '.name // empty' "$ROOT/project.json")
+            test -n "$PROJECT_ID" && test -n "$PROJECT_NAME"
+            BYTES=$(wc -c < "$PACKAGE" | tr -d ' ')
+            CHUNKS=$(((BYTES + 1048575) / 1048576))
+            SHA=$(sha256sum "$PACKAGE" | awk '{print $1}')
+            REQUEST_ID="repo-inbox-$SLUG-$GITHUB_RUN_ID"
+            BODY=$(jq -n --arg sha "$SHA" --arg filename "$SLUG.codelab" --arg project "$PROJECT_ID" --arg name "$PROJECT_NAME" --arg request "$REQUEST_ID" --argjson bytes "$BYTES" --argjson chunks "$CHUNKS" '{total_bytes:$bytes,total_chunks:$chunks,sha256:$sha,filename:$filename,target_workspace_id:"ws_local_admin",artifact_kind:"codelab_zip_upload",editor_id:"pixelforge",source_project_id:$project,import_request_id:$request,project_name:$name}')
+            curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "$BODY" > "$RUNNER_TEMP/inbox-manifest.json"
+            ARTIFACT_ID=$(jq -r '.artifactId // empty' "$RUNNER_TEMP/inbox-manifest.json")
+            test -n "$ARTIFACT_ID"
+            for ((i=0; i<CHUNKS; i++)); do
+              dd if="$PACKAGE" of="$RUNNER_TEMP/inbox-chunk.bin" bs=1048576 skip="$i" count=1 status=none
+              curl --fail-with-body -sS -X PUT "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ARTIFACT_ID/$i" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/octet-stream' --data-binary @"$RUNNER_TEMP/inbox-chunk.bin" > /dev/null
+            done
+            curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/artifacts/$ARTIFACT_ID/commit" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data "$(jq -n --arg sha "$SHA" '{sha256:$sha}')" > "$RUNNER_TEMP/inbox-commit.json"
+            test "$(jq -r '.status' "$RUNNER_TEMP/inbox-commit.json")" = "queued"
+            echo "Queued PixelForge import: slug=$SLUG project=$PROJECT_ID name=$PROJECT_NAME command=$(jq -r '.commandId' "$RUNNER_TEMP/inbox-commit.json") sha256=$SHA"
+          done < "$RUNNER_TEMP/project-slugs/list"
