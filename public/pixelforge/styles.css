@@ -275,3 +275,9 @@
   .scene-workspace-label { flex-basis: 100%; }
   .scene-workspace-switcher button { min-height: 32px; padding: 0 9px; font-size: 11px; }
 }
+
+.drawing-mode-control{display:flex;align-items:center;gap:6px;padding:4px 7px;border:1px solid #363947;border-radius:6px;background:#20222c;color:#cbd0df;font-size:10px;font-weight:700;white-space:nowrap}
+.drawing-mode-control select{max-width:126px;padding:3px 5px;border:1px solid #414555;border-radius:5px;background:#171922;color:#e8eaf2;font:inherit}
+.drawing-mode-control select:disabled{opacity:.55}
+@media(max-width:760px){.drawing-mode-control{gap:3px;padding:3px 5px;font-size:8px}.drawing-mode-control select{max-width:88px;padding:2px;font-size:9px}.context-right{gap:4px}}
+@media(max-width:420px){.drawing-mode-control{font-size:0;gap:2px}.drawing-mode-control select{max-width:82px;font-size:9px}}
