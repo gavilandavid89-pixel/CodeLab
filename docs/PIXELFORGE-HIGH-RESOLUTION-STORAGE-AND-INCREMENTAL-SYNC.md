@@ -139,3 +139,39 @@ No production database schema, R2 bucket, Render service, or account quota shoul
 - Video Composer aspect-safe scaling, source-quality assessment, scaling-mode selection, source-vs-output disclosure, named 16:9/9:16 presets, and timeline-clock preview are implemented in the source-quality/motion export branch; CI has passed the PixelForge validation, animation-core, and Headless runtime workflows for the current tested revision.
 - Dense RGBA cels, full-project JSON serialization, 96 MiB project envelope, 64 MiB raster/animation budgets, and 512 MiB account quota remain current constraints.
 - Private project-object storage and incremental patch persistence are design targets, not yet implemented.
+
+
+## Pixel-capacity rejection audit (verified against code)
+
+**Answer to “can anything still reject adding more pixels?”: yes.** The v1 editor and server deliberately enforce several independent ceilings. They have not all been removed, and removing only one would not make larger projects work end-to-end.
+
+| Gate | Current enforcement point | Effect |
+|---|---|---|
+| Canvas side / area | `core.js: validateDimensions`; `animation.mjs: assertDimensions`; tiled codec and adapter; `server.js: validatePixelForgeProjectPayload` | Rejects a canvas above 4096 px on either side or 16,777,216 total pixels. |
+| Raster layer count | `RasterDocument.addLayer/insertLayer/duplicateLayer/fromJSON`; tiled adapter; server project validator | Rejects more than 64 raster layers. |
+| Dense raster memory | `core.js: estimateRasterProjectJSONBytes`, add/duplicate/crop/fromJSON; `server.js: validatePixelForgeProjectPayload` | Rejects aggregate dense RGBA layer buffers above 64 MiB. |
+| Dense animation memory | `animation.mjs: constructor/addFrame/addLayer/fromJSON/#assertMemoryBudget`; `editor.js: canGrowAnimationLayer`; `server.js: validatePixelForgeAnimation` | Rejects animation cels above 64 MiB aggregate raw RGBA. |
+| Frames / animation layers | `animation.mjs` and server animation validator | Maximum 240 frames and 64 animation layers. |
+| Project/animation JSON | `core.js`, `animation.mjs`, server project validator | Maximum 96 MiB serialized project and 96 MiB animation JSON. |
+| HTTP / transfer | `server.js` PixelForge routes | 32 MiB direct JSON request; chunk upload uses 6 MiB chunks with a 9 MiB chunk-request body ceiling. |
+| Account storage | `server.js` account save validation | 512 MiB account-wide PixelForge storage. |
+| Import/staging | editor import handler / inline bridge | Editor import rejects a single file above 256 MiB; staged inline artifacts have a separate 256 MiB account ceiling. |
+| Project count | server account save | `CODELAB_MAX_PROJECTS` applies to project count, not pixels. |
+
+These gates are not interchangeable. For example, increasing the HTTP body size does not increase the dense RGBA allocation budget; increasing the project JSON envelope does not make animation cels sparse; and raising the account quota does not fix browser memory pressure.
+
+### What the tiled path proves today
+
+A new contract test constructs a 4096×4096 tiled project with 17 sparse layers (over 1 GiB of *theoretical dense RGBA layer footprint*) while allocating only one 32×32 tile resource, deduplicated across all 17 layers. It reads the same pixel through any layer and exports the sparse manifest without creating 17 full-canvas buffers. This proves the in-memory tiled representation can avoid the legacy aggregate 64 MiB dense-layer ceiling for sparse content.
+
+**Important remaining blockers:**
+- This proof uses the opt-in `TiledRasterProjectDocument`; the visible editor still uses dense `RasterDocument`.
+- `TiledRasterProjectDocument.fromDocument()` starts by calling `document.toJSON()`, so it still cannot migrate a dense source document that already exceeds the v1 64 MiB budget.
+- `toLegacyProjectJSON()` deliberately materializes full RGBA layers and therefore remains bounded by dense memory and v1 serialization limits.
+- Animation editing, undo/redo, canvas compositing, selection/fill/brush/transform tools, ZIP package import/export, Headless actions and server persistence are not yet using the tiled manifest as their canonical format.
+- The tiled format still enforces 4096 px side, 16,777,216 canvas area and 64 layers. It removes the *aggregate dense pixel-buffer* ceiling inside the sparse in-memory model; it does not provide unlimited canvas geometry, unlimited layers, or durable storage.
+- No production server, Neon schema, R2 bucket, account quota, or API limit has been raised.
+
+### Safe removal order
+
+Do not delete the 64 MiB checks in v1 as a shortcut. First make the editor create/open tiled projects natively (without a dense v1 migration), then migrate brush/eraser/fill/selection/transforms/compositing and history to tile-level copy-on-write. Next make animation frames and layer cels share tile resources, and migrate ZIP/Headless readers and writers to a versioned sparse package. Only then add authenticated private tile persistence and incremental patch/CAS APIs. Raise geometry, layer, JSON, request and account limits independently after desktop/mobile stress tests, quota accounting, and end-to-end read-back. Until each gate is migrated, it must continue rejecting payloads it cannot safely process.
