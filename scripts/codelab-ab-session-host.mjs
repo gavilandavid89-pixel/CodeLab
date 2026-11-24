@@ -111,7 +111,7 @@ if (!/Video Composer/i.test(await sessionPage.title())) throw new Error('The per
 
 const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
 await postComment('[CodeLab A Ready]\n' + JSON.stringify({
-  sessionId, status: 'ready', expiresAt, projectId, projectName: pinned.projectName,
+  sessionId, runId: process.env.GITHUB_RUN_ID || null, status: 'ready', expiresAt, projectId, projectName: pinned.projectName,
   workspaceId: pinned.workspaceId, serverRevision: pinned.serverRevision,
   contentSha256: pinned.contentSha256, frameCount: pinned.frameCount, fps: pinned.fps,
   width: pinned.width, height: pinned.height, composerUrl
