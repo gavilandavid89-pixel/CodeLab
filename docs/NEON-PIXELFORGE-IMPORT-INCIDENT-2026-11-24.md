@@ -5,15 +5,18 @@
 **Rama:** `main`  
 **Incidente relacionado:** [recuperación del ZIP de inbox](PIXELFORGE-INBOX-ZIP-RECOVERY.md)
 
-## 1. Cuenta de infraestructura obligatoria
+## 1. Fuente de verdad para elegir la cuenta de infraestructura
 
-La primera sección del `README.md` establece explícitamente:
+**No fijar ni copiar una cuenta, correo, nombre de conexión o identificador de cuenta en este informe.** Esos datos pueden cambiar.
 
-- Cuenta actual para Neon y Render: `xxsuperwarriorx@gmail.com`.
-- Deben usarse las conexiones de esa cuenta para operar CodeLab.
-- No cambiar a otras cuentas salvo indicación explícita del usuario.
+Antes de cada operación sobre Neon o Render, leer la sección inicial **“Cuentas de infraestructura activas”** del `README.md` en la rama que se esté usando. Esa sección es la única fuente de verdad para saber qué cuenta está activa en ese momento. Después:
 
-Esta instrucción es la referencia operativa. Una búsqueda de proyectos en otra conexión no sirve para verificar el estado de CodeLab.
+1. Identificar la cuenta y las conexiones que el README indique actualmente.
+2. Seleccionar esas conexiones en Neon/Render.
+3. Confirmar que el proyecto y servicio pertenecen a esa cuenta antes de consultar o modificar nada.
+4. Si el README cambia, seguir el valor nuevo; los informes históricos no deben imponer una cuenta anterior.
+
+El dato de cuenta no se replica aquí deliberadamente para evitar que esta documentación quede obsoleta cuando cambie la cuenta activa. Una búsqueda en otra conexión no sirve para verificar CodeLab.
 
 ## 2. Corrección de la verificación anterior
 
@@ -51,9 +54,23 @@ Consulta directa de solo lectura a `public.codelab_agent_commands`:
 - `expires_at`: `2026-11-24T20:47:17.873Z`
 - `updated_at`: igual a `created_at`
 
-La orden existía en la base correcta, pero en la lectura observada seguía encolada y sin marca de inicio ni resultado. Esto **no acredita que el ZIP se haya importado ni persistido en ADMIN**.
+### Cómo interpretar `queued` (según el contrato documentado)
 
-En la misma lectura había otras dos órdenes `codelab_project_import` antiguas todavía en `queued`, con expiraciones 20:04:05Z y 20:05:32Z. No se deben volver a encolar esas solicitudes automáticamente: primero hay que reconciliar su estado y evitar duplicados.
+`queued` es un estado normal e intencional del ciclo de vida: significa que la orden durable ya fue insertada en Neon y está esperando a que el listener/worker la reclame. No significa por sí solo que haya fallado, que el ZIP esté importado ni que el worker esté ejecutándose.
+
+El contrato de [Transporte inline de artefactos](inline-artifact-bridge.md), junto con la [arquitectura CodeLab ↔ Neon](CodeLab_Neon_comunicacion_extremo_a_extremo.md), especifica:
+
+- HTTP 202 / `status: "queued"` confirma únicamente que la orden quedó encolada.
+- PostgreSQL NOTIFY despierta el consumidor cuando el listener está conectado.
+- Si el listener no estaba conectado cuando se emitió la señal, al iniciar/reconectar debe reconciliar la cola durable y buscar órdenes `queued` no expiradas.
+- El worker reclama la fila mediante transacción y `FOR UPDATE SKIP LOCKED`; luego procesa y escribe el estado/resultado terminal.
+- La expiración inicial documentada de la orden es de 15 minutos. Una orden que continúa `queued` después de su expiración requiere reconciliación/diagnóstico; no debe tratarse como importada ni reenviarse a ciegas.
+
+Por tanto, el hecho de que la orden estuviera `queued` en la primera consulta no era por sí solo un defecto: era un estado intermedio previsto. Lo relevante en este incidente es que la orden concreta seguía sin `started_at`, `finished_at` ni `result` al acercarse/pasar su `expires_at`, y los logs mostraban fallos de reconexión del listener. Eso apunta a un problema de activación/consumo que debe investigarse, no a que el estado `queued` sea incorrecto.
+
+En la misma lectura había otras dos órdenes `codelab_project_import` antiguas en `queued`, con expiraciones 20:04:05Z y 20:05:32Z. Su presencia tampoco prueba importación ni fallo definitivo por sí sola; al estar expiradas y no reclamadas, requieren reconciliación individual. No se deben volver a encolar automáticamente: primero hay que consultar su estado y comprobar si existe una importación ya persistida para evitar duplicados.
+
+**Criterio de finalización:** solo declarar completada una importación cuando la orden tenga resultado exitoso y la persistencia del proyecto/revisión pueda leerse de vuelta en el workspace destino. `queued`, HTTP 202 y una notificación emitida no satisfacen ese criterio.
 
 ## 4. Restricción SQL y discrepancia con los logs de Render
 
