@@ -281,6 +281,12 @@ Las capas y frames de una instancia no se deducen de `drawingModel.layerRoles`, 
 
 Al exportar e importar, CodeLab debe reconstruir cada instancia con sus mismos IDs, orden de capas, píxeles, propiedades, frames, cels, duración, FPS, loop, referencias, modelos y recursos. Después de editar y volver a exportar, los mismos datos deben seguir presentes. El importador debe rechazar referencias a rutas inexistentes, IDs duplicados, cels faltantes, dimensiones incompatibles o datos incompletos; nunca debe inventarlos.
 
+### 4.4 Alcance de las pruebas y verificación de UI
+
+Las pruebas de paquete Node y navegador comprueban la serialización, validación y round-trip de los cinco documentos `workspace`: dimensiones independientes, capas y sus metadatos, frames/cels y píxeles. Estas pruebas de formato no demuestran por sí solas que la interfaz permita abrir cada sección como un contexto de edición separado, cambiar entre secciones, editar su timeline propio y guardar/reabrir visualmente esa instancia.
+
+La aceptación completa de la experiencia de usuario requiere una prueba E2E de navegador que, para cada sección, abra su workspace, verifique que el nombre/dimensiones/capas/timeline pertenecen a esa instancia, modifique un píxel o cel, guarde, cambie a otra sección, vuelva a la primera y compruebe que sus datos siguen aislados. También debe comprobar que volver al lienzo principal no mezcla ni reemplaza los datos de la sección. Hasta que esa prueba exista y pase, describir el round-trip del ZIP como verificado a nivel de datos, pero no afirmar que la edición visual independiente de las cinco secciones está validada de extremo a extremo.
+
 
 ## 5. Reference Center: qué significa reference.personaje
 
