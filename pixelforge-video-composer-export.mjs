@@ -155,7 +155,11 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
   const fps = Number.isInteger(animation.fps) ? animation.fps : 12;
   const frames = animation.frames;
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codelab-vc-export-'));
-  let browser;
+  let browser = deps.browser || null;
+  let context = deps.context || null;
+  let page = null;
+  const ownsBrowser = !deps.browser;
+  const ownsContext = !deps.context;
   let packagePath = path.join(tempDir, safeVideoName(project.name) + '.pixelforge-video.zip');
   try {
     const vectorZip = project.vectorModel?.objects?.length && payload.include_vector_overlay !== false
@@ -200,13 +204,13 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     fs.writeFileSync(packagePath, zipBytes);
 
     chromium.setGraphicsMode = false;
-    browser = await playwrightChromium.launch({
+    browser = browser || await playwrightChromium.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
       headless: true,
       timeout: 60000
     });
-    const context = await browser.newContext({
+    context = context || await browser.newContext({
       viewport: { width: 640, height: 480 },
       deviceScaleFactor: 1,
       colorScheme: 'dark',
@@ -216,9 +220,9 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
     await context.addInitScript(({ id, token }) => {
       localStorage.setItem('codelab_xd_workspace_v4', id);
       localStorage.setItem('codelab_xd_workspace_token_v1', token);
-    }, { id: targetWorkspace, token: workspaceTokenFor(targetWorkspace) });
+    }, { id: targetWorkspace, token: typeof workspaceTokenFor === 'function' ? workspaceTokenFor(targetWorkspace) : '' });
 
-    const page = await context.newPage();
+    page = await context.newPage();
     const pageErrors = [];
     const consoleErrors = [];
     page.on('pageerror', error => { if (pageErrors.length < 20) pageErrors.push(String(error.message || error).slice(0, 300)); });
@@ -331,7 +335,9 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
       }
     };
   } finally {
-    if (browser) await browser.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
+    if (ownsContext && context) await context.close().catch(() => {});
+    if (ownsBrowser && browser) await browser.close().catch(() => {});
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
