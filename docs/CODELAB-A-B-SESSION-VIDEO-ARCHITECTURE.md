@@ -274,3 +274,56 @@ Este documento es el **documento principal (owner) del flujo A/B y de su experie
 - Cuando exista una especificación dedicada al procesamiento de vídeo A/B, debe enlazarse desde aquí y tratarse como referencia técnica complementaria, mientras que **este documento conserva el historial y resultado real del flujo**.
 
 La navegación entre documentos debe ser bidireccional cuando describan partes del mismo proceso: el documento operativo debe llevar a este documento para el caso A/B, y este documento debe llevar al protocolo operativo para las reglas de inspección y cierre.
+
+
+### Corrección visual y cierre completo A/B — revisión 5 (24/11/2026)
+
+Esta sección registra el ciclo que faltaba completar después de la aceptación técnica anterior. **La revisión 4 se rechazó visualmente y no se entregó.**
+
+#### Rechazo de la revisión 4
+
+La primera corrección incremental sobre la revisión 3 produjo la revisión 4, pero la inspección del WebM reveló cortes en el cuerpo y las extremidades, además de desajustes entre pies y sombra. La causa fue mover regiones del personaje sin separar correctamente el dibujo aplanado. Aunque B verificó técnicamente el archivo, **esa revisión no pasó la aceptación visual** y no debe considerarse resultado final.
+
+- Revisión 4: SHA de contenido `8bd0db84ae3656c8a6af53aac67b1a9c19a49fd74ca8d8ef4236e62fd198fdf3`.
+- A/B de diagnóstico: [run 45466759712](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45466759712).
+- Se descartó esa edición y se recuperó el proyecto editable limpio de la evidencia de inspección previa, en vez de seguir acumulando desplazamientos sobre una versión defectuosa.
+
+#### Corrección persistida en revisión 5
+
+Se reconstruyó el cambio desde las poses limpias anteriores al desplazamiento global:
+
+- Proyecto ADMIN: `soldier-walk-60f-20261124`, workspace `ws_local_admin`.
+- Revisión persistida: **5**.
+- SHA-256 del contenido: `7f03b2c70271c8afebd9827766f06696e286ee0b4838b75171302adec5503b15`.
+- Timeline: 20 fotogramas a 12 FPS; se conservó porque no hacía falta inflarlo con fotogramas duplicados.
+- Se deshizo el desplazamiento global anterior del sprite.
+- Se aislaron y alternaron las regiones de píxeles de las piernas inferiores dentro del cel existente, y se añadió un contrabalanceo vertical sutil de la parte superior.
+- Se conservaron el rifle, el fondo, el suelo y la sombra de contacto. No se sustituyó el proyecto ADMIN ni se usó una demo.
+
+La corrección se persistió y verificó mediante [workflow de reparación 45468703388](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45468703388). La verificación confirmó revisión 5 y cambio de hash.
+
+#### Nueva ejecución A/B y verificación
+
+La nueva prueba integrada utilizó exactamente la revisión 5:
+
+- [Workflow A/B — run 45469002386](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45469002386).
+- [Sesión A independiente — run 45469044832](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45469044832).
+- [Artefacto B — WebM y verification.json](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45469002386/artifacts/14955997439).
+
+B recibió el archivo del Video Composer real y confirmó:
+
+- 20 fotogramas, 12 FPS.
+- WebM completo: 133.947 bytes, duración aproximada 1,66 s.
+- Resolución: 1080 × 1350.
+- Chromium: `readyState=4`, 5/5 muestras temporales decodificadas.
+- SHA-256 del WebM: `e06b650be888ef79797ad128fdad85392e167dd41482d365233c526c4673363a`.
+- B no ejecutó FFmpeg ni generó fotogramas.
+- El paso **“Verify A remains alive after B has finished”** pasó; A continuó `in_progress` después de terminar B.
+
+#### Inspección visual del WebM exacto de B
+
+Después de descargar el artefacto, se extrajeron e inspeccionaron visualmente los 20 fotogramas del WebM que se iba a entregar. La revisión confirmó que el movimiento alterna las piernas, incorpora un pequeño contrabalanceo superior y conserva el dibujo y el entorno sin los cortes que invalidaron la revisión 4. La animación sigue siendo una **caminata en el sitio**: no desplaza al soldado hacia delante. La limitación restante es que cabeza, torso y brazos no son capas articuladas independientes en el proyecto original; esta corrección fue incremental y conservadora, no una reconstrucción completa del personaje.
+
+**Estado de cierre:** la revisión 5 pasó la verificación técnica A/B y la inspección visual del archivo exacto. El WebM de esta revisión es el resultado que se entrega; no se sustituye por el ZIP del workflow.
+
+La regla operativa permanece en [ANIMATION-AUTONOMOUS-WORKFLOW.md](./ANIMATION-AUTONOMOUS-WORKFLOW.md), sección 5.2: recibir → obtener → inspeccionar → corregir → reinspeccionar → entregar.
