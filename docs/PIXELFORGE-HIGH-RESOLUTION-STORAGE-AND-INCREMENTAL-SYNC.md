@@ -183,3 +183,8 @@ Do not delete the 64 MiB checks in v1 as a shortcut. First make the editor creat
 - Added `TiledRasterProjectDocument.createBlank()`: it creates a first-class tiled project and layer directly, without constructing `RasterDocument`, calling `toJSON()`, or passing through the legacy dense migration path.
 - Added a 4096×4096 contract test that writes a single pixel in the middle of the canvas, verifies only one tile resource is created, duplicates the layer with shared resources, edits the duplicate, and verifies copy-on-write isolation and manifest export.
 - This removes the dense-v1 migration dependency for *new projects created through this adapter only*. It does not yet make the visible editor create/open tiled projects, migrate tools/history/animation, or persist manifests to the server. Geometry and 64-layer limits remain unchanged.
+
+
+### Copy-on-write reference lifecycle correction
+
+The native sparse-edit CI test exposed a cel ownership leak: the adapter replaced a layer's cel ID after a successful copy-on-write edit but retained the old cel reference. The adapter now releases the replaced layer-owned cel after switching to the new cel. Other layers that share the original cel retain their own references. The regression test asserts that exactly the two live layer cels remain after editing both branches, and that disposal releases all cels and tile resources.
