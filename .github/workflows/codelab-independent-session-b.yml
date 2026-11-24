@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 120); do
-            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | last | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
+            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100&sort=created&direction=desc" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | last | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
             session_id="$(printf '%s' "$candidate" | cut -f1)"
             run_id="$(printf '%s' "$candidate" | cut -f2)"
             if [ -n "$session_id" ] && [ -n "$run_id" ]; then
