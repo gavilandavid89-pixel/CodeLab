@@ -209,3 +209,40 @@ La prueba integrada A/B se ejecutó el 2026-11-24 y pasó:
 La aceptación integrada A/B está superada. El artefacto de B contiene el WebM recibido y verification.json. A permanece activa por su propio timeout; su estado no depende de que B haya terminado.
 
 No se considera válido un createDemo, una grabación de pantalla de la sesión, un event ID aislado o un resultado success sin el WebM real.
+
+
+### Estado posterior al pulido visual — 24/11/2026
+
+Tras la primera exportación funcional, se aplicó un pulido sobre el proyecto ADMIN persistido `PixelForge — Soldier Walk` sin sustituirlo por una animación demo ni reconstruirlo fuera de PixelForge.
+
+- Proyecto: `soldier-walk-60f-20261124`
+- Revisión anterior: 2
+- Revisión persistida tras el pulido: **3**
+- SHA anterior: `82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f`
+- SHA nuevo: `2ec67accd9118efdbfee7687c83b38247b3c2297b04bdb2583c18afe7226b17e`
+- Timeline conservado: **20 fotogramas, 12 FPS**
+- Se reforzó principalmente el movimiento secundario de peso/acompañamiento mediante cels de la capa persistida `Soldier · reference-guided`.
+- No se desplazaron las capas de fondo, suelo ni iluminación.
+- No se aumentó artificialmente el número de fotogramas: los 20 originales ya forman el ciclo persistente y añadir duplicados no aportaba movimiento real.
+
+La nueva prueba A/B integrada fue la run **45371383143**:
+
+urlGitHub Actions — A/B pulido 45371383143https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45371383143
+
+Resultado técnico de la nueva exportación:
+
+- A cargó la revisión persistida **3**.
+- B recibió el vídeo del Composer real.
+- WebM: 142,552 bytes.
+- Duración: ~1.66 s.
+- Resolución decodificada: 1080×1350.
+- Chromium verificó 5/5 muestras.
+- SHA256 del vídeo: `5ae6f902698af48d034781518b9051881d38eb482b8a912f64b07cc6f5e4fa4a`.
+- B no ejecutó FFmpeg ni generó la animación.
+- A permaneció viva después de terminar B.
+
+Artefacto de verificación del pulido:
+
+urlArtefacto de verificación 14909441239https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45371162667/artifacts/14909226433
+
+Este estado sustituye al anterior veredicto de «primer export funcional sin pulir». La revisión visual posterior confirma que el ciclo mantiene la estructura del Soldier Walk y que el pulido es conservador; no se consideró necesario inflar el timeline con frames duplicados.
