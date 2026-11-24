@@ -991,13 +991,14 @@ async function switchSceneWorkspace(nextSection) {
     clearSelectionState();
     resetAIWorkspaceForDocument();
     vectorStudio?.syncFromDocument();
+    status('Saving workspace switch…', 'neutral');
+    await flushAutosave({ force: true });
     fitCanvas();
     updateTitle();
     renderLayers();
     renderAnimationTimeline();
     referenceCenterUI?.refresh();
     updateSceneWorkspaceUI();
-    scheduleAutosave();
     status(nextSection === 'main' ? 'Returned to the main project workspace' : 'Opened independent ' + sceneWorkspaceSections().find(item => item.key === nextSection).label + ' workspace', 'success');
   } catch (error) {
     status('Could not switch scene workspace: ' + error.message, 'error');
