@@ -4,9 +4,16 @@ on:
   push:
     paths:
       - 'scripts/codelab-polish-soldier-walk-direct.mjs'
+      - 'scripts/codelab-inspect-soldier-walk.mjs'
       - '.github/workflows/codelab-polish-soldier-walk.yml'
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Inspect persisted frame structure before any repair'
+        required: false
+        default: 'inspect'
+        type: choice
+        options: [inspect, polish]
       project_id:
         description: 'Persisted ADMIN PixelForge project'
         required: false
@@ -27,7 +34,25 @@ jobs:
           node-version: '22.17.0'
       - name: Install runtime dependencies
         run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Inspect persisted ADMIN animation
+        if: ${{ inputs.mode != 'polish' }}
+        env:
+          CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
+          CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: node scripts/codelab-inspect-soldier-walk.mjs
+      - name: Upload ADMIN frame inspection
+        if: ${{ inputs.mode != 'polish' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-soldier-walk-source-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/soldier-walk-project.json
+            ${{ runner.temp }}/soldier-walk-inspection.json
+          retention-days: 3
       - name: Polish persisted ADMIN animation
+        if: ${{ inputs.mode == 'polish' }}
         env:
           CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
           CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
