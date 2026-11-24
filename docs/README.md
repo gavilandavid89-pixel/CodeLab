@@ -33,7 +33,8 @@ Leer en este orden:
 | Crear o editar dibujo/animación | [Flujo autónomo de animación](ANIMATION-AUTONOMOUS-WORKFLOW.md) | Preparación, ejecución, espera, verificación, inspección visual y aceptación. |
 | Instalar/ejecutar Headless del agente | [Headless Agent Runtime](HEADLESS-AGENT-RUNTIME.md) | Artefacto real, instalación en entorno local/efímero, ejecución y exportación. |
 | Consultar todas las capacidades de Headless | [Referencia completa de Headless](HEADLESS-CAPABILITIES-REFERENCE.md) | Funciones raster, capas, selección, referencias, vector, animación, propuestas, límites, flujos y restricciones. |
-| Transferir un proyecto editable | [Bridge inline de artefactos](inline-artifact-bridge.md) | Manifiesto, chunks, SHA-256, commit, importación y lectura de vuelta. |\n| Historial de resolución de transferencia | [Informe de transferencia inline (24-11-2026)](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md) | Correcciones aplicadas y evidencia de importación real en ADMIN. |
+| Transferir un proyecto editable | [Bridge inline de artefactos](inline-artifact-bridge.md) | Manifiesto, chunks, SHA-256, commit, importación y lectura de vuelta. |
+| Historial de resolución de transferencia | [Informe de transferencia inline (24-11-2026)](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md) | Correcciones aplicadas y evidencia de importación real en ADMIN. |
 | Entender órdenes, Neon, LISTEN/NOTIFY y worker | [Arquitectura extremo a extremo](CodeLab_Neon_comunicacion_extremo_a_extremo.md) | Cola durable, activación, ejecución, resultados, revisiones y recuperación. |
 | Consultar resumen de arquitectura | [Arquitectura CodeLab–Neon](CODELAB-NEON-ARCHITECTURE.md) | Vista compacta de componentes y límites. |
 | Consultar la API nativa del agente | [Protocolo Headless nativo](native-headless-protocol.md) | Cliente, mailbox, acciones nativas y modo navegador explícito. |
