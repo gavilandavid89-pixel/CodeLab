@@ -23,6 +23,34 @@ const safeSlug = (value, fallback = 'item') =>
   String(value || fallback).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 72) || fallback;
 
+function sortPackageEntries(entries) {
+  const rank = path => {
+    if (path === 'project.codelab-pixelforge') return 0;
+    if (path === 'manifest.json') return 10;
+    if (path === 'project.json') return 20;
+    if (path === 'integrity.json') return 30;
+    if (path === 'Frames/frames.tscn') return 100;
+    if (path.startsWith('Frames/')) return 110;
+    if (path === 'Entorno/entorno.tscn') return 200;
+    if (path.startsWith('Entorno/')) return 210;
+    if (path === 'Efectos/efectos.tscn') return 300;
+    if (path.startsWith('Efectos/')) return 310;
+    if (path === 'Detalles/detalles.tscn') return 400;
+    if (path.startsWith('Detalles/')) return 410;
+    if (path === 'Elementos/elementos.tscn') return 500;
+    if (path.startsWith('Elementos/')) return 510;
+    if (path === 'Objetos/objetos.tscn') return 600;
+    if (path.startsWith('Objetos/')) return 610;
+    if (path === 'reference.center/reference.center') return 700;
+    if (path.startsWith('reference.')) return 710;
+    return 800;
+  };
+  return [...entries].sort((a, b) => {
+    const byRank = rank(a.name) - rank(b.name);
+    return byRank || a.name.localeCompare(b.name, 'en');
+  });
+}
+
 function safePath(value) {
   return typeof value === 'string' && value.length > 0 && !value.startsWith('/') &&
     !value.includes('\\') && !value.includes('\0') &&
@@ -350,7 +378,7 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
   }
   files.set('integrity.json', jsonBytes(integrity));
 
-  const entries = [...files].map(([name, data]) => ({ name, data }));
+  const entries = sortPackageEntries([...files].map(([name, data]) => ({ name, data })));
   const archive = await createZipBlob(entries);
   if (archive.size > MAX_PACKAGE_BYTES) throw new RangeError('PixelForge CodeLab package exceeds the 100 MiB limit.');
   return {
