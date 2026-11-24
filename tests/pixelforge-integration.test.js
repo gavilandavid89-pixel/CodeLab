@@ -922,7 +922,7 @@ async function main() {
       'the active layer stack must remain unchanged after a full browser reload');
     referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(referenceStored.layers.length, 1, 'the active layer must survive a full browser reload without an added reference layer');
-    assert.deepEqual(rgbaAt(referenceStored, 2, 2, 1), [0, 170, 68, 255],
+    assert.deepEqual(rgbaAt(referenceStored, 2, 2, 0), [0, 170, 68, 255],
       'the edited active-layer pixels must survive reload and account persistence');
     await accountPage.locator('#reference-refresh').click();
     assert.equal(await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).count(), 1,
