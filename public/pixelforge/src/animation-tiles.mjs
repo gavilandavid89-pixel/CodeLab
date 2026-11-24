@@ -366,6 +366,85 @@ export class SparseTileCelStore {
     };
   }
 
+  #assertRegion(cel, region, pixels = null) {
+    const { x, y, width, height } = region || {};
+    if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0 ||
+        width < 1 || height < 1 || x + width > cel.width || y + height > cel.height) {
+      throw new RangeError('Sparse cel region must be a positive rectangle inside the canvas.');
+    }
+    if (pixels !== null) assertPixels(pixels, width, height);
+    return { x, y, width, height };
+  }
+
+  /** Read a bounded rectangle without materializing the full canvas. */
+  readRegion(celId, region) {
+    const cel = this.#cel(celId);
+    const rect = this.#assertRegion(cel, region);
+    const output = new Uint8ClampedArray(rect.width * rect.height * 4);
+    const startTileX = Math.floor(rect.x / cel.tileSize) * cel.tileSize;
+    const startTileY = Math.floor(rect.y / cel.tileSize) * cel.tileSize;
+    for (let tileY = startTileY; tileY < rect.y + rect.height; tileY += cel.tileSize) {
+      for (let tileX = startTileX; tileX < rect.x + rect.width; tileX += cel.tileSize) {
+        const tile = this.getTile(celId, tileX, tileY);
+        if (!tile) continue;
+        const left = Math.max(rect.x, tileX);
+        const top = Math.max(rect.y, tileY);
+        const right = Math.min(rect.x + rect.width, tileX + tile.width);
+        const bottom = Math.min(rect.y + rect.height, tileY + tile.height);
+        for (let y = top; y < bottom; y++) {
+          const sourceStart = ((y - tileY) * tile.width + left - tileX) * 4;
+          const targetStart = ((y - rect.y) * rect.width + left - rect.x) * 4;
+          output.set(tile.pixels.subarray(sourceStart, sourceStart + (right - left) * 4), targetStart);
+        }
+      }
+    }
+    return output;
+  }
+
+  /**
+   * Copy-on-write update of a bounded rectangle. Only intersected tiles are
+   * decoded and replaced. The source cel remains immutable and is returned
+   * unchanged when the patch contains no pixel differences.
+   */
+  async writeRegion(celId, region, pixels) {
+    const source = this.#cel(celId);
+    const rect = this.#assertRegion(source, region, pixels);
+    const nextId = this.cloneCel(celId);
+    let changedTiles = 0, removedTiles = 0;
+    try {
+      const startTileX = Math.floor(rect.x / source.tileSize) * source.tileSize;
+      const startTileY = Math.floor(rect.y / source.tileSize) * source.tileSize;
+      for (let tileY = startTileY; tileY < rect.y + rect.height; tileY += source.tileSize) {
+        for (let tileX = startTileX; tileX < rect.x + rect.width; tileX += source.tileSize) {
+          const current = this.getTile(nextId, tileX, tileY);
+          const tileWidth = Math.min(source.tileSize, source.width - tileX);
+          const tileHeight = Math.min(source.tileSize, source.height - tileY);
+          const tilePixels = current?.pixels ?? new Uint8Array(tileWidth * tileHeight * 4);
+          const left = Math.max(rect.x, tileX);
+          const top = Math.max(rect.y, tileY);
+          const right = Math.min(rect.x + rect.width, tileX + tileWidth);
+          const bottom = Math.min(rect.y + rect.height, tileY + tileHeight);
+          for (let y = top; y < bottom; y++) {
+            const sourceStart = ((y - rect.y) * rect.width + left - rect.x) * 4;
+            const targetStart = ((y - tileY) * tileWidth + left - tileX) * 4;
+            tilePixels.set(pixels.subarray(sourceStart, sourceStart + (right - left) * 4), targetStart);
+          }
+          const result = await this.updateTile(nextId, tileX, tileY, tilePixels);
+          if (result.changed) changedTiles++;
+          if (result.removed) removedTiles++;
+        }
+      }
+      if (!changedTiles) {
+        this.releaseCel(nextId);
+        return { celId, changedTiles: 0, removedTiles: 0, changed: false };
+      }
+      return { celId: nextId, changedTiles, removedTiles, changed: true };
+    } catch (error) {
+      this.releaseCel(nextId);
+      throw error;
+    }
+  }
+
   async updateTile(celId, x, y, pixels) {
     const cel = this.#cel(celId);
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 ||
