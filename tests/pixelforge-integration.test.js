@@ -885,6 +885,14 @@ async function main() {
     const referenceProjectRow = accountPage.locator('.saved-project').filter({ hasText: 'Reference materialization fixture' }).first();
     const referenceProjectOpen = referenceProjectRow.locator('.saved-project-open');
     if (await referenceProjectOpen.isEnabled()) await referenceProjectOpen.click();
+    // When the fixture is already the active document, the project picker remains
+    // open because its Open button is disabled. Close that overlay before interacting
+    // with the editor so it cannot intercept Reference Center pointer events.
+    const projectsDialog = accountPage.locator('#projects-dialog');
+    if (await projectsDialog.isVisible()) {
+      await accountPage.keyboard.press('Escape');
+      await projectsDialog.waitFor({ state: 'hidden' });
+    }
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Reference materialization fixture');
     await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).waitFor({ state: 'visible' });
     const referenceCard = accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).first();
