@@ -191,7 +191,7 @@ function installSceneSections(project, files, scenesManifest) {
     }
     installed[key] = {
       manifestPath: scenePath,
-      layerCount: (scene.layerIds || []).length,
+      layerCount: workspace?.layers?.length ?? (scene.layerIds || []).length,
       drawingObjectCount: (scene.drawingObjectIds || []).length,
       vectorObjectCount: (scene.vectorObjectIds || []).length,
     };
