@@ -424,3 +424,15 @@ El valor por defecto de ambos workflows sigue siendo `soldier-walk-60f-20261124`
 
 La guía paso a paso del paquete está en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md). La especificación de transporte está en [inline-artifact-bridge.md](./inline-artifact-bridge.md), y el contrato A/B sigue definido en este documento y en [VIDEO-PROCESSING-AB.md](./VIDEO-PROCESSING-AB.md).
 
+## Política de uso del inbox: vía para proyectos grandes o sin transferencia disponible
+
+El inbox del repositorio **no es el método predeterminado para todos los proyectos**. Es una vía alternativa de preparación/importación y se reserva principalmente para estos casos:
+
+- **Proyectos grandes:** cuando el proyecto incluye muchos recursos, archivos o datos y conviene moverlo como un paquete nativo completo, versionado y verificable, en lugar de depender de una transferencia interactiva o fragmentaria.
+- **No hay datos de transferencia utilizables:** cuando el flujo habitual no proporciona un paquete, snapshot o conjunto de datos que permita reconstruir/importar el proyecto en ADMIN; también cuando esos datos están incompletos o no están disponibles para esa tarea.
+
+Si el proyecto es pequeño y el flujo normal ya dispone de datos de transferencia completos y válidos, se debe usar ese flujo normal. No duplicar la importación por inbox sin necesidad. El inbox es un mecanismo de respaldo/entrada controlada para casos que justifican transportar el proyecto entero desde el repositorio.
+
+**Regla de decisión:** primero comprobar si existe una transferencia normal completa y utilizable. Si existe y el proyecto puede procesarse con ella, usarla. Si el volumen del proyecto hace poco práctico ese camino o no existe información transferible suficiente, preparar/importar el paquete por el inbox. En ambos casos, A/B comienza únicamente cuando el proyecto está disponible y persistido en ADMIN.
+
+Esta política no modifica la separación de responsabilidades: el workflow de inbox importa el paquete; A opera la web real; B selecciona, solicita y verifica el WebM.
