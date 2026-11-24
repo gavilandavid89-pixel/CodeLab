@@ -31,7 +31,7 @@ function gh(args) {
   });
 }
 async function comments() {
-  return JSON.parse(await gh(['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100`]));
+  return JSON.parse(await gh(['api', `repos/${repository}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`]));
 }
 async function postComment(body) {
   await gh(['api', '-X', 'POST', `repos/${repository}/issues/${issueNumber}/comments`, '-f', 'body=' + body]);
