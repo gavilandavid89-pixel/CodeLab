@@ -122,9 +122,9 @@ export class TiledAnimationDocument {
   async writeRegion(frameIndex, layerId, region, pixels) {
     const frame = this.#frame(frameIndex);
     const previousCelId = this.#cel(frame, layerId);
-    const nextCelId = await this.#store.writeRegion(previousCelId, region, pixels);
-    if (nextCelId !== previousCelId) frame.cels.set(layerId, nextCelId);
-    return { changed: nextCelId !== previousCelId, celId: nextCelId };
+    const result = await this.#store.writeRegion(previousCelId, region, pixels);
+    if (result.changed) frame.cels.set(layerId, result.celId);
+    return { changed: result.changed, celId: result.celId, changedTiles: result.changedTiles, removedTiles: result.removedTiles };
   }
 
   cloneFrame(index, { afterIndex = index } = {}) {
