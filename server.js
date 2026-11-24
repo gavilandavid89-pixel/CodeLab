@@ -3883,7 +3883,7 @@ seedAdminAccountIfConfigured().then(async () => {
     body: JSON.stringify({
       total_bytes: data.length, total_chunks: 1, sha256,
       filename: 'inline-smoke.codelab', project_name: 'inline-smoke',
-      target_workspace_id: PIXELFORGE_GUEST_WORKSPACE_ID, self_test: true
+      target_workspace_id: await resolveAdminAgentWorkspace(), self_test: true
     })
   });
   const manifestBody = await manifest.json();
