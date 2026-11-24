@@ -73,7 +73,7 @@ test('copying a reference part creates an isolated editable layer without changi
 
   const copiedLayer = runtime.sandbox.layers.find(layer => layer.name === 'Body copy');
   assert.ok(copiedLayer);
-  assert.notEqual(copiedLayer.pixels, masterPartPixels);
+  assert.deepEqual(copiedLayer.pixels, Uint8Array.from(atob(masterPartPixels), char => char.charCodeAt(0)));
   assert.equal(Buffer.from(copiedLayer.pixels).some(Boolean), true);
 
   // Editing the materialized layer must not mutate the immutable Reference Center entry.
