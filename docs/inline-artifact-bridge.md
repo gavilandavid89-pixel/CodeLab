@@ -2,7 +2,7 @@
 
 **Estado:** implementado en `server.js`. El servicio desplegado ha verificado el transporte manifest → chunk → commit → Neon; CI verifica además la importación completa desde el artefacto Headless descargado en un PostgreSQL efímero. La prueba de servicio y la prueba de importación tienen alcances distintos.
 
-## 1. Para qué existe
+## 0. Identidad ADMIN y diagnóstico de autenticación\n\nLa autenticación del endpoint HTTP descrita más abajo es un requisito del servidor; no significa que el agente deba pedirle al usuario el secreto ni que deba buscarlo dentro del Headless. Antes de declarar un bloqueo, el agente debe reutilizar la conexión administrativa ya disponible, resolver la cuenta ADMIN y el workspace destino, inspeccionar las acciones autorizadas disponibles y diagnosticar la capa concreta que rechazó la operación. No confundir el buzón interno ADMIN del bridge con el workspace de destino. No exponer ni solicitar secretos. Procedimiento obligatorio: [ADMIN-AUTH-AND-BRIDGE-RECOVERY.md](ADMIN-AUTH-AND-BRIDGE-RECOVERY.md).\n\n## 1. Para qué existe
 
 El transporte inline es el intermediario HTTPS que permite que el **agente IA, fuera del Headless**, entregue un paquete editable `.codelab` a CodeLab sin dar al Headless acceso directo a Neon, a las credenciales de la base de datos ni a las APIs internas.
 
