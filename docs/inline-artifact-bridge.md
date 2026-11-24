@@ -274,3 +274,14 @@ El secreto `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` se utiliza en este workflow par
 
 La guía de uso está en [projects/animation-inbox/README.md](../projects/animation-inbox/README.md). El documento owner de A/B es [CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md).
 
+## 10.1. Cuándo elegir el inbox frente a la transferencia habitual
+
+El inbox Git es una ruta alternativa para preparar proyectos en ADMIN, no un requisito para cada ejecución.
+
+Usarlo principalmente cuando:
+- el proyecto es grande y conviene transferir todos sus datos y recursos juntos en un paquete nativo completo;
+- no hay datos de transferencia utilizables en el flujo habitual, o el paquete/snapshot disponible está incompleto y no permite reconstruir el proyecto de forma fiable.
+
+Cuando un proyecto pequeño ya dispone de datos de transferencia normales, completos y válidos, conservar el flujo habitual. Evitar duplicar una importación por inbox que no aporta valor.
+
+En síntesis: **flujo habitual si la transferencia existe y es suficiente; inbox si el tamaño del proyecto o la ausencia/insuficiencia de datos de transferencia lo justifican**. En ambos caminos se debe verificar la persistencia real en ADMIN antes de ejecutar A/B.
