@@ -1,134 +1,83 @@
-name: CodeLab Single Video Processor B
+name: CodeLab Independent Session B
 
 on:
-  issue_comment:
-    types: [created]
-  repository_dispatch:
-    types: [codelab-session-b]
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Video processing mode"
-        required: false
-        default: "walk"
-        type: choice
-        options: [walk, walk-step]
       session_id:
-        description: "Persistent A session ID used by the video processor"
+        description: 'READY A session ID; leave empty to discover the latest live A'
         required: false
-        default: ""
+        default: ''
         type: string
-      mailbox_transport:
-        description: "Mailbox transport. relay uses the Render relay and remains available for free-transfer periods."
+      timeout_minutes:
+        description: 'Maximum time B waits for A and verifies the video'
         required: false
-        default: "relay"
-        type: choice
-        options: [relay, custom]
-      mailbox_base_url:
-        description: "Persistent A mailbox base URL (used by relay or custom transport)"
-        required: false
-        default: "https://codelab-pbw9.onrender.com"
+        default: '20'
         type: string
-      walk_frame_index:
-        description: "Frame to generate when mode=walk-step"
-        required: false
-        default: "1"
-        type: string
-      walk_project_id:
-        description: "Existing PixelForge project ID for supervised walk-step"
-        required: false
-        default: ""
-        type: string
+  issue_comment:
+    types: [created]
+
 concurrency:
   group: codelab-video-processor
   cancel-in-progress: false
 
 permissions:
-  actions: read
   contents: read
   issues: write
 
 jobs:
-  request:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'repository_dispatch' && github.event.action == 'codelab-session-b') || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent B')) }}
+  request-and-verify:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Start Independent B]')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - name: Discover READY A session
-        if: ${{ github.event_name == 'issue_comment' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && (github.event.inputs.session_id || github.event.client_payload.session_id) == '') }}
+          node-version: '22.17.0'
+      - name: Install Chromium decoder runtime
+        run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Discover a live READY A session
+        if: ${{ github.event_name == 'issue_comment' || inputs.session_id == '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if [ -n "${CODELAB_SESSION_ID:-}" ]; then
-            echo "Using supplied supervised A session: $CODELAB_SESSION_ID"
-            exit 0
-          fi
-          ready_run=""
-          ready_session=""
           for i in $(seq 1 120); do
-            latest="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab Session Ready]"))] | last | .body' || true)"
-            candidate_run="$(printf '%s' "$latest" | sed -n 's/.*run=\([0-9][0-9]*\).*/\1/p')"
-            candidate_session="$(printf '%s' "$latest" | sed -n 's/.*session=\([^ ]*\).*/\1/p')"
-            if [ -n "$candidate_run" ] && [ -n "$candidate_session" ]; then
-              status="$(gh run view "$candidate_run" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
+            candidate="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab A Ready]\n"))] | last | .body | split("\n")[1] | fromjson | [.sessionId, (.runId|tostring)] | @tsv' 2>/dev/null || true)"
+            session_id="$(printf '%s' "$candidate" | cut -f1)"
+            run_id="$(printf '%s' "$candidate" | cut -f2)"
+            if [ -n "$session_id" ] && [ -n "$run_id" ]; then
+              status="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
               if [ "$status" = "in_progress" ]; then
-                ready_run="$candidate_run"
-                ready_session="$candidate_session"
-                break
+                echo "CODELAB_SESSION_ID=$session_id" >> "$GITHUB_ENV"
+                echo "Discovered live A session $session_id (run $run_id)"
+                exit 0
               fi
             fi
-            echo "Waiting for live READY A ($i/120)..."
+            echo "Waiting for an active READY A session ($i/120)..."
             sleep 5
           done
-          test -n "$ready_run"
-          echo "CODELAB_SESSION_ID=$ready_session" >> "$GITHUB_ENV"
-          echo "CODELAB_MAILBOX_BASE_URL=https://codelab-pbw9.onrender.com" >> "$GITHUB_ENV"
-          echo "Connected to READY A: run=$ready_run session=$ready_session"
-
-      - name: Set supplied A session
-        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && (github.event.inputs.session_id || github.event.client_payload.session_id) != '' }}
+          echo "No active A session became READY."
+          exit 1
+      - name: Use supplied A session ID
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.session_id != '' }}
         env:
-          SUPPLIED_SESSION_ID: ${{ github.event.inputs.session_id || github.event.client_payload.session_id }}
-          SUPPLIED_MAILBOX: ${{ github.event.inputs.mailbox_base_url || github.event.client_payload.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
-        run: |
-          echo "CODELAB_SESSION_ID=$SUPPLIED_SESSION_ID" >> "$GITHUB_ENV"
-          echo "CODELAB_MAILBOX_BASE_URL=$SUPPLIED_MAILBOX" >> "$GITHUB_ENV"
-          echo "Connected directly to supplied A session: $SUPPLIED_SESSION_ID"
-
-      - name: Run B→A→context→B→A walking animation cycle
-        id: walk
-        if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'walk' || github.event.inputs.mode == 'walk-step')) || (github.event_name == 'repository_dispatch' && (github.event.client_payload.mode == '' || github.event.client_payload.mode == 'walk' || github.event.client_payload.mode == 'walk-step')) || (github.event_name == 'issue_comment' && (startsWith(github.event.comment.body, '[Start Independent B walk]') || startsWith(github.event.comment.body, '[Start Independent B walk-step]'))) }}
+          SUPPLIED_SESSION_ID: ${{ inputs.session_id }}
+        run: echo "CODELAB_SESSION_ID=$SUPPLIED_SESSION_ID" >> "$GITHUB_ENV"
+      - name: Request A export and verify delivered WebM
         env:
-          CODELAB_SESSION_TIMEOUT_MS: "1800000"
-          CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || github.event.client_payload.mailbox_transport || 'relay' }}
-          CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || github.event.client_payload.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
-        run: |
-          if [ -z "${CODELAB_WALK_ONE_STEP:-}" ]; then CODELAB_WALK_ONE_STEP="${{ ((github.event.inputs.mode == 'walk-step') || (github.event.client_payload.mode == 'walk-step') || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '[Start Independent B walk-step]'))) && '1' || '0' }}"; export CODELAB_WALK_ONE_STEP; fi
-          if [ -z "${CODELAB_WALK_FRAME_INDEX:-}" ]; then CODELAB_WALK_FRAME_INDEX="${{ github.event.inputs.walk_frame_index || github.event.client_payload.walk_frame_index || '1' }}"; export CODELAB_WALK_FRAME_INDEX; fi
-          if [ -z "${CODELAB_WALK_PROJECT_ID:-}" ]; then CODELAB_WALK_PROJECT_ID="${{ github.event.inputs.walk_project_id || github.event.client_payload.walk_project_id || '' }}"; export CODELAB_WALK_PROJECT_ID; fi
-          echo "B transport: ${CODELAB_MAILBOX_TRANSPORT:-relay} base=${CODELAB_MAILBOX_BASE_URL:-https://codelab-pbw9.onrender.com}"
-          echo "B mode: walk frame=${CODELAB_WALK_FRAME_INDEX} project=${CODELAB_WALK_PROJECT_ID:-new}"
-          node scripts/codelab-b-a-context-cycle.mjs 2>&1 | tee walk-result.log
-          grep -o '{\"ok\":true.*' walk-result.log | tail -n 1 > walk-result.json || true
-
-
-      - name: Publish B verification result
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODELAB_SESSION_ISSUE: "492"
+          CODELAB_SESSION_TIMEOUT_MS: ${{ inputs.timeout_minutes && fromJSON(inputs.timeout_minutes) * 60000 || 1200000 }}
+          CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
+        run: node scripts/codelab-ab-session-request.mjs
+      - name: Upload the video received and verified by B
         if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          if [ -s walk-result.json ]; then status="success"; else status="failure"; fi
-          summary=""
-          if [ -s walk-result.json ]; then
-            summary="$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("walk-result.json","utf8")); console.log(JSON.stringify({run:process.env.GITHUB_RUN_ID,ok:j.ok,projectId:j.animation?.projectId,frame:j.animation?.requestedFrame,oneStep:j.animation?.oneStep,proof:j.proof?.lastFrameProof,protocol:j.protocol}))' 2>/dev/null || true)"
-          fi
-          gh issue comment 492 --repo "$GH_REPO" --body "[CodeLab B Result] run=${{ github.run_id }} status=$status session=${CODELAB_SESSION_ID:-unknown} $summary"
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-soldier-walk-webm-${{ github.run_id }}
+          path: ${{ runner.temp }}/codelab-ab-video
+          if-no-files-found: warn
+          retention-days: 14
