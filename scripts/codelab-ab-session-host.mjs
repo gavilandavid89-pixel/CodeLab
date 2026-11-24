@@ -117,7 +117,7 @@ const context = await browser.newContext({
 const adminPage = await context.newPage();
 const handoffResponse = await adminPage.goto(baseUrl + '/api/auth/native-handoff?ticket=' + encodeURIComponent(handoff.ticket), { waitUntil: 'domcontentloaded', timeout: 30000 });
 if (!handoffResponse || ![200, 303].includes(handoffResponse.status())) throw new Error('ADMIN browser handoff could not be consumed.');
-await adminPage.goto(baseUrl + '/pixelforge/index.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
+await adminPage.goto(baseUrl + '/pixelforge/index.html?projectId=' + encodeURIComponent(projectId), { waitUntil: 'domcontentloaded', timeout: 45000 });
 await adminPage.locator('#canvas').waitFor({ state: 'attached', timeout: 45000 });
 const adminIdentity = await adminPage.evaluate(async () => {
   const [authResponse, projectResponse] = await Promise.all([fetch('/api/auth/status'), fetch('/api/pixelforge/projects')]);
