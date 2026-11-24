@@ -131,6 +131,8 @@ export class TiledAnimationDocument {
         frameIds.add(frame.id);
         const cels = new Map();
         const layerMetadata = {};
+        const restoredFrame = { id: frame.id, durationMs: frame.durationMs, cels, layerMetadata };
+        frames.push(restoredFrame);
         for (const entry of frame.cels) {
           if (!entry || !manifest.layerIds.includes(entry.layerId) || cels.has(entry.layerId) ||
               !entry.cel || entry.cel.width !== manifest.width || entry.cel.height !== manifest.height) {
@@ -141,7 +143,6 @@ export class TiledAnimationDocument {
           layerMetadata[entry.layerId] = structuredClone(entry.metadata || {});
         }
         if (cels.size !== manifest.layerIds.length) throw new TypeError('Tiled animation frame is missing a layer cel.');
-        frames.push({ id: frame.id, durationMs: frame.durationMs, cels, layerMetadata });
       }
       return new TiledAnimationDocument({
         store, width: manifest.width, height: manifest.height, fps: manifest.fps,
