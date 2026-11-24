@@ -888,7 +888,7 @@ async function main() {
     // When the fixture is already the active document, the project picker remains
     // open because its Open button is disabled. Close that overlay before interacting
     // with the editor so it cannot intercept Reference Center pointer events.
-    const projectsDialog = accountPage.locator('#projects-dialog');
+
     if (await projectsDialog.isVisible()) {
       await accountPage.keyboard.press('Escape');
       await projectsDialog.waitFor({ state: 'hidden' });
