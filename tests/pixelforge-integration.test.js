@@ -1352,14 +1352,14 @@ async function main() {
         editedAgentProject.layers[0].pixels = firstLayerPixels.toString('base64');
         const agentSaveResponse = await fetch(base + '/api/pixelforge/projects', {
           method: 'PUT',
-          headers: { ...authHeaders, 'content-type': 'application/json' },
+          headers: { ...adminAuthHeaders, 'content-type': 'application/json' },
           body: JSON.stringify({ project: editedAgentProject })
         });
         assert.equal(agentSaveResponse.status, 200,
           'the first normal editor save after agent import must not conflict with the imported revision');
         assert.equal((await agentSaveResponse.json()).project.serverRevision, 2,
           'saving an edited agent import must advance the server revision exactly once');
-        const agentReopenResponse = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), { headers: authHeaders });
+        const agentReopenResponse = await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), { headers: adminAuthHeaders });
         assert.equal(agentReopenResponse.status, 200, 'the edited agent project must reopen from native persistence');
         const agentReopened = (await agentReopenResponse.json()).project;
         assert.equal(agentReopened.name, editedAgentProject.name, 'edited project metadata must survive a second open');
@@ -1383,7 +1383,7 @@ async function main() {
           await testSessionPool.query('DELETE FROM public.codelab_agent_artifacts WHERE artifact_id=$1', [agentArtifactId]).catch(() => {});
         }
         await fetch(base + '/api/pixelforge/projects/' + encodeURIComponent(agentProjectId), {
-          method: 'DELETE', headers: authHeaders
+          method: 'DELETE', headers: adminAuthHeaders
         }).catch(() => {});
         await testSessionPool.query(
           "DELETE FROM public.codelab_project_imports WHERE result->>'importRequestId'=$1",
@@ -1391,11 +1391,11 @@ async function main() {
         ).catch(() => {});
         await testSessionPool.query(
           'DELETE FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2',
-          [coreWorkspace.workspaceId, agentProjectId]
+          [adminWorkspaceId, agentProjectId]
         ).catch(() => {});
         await testSessionPool.query(
           'DELETE FROM public.codelab_project_registry WHERE workspace_id=$1 AND project_id=$2',
-          [coreWorkspace.workspaceId, agentProjectId]
+          [adminWorkspaceId, agentProjectId]
         ).catch(() => {});
         await testSessionPool.query(
           'DELETE FROM public.codelab_project_artifacts WHERE import_request_id=$1',
