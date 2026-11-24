@@ -563,7 +563,8 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
   const resources = [];
   let resourceBytes = 0;
   for (const declaration of manifest.resources || []) {
-    if (!declaration || !safePath(declaration.path) || resourcePaths.has(declaration.path)) throw new TypeError('manifest.resources contains an unsafe or duplicate path.');\n    resourcePaths.add(declaration.path);
+    if (!declaration || !safePath(declaration.path) || resourcePaths.has(declaration.path)) throw new TypeError('manifest.resources contains an unsafe or duplicate path.');
+    resourcePaths.add(declaration.path);
     const bytes = await readBytes(entries, declaration.path, 'declared resource');
     resourceBytes += bytes.length;
     if (resourceBytes > MAX_RESOURCE_BYTES) throw new RangeError('Package resources exceed the 32 MiB aggregate limit.');
