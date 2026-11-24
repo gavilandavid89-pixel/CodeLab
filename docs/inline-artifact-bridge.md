@@ -1,6 +1,6 @@
 # Transporte inline de artefactos Headless → CodeLab
 
-**Estado:** implementado en `server.js` y verificado en el servicio desplegado mediante una prueba real de manifest → chunk → commit → Neon. Esta prueba valida el transporte y la persistencia del fragmento; no equivale a importar un proyecto PixelForge completo.
+**Estado:** implementado en `server.js`. El servicio desplegado ha verificado el transporte manifest → chunk → commit → Neon; CI verifica además la importación completa desde el artefacto Headless descargado en un PostgreSQL efímero. La prueba de servicio y la prueba de importación tienen alcances distintos.
 
 ## 1. Para qué existe
 
@@ -13,7 +13,7 @@ La separación es intencional:
 - El Headless propio del agente trabaja aislado y produce el paquete.
 - El agente inicia la transferencia HTTPS hacia CodeLab.
 - CodeLab autentica, recibe y almacena temporalmente el paquete en Neon.
-- El worker existente importa el ZIP como proyecto PixelForge y lo persiste en el workspace de destino.
+- El worker existente importa el paquete con el editor indicado por el manifiesto y lo persiste en el workspace de destino.
 - El agente consulta el resultado real y, cuando se solicita, inspecciona el proyecto/evidencia antes de darlo por terminado.
 
 El Headless no recibe credenciales Neon ni se conecta directamente a Neon Storage/S3. El transporte inline es el intermediario soportado que cruza ese límite.
@@ -55,7 +55,7 @@ Listener de server.js → agent-bridge-worker.mjs
 Agente consulta estado/resultado y verifica la importación
 ```
 
-La tabla `codelab_agent_commands` sigue siendo la cola durable de trabajo. El artefacto no sustituye esa cola: el commit crea una orden normal `pixelforge_import_zip`, y el mecanismo existente LISTEN/NOTIFY despierta al worker.
+La tabla `codelab_agent_commands` sigue siendo la cola durable de trabajo. El artefacto no sustituye esa cola: el commit crea `codelab_project_import` para paquetes `.codelab` o `pixelforge_import_zip` para ZIP PixelForge directos; LISTEN/NOTIFY despierta al worker.
 
 ## 3. API HTTP
 
@@ -83,7 +83,7 @@ Campos aceptados por la implementación:
 | `import_request_id` | Opcional; si se omite para `.codelab`, CodeLab crea la solicitud y devuelve su ID en la respuesta del manifiesto |
 | `self_test` | Solo para la prueba técnica: si es `true`, el commit valida y no encola importación |
 
-El servidor verifica el manifiesto y que `total_chunks = ceil(total_bytes / 1 MiB)`. Responde HTTP 201 con `artifactId`, `chunkBytes`, tamaño, cantidad de partes y SHA esperado.
+El servidor verifica el manifiesto y que `total_chunks = ceil(total_bytes / 1 MiB)`. Responde HTTP 201 con `artifactId`, `importRequestId` cuando aplica, `chunkBytes`, tamaño, cantidad de partes y SHA esperado.
 
 El artefacto queda asociado al workspace interno ADMIN que posee el buzón del bridge. Para `codelab_zip_upload`, CodeLab también crea una solicitud de importación en ese buzón si el agente no envía `import_request_id`; el ID se devuelve junto con `artifactId`. El workspace de destino del proyecto se conserva en metadata; no se confunde con el workspace propietario del registro temporal.
 
@@ -136,7 +136,7 @@ Tablas:
 - `public.codelab_agent_artifacts`: manifiesto, workspace interno, tipo, nombre, MIME, tamaño, cantidad de partes, SHA-256, metadata, creación y expiración.
 - `public.codelab_agent_artifact_chunks`: `artifact_id`, índice, bytes binarios `BYTEA` y SHA-256 de cada parte. La clave primaria es `(artifact_id, chunk_index)`; al borrar el manifiesto, sus partes se eliminan por cascada.
 
-El tipo usado para esta entrada es `pixelforge_zip_upload`. La metadata conserva `targetWorkspaceId`, `projectName`, `selfTest` y `transport: "inline-bridge"`.
+Para paquetes `.codelab`, el tipo de entrada es `codelab_zip_upload`; para ZIP PixelForge directos, `pixelforge_zip_upload`. La metadata conserva `targetWorkspaceId`, `projectName`, `importRequestId`, `selfTest` y `transport: "inline-bridge"`.
 
 Los artefactos son staging temporal, no almacenamiento definitivo de proyectos. Una vez importado, el worker elimina el paquete temporal; el documento PixelForge queda guardado mediante la persistencia normal del proyecto.
 
@@ -163,7 +163,7 @@ En la verificación real del 23-11-2026 en Render/Neon de la organización Xsupe
 
 **Alcance de esa evidencia:** demuestra el transporte y la integridad de un fragmento. No demuestra por sí sola una importación completa.
 
-La integración PostgreSQL de CI ejecuta además el recorrido de extremo a extremo con un ZIP v2 real: crea una solicitud del buzón ADMIN, transfiere el paquete por las rutas HTTP públicas, confirma el SHA-256, verifica que `codelab_project_import` quede encolada, arranca el worker nativo real, espera su resultado y comprueba que el proyecto aparece en el selector de la cuenta destinataria. Después lo abre, guarda una edición, vuelve a abrirlo y comprueba píxeles y timeline. Todo ocurre en PostgreSQL efímero del workflow, no en Neon production.
+La integración PostgreSQL de CI ejecuta el flujo documentado desde el artefacto Headless: empaqueta el runtime con el mismo layout de `Agent Headless Package`, lo publica como artefacto de GitHub Actions y lo descarga de nuevo en el job de integración. El test carga desde ese artefacto `HeadlessEditorRuntime`, abre y modifica un proyecto, exporta el `.codelab`, lo transfiere por las rutas HTTP públicas, deja que CodeLab cree la solicitud, confirma el SHA-256, verifica `codelab_project_import`, arranca el worker nativo y espera su resultado. Comprueba además que el proyecto aparece en el selector del workspace destinatario, lo abre, guarda una edición, vuelve a abrirlo y conserva píxeles y timeline. Todo ocurre en PostgreSQL efímero del workflow, no en Neon production.
 
 La variable de autoprueba debe permanecer desactivada en operación normal. No dejar activo el secreto temporal de test una vez concluida la verificación.
 
