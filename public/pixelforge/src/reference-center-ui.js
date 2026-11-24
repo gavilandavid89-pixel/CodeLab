@@ -314,7 +314,10 @@ export function createReferenceCenterUI({
       return;
     }
     try {
-      const fitted = fitReferencePixels(pixels, sourceWidth, sourceHeight, d, part.bounds);
+      const referenceCanvas = entry.geometry?.canvas;
+      const isFullCanvasPart = Number(referenceCanvas?.width || d.width) === sourceWidth &&
+        Number(referenceCanvas?.height || d.height) === sourceHeight;
+      const fitted = fitReferencePixels(pixels, sourceWidth, sourceHeight, d, isFullCanvasPart ? null : part.bounds);
       writeToCurrentFrameLayer(fitted, `Copied “${part.name}” into the current frame and layer`);
     } catch (error) {
       status('Could not copy reference part: ' + error.message, 'error');
