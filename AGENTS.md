@@ -92,6 +92,7 @@ Antes de finalizar, releer los archivos modificados y comprobar que diagramas y 
 - [Índice de documentación](docs/README.md)
 - [Política operativa del agente y bridge](docs/agent-ai-bridge-policy.md)
 - [Headless propio del agente](docs/HEADLESS-AGENT-RUNTIME.md)
+- [Referencia completa de capacidades Headless](docs/HEADLESS-CAPABILITIES-REFERENCE.md)
 - [Flujo autónomo de animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
 - [Transporte inline de artefactos](docs/inline-artifact-bridge.md)
 - [Arquitectura CodeLab ↔ Neon](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)
