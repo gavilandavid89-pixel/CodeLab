@@ -9,6 +9,8 @@ on:
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
       - "public/pixelforge/src/drawing-mode-config.mjs"
       - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/src/headless.js"
+      - "tests/pixelforge-headless-runtime.test.mjs"
       - "public/pixelforge/index.html"
       - "public/pixelforge/styles.css"
       - "tests/pixelforge-drawing-mode-config.test.mjs"
@@ -70,6 +72,8 @@ jobs:
         run: node --experimental-default-type=module --test tests/pixelforge-animation-tiled-adapter.test.mjs
       - name: Test persisted drawing mode configuration
         run: node --experimental-default-type=module --test tests/pixelforge-drawing-mode-config.test.mjs
+      - name: Test Headless drawing mode preservation
+        run: node --experimental-default-type=module --test tests/pixelforge-headless-runtime.test.mjs
       - name: Test drawing mode preservation in CodeLab ZIP packages
         run: node --experimental-default-type=module --test tests/pixelforge-codelab-package.test.mjs
       - name: Test ZIP archive export
