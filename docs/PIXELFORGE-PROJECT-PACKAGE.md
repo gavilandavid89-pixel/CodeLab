@@ -709,7 +709,7 @@ layer0-2
 
 La referencia es el recurso maestro reutilizable. La capa es el contenido editable dentro del frame. El frame es la unidad temporal/visual del lienzo.
 
-Al copiar una referencia, sus píxeles se escriben en la capa activa del frame activo. La capa existente conserva identidad y propiedades; no se crea otra capa. La referencia maestra permanece intacta y la copia no mantiene un vínculo vivo con ella.
+Al copiar una referencia, sus píxeles se escriben en la capa activa del frame activo. Si el documento está animado, se actualiza el cel de esa capa en el frame activo; el timeline permanece abierto y no se reinicia. La capa existente conserva su ID, nombre, visibilidad, opacidad y bloqueo; no se crea, elimina, duplica ni reordena ninguna capa. La referencia maestra permanece intacta y la copia es una duplicación de píxeles, no un vínculo vivo con ella. `copy_part` reemplaza el contenido de la capa activa con los píxeles de la parte; `copy_frame` compone las capas visibles del frame de referencia y coloca ese resultado aplanado en la capa activa.
 
 ## 20. Relación con la organización por secciones
 
