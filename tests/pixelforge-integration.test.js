@@ -852,6 +852,70 @@ async function main() {
     assert.ok(importDocAssignmentAt >= 0 && importAnimationRestoreAt > importDocAssignmentAt && importWorkspaceRebindAt > importAnimationRestoreAt,
       'importing a document must restore its animation, clear stale selection state, and rebind the AI workspace');
 
+    // Reference Center E2E: an imported reference part must become a real editable
+    // raster layer, survive an edit/save cycle, and still be present after reload.
+    const referenceFixture = makePixelProject('reference-materialization-fixture', 'Reference materialization fixture', 4, 4);
+    const referencePixels = Buffer.alloc(4 * 4 * 4);
+    referencePixels.set([210, 120, 40, 255], (1 * 4 + 1) * 4);
+    referenceFixture.drawingModel = {
+      referenceCenter: {
+        entries: [{
+          id: 'reference-fixture-1',
+          name: 'Orange reference',
+          type: 'asset',
+          category: 'object',
+          sourcePath: 'reference.orange/orange.reference',
+          parts: [{ name: 'Orange part', pixels: referencePixels.toString('base64'), layerId: 'fixture-layer-1' }],
+          frames: [],
+        }],
+        activeEntryId: 'reference-fixture-1',
+      },
+    };
+    const referenceFixtureResponse = await fetch(base + '/api/pixelforge/projects', {
+      method: 'PUT',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ project: referenceFixture })
+    });
+    assert.ok(referenceFixtureResponse.status === 200 || referenceFixtureResponse.status === 201,
+      'Reference Center fixture should be persistable for the browser materialization test');
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    await accountPage.locator('#projects-button').click();
+    await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
+    const referenceProjectRow = accountPage.locator('.saved-project').filter({ hasText: 'Reference materialization fixture' }).first();
+    await referenceProjectRow.locator('.saved-project-open').click();
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Reference materialization fixture');
+    await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).waitFor({ state: 'visible' });
+    const referenceCard = accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).first();
+    assert.equal(await referenceCard.locator('.reference-parts .file-button').count(), 1,
+      'Reference Center should render the imported reference part as an actionable item');
+    await referenceCard.locator('.reference-parts .file-button').first().click();
+    await accountPage.waitForFunction(() => document.querySelectorAll('#layers .layer-row').length === 2);
+    const materializedLayer = accountPage.locator('#layers .layer-row').filter({ hasText: 'Orange reference · Orange part' });
+    assert.equal(await materializedLayer.count(), 1, 'copying a reference part must create a real editable layer in the layer stack');
+    await setForegroundColor('#00aa44');
+    await accountPage.locator('#brush-tool').click();
+    await clickPixel(2, 2);
+    await waitForRasterSave();
+    let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    assert.equal(referenceStored.layers.length, 2, 'materialized reference must be persisted as a second raster layer');
+    assert.deepEqual(rgbaAt(referenceStored, 2, 2, 1), [0, 170, 68, 255],
+      'editing the materialized reference must persist the changed raster pixel on that layer');
+    await accountPage.reload({ waitUntil: 'networkidle' });
+    await accountPage.locator('#canvas').waitFor({ state: 'visible' });
+    await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Reference materialization fixture');
+    await accountPage.locator('#layers .layer-row').filter({ hasText: 'Orange reference · Orange part' }).waitFor({ state: 'visible' });
+    referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+    assert.equal(referenceStored.layers.length, 2, 'the materialized reference layer must survive a full browser reload');
+    assert.deepEqual(rgbaAt(referenceStored, 2, 2, 1), [0, 170, 68, 255],
+      'the edited materialized reference pixels must survive reload and account persistence');
+    await accountPage.locator('#reference-refresh').click();
+    assert.equal(await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).count(), 1,
+      'Reference Center must still expose the immutable source reference after materialization');
+    await accountPage.locator('#projects-button').click().catch(() => {});
+    const referenceCleanup = await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { method: 'DELETE', headers: authHeaders });
+    assert.equal(referenceCleanup.status, 200, 'the E2E reference fixture should be removable after the test');
+
     if (usesPostgres) {
     // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
     // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
