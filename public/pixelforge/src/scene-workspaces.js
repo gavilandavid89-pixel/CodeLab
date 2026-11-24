@@ -48,6 +48,10 @@ export function attachSceneWorkspaceState(snapshot, state, activeSection = state
   const result = clone(snapshot);
   result.drawingModel = result.drawingModel && typeof result.drawingModel === 'object'
     ? result.drawingModel : {};
+  for (const section of SECTION_DEFINITIONS) {
+    const sectionData = result.drawingModel.sceneSections?.[section.key];
+    if (sectionData && typeof sectionData === 'object') delete sectionData.workspace;
+  }
   result.drawingModel.sceneWorkspaceState = {
     ...readSceneWorkspaceState({ sceneWorkspaceState: state }),
     activeSection: SECTION_KEYS.has(activeSection) ? activeSection : 'main',
