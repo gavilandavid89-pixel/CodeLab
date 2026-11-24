@@ -49,19 +49,19 @@ mi-proyecto.codelab-pixelforge
     │   └── ...
     ├── Entorno/
     │   ├── entorno.tscn
-    │   └── ...                      # datos propios de la sección
+    │   └── frames/                  # frames, capas, cels y datos completos de la instancia
     ├── Efectos/
     │   ├── efectos.tscn
-    │   └── ...
+    │   └── frames/
     ├── Detalles/
     │   ├── detalles.tscn
-    │   └── ...
+    │   └── frames/
     ├── Elementos/
     │   ├── elementos.tscn
-    │   └── ...
+    │   └── frames/
     ├── Objetos/
     │   ├── objetos.tscn
-    │   └── ...
+    │   └── frames/
     └── reference.center/
         ├── reference.center
         ├── reference.personaje/
