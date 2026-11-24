@@ -485,7 +485,7 @@ export async function importCodeLabArtifact(pool, {
            byte_size=EXCLUDED.byte_size,
            server_revision=EXCLUDED.server_revision,
            content_sha256=EXCLUDED.content_sha256`,
-        [request.workspace_id || pixelForgeWorkspaceId, projectId, name, width, height, now, serialized, byteSize, contentSha, pixelForgeServerRevision]
+        [destinationWorkspaceId, projectId, name, width, height, now, serialized, byteSize, contentSha, pixelForgeServerRevision]
       );
     }
 
