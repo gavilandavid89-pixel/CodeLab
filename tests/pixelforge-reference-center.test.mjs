@@ -71,7 +71,7 @@ test('copying a reference part replaces only the active layer pixels and preserv
   assert.equal(runtime.sandbox.layers.length, 1);
   assert.equal(runtime.sandbox.activeLayerId, activeLayerId);
   const copiedLayer = runtime.sandbox.layers[0];
-  assert.deepEqual(copiedLayer.pixels, Uint8Array.from(atob(masterPartPixels), char => char.charCodeAt(0)));
+  assert.deepEqual(Uint8Array.from(copiedLayer.pixels), Uint8Array.from(atob(masterPartPixels), char => char.charCodeAt(0)));
   assert.equal(Buffer.from(copiedLayer.pixels).some(Boolean), true);
 
   // Editing the materialized layer must not mutate the immutable Reference Center entry.
