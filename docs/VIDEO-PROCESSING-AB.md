@@ -6,6 +6,10 @@ Este archivo es la **especificación técnica complementaria** del mecanismo A/B
 
 **Importante:** la evidencia y los hashes históricos que aparecen más abajo describen la primera prueba de revisión 2. No representan la última revisión aceptada. El estado actual y la evidencia A/B más reciente están registrados en el documento owner.
 
+## Selección de proyecto
+
+A inicia una sesión con el input `project_id` del proyecto PixelForge que ya está persistido en ADMIN. B tiene su propio input `project_id` y solo emite la petición cuando coincide con el proyecto fijado por A. Para procesar otro proyecto, iniciar A con ese ID y B con el mismo ID. El default histórico sigue siendo Soldier Walk. B no consulta el repositorio ni obtiene credenciales; A no lee GitHub ni decide el proyecto a partir del inbox.
+
 ## Propósito
 
 A/B es la etapa que exporta el vídeo final del proyecto PixelForge persistido en ADMIN. El contrato vigente es deliberadamente asimétrico:
