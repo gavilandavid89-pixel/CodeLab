@@ -78,14 +78,6 @@ jobs:
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_SESSION_ID: "independent-${{ github.run_id }}"
           CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || github.event.client_payload.session_minutes || '360' }}
-          CODELAB_SESSION_VIDEO_DIR: ${{ runner.temp }}/codelab-independent-a-video
           CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || github.event.client_payload.mailbox_transport || 'relay' }}
           CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || github.event.client_payload.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
         run: node scripts/codelab-session-host.mjs
-      - name: Upload A evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: codelab-independent-a-${{ github.run_id }}
-          path: ${{ runner.temp }}/codelab-independent-a-video
-          if-no-files-found: warn
