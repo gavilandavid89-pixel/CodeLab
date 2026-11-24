@@ -15,6 +15,18 @@ test('server wakes the bridge from committed queued commands', () => {
   assert.match(server, /startAgentBridge\(\)/);
 });
 
+test('server action constraint includes every supported PixelForge worker action', () => {
+  for (const action of [
+    'pixelforge_preview_evidence_video',
+    'pixelforge_import_zip',
+    'pixelforge_export_zip',
+    'pixelforge_video_composer'
+  ]) {
+    assert.ok(server.includes(`'${action}'`), `server listener constraint must allow ${action}`);
+    assert.ok(worker.includes(`'${action}'`), `worker must support ${action}`);
+  }
+});
+
 test('server retries Neon listener setup when the initial connection fails', () => {
   assert.match(server, /function scheduleAgentBridgeWakeReconnect\(reason\)/);
   assert.match(server, /scheduleAgentBridgeWakeReconnect\(error\)/);
