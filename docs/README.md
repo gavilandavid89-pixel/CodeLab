@@ -59,11 +59,11 @@ El Headless no recibe credenciales de Neon, S3 ni secretos internos. HTTP 202 so
 
 ### Evidencia visual
 
-La evidencia se genera desde el proyecto/CodeLab real cuando corresponde y el agente la inspecciona. Una captura, un vídeo o un estado success no reemplazan el documento editable ni demuestran por sí solos persistencia.
+La evidencia se genera desde el proyecto/CodeLab real cuando corresponde y el agente la inspecciona. El vídeo final A/B es un entregable cuando la petición incluye vídeo; no reemplaza el documento editable persistido. El GIF local solo se entrega si el usuario lo pide expresamente.
 
 ### Vídeo A/B
 
-A/B es una ruta especializada exclusivamente para procesamiento/captura de vídeo por límites de memoria de Render. No es el Headless propio del agente, no es el flujo general de edición y no se usa para importar proyectos.
+A/B es la etapa integrada de procesamiento/render del vídeo final, después de que el agente haya transferido el proyecto editable y CodeLab lo haya persistido. El agente recupera, inspecciona y entrega el vídeo final al usuario. No se usa para crear ni importar el proyecto editable.
 
 ## 5. Documentos de referencia e históricos
 
