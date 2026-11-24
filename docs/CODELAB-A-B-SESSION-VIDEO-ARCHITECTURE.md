@@ -328,6 +328,10 @@ Después de descargar el artefacto, se extrajeron e inspeccionaron visualmente l
 
 La regla operativa permanece en [ANIMATION-AUTONOMOUS-WORKFLOW.md](./ANIMATION-AUTONOMOUS-WORKFLOW.md), sección 5.2: recibir → obtener → inspeccionar → corregir → reinspeccionar → entregar.
 
+## Selección de proyecto para A/B
+
+La sesión A se inicia con el input `project_id` del proyecto ya importado en ADMIN. B también recibe un input `project_id` y solo envía la petición si coincide con el proyecto fijado por A. Para un proyecto nuevo, iniciar A con su ID y después B con el mismo ID. B no lee el repositorio ni cambia la sesión A; simplemente formula la orden para el proyecto de esa sesión. El default histórico sigue siendo Soldier Walk.
+
 ## Catálogo externo de proyectos (inbox de PixelForge)
 
 Los proyectos fuente que deben aparecer en PixelForge ADMIN se alojan en `projects/animation-inbox/<slug>/project.codelab`. El workflow `.github/workflows/pixelforge-project-inbox.yml` importa esos paquetes mediante el bridge inline al workspace ADMIN. Esta fase ocurre antes de A/B y no cambia sus funciones.
