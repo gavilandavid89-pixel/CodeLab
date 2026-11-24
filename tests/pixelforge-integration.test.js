@@ -1005,6 +1005,9 @@ async function main() {
     environmentStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(environmentStored.drawingModel.sceneWorkspaceState.activeSection, 'environment',
       'the active scene workspace should be restored after a full browser reload');
+    assert.deepEqual(Object.keys(environmentStored.drawingModel.sceneWorkspaceState.workspaces).sort(),
+      ['details', 'effects', 'elements', 'environment', 'objects'],
+      'all five independent section workspaces must remain persisted after reload');
     assert.deepEqual(rgbaAt(environmentStored, 0, 0, 0), [255, 0, 0, 255],
       'the active section workspace pixels must survive reload');
     assert.deepEqual(rgbaAt(environmentStored.drawingModel.sceneWorkspaceState.workspaces.effects, 3, 3, 0), [0, 0, 255, 255],
