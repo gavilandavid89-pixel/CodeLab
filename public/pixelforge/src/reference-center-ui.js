@@ -1,4 +1,4 @@
-import { buildReferenceFromProject, normalizeDrawingModel, getReferenceEntry, normalizeSemanticPart, setCurrentState, recordEnvironmentHistory } from './drawing-intelligence.js';
+import { buildReferenceFromProject, normalizeDrawingModel, getReferenceEntry, normalizeSemanticPart, setCurrentState, recordEnvironmentHistory, copyReferencePixelsToActiveFrameLayer } from './drawing-intelligence.js';
 
 export function createReferenceCenterUI({
   getDocument,
@@ -107,12 +107,16 @@ export function createReferenceCenterUI({
       status('The reference does not match the current canvas dimensions.', 'error');
       return false;
     }
-    const currentAnimation = animation();
-    if (currentAnimation) {
-      currentAnimation.setLayerPixels(currentAnimation.activeFrameIndex, layer.id, new Uint8Array(pixels));
+    try {
+      copyReferencePixelsToActiveFrameLayer({
+        drawingDocument: d,
+        animation: animation(),
+        pixels,
+      });
+    } catch (error) {
+      status('Could not copy reference into the active layer: ' + error.message, 'error');
+      return false;
     }
-    d.setLayerPixels(layer.id, new Uint8Array(pixels));
-    d.dirty = true;
     status(message, 'success');
     render();
     renderLayers();
