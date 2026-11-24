@@ -852,9 +852,8 @@ async function main() {
     assert.ok(importDocAssignmentAt >= 0 && importAnimationRestoreAt > importDocAssignmentAt && importWorkspaceRebindAt > importAnimationRestoreAt,
       'importing a document must restore its animation, clear stale selection state, and rebind the AI workspace');
 
-    // Reference Center E2E: an imported reference part must become a real editable
-// The project-picker overlay is reused across the integration flow.
-    // raster layer, survive an edit/save cycle, and still be present after reload.
+    // Reference Center E2E: copying a reference part replaces pixels in the existing
+    // active layer, survives an edit/save cycle, and leaves the source reference intact.
     const referenceFixture = makePixelProject('reference-materialization-fixture', 'Reference materialization fixture', 4, 4);
     const referencePixels = Buffer.alloc(4 * 4 * 4);
     referencePixels.set([210, 120, 40, 255], (1 * 4 + 1) * 4);
@@ -910,7 +909,7 @@ async function main() {
     await waitForRasterSave();
     let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(referenceStored.layers.length, 1, 'reference pixels must be persisted in the existing active raster layer');
-    assert.deepEqual(rgbaAt(referenceStored, 2, 2, 1), [0, 170, 68, 255],
+    assert.deepEqual(rgbaAt(referenceStored, 2, 2, 0), [0, 170, 68, 255],
       'editing the copied reference pixels must persist on the active layer');
     await accountPage.reload({ waitUntil: 'networkidle' });
     await accountPage.locator('#canvas').waitFor({ state: 'visible' });
