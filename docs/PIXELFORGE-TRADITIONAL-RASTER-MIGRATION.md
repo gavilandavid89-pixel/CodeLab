@@ -158,3 +158,20 @@ The editor stores per-layer and per-animation-cel, per-mode non-default tool pro
 The tiled project adapter now exposes a metadata-only mode transition. Switching illustration ↔ pixel art changes only the project's active drawing mode; it does not clear, resample, quantize, rewrite, or discard any cel/tile bytes. Each layer/cel may retain an optional `authoringMode` and `modeOverrides` record. Those values represent non-default settings that must survive when the project changes modes and later switches back. The adapter reports `pixelsChanged: false` and `celsRewritten: 0` for a transition, and tests compare tile SHA-256 values before and after both directions.
 
 This is the safe interpretation of a mode-switch guard: deactivate the previous mode's defaults for new editing operations, but preserve source pixels and per-cel exceptions as dormant metadata. Do not physically delete “extra” pixels or settings. The editor's dense v1 model still needs the same contract wired into its canonical per-cel/tile storage before this guard can be considered end-to-end.
+
+
+## Pixel growth: verified blockers and current safe boundary
+
+A mode switch is non-destructive, but that does **not** mean the current editor accepts unlimited additional canvas pixels or layers. The v1 dense editor still rejects:
+- dimensions above 4096 px per side or 16,777,216 total canvas pixels;
+- more than 64 layers;
+- aggregate layer RGBA allocations above 64 MiB (including add/duplicate/crop/import/restore paths);
+- projects whose JSON exceeds 96 MiB;
+- animation above 64 MiB raw cel storage, more than 240 frames, or more than 64 layers;
+- server saves above the same 64 MiB raster/animation checks, 96 MiB project envelope, or 512 MiB account storage.
+
+The API has its own 32 MiB direct JSON limit and 6 MiB chunk protocol (9 MiB request body per chunk); these are transport limits, not extra drawing capacity. The editor's 256 MiB import file ceiling and the staged upload ceiling are separate again.
+
+The tiled adapter now has a proof test showing that a sparse 4096×4096 project can represent 17 layers (over 1 GiB of theoretical dense RGBA) using a single deduplicated 32×32 tile resource. This bypasses the legacy *aggregate dense allocation* limit inside that adapter only. The editor still creates and edits `RasterDocument` dense buffers; its migration adapter begins with `toJSON()`, and the v1 server/package path still rejects those larger dense projects. Therefore this is not yet an end-to-end larger-pixel feature.
+
+**Do not remove the v1 guards until the native editor, animation, history, compositing, package/ZIP, Headless and server persistence all consume the sparse tiled representation.** The exact audit and migration order live in [the high-resolution capacity audit](PIXELFORGE-HIGH-RESOLUTION-STORAGE-AND-INCREMENTAL-SYNC.md).
