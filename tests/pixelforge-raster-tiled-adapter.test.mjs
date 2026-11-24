@@ -8,6 +8,7 @@ if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 test('migrates all raster layers and project drawing configuration into a tiled manifest losslessly', async () => {
   const source = new RasterDocument(80, 72, 'Traditional raster');
+  source.setDrawingModel({ projectNote: 'preserve-me' });
   source.activeLayer.pixels.set([7, 44, 99, 255], (65 * 80 + 70) * 4);
   source.activeLayer.opacity = 0.7;
   const extra = source.addLayer('Ink');
@@ -19,6 +20,7 @@ test('migrates all raster layers and project drawing configuration into a tiled 
   assert.equal(manifest.layers[0].cel.tiles.length, 1);
   assert.equal(manifest.layers[1].cel.tiles.length, 1);
   assert.deepEqual(manifest.drawingConfiguration, config);
+  assert.deepEqual(manifest.projectMetadata.drawingModel, { projectNote: 'preserve-me' });
 
   const restored = await TiledRasterProjectDocument.fromManifest(manifest);
   assert.deepEqual(restored.readRegion(source.layers[0].id, { x: 68, y: 63, width: 4, height: 4 }).slice((2 * 4 + 2) * 4, (2 * 4 + 2) * 4 + 4),
@@ -27,6 +29,7 @@ test('migrates all raster layers and project drawing configuration into a tiled 
   const legacy = await restored.toLegacyProjectJSON();
   assert.deepEqual(Buffer.from(legacy.layers[0].pixels, 'base64'), Buffer.from(source.layers[0].pixels));
   assert.equal(legacy.drawingConfiguration.activeMode, 'illustration');
+  assert.deepEqual(legacy.drawingModel, { projectNote: 'preserve-me' });
   restored.dispose();
   tiled.dispose();
 });
