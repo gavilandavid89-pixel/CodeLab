@@ -257,7 +257,7 @@ const verification = {
   beforeSha256: current.contentSha256, afterSha256: persisted.contentSha256,
   frameCount: persisted.project.animation.frames.length, fps: persisted.project.animation.fps,
   changedPixels,
-  method: 'Restore clean revision-2 poses; separate and alternate lower-leg cels; add a one-pixel upper-body counter-bob; preserve the contact shadow, rifle, background and ground.'
+  method: 'Restore clean revision-2 poses; isolate and alternate lower-leg pixel regions within the existing Soldier cel; add a one-pixel upper-body counter-bob; preserve the contact shadow, rifle, background and ground.'
 };
 await fs.writeFile((process.env.RUNNER_TEMP || '/tmp') + '/soldier-walk-repair-verification.json', JSON.stringify(verification, null, 2));
 console.log('[REPAIR] Persisted verification:', JSON.stringify(verification));
