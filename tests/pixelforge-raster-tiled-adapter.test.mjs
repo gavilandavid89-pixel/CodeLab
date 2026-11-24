@@ -92,3 +92,17 @@ test('switching drawing modes is a guarded metadata-only operation and preserves
   assert.deepEqual(restored.layers[0].modeOverrides, after.layers[0].modeOverrides);
   tiled.dispose();
 });
+
+test('native RasterDocument JSON preserves per-layer authoring mode exceptions', async () => {
+  const source = new RasterDocument(24, 24, 'Mode metadata round trip');
+  source.activeLayer.authoringMode = 'illustration';
+  source.activeLayer.modeOverrides = { brushHardness: 42, interpolation: 'bilinear' };
+  const pixelsBefore = new Uint8ClampedArray(source.activeLayer.pixels);
+  const serialized = source.toJSON();
+  assert.equal(serialized.layers[0].authoringMode, 'illustration');
+  assert.deepEqual(serialized.layers[0].modeOverrides, { brushHardness: 42, interpolation: 'bilinear' });
+  const restored = RasterDocument.fromJSON(serialized);
+  assert.equal(restored.activeLayer.authoringMode, 'illustration');
+  assert.deepEqual(restored.activeLayer.modeOverrides, { brushHardness: 42, interpolation: 'bilinear' });
+  assert.deepEqual(restored.activeLayer.pixels, pixelsBefore);
+});
