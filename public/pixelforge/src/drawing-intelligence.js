@@ -543,6 +543,41 @@ export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animati
   return { layerId: layer.id, frameIndex: animation?.activeFrameIndex ?? null, copiedBytes: copy.byteLength };
 }
 
+export function compositeReferenceFramePixels(entry, frameIndex, width, height) {
+  if (!entry || !Array.isArray(entry.frames)) throw new TypeError('A reference animation is required.');
+  const frame = entry.frames.find(item => Number(item.index) === Number(frameIndex));
+  if (!frame) throw new Error('Reference frame was not found.');
+  const sourceWidth = Number(entry.geometry?.canvas?.width || width);
+  const sourceHeight = Number(entry.geometry?.canvas?.height || height);
+  if (sourceWidth !== width || sourceHeight !== height) {
+    throw new RangeError('Reference frame dimensions must match the current canvas.');
+  }
+  const output = new Uint8Array(width * height * 4);
+  for (const source of frame.layers || []) {
+    if (typeof source.pixels !== 'string') continue;
+    const pixels = deserializePixels(source.pixels);
+    if (pixels.length !== output.length) throw new RangeError('Reference frame layer pixels have invalid dimensions.');
+    const metadata = entry.layerSnapshot?.find(layer => layer.id === source.layerId);
+    if (metadata?.visible === false) continue;
+    const opacity = Math.max(0, Math.min(1, Number(metadata?.opacity ?? 1)));
+    if (opacity === 0) continue;
+    for (let offset = 0; offset < output.length; offset += 4) {
+      const sourceAlpha = (pixels[offset + 3] / 255) * opacity;
+      if (sourceAlpha <= 0) continue;
+      const targetAlpha = output[offset + 3] / 255;
+      const combinedAlpha = sourceAlpha + targetAlpha * (1 - sourceAlpha);
+      for (let channel = 0; channel < 3; channel++) {
+        output[offset + channel] = Math.round(
+          (pixels[offset + channel] * sourceAlpha +
+            output[offset + channel] * targetAlpha * (1 - sourceAlpha)) / combinedAlpha
+        );
+      }
+      output[offset + 3] = Math.round(combinedAlpha * 255);
+    }
+  }
+  return output;
+}
+
 export function applyReferenceToDrawingModel(model, entry) {
   if (!entry || typeof entry !== 'object') throw new TypeError('reference entry is required.');
   const next = clone(model);
