@@ -399,6 +399,11 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
   const referenceCenter = addReferenceCenter(project, files);
   const resourceDeclarations = addResources(project, files, resources);
 
+  for (const section of SCENE_SECTIONS) {
+    if (project.drawingModel?.sceneSections?.[section.key]) {
+      delete project.drawingModel.sceneSections[section.key].workspace;
+    }
+  }
   delete project.animation;
   delete project.packageResourceFiles;
   if (project.drawingModel?.referenceCenter) {
