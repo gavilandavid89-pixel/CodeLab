@@ -277,3 +277,51 @@ Después de instalar el paquete, CodeLab vuelve a leer el proyecto y todos sus a
 La validación v2 es estricta: IDs duplicados, paths inseguros, dimensiones inconsistentes, cels ausentes, capas desconocidas, píxeles con tamaño incorrecto o referencias fuera de su categoría hacen fallar la importación en lugar de inventar o completar datos.
 
 El esquema v1 existente continúa aceptándose para compatibilidad.
+
+
+## 5.2. Regla específica para vídeo A/B: recibir → obtener → inspeccionar → corregir → reinspeccionar → entregar
+
+Cuando el usuario solicite una animación con vídeo final, **el agente que está recibiendo y ejecutando las órdenes del usuario es responsable del cierre completo**, aunque A y B hayan realizado correctamente la parte técnica del pipeline.
+
+El procedimiento obligatorio es:
+
+1. **Esperar a B.** No dar por terminado el trabajo porque A haya exportado, porque B esté ejecutándose o porque exista un comentario/estado de éxito. El agente debe esperar a que B termine y entregue su resultado.
+2. **Obtener el vídeo real.** Recuperar el artefacto generado por B y localizar dentro de él el WebM final. No confundir el ZIP del workflow/artefacto con el vídeo que debe recibir el usuario.
+3. **Comprobar que es el vídeo completo.** Abrir el WebM obtenido, comprobar que corresponde a la exportación solicitada y que no se está usando una muestra, captura, frame suelto, archivo truncado o paquete sin el vídeo final.
+4. **Inspeccionar visualmente.** Reproducir/decodificar el vídeo y analizar su contenido. La inspección debe comprobar tanto la animación como el dibujo.
+5. **Evaluar continuidad.** Revisar la transición entre frames, continuidad del ciclo, timing, aceleración/desaceleración perceptual, posiciones de apoyo y que el movimiento tenga una causa visual coherente. Para caminar, no basta con que cambien piernas y brazos: debe percibirse un ciclo de caminata con pasos y transferencia de peso coherentes, sin movimientos arbitrarios o sin sentido.
+6. **Evaluar acompañamiento del dibujo.** Comprobar que las partes que deben acompañar el movimiento efectivamente lo hagan: torso, cabeza, brazos, manos, piernas, pies, objetos sostenidos, ropa o detalles relevantes. Detectar partes que se quedan rígidas cuando deberían acompañar, partes que se desprenden visualmente, deformaciones, elementos que aparecen/desaparecen sin motivo y errores de silueta.
+7. **Respetar la orden del usuario.** La intención y las restricciones expresadas por el usuario son la prioridad. La inspección no autoriza al agente a cambiar arbitrariamente el objetivo, estilo, pose, timing o cantidad de movimiento solicitados. La revisión sirve para comprobar que la ejecución cumple esa orden, no para sustituirla por el criterio estético del agente.
+8. **Corregir si hace falta.** Si la inspección encuentra un problema, volver al proyecto editable persistido y corregirlo de forma incremental. Si el defecto está en el proyecto, no maquillar el vídeo final ni declararlo aceptado.
+9. **Repetir A/B.** Después de una corrección que afecte al vídeo, volver a ejecutar el flujo A/B y esperar nuevamente el resultado de B. No reutilizar el WebM anterior como si representara la nueva revisión.
+10. **Reinspeccionar.** Obtener nuevamente el vídeo desde el artefacto de B y repetir la inspección. La corrección solo queda aceptada cuando el nuevo vídeo pasa la revisión.
+11. **Entregar al usuario.** Solo después de completar la inspección y, si correspondió, la corrección y reinspección, presentar al usuario el **vídeo WebM completo y reproducible**, no el ZIP del workflow como sustituto.
+
+### Criterio de aceptación visual mínimo
+
+Antes de presentar el vídeo, el agente debe poder responder afirmativamente a estas preguntas:
+
+- ¿Es el vídeo completo solicitado?
+- ¿Proviene de la revisión correcta del proyecto?
+- ¿El movimiento tiene continuidad entre frames?
+- ¿El ciclo tiene sentido temporal y espacial?
+- Si es una caminata, ¿realmente parece una caminata y no poses alternadas sin conexión?
+- ¿El cuerpo acompaña el movimiento de forma coherente?
+- ¿Las extremidades y elementos vinculados al personaje acompañan correctamente?
+- ¿Hay partes que se quedan atrás, flotan, desaparecen, se deforman o contradicen el movimiento?
+- ¿La animación respeta la orden concreta del usuario?
+- ¿La versión inspeccionada es exactamente la que se va a entregar?
+
+Si alguna respuesta es negativa, **no se entrega todavía**: se vuelve al ciclo de corrección.
+
+### Regla de prioridad
+
+La orden del usuario tiene prioridad sobre las preferencias estéticas del agente. Sin embargo, una orden de «hacer una caminata», por ejemplo, no significa aceptar cualquier sucesión de frames que técnicamente se mueva. El agente debe usar su inspección para garantizar que la ejecución sea coherente con el significado de la orden y que el dibujo acompañe el movimiento de forma correcta.
+
+Por tanto:
+
+**orden del usuario → ejecución → B entrega → agente obtiene vídeo → inspección visual → corrección si corresponde → nueva A/B → nueva inspección → entrega del vídeo.**
+
+Nunca:
+
+**B termina → ZIP → «success» → entregar sin mirar el vídeo.**
