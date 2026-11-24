@@ -199,8 +199,47 @@ jobs:
           test -s "$RUNNER_TEMP/health.json"
           node -e "const h=require(process.env.RUNNER_TEMP + '/health.json'); if (!h.ok) process.exit(1); if (h.ai.model !== 'openai/gpt-oss-120b') { console.error('Unexpected AI model:', h.ai.model); process.exit(1); } console.log('Health OK; Groq model ID preserved:', h.ai.model);"
 
+  agent-headless-package:
+    name: Agent Headless package artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.0'
+      - name: Validate and package the isolated Agent Headless runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in public/pixelforge/src/*.js; do
+            node --experimental-default-type=module --check "$file"
+          done
+          rm -rf "$RUNNER_TEMP/agent-headless"
+          mkdir -p "$RUNNER_TEMP/agent-headless/pixelforge/src"
+          cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/pixelforge/src/"
+          cp package.json "$RUNNER_TEMP/agent-headless/"
+          if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
+          printf '%s\n' \
+            "repository=$GITHUB_REPOSITORY" \
+            "commit=$GITHUB_SHA" \
+            "ref=$GITHUB_REF_NAME" \
+            "headless_source=public/pixelforge/src" \
+            "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
+          tar -C "$RUNNER_TEMP/agent-headless" -czf "$RUNNER_TEMP/agent-headless-$GITHUB_SHA.tar.gz" .
+      - name: Publish the Headless artifact for the agent-import test
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-headless-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-headless-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
   pixelforge-postgresql:
     name: PixelForge PostgreSQL integration
+    needs: agent-headless-package
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -228,30 +267,6 @@ jobs:
         run: npm install --no-save --package-lock=false playwright
       - name: Install Chromium
         run: npx playwright install chromium
-      - name: Package the isolated Agent Headless runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf "$RUNNER_TEMP/agent-headless"
-          mkdir -p "$RUNNER_TEMP/agent-headless/pixelforge/src"
-          cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/pixelforge/src/"
-          cp package.json "$RUNNER_TEMP/agent-headless/"
-          if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
-          printf '%s\n' \
-            "repository=$GITHUB_REPOSITORY" \
-            "commit=$GITHUB_SHA" \
-            "ref=$GITHUB_REF_NAME" \
-            "headless_source=public/pixelforge/src" \
-            "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
-          tar -C "$RUNNER_TEMP/agent-headless" -czf "$RUNNER_TEMP/agent-headless-$GITHUB_SHA.tar.gz" .
-      - name: Publish the Headless artifact for the agent-import test
-        uses: actions/upload-artifact@v4
-        with:
-          name: agent-headless-${{ github.sha }}
-          path: ${{ runner.temp }}/agent-headless-${{ github.sha }}.tar.gz
-          if-no-files-found: error
-          retention-days: 14
       - name: Download the published Headless artifact
         uses: actions/download-artifact@v4
         with:
