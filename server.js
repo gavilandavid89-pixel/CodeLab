@@ -2474,9 +2474,13 @@ const server = http.createServer(async (req, res) => {
             const filename = String(body.filename || 'pixelforge.codelab').slice(0, 180);
             const targetWorkspaceId = String(body.target_workspace_id || PIXELFORGE_GUEST_WORKSPACE_ID);
             const artifactKind = String(body.artifact_kind || 'pixelforge_zip_upload');
-            const importRequestId = body.import_request_id == null ? null : String(body.import_request_id);
+            let importRequestId = body.import_request_id == null ? null : String(body.import_request_id);
+            const editorId = String(body.editor_id || 'pixelforge');
+            const sourceProjectId = body.source_project_id == null ? null : String(body.source_project_id).slice(0, 100);
             if (!['pixelforge_zip_upload', 'codelab_zip_upload'].includes(artifactKind) ||
-                (artifactKind === 'codelab_zip_upload' && !/^[a-zA-Z0-9_-]{16,128}$/.test(importRequestId || ''))) {
+                (artifactKind === 'codelab_zip_upload' &&
+                  ((importRequestId && !/^[a-zA-Z0-9_-]{16,128}$/.test(importRequestId)) ||
+                   !['web', 'design', 'pixelforge'].includes(editorId)))) {
               return sendJson(res, 400, { error: 'invalid_agent_artifact_kind' });
             }
             if (!Number.isInteger(totalBytes) || totalBytes < 1 || totalBytes > AGENT_INLINE_ARTIFACT_MAX_BYTES ||
@@ -2487,6 +2491,26 @@ const server = http.createServer(async (req, res) => {
             }
             const expectedChunks = Math.ceil(totalBytes / AGENT_INLINE_ARTIFACT_CHUNK_BYTES);
             if (expectedChunks !== totalChunks) return sendJson(res, 400, { error: 'agent_artifact_chunk_count_mismatch', expectedChunks });
+            if (artifactKind === 'codelab_zip_upload' && body.self_test !== true) {
+              importRequestId ||= crypto.randomUUID();
+              await accountPool.query(
+                `INSERT INTO public.codelab_project_import_requests
+                  (import_request_id,workspace_id,editor_id,source_project_id,manifest,status,confirmation_required,confirmation_received,work_score)
+                 VALUES ($1,$2,$3,$4,$5::jsonb,'queued',false,false,0)
+                 ON CONFLICT (import_request_id) DO NOTHING`,
+                [importRequestId, workspaceId, editorId, sourceProjectId,
+                 JSON.stringify({ source: 'inline-agent-bridge', targetWorkspaceId, projectName: body.project_name || null })]
+              );
+              const requestCheck = await accountPool.query(
+                'SELECT workspace_id,editor_id,status FROM public.codelab_project_import_requests WHERE import_request_id=$1',
+                [importRequestId]
+              );
+              if (!requestCheck.rowCount || requestCheck.rows[0].workspace_id !== workspaceId ||
+                  requestCheck.rows[0].editor_id !== editorId ||
+                  !['queued', 'approved'].includes(requestCheck.rows[0].status)) {
+                return sendJson(res, 409, { error: 'agent_artifact_import_request_conflict' });
+              }
+            }
             const artifactId = crypto.randomUUID().replaceAll('-', '');
             await accountPool.query(
               `INSERT INTO public.codelab_agent_artifacts
@@ -2495,7 +2519,10 @@ const server = http.createServer(async (req, res) => {
               [artifactId, workspaceId, artifactKind, filename, totalBytes, totalChunks, sha256,
                JSON.stringify({ targetWorkspaceId, projectName: body.project_name || null, importRequestId, selfTest: body.self_test === true, transport: 'inline-bridge' })]
             );
-            return sendJson(res, 201, { ok: true, artifactId, chunkBytes: AGENT_INLINE_ARTIFACT_CHUNK_BYTES, totalBytes, totalChunks, sha256 });
+            return sendJson(res, 201, {
+              ok: true, artifactId, importRequestId,
+              chunkBytes: AGENT_INLINE_ARTIFACT_CHUNK_BYTES, totalBytes, totalChunks, sha256
+            });
           }
           if (inlineArtifactChunk) {
             const bytes = await readBinaryBody(req, AGENT_INLINE_ARTIFACT_CHUNK_BYTES);
