@@ -17,6 +17,7 @@ test('reads a PixelForge ZIP package without inflating the complete archive into
   const manifest = {
     format: 'pixelforge-video-package', version: 1, width: 1, height: 1,
     fps: 12, loop: true, frameCount: 1, projectFile: 'project/orbital.pforge',
+    sourceDrawingMode: 'pixel-art', scalingMode: 'pixelated',
     frames: [{ index: 0, file: 'frames/frame-0001.png', durationMs: 83.333, startMs: 0 }],
   };
   const zip = await createZipBlob([
@@ -29,6 +30,8 @@ test('reads a PixelForge ZIP package without inflating the complete archive into
   const parsed = await parsePixelForgeVideoPackage(zip);
   assert.equal(parsed.manifest.frameCount, 1);
   assert.equal(parsed.manifest.totalDurationMs, 83.333);
+  assert.equal(parsed.manifest.sourceDrawingMode, 'pixel-art');
+  assert.equal(parsed.manifest.scalingMode, 'pixelated');
   assert.equal(parsed.frames[0].blob.size, 68);
   assert.ok(parsed.project instanceof Blob);
 });
