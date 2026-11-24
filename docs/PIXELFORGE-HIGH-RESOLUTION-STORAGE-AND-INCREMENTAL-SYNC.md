@@ -56,6 +56,26 @@ Replace dense per-frame RGBA storage with sparse tiles (initial candidate: 64×6
 
 This makes memory use proportional to non-empty/changed image regions instead of canvas area × every frame × every layer. It also makes a one-pixel edit a small resource change rather than a new full-frame allocation.
 
+### Implemented in-memory tile-store contract (v2 foundation)
+
+The current isolated implementation is `SparseTileCelStore` in `public/pixelforge/src/animation-tiles.mjs`:
+
+| Method | Contract |
+|---|---|
+| `createCel(document)` | Validate a v2 sparse cel, verify every tile SHA-256, and register immutable resources. |
+| `createCelFromPixels(pixels, options)` | Encode a legacy dense RGBA buffer and register it as a sparse cel. |
+| `cloneCel(celId)` | Clone the coordinate map while retaining the same immutable tile resources. |
+| `updateTile(celId, x, y, pixels)` | Replace or remove one tile. Only that coordinate receives a new content hash; the source cel remains unchanged. |
+| `getTile(celId, x, y)` | Return a defensive copy of one decoded tile, or `null` for a sparse/empty coordinate. |
+| `composeCel(celId)` | Materialize a full RGBA buffer for compatibility with current raster tools. |
+| `exportCel(celId)` | Export the versioned sparse cel document. |
+| `diffCels(previousId, nextId)` | Return changed, added, and removed tile resources/coordinates. |
+| `releaseCel(celId)` | Release tile references and reclaim unreferenced in-memory resources. |
+
+The decoded-tile LRU cache defaults to 8 MiB and can be set to 0 to disable decoded caching. Cache memory is tracked separately from the canonical base64 tile resources. Resource references count cel-to-tile links, not project ownership or durable database references.
+
+**Important limitation:** this store currently lives only in the current JavaScript process. It is not durable across reloads, tabs, browser restarts, or deployments; it is not a quota system; and it does not authorize access to private assets. Do not describe it as the final project storage engine. The next integration must preserve the existing synchronous raster API or deliberately migrate its callers to an asynchronous tile-aware interface, while retaining v1 dense-cel read/write compatibility.
+
 ### 2. Private content-addressed object storage
 
 Use a dedicated private object namespace for large binary resources:
