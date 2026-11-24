@@ -110,13 +110,31 @@ El resultado confirma que el archivo pasó por el endpoint HTTP autenticado, fue
 
 ## 5. Resultado verificado
 
-La ejecución confirmó que:
+### 5.1 Importación CodeLab Web
 
-- El secreto de bridge configurado en GitHub Actions fue aceptado por las rutas HTTP utilizadas, sin exponerlo.
-- El workflow creó el manifiesto, envió todos los chunks y confirmó el SHA del paquete.
-- El worker procesó una importación real de un paquete CodeLab Web.
-- El proyecto y sus recursos quedaron persistidos en `ws_local_admin`.
-- La lectura de vuelta confirmó que el contenido sobrevivió a la importación.
+La ejecución [45338080211](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45338080211) transfirió e importó el paquete Web v2 en `ws_local_admin`. La solicitud terminó en `succeeded`, el artefacto en `imported` y la lectura de vuelta confirmó `reloadedFromPersistence: true`.
+
+### 5.2 Importación PixelForge nativa y animación
+
+La ejecución [45344660920](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45344660920) completó el flujo nativo Headless → inline bridge → worker → ADMIN → lectura de vuelta.
+
+- Solicitud: `codelab-soldier-walk-60f-fixed-45344660920`.
+- Proyecto: `soldier-walk-60f-20261124`, **PixelForge — Soldier Walk**.
+- Destino: `ws_local_admin`; editor: `pixelforge`.
+- Animación principal: 20 fotogramas, 12 FPS, bucle de 1,667 segundos.
+- Estructura: 4 capas editables, cada fotograma con cuatro rutas RGBA independientes y cuatro hashes de píxeles distintos.
+- Organización: cinco espacios de trabajo independientes (`Entorno`, `Efectos`, `Detalles`, `Elementos`, `Objetos`), cada uno con su propia línea de tiempo de 4 fotogramas.
+- Reference Center: 1 referencia maestra.
+- Persistencia: 110 archivos del proyecto.
+- Estado de la orden, solicitud y artefacto: `succeeded`, `succeeded` e `imported`.
+- Lectura de vuelta: `reloadedFromPersistence: true`, `persistedAnimationFrameCount: 20`, `persistedReferenceCount: 1`.
+- SHA-256 del contenido persistido: `82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f`.
+
+### 5.3 Integridad al reemplazar una versión
+
+El exportador PixelForge asigna una ruta de píxeles distinta a cada capa de cada fotograma. La prueba de paquete comprueba tanto la unicidad de esas rutas como la igualdad de los bytes RGBA exportados con los cels originales.
+
+Al reimportar un proyecto existente, CodeLab verifica primero todos los archivos esperados (ruta, tamaño, SHA-256 y bytes). Solo después elimina los archivos obsoletos que no forman parte del paquete nuevo y confirma el recuento final. Así la persistencia no conserva fotogramas ni cels huérfanos de una versión anterior.
 
 ## 6. Procedimiento de diagnóstico para futuras transferencias
 

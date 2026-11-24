@@ -185,7 +185,24 @@ La consulta posterior a Neon confirmó:
 
 Esta prueba sí recorrió el endpoint HTTP autenticado, la recepción de chunks, el commit, la importación del worker y la lectura de vuelta desde la persistencia ADMIN. No fue una autoprueba `self_test`.
 
-El informe de cambios y evidencia está en [INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md).
+### 6.2 Importación PixelForge nativa — 24-11-2026
+
+La ejecución [45344660920](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45344660920) generó el paquete desde el artefacto Headless oficial, lo transfirió mediante las rutas HTTP autenticadas y completó la importación nativa en ADMIN.
+
+- Proyecto `soldier-walk-60f-20261124`, workspace `ws_local_admin`.
+- Solicitud `codelab-soldier-walk-60f-fixed-45344660920`: `succeeded`.
+- Artefacto: `imported`; orden del worker: `succeeded`.
+- 20 fotogramas a 12 FPS, bucle de 1,667 segundos, 4 capas.
+- Los 20 archivos de fotograma conservan cuatro rutas RGBA únicas y cuatro hashes de píxeles distintos.
+- Cinco espacios de trabajo independientes, cada uno con cuatro fotogramas y una capa propia.
+- Una referencia maestra en Reference Center.
+- 110 archivos persistidos.
+- Lectura de vuelta desde PostgreSQL: `reloadedFromPersistence: true`, `persistedAnimationFrameCount: 20`, `persistedReferenceCount: 1`.
+- SHA-256 del contenido persistido: `82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f`.
+
+Al reemplazar una versión, el importador comprueba primero que cada archivo nuevo coincide en ruta, tamaño, SHA-256 y bytes. Después elimina únicamente los archivos obsoletos del mismo proyecto/editor y verifica el recuento final. Esto mantiene sincronizado el conjunto persistido con el paquete importado.
+
+El informe consolidado de las correcciones y de las dos importaciones reales está en [INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md).
 
 La variable de autoprueba debe permanecer desactivada en operación normal. No dejar activo el secreto temporal de test una vez concluida la verificación.
 
