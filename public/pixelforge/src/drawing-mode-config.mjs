@@ -52,3 +52,40 @@ export function getDrawingModePresentation(mode) {
 export function getVideoScalingMode(drawingMode) {
   return drawingMode === PIXELFORGE_DRAWING_MODES.PIXEL_ART ? 'pixelated' : 'smooth';
 }
+
+/**
+ * Normalize a layer's saved editing profile for one drawing mode.
+ * Invalid or missing fields fall back independently to that mode's defaults.
+ */
+export function normalizeDrawingModeProfile(mode, value) {
+  const defaults = getDrawingModePresentation(mode);
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const number = (key, fallback, min, max, integer = false) => {
+    const parsed = Number(source[key]);
+    if (!Number.isFinite(parsed)) return fallback;
+    const bounded = Math.max(min, Math.min(max, parsed));
+    return integer ? Math.round(bounded) : bounded;
+  };
+  return {
+    brushSize: number('brushSize', defaults.brushSize, 1, 32, true),
+    brushShape: ['square', 'circle'].includes(source.brushShape) ? source.brushShape : defaults.brushShape,
+    brushHardness: number('brushHardness', defaults.brushHardness, 0, 100),
+    brushOpacity: number('brushOpacity', 100, 0, 100),
+    interpolation: ['nearest', 'bilinear'].includes(source.interpolation) ? source.interpolation : defaults.interpolation,
+  };
+}
+
+/**
+ * Store only non-default values. This keeps the common case compact while
+ * preserving deliberate per-layer/per-cel exceptions for each drawing mode.
+ */
+export function updateDrawingModeOverrides(overrides, mode, profile) {
+  const defaults = normalizeDrawingModeProfile(mode, getDrawingModePresentation(mode));
+  const normalized = normalizeDrawingModeProfile(mode, profile);
+  const next = overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+    ? structuredClone(overrides) : {};
+  const isDefault = Object.keys(defaults).every(key => normalized[key] === defaults[key]);
+  if (isDefault) delete next[mode];
+  else next[mode] = normalized;
+  return next;
+}
