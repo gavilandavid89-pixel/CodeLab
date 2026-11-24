@@ -4,7 +4,7 @@
  * project manifest for layer metadata and sparse RGBA cel resources.
  */
 import { SparseTileCelStore, DEFAULT_CEL_TILE_SIZE } from './animation-tiles.mjs';
-import { normalizeDrawingConfiguration } from './drawing-mode-config.mjs';
+import { normalizeDrawingConfiguration, switchDrawingMode as switchProjectDrawingMode, PIXELFORGE_DRAWING_MODES } from './drawing-mode-config.mjs';
 
 export const PIXELFORGE_TILED_PROJECT_FORMAT = 'pixelforge-tiled-project';
 export const PIXELFORGE_TILED_PROJECT_VERSION = 1;
@@ -37,9 +37,23 @@ function normalizeLayer(layer) {
   return {
     id: layer.id, name: layer.name, visible: layer.visible,
     opacity: layer.opacity, locked: layer.locked,
+    x: Number.isFinite(layer.x) ? layer.x : 0,
+    y: Number.isFinite(layer.y) ? layer.y : 0,
+    scaleX: Number.isFinite(layer.scaleX) ? layer.scaleX : 1,
+    scaleY: Number.isFinite(layer.scaleY) ? layer.scaleY : 1,
+    rotation: Number.isFinite(layer.rotation) ? layer.rotation : 0,
+    angle: Number.isFinite(layer.angle) ? layer.angle : 0,
     blendMode: typeof layer.blendMode === 'string' ? layer.blendMode : 'normal',
+    blur: Number.isFinite(layer.blur) ? layer.blur : 0,
+    brightness: Number.isFinite(layer.brightness) ? layer.brightness : 0,
+    contrast: Number.isFinite(layer.contrast) ? layer.contrast : 0,
+    saturation: Number.isFinite(layer.saturation) ? layer.saturation : 0,
     mask: layer.mask ?? null,
     clipping: layer.clipping ?? null,
+    references: structuredClone(layer.references || []),
+    assets: structuredClone(layer.assets || []),
+    authoringMode: Object.values(PIXELFORGE_DRAWING_MODES).includes(layer.authoringMode) ? layer.authoringMode : null,
+    modeOverrides: structuredClone(layer.modeOverrides || {}),
     metadata: structuredClone(layer.metadata || {}),
   };
 }
@@ -154,6 +168,26 @@ export class TiledRasterProjectDocument {
   get width() { return this.#width; }
   get height() { return this.#height; }
   get activeLayerId() { return this.#activeLayerId; }
+  get drawingConfiguration() { return structuredClone(this.#drawingConfiguration); }
+  /**
+   * Switches the editor interpretation without rewriting any cel bytes.
+   * Layer authoringMode/modeOverrides remain attached to their original cels,
+   * so a later switch back can restore their non-default editing profile.
+   */
+  switchDrawingMode(mode) {
+    const previousMode = this.#drawingConfiguration.activeMode;
+    if (previousMode === mode) {
+      return { previousMode, activeMode: mode, pixelsChanged: false, celsRewritten: 0, preservedLayerIds: this.layerIds };
+    }
+    this.#drawingConfiguration = switchProjectDrawingMode(this.#drawingConfiguration, mode);
+    return {
+      previousMode,
+      activeMode: mode,
+      pixelsChanged: false,
+      celsRewritten: 0,
+      preservedLayerIds: this.layerIds,
+    };
+  }
   get layerIds() { return this.#layers.map(layer => layer.id); }
   get layers() {
     return this.#layers.map(({ celId, ...layer }) => ({ ...structuredClone(layer), celId }));
