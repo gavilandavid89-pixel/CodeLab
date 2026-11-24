@@ -883,7 +883,8 @@ async function main() {
     await accountPage.locator('#projects-button').click();
     await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
     const referenceProjectRow = accountPage.locator('.saved-project').filter({ hasText: 'Reference materialization fixture' }).first();
-    await referenceProjectRow.locator('.saved-project-open').click();
+    const referenceProjectOpen = referenceProjectRow.locator('.saved-project-open');
+    if (await referenceProjectOpen.isEnabled()) await referenceProjectOpen.click();
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Reference materialization fixture');
     await accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).waitFor({ state: 'visible' });
     const referenceCard = accountPage.locator('.reference-card').filter({ hasText: 'Orange reference' }).first();
