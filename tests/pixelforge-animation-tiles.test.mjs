@@ -56,9 +56,9 @@ test('tile diff reports only changed, added, and removed tile coordinates', asyn
 });
 
 test('decoder rejects duplicate coordinates and corrupted tile hashes', async () => {
-  const pixels = makePixels(64, 64);
+  const pixels = makePixels(128, 64);
   pixels.set([1, 2, 3, 255], 0);
-  const cel = await encodeSparseTiles(pixels, { width: 64, height: 64 });
+  const cel = await encodeSparseTiles(pixels, { width: 128, height: 64 });
   await assert.rejects(() => decodeSparseTiles({ ...cel, tiles: [...cel.tiles, cel.tiles[0]] }), /duplicate/);
   const corrupt = structuredClone(cel);
   corrupt.tiles[0].rgba = corrupt.tiles[0].rgba.replace(/^./, corrupt.tiles[0].rgba[0] === 'A' ? 'B' : 'A');
