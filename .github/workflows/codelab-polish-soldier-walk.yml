@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   polish:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Inspect Soldier Walk]')) }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Inspect Soldier Walk]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -46,7 +46,7 @@ jobs:
           RUNNER_TEMP: ${{ runner.temp }}
         run: node scripts/codelab-inspect-soldier-walk.mjs
       - name: Upload ADMIN frame inspection
-        if: ${{ inputs.mode != 'polish' }}
+        if: ${{ github.event_name == 'push' || github.event_name == 'issue_comment' || inputs.mode != 'polish' }}
         uses: actions/upload-artifact@v4
         with:
           name: codelab-soldier-walk-source-${{ github.run_id }}
