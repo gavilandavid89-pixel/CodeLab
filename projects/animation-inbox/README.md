@@ -15,7 +15,7 @@ projects/animation-inbox/
 ```
 
 4. Haz push a `main`. El workflow **Import PixelForge project inbox** detecta la carpeta modificada, valida el paquete y lo importa mediante el bridge inline al workspace ADMIN `ws_local_admin`.
-5. Cuando el workflow indique que la orden quedó `queued`, el worker de CodeLab realizará la importación. La orden encolada no equivale todavía a importación completada; comprobar el proyecto en PixelForge antes de lanzar A/B.
+5. Cuando el workflow indique que la orden quedó `queued`, el worker de CodeLab realizará la importación. La orden encolada no equivale todavía a importación completada; comprobar el proyecto en PixelForge antes de lanzar A/B. Después, iniciar A con el ID del proyecto como input `project_id` y B con ese mismo ID como input `project_id`. B rechaza una sesión A fijada a otro proyecto.
 
 También se puede ejecutar el workflow manualmente indicando `project_slug`; vacío significa procesar las carpetas válidas del inbox.
 
