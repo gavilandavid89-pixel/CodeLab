@@ -67,7 +67,7 @@ function initReferenceCenterUI() {
     getDocument: () => doc,
     getAnimation: () => animation,
     setAnimation: value => { animation = value; animationLoop = value?.loop !== false; animationPlaybackSpeed = value?.playbackSpeed ?? 1; renderAnimationTimeline(); },
-    save: () => saveProject(buildProjectSnapshot()).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
+    save: () => flushAutosave({ force: true }).then(() => status('Saved to your CodeLab account', 'success')).catch(error => status('Reference Center save failed: ' + error.message, 'error')),
     render: () => render(),
     renderLayers: () => renderLayers(),
     status: (message, kind) => status(message, kind),
