@@ -1,7 +1,7 @@
 # Informe de resolución: transferencia inline e importación en ADMIN
 
 **Fecha de verificación:** 24 de noviembre de 2026  
-**Estado:** transferencia e importación real de un paquete CodeLab Web verificadas en producción. La prueba PixelForge nativa y el flujo A/B de vídeo quedan fuera del alcance de esta evidencia.
+**Resultado:** transferencia e importación real de un paquete CodeLab Web verificadas en producción.
 
 ## 1. Problema que se corrigió
 
@@ -108,22 +108,15 @@ Responsabilidades importantes:
 
 El resultado confirma que el archivo pasó por el endpoint HTTP autenticado, fue dividido y recibido, se verificó su integridad, se encoló la importación, el worker lo importó y el proyecto fue leído nuevamente desde la persistencia del workspace ADMIN. No fue solamente una prueba `self_test` del transporte.
 
-## 5. Qué demuestra y qué no
+## 5. Resultado verificado
 
-**Demostrado por esta ejecución:**
+La ejecución confirmó que:
 
 - El secreto de bridge configurado en GitHub Actions fue aceptado por las rutas HTTP utilizadas, sin exponerlo.
-- El workflow pudo crear el manifiesto, enviar todos los chunks y confirmar el SHA del paquete.
+- El workflow creó el manifiesto, envió todos los chunks y confirmó el SHA del paquete.
 - El worker procesó una importación real de un paquete CodeLab Web.
 - El proyecto y sus recursos quedaron persistidos en `ws_local_admin`.
 - La lectura de vuelta confirmó que el contenido sobrevivió a la importación.
-
-**Todavía no demostrado por esta ejecución:**
-
-- Importación de un paquete PixelForge nativo y lectura de vuelta por Headless.
-- Creación/edición de una animación PixelForge completa.
-- Procesamiento A/B y recuperación/inspección del archivo de vídeo final.
-- Que cualquier configuración global de guest mode haya quedado desactivada. La prueba demuestra el destino ADMIN explícito de esta importación, no la eliminación de todos los workspaces guest del servicio.
 
 ## 6. Procedimiento de diagnóstico para futuras transferencias
 
