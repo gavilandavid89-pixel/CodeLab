@@ -853,6 +853,7 @@ async function main() {
       'importing a document must restore its animation, clear stale selection state, and rebind the AI workspace');
 
     // Reference Center E2E: an imported reference part must become a real editable
+// The project-picker overlay is reused across the integration flow.
     // raster layer, survive an edit/save cycle, and still be present after reload.
     const referenceFixture = makePixelProject('reference-materialization-fixture', 'Reference materialization fixture', 4, 4);
     const referencePixels = Buffer.alloc(4 * 4 * 4);
