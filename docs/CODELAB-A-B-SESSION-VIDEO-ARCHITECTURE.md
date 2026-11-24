@@ -66,6 +66,125 @@ Ambas operaciones comprueban el bridge token en el servidor. El snapshot se limi
 
 A fija la revisión y el hash al iniciar. Si el proyecto cambia, una sesión A nueva debe leer y fijar la nueva revisión; no se permite mezclar fotogramas de revisiones distintas.
 
+
+## Recorrido completo de la implementación y prueba A/B
+
+**Tiempo empleado:** aproximadamente **41 minutos seguidos** en esta sesión de implementación, diagnóstico, corrección, ejecución y verificación.
+
+### 1. Punto de partida
+
+El primer flujo de animación ya había demostrado que el pipeline podía producir un vídeo, pero esa prueba no era suficiente para el objetivo final: el vídeo tenía que salir del proyecto **ADMIN Soldier Walk** persistido y pasar por el **Video Composer real**, sin que B construyera una animación alternativa.
+
+Se revisaron los workflows, scripts y rutas del servidor para identificar qué estaba ocurriendo realmente en A y B.
+
+### 2. Diagnóstico del flujo existente
+
+Se comprobó que el flujo anterior todavía tenía varios elementos que no correspondían al diseño final:
+
+- A arrancaba un servidor local en modo guest/aislado en lugar de restaurar directamente el proyecto ADMIN persistido.
+- B conservaba rutas de generación/demo de animaciones de prueba.
+- El workflow A/B podía terminar en una animación procedural de demostración en lugar del Soldier Walk real.
+- El workflow integrado no garantizaba inicialmente que B utilizara exclusivamente el vídeo producido por A.
+- También se detectó que el buzón de comentarios de GitHub podía leer mensajes de sesiones anteriores y mezclar READY/REQUEST/CHUNK de distintas ejecuciones.
+
+Por eso no se aceptó como válida ninguna prueba basada únicamente en un run verde o en un vídeo de demo.
+
+### 3. Restauración del proyecto ADMIN
+
+Se fijó como fuente de verdad el proyecto persistido:
+
+- **Proyecto:** PixelForge — Soldier Walk.
+- **ID:** soldier-walk-60f-20261124.
+- **Workspace:** ws_local_admin.
+- **Revisión:** 2.
+- **Contenido:** 20 fotogramas, 12 FPS, 4 capas.
+- **Content SHA-256:** 82db7ee3d5195063fdff109f7e0ad7a30089a8c907e7387e81d13b1742e8b67f.
+
+A quedó como único proceso con acceso al bridge ADMIN. B no recibe credenciales de Neon, S3, R2, DATABASE_URL ni el secreto del bridge.
+
+### 4. Correcciones del servidor y de los workflows
+
+Durante la implementación se detectó y corrigió un bloque de ruta duplicado/incorrecto en `server.js`. También se corrigió el cálculo del timeout de B para no depender de una expresión de GitHub Actions no soportada por el workflow.
+
+Después se corrigió el aislamiento del buzón:
+
+- A publica READY con la marca temporal de su propia sesión.
+- B busca únicamente READY de una sesión A que siga activa.
+- B utiliza la marca temporal de READY para no consumir mensajes viejos.
+- La REQUEST de B tiene su propia marca temporal.
+- Los CHUNK y resultados se asocian por `sessionId` y `requestId`.
+- Se eliminó la dependencia de una ejecución vieja que podía quedar bloqueando el flujo.
+
+También se añadieron comprobaciones de contrato para que futuras modificaciones no vuelvan a introducir ese cruce entre sesiones.
+
+### 5. Ejecución de A
+
+A inició una sesión persistente con el proyecto ADMIN fijado.
+
+A abrió PixelForge y el contexto real del Video Composer. Cuando B solicitó la exportación, A ejecutó el exportador real del Composer sobre la revisión fijada.
+
+El resultado fue:
+
+- 20 fotogramas.
+- 12 FPS.
+- WebM de 115.027 bytes.
+- SHA-256 del vídeo: 0abf2c19450625de90731b86740858859178ca57ca3120e6a17b3d47bcbec82f.
+
+A envió el archivo a B en bloques.
+
+### 6. Ejecución de B
+
+B no generó la animación.
+
+B:
+
+1. Descubrió una sesión A READY activa.
+2. Envió la REQUEST con el proyecto y revisión fijados.
+3. Recibió los 6 bloques del WebM.
+4. Reconstruyó el archivo.
+5. Comprobó tamaño y SHA-256.
+6. Abrió el WebM con Chromium.
+7. Comprobó resolución 1080 × 1350, `readyState=4` y 5/5 muestras temporales decodificables.
+8. Guardó el vídeo y `verification.json` como artefactos.
+9. Terminó.
+
+B no ejecutó FFmpeg, no construyó fotogramas y no tuvo acceso a las credenciales ADMIN.
+
+### 7. Comprobación de independencia A/B
+
+La prueba integrada confirmó que B podía terminar después de verificar el WebM sin matar ni cerrar A.
+
+El paso **“Verify A remains alive after B has finished”** terminó correctamente. A permaneció `in_progress` y continuó hasta su propio timeout.
+
+Además, se ejecutó posteriormente el workflow B independiente y volvió a completar correctamente la recepción y verificación del WebM.
+
+### 8. Estado real del vídeo entregado
+
+**Importante:** el vídeo entregado al usuario en esta etapa **no fue previamente analizado visualmente ni pulido**.
+
+La verificación realizada hasta este punto demuestra que el archivo:
+
+- procede del proyecto ADMIN correcto;
+- fue exportado por el Video Composer real;
+- llegó completo de A a B;
+- conserva el SHA-256 esperado;
+- puede ser decodificado por Chromium;
+- tiene los metadatos técnicos esperados.
+
+Pero **todavía no se hizo el análisis visual del movimiento fotograma por fotograma ni una revisión artística/funcional de la calidad de la caminata**.
+
+Por lo tanto, el vídeo entregado debe considerarse **una primera exportación funcional sin pulir**, no una versión final aprobada visualmente.
+
+Queda pendiente revisar visualmente la animación para detectar, entre otras cosas, continuidad de poses, desplazamiento de piernas y brazos, estabilidad del cuerpo, timing, saltos entre fotogramas y cualquier defecto que requiera ajustar el proyecto ADMIN y volver a exportar.
+
+La prueba A/B certifica el **recorrido técnico A → Composer → WebM → B → verificación**, pero no certifica todavía la calidad visual final del Soldier Walk.
+
+### 9. Conclusión de esta sesión
+
+En aproximadamente **41 minutos seguidos** se pasó de un flujo que todavía podía utilizar demos y mezclar sesiones a un recorrido A/B funcional y verificable sobre el proyecto ADMIN real.
+
+El vídeo fue entregado como evidencia de que el pipeline técnico funciona, pero **queda expresamente pendiente el análisis visual y el pulido de la animación antes de considerarlo un vídeo final**.
+
 ## Evidencia y estado
 
 Se ejecutó previamente una exportación real mediante el worker nativo de Render y pixelforge-video-composer-export.mjs:
