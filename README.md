@@ -1,3 +1,9 @@
+# Cuentas de infraestructura activas
+
+**Cuenta actual para Neon y Render:** `xxsuperwarriorx@gmail.com`. Usar las conexiones de esta cuenta para operar la infraestructura de CodeLab; no cambiar a otras cuentas salvo indicación explícita del usuario.
+
+---
+
 # 🚨 POLÍTICA DEL AGENTE IA — ENTRADA OBLIGATORIA
 
 > Antes de cualquier trabajo sobre CodeLab, leer [AGENTS.md](AGENTS.md) y [la política operativa completa](docs/agent-ai-bridge-policy.md).
