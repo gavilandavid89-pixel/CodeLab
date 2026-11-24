@@ -621,7 +621,7 @@ Resultado observado:
 
 Esto demuestra el funcionamiento del camino binario **desde el staging de Neon hasta la persistencia final**, sin Neon Object Storage/S3.
 
-Esta prueba no debe describirse como prueba completa del endpoint HTTP de subida: la preparación de los datos de staging se realizó directamente en las tablas de Neon. Para declarar validado también el cliente HTTP completo hay que ejecutar una prueba que use `POST /api/agent/bridge/artifacts`, los `PUT` binarios de chunks y `POST /commit`.
+La prueba histórica del 23-11 preparó staging directamente en las tablas y, por sí sola, no validaba el cliente HTTP. Esa brecha quedó cubierta después por la integración PostgreSQL de CI: empaqueta y descarga el artefacto Headless, exporta un `.codelab` desde el runtime aislado y usa `POST /api/agent/bridge/artifacts`, los `PUT` binarios de chunks y `POST /commit`, seguido de la ejecución del worker y verificación del proyecto en el workspace destinatario.
 
 ### 20.4 Restricción de mantenimiento
 
