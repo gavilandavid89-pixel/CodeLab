@@ -13,14 +13,14 @@ El agente es la IA que recibe la petición del usuario, no GitHub Actions, Rende
 
 ## 2. Flujo canónico de una tarea creativa
 
-Usuario → agente IA → Headless propio → crear/editar/animar → validar → exportar paquete .codelab → HTTPS inline bridge → staging Neon → worker CodeLab → workspace destino → lectura de vuelta → agente inspecciona resultado/evidencia → entrega.
+Usuario → agente IA → Headless propio aislado → crear/editar/animar → validar → exportar paquete .codelab → el agente recoge el archivo y lo transfiere por HTTPS inline bridge → staging Neon → worker CodeLab → workspace destino → lectura de vuelta → agente inspecciona → entrega.
 
 1. Solo una petición explícita del usuario inicia una nueva tarea del agente.
 2. Al comenzar una tarea creativa, comprobar si el entorno actual tiene un Headless válido. Si falta o no corresponde a la versión requerida, obtener el artefacto oficial, instalarlo y ejecutarlo en el entorno propio del agente.
 3. Consultar el proyecto/revisión y las órdenes activas antes de continuar un trabajo existente. No duplicar órdenes activas.
 4. Crear y modificar en el Headless propio. No enviar cada fotograma a CodeLab como mecanismo normal de edición.
 5. Validar el proyecto y la animación en el Headless; generar e inspeccionar evidencia visual real.
-6. Exportar el paquete nativo requerido y transferirlo mediante el bridge HTTPS documentado.
+6. Exportar el paquete nativo requerido. El Headless no inicia ni conoce el transporte: el agente, fuera del Headless, toma el archivo exportado y lo transfiere mediante el intermediario HTTPS documentado.
 7. Esperar el resultado real del worker. HTTP 202 significa queued, no persistido.
 8. Verificar que el proyecto aparezca en el workspace destino, leerlo de vuelta y comprobar revisión/bytes/estructura; reabrir cuando el flujo lo permita.
 9. Inspeccionar evidencia visual de CodeLab cuando la tarea requiera comprobar la interfaz o el resultado desplegado.
@@ -53,9 +53,9 @@ Las órdenes de trabajo que el agente envía al sistema usan la cola durable de 
 - No reconstruir el estado editable desde memoria, screenshots o vídeo cuando el proyecto puede recuperarse desde su fuente persistida.
 - Si hay defectos, corregir en el Headless propio, volver a validar y transferir una nueva versión.
 
-## 6. A/B: uso exclusivo de vídeo
+## 6. A/B: etapa integrada de entrega de vídeo
 
-A/B no forma parte del flujo creativo normal ni del Headless propio del agente. Se reserva para procesamiento/render/captura de vídeo por la limitación de memoria de Render. Usar una sola sesión A y una sola B procesadora por trabajo. Nunca lanzar lotes de estrés ni usar A/B para edición, importación o persistencia. Consultar [VIDEO-PROCESSING-AB.md](docs/VIDEO-PROCESSING-AB.md).
+A/B no es un sistema aislado ni un flujo alternativo de creación. Es la etapa de procesamiento/render/captura de vídeo integrada en la misma tarea del usuario, después de que el proyecto editable y su revisión estén disponibles en CodeLab. El agente coordina A/B, espera el vídeo final, lo inspecciona y entrega ese vídeo al usuario. A/B no reemplaza la persistencia del proyecto editable. Usar una sola sesión A y una sola B procesadora por trabajo. Nunca lanzar lotes de estrés ni usar A/B para edición, importación o persistencia. Consultar [VIDEO-PROCESSING-AB.md](docs/VIDEO-PROCESSING-AB.md).
 
 ## 7. Recuperación de sesión
 
@@ -86,3 +86,12 @@ Antes de finalizar, releer los archivos modificados y comprobar que diagramas y 
 - [Flujo autónomo de animación](docs/ANIMATION-AUTONOMOUS-WORKFLOW.md)
 - [Transporte inline de artefactos](docs/inline-artifact-bridge.md)
 - [Arquitectura CodeLab ↔ Neon](docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md)
+
+
+## 9. Aislamiento absoluto del Headless y formato de entrega
+
+- El Headless propio del agente **no se conecta a ningún entorno intermediario**: no llama al bridge, CodeLab, Neon, S3, worker ni APIs internas. No conoce tokens ni endpoints de transferencia.
+- El Headless solo crea/modifica el proyecto y exporta el archivo nativo.
+- El **agente IA**, fuera del Headless, recoge ese archivo exportado y lo lleva al intermediario soportado (HTTPS inline bridge) para importarlo en CodeLab. La responsabilidad de orquestar la transferencia y verificar la persistencia es del agente.
+- El GIF local solo se entrega cuando el usuario pide expresamente un GIF. Si no lo pide, no se presenta como resultado ni como sustituto del flujo: se entrega el proyecto editable a través del intermediario y se verifica en CodeLab.
+- Para tareas que incluyen vídeo final, A/B es una etapa posterior integrada: procesa la revisión real del proyecto, produce el archivo de vídeo final, el agente lo inspecciona y lo entrega al usuario. A/B no reemplaza la persistencia del proyecto editable.
