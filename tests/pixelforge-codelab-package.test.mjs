@@ -67,6 +67,14 @@ function attachSceneWorkspaces(project) {
   for (const [index, key] of sections.entries()) {
     const runtime = new HeadlessEditorRuntime({ width: 4, height: 4, name: key + ' instance' });
     runtime.execute({ name: 'canvas.draw_line', x0: 0, y0: index % 4, x1: 3, y1: index % 4, color: '#FFFFFF', size: 1 });
+    const layerId = runtime.sandbox.layers[0].id;
+    const layerMetadata = runtime.executeBatch([
+      { name: 'layer.rename', layerId, newName: 'Ball artwork' },
+      { name: 'layer.set_opacity', layerId, opacity: 0.65 },
+      { name: 'layer.set_visibility', layerId, visible: false },
+      { name: 'layer.set_locked', layerId, locked: true },
+    ]);
+    assert.equal(layerMetadata.ok, true, JSON.stringify(layerMetadata));
     runtime.createProposal('Save a small independent scene fixture');
     assert.equal(runtime.acceptProposal().status, 'applied');
     const workspace = runtime.toJSON();
@@ -123,6 +131,10 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
     const instance = imported.project.drawingModel.sceneSections[section].workspace;
     assert.equal(instance.format, 'pixelforge-project');
     assert.equal(instance.layers.length, 1);
+    assert.equal(instance.layers[0].name, 'Ball artwork');
+    assert.equal(instance.layers[0].opacity, 0.65);
+    assert.equal(instance.layers[0].visible, false);
+    assert.equal(instance.layers[0].locked, true);
     assert.equal(instance.animation.frames.length, section === 'details' ? 1 : 2);
     assert.equal(instance.width, 4);
     assert.equal(instance.height, 4);
