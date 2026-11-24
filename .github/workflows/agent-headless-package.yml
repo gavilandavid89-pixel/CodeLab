@@ -49,7 +49,8 @@ jobs:
             "repository=$GITHUB_REPOSITORY" \
             "commit=$GITHUB_SHA" \
             "ref=$GITHUB_REF_NAME" \
-            "headless_source=public/pixelforge/src" \\\n            "native_package_builder=pixelforge-codelab-package.mjs" \\
+            "headless_source=public/pixelforge/src" \\
+            "native_package_builder=pixelforge-codelab-package.mjs" \\
             "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
           tar -C "$RUNNER_TEMP/agent-headless" -czf "$RUNNER_TEMP/agent-headless-$GITHUB_SHA.tar.gz" .
