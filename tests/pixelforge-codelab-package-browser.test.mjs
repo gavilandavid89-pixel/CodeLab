@@ -27,6 +27,12 @@ function fixture() {
     workspace.id = project.id + '-' + section;
     workspace.name = section + ' workspace';
     const layer = workspace.layers[0];
+    sceneDocument.renameLayer(layer.id, 'Ball artwork');
+    sceneDocument.setLayerOpacity(layer.id, 0.65);
+    sceneDocument.setLayerVisibility(layer.id, false);
+    sceneDocument.setLayerLocked(layer.id, true);
+    const updatedWorkspace = sceneDocument.toJSON();
+    Object.assign(workspace, updatedWorkspace);
     const secondPixels = Uint8Array.from(atob(layer.pixels), char => char.charCodeAt(0));
     secondPixels[1] = (secondPixels[1] + 1) & 0xff;
     if (section !== 'details') {
@@ -66,6 +72,10 @@ test('browser package exporter writes all six project folders and the named TSCN
     const workspace = installed.project.drawingModel.sceneSections[section].workspace;
     assert.equal(workspace.format, 'pixelforge-project');
     assert.equal(workspace.layers.length, 1);
+    assert.equal(workspace.layers[0].name, 'Ball artwork');
+    assert.equal(workspace.layers[0].opacity, 0.65);
+    assert.equal(workspace.layers[0].visible, false);
+    assert.equal(workspace.layers[0].locked, true);
     assert.equal(workspace.animation.frames.length, section === 'details' ? 1 : 2);
     assert.equal(workspace.width, 4);
     assert.equal(workspace.height, 4);
