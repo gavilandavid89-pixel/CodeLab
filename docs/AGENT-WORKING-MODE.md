@@ -1,164 +1,79 @@
 # Forma de trabajo del agente
 
-## Objetivo
+**Estado:** guía operativa vigente para dibujo, pixel art, animación y edición creativa.
+**Documento superior:** [AGENTS.md](../AGENTS.md).
+**Procedimientos canónicos:** [Headless propio](HEADLESS-AGENT-RUNTIME.md), [flujo autónomo de animación](ANIMATION-AUTONOMOUS-WORKFLOW.md) y [transporte inline](inline-artifact-bridge.md).
 
-Esta es la forma de trabajo obligatoria para las tareas de dibujo, pixel art, animación y edición dentro de CodeLab.
+## 1. Quién hace qué
 
-La regla central es:
+- **Usuario:** define el objetivo y autoriza la tarea.
+- **Agente IA:** interpreta el objetivo, decide el plan, ejecuta el trabajo creativo, valida la calidad y conduce la entrega.
+- **Headless propio del agente:** entorno donde el agente crea y modifica el proyecto. Debe instalarse desde el artefacto oficial de GitHub Actions dentro del entorno de ejecución del agente, aunque sea temporal.
+- **CodeLab:** recibe el paquete, valida la transferencia, importa el proyecto en el workspace destino, lo persiste y ofrece la interfaz real para abrirlo e inspeccionarlo.
+- **Neon:** conserva el estado durable de órdenes, proyectos, revisiones, resultados y staging de artefactos.
+- **Worker de CodeLab:** completa órdenes de importación/trabajo ya autorizadas. No es el agente creativo.
 
-**B → A → contexto → B → A → contexto → B → A...**
+No confundir el Headless propio del agente con el headless/worker que controla CodeLab. Tampoco confundir A/B de vídeo con el entorno Headless del agente.
 
-Nunca se debe saltar el ciclo para tomar decisiones basadas en suposiciones.
+## 2. Ciclo de trabajo creativo
 
-> **Aclaración de nombres:** en este documento, “B” significa el agente que razona sobre el proyecto y “A” el ejecutor que devuelve contexto. No describe una flota de workflows. El workflow GitHub llamado B es otra cosa: una única ejecución especializada para procesar vídeo, documentada en [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md).
+El ciclo de feedback ocurre principalmente dentro del Headless propio:
 
-> **Protocolo de autonomía y comunicación:** para animación, también es obligatorio seguir [ANIMATION-AUTONOMOUS-WORKFLOW.md](ANIMATION-AUTONOMOUS-WORKFLOW.md). El agente debe conducir el ciclo completo durante la sesión activa (ordenar, esperar, verificar, inspeccionar, corregir y continuar), sin mantenerse activo 24/7 y sin enviar informes de progreso. El usuario recibe el informe final, salvo que exista un bloqueo real que requiera su intervención.
+Agente → consulta estado del proyecto → modifica → consulta/valida estado real → decide siguiente cambio → modifica → valida.
 
-## Qué representa cada parte
+1. Recuperar el proyecto editable y su revisión válida si se continúa un trabajo existente.
+2. Inspeccionar el estado real antes de modificarlo.
+3. Crear o editar en el Headless propio del agente.
+4. Cuando un cambio depende de un frame/capa/cel anterior, consultar ese estado real en el runtime; no reconstruirlo por memoria.
+5. Agrupar operaciones solo si no dependen del resultado intermedio. Si una acción depende de otra, verificar el resultado intermedio antes de continuar.
+6. Validar estructura, dimensiones, capas, frames, cels, FPS, duración y loop según el objetivo.
+7. Generar una vista previa/evidencia visual y revisarla realmente.
+8. Corregir defectos y repetir la validación hasta cumplir el objetivo.
 
-- **B**: agente/cliente que razona sobre la tarea y decide cuál debe ser el siguiente paso.
-- **A**: sesión persistente de CodeLab. Es la fuente de verdad y el ejecutor que mantiene la misma sesión de navegador/estado.
-- **contexto**: estado real devuelto por A después de consultar CodeLab. Puede incluir datos estructurados del proyecto, frame, layer, cel/raster, selección, historial y evidencia visual cuando corresponda.
+No es obligatorio transferir cada fotograma o cada operación a CodeLab. La edición normal se hace en el Headless propio y la transferencia ocurre cuando existe un paquete coherente que entregar o cuando el flujo de recuperación lo requiere.
 
-## Ciclo obligatorio
+## 3. Entrega a CodeLab
 
-### 1. B solicita una operación a A
+Cuando el proyecto esté listo:
 
-B no modifica ni inventa el estado de CodeLab. Envía una orden estructurada y concreta.
+1. Exportar el formato nativo .codelab admitido por el bridge.
+2. Calcular tamaño y SHA-256 del archivo.
+3. Crear el manifiesto de transferencia.
+4. Enviar los chunks por HTTPS al inline bridge.
+5. Confirmar el commit y esperar la orden de importación.
+6. Tratar HTTP 202 únicamente como confirmación de encolado.
+7. Esperar el resultado final del worker.
+8. Verificar que el proyecto se guardó en el workspace destino correcto.
+9. Leer de vuelta y reabrir el proyecto cuando sea posible; comprobar que estructura, píxeles y timeline se conservan.
 
-Ejemplos:
+El procedimiento exacto, endpoints, límites y estados está en [inline-artifact-bridge.md](inline-artifact-bridge.md). No duplicar esos contratos aquí.
 
-- crear un proyecto de dibujo;
-- crear una capa;
-- crear un frame;
-- consultar el frame anterior;
-- consultar una capa concreta;
-- modificar un cel;
-- capturar evidencia.
+## 4. Inspección de CodeLab y evidencia
 
-### 2. A ejecuta sobre el CodeLab persistente
+La inspección de la interfaz real de CodeLab es una fase distinta de la edición creativa:
 
-A utiliza la sesión real de CodeLab y ejecuta la operación.
+- Si el objetivo incluye comprobar cómo se ve o funciona el proyecto dentro de CodeLab, solicitar/capturar evidencia de la interfaz real.
+- El agente inspecciona la evidencia y decide si debe corregir en su Headless propio y volver a transferir.
+- La evidencia visual no sustituye el proyecto editable persistido.
+- No afirmar persistencia basándose únicamente en un archivo local, una captura, un vídeo o una respuesta HTTP 202.
 
-La sesión A debe conservar el mismo contexto de trabajo siempre que sea posible: proyecto, página, navegador, editor, frames y layers.
+## 5. Separación de razonamiento y ejecución
 
-### 3. A devuelve contexto real
+El agente decide qué cambio necesita el proyecto. El runtime Headless confirma qué estado existe y qué operación se aplicó. CodeLab/Neon confirman qué paquete se importó y qué quedó persistido.
 
-Después de cada operación relevante, B recibe el estado que realmente existe en CodeLab.
+Una intención no es una ejecución. Una exportación local no es una importación. Una importación encolada no es persistencia verificada.
 
-Para dibujo/animación, el contexto debe contener como mínimo los identificadores y datos necesarios para continuar de forma determinista. Cuando se necesite modificar una imagen existente, debe poder recuperarse el estado visual/raster real del origen.
+## 6. Recuperación y continuidad
 
-**No se debe reconstruir el estado anterior por memoria.**
+Si el entorno Headless es efímero o la sesión termina:
+- no afirmar que se siguió trabajando en segundo plano;
+- recuperar el estado persistido y las órdenes activas antes de reanudar;
+- no duplicar una importación que siga activa;
+- reinstalar Headless en el entorno actual si hace falta;
+- continuar desde la última revisión válida, no desde screenshots o recuerdos.
 
-### 4. B analiza únicamente ese contexto
+Ver [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.md).
 
-B decide el siguiente paso usando el contexto devuelto por A.
+## 7. A/B no es este flujo
 
-Si falta información necesaria, B debe pedirla a A antes de modificar nada.
-
-### 5. B vuelve a enviar la siguiente operación a A
-
-La nueva operación debe estar basada en el estado recién consultado.
-
-Después vuelve a empezar el ciclo:
-
-**B → A → contexto → B → A → contexto...**
-
-## Regla crítica para dibujo y animación
-
-Cuando se crea o modifica un frame, cel o layer que depende de otro:
-
-1. B pide a A el frame/layer/cel de referencia real.
-2. A consulta CodeLab.
-3. A devuelve el contexto real, incluido el raster cuando sea necesario.
-4. B calcula la transformación o el siguiente cambio.
-5. B pide a A que aplique ese cambio.
-6. A ejecuta y devuelve el nuevo contexto.
-7. El siguiente paso utiliza ese nuevo contexto real.
-
-Por ejemplo, para una animación:
-
-**Frame 1 real → consultar Frame 1 → B calcula Frame 2 → A crea Frame 2 → consultar Frame 2 → B calcula Frame 3 → A crea Frame 3 → ...**
-
-No se permite:
-
-**Frame 1 → B recuerda/infiere Frame 1 → B genera Frame 2 → B supone cómo quedó Frame 2 → genera Frame 3.**
-
-La segunda forma rompe la trazabilidad y puede producir frames incorrectos.
-
-## A es la fuente de verdad
-
-El estado de CodeLab tiene prioridad sobre cualquier estado supuesto por B.
-
-Si B cree que una capa, frame, cel o selección tiene un determinado estado pero A devuelve otro, se utiliza el estado de A.
-
-Esto evita:
-
-- desincronización;
-- modificaciones sobre frames equivocados;
-- pérdida de capas;
-- animaciones que dejan de ser progresivas;
-- comandos aplicados sobre objetos inexistentes;
-- decisiones basadas en información vieja.
-
-## No encadenar comandos ciegamente
-
-No se debe enviar una larga secuencia de modificaciones asumiendo que todas terminarán correctamente.
-
-En operaciones sensibles, el patrón debe ser:
-
-**acción → contexto → decisión → acción → contexto**
-
-Se pueden agrupar operaciones únicamente cuando no dependan del resultado intermedio. Si una operación depende del estado producido por otra, debe existir una consulta de contexto entre ambas.
-
-## Separación entre razonamiento y ejecución
-
-B decide **qué** debe hacerse.
-
-A decide/garantiza **qué existe realmente en CodeLab y qué se ejecutó**.
-
-B no debe tratar una intención de cambio como si ya fuera un cambio confirmado.
-
-Una operación se considera realizada únicamente cuando A la ejecuta correctamente y devuelve un resultado/contexto compatible.
-
-## Evidencia visual
-
-Cuando la calidad visual sea parte del objetivo, el contexto no debe limitarse a metadatos.
-
-A debe poder devolver evidencia visual real de CodeLab cuando sea necesario para evaluar:
-
-- composición;
-- detalle;
-- continuidad entre frames;
-- posiciones;
-- capas;
-- resultado del render;
-- interacción de la interfaz.
-
-B debe analizar esa evidencia y, si el resultado no cumple el objetivo, iniciar otro ciclo **B → A → contexto** para corregirlo.
-
-No basta con comprobar que los datos sean válidos: el resultado también debe ser visualmente correcto.
-
-## Persistencia de la sesión A
-
-La sesión A debe permanecer viva mientras B realiza la cadena de trabajo.
-
-Esto permite que el ciclo conserve:
-
-- el mismo proyecto;
-- el mismo editor;
-- el mismo navegador;
-- el mismo estado de CodeLab;
-- el contexto generado en pasos anteriores.
-
-B puede terminar después de una petición, pero A conserva la sesión para la siguiente.
-
-## Resultado esperado
-
-El agente debe trabajar como un sistema de control con feedback:
-
-**B decide → A ejecuta → A devuelve estado real → B analiza → B decide → A ejecuta → ...**
-
-Para dibujo y animación, este ciclo es obligatorio.
-
-**Nunca avanzar por suposición cuando CodeLab puede proporcionar el estado real.**
+Los workflows A/B están reservados para procesamiento/captura de vídeo. No son dos agentes creativos, no son una sesión persistente obligatoria para cada frame y no reemplazan el Headless propio. Consultar [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md) solo cuando la tarea sea realmente de vídeo.
