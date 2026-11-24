@@ -185,7 +185,7 @@ La consulta posterior a Neon confirmó:
 
 Esta prueba sí recorrió el endpoint HTTP autenticado, la recepción de chunks, el commit, la importación del worker y la lectura de vuelta desde la persistencia ADMIN. No fue una autoprueba `self_test`.
 
-**Límite de alcance:** esta ejecución probó el editor Web. No certifica todavía la importación de un paquete PixelForge nativo, el procesamiento A/B ni la entrega de vídeo. El informe de cambios y evidencia está en [INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md).
+El informe de cambios y evidencia está en [INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md).
 
 La variable de autoprueba debe permanecer desactivada en operación normal. No dejar activo el secreto temporal de test una vez concluida la verificación.
 
