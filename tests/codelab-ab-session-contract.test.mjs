@@ -91,3 +91,20 @@ test('Video Composer exporter can reuse A persistent browser/context without clo
   assert.match(exporter, /if \(ownsContext && context\)/);
   assert.match(exporter, /if \(ownsBrowser && browser\)/);
 });
+
+test('confirmed PixelForge project deletion also removes imported package resources', () => {
+  const server = read('server.js');
+  const editor = read('public/pixelforge/src/editor.js');
+  const start = server.indexOf('async function deletePixelForgeProjectFromDatabase');
+  const end = server.indexOf('\nasync function savePixelForgeProjectToDatabase', start);
+  assert.ok(start >= 0 && end > start, 'PixelForge database delete helper exists');
+  const deletion = server.slice(start, end);
+  assert.match(editor, /window\.confirm\('Delete/);
+  assert.match(editor, /await deleteProject\(project\.id\)/);
+  assert.match(deletion, /DELETE FROM codelab_pixelforge_projects/);
+  assert.match(deletion, /DELETE FROM public\.codelab_project_files/);
+  assert.match(deletion, /DELETE FROM public\.codelab_project_registry/);
+  assert.match(deletion, /DELETE FROM public\.codelab_project_imports/);
+  assert.match(deletion, /await client\.query\('BEGIN'\)/);
+  assert.match(deletion, /await client\.query\('COMMIT'\)/);
+});
