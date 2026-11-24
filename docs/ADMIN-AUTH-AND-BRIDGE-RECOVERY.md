@@ -28,14 +28,14 @@ Antes de declarar un bloqueo de autenticación:
 
 ## 3. No confundir cuenta ADMIN con secreto del endpoint
 
-El contrato HTTP documentado para `/api/agent/bridge/artifacts` exige autenticación del lado del servidor mediante el header `x-codelab-agent-bridge-token`. Esa regla describe el endpoint y no autoriza al agente a pedirle el secreto al usuario ni a pasárselo a Headless.
+El contrato HTTP documentado para `/api/agent/bridge/artifacts` exige autenticación del lado del servidor mediante el header `x-codelab-agent-bridge-token`. La conexión de lectura a Neon y la identidad ADMIN no sustituyen ese token ni autentican automáticamente la ruta HTTP. Esa regla describe el endpoint y no autoriza al agente a pedirle el secreto al usuario ni a pasárselo a Headless.
 
 La conducta correcta es:
 
-- Reutilizar la conexión/capacidad administrativa ya autorizada que la plataforma expone al agente, si existe una acción soportada para esa operación.
+- Reutilizar la conexión/capacidad administrativa ya autorizada que la plataforma expone al agente para resolver identidad y workspace. Para la transferencia HTTP, usar únicamente una acción/proxy ya autorizado que gestione el token del lado del servicio; no asumir que el acceso SQL de Neon lo sustituye.
 - Si el flujo necesita invocar el endpoint HTTP directamente, comprobar primero cómo el servicio y la integración autorizada resuelven esa autenticación. No asumir que el agente debe leer una variable de entorno del runtime ni que el usuario debe volver a configurarla.
 - No leer, imprimir, copiar ni solicitar secretos en texto claro; no incluirlos en documentación, comandos, payloads, capturas o logs.
-- Si no hay ninguna acción autorizada disponible y el servidor rechaza la petición, informar el error exacto y la capa que lo produce. Pedir intervención al usuario solo si falta realmente una autorización que no puede recuperarse desde las conexiones existentes.
+- Si no hay ninguna acción/proxy autorizado disponible para ejecutar la transferencia y no se puede invocar el endpoint con la autorización ya gestionada por el entorno, no inventar un mecanismo alternativo ni escribir staging/chunks directamente en Neon. Informar el bloqueo de transporte exacto sin pedir secretos ni reconfiguración general.
 
 La existencia de una fila ADMIN en Neon confirma identidad/rol en la base de datos; por sí sola no demuestra que una ruta HTTP concreta haya aceptado una petición. Mantener ambas comprobaciones separadas y no inferir una falla de autenticación HTTP por la mera ausencia de una variable local.
 
