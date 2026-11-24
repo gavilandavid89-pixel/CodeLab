@@ -18,3 +18,6 @@
 .vc-quality-note[data-kind=success]{border-color:#426f5c;color:#a8dfbd}
 .vc-quality-note[data-kind=info]{border-color:#465d86;color:#b7cafa}
 #vc-motion-quality{min-height:2.5em}
+
+.vc-preview-stage canvas[data-scaling-mode="smooth"]{image-rendering:auto}
+.vc-preview-stage canvas[data-scaling-mode="pixelated"]{image-rendering:pixelated}
