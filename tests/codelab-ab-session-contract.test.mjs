@@ -46,6 +46,8 @@ test('A receives only the trusted ADMIN bridge and pins the persisted project sn
 test('B is a request-only receiver and verifies the WebM with Chromium without credentials or FFmpeg', () => {
   const b = read('scripts/codelab-ab-session-request.mjs');
   assert.match(b, /CodeLab B Request/);
+  assert.match(b, /CODELAB_REQUESTED_PROJECT_ID/);
+  assert.match(b, /ready\.projectId !== requestedProjectId/);
   assert.match(b, /comments\(readySince\)/);
   assert.match(b, /comments\(requestStartedAt\)/);
   assert.match(b, /CodeLab A Video Chunk/);
@@ -68,6 +70,8 @@ test('the real A/B workflows isolate credentials and keep A independent from B',
   assert.match(aWorkflow, /codelab-qedi\.onrender\.com/);
   assert.doesNotMatch(bWorkflow, /CODELAB_AGENT_BRIDGE_CONTROL_SECRET|DATABASE_URL|NEON_API_KEY|NEON_STORAGE_HOST/);
   assert.match(bWorkflow, /scripts\/codelab-ab-session-request\.mjs/);
+  assert.match(bWorkflow, /project_id:/);
+  assert.match(bWorkflow, /CODELAB_REQUESTED_PROJECT_ID/);
   assert.match(bWorkflow, /actions\/upload-artifact@v4/);
   assert.match(abWorkflow, /codelab-independent-session-a\.yml/);
   assert.match(abWorkflow, /Verify A remains alive after B has finished/);
