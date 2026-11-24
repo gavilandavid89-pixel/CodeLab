@@ -160,16 +160,32 @@ Los artefactos son staging temporal, no almacenamiento definitivo de proyectos. 
 
 El servidor contiene una autoprueba opcional controlada por `AGENT_INLINE_ARTIFACT_SMOKE_TEST=1`. Al iniciar, llama por HTTP local a las mismas rutas públicas del transporte y realiza manifiesto → parte → commit usando un payload de un byte. Para esta prueba se habilita un secreto de prueba separado. Cuando el manifiesto lleva `self_test: true`, el commit devuelve `status: "verified"` sin crear una orden falsa de importación.
 
-En la verificación real del 23-11-2026 en Render/Neon de la organización Xsuperwarriorx:
+En la verificación real del 23-11-2026 en Render/Neon:
 
 - El build y el despliegue de prueba llegaron a estado `live`.
 - Los logs registraron `[Inline Artifact Smoke] PASS manifest -> chunk -> commit -> Neon`.
 - La consulta directa a Neon confirmó el manifiesto y la parte binaria, ambos con 1 byte y el mismo SHA-256.
-- La autoprueba se diseñó para no encolar un ZIP ficticio ni contaminar el workspace con un proyecto falso.
 
-**Alcance de esa evidencia:** demuestra el transporte y la integridad de un fragmento. No demuestra por sí sola una importación completa.
+**Alcance:** esa autoprueba demuestra el transporte y la integridad de un fragmento; no demuestra por sí sola una importación completa.
 
-La integración PostgreSQL de CI ejecuta el flujo documentado desde el artefacto Headless: empaqueta el runtime con el mismo layout de `Agent Headless Package`, lo publica como artefacto de GitHub Actions y lo descarga de nuevo en el job de integración. El test carga desde ese artefacto `HeadlessEditorRuntime`, abre y modifica un proyecto, exporta el `.codelab`, lo transfiere por las rutas HTTP públicas, deja que CodeLab cree la solicitud, confirma el SHA-256, verifica `codelab_project_import`, arranca el worker nativo y espera su resultado. Comprueba además que el proyecto aparece en el selector del workspace destinatario, lo abre, guarda una edición, vuelve a abrirlo y conserva píxeles y timeline. Todo ocurre en PostgreSQL efímero del workflow, no en Neon production.
+### 6.1 Importación real de producción — 24-11-2026
+
+El workflow `.github/workflows/inline-bridge-smoke-test.yml` se amplió para construir un paquete CodeLab Web v2 estructurado real, con `project.json`, HTML/CSS/JS, un recurso SVG, `integrity.json` y `manifest.json`. El job calcula el SHA-256 del ZIP, crea el manifiesto HTTP, sube todos los chunks binarios y confirma el commit con JSON generado por `jq`.
+
+Ejecución verificada: [GitHub Actions run 45338080211](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45338080211), conclusión `success`.
+
+La consulta posterior a Neon confirmó:
+
+- solicitud `codelab-e2e-web-45338080211` con estado `succeeded`;
+- workspace destino `ws_local_admin`, editor `web`;
+- proyecto `bridge-e2e-web-45338080211`, nombre `Bridge E2E Web Import 45338080211`;
+- artefacto temporal con estado `imported`, 1.649 bytes y SHA-256 `27ff053b5665678d8c2af1ca7d70ea316c55c7d15c6e47612a14bf510653623e`;
+- contenido persistido con SHA-256 `0793920a0bd52619ddb176d17e24694719b84fdf7478d7215a1d9740747504e8`;
+- workspace ADMIN en revisión 12 y lectura de vuelta con `reloadedFromPersistence: true`.
+
+Esta prueba sí recorrió el endpoint HTTP autenticado, la recepción de chunks, el commit, la importación del worker y la lectura de vuelta desde la persistencia ADMIN. No fue una autoprueba `self_test`.
+
+**Límite de alcance:** esta ejecución probó el editor Web. No certifica todavía la importación de un paquete PixelForge nativo, el procesamiento A/B ni la entrega de vídeo. El informe de cambios y evidencia está en [INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md).
 
 La variable de autoprueba debe permanecer desactivada en operación normal. No dejar activo el secreto temporal de test una vez concluida la verificación.
 
