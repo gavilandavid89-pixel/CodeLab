@@ -71,3 +71,13 @@ La copia ADMIN solo se elimina desde PixelForge con la acción Delete y la confi
 
 Consulta [la arquitectura principal A/B](../../docs/CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md), [el protocolo de vídeo](../../docs/VIDEO-PROCESSING-AB.md) y [el funcionamiento del bridge](../../docs/inline-artifact-bridge.md).
 
+## Cuándo conviene usar el inbox
+
+Este inbox es una **vía alternativa, no el paso obligatorio de cada proyecto**. Su uso principal está pensado para:
+
+- proyectos grandes, con muchos archivos, capas o recursos, cuyo traslado resulta más fiable como un paquete nativo completo;
+- casos en los que no hay datos de transferencia disponibles o utilizables en el flujo habitual (por ejemplo, no existe un paquete/snapshot transferible o la información está incompleta).
+
+Si el proyecto es pequeño y ya cuenta con datos de transferencia normales, completos y válidos, usa ese mecanismo habitual y no lo vuelvas a importar desde el inbox sin necesidad.
+
+**Decisión rápida:** transferencia normal completa disponible → flujo normal. Proyecto grande o sin datos de transferencia utilizables → inbox del repositorio. En cualquiera de los dos casos, espera a que el proyecto esté realmente disponible en ADMIN antes de iniciar A/B.
