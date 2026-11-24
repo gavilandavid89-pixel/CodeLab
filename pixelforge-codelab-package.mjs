@@ -213,6 +213,7 @@ function addSceneSections(project, files) {
     const sectionData = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
       ? structuredClone(drawing.sceneSections[section.key]) : {};
     const workspace = sectionData.workspace ?? null;
+    if (workspace !== null) HeadlessEditorRuntime.fromJSON(workspace);
     delete sectionData.workspace;
     const declaration = {
       format: 'codelab-pixelforge-scene',
