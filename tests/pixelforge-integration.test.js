@@ -1135,8 +1135,8 @@ async function main() {
     await accountContext.close();
 
     if (testSessionPool) {
-      // Exercise the backend importer called by the agent's
-      // codelab_project_import command, then verify native list/open/save/reopen.
+      // Exercise the real agent HTTP upload -> durable command -> native worker path,
+      // then verify the destination account's native list/open/save/reopen.
       const { exportPixelForgeCodeLabPackage } = await import('../public/pixelforge/src/codelab-package.js');
       const { createOrbitalShowcase } = await import('../public/pixelforge/src/showcase-animation.mjs');
       const showcase = createOrbitalShowcase();
@@ -1251,6 +1251,8 @@ async function main() {
         assert.equal(agentImport.reloadedFromPersistence, true, 'agent import must verify its PostgreSQL round-trip');
         assert.equal(agentImport.editorId, 'pixelforge');
         assert.equal(agentImport.projectId, agentProjectId);
+        assert.equal(agentImport.targetWorkspaceId, coreWorkspace.workspaceId,
+          'the native worker must persist into the requested user workspace, not its ADMIN mailbox');
 
         const agentList = await (await fetch(base + '/api/pixelforge/projects', { headers: authHeaders })).json();
         const agentMetadata = agentList.projects.find(project => project.id === agentProjectId);
