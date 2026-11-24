@@ -47,7 +47,7 @@ jobs:
               git ls-tree -d --name-only HEAD:projects/animation-inbox 2>/dev/null || true
             else
               git diff --name-only "$EVENT_BEFORE" "$EVENT_SHA" -- projects/animation-inbox/ |
-                awk -F/ 'NF >= 3 {print $3}' | sort -u
+                awk -F/ 'NF >= 4 {print $3}' | sort -u
             fi > "$RUNNER_TEMP/project-slugs/list"
           else
             find projects/animation-inbox -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort > "$RUNNER_TEMP/project-slugs/list"
