@@ -297,6 +297,70 @@ Headless integra operaciones de inteligencia de dibujo para consultar y conserva
 
 ---
 
+## 8.1. Herramientas geométricas y de precisión delegadas a AICommandSession
+
+Además de las operaciones declaradas en `HEADLESS_CAPABILITIES`, `HeadlessEditorRuntime.execute()` delega operaciones estructuradas a `AICommandSession`. No son llamadas arbitrarias de código: son acciones nombradas y validadas que trabajan sobre el sandbox.
+
+### Construcción y transformación geométrica
+
+| Acción | Para qué sirve |
+|---|---|
+| `geometry.point` | Construir un punto. |
+| `geometry.line` | Construir una línea a partir de extremos. |
+| `geometry.rect` | Construir un rectángulo. |
+| `geometry.ellipse` | Construir una elipse. |
+| `geometry.polygon` | Construir un polígono regular. |
+| `geometry.star` | Construir una estrella. |
+| `geometry.bezier` | Construir una curva Bézier. |
+| `geometry.path` | Construir un path desde comandos. |
+| `geometry.roundedRect` | Construir un rectángulo redondeado. |
+| `geometry.arc` | Construir un arco circular. |
+| `geometry.circle3` | Construir un círculo a través de tres puntos. |
+| `geometry.translate` | Trasladar un objeto. |
+| `geometry.scale` | Escalar un objeto respecto de un centro. |
+| `geometry.rotate` | Rotar un objeto respecto de un centro. |
+| `geometry.polarArray` | Generar una matriz circular/polar de objetos. |
+| `geometry.gridArray` | Generar una matriz en filas y columnas. |
+| `geometry.add` | Insertar un objeto en el modelo vectorial. |
+| `geometry.update` | Actualizar un objeto existente por ID. |
+
+### Medición, construcción y análisis geométrico
+
+El runtime también ofrece acciones para:
+- calcular límites y medidas: `geometry.bounds`, `geometry.measure`, `geometry.measureBetween`, `geometry.objectMetrics`;
+- proyectar puntos y encontrar intersecciones: `geometry.project`, `geometry.intersection`, `geometry.circleLineIntersections`, `geometry.tangentLinesToCircle`;
+- construir referencias geométricas: `geometry.coordinateFrame`, `geometry.toLocal`, `geometry.toWorld`, `geometry.polarPoint`, `geometry.angleBisector`, `geometry.perpendicularThrough`, `geometry.parallelThrough`, `geometry.divideSegment`, `geometry.circumcenter`, `geometry.triangleCenters`;
+- analizar curvas: `geometry.bezierPoint`, `geometry.bezierTangent`, `geometry.bezierCurvature`, `geometry.bezierSplit`, `geometry.bezierContinuity`, `geometry.bezierSample`, `geometry.fitPolyline`, `geometry.reversePath`, `geometry.pathLength`;
+- operar con formas: `geometry.boolean` (operación booleana entre polígonos);
+- alinear y distribuir: `geometry.nearest`, `geometry.edgeAlign`, `geometry.distribute`, `geometry.symmetry`, `geometry.smartSnap`, `geometry.snapAxis`;
+- diagnosticar y comparar: `geometry.diagnose`, `geometry.diff`, `geometry.intentPlan`;
+- generar guías: `guide.create`.
+
+Estas acciones son útiles para ilustración vectorial precisa, construcción técnica, iconografía, diagramas, alineación, repetición de elementos, simetría y comprobación de geometría. Los argumentos específicos se validan por acción; por ejemplo, `geometry.line` acepta extremos `a`/`b` o coordenadas `x1,y1,x2,y2`, y las formas aceptan un objeto `style`.
+
+### Escena de ilustración y flujo de calidad
+
+Acciones disponibles en el ejecutor estructurado:
+- `drawing.scene.normalize`: normaliza la descripción de una escena.
+- `drawing.scene.validate`: valida la escena y devuelve errores y escena normalizada.
+- `drawing.scene.compile`: compila la escena normalizada a la representación que consume el flujo.
+- `drawing.workflow.start`: inicia un flujo de dibujo con `workflowId` opcional, `projectId` opcional, `stage` (por defecto `sketch`) y `minQualityScore` (por defecto 0.8).
+- `drawing.workflow.set_scene` / `drawing.workflow.get_scene`: asigna/lee la escena del flujo.
+- `drawing.workflow.get_state`: devuelve el estado actual.
+- `drawing.workflow.record_action`: registra una acción realizada.
+- `drawing.workflow.visual_feedback`: adjunta feedback visual con `snapshotId`, resumen, métricas y calidad.
+- `drawing.workflow.pause` / `drawing.workflow.resume`: pausa y reanuda el flujo.
+- `drawing.workflow.correct`: registra/aplica una corrección con etapa, motivo y acciones.
+- `drawing.workflow.advance`: avanza de etapa; exige quality gate y, por defecto, feedback.
+
+El flujo de dibujo mantiene una puerta de calidad habilitada y un score mínimo configurable al iniciarlo. No sustituye la inspección visual real del agente ni convierte una puntuación en prueba automática de que el arte cumple el pedido.
+
+### Límites de permiso de AICommandSession
+
+El ejecutor rechaza explícitamente acciones de borrado, exportación, subida o publicación del proyecto como `project.delete`, `document.delete`, `project.export`, `document.export`, `canvas.export`, `project.upload` y `project.publish`. La exportación/transferencia debe seguir el procedimiento autorizado de propuestas y empaquetado externo.
+
+---
+
 ## 9. Modelo vectorial y geometría
 
 El documento vectorial vive dentro de `RasterDocument.vectorModel`. Por ello participa del mismo sandbox, diff, aprobación y serialización del proyecto que el contenido raster.
