@@ -976,6 +976,11 @@ async function main() {
     assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
     assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
     failChunkOnce = true;
+    // Import may reopen the saved-project picker; close it before interacting with the layer stack.
+    if (await projectsDialog.isVisible()) {
+      await accountPage.keyboard.press('Escape');
+      await projectsDialog.waitFor({ state: 'hidden' });
+    }
     await accountPage.locator('#add-layer').click();
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Autosave unavailable'),
       null, { timeout: 60000 });
