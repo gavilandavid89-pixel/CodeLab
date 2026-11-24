@@ -73,17 +73,19 @@ function attachSceneWorkspaces(project) {
     const layer = workspace.layers[0];
     const secondPixels = Uint8Array.from(Buffer.from(layer.pixels, 'base64'));
     secondPixels[0] = (secondPixels[0] + index + 1) & 0xff;
-    workspace.animation = {
-      format: 'pixelforge-animation', version: 1,
-      width: 4, height: 4, layerIds: [layer.id], fps: 12,
-      activeFrameIndex: 1, loop: true, playbackSpeed: 1,
-      frames: [
-        { id: key + '-frame-1', name: 'Ball idle', index: 0, durationMs: 100,
-          cels: [{ layerId: layer.id, pixels: layer.pixels }] },
-        { id: key + '-frame-2', name: 'Ball move', index: 1, durationMs: 120,
-          cels: [{ layerId: layer.id, pixels: Buffer.from(secondPixels).toString('base64') }] },
-      ],
-    };
+    if (key !== 'details') {
+      workspace.animation = {
+        format: 'pixelforge-animation', version: 1,
+        width: 4, height: 4, layerIds: [layer.id], fps: 12,
+        activeFrameIndex: 1, loop: true, playbackSpeed: 1,
+        frames: [
+          { id: key + '-frame-1', name: 'Ball idle', index: 0, durationMs: 100,
+            cels: [{ layerId: layer.id, pixels: layer.pixels }] },
+          { id: key + '-frame-2', name: 'Ball move', index: 1, durationMs: 120,
+            cels: [{ layerId: layer.id, pixels: Buffer.from(secondPixels).toString('base64') }] },
+        ],
+      };
+    }
     project.drawingModel.sceneSections[key].workspace = workspace;
   }
   return project;
@@ -119,7 +121,9 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
     const instance = imported.project.drawingModel.sceneSections[section].workspace;
     assert.equal(instance.format, 'pixelforge-project');
     assert.equal(instance.layers.length, project.layers.length);
-    assert.equal(instance.animation.frames.length, project.animation.frames.length);
+    assert.equal(instance.animation.frames.length, section === 'details' ? 1 : 2);
+    assert.equal(instance.width, 4);
+    assert.equal(instance.height, 4);
     assert.equal(instance.animation.frames[0].cels.length, instance.layers.length);
     assert.equal(instance.animation.frames[0].cels[0].pixels, project.animation.frames[0].cels[0].pixels);
     assert.equal(instance.animation.fps, project.animation.fps);
@@ -167,7 +171,7 @@ test('survives import, a real Headless edit, save, export and second import', as
   for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
     const instance = secondImport.project.drawingModel.sceneSections[section].workspace;
     assert.equal(instance.format, 'pixelforge-project');
-    assert.equal(instance.animation.frames.length, savedProject.animation.frames.length);
+    assert.equal(instance.animation.frames.length, section === 'details' ? 1 : 2);
     assert.equal(instance.animation.frames[0].cels.length, instance.layers.length);
   }
   for (const layer of secondImport.project.layers) {
