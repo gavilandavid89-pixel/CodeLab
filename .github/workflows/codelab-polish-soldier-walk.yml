@@ -24,6 +24,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -63,6 +64,8 @@ jobs:
           CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
           CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
           CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: node scripts/codelab-repair-soldier-walk.mjs
       - name: Upload repair verification
