@@ -345,12 +345,12 @@ Reference Center es una biblioteca de **referencias maestras inmutables**. Conse
 - parts[] permite materializar partes por separado.
 - frames[] / frameLayerMap[] conserva fotogramas y su relación con capas cuando la referencia procede de una animación.
 - layerSnapshot[] conserva capas originales y sus píxeles.
-- materialization.copyPolicy = deep-copy indica que al copiar se crea una copia editable independiente.
+- materialization.copyPolicy = deep-copy indica que se copian los bytes/píxeles y metadatos necesarios sin mantener un vínculo vivo con la referencia. No significa crear una capa nueva: el destino siempre es la capa activa del frame activo.
 - sourceProjectId y sourceRevision dan trazabilidad al proyecto/revisión de origen.
 
 En la UI, **Package current** captura el documento y la animación en la referencia maestra, la registra en drawingModel.referenceCenter.entries y después limpia el lienzo de trabajo a una capa vacía Layer 1. La animación capturada queda en la referencia; el editor vuelve a una línea de tiempo estática. No es una operación de exportar PNG.
 
-Al copiar una imagen o una parte, PixelForge escribe sus píxeles en la capa activa del frame activo. Al copiar un frame completo de referencia, compone visualmente sus capas y escribe ese resultado en esa misma capa activa; no crea capas, no elimina otras capas y no cierra la línea de tiempo. La capa y el frame de destino conservan sus IDs y propiedades; solo cambian los píxeles del cel seleccionado. La referencia maestra permanece inmutable. La copia es una operación de deep-copy de los píxeles, no un vínculo vivo con la referencia.
+Al copiar una imagen o una parte, PixelForge reemplaza los píxeles de la capa activa del frame activo. Al copiar un frame completo de referencia, primero compone las capas visibles de la referencia respetando visibilidad, opacidad y alpha, y escribe el resultado en esa misma capa activa. En ambos casos el destino es único y fijo: la capa activa del frame activo; no hay selector de destino ni modalidad alternativa por capa de origen. La operación no crea capas, no elimina ni reordena capas existentes, no cambia sus IDs o propiedades, no cierra ni reinicia la animación y actualiza el cel del frame activo. La referencia maestra permanece inmutable. `deep-copy` describe la independencia de los píxeles copiados, no la creación de una capa nueva ni un vínculo vivo con la referencia.
 
 **Diferencia importante:** las referencias de imagen simples importadas desde carpetas como reference/character/pose.png son recursos de imagen del Reference Center; no equivalen a una referencia estructurada reference.personaje/<id>/reference.json con partes RGBA editables. El importador legacy puede crear una tarjeta de imagen; el importador estructurado v2 reconstruye partes editables y sus metadatos.
 
@@ -703,7 +703,7 @@ layer0-2
 
 La referencia es el recurso maestro reutilizable. La capa es el contenido editable dentro del frame. El frame es la unidad temporal/visual del lienzo.
 
-Al materializar una referencia en una capa, la capa puede recibir sus propios píxeles y metadatos editables mediante la política de copia correspondiente, mientras que la referencia maestra permanece intacta.
+Al copiar una referencia, sus píxeles se escriben en la capa activa del frame activo. La capa existente conserva identidad y propiedades; no se crea otra capa. La referencia maestra permanece intacta y la copia no mantiene un vínculo vivo con ella.
 
 ## 20. Relación con la organización por secciones
 
