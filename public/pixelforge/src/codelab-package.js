@@ -649,7 +649,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
       if (section.key === 'environment' && scene.environmentHistory) {
         project.drawingModel.environmentHistory = scene.environmentHistory;
       }
-      sceneResult[section.key] = { path, layerCount: scene.layerIds.length, drawingObjectCount: scene.drawingObjectIds.length, vectorObjectCount: scene.vectorObjectIds.length };
+      sceneResult[section.key] = { path, layerCount: workspace?.layers?.length ?? scene.layerIds?.length ?? 0, drawingObjectCount: scene.drawingObjectIds?.length ?? 0, vectorObjectCount: scene.vectorObjectIds?.length ?? 0 };
     }
   }
 
