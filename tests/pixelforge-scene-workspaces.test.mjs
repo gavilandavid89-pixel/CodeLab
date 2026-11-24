@@ -82,6 +82,15 @@ test('workspace registry round-trips without recursively embedding its own regis
   assert.equal(persisted.drawingModel.sceneWorkspaceState.activeSection, 'environment');
 });
 
+test('workspaces imported from the package section manifests hydrate the editor registry', () => {
+  const environment = createSceneWorkspaceSnapshot(makeProject(), 'environment');
+  const importedModel = { sceneSections: { environment: { workspace: environment } } };
+  const state = readSceneWorkspaceState(importedModel);
+  assert.equal(state.activeSection, 'main');
+  assert.equal(state.workspaces.environment.name, 'Environment workspace');
+  assert.equal(state.workspaces.environment.layers[0].id, environment.layers[0].id);
+});
+
 test('unknown section names are rejected and invalid active section falls back to main', () => {
   assert.throws(() => createSceneWorkspaceSnapshot(makeProject(), 'characters'), /Unknown PixelForge scene workspace/);
   const state = readSceneWorkspaceState({ sceneWorkspaceState: { activeSection: 'unknown', workspaces: { unknown: {} } } });
