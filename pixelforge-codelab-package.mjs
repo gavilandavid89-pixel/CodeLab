@@ -210,17 +210,20 @@ function addAnimation(project, files) {
     const frameLayersMetadata = layers.map(({ layer, pixels }) => {
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) throw new RangeError('PixelForge animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
-      const pixelsPath = directory + '/' + safeSlug(layer.name, layer.id) + '-' + safeSlug(layer.id, 'layer') + '.rgba';
+      const layerToken = 'layer' + index + '-' + (layers.length + 1);
+      const pixelsPath = directory + '/' + layerToken + '/pixels.rgba';
       files.set(pixelsPath, pixels);
       return {
-        id: String(layer.id),
-        name: String(layer.name || layer.id),
-        pixelsPath,
-        position: { x: Number(layer.x || 0), y: Number(layer.y || 0) },
-        opacity: Number(layer.opacity ?? 1),
-        visible: layer.visible !== false,
-        locked: layer.locked === true,
-        zIndex: project.layers.findIndex(item => item.id === layer.id),
+        id: String(layer.id), name: String(layer.name || layer.id),
+        parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layers.length + 1,
+        pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
+        x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
+        rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
+        visible: layer.visible !== false, locked: layer.locked === true, blendMode: String(layer.blendMode || 'normal'),
+        blur: layer.blur ?? 0, brightness: layer.brightness ?? 0, contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0,
+        mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
+        references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}),
+        zIndex: layers.length,
       };
     });
     const framePath = directory + '/frame.json';
@@ -295,7 +298,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
   if (projectBytes.length > 96 * 1024 * 1024) throw new RangeError('PixelForge project JSON exceeds the 96 MiB limit.');
   files.set('project.json', projectBytes);
   files.set('Frames/frames.tscn', Buffer.from(JSON.stringify(frames, null, 2), 'utf8'));
-  files.set('center.op/center.json', Buffer.from(JSON.stringify(referenceCenter, null, 2), 'utf8'));
+  files.set('reference.center/reference.center', Buffer.from(JSON.stringify(referenceCenter, null, 2), 'utf8'));
 
   const manifest = {
     format: 'codelab',
@@ -308,7 +311,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
     integrityPath: 'integrity.json',
     frames: { manifestPath: 'Frames/frames.tscn' },
     scenes,
-    referenceCenter: { manifestPath: 'center.op/center.json' },
+    referenceCenter: { manifestPath: 'reference.center/reference.center' },
     resources: resourceDeclarations,
   };
   files.set('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
