@@ -960,6 +960,29 @@ async function main() {
     assert.deepEqual(rgbaAt(effectsWorkspace, 0, 0, 0), [0, 0, 0, 0],
       'Effects must not inherit Environment pixels');
 
+    for (const [section, color, x, y] of [
+      ['details', '#00aa44', 1, 3],
+      ['elements', '#ffaa00', 2, 1],
+      ['objects', '#aa00ff', 3, 1],
+    ]) {
+      await accountPage.locator('[data-scene-workspace="' + section + '"]').click();
+      await accountPage.waitForFunction(expected => document.querySelector('#document-name')?.textContent === expected,
+        section[0].toUpperCase() + section.slice(1) + ' workspace');
+      assert.equal(await accountPage.locator('#layers .layer-row').count(), 1,
+        section + ' should open with its own layer stack');
+      assert.match(await accountPage.locator('#animation-frame-count').innerText(), /1/,
+        section + ' should open with its own timeline');
+      await setForegroundColor(color);
+      await clickPixel(x, y, 4, 4);
+      await waitForRasterSave();
+      const projectWithSection = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
+      const sectionWorkspace = projectWithSection.drawingModel.sceneWorkspaceState.workspaces[section];
+      assert.ok(sectionWorkspace, section + ' must be stored as a separate complete workspace');
+      assert.deepEqual(rgbaAt(sectionWorkspace, x, y, 0), [
+        parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16), 255,
+      ], section + ' pixels must persist in its own workspace');
+    }
+
     await accountPage.locator('[data-scene-workspace="environment"]').click();
     await accountPage.waitForFunction(() => document.querySelector('#document-name')?.textContent === 'Environment workspace');
     await waitForRasterSave();
