@@ -1,4 +1,5 @@
-import { parsePixelForgeVideoPackage, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
+import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
+import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
 import { getCaptureDimensions, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 
@@ -289,6 +290,68 @@ async function buildTimeline() {
   }
   ui.timeline.append(fragment);
 }
+async function composeNativeFrame(project, frame) {
+  const width = project.width, height = project.height;
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const context = canvas.getContext('2d', { alpha: true });
+  if (!context) throw new Error('No se pudo crear el lienzo para componer el fotograma.');
+  const metadataByLayer = new Map((frame.layerMetadata || []).map(item => [String(item.layerId || item.id), item]));
+  const celsByLayer = new Map((frame.cels || []).map(item => [String(item.layerId), item]));
+  for (const layer of project.layers) {
+    const cel = celsByLayer.get(String(layer.id));
+    if (!cel) throw new Error('El fotograma no contiene el cel de la capa ' + layer.name + '.');
+    const meta = metadataByLayer.get(String(layer.id)) || cel.metadata || {};
+    if (layer.visible === false || meta.visible === false) continue;
+    const raw = atob(cel.pixels);
+    const pixels = new Uint8ClampedArray(raw.length);
+    for (let i = 0; i < raw.length; i++) pixels[i] = raw.charCodeAt(i);
+    if (pixels.length !== width * height * 4) throw new Error('El tamaño RGBA de la capa ' + layer.name + ' no coincide con el lienzo.');
+    const source = document.createElement('canvas');
+    source.width = width; source.height = height;
+    source.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
+    const x = Number(meta.x ?? meta.position?.x ?? 0);
+    const y = Number(meta.y ?? meta.position?.y ?? 0);
+    const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
+    const rotation = Number(meta.rotation ?? 0);
+    context.save();
+    context.globalAlpha = Math.max(0, Math.min(1, Number(layer.opacity ?? 1) * Number(meta.opacity ?? 1)));
+    const blend = String(meta.blendMode || layer.blendMode || 'normal');
+    if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blend)) context.globalCompositeOperation = blend;
+    context.translate(width / 2 + x, height / 2 + y);
+    context.rotate(rotation * Math.PI / 180);
+    context.scale(Number.isFinite(sx) ? sx : 1, Number.isFinite(sy) ? sy : 1);
+    context.drawImage(source, -width / 2, -height / 2);
+    context.restore();
+  }
+  const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo codificar el fotograma compuesto como PNG.')), 'image/png'));
+  return blob;
+}
+async function parseComposerPackage(file) {
+  const entries = await readStoredZip(file);
+  if (entries.has('project.codelab-pixelforge') || entries.has('project.codelab')) {
+    const installed = await importPixelForgeCodeLabPackage(entries);
+    const project = installed.project;
+    const animation = project.animation;
+    if (!animation?.frames?.length) throw new Error('El proyecto nativo no contiene una línea de tiempo exportable.');
+    const frames = [];
+    for (const frame of animation.frames) {
+      frames.push({ ...frame, blob: await composeNativeFrame(project, frame) });
+    }
+    const totalDurationMs = frames.reduce((sum, frame) => sum + Number(frame.durationMs), 0);
+    return {
+      manifest: {
+        format: 'pixelforge-native-composer', version: 1,
+        width: project.width, height: project.height, fps: animation.fps,
+        loop: animation.loop !== false, frameCount: frames.length, totalDurationMs,
+        projectName: project.name,
+      },
+      frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
+      entryCount: entries.size,
+    };
+  }
+  return parsePixelForgeVideoPackage(file);
+}
 async function importPackage(file) {
   if (!file) return;
   const requestId = ++activeImport;
@@ -296,7 +359,7 @@ async function importPackage(file) {
   setStatus('Leyendo el paquete y validando sus fotogramas…');
   try {
     if (file.size > 256 * 1024 * 1024) throw new RangeError('El paquete supera el límite de importación de 256 MiB.');
-    const parsed = await parsePixelForgeVideoPackage(file);
+    const parsed = await parseComposerPackage(file);
     if (requestId !== activeImport) return;
     packageData = parsed;
     $('#vc-project-name').textContent = file.name.replace(/\.zip$/i, '') || 'Animación PixelForge';
