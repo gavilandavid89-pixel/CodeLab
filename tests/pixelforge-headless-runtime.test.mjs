@@ -42,7 +42,7 @@ test('headless runtime opens a persisted PixelForge project without changing its
 test('headless batch edits an isolated sandbox and commits only after proposal acceptance', () => {
   const fixture = projectFixture();
   const runtime = HeadlessEditorRuntime.fromJSON(fixture);
-  const before = runtime.toJSON();
+  const before = runtime.document.toJSON();
   const batch = runtime.executeBatch([
     { name: 'canvas.draw_line', x0: 1, y0: 2, x1: 10, y1: 2, color: '#FF3300', size: 1 },
     { name: 'canvas.fill', x: 1, y: 2, color: '#00AA44', tolerance: 0, contiguous: true },
