@@ -33,12 +33,15 @@ test('tile-backed animation adapter migrates v1 frames and preserves frame/layer
 
 test('tile-backed animation duplicates by shared resources and edits only the cloned frame', async () => {
   const animation = new PixelForgeAnimation({ width: 64, height: 64, layerIds: ['paint'] });
+  const sourcePixels = new Uint8ClampedArray(64 * 64 * 4);
+  sourcePixels.set([9, 80, 190, 255], 0);
+  animation.setLayerPixels(0, 'paint', sourcePixels);
   const tiled = await TiledAnimationDocument.fromAnimation(animation);
   const original = tiled.getFrame(0);
   tiled.cloneFrame(0);
   const clone = tiled.getFrame(1);
   assert.notEqual(original.id, clone.id);
-  assert.equal(tiled.stats.resourceReferences, 0);
+  assert.equal(tiled.stats.resourceReferences, 2);
 
   const patch = new Uint8ClampedArray(2 * 2 * 4);
   patch.set([255, 10, 20, 255], 0);
