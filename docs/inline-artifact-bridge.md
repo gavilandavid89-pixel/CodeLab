@@ -41,14 +41,14 @@ Neon: codelab_agent_artifacts
 CodeLab: POST /api/agent/bridge/artifacts/{artifact_id}/commit
   │   comprueba secuencia, hashes y tamaño
   ├─ si self_test=true: responde verified y NO encola importación
-  └─ en uso real: inserta pixelforge_import_zip en codelab_agent_commands
+  └─ en uso real: inserta codelab_project_import (CodeLab) o pixelforge_import_zip (PixelForge)
         │
         ▼ PostgreSQL NOTIFY
 Listener de server.js → agent-bridge-worker.mjs
         │
         ├─ lee y reconstruye el artefacto
-        ├─ analiza el ZIP de PixelForge
-        ├─ persiste el proyecto en el workspace destino
+        ├─ analiza el ZIP según su editor
+        ├─ persiste proyecto/recursos en el workspace destino (no en el buzón ADMIN)
         ├─ elimina el artefacto temporal
         └─ completa la orden con el resultado
         ▼
@@ -77,6 +77,8 @@ Campos aceptados por la implementación:
 | `filename` | Nombre del archivo; por defecto `pixelforge.codelab`, truncado a 180 caracteres |
 | `target_workspace_id` | Workspace destino con formato `ws_...`; por defecto el workspace PixelForge guest configurado |
 | `project_name` | Nombre opcional para el proyecto importado |
+| `artifact_kind` | `pixelforge_zip_upload` para ZIP PixelForge directo; `codelab_zip_upload` para paquete `.codelab` importable |
+| `import_request_id` | Obligatorio para `codelab_zip_upload`; identifica la solicitud de importación del buzón ADMIN |
 | `self_test` | Solo para la prueba técnica: si es `true`, el commit valida y no encola importación |
 
 El servidor verifica el manifiesto y que `total_chunks = ceil(total_bytes / 1 MiB)`. Responde HTTP 201 con `artifactId`, `chunkBytes`, tamaño, cantidad de partes y SHA esperado.
@@ -109,11 +111,13 @@ El commit:
 2. Comprueba que los índices sean contiguos desde cero.
 3. Recalcula el SHA-256 de cada parte y lo compara con el almacenado.
 4. Reconstruye el hash global y comprueba tamaño total, SHA del manifiesto y SHA enviado al commit.
-5. Si todo coincide, crea una orden `pixelforge_import_zip` con expiración de 15 minutos y estado `queued`.
+5. Si todo coincide, crea una orden con expiración de 15 minutos y estado `queued`: `codelab_project_import` para `codelab_zip_upload`, o `pixelforge_import_zip` para `pixelforge_zip_upload`.
 
 En el caso normal devuelve HTTP 202 con `artifactId`, `commandId`, `status: "queued"`, bytes, partes y SHA-256. HTTP 202 significa que la importación fue encolada, no que el proyecto ya esté importado. El agente debe seguir la orden y comprobar su resultado.
 
-El worker ejecuta `readNativeArtifact`, analiza el ZIP con `parsePixelForgeProjectZip`, persiste el proyecto con `persistImportedPixelForgeProject`, elimina el artefacto temporal y marca la orden como completada. La finalización de la orden, el proyecto guardado y su revisión son la evidencia de importación; un HTTP 202 por sí solo no basta.
+Para `pixelforge_zip_upload`, el worker ejecuta `readNativeArtifact`, analiza el ZIP con `parsePixelForgeProjectZip` y persiste con `persistImportedPixelForgeProject`. Para `codelab_zip_upload`, ejecuta `readNativeArtifact` y `importCodeLabArtifact`, que valida el manifiesto `.codelab`, importa el documento/recursos y verifica el round-trip desde PostgreSQL. En ambos casos elimina el artefacto temporal y marca la orden como completada.
+
+En una importación `.codelab`, `workspace_id` de la solicitud identifica el buzón interno ADMIN y autoriza al worker a consumir la orden. `target_workspace_id` es el destino real del proyecto. El worker debe pasar ese destino explícitamente al importador: los registros del proyecto, archivos, revisiones PixelForge e historial de importación se guardan bajo el workspace destinatario, nunca bajo el buzón ADMIN. La finalización de la orden, el proyecto guardado y su revisión son la evidencia de importación; un HTTP 202 por sí solo no basta.
 
 ## 4. Límites y almacenamiento
 
@@ -155,7 +159,9 @@ En la verificación real del 23-11-2026 en Render/Neon de la organización Xsupe
 - La consulta directa a Neon confirmó el manifiesto y la parte binaria, ambos con 1 byte y el mismo SHA-256.
 - La autoprueba se diseñó para no encolar un ZIP ficticio ni contaminar el workspace con un proyecto falso.
 
-**Alcance de esa evidencia:** demuestra que las rutas reales aceptaron el manifiesto, almacenaron una parte y validaron el commit contra Neon en el proyecto correcto. No demuestra que un paquete `.codelab` real de tamaño completo haya sido transferido, importado, abierto en PixelForge o renderizado. Esos pasos requieren una prueba separada con el artefacto real y verificación del proyecto persistido.
+**Alcance de esa evidencia:** demuestra el transporte y la integridad de un fragmento. No demuestra por sí sola una importación completa.
+
+La integración PostgreSQL de CI ejecuta además el recorrido de extremo a extremo con un ZIP v2 real: crea una solicitud del buzón ADMIN, transfiere el paquete por las rutas HTTP públicas, confirma el SHA-256, verifica que `codelab_project_import` quede encolada, arranca el worker nativo real, espera su resultado y comprueba que el proyecto aparece en el selector de la cuenta destinataria. Después lo abre, guarda una edición, vuelve a abrirlo y comprueba píxeles y timeline. Todo ocurre en PostgreSQL efímero del workflow, no en Neon production.
 
 La variable de autoprueba debe permanecer desactivada en operación normal. No dejar activo el secreto temporal de test una vez concluida la verificación.
 
@@ -177,7 +183,7 @@ No usar inline para:
 ## 8. Archivos de implementación relacionados
 
 - `server.js`: rutas HTTP, autenticación, staging de partes, commit, validación SHA-256 y autoprueba.
-- `agent-bridge-worker.mjs`: acción `pixelforge_import_zip`, lectura del artefacto, análisis ZIP, persistencia y limpieza.
+- `agent-bridge-worker.mjs`: acciones `codelab_project_import` y `pixelforge_import_zip`, lectura del artefacto, destino de workspace, persistencia y limpieza.
 - `native-agent-artifacts.mjs`: esquema y helpers de artefactos nativos.
 - `migrations/2026-11-23-pixelforge-agent-artifacts.sql`: tablas, límites y constraints.
 - `docs/agent-ai-bridge-policy.md`: política del Headless aislado, transferencia y uso exclusivo de A/B para vídeo.
