@@ -54,8 +54,6 @@ await fs.writeFile(path.join(sessionStoreDir, authSessionId + '.json'), JSON.str
   createdAt: Date.now(),
   expiresAt: Date.now() + maxMinutes * 60000,
 }), { mode: 0o600 });
-const videoDir = process.env.CODELAB_SESSION_VIDEO_DIR || path.join(os.tmpdir(), 'codelab-session-video');
-await fs.mkdir(videoDir, { recursive: true });
 const port = await new Promise((resolve, reject) => {
   const probeServer = createServer((req, res) => { res.writeHead(200); res.end('ready'); });
   probeServer.listen(0, '127.0.0.1', () => {
@@ -429,7 +427,8 @@ await comment('[CodeLab Session Ready] run=' + process.env.GITHUB_RUN_ID + ' ses
 console.log('A stage: launching Chromium');
 const browser = await chromium.launch({ headless: true });
 console.log('A stage: Chromium launched');
-const sessionContext = await browser.newContext({ viewport: { width: 1440, height: 960 }, recordVideo: { dir: videoDir, size: { width: 1440, height: 960 }, fps: 24 } });
+// A is a live host only. Animation video encoding belongs exclusively to B.
+const sessionContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
 const sessionPage = await sessionContext.newPage();
 console.log('A stage: opening persistent PixelForge page');
 await sessionPage.goto(`http://127.0.0.1:${port}/pixelforge/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
