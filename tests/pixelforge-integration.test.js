@@ -1142,7 +1142,7 @@ async function main() {
       const showcase = createOrbitalShowcase();
       const agentProject = showcase.doc.toJSON();
       const agentProjectId = 'agent-import-e2e-' + sessionId.slice(0, 10);
-      const importRequestId = 'agent-import-e2e-' + sessionId.slice(0, 16);
+      let importRequestId = null;
       agentProject.id = agentProjectId;
       agentProject.name = 'Agent ZIP v2 native import';
       agentProject.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
@@ -1158,12 +1158,6 @@ async function main() {
          VALUES ('ADMIN',$1,'admin','test-salt','test-hash')
          ON CONFLICT (username) DO UPDATE SET id=EXCLUDED.id, role='admin'`,
         [adminAccountId]
-      );
-      await testSessionPool.query(
-        `INSERT INTO public.codelab_project_import_requests
-          (import_request_id, workspace_id, editor_id, source_project_id, manifest, status, confirmation_required, confirmation_received, work_score)
-         VALUES ($1,$2,'pixelforge',$3,'{}'::jsonb,'queued',false,false,0)`,
-        [importRequestId, adminWorkspaceId, agentProjectId]
       );
       const worker = spawn(process.execPath, ['agent-bridge-worker.mjs'], {
         cwd: path.join(__dirname, '..'),
@@ -1204,7 +1198,8 @@ async function main() {
             sha256: agentSha256,
             filename: exportedAgentPackage.filename,
             artifact_kind: 'codelab_zip_upload',
-            import_request_id: importRequestId,
+            editor_id: 'pixelforge',
+            source_project_id: agentProjectId,
             target_workspace_id: coreWorkspace.workspaceId,
             project_name: 'Agent ZIP v2 native import'
           })
@@ -1212,6 +1207,17 @@ async function main() {
         assert.equal(manifestResponse.status, 201, 'agent transfer must create a CodeLab artifact manifest');
         const manifestBody = await manifestResponse.json();
         agentArtifactId = manifestBody.artifactId;
+        importRequestId = manifestBody.importRequestId;
+        assert.match(importRequestId || '', /^[a-zA-Z0-9_-]{16,128}$/,
+          'CodeLab must create and return an import request for the agent without direct database access');
+        const createdRequest = await testSessionPool.query(
+          'SELECT workspace_id,editor_id,status FROM public.codelab_project_import_requests WHERE import_request_id=$1',
+          [importRequestId]
+        );
+        assert.equal(createdRequest.rows[0]?.workspace_id, adminWorkspaceId,
+          'the generated import request must be owned by the internal ADMIN mailbox');
+        assert.equal(createdRequest.rows[0]?.editor_id, 'pixelforge');
+        assert.equal(createdRequest.rows[0]?.status, 'queued');
         for (let index = 0; index < totalChunks; index++) {
           const start = index * 1024 * 1024;
           const chunk = agentArtifactBytes.subarray(start, Math.min(agentArtifactBytes.length, start + 1024 * 1024));
