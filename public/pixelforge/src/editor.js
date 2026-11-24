@@ -2582,7 +2582,12 @@ function renderLayers() {
     const layerIndex = doc.layers.findIndex(item => item.id === layer.id);
     const select = document.createElement('button');
     select.className = 'layer-select'; select.textContent = layer.name; select.title = 'Select layer';
-    select.addEventListener('click', () => { doc.setActiveLayer(layer.id); renderLayers(); updateTitle(); scheduleAutosave(); });
+    select.addEventListener('click', () => {
+      captureActiveLayerModeProfile();
+      doc.setActiveLayer(layer.id);
+      applyActiveLayerModeProfile(drawingConfiguration.activeMode);
+      renderLayers(); updateTitle(); scheduleAutosave();
+    });
     const visibility = document.createElement('button');
     visibility.className = 'layer-visibility'; visibility.textContent = layer.visible ? '◉' : '○';
     visibility.setAttribute('aria-label', layer.visible ? 'Hide layer' : 'Show layer');
