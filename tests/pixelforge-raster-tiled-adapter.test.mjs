@@ -38,9 +38,9 @@ test('duplicates layers with shared tile resources and writes only the selected 
   const originalId = source.layers[0].id;
   const duplicate = tiled.duplicateLayer(originalId, 'Ink copy');
   assert.equal(tiled.stats.resourceReferences, 2);
-  const patch = new Uint8Array([200, 100, 50, 255]);
+  const patch = new Uint8ClampedArray([200, 100, 50, 255]);
   await tiled.writeRegion(duplicate.id, { x: 0, y: 0, width: 1, height: 1 }, patch);
-  assert.deepEqual(tiled.readRegion(originalId, { x: 0, y: 0, width: 1, height: 1 }), new Uint8Array([10, 20, 30, 255]));
+  assert.deepEqual(tiled.readRegion(originalId, { x: 0, y: 0, width: 1, height: 1 }), new Uint8ClampedArray([10, 20, 30, 255]));
   assert.deepEqual(tiled.readRegion(duplicate.id, { x: 0, y: 0, width: 1, height: 1 }), patch);
   tiled.dispose();
 });
