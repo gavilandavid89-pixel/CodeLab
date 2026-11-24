@@ -18,6 +18,12 @@ export function readSceneWorkspaceState(drawingModel) {
   const workspaces = raw?.workspaces && typeof raw.workspaces === 'object' && !Array.isArray(raw.workspaces)
     ? Object.fromEntries(Object.entries(raw.workspaces).filter(([key, value]) => SECTION_KEYS.has(key) && value && typeof value === 'object').map(([key, value]) => [key, clone(value)]))
     : {};
+  for (const key of SECTION_KEYS) {
+    const importedWorkspace = drawingModel?.sceneSections?.[key]?.workspace;
+    if (!workspaces[key] && importedWorkspace && typeof importedWorkspace === 'object') {
+      workspaces[key] = clone(importedWorkspace);
+    }
+  }
   return {
     version: 1,
     activeSection: raw?.activeSection === 'main' || SECTION_KEYS.has(raw?.activeSection) ? raw.activeSection : 'main',
