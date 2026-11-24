@@ -285,7 +285,9 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
     });
   }
   for (const declared of project.packageResources || []) {
-    if (!resourceDeclarations.some(resource => resource.path === declared.path)) {
+    const declaredPath = String(declared?.path || '');
+    if (files.has(declaredPath)) continue;
+    if (!resourceDeclarations.some(resource => resource.path === declaredPath)) {
       throw new Error('The project declares a resource without supplied bytes: ' + String(declared.path || 'unknown'));
     }
   }
