@@ -8,6 +8,11 @@ on:
         required: false
         default: ''
         type: string
+      project_id:
+        description: 'ADMIN PixelForge project B requests A to export (must match A session project_id)'
+        required: false
+        default: 'soldier-walk-60f-20261124'
+        type: string
       timeout_minutes:
         description: 'Maximum time B waits for A and verifies the video'
         required: false
@@ -90,12 +95,13 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
+          CODELAB_REQUESTED_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
         run: node scripts/codelab-ab-session-request.mjs
       - name: Upload the video received and verified by B
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codelab-soldier-walk-webm-${{ github.run_id }}
+          name: codelab-project-webm-${{ github.run_id }}
           path: ${{ runner.temp }}/codelab-ab-video
           if-no-files-found: warn
           retention-days: 14
