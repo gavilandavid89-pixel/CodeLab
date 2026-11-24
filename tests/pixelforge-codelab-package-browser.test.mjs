@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
 import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '../public/pixelforge/src/codelab-package.js';
+import { readSceneWorkspaceState } from '../public/pixelforge/src/scene-workspaces.js';
 
 function fixture() {
   const showcase = createOrbitalShowcase();
@@ -86,6 +87,39 @@ test('browser package exporter writes all six project folders and the named TSCN
   assert.equal(installed.manifest.resources[0].destination, 'environment');
   assert.equal(installed.project.animation.frames.length, fixture().animation.frames.length);
   assert.equal(installed.project.animation.frames[0].layerMetadata[0].parentFrameId, installed.project.animation.frames[0].id);
+});
+
+test('browser package export serializes live editor workspaces once and rehydrates them on import', async () => {
+  const project = fixture();
+  const keys = ['environment', 'effects', 'details', 'elements', 'objects'];
+  const workspaces = {};
+  for (const key of keys) {
+    workspaces[key] = structuredClone(project.drawingModel.sceneSections[key].workspace);
+    delete project.drawingModel.sceneSections[key].workspace;
+  }
+  const parentWorkspace = structuredClone(project);
+  for (const key of keys) delete parentWorkspace.drawingModel.sceneSections[key].workspace;
+  project.drawingModel.sceneWorkspaceState = {
+    version: 1,
+    activeSection: 'effects',
+    parentWorkspace,
+    workspaces,
+  };
+
+  const exported = await exportPixelForgeCodeLabPackage(project);
+  const imported = await importPixelForgeCodeLabPackage(exported.blob);
+  assert.equal(imported.project.drawingModel.sceneWorkspaceState.activeSection, 'effects');
+  assert.equal(imported.project.drawingModel.sceneWorkspaceState.workspaces, undefined,
+    'the project JSON should not duplicate the five section documents outside their manifests');
+  assert.equal(imported.project.drawingModel.sceneWorkspaceState.parentWorkspace.name, parentWorkspace.name);
+  const restored = readSceneWorkspaceState(imported.project.drawingModel);
+  assert.equal(restored.activeSection, 'effects');
+  for (const key of keys) {
+    assert.equal(restored.workspaces[key].name, key + ' workspace');
+    assert.equal(restored.workspaces[key].layers.length, 1);
+    assert.ok(restored.workspaces[key].animation,
+      key + ' workspace should rehydrate from its dedicated section manifest');
+  }
 });
 
 test('browser import preserves package resources and scene metadata through native save and a second export', async () => {
