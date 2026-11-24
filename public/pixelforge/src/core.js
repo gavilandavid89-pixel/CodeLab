@@ -218,7 +218,13 @@ export function screenToDocument(point, viewport, dimensions) {
 }
 
 function makeLayer(id, name, width, height) {
-  return { id, name, visible: true, opacity: 1, locked: false, pixels: new Uint8ClampedArray(width * height * 4) };
+  return {
+    id, name, visible: true, opacity: 1, locked: false,
+    x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, angle: 0,
+    blendMode: 'normal', blur: 0, brightness: 0, contrast: 0, saturation: 0,
+    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {},
+    pixels: new Uint8ClampedArray(width * height * 4),
+  };
 }
 function clonePixels(pixels) { return new Uint8ClampedArray(pixels); }
 function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels) }; }
@@ -302,16 +308,26 @@ export class RasterDocument {
     this.#record({ type: 'document-rename', before, after });
     return true;
   }
-  addLayer(name = `Layer ${this.layers.length + 1}`) {
+  insertLayer(index = this.layers.length, name = `Layer ${index + 1}`) {
+    if (!Number.isInteger(index) || index < 0 || index > this.layers.length) throw new RangeError('Layer insertion index is outside the layer stack.');
     if (typeof name !== 'string' || !name.trim() || name.length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
     name = name.trim();
     if (this.layers.length >= 64) throw new RangeError('The initial editor supports up to 64 layers.');
     if ((this.layers.length + 1) * this.width * this.height * 4 > MAX_DOCUMENT_BYTES) throw new RangeError('Adding this layer would exceed the 64 MiB total pixel-memory budget for this document size. Reduce the canvas dimensions or use fewer layers.');
     const layer = makeLayer(crypto.randomUUID(), name, this.width, this.height);
-    this.layers.push(layer);
+    const beforeActive = this.activeLayerId;
+    this.layers.splice(index, 0, layer);
     this.activeLayerId = layer.id;
-    this.#record({ type: 'layer-add', index: this.layers.length - 1, beforeActive: this.layers[this.layers.length - 2]?.id, addedLayer: cloneLayer(layer) });
+    this.#markAllCompositeDirty();
+    this.#record({ type: 'layer-add', index, beforeActive, addedLayer: cloneLayer(layer) });
     return layer;
+  }
+  addLayer(name = `Layer ${this.layers.length + 1}`) {
+    if (typeof name !== 'string' || !name.trim() || name.length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
+    name = name.trim();
+    if (this.layers.length >= 64) throw new RangeError('The initial editor supports up to 64 layers.');
+    if ((this.layers.length + 1) * this.width * this.height * 4 > MAX_DOCUMENT_BYTES) throw new RangeError('Adding this layer would exceed the 64 MiB total pixel-memory budget for this document size. Reduce the canvas dimensions or use fewer layers.');
+    return this.insertLayer(this.layers.length, name);
   }
   setActiveLayer(id) {
     if (!this.layers.some(layer => layer.id === id)) throw new Error('Unknown layer ID.');
@@ -1104,7 +1120,13 @@ export class RasterDocument {
       throw new RangeError('Project JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     }
     const snapshot = { format: 'pixelforge-project', version: 1, id: this.id, name: this.name, width: this.width, height: this.height, activeLayerId: this.activeLayerId, revision: this.revision, saveVersion: this.saveVersion, serverRevision: this.serverRevision,
-      layers: this.layers.map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked, pixels: bytesToBase64(layer.pixels) })),
+      layers: this.layers.map(layer => ({
+        id: layer.id, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked,
+        x: layer.x, y: layer.y, scaleX: layer.scaleX, scaleY: layer.scaleY, rotation: layer.rotation, angle: layer.angle,
+        blendMode: layer.blendMode, blur: layer.blur, brightness: layer.brightness, contrast: layer.contrast, saturation: layer.saturation,
+        mask: structuredClone(layer.mask), clipping: structuredClone(layer.clipping), references: structuredClone(layer.references || []),
+        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), pixels: bytesToBase64(layer.pixels)
+      })),
       drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
       vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
       packageResourceFiles: JSON.parse(JSON.stringify(this.packageResourceFiles || [])),
@@ -1139,7 +1161,18 @@ export class RasterDocument {
       if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Layer opacity must be between 0 and 1.');
       const pixels = base64ToBytes(item.pixels, data.width * data.height * 4);
       if (pixels.length !== data.width * data.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
-      return { id: newLayerId, name: item.name.trim().slice(0, 180) || `Layer ${index + 1}`, visible: item.visible !== false, opacity, locked: Boolean(item.locked), pixels };
+      const numeric = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+      const finiteOrState = (value, fallback) => ['inexistente', 'no_aplicable'].includes(value) ? value : numeric(value, fallback);
+      return {
+        id: newLayerId, name: item.name.trim().slice(0, 180) || `Layer ${index + 1}`,
+        visible: item.visible !== false, opacity, locked: Boolean(item.locked), pixels,
+        x: numeric(item.x, 0), y: numeric(item.y, 0), scaleX: numeric(item.scaleX, 1), scaleY: numeric(item.scaleY, 1),
+        rotation: numeric(item.rotation, 0), angle: finiteOrState(item.angle, 0), blendMode: String(item.blendMode || 'normal'),
+        blur: finiteOrState(item.blur, 0), brightness: finiteOrState(item.brightness, 0), contrast: finiteOrState(item.contrast, 0), saturation: finiteOrState(item.saturation, 0),
+        mask: item.mask === undefined ? 'inexistente' : structuredClone(item.mask), clipping: item.clipping === undefined ? 'inexistente' : structuredClone(item.clipping),
+        references: Array.isArray(item.references) ? structuredClone(item.references) : [], assets: Array.isArray(item.assets) ? structuredClone(item.assets) : [],
+        metadata: item.metadata && typeof item.metadata === 'object' ? structuredClone(item.metadata) : {},
+      };
     });
     doc.compositeCache = new Uint8ClampedArray(doc.width * doc.height * 4);
     doc.compositeDirtyTiles = new Set();
