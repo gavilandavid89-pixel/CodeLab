@@ -4,7 +4,7 @@ const command = process.platform === 'win32' ? 'playwright-core.cmd' : 'playwrig
 const result = spawnSync(command, ['install', 'ffmpeg'], {
   stdio: 'inherit',
   shell: process.platform === 'win32',
-  env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '0' }
+  env: { ...process.env }
 });
 if (result.error) throw result.error;
 if (result.status !== 0) {
