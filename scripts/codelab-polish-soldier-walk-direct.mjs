@@ -20,6 +20,13 @@ async function bridgeGet(pathname) {
   return body;
 }
 
+async function bridgePost(pathname, payload = {}) {
+  const response = await fetch(baseUrl + pathname, { method:'POST', headers:{'x-codelab-agent-bridge-token':bridgeToken,'content-type':'application/json',accept:'application/json'}, body:JSON.stringify(payload), signal:AbortSignal.timeout(30000) });
+  const body = await response.json().catch(()=>({}));
+  if (!response.ok) throw new Error('ADMIN bridge POST HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
+  return body;
+}
+
 function alphaBounds(base64, width, height) {
   const bytes = Buffer.from(base64, 'base64');
   let minX = width, minY = height, maxX = -1, maxY = -1, count = 0;
@@ -114,7 +121,7 @@ if (!animation || !Array.isArray(animation.frames) || animation.frames.length !=
   throw new Error('Pinned Soldier Walk timeline must remain exactly 20 frames at 12 FPS.');
 }
 const animatedLayerIds = Array.isArray(animation.layerIds) ? animation.layerIds : [];
-const animatedLayers = animatedLayerIds.map(id => project.layers.find(layer => layer.id === id)).filter(Boolean);
+const animatedLayers = animatedLayerIds.map(id => project.layers.find(layer => layer.id === id)).filter(Boolean).filter(layer => /soldier|character|person/i.test(String(layer.name || '')));
 if (!animatedLayers.length) throw new Error('No animated source layers found.');
 
 const geometry = [];
@@ -167,7 +174,7 @@ const browser = await playwrightChromium.launch({args:chromiumBinary.args, execu
 try {
   const context = await browser.newContext({viewport:{width:1440,height:960},colorScheme:'dark'});
   const page = await context.newPage();
-  const handoff = await bridgeGet('/api/agent/bridge/admin-handoff');
+  const handoff = await bridgePost('/api/agent/bridge/admin-handoff');
   const response = await page.goto(baseUrl+'/api/auth/native-handoff?ticket='+encodeURIComponent(handoff.ticket),{waitUntil:'domcontentloaded',timeout:30000});
   if (!response || ![200,303].includes(response.status())) throw new Error('ADMIN handoff failed.');
   const saved = await uploadProject(page,project,revision);
