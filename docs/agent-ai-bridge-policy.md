@@ -30,7 +30,7 @@ continúa en su headless propio
 entrega el proyecto al usuario
 ```
 
-- **Agente IA:** trabaja sobre el proyecto en su propio headless, decide cuándo empaquetarlo, transferirlo e inspeccionarlo mediante evidencia y decide si continúa o entrega.
+- **Agente IA:** trabaja sobre el proyecto en su propio Headless, recoge fuera de él el archivo exportado, realiza la transferencia al intermediario, verifica la persistencia y coordina el procesamiento A/B cuando la tarea requiere vídeo final.
 - **Headless propio del agente:** entorno principal de trabajo. El agente **no debe clonar ni descargar el repositorio para obtener el Headless**. Debe obtener el Headless mediante la descarga de su **artefacto del editor**. Si el artefacto todavía no existe, primero debe generarlo usando el propio Headless/editor; después descarga ese artefacto y continúa con él.
 - **Headless/bridge de CodeLab:** componente distinto que permite controlar CodeLab. El headless propio del agente **nunca lo sustituye ni lo modifica**.
 - **Neon:** estado canónico de órdenes, proyectos, revisiones, artefactos, resultados y evidencias.
@@ -190,16 +190,16 @@ Consulta también [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.m
 - El agente **no debe clonar el repositorio para obtener ese Headless**.
 - Debe descargar el **artefacto del editor** correspondiente al Headless. Si no existe, primero debe generarlo mediante el propio Headless/editor y después descargarlo.
 - El artefacto descargado proporciona el entorno de trabajo del agente y **no reemplaza** el headless/bridge que controla CodeLab. Son dos componentes diferentes.
-- El agente empaqueta el proyecto trabajado en `.codelab` y lo entrega a CodeLab mediante el intermediario HTTPS inline documentado; CodeLab valida y usa Neon como staging durable antes de que el bridge/worker lo importe.
+- El Headless exporta el proyecto `.codelab` y termina su participación. El agente IA recoge ese archivo fuera del Headless y lo entrega a CodeLab mediante el intermediario HTTPS inline documentado; CodeLab valida y usa Neon como staging durable antes de que el bridge/worker lo importe.
 - Si el agente no puede continuar sin inspeccionar el proyecto real en una interfaz real, debe solicitar la evidencia visual que necesite.
 - La evidencia debe corresponder al proyecto real y a la inspección solicitada.
 - El agente debe inspeccionarla realmente antes de decidir.
 - Tras inspeccionarla, puede continuar trabajando en su headless propio, corregir y volver a empaquetar, o entregar el proyecto al usuario.
 - La evidencia visual es evidencia de inspección; no sustituye al proyecto editable ni se convierte en la fuente canónica del proyecto.
 
-## 6. A/B: una sola B dedicada exclusivamente al vídeo
+## 6. A/B: etapa integrada para producir el vídeo final
 
-El flujo general de CodeLab **no utiliza A/B**. Las órdenes normales siguen el camino **Headless propio del agente → Neon → bridge/worker → CodeLab**. A/B es un subsistema especializado, separado y reservado al procesamiento de vídeo por la limitación de memoria de Render.
+A/B está especializado en procesamiento/render/captura de vídeo por la limitación de memoria de Render, pero **no es un sistema aislado del flujo del usuario**. Es una etapa posterior y coordinada de la misma tarea: el agente crea/edita en su Headless aislado, lleva el proyecto editable al intermediario, CodeLab lo importa y persiste, y después A/B procesa el proyecto/revisión real para producir el vídeo final que el agente debe inspeccionar y entregar al usuario. A/B no crea ni persiste el proyecto editable y no reemplaza el bridge.
 
 ### 6.1 Responsabilidades
 
@@ -212,7 +212,7 @@ El flujo general de CodeLab **no utiliza A/B**. Las órdenes normales siguen el 
 ### 6.2 Flujo normal y flujo de vídeo
 
 - Para dibujo, edición, persistencia e importación normal: **Headless propio del agente → `.codelab` → Neon → bridge/worker → CodeLab**. No iniciar A/B como requisito.
-- Para empaquetar/renderizar o capturar vídeo: **una A anfitriona + una B procesadora**, exclusivamente para ese trabajo de vídeo.
+- Cuando el objetivo incluye un vídeo final: después de importar y verificar el proyecto editable en CodeLab, ejecutar **una A anfitriona + una B procesadora** para ese trabajo de vídeo; recoger el archivo final, inspeccionarlo y entregarlo al usuario.
 - El empaquetado/render de vídeo no debe ejecutarse en Render: su límite de memoria es la razón por la que esta ruta especializada utiliza GitHub Actions.
 - La implementación de referencia del procesador persistente es `.github/workflows/codelab-independent-session-b.yml`; el host A correspondiente es `.github/workflows/codelab-independent-session-a.yml`.
 - La prueba manual autocontenida de una única sesión A y una única petición B está en `.github/workflows/codelab-ab-animation.yml`.
@@ -285,3 +285,14 @@ Reglas específicas:
 ## 7. Principio de cierre
 
 Un trabajo se declara terminado cuando el proyecto y el resultado esperado están verificados según el objetivo. Si requirió inspección del proyecto real, la evidencia solicitada debe haber sido inspeccionada. Si necesita correcciones, el agente continúa en su headless propio; si está listo, entrega el proyecto al usuario. Si algo no pudo probarse, debe indicarse expresamente como no verificado.
+
+
+## 6.6 Regla obligatoria: Headless sin conexión al intermediario y entrega GIF
+
+El Headless propio del agente está aislado también respecto del intermediario de transferencia. No abre conexiones al bridge ni a CodeLab, no conoce sus endpoints y no recibe secretos. Su salida es un archivo de proyecto editable. El agente IA debe tomar el archivo fuera del Headless, iniciar y completar la transferencia HTTPS inline, esperar la importación y verificar la persistencia.
+
+El GIF generado localmente en Headless solo se entrega si el usuario lo solicitó expresamente. Sin petición explícita de GIF, el agente no puede dar por cumplida la tarea mostrando/adjuntando ese GIF: debe completar la transferencia del proyecto editable a CodeLab.
+
+## 6.7 Entrega obligatoria del vídeo final A/B
+
+Cuando la tarea incluya generar un vídeo, el agente debe identificar y persistir primero el proyecto/revisión en CodeLab, coordinar una única A y una única B, recuperar el archivo de vídeo final, comprobar que se abre y reproduce, inspeccionarlo visualmente y entregarlo al usuario. Un enlace a logs, un event_id, una captura o el estado success no son el vídeo final y no satisfacen la entrega.
