@@ -37,11 +37,11 @@ jobs:
       - name: Install Chromium decoder runtime
         run: npm install --no-save --no-package-lock --ignore-scripts
       - name: Discover a live READY A session
-        if: \${{ github.event_name == 'issue_comment' || inputs.session_id == '' }}
+        if: ${{ github.event_name == 'issue_comment' || inputs.session_id == '' }}
         env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           comments="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100")"
@@ -59,12 +59,12 @@ jobs:
           echo "No active READY A session found."
           exit 1
       - name: Use supplied A session ID
-        if: \${{ github.event_name == 'workflow_dispatch' && inputs.session_id != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.session_id != '' }}
         env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
-          SUPPLIED_SESSION_ID: \${{ inputs.session_id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SUPPLIED_SESSION_ID: ${{ inputs.session_id }}
         run: |
           set -euo pipefail
           comments="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100")"
