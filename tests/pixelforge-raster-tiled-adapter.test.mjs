@@ -173,6 +173,7 @@ test('creates a native large sparse project and edits only the touched tile with
   const duplicatePatch = new Uint8Array([1, 2, 3, 255]);
   await tiled.writeRegion(duplicate.id, { x: 2049, y: 1027, width: 1, height: 1 }, duplicatePatch);
   assert.equal(tiled.stats.resourceCount, 2);
+  assert.equal(tiled.stats.celCount, 2, 'only the two live layer cels remain after copy-on-write edits');
   assert.deepEqual(tiled.readRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }), new Uint8ClampedArray(patch));
   assert.deepEqual(tiled.readRegion(duplicate.id, { x: 2049, y: 1027, width: 1, height: 1 }), new Uint8ClampedArray(duplicatePatch));
 
