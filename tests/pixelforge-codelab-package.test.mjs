@@ -87,10 +87,11 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.manifest.frames.manifestPath, 'Frames/frames.tscn');
   assert.equal(Object.keys(imported.manifest.scenes.sections).length, 5);
   assert.equal(imported.installed.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
-  assert.equal(imported.entries.has('center.op/center.json'), true);
+  assert.equal(imported.entries.has('reference.center/reference.center'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
   assert.equal(imported.project.animation.frames[0].cels.length, project.layers.length);
+  assert.equal(imported.project.animation.frames[0].layerMetadata[0].parentFrameId, imported.project.animation.frames[0].id);
   assert.equal(imported.project.drawingModel.referenceCenter.entries.length, 1);
   assert.equal(imported.project.drawingModel.referenceCenter.entries[0].parts[0].name, 'Body');
   assert.equal(imported.project.packageResources.some(item => item.path === 'Entorno/assets/palette.txt' && item.destination === 'environment'), true);
