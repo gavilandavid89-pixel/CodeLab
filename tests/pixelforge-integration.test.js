@@ -1290,12 +1290,6 @@ async function main() {
         );
         assert.equal(staleFileCheck.rows[0].count, 0,
           'a successful re-import must remove stale files after the new package has been verified');
-        const staleFileCheck = await testSessionPool.query(
-          'SELECT COUNT(*)::int AS count FROM public.codelab_project_files WHERE workspace_id=$1 AND project_id=$2 AND file_path=$3',
-          [adminWorkspaceId, agentProjectId, 'obsolete/stale-bridge-import.bin']
-        );
-        assert.equal(staleFileCheck.rows[0].count, 0,
-          'a successful re-import must remove stale files after the new package has been verified');
         assert.equal(agentImport.editorId, 'pixelforge');
         assert.equal(agentImport.projectId, agentProjectId);
         assert.equal(agentImport.targetWorkspaceId, adminWorkspaceId,
