@@ -93,16 +93,18 @@ test('HD capture presets preserve aspect ratio and fit the full artwork without 
 test('content capture includes a frame strip and keeps pixel-art rendering unsmoothed', () => {
   const html = fs.readFileSync(new URL('../public/pixelforge/video-composer.html', import.meta.url), 'utf8');
   const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../public/pixelforge/video-composer.css', import.meta.url), 'utf8');
+  const layout = fs.readFileSync(new URL('../public/pixelforge/src/video-capture-layout.mjs', import.meta.url), 'utf8');
   assert.match(html, /id="vc-capture-content"/);
   assert.match(html, /id="vc-capture-studio"/);
   assert.match(html, /id="vc-record-studio"/);
   assert.match(js, /drawContentComposition/);
-  assert.match(js, /imageSmoothingEnabled = false/);
+  assert.match(layout, /scalingMode !== 'pixelated'/);
   assert.match(js, /getDisplayMedia/);
   assert.match(html, /id="vc-source-quality"/);
   assert.match(html, /id="vc-motion-quality"/);
   assert.match(html, /id="vc-scaling-mode"/);
-  assert.match(css, /data-scaling-mode="smooth"\}\{image-rendering:auto/);
+  assert.match(css, /data-scaling-mode="smooth"\]\{image-rendering:auto/);
   assert.match(js, /no inventa movimiento intermedio/i);
   assert.match(js, /getSourceQualityAssessment/);
   assert.match(js, /requestAnimationFrame\(playbackTick\)/);
