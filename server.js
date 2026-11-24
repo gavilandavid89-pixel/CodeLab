@@ -2472,7 +2472,9 @@ const server = http.createServer(async (req, res) => {
             const totalChunks = Number(body.total_chunks);
             const sha256 = String(body.sha256 || '').toLowerCase();
             const filename = String(body.filename || 'pixelforge.codelab').slice(0, 180);
-            const targetWorkspaceId = String(body.target_workspace_id || workspaceId);
+            const requestedTargetWorkspaceId = body.target_workspace_id == null ? workspaceId : String(body.target_workspace_id);
+            if (requestedTargetWorkspaceId !== workspaceId) return sendJson(res, 403, { error: 'agent_artifact_target_must_be_admin' });
+            const targetWorkspaceId = workspaceId;
             const artifactKind = String(body.artifact_kind || 'pixelforge_zip_upload');
             let importRequestId = body.import_request_id == null ? null : String(body.import_request_id);
             const editorId = String(body.editor_id || 'pixelforge');
@@ -3183,7 +3185,7 @@ const server = http.createServer(async (req, res) => {
         const user = await getSessionUser(req);
         if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
         if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
-        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
+        const workspaceId = accountPool ? await resolveAdminAgentWorkspace() : userWorkspaceId(user);
         const result = await accountPool.query(
           'SELECT video_url, video_key, project_id, revision FROM codelab_pixelforge_change_events WHERE workspace_id = $1 AND event_id = $2',
           [workspaceId, neonEvidenceVideoMatch[1]]
