@@ -66,12 +66,22 @@ jobs:
         env:
           SUPPLIED_SESSION_ID: ${{ inputs.session_id }}
         run: echo "CODELAB_SESSION_ID=$SUPPLIED_SESSION_ID" >> "$GITHUB_ENV"
+      - name: Configure B wait timeout
+        env:
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes || '20' }}
+        run: |
+          set -euo pipefail
+          minutes="$TIMEOUT_MINUTES"
+          if ! [[ "$minutes" =~ ^[0-9]+$ ]] || [ "$minutes" -lt 1 ] || [ "$minutes" -gt 30 ]; then
+            echo "timeout_minutes must be between 1 and 30"
+            exit 1
+          fi
+          echo "CODELAB_SESSION_TIMEOUT_MS=$((minutes * 60000))" >> "$GITHUB_ENV"
       - name: Request A export and verify delivered WebM
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
-          CODELAB_SESSION_TIMEOUT_MS: ${{ inputs.timeout_minutes && fromJSON(inputs.timeout_minutes) * 60000 || 1200000 }}
           CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
         run: node scripts/codelab-ab-session-request.mjs
       - name: Upload the video received and verified by B
