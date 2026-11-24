@@ -64,11 +64,26 @@ function addCharacterReference(project) {
 
 function attachSceneWorkspaces(project) {
   const sections = ['environment', 'effects', 'details', 'elements', 'objects'];
-  const base = structuredClone(project);
-  for (const key of sections) {
-    const workspace = structuredClone(base);
+  for (const [index, key] of sections.entries()) {
+    const runtime = new HeadlessEditorRuntime({ width: 4, height: 4, name: key + ' instance' });
+    runtime.execute({ name: 'canvas.draw_line', x0: 0, y0: index % 4, x1: 3, y1: index % 4, color: '#FFFFFF', size: 1 });
+    const workspace = runtime.toJSON();
     workspace.id = project.id + '-' + key;
     workspace.name = key + ' instance';
+    const layer = workspace.layers[0];
+    const secondPixels = Uint8Array.from(Buffer.from(layer.pixels, 'base64'));
+    secondPixels[0] = (secondPixels[0] + index + 1) & 0xff;
+    workspace.animation = {
+      format: 'pixelforge-animation', version: 1,
+      width: 4, height: 4, layerIds: [layer.id], fps: 12,
+      activeFrameIndex: 1, loop: true, playbackSpeed: 1,
+      frames: [
+        { id: key + '-frame-1', name: 'Ball idle', index: 0, durationMs: 100,
+          cels: [{ layerId: layer.id, pixels: layer.pixels }] },
+        { id: key + '-frame-2', name: 'Ball move', index: 1, durationMs: 120,
+          cels: [{ layerId: layer.id, pixels: Buffer.from(secondPixels).toString('base64') }] },
+      ],
+    };
     project.drawingModel.sceneSections[key].workspace = workspace;
   }
   return project;
