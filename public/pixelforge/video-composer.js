@@ -1,6 +1,6 @@
 import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
-import { getCaptureDimensions, drawContentComposition } from './src/video-capture-layout.mjs';
+import { getCaptureDimensions, getSourceQualityAssessment, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -55,6 +55,34 @@ function refreshOutputDimensions() {
   if (!packageData) return;
   const { width, height } = outputDimensions();
   $('#vc-export-dimensions').textContent = width + ' × ' + height;
+  const sourceWidth = packageData.manifest.width;
+  const sourceHeight = packageData.manifest.height;
+  const quality = getSourceQualityAssessment(sourceWidth, sourceHeight, width, height);
+  const sourceLabel = sourceWidth + ' × ' + sourceHeight;
+  const contentLabel = quality.contentWidth + ' × ' + quality.contentHeight;
+  const qualityNote = $('#vc-source-quality');
+  qualityNote.dataset.kind = quality.upscaled ? 'warning' : quality.downscaled ? 'info' : 'success';
+  qualityNote.textContent = quality.upscaled
+    ? 'Origen ' + sourceLabel + ' → contenido ampliado a ' + contentLabel + '. El archivo tendrá ' + width + ' × ' + height + ', pero conservará el detalle del original; no se inventa resolución.'
+    : quality.downscaled
+      ? 'Origen ' + sourceLabel + ' → contenido reducido a ' + contentLabel + '. La salida conserva la proporción y reduce el detalle al tamaño elegido.'
+      : 'Origen ' + sourceLabel + ' · salida ' + width + ' × ' + height + '. El contenido mantiene su tamaño de píxel original.';
+  refreshMotionCadence();
+}
+function refreshMotionCadence() {
+  if (!packageData) return;
+  const sourceFps = Number(packageData.manifest.fps) || 0;
+  const outputFps = Number($('#vc-output-fps').value) || sourceFps;
+  const note = $('#vc-motion-quality');
+  if (!sourceFps || !outputFps) {
+    note.textContent = 'La fluidez real depende de los fotogramas y sus duraciones originales.';
+  } else if (outputFps > sourceFps + 0.01) {
+    note.textContent = 'Origen ' + sourceFps + ' FPS · salida ' + outputFps + ' FPS. Se repetirán poses cuando falten fotogramas: subir los FPS no inventa movimiento intermedio.';
+  } else if (outputFps < sourceFps - 0.01) {
+    note.textContent = 'La salida ' + outputFps + ' FPS reduce la cadencia del origen (' + sourceFps + ' FPS); algunos instantes pueden omitirse.';
+  } else {
+    note.textContent = 'La salida coincide con los ' + sourceFps + ' FPS del origen. Para más fluidez real, la animación necesita más poses o fotogramas intermedios.';
+  }
 }
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -503,6 +531,7 @@ async function exportVideo() {
       fps: outputFps,
       durationMs: total,
       backgroundColor: solidBackground ? '#101116' : null,
+      scalingMode: $('#vc-scaling-mode').value,
       isCancelled: () => cancelRequested,
       onProgress: (value, label) => setProgress(value, label)
     });
@@ -559,6 +588,7 @@ $('#vc-checker').addEventListener('click', event => {
 });
 $('#vc-resolution').addEventListener('change', refreshOutputDimensions);
 $('#vc-aspect').addEventListener('change', refreshOutputDimensions);
+$('#vc-output-fps').addEventListener('change', refreshMotionCadence);
 $('#vc-capture-content').addEventListener('click', () => captureContentPng().catch(error => setStatus(error.message, 'error')));
 $('#vc-capture-studio').addEventListener('click', captureStudioPng);
 $('#vc-record-studio').addEventListener('click', startStudioRecording);
