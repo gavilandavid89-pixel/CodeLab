@@ -899,18 +899,32 @@ async function deletePixelForgeProjectFromDatabase(workspaceId, projectId) {
       // PixelForge imports also register the native project and its packaged
       // resources in the shared CodeLab project tables. Remove those rows in
       // the same user-confirmed delete transaction to avoid orphaned assets.
-      await client.query(
-        'DELETE FROM public.codelab_project_files WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
-        [workspaceId, projectId, 'pixelforge']
-      );
-      await client.query(
-        'DELETE FROM public.codelab_project_registry WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
-        [workspaceId, projectId, 'pixelforge']
-      );
-      await client.query(
-        'DELETE FROM public.codelab_project_imports WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
-        [workspaceId, projectId, 'pixelforge']
-      );
+      // Older installations may not have applied the package-import migration;
+      // skip only those optional tables rather than blocking project deletion.
+      const tables = await client.query(`
+        SELECT
+          to_regclass('public.codelab_project_files') IS NOT NULL AS has_files,
+          to_regclass('public.codelab_project_registry') IS NOT NULL AS has_registry,
+          to_regclass('public.codelab_project_imports') IS NOT NULL AS has_imports
+      `);
+      if (tables.rows[0]?.has_files) {
+        await client.query(
+          'DELETE FROM public.codelab_project_files WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
+          [workspaceId, projectId, 'pixelforge']
+        );
+      }
+      if (tables.rows[0]?.has_registry) {
+        await client.query(
+          'DELETE FROM public.codelab_project_registry WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
+          [workspaceId, projectId, 'pixelforge']
+        );
+      }
+      if (tables.rows[0]?.has_imports) {
+        await client.query(
+          'DELETE FROM public.codelab_project_imports WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
+          [workspaceId, projectId, 'pixelforge']
+        );
+      }
     }
     await client.query('COMMIT');
     return deleted.rowCount > 0;
