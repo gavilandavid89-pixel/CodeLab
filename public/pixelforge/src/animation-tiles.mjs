@@ -186,3 +186,259 @@ export function diffSparseTiles(previous, next) {
   }
   return { added, changed, removed };
 }
+
+
+function assertCacheBudget(value) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 64 * 1024 * 1024) {
+    throw new RangeError('Decoded tile cache budget must be from 0 to 64 MiB.');
+  }
+}
+
+/**
+ * In-memory content-addressed tile store.
+ *
+ * Cels are lightweight maps of tile coordinates to immutable SHA-256 resources.
+ * cloneCel() shares resource references; updateTile() swaps only the edited
+ * coordinate, providing copy-on-write semantics. Decoded bytes live in a bounded
+ * LRU cache; the canonical resource representation remains base64 payload data.
+ *
+ * This is a client-side model primitive, not a persistence or authorization API.
+ */
+export class SparseTileCelStore {
+  #resources = new Map();
+  #cels = new Map();
+  #decoded = new Map();
+  #decodedBytes = 0;
+  #maxDecodedCacheBytes;
+
+  constructor({ maxDecodedCacheBytes = 8 * 1024 * 1024 } = {}) {
+    assertCacheBudget(maxDecodedCacheBytes);
+    this.#maxDecodedCacheBytes = maxDecodedCacheBytes;
+  }
+
+  get stats() {
+    let references = 0;
+    for (const resource of this.#resources.values()) references += resource.refs;
+    return Object.freeze({
+      celCount: this.#cels.size,
+      resourceCount: this.#resources.size,
+      resourceReferences: references,
+      decodedCacheBytes: this.#decodedBytes,
+      decodedCacheEntries: this.#decoded.size,
+      maxDecodedCacheBytes: this.#maxDecodedCacheBytes,
+    });
+  }
+
+  #cel(celId) {
+    const cel = this.#cels.get(celId);
+    if (!cel) throw new Error('Unknown sparse cel ID.');
+    return cel;
+  }
+
+  #retain(hash, rgba) {
+    const existing = this.#resources.get(hash);
+    if (existing) {
+      if (existing.rgba !== rgba) throw new Error('SHA-256 resource collision detected.');
+      existing.refs++;
+    } else {
+      this.#resources.set(hash, { rgba, refs: 1 });
+    }
+  }
+
+  #release(hash) {
+    const resource = this.#resources.get(hash);
+    if (!resource) throw new Error('Sparse tile resource reference is missing.');
+    resource.refs--;
+    if (resource.refs < 0) throw new Error('Sparse tile resource reference count underflow.');
+    if (resource.refs === 0) {
+      this.#resources.delete(hash);
+      const cached = this.#decoded.get(hash);
+      if (cached) {
+        this.#decodedBytes -= cached.byteLength;
+        this.#decoded.delete(hash);
+      }
+    }
+  }
+
+  #tileBytes(hash) {
+    const cached = this.#decoded.get(hash);
+    if (cached) {
+      this.#decoded.delete(hash);
+      this.#decoded.set(hash, cached);
+      return cached;
+    }
+    const resource = this.#resources.get(hash);
+    if (!resource) throw new Error('Sparse tile resource is unavailable.');
+    const expectedBytes = Math.floor(resource.rgba.length * 3 / 4);
+    const bytes = base64ToBytes(resource.rgba, expectedBytes);
+    if (this.#maxDecodedCacheBytes > 0 && bytes.byteLength <= this.#maxDecodedCacheBytes) {
+      this.#decoded.set(hash, bytes);
+      this.#decodedBytes += bytes.byteLength;
+      while (this.#decodedBytes > this.#maxDecodedCacheBytes) {
+        const oldestHash = this.#decoded.keys().next().value;
+        const oldest = this.#decoded.get(oldestHash);
+        this.#decodedBytes -= oldest.byteLength;
+        this.#decoded.delete(oldestHash);
+      }
+    }
+    return bytes;
+  }
+
+  async createCel(document) {
+    if (!document || document.format !== PIXELFORGE_TILED_CEL_FORMAT ||
+        document.version !== PIXELFORGE_TILED_CEL_VERSION || !Array.isArray(document.tiles)) {
+      throw new TypeError('Unsupported or invalid PixelForge tiled cel.');
+    }
+    const { width, height, tileSize } = document;
+    assertDimensions(width, height);
+    assertTileSize(tileSize);
+    const columns = Math.ceil(width / tileSize);
+    const rows = Math.ceil(height / tileSize);
+    if (document.tiles.length > columns * rows) {
+      throw new RangeError('Tiled cel contains more tiles than its canvas can hold.');
+    }
+    const tiles = new Map();
+    const pending = [];
+    for (const tile of document.tiles) {
+      if (!tile || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
+          tile.x < 0 || tile.y < 0 || tile.x % tileSize !== 0 || tile.y % tileSize !== 0 ||
+          tile.x >= width || tile.y >= height) {
+        throw new TypeError('Tiled cel contains an invalid tile coordinate.');
+      }
+      const tileWidth = Math.min(tileSize, width - tile.x);
+      const tileHeight = Math.min(tileSize, height - tile.y);
+      if (tile.width !== tileWidth || tile.height !== tileHeight) {
+        throw new TypeError('Tiled cel edge dimensions do not match the canvas.');
+      }
+      const key = tileKey(tile.x, tile.y);
+      if (tiles.has(key)) throw new TypeError('Tiled cel contains duplicate tile coordinates.');
+      const bytes = base64ToBytes(tile.rgba, tileWidth * tileHeight * 4);
+      if (typeof tile.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(tile.sha256) ||
+          await sha256(bytes) !== tile.sha256) {
+        throw new TypeError('Tiled cel tile SHA-256 integrity check failed.');
+      }
+      let hasAnyByte = false;
+      for (const byte of bytes) if (byte !== 0) { hasAnyByte = true; break; }
+      if (!hasAnyByte) throw new TypeError('Sparse tiled cel must not store an empty tile.');
+      tiles.set(key, { x: tile.x, y: tile.y, width: tileWidth, height: tileHeight, hash: tile.sha256 });
+      pending.push({ hash: tile.sha256, rgba: tile.rgba });
+    }
+    const celId = globalThis.crypto?.randomUUID?.();
+    if (!celId) throw new Error('Secure UUID generation is required for sparse cel IDs.');
+    for (const resource of pending) this.#retain(resource.hash, resource.rgba);
+    this.#cels.set(celId, { width, height, tileSize, tiles });
+    return celId;
+  }
+
+  async createCelFromPixels(pixels, options) {
+    return this.createCel(await encodeSparseTiles(pixels, options));
+  }
+
+  cloneCel(celId) {
+    const source = this.#cel(celId);
+    const cloneId = globalThis.crypto?.randomUUID?.();
+    if (!cloneId) throw new Error('Secure UUID generation is required for sparse cel IDs.');
+    const tiles = new Map([...source.tiles].map(([key, tile]) => {
+      const resource = this.#resources.get(tile.hash);
+      if (!resource) throw new Error('Sparse tile resource is unavailable.');
+      resource.refs++;
+      return [key, { ...tile }];
+    }));
+    this.#cels.set(cloneId, { width: source.width, height: source.height, tileSize: source.tileSize, tiles });
+    return cloneId;
+  }
+
+  getTile(celId, x, y) {
+    const cel = this.#cel(celId);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 ||
+        x % cel.tileSize !== 0 || y % cel.tileSize !== 0 || x >= cel.width || y >= cel.height) {
+      throw new RangeError('Sparse tile coordinate is outside the cel grid.');
+    }
+    const tile = cel.tiles.get(tileKey(x, y));
+    if (!tile) return null;
+    return {
+      x: tile.x, y: tile.y, width: tile.width, height: tile.height,
+      sha256: tile.hash,
+      pixels: new Uint8Array(this.#tileBytes(tile.hash)),
+    };
+  }
+
+  updateTile(celId, x, y, pixels) {
+    const cel = this.#cel(celId);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 ||
+        x % cel.tileSize !== 0 || y % cel.tileSize !== 0 || x >= cel.width || y >= cel.height) {
+      throw new RangeError('Sparse tile coordinate is outside the cel grid.');
+    }
+    const width = Math.min(cel.tileSize, cel.width - x);
+    const height = Math.min(cel.tileSize, cel.height - y);
+    assertPixels(pixels, width, height);
+    const key = tileKey(x, y);
+    const previous = cel.tiles.get(key);
+    let hasAnyByte = false;
+    for (const byte of pixels) if (byte !== 0) { hasAnyByte = true; break; }
+    if (!hasAnyByte) {
+      if (previous) {
+        cel.tiles.delete(key);
+        this.#release(previous.hash);
+      }
+      return { changed: Boolean(previous), removed: Boolean(previous), sha256: null };
+    }
+    const bytes = new Uint8Array(pixels);
+    const hash = await sha256(bytes);
+    const rgba = bytesToBase64(bytes);
+    if (previous?.hash === hash) return { changed: false, removed: false, sha256: hash };
+    this.#retain(hash, rgba);
+    cel.tiles.set(key, { x, y, width, height, hash });
+    if (previous) this.#release(previous.hash);
+    return { changed: true, removed: false, sha256: hash };
+  }
+
+  async exportCel(celId) {
+    const cel = this.#cel(celId);
+    const tiles = [...cel.tiles.values()].sort((a, b) => a.y - b.y || a.x - b.x).map(tile => {
+      const resource = this.#resources.get(tile.hash);
+      if (!resource) throw new Error('Sparse tile resource is unavailable.');
+      return { x: tile.x, y: tile.y, width: tile.width, height: tile.height, sha256: tile.hash, rgba: resource.rgba };
+    });
+    return {
+      format: PIXELFORGE_TILED_CEL_FORMAT,
+      version: PIXELFORGE_TILED_CEL_VERSION,
+      width: cel.width, height: cel.height, tileSize: cel.tileSize, tiles,
+    };
+  }
+
+  composeCel(celId) {
+    const cel = this.#cel(celId);
+    const output = new Uint8ClampedArray(cel.width * cel.height * 4);
+    for (const tile of cel.tiles.values()) {
+      const bytes = this.#tileBytes(tile.hash);
+      for (let row = 0; row < tile.height; row++) {
+        const sourceStart = row * tile.width * 4;
+        const targetStart = ((tile.y + row) * cel.width + tile.x) * 4;
+        output.set(bytes.subarray(sourceStart, sourceStart + tile.width * 4), targetStart);
+      }
+    }
+    return output;
+  }
+
+  releaseCel(celId) {
+    const cel = this.#cel(celId);
+    this.#cels.delete(celId);
+    for (const tile of cel.tiles.values()) this.#release(tile.hash);
+    return true;
+  }
+
+  diffCels(previousCelId, nextCelId) {
+    return diffSparseTiles(this.#documentForDiff(previousCelId), this.#documentForDiff(nextCelId));
+  }
+
+  #documentForDiff(celId) {
+    const cel = this.#cel(celId);
+    return {
+      format: PIXELFORGE_TILED_CEL_FORMAT,
+      version: PIXELFORGE_TILED_CEL_VERSION,
+      width: cel.width, height: cel.height, tileSize: cel.tileSize,
+      tiles: [...cel.tiles.values()].map(tile => ({ x: tile.x, y: tile.y, sha256: tile.hash })),
+    };
+  }
+}
