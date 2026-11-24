@@ -127,7 +127,7 @@ Para obtener e instalar el Headless propio, seguir [HEADLESS-AGENT-RUNTIME.md](H
 
 El GIF generado localmente por Headless solo se entrega cuando el usuario pide expresamente un GIF. Si no lo pide, no se adjunta ni se usa como sustituto del proyecto editable: el agente debe tomar el archivo exportado fuera de Headless, transferirlo al intermediario y verificar CodeLab.
 
-Cuando la petición incluya vídeo final, A/B es una etapa integrada posterior a la persistencia del proyecto. El agente coordina A/B, recupera el archivo de vídeo final, lo reproduce e inspecciona y lo entrega al usuario. No basta con la evidencia, event_id o estado success. Ver [CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md), que es el documento owner del flujo A/B.
+Cuando la petición incluya vídeo final, A/B es una etapa integrada posterior a la persistencia del proyecto. El agente coordina A/B, recupera el archivo de vídeo final, lo reproduce e inspecciona y lo entrega al usuario. No basta con la evidencia, event_id o estado success. Ver [CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md](./CODELAB-A-B-SESSION-VIDEO-ARCHITECTURE.md), que es el documento owner del flujo real, y [VIDEO-PROCESSING-AB.md](./VIDEO-PROCESSING-AB.md), que contiene el contrato técnico A/B.
 
 ## 8. Criterio de finalización
 
