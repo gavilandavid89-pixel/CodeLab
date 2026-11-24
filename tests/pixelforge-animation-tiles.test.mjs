@@ -91,6 +91,20 @@ test('sparse cel store deduplicates immutable tiles and applies copy-on-write ed
   assert.deepEqual(store.getTile(first, 0, 0).pixels.slice(0, 4), new Uint8Array([10, 20, 30, 255]));
   assert.deepEqual(store.getTile(second, 0, 0).pixels.slice(0, 4), new Uint8Array([200, 100, 50, 255]));
   assert.equal(store.diffCels(first, second).changed.length, 1);
+  const patch = await store.createPatch(first, second, {
+    projectId: 'project-1', baseRevision: 7, operationId: 'operation-1',
+    frameId: 'frame-1', layerId: 'layer-1',
+  });
+  assert.equal(patch.format, 'pixelforge-cel-patch');
+  assert.deepEqual(patch.summary, { added: 0, changed: 1, removed: 0 });
+  assert.equal(patch.operations.length, 1);
+  assert.equal(patch.operations[0].type, 'tile.put');
+  assert.deepEqual([patch.operations[0].x, patch.operations[0].y], [0, 0]);
+  assert.equal(patch.operations[0].rgba.length, 64 * 64 * 4 / 3 * 4);
+  await assert.rejects(() => store.createPatch(first, second, {
+    projectId: 'project-1', baseRevision: -1, operationId: 'operation-2',
+    frameId: 'frame-1', layerId: 'layer-1',
+  }), /baseRevision/);
   assert.deepEqual(await store.exportCel(first), await encodeSparseTiles(pixels, { width, height }));
 
   store.releaseCel(first);
