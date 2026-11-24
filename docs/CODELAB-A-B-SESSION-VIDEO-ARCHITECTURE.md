@@ -86,6 +86,6 @@ La prueba integrada A/B se ejecutó el 2026-11-24 y pasó:
 - A no reportó errores de página ni de consola. B no ejecutó FFmpeg ni el generador.
 - El paso “Verify A remains alive after B has finished” terminó correctamente. La sesión A seguía in_progress al comprobarla a las 09:14 UTC y tenía expiración prevista a las 09:43:35 UTC.
 
-La aceptación integrada A/B está superada. El artefacto de B contiene el WebM recibido y verification.json. La sesión A continúa de forma independiente hasta su timeout.
+La aceptación integrada A/B está superada. El artefacto de B contiene el WebM recibido y verification.json. A permanece activa por su propio timeout; su estado no depende de que B haya terminado.
 
 No se considera válido un createDemo, una grabación de pantalla de la sesión, un event ID aislado o un resultado success sin el WebM real.
