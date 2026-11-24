@@ -58,3 +58,37 @@ test('rejects locked-layer writes and malformed project manifests', async () => 
   await assert.rejects(() => TiledRasterProjectDocument.fromManifest(manifest), /geometry/);
   tiled.dispose();
 });
+
+test('switching drawing modes is a guarded metadata-only operation and preserves per-cel exceptions', async () => {
+  const source = new RasterDocument(48, 48, 'Mode guard');
+  const layer = source.activeLayer;
+  layer.pixels.set([21, 42, 63, 255], (12 * 48 + 17) * 4);
+  layer.authoringMode = 'illustration';
+  layer.modeOverrides = { brushHardness: 37, interpolation: 'bilinear', customFlag: true };
+  const tiled = await TiledRasterProjectDocument.fromDocument(source, {
+    tileSize: 32,
+    drawingConfiguration: {
+      version: 1,
+      availableModes: ['illustration', 'pixel-art'],
+      initialMode: 'illustration',
+      activeMode: 'illustration',
+    },
+  });
+  const before = await tiled.toManifest();
+  const beforeCel = before.layers[0].cel;
+  const beforeTileHashes = beforeCel.tiles.map(tile => tile.sha256);
+  const result = tiled.switchDrawingMode('pixel-art');
+  const after = await tiled.toManifest();
+  assert.equal(result.pixelsChanged, false);
+  assert.equal(result.celsRewritten, 0);
+  assert.deepEqual(result.preservedLayerIds, [layer.id]);
+  assert.equal(after.drawingConfiguration.activeMode, 'pixel-art');
+  assert.deepEqual(after.layers[0].cel.tiles.map(tile => tile.sha256), beforeTileHashes);
+  assert.equal(after.layers[0].authoringMode, 'illustration');
+  assert.deepEqual(after.layers[0].modeOverrides, { brushHardness: 37, interpolation: 'bilinear', customFlag: true });
+  tiled.switchDrawingMode('illustration');
+  const restored = await tiled.toManifest();
+  assert.equal(restored.drawingConfiguration.activeMode, 'illustration');
+  assert.deepEqual(restored.layers[0].modeOverrides, after.layers[0].modeOverrides);
+  tiled.dispose();
+});
