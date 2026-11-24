@@ -685,13 +685,14 @@ async function main() {
     const projectBackupPromise = accountPage.waitForEvent('download');
     await accountPage.locator('#export-project').click();
     const projectBackupDownload = await projectBackupPromise;
-    assert.match(projectBackupDownload.suggestedFilename(), /-animation\.zip$/);
+    assert.match(projectBackupDownload.suggestedFilename(), /\.codelab-pixelforge$/);
     const projectBackupEntries = await readZipDownload(projectBackupDownload);
-    const projectBackupEntry = [...projectBackupEntries.values()].find(entry => entry.name.endsWith('.pforge'));
-    assert.ok(projectBackupEntry, 'the project ZIP must contain an editable .pforge source file');
-    const exportedProject = JSON.parse(await projectBackupEntry.blob.text());
-    assert.equal(exportedProject.animation.frames.length, 2, 'portable ZIP export must include the complete animation timeline');
-    assert.equal(exportedProject.animation.loop, false, 'portable ZIP export must preserve the loop setting');
+    assert.ok(projectBackupEntries.has('project.codelab-pixelforge'), 'the PixelForge export must contain the canonical package marker');
+    assert.ok(projectBackupEntries.has('project.json'), 'the PixelForge export must contain the native project document');
+    assert.ok(projectBackupEntries.has('Frames/frames.tscn'), 'the PixelForge export must contain the structured frames manifest');
+    const exportedFramesManifest = JSON.parse(await projectBackupEntries.get('Frames/frames.tscn').blob.text());
+    assert.equal(exportedFramesManifest.frames.length, 2, 'portable PixelForge export must include the complete animation timeline');
+    assert.equal(exportedFramesManifest.loop, false, 'portable PixelForge export must preserve the loop setting');
 
     const projectBackupPath = await projectBackupDownload.path();
     await accountPage.locator('#import-file').setInputFiles({
