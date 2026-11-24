@@ -2,7 +2,7 @@ name: PixelForge animation core
 
 on:
   push:
-    branches: ["feat/pixelforge-animation-core", "feat/pixelforge-hq-capacity", "integration/**"]
+    branches: ["feat/pixelforge-animation-core", "feat/pixelforge-hq-capacity", "feat/pixelforge-source-quality-motion-export", "integration/**"]
     paths:
       - "public/pixelforge/src/animation.mjs"
       - "public/pixelforge/src/animation-tiles.mjs"
@@ -12,6 +12,7 @@ on:
       - "public/pixelforge/index.html"
       - "public/pixelforge/styles.css"
       - "tests/pixelforge-drawing-mode-config.test.mjs"
+      - "tests/pixelforge-codelab-package.test.mjs"
       - "tests/pixelforge-animation-tiled-adapter.test.mjs"
       - "tests/pixelforge-animation.test.mjs"
       - "tests/pixelforge-zip-export.test.mjs"
@@ -66,6 +67,8 @@ jobs:
         run: node --experimental-default-type=module --test tests/pixelforge-animation-tiled-adapter.test.mjs
       - name: Test persisted drawing mode configuration
         run: node --experimental-default-type=module --test tests/pixelforge-drawing-mode-config.test.mjs
+      - name: Test drawing mode preservation in CodeLab ZIP packages
+        run: node --experimental-default-type=module --test tests/pixelforge-codelab-package.test.mjs
       - name: Test ZIP archive export
         run: node --experimental-default-type=module --test tests/pixelforge-zip-export.test.mjs
       - name: Test 24-frame soldier reference-guided walk-to-crouch showcase animation
