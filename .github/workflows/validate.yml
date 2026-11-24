@@ -236,6 +236,7 @@ jobs:
           export CODELAB_DATABASE_SSL=disable
           export CODELAB_AGENT_BRIDGE_ENABLED=0
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-15-codelab-core-postgres.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-24-codelab-project-import-storage.sql
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
           export CODELAB_DATA_DIR="$RUNNER_TEMP/codelab-pixelforge-postgres-data"
           export CODELAB_WORKSPACE_SECRET="test-only-pixelforge-postgres-secret"
