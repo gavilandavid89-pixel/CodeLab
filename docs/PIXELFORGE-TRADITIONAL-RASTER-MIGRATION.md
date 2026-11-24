@@ -98,3 +98,15 @@ The first implementation may use ZIP-contained tile binaries. Private remote obj
 - The sparse store is not yet the canonical editor layer/cel model. Brush, selection, fill, history, project serialization, package import/export, Headless persistence and remote storage are not yet migrated to it.
 - Current v1 dense limits still apply. This document does not authorize larger default canvas dimensions, larger animation limits, or larger account quotas.
 - No production Neon schema, R2 bucket, Render service, or account quota is changed by this architecture document.
+
+## Incremental implementation: animation migration adapter
+
+The branch now includes `public/pixelforge/src/animation-tiled-adapter.mjs` and contract tests.
+
+- `TiledAnimationDocument.fromAnimation()` performs an explicit, lossless one-time migration from the current `PixelForgeAnimation` dense model into the sparse tile store. It preserves canvas dimensions, FPS, frame IDs/durations, layer IDs, active frame and layer metadata.
+- `readRegion()` and `writeRegion()` expose bounded tile-backed editing for a frame/layer. A changed region replaces only intersecting tile resources; unchanged frames/layers remain shared.
+- `cloneFrame()` shares immutable tile resources (copy-on-write); `deleteFrame()` releases its references.
+- `toManifest()` emits a tiled animation manifest without flattening cels. `toLegacyAnimationJSON()` is an explicit compatibility export and intentionally materializes dense v1 cels.
+- `dispose()` releases the adapter's in-memory resource references.
+
+**Boundary:** this is a migration/working-model adapter, not yet the editor's canonical animation model. The current editor, undo/redo, brush pipeline, native project serializer, ZIP package, Headless and server persistence still use their existing paths. The initial v1-to-tile conversion reads dense cels once and therefore does not remove the current v1 memory/size limits during import. No higher default canvas size or quota is enabled by this adapter.
