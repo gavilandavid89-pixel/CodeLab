@@ -1,0 +1,38 @@
+name: CodeLab polish ADMIN Soldier Walk
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Persisted ADMIN PixelForge project'
+        required: false
+        default: 'soldier-walk-60f-20261124'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.0'
+      - name: Install runtime dependencies
+        run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Polish persisted ADMIN animation
+        env:
+          CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
+          CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          GITHUB_STEP_SUMMARY_FILE: ${{ runner.temp }}/polish-verification.json
+        run: node scripts/codelab-polish-soldier-walk.mjs
+      - name: Upload polish verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-soldier-walk-polish-${{ github.run_id }}
+          path: ${{ runner.temp }}/polish-verification.json
+          retention-days: 14
