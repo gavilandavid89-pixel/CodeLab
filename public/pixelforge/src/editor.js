@@ -10,7 +10,8 @@ import { PixelForgeAnimation } from './animation.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
-import { readStoredZip } from './video-composer-core.mjs';\nimport { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from './codelab-package.js';
+import { readStoredZip } from './video-composer-core.mjs';
+import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from './codelab-package.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
 
