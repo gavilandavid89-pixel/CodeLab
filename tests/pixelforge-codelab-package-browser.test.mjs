@@ -29,17 +29,19 @@ function fixture() {
     const layer = workspace.layers[0];
     const secondPixels = Uint8Array.from(atob(layer.pixels), char => char.charCodeAt(0));
     secondPixels[1] = (secondPixels[1] + 1) & 0xff;
-    workspace.animation = {
-      format: 'pixelforge-animation', version: 1,
-      width: 4, height: 4, layerIds: [layer.id], fps: 12,
-      activeFrameIndex: 1, loop: true, playbackSpeed: 1,
-      frames: [
-        { id: section + '-frame-1', name: 'Idle', index: 0, durationMs: 100,
-          cels: [{ layerId: layer.id, pixels: layer.pixels }] },
-        { id: section + '-frame-2', name: 'Move', index: 1, durationMs: 120,
-          cels: [{ layerId: layer.id, pixels: btoa(String.fromCharCode(...secondPixels)) }] },
-      ],
-    };
+    if (section !== 'details') {
+      workspace.animation = {
+        format: 'pixelforge-animation', version: 1,
+        width: 4, height: 4, layerIds: [layer.id], fps: 12,
+        activeFrameIndex: 1, loop: true, playbackSpeed: 1,
+        frames: [
+          { id: section + '-frame-1', name: 'Idle', index: 0, durationMs: 100,
+            cels: [{ layerId: layer.id, pixels: layer.pixels }] },
+          { id: section + '-frame-2', name: 'Move', index: 1, durationMs: 120,
+            cels: [{ layerId: layer.id, pixels: btoa(String.fromCharCode(...secondPixels)) }] },
+        ],
+      };
+    }
     project.drawingModel.sceneSections[section].workspace = workspace;
   }
   const resource = new TextEncoder().encode('embedded palette bytes');
@@ -64,7 +66,9 @@ test('browser package exporter writes all six project folders and the named TSCN
     const workspace = installed.project.drawingModel.sceneSections[section].workspace;
     assert.equal(workspace.format, 'pixelforge-project');
     assert.equal(workspace.layers.length, project.layers.length);
-    assert.equal(workspace.animation.frames.length, project.animation.frames.length);
+    assert.equal(workspace.animation.frames.length, section === 'details' ? 1 : 2);
+    assert.equal(workspace.width, 4);
+    assert.equal(workspace.height, 4);
     assert.equal(workspace.animation.frames[0].cels.length, workspace.layers.length);
   }
   assert.equal(installed.project.packageResourceFiles[0].path, 'Entorno/assets/palette.txt');
@@ -88,7 +92,7 @@ test('browser import preserves package resources and scene metadata through nati
   assert.equal(restored.project.drawingModel.sceneSections.environment.label, 'Night forest');
   for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
     const workspace = restored.project.drawingModel.sceneSections[section].workspace;
-    assert.equal(workspace.animation.frames.length, imported.project.animation.frames.length);
+    assert.equal(workspace.animation.frames.length, section === 'details' ? 1 : 2);
     assert.equal(workspace.animation.frames[0].cels.length, workspace.layers.length);
   }
   assert.equal(restored.project.animation.frames.length, imported.project.animation.frames.length);
