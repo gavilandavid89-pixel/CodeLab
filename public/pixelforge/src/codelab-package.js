@@ -107,6 +107,55 @@ function explicitSectionMatch(item, key) {
     .some(value => String(value || '').toLowerCase() === key);
 }
 
+function validateSceneWorkspace(workspace, label) {
+  if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace) ||
+      workspace.format !== 'pixelforge-project' || typeof workspace.id !== 'string' ||
+      !workspace.id || typeof workspace.name !== 'string' || !workspace.name.trim()) {
+    throw new TypeError(label + ' workspace must be a complete native pixelforge-project document.');
+  }
+  const width = Number(workspace.width), height = Number(workspace.height);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 ||
+      width > MAX_CANVAS || height > MAX_CANVAS || !Array.isArray(workspace.layers) ||
+      workspace.layers.length < 1 || workspace.layers.length > MAX_LAYERS) {
+    throw new TypeError(label + ' workspace canvas or layer stack is invalid.');
+  }
+  const layerIds = workspace.layers.map(layer => String(layer?.id || ''));
+  if (layerIds.some(id => !id) || new Set(layerIds).size !== layerIds.length) {
+    throw new TypeError(label + ' workspace contains missing or duplicate layer IDs.');
+  }
+  const expectedBytes = width * height * 4;
+  for (const layer of workspace.layers) {
+    if (typeof layer.pixels !== 'string' || bytesFromBase64(layer.pixels).length !== expectedBytes) {
+      throw new TypeError(label + ' workspace layer ' + layer.id + ' has invalid RGBA8 pixels.');
+    }
+  }
+  if (workspace.animation !== undefined && workspace.animation !== null) {
+    const animation = workspace.animation;
+    if (!Array.isArray(animation.frames) || animation.frames.length < 1 ||
+        animation.frames.length > MAX_FRAMES || Number(animation.width) !== width ||
+        Number(animation.height) !== height || !Number.isInteger(Number(animation.fps)) ||
+        Number(animation.fps) < 1 || Number(animation.fps) > 60) {
+      throw new TypeError(label + ' workspace animation timeline is invalid.');
+    }
+    for (const [index, frame] of animation.frames.entries()) {
+      const cels = Array.isArray(frame.cels) ? frame.cels : [];
+      const celMap = new Map(cels.map(cel => [String(cel.layerId), cel]));
+      if (cels.length !== layerIds.length || celMap.size !== cels.length ||
+          layerIds.some(id => !celMap.has(id)) ||
+          !Number.isFinite(Number(frame.durationMs)) || Number(frame.durationMs) < 1 ||
+          Number(frame.durationMs) > 10000) {
+        throw new TypeError(label + ' workspace frame ' + index + ' must contain one valid cel per layer.');
+      }
+      for (const cel of cels) {
+        if (typeof cel.pixels !== 'string' || bytesFromBase64(cel.pixels).length !== expectedBytes) {
+          throw new TypeError(label + ' workspace frame ' + index + ' contains invalid RGBA8 cel data.');
+        }
+      }
+    }
+  }
+  return structuredClone(workspace);
+}
+
 function buildSceneSections(project, files) {
   const drawing = project.drawingModel || {};
   const layerRoles = drawing.layerRoles || {};
@@ -122,15 +171,18 @@ function buildSceneSections(project, files) {
       .filter(item => explicitSectionMatch(item, section.key)).map(item => String(item.id));
     const data = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
       ? structuredClone(drawing.sceneSections[section.key]) : {};
+    const workspace = data.workspace ?? null;
+    delete data.workspace;
     files.set(path, jsonBytes({
       format: 'codelab-pixelforge-scene',
-      version: 1,
+      version: 2,
       sceneType: section.key,
       projectId: String(project.id),
       canvas: { width: project.width, height: project.height },
       layerIds,
       drawingObjectIds,
       vectorObjectIds,
+      workspace,
       ...(section.key === 'environment'
         ? { environmentHistory: structuredClone(drawing.environmentHistory || { version: 1, entries: [], activeEntryId: null }) }
         : {}),
@@ -571,7 +623,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
       const path = manifest.scenes.sections?.[section.key]?.manifestPath;
       if (path !== section.folder + '/' + section.filename) throw new TypeError('Scene manifest path is not canonical for ' + section.key + '.');
       const scene = await readJson(entries, path, section.filename);
-      if (scene.format !== 'codelab-pixelforge-scene' || Number(scene.version) !== 1 ||
+      if (scene.format !== 'codelab-pixelforge-scene' || ![1, 2].includes(Number(scene.version)) ||
           scene.sceneType !== section.key || String(scene.projectId) !== String(project.id) ||
           Number(scene.canvas?.width) !== project.width || Number(scene.canvas?.height) !== project.height) {
         throw new TypeError(path + ' does not match this project.');
@@ -580,7 +632,11 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
       validateIds(scene.drawingObjectIds || [], drawingObjects, path + '.drawingObjectIds');
       validateIds(scene.vectorObjectIds || [], vectorObjects, path + '.vectorObjectIds');
       if (!scene.data || typeof scene.data !== 'object' || Array.isArray(scene.data)) throw new TypeError(path + '.data must be an object.');
-      project.drawingModel.sceneSections[section.key] = scene.data;
+      const sectionData = structuredClone(scene.data);
+      if (scene.workspace !== undefined && scene.workspace !== null) {
+        sectionData.workspace = validateSceneWorkspace(scene.workspace, path);
+      }
+      project.drawingModel.sceneSections[section.key] = sectionData;
       if (section.key === 'environment' && scene.environmentHistory) {
         project.drawingModel.environmentHistory = scene.environmentHistory;
       }
