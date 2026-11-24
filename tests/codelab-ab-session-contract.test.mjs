@@ -39,12 +39,15 @@ test('A receives only the trusted ADMIN bridge and pins the persisted project sn
   assert.match(a, /persist_evidence: false/);
   assert.match(a, /browser,\s*context/);
   assert.match(a, /CodeLab A Ready/);
+  assert.match(a, /since=\$\{encodeURIComponent\(sessionStartedAt\)\}/);
   assert.doesNotMatch(a, /DATABASE_URL|NEON_API_KEY|NEON_STORAGE_HOST|R2_SECRET_ACCESS_KEY/);
 });
 
 test('B is a request-only receiver and verifies the WebM with Chromium without credentials or FFmpeg', () => {
   const b = read('scripts/codelab-ab-session-request.mjs');
   assert.match(b, /CodeLab B Request/);
+  assert.match(b, /comments\(readySince\)/);
+  assert.match(b, /comments\(requestStartedAt\)/);
   assert.match(b, /CodeLab A Video Chunk/);
   assert.match(b, /CodeLab A Export Result/);
   assert.match(b, /playwrightChromium\.launch/);
@@ -68,6 +71,7 @@ test('the real A/B workflows isolate credentials and keep A independent from B',
   assert.match(bWorkflow, /actions\/upload-artifact@v4/);
   assert.match(abWorkflow, /codelab-independent-session-a\.yml/);
   assert.match(abWorkflow, /Verify A remains alive after B has finished/);
+  assert.match(abWorkflow, /CODELAB_A_READY_SINCE/);
   assert.match(abWorkflow, /in_progress/);
   assert.doesNotMatch(abWorkflow, /createDemo=|walk-crouch-24|codelab-session-host\.mjs/);
 });
