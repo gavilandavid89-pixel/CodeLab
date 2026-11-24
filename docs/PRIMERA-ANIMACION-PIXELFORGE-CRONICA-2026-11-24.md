@@ -172,7 +172,24 @@ Si tuviera que resumir el aprendizaje operativo de esta primera experiencia, ser
 7. No declarar éxito por un ZIP, una respuesta `queued` o un mensaje del agente: exigir estado final del worker y lectura de vuelta.
 8. Mantener ADMIN como autoridad de destino y persistencia; Headless ejecuta y exporta, no decide reglas ni destinos.
 
-## 11. Referencias de esta sesión
+## 11. Omisión en la entrega al usuario: faltó el video
+
+Hay que dejar registrada una omisión importante de la entrega: **el agente terminó y verificó el proyecto editable, pero olvidó entregar el video al usuario**. La respuesta de cierre presentó el recorrido como completado y destacó el proyecto persistido, pero no señaló claramente que faltaba el entregable de video ni lo proporcionó. El usuario tuvo que advertirlo después.
+
+Para que el registro sea preciso, distinguimos los entregables:
+
+- **Proyecto nativo editable:** sí fue importado y verificado en ADMIN.
+- **Hoja de contacto de los 20 fotogramas:** sí fue generada e inspeccionada; sirve como vista previa estática.
+- **Video renderizado final:** no hay evidencia en esta sesión de que se haya ejecutado el procesamiento A/B, recuperado un archivo de video final o inspeccionado ese video.
+- **Entrega del video al usuario:** no se realizó.
+
+Por tanto, no sería correcto afirmar que existía un video terminado que simplemente se perdió en el envío. Lo que ocurrió, según la evidencia disponible, es que el flujo de video no se completó y, además, el agente omitió comunicar esa ausencia al cerrar la tarea. Es un fallo de seguimiento y de comunicación de la entrega, no un fallo de persistencia del proyecto.
+
+La corrección para futuras sesiones es explícita: antes de anunciar una animación como entregada, comprobar por separado el proyecto editable y el video solicitado. Si el video forma parte de la entrega, ejecutar el procesamiento correspondiente, recuperar el archivo real, inspeccionarlo y proporcionar el enlace verificado. Si no se generó, decirlo claramente y no presentar la hoja de contacto como sustituto del video.
+
+Esta omisión también forma parte de la historia de la primera animación. El recorrido técnico de importación sí se completó; la entrega al usuario quedó incompleta respecto del video.
+
+## 12. Referencias de esta sesión
 
 - [Ejecución final de transferencia e importación](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45344660920).
 - [Validación PixelForge](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45345066067).
@@ -183,4 +200,4 @@ Si tuviera que resumir el aprendizaje operativo de esta primera experiencia, ser
 
 ---
 
-**Cierre:** esta es la crónica de la primera animación que completó el recorrido completo en CodeLab y quedó verificada en ADMIN. Se conserva también lo que salió mal, porque justamente eso es lo que hará que la segunda sea mejor.
+**Cierre:** esta es la crónica de la primera animación que completó el recorrido de proyecto nativo en CodeLab y quedó verificada en ADMIN. También deja constancia de que la entrega de video quedó incompleta. Se conserva lo que salió mal, porque justamente eso es lo que hará que la segunda sea mejor.
