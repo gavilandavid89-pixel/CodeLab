@@ -131,6 +131,7 @@ Después de instalar y validar el paquete, el importador:
 - vuelve a leer el proyecto y los archivos desde PostgreSQL y verifica hashes, tamaños, contenido y cantidades;
 - publica los proyectos Web/Design en el estado de workspace que consume el editor habitual;
 - para PixelForge, inserta/actualiza el documento en `public.codelab_pixelforge_projects`, el almacenamiento dedicado que utiliza el editor;
+- alinea `project.serverRevision` dentro del JSON con `server_revision` de la fila nativa (1 en un proyecto nuevo, o la revisión siguiente al reemplazar uno existente), para que el primer guardado normal del editor no entre en conflicto con su propia importación;
 - registra el resultado de importación y actualiza los estados de solicitud y artefacto.
 
 Por tanto, la importación de PixelForge no se limita a conservar un ZIP adjunto: materializa un documento de proyecto en el almacenamiento nativo. Los recursos también se guardan individualmente y el backend comprueba que se pueden volver a leer.
@@ -168,8 +169,8 @@ La referencia original debe permanecer intacta. Las operaciones de copia al canv
 - Pruebas del instalador legacy y clasificación: `tests/codelab-project-package-installer.test.mjs`
 - Pruebas de manifiestos y datos estructurados v2: `tests/codelab-structured-project-v2.test.mjs`
 - Pruebas de exportación/importación y workspaces de navegador: `tests/pixelforge-codelab-package-browser.test.mjs`
-- E2E de UI con PostgreSQL, importación ZIP del editor, guardado, reapertura y edición raster: `tests/pixelforge-integration.test.js`
+- E2E de UI con PostgreSQL, importación ZIP del editor, guardado, reapertura y edición raster; además, invoca `importCodeLabArtifact` con un ZIP v2, verifica listado/apertura nativos, primer guardado y segunda apertura: `tests/pixelforge-integration.test.js`
 - Pruebas del paquete PixelForge: `tests/pixelforge-codelab-package.test.mjs`
 - Pruebas de nombre/transporte del artefacto: `tests/codelab-artifact-filename.test.mjs`
 
-La cobertura combinada valida el formato y la instalación estructurada, el round-trip del paquete y, en la integración de UI, el flujo ZIP del editor hacia guardado/reapertura en PostgreSQL. La prueba E2E de UI importa el ZIP desde el editor; no equivale a recorrer el comando de agente `codelab_project_import` y su backend `importCodeLabArtifact`. Ese trayecto agente→solicitud→BYTEA→importador→selector nativo debe quedar cubierto por una prueba de integración específica antes de declarar cerrado el flujo de importación del agente.
+La cobertura combinada valida el formato y la instalación estructurada, el round-trip del paquete y dos recorridos complementarios en PostgreSQL: la importación ZIP desde la UI y la invocación directa de `importCodeLabArtifact` con el mismo artefacto v2 que consume el worker. Esta última comprueba persistencia y lectura posterior, aparición en el listado nativo, apertura, primer guardado mediante la API normal y segunda apertura con píxeles y timeline conservados. Todavía no simula el buzón completo del agente (creación/ejecución de la fila `codelab_agent_commands` por el worker); esa capa de despacho queda fuera de esta prueba.
