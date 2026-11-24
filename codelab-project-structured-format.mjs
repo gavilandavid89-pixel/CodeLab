@@ -98,7 +98,10 @@ function validateSceneWorkspace(workspace, label) {
       fail(label + ' workspace layer ' + layer.id + ' has invalid RGBA8 pixels.');
     }
   }
-  if (workspace.animation !== undefined && workspace.animation !== null) {
+  if (!workspace.animation || typeof workspace.animation !== 'object') {
+    fail(label + ' workspace must contain at least one complete frame.');
+  }
+  {
     const animation = workspace.animation;
     if (!Array.isArray(animation.frames) || animation.frames.length < 1 ||
         animation.frames.length > MAX_FRAMES || Number(animation.width) !== width ||
