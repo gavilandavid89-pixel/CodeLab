@@ -1,36 +1,30 @@
 name: CodeLab Independent Session A
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.codelab/session-a/**'
-  issue_comment:
-    types: [created]
-  repository_dispatch:
-    types: [codelab-session-a]
   workflow_dispatch:
     inputs:
-      session_minutes:
-        description: "Persistent A lifetime in minutes"
+      issue_number:
+        description: 'GitHub issue used as the A/B rendezvous mailbox'
         required: false
-        default: "360"
+        default: '492'
         type: string
-      mailbox_transport:
-        description: "Mailbox transport. relay keeps the Render relay available for free-transfer periods."
+      session_id:
+        description: 'Optional stable A session identifier'
         required: false
-        default: "relay"
-        type: choice
-        options: [relay, custom]
-      mailbox_base_url:
-        description: "Mailbox base URL (used by relay or custom transport)"
-        required: false
-        default: "https://codelab-pbw9.onrender.com"
+        default: ''
         type: string
-
-concurrency:
-  group: codelab-independent-session-a
-  cancel-in-progress: false
+      minutes:
+        description: 'How long A remains alive, independent of B'
+        required: false
+        default: '360'
+        type: string
+      project_id:
+        description: 'ADMIN PixelForge project to pin for this session'
+        required: false
+        default: 'soldier-walk-60f-20261124'
+        type: string
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -38,46 +32,36 @@ permissions:
 
 jobs:
   session-a:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'repository_dispatch' && github.event.action == 'codelab-session-a') || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && startsWith(github.event.comment.body, '[Start Independent A]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 492 && github.event.comment.user.login == github.repository_owner && startsWith(github.event.comment.body, '[Start Independent A]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - name: Reject duplicate A session before boot
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          latest="$(gh api "repos/$GITHUB_REPOSITORY/issues/492/comments?per_page=100" --jq '[.[] | select(.body | startswith("[CodeLab Session Ready]"))] | last | .body' || true)"
-          ready_run="$(printf '%s' "$latest" | sed -n 's/.*run=\([0-9][0-9]*\).*/\1/p')"
-          if [ -n "$ready_run" ]; then
-            ready_status="$(gh run view "$ready_run" --repo "$GITHUB_REPOSITORY" --json status --jq .status 2>/dev/null || true)"
-            if [ "$ready_status" = "in_progress" ]; then
-              echo "A already READY and alive: run=$ready_run. Exiting duplicate A."
-              exit 0
-            fi
-          fi
-          gh issue comment 492 --repo "$GITHUB_REPOSITORY" --body "[CodeLab A Started] run=${GITHUB_RUN_ID}"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Install Chromium
+          node-version: '22.17.0'
+      - name: Install A browser runtime
+        run: npm install --no-save --no-package-lock --ignore-scripts
+      - name: Validate trusted A runtime
         run: |
-          npm install --no-save --no-package-lock playwright
-          npx playwright install --with-deps chromium
-      - name: Preflight Node and headless imports
-        run: |
-          set -euo pipefail
-          node --version
-          timeout 30s node --input-type=module -e "await import('playwright'); console.log('playwright import ok'); await import('./public/pixelforge/src/headless.js'); console.log('headless runtime import ok')"
-
-      - name: Start independent persistent session A
+          node --check scripts/codelab-ab-session-host.mjs
+          node --check pixelforge-video-composer-export.mjs
+      - name: Keep ADMIN-backed CodeLab and Video Composer session alive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          CODELAB_SESSION_ISSUE: "492"
-          CODELAB_SESSION_ID: "independent-${{ github.run_id }}"
-          CODELAB_SESSION_MINUTES: ${{ github.event.inputs.session_minutes || github.event.client_payload.session_minutes || '360' }}
-          CODELAB_MAILBOX_TRANSPORT: ${{ github.event.inputs.mailbox_transport || github.event.client_payload.mailbox_transport || 'relay' }}
-          CODELAB_MAILBOX_BASE_URL: ${{ github.event.inputs.mailbox_base_url || github.event.client_payload.mailbox_base_url || 'https://codelab-pbw9.onrender.com' }}
-        run: node scripts/codelab-session-host.mjs
+          CODELAB_SESSION_ISSUE: ${{ inputs.issue_number || '492' }}
+          CODELAB_SESSION_ID: ${{ inputs.session_id || '' }}
+          CODELAB_SESSION_MINUTES: ${{ inputs.minutes || '360' }}
+          CODELAB_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
+          CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+        run: node scripts/codelab-ab-session-host.mjs 2>&1 | tee codelab-session-a.log
+      - name: Upload A session log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codelab-session-a-log-${{ github.run_id }}
+          path: codelab-session-a.log
+          if-no-files-found: ignore
+          retention-days: 1
