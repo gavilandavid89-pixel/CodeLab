@@ -21,6 +21,42 @@ export function containRect(sourceWidth, sourceHeight, x, y, width, height) {
   };
 }
 
+export function getSourceQualityAssessment(sourceWidth, sourceHeight, outputWidth, outputHeight) {
+  if (![sourceWidth, sourceHeight, outputWidth, outputHeight].every(value => Number.isFinite(value) && value > 0)) {
+    throw new RangeError('Source and output dimensions must be positive finite numbers.');
+  }
+  const rect = containRect(sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
+  const scale = rect.width / sourceWidth;
+  return {
+    scale,
+    upscaled: scale > 1.001,
+    downscaled: scale < 0.999,
+    sourceWidth,
+    sourceHeight,
+    contentWidth: rect.width,
+    contentHeight: rect.height,
+  };
+}
+
+export function drawFrameToCanvas(context, bitmap, width, height, options = {}) {
+  if (!context || !bitmap || !Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+    throw new TypeError('A canvas context, bitmap and valid output dimensions are required.');
+  }
+  const rect = containRect(bitmap.width, bitmap.height, 0, 0, width, height);
+  const scalingMode = options.scalingMode === 'pixelated' ? 'pixelated' : 'smooth';
+  context.save();
+  context.clearRect(0, 0, width, height);
+  if (options.backgroundColor) {
+    context.fillStyle = options.backgroundColor;
+    context.fillRect(0, 0, width, height);
+  }
+  context.imageSmoothingEnabled = scalingMode !== 'pixelated';
+  if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
+  context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+  context.restore();
+  return rect;
+}
+
 export function drawContentComposition(context, bitmap, frameIndex, dimensions, thumbnails, options = {}) {
   const { width, height } = dimensions;
   const sourceWidth = options.sourceWidth || bitmap.width;
