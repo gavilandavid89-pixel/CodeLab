@@ -915,11 +915,6 @@ function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
     brushOpacity: Number($('#brush-opacity')?.value ?? 100),
     interpolation: $('#transform-interpolation')?.value || defaults.interpolation,
   };
-  const isDefault = profile.brushSize === defaults.brushSize &&
-    profile.brushShape === defaults.brushShape &&
-    profile.brushHardness === defaults.brushHardness &&
-    profile.brushOpacity === 100 &&
-    profile.interpolation === defaults.interpolation;
   layer.modeOverrides = updateDrawingModeOverrides(layer.modeOverrides, mode, profile);
 }
 function applyActiveLayerModeProfile(mode) {
