@@ -172,6 +172,7 @@ function buildSceneSections(project, files) {
     const data = drawing.sceneSections?.[section.key] && typeof drawing.sceneSections[section.key] === 'object'
       ? structuredClone(drawing.sceneSections[section.key]) : {};
     const workspace = data.workspace ?? null;
+    if (workspace !== null) validateSceneWorkspace(workspace, path);
     delete data.workspace;
     files.set(path, jsonBytes({
       format: 'codelab-pixelforge-scene',
