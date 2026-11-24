@@ -39,7 +39,7 @@ test('sparse tile edge dimensions and empty canvas decode correctly', async () =
 });
 
 test('tile diff reports only changed, added, and removed tile coordinates', async () => {
-  const width = 128, height = 64;
+  const width = 128, height = 128;
   const beforePixels = makePixels(width, height);
   beforePixels.set([10, 20, 30, 255], 0);
   beforePixels.set([40, 50, 60, 255], (64 * width + 64) * 4);
