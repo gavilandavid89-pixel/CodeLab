@@ -599,18 +599,18 @@ async function main() {
     // account-persisted RGBA buffers (not just button presence or status text).
     const canvasLocator = accountPage.locator('#canvas');
     const documentWidth = 12, documentHeight = 8;
-    async function pixelPosition(x, y) {
+    async function pixelPosition(x, y, width = documentWidth, height = documentHeight) {
       const box = await canvasLocator.boundingBox();
       const zoomText = await accountPage.locator('#zoom-label').innerText();
       const zoom = Number.parseFloat(zoomText) / 100;
       assert.ok(box && Number.isFinite(zoom) && zoom > 0, 'canvas viewport and zoom should be measurable');
       return {
-        x: box.width / 2 + (x + 0.5 - documentWidth / 2) * zoom,
-        y: box.height / 2 + (y + 0.5 - documentHeight / 2) * zoom
+        x: box.width / 2 + (x + 0.5 - width / 2) * zoom,
+        y: box.height / 2 + (y + 0.5 - height / 2) * zoom
       };
     }
-    async function clickPixel(x, y) {
-      await canvasLocator.click({ position: await pixelPosition(x, y) });
+    async function clickPixel(x, y, width = documentWidth, height = documentHeight) {
+      await canvasLocator.click({ position: await pixelPosition(x, y, width, height) });
     }
     async function setForegroundColor(value) {
       await accountPage.locator('#color').evaluate((input, color) => {
@@ -905,7 +905,7 @@ async function main() {
     assert.equal(await materializedLayer.count(), 1, 'copying a reference part must create a real editable layer in the layer stack');
     await setForegroundColor('#00aa44');
     await accountPage.locator('#brush-tool').click();
-    await clickPixel(2, 2);
+    await clickPixel(2, 2, 4, 4);
     await waitForRasterSave();
     let referenceStored = (await (await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { headers: authHeaders })).json()).project;
     assert.equal(referenceStored.layers.length, 2, 'materialized reference must be persisted as a second raster layer');
