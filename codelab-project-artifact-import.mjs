@@ -363,6 +363,21 @@ export async function importCodeLabArtifact(pool, {
 
     const projectId = String(project.id || request.source_project_id);
     const name = String(project.name || projectId).slice(0, 100);
+    // Keep the revision embedded in the imported document aligned with the
+    // dedicated PixelForge row. The editor sends project.serverRevision back
+    // on its first save, so a DB revision of 1 paired with JSON revision 0
+    // would make a freshly imported document conflict with its own first save.
+    let pixelForgeServerRevision = null;
+    if (request.editor_id === 'pixelforge') {
+      const existingPixelForge = await queryChecked(pool, 'pixelforge_import_revision_read',
+        'SELECT server_revision FROM public.codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2',
+        [request.workspace_id || pixelForgeWorkspaceId, projectId]
+      );
+      pixelForgeServerRevision = existingPixelForge.rowCount
+        ? Number(existingPixelForge.rows[0].server_revision || 0) + 1
+        : 1;
+      project.serverRevision = pixelForgeServerRevision;
+    }
     const serialized = JSON.stringify(project);
     const contentSha = sha256(Buffer.from(stableJsonStringify(project)));
     const now = Date.now();
@@ -454,7 +469,7 @@ export async function importCodeLabArtifact(pool, {
       await queryChecked(pool, 'import_sql', 
         `INSERT INTO public.codelab_pixelforge_projects
           (workspace_id, project_id, name, width, height, updated_at, last_opened_at, project, byte_size, server_revision, content_sha256)
-         VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,1,$9)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,$7::jsonb,$8,$10,$9)
          ON CONFLICT (workspace_id, project_id) DO UPDATE SET
            name=EXCLUDED.name,
            width=EXCLUDED.width,
@@ -463,9 +478,9 @@ export async function importCodeLabArtifact(pool, {
            last_opened_at=EXCLUDED.last_opened_at,
            project=EXCLUDED.project,
            byte_size=EXCLUDED.byte_size,
-           server_revision=public.codelab_pixelforge_projects.server_revision+1,
+           server_revision=EXCLUDED.server_revision,
            content_sha256=EXCLUDED.content_sha256`,
-        [request.workspace_id || pixelForgeWorkspaceId, projectId, name, width, height, now, serialized, byteSize, contentSha]
+        [request.workspace_id || pixelForgeWorkspaceId, projectId, name, width, height, now, serialized, byteSize, contentSha, pixelForgeServerRevision]
       );
     }
 
