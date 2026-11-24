@@ -67,7 +67,7 @@ export async function encodeSoldierWalk({ framesDir, outputPath, frameCount = SO
   ]);
   const { stdout } = await run('ffprobe', [
     '-v', 'error', '-count_frames', '-select_streams', 'v:0',
-    '-show_entries', 'stream=codec_name,avg_frame_rate,r_frame_rate,nb_frames,nb_read_frames:format=duration',
+    '-show_entries', 'stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,nb_frames,nb_read_frames:format=duration',
     '-of', 'json', outputPath
   ]);
   const parsed = JSON.parse(stdout);
