@@ -895,6 +895,23 @@ async function deletePixelForgeProjectFromDatabase(workspaceId, projectId) {
       'DELETE FROM codelab_pixelforge_projects WHERE workspace_id = $1 AND project_id = $2',
       [workspaceId, projectId]
     );
+    if (deleted.rowCount > 0) {
+      // PixelForge imports also register the native project and its packaged
+      // resources in the shared CodeLab project tables. Remove those rows in
+      // the same user-confirmed delete transaction to avoid orphaned assets.
+      await client.query(
+        'DELETE FROM public.codelab_project_files WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
+        [workspaceId, projectId, 'pixelforge']
+      );
+      await client.query(
+        'DELETE FROM public.codelab_project_registry WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
+        [workspaceId, projectId, 'pixelforge']
+      );
+      await client.query(
+        'DELETE FROM public.codelab_project_imports WHERE workspace_id = $1 AND project_id = $2 AND editor_id = $3',
+        [workspaceId, projectId, 'pixelforge']
+      );
+    }
     await client.query('COMMIT');
     return deleted.rowCount > 0;
   } catch (error) {
