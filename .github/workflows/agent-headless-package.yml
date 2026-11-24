@@ -9,6 +9,8 @@ on:
       - "package-lock.json"
       - ".github/workflows/agent-headless-package.yml"
       - "docs/HEADLESS-AGENT-RUNTIME.md"
+      - "docs/ANIMATION-AUTONOMOUS-WORKFLOW.md"
+      - "docs/PIXELFORGE-PROJECT-PACKAGE.md"
   workflow_dispatch:
 
 permissions:
