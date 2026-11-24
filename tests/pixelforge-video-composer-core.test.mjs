@@ -58,13 +58,36 @@ test('Video Composer web interface wires every referenced control and includes a
 });
 
 test('HD capture presets preserve aspect ratio and fit the full artwork without cropping', async () => {
-  const { getCaptureDimensions, containRect } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  const { getCaptureDimensions, containRect, getSourceQualityAssessment, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
   assert.deepEqual(getCaptureDimensions('1080', '16:9', 128, 128), { width: 1920, height: 1080 });
   assert.deepEqual(getCaptureDimensions('720', '9:16', 128, 160), { width: 720, height: 1280 });
   assert.deepEqual(getCaptureDimensions('1080', '1:1', 128, 128), { width: 1080, height: 1080 });
   const rect = containRect(128, 160, 0, 0, 1000, 500);
   assert.equal(rect.width / rect.height, 128 / 160);
   assert.ok(rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= 1000 && rect.y + rect.height <= 500);
+
+  const upscale = getSourceQualityAssessment(1280, 720, 1920, 1080);
+  assert.equal(upscale.upscaled, true);
+  assert.equal(upscale.scale, 1.5);
+  assert.deepEqual([upscale.contentWidth, upscale.contentHeight], [1920, 1080]);
+  const native = getSourceQualityAssessment(1920, 1080, 1920, 1080);
+  assert.equal(native.upscaled, false);
+  assert.equal(native.downscaled, false);
+
+  const calls = [];
+  const context = {
+    save() {}, restore() {}, clearRect(...args) { calls.push(['clearRect', ...args]); },
+    fillRect(...args) { calls.push(['fillRect', ...args]); },
+    drawImage(...args) { calls.push(['drawImage', ...args]); },
+  };
+  const bitmap = { width: 128, height: 128 };
+  const fitted = drawFrameToCanvas(context, bitmap, 1920, 1080, { backgroundColor: '#000', scalingMode: 'smooth' });
+  assert.deepEqual(fitted, { x: 420, y: 0, width: 1080, height: 1080 });
+  assert.deepEqual(calls.find(call => call[0] === 'drawImage'), ['drawImage', bitmap, 420, 0, 1080, 1080]);
+  assert.equal(context.imageSmoothingEnabled, true);
+  assert.equal(context.imageSmoothingQuality, 'high');
+  drawFrameToCanvas(context, bitmap, 1920, 1080, { scalingMode: 'pixelated' });
+  assert.equal(context.imageSmoothingEnabled, false);
 });
 
 test('content capture includes a frame strip and keeps pixel-art rendering unsmoothed', () => {
@@ -76,6 +99,10 @@ test('content capture includes a frame strip and keeps pixel-art rendering unsmo
   assert.match(js, /drawContentComposition/);
   assert.match(js, /imageSmoothingEnabled = false/);
   assert.match(js, /getDisplayMedia/);
+  assert.match(html, /id="vc-source-quality"/);
+  assert.match(html, /id="vc-motion-quality"/);
+  assert.match(js, /no se inventa movimiento intermedio/i);
+  assert.match(js, /getSourceQualityAssessment/);
 });
 
 test('rejects PNG frames with broken chunk CRC or dimensions that differ from the manifest', async () => {
@@ -121,6 +148,14 @@ test('constant-FPS resampling follows variable-duration source frames and preser
   assert.deepEqual(output.map(frame => frame.timestampMs), [0, 100, 200, 300]);
   assert.equal(output.reduce((sum, frame) => sum + frame.durationMs, 0), 400);
   assert.ok(output.every(frame => frame.blob instanceof Blob));
+
+  const lowCadence = buildConstantFrameRateSequence([
+    { id: 'pose-a', durationMs: 1000 / 12, blob: new Blob(['a']) },
+    { id: 'pose-b', durationMs: 1000 / 12, blob: new Blob(['b']) },
+  ], 60);
+  assert.equal(lowCadence.length, 10);
+  assert.ok(new Set(lowCadence.map(frame => frame.id)).size < lowCadence.length,
+    'higher output FPS must not pretend to create new source poses');
 });
 
 test('constant-FPS resampling rejects unsafe frame explosions and invalid timelines', async () => {
