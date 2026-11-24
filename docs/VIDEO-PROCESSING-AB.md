@@ -10,6 +10,14 @@ Este archivo es la **especificación técnica complementaria** del mecanismo A/B
 
 A inicia una sesión con el input `project_id` del proyecto PixelForge que ya está persistido en ADMIN. B tiene su propio input `project_id` y solo emite la petición cuando coincide con el proyecto fijado por A. Para procesar otro proyecto, iniciar A con ese ID y B con el mismo ID. El default histórico sigue siendo Soldier Walk. B no consulta el repositorio ni obtiene credenciales; A no lee GitHub ni decide el proyecto a partir del inbox.
 
+## Calidad de origen, escalado y cadencia de movimiento
+
+La resolución del archivo exportado describe el tamaño del fotograma codificado, no la cantidad de detalle que existe en el dibujo original. El Video Composer debe conservar la proporción mediante ajuste centrado (contain), nunca estirar el bitmap para llenar un formato distinto. Cuando el origen sea menor que el área de contenido de salida, la interfaz informa que se está ampliando y que no se generan detalles nuevos. Cuando el origen sea mayor, la reducción debe usar interpolación de alta calidad por defecto; pixel art puede elegir vecino más cercano.
+
+La cadencia de salida y la fluidez de la animación son conceptos distintos. `buildConstantFrameRateSequence` remuestrea la línea temporal existente; si la salida pide más FPS que el origen, puede repetir poses. No debe presentarse como interpolación ni como movimiento nuevo. Para obtener fluidez real, el proyecto necesita poses/fotogramas intermedios y duraciones adecuadas. La interfaz debe mostrar la cadencia de origen y advertir cuando el valor de salida no añade movimiento.
+
+El worker de exportación compone cada fotograma con ajuste de proporción y escalado seleccionado antes de crear el `VideoFrame`. Las pruebas de contrato deben cubrir imágenes cuadradas en contenedores panorámicos, avisos de ampliación, reducción con suavizado y pixel art sin suavizado.
+
 ## Propósito
 
 A/B es la etapa que exporta el vídeo final del proyecto PixelForge persistido en ADMIN. El contrato vigente es deliberadamente asimétrico:
