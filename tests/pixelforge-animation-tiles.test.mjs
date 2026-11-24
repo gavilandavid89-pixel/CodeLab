@@ -187,7 +187,7 @@ test('reads and copy-on-write edits bounded regions across tile boundaries', asy
   assert.deepEqual(store.readRegion(edited.celId, region), new Uint8ClampedArray(patch));
 
   assert.throws(() => store.readRegion(sourceId, { x: 129, y: 69, width: 2, height: 2 }), /inside the canvas/);
-  assert.throws(() => store.writeRegion(sourceId, { x: -1, y: 0, width: 1, height: 1 }, new Uint8Array(4)), /inside the canvas/);
+  await assert.rejects(store.writeRegion(sourceId, { x: -1, y: 0, width: 1, height: 1 }, new Uint8Array(4)), /inside the canvas/);
   for (const id of [sourceId, edited.celId, erased.celId]) store.releaseCel(id);
   assert.equal(store.stats.resourceCount, 0);
 });
