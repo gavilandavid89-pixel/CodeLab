@@ -62,11 +62,24 @@ function addCharacterReference(project) {
   return project;
 }
 
+function attachSceneWorkspaces(project) {
+  const sections = ['environment', 'effects', 'details', 'elements', 'objects'];
+  const base = structuredClone(project);
+  for (const key of sections) {
+    const workspace = structuredClone(base);
+    workspace.id = project.id + '-' + key;
+    workspace.name = key + ' instance';
+    project.drawingModel.sceneSections[key].workspace = workspace;
+  }
+  return project;
+}
+
 test('exports a CodeLab v2 PixelForge package with declared frames, editable references and integrity', async () => {
   const showcase = createOrbitalShowcase();
   const project = addCharacterReference(showcase.doc.toJSON());
   project.id = 'structured_pixelforge_source';
   project.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
+  attachSceneWorkspaces(project);
   const exported = createPixelForgeCodeLabPackageZip(project, {
     resources: [{ path: 'Entorno/assets/palette.txt', contentType: 'text/plain', bytes: Buffer.from('palette=warm') }],
   });
@@ -87,6 +100,15 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.manifest.frames.manifestPath, 'Frames/frames.tscn');
   assert.equal(Object.keys(imported.manifest.scenes.sections).length, 5);
   assert.equal(imported.structured.scenes.environment.manifestPath, 'Entorno/entorno.tscn');
+  for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
+    const instance = imported.project.drawingModel.sceneSections[section].workspace;
+    assert.equal(instance.format, 'pixelforge-project');
+    assert.equal(instance.layers.length, project.layers.length);
+    assert.equal(instance.animation.frames.length, project.animation.frames.length);
+    assert.equal(instance.animation.frames[0].cels.length, instance.layers.length);
+    assert.equal(instance.animation.frames[0].cels[0].pixels, project.animation.frames[0].cels[0].pixels);
+    assert.equal(instance.animation.fps, project.animation.fps);
+  }
   assert.equal(imported.entries.has('reference.center/reference.center'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
@@ -102,6 +124,7 @@ test('survives import, a real Headless edit, save, export and second import', as
   const showcase = createOrbitalShowcase();
   const project = addCharacterReference(showcase.doc.toJSON());
   project.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
+  attachSceneWorkspaces(project);
   const firstExport = createPixelForgeCodeLabPackageZip(project);
   const firstImport = await importPackage(firstExport.bytes);
 
@@ -126,6 +149,12 @@ test('survives import, a real Headless edit, save, export and second import', as
   assert.equal(secondImport.project.animation.frames.length, savedProject.animation.frames.length);
   assert.equal(secondImport.project.drawingModel.referenceCenter.entries.length, 1);
   assert.equal(secondImport.project.drawingModel.referenceCenter.entries[0].parts[0].pixels.length > 0, true);
+  for (const section of ['environment', 'effects', 'details', 'elements', 'objects']) {
+    const instance = secondImport.project.drawingModel.sceneSections[section].workspace;
+    assert.equal(instance.format, 'pixelforge-project');
+    assert.equal(instance.animation.frames.length, savedProject.animation.frames.length);
+    assert.equal(instance.animation.frames[0].cels.length, instance.layers.length);
+  }
   for (const layer of secondImport.project.layers) {
     assert.equal(layer.pixels, savedProject.layers.find(item => item.id === layer.id)?.pixels);
   }
