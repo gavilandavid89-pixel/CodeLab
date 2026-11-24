@@ -74,6 +74,11 @@ Si el entorno Headless es efímero o la sesión termina:
 
 Ver [SESSION-EXPIRATION-RECOVERY.md](SESSION-EXPIRATION-RECOVERY.md).
 
-## 7. A/B no es este flujo
+## 7. A/B como etapa integrada de vídeo
 
-Los workflows A/B están reservados para procesamiento/captura de vídeo. No son dos agentes creativos, no son una sesión persistente obligatoria para cada frame y no reemplazan el Headless propio. Consultar [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md) solo cuando la tarea sea realmente de vídeo.
+A/B no es un sistema aislado ni reemplaza el flujo de creación/persistencia. Cuando la petición incluye un vídeo final, el agente primero persiste el proyecto editable en CodeLab y luego coordina A/B sobre esa revisión. Recupera el archivo de vídeo final, lo reproduce, lo inspecciona y lo entrega al usuario. Consultar [VIDEO-PROCESSING-AB.md](VIDEO-PROCESSING-AB.md).
+
+
+## 8. Regla de entrega visual
+
+El Headless no se conecta al intermediario: solo exporta el proyecto. El agente recoge el archivo fuera del Headless y completa la transferencia. El GIF local solo se entrega cuando el usuario lo solicita expresamente; de lo contrario, el proyecto editable debe llegar a CodeLab. Si se pidió vídeo, se entrega el vídeo final A/B, no una vista previa GIF.
