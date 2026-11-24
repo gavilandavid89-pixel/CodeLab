@@ -122,7 +122,8 @@ async function captureContentPng() {
     drawContentComposition(context, bitmap, currentIndex, dimensions, thumbnails, {
       sourceWidth: packageData.manifest.width, sourceHeight: packageData.manifest.height,
       frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
-      background: $('#vc-solid-bg').checked ? '#101116' : '#20232d'
+      background: $('#vc-solid-bg').checked ? '#101116' : '#20232d',
+      scalingMode: $('#vc-scaling-mode').value
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('El navegador no pudo generar el PNG.');
@@ -267,7 +268,10 @@ async function renderFrame(index) {
   ui.canvas.width = width;
   ui.canvas.height = height;
   const context = ui.canvas.getContext('2d', { alpha: true });
-  context.imageSmoothingEnabled = false;
+  const scalingMode = $('#vc-scaling-mode').value;
+  ui.canvas.dataset.scalingMode = scalingMode;
+  context.imageSmoothingEnabled = scalingMode !== 'pixelated';
+  if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
   context.clearRect(0, 0, width, height);
   context.drawImage(currentBitmap, 0, 0);
   ui.canvas.hidden = false;
@@ -622,6 +626,10 @@ $('#vc-checker').addEventListener('click', event => {
 $('#vc-resolution').addEventListener('change', refreshOutputDimensions);
 $('#vc-aspect').addEventListener('change', refreshOutputDimensions);
 $('#vc-output-fps').addEventListener('change', refreshMotionCadence);
+$('#vc-scaling-mode').addEventListener('change', () => {
+  ui.canvas.dataset.scalingMode = $('#vc-scaling-mode').value;
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
 $('#vc-capture-content').addEventListener('click', () => captureContentPng().catch(error => setStatus(error.message, 'error')));
 $('#vc-capture-studio').addEventListener('click', captureStudioPng);
 $('#vc-record-studio').addEventListener('click', startStudioRecording);
