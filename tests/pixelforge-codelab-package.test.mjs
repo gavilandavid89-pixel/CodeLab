@@ -67,6 +67,8 @@ function attachSceneWorkspaces(project) {
   for (const [index, key] of sections.entries()) {
     const runtime = new HeadlessEditorRuntime({ width: 4, height: 4, name: key + ' instance' });
     runtime.execute({ name: 'canvas.draw_line', x0: 0, y0: index % 4, x1: 3, y1: index % 4, color: '#FFFFFF', size: 1 });
+    runtime.createProposal('Save a small independent scene fixture');
+    assert.equal(runtime.acceptProposal().status, 'applied');
     const workspace = runtime.toJSON();
     workspace.id = project.id + '-' + key;
     workspace.name = key + ' instance';
