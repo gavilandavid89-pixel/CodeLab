@@ -109,6 +109,8 @@ No production database schema, R2 bucket, Render service, or account quota shoul
 
 ## Current implementation status
 
+- **Implemented as an isolated v2 building block:** `public/pixelforge/src/animation-tiles.mjs` encodes dense RGBA cels into sparse 64×64 tiles (with 32/128 benchmark options), omits all-zero tiles, preserves exact RGBA bytes, validates each tile with SHA-256 on decode, and computes added/changed/removed tile diffs. Contract tests live in `tests/pixelforge-animation-tiles.test.mjs` and are included in `npm run test:pixelforge`.
+- This codec is not yet wired into `PixelForgeAnimation`, project serialization, Headless persistence, or object storage. It does not yet deliver copy-on-write sharing or a bounded decoded-tile cache; those remain subsequent integration work.
 - Video Composer aspect-safe scaling, source-quality assessment, scaling-mode selection, source-vs-output disclosure, named 16:9/9:16 presets, and timeline-clock preview are being implemented in the source-quality/motion export change.
 - Dense RGBA cels, full-project JSON serialization, 96 MiB project envelope, 64 MiB raster/animation budgets, and 512 MiB account quota remain current constraints.
 - Private project-object storage and incremental patch persistence are design targets, not yet implemented.
