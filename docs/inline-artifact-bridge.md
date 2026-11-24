@@ -4,14 +4,14 @@
 
 ## 1. Para qué existe
 
-El transporte inline es el intermediario HTTPS que permite que el **agente**, desde su entorno Headless aislado, entregue un paquete editable `.codelab` a CodeLab sin dar al Headless acceso directo a Neon, a las credenciales de la base de datos ni a las APIs internas.
+El transporte inline es el intermediario HTTPS que permite que el **agente IA, fuera del Headless**, entregue un paquete editable `.codelab` a CodeLab sin dar al Headless acceso directo a Neon, a las credenciales de la base de datos ni a las APIs internas.
 
 Se utiliza cuando el agente ya terminó o necesita transferir un proyecto desde su Headless propio hacia el workspace de PixelForge administrado por CodeLab. CodeLab recibe el archivo, lo almacena temporalmente en Neon, comprueba su integridad y encola la importación con el worker nativo existente.
 
 La separación es intencional:
 
-- El Headless propio del agente trabaja aislado y produce el paquete.
-- El agente inicia la transferencia HTTPS hacia CodeLab.
+- El Headless propio del agente trabaja aislado y produce/exporta el paquete; no se conecta al intermediario ni conoce sus endpoints.
+- El agente IA recoge el archivo exportado fuera del Headless e inicia la transferencia HTTPS hacia CodeLab.
 - CodeLab autentica, recibe y almacena temporalmente el paquete en Neon.
 - El worker existente importa el paquete con el editor indicado por el manifiesto y lo persiste en el workspace de destino.
 - El agente consulta el resultado real y, cuando se solicita, inspecciona el proyecto/evidencia antes de darlo por terminado.
@@ -24,10 +24,12 @@ El Headless no recibe credenciales Neon ni se conecta directamente a Neon Storag
 Agente IA
   │
   ├─ trabaja en su Headless aislado
-  ├─ empaqueta proyecto .codelab / ZIP compatible
-  └─ calcula tamaño, número de partes y SHA-256
-        │
-        ▼ HTTPS + token de bridge
+  └─ recibe/toma el archivo .codelab que Headless exportó
+        │ (Headless no tiene conexión al bridge)
+        ▼
+Agente IA, fuera del Headless
+  ├─ calcula tamaño, número de partes y SHA-256
+  └─ envía por HTTPS + token de bridge
 CodeLab: POST /api/agent/bridge/artifacts
   │   crea manifiesto y artifact_id
   ▼
@@ -190,3 +192,12 @@ No usar inline para:
 - `migrations/2026-11-23-pixelforge-agent-artifacts.sql`: tablas, límites y constraints.
 - `docs/agent-ai-bridge-policy.md`: política del Headless aislado, transferencia y uso exclusivo de A/B para vídeo.
 - `docs/CodeLab_Neon_comunicacion_extremo_a_extremo.md`: arquitectura general de Neon, órdenes y worker.
+
+
+## 9. Límite de confianza: transferencia exclusiva por el agente
+
+El Headless del agente **no se conecta al intermediario**. No debe contener cliente del bridge, URL del bridge, token de bridge ni credenciales de CodeLab/Neon. No realiza llamadas HTTP de importación ni intenta escribir directamente en sistemas externos.
+
+La secuencia obligatoria tiene dos fases: (1) Headless crea/edita y exporta un archivo nativo `.codelab`, y termina; (2) fuera del Headless, el agente recoge ese archivo, calcula el manifiesto/hash, envía chunks al intermediario HTTPS y sigue el resultado hasta verificar la persistencia. El bridge es un límite de confianza que solo cruza el agente mediante una acción de transferencia separada.
+
+Este documento regula el transporte del proyecto editable. No transporta el vídeo final ni sustituye A/B. Si la tarea incluye vídeo, seguir `VIDEO-PROCESSING-AB.md`, recuperar el archivo de vídeo producido y entregárselo al usuario.
