@@ -2,6 +2,7 @@ import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSeque
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
 import { getCaptureDimensions, getSourceQualityAssessment, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
+import { getVideoScalingMode } from './src/drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
 const ui = {
@@ -383,7 +384,7 @@ async function parseComposerPackage(file) {
         loop: animation.loop !== false, frameCount: frames.length, totalDurationMs,
         projectName: project.name,
         sourceDrawingMode: project.drawingConfiguration?.activeMode === 'pixel-art' ? 'pixel-art' : 'illustration',
-        scalingMode: project.drawingConfiguration?.activeMode === 'pixel-art' ? 'pixelated' : 'smooth',
+        scalingMode: getVideoScalingMode(project.drawingConfiguration?.activeMode),
       },
       frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
       entryCount: entries.size,
