@@ -48,7 +48,7 @@ export class TiledRasterStrokeHistory {
   get isStrokeActive() { return Boolean(this.#active); }
   get stats() {
     const bytes = stack => stack.reduce((sum, command) =>
-      sum + command.entries.reduce((entrySum, entry) => entrySum + entry.before.byteLength + entry.after.byteLength, 0), 0);
+      sum + (command.bytes ?? command.entries.reduce((entrySum, entry) => entrySum + entry.before.byteLength + entry.after.byteLength, 0)), 0);
     return {
       undoCommands: this.#undo.length, redoCommands: this.#redo.length,
       activeStrokeBytes: this.#active?.bytes || 0,
@@ -82,9 +82,39 @@ export class TiledRasterStrokeHistory {
     return true;
   }
 
+  recordLayerState(type, before, after) {
+    this.#assertLive();
+    if (this.#active) throw new Error('Commit or cancel the active stroke before changing layers.');
+    if (!before?.layers?.length || !after?.layers?.length) throw new TypeError('Layer history requires complete before/after states.');
+    const estimate = state => JSON.stringify({
+      activeLayerId: state.activeLayerId,
+      layers: state.layers.map(({ celId, ...metadata }) => metadata),
+    }).length * 2;
+    const bytes = estimate(before) + estimate(after);
+    if (bytes > this.#maxBytes) {
+      this.#document.releaseLayerState(before);
+      this.#document.releaseLayerState(after);
+      throw new RangeError('Layer operation exceeded the sparse undo history byte budget.');
+    }
+    for (const command of this.#redo) this.#releaseCommand(command);
+    this.#redo = [];
+    this.#undo.push({ type: 'layer-state:' + type, before, after, bytes });
+    this.#trimHistory();
+    return true;
+  }
+
+  #releaseCommand(command) {
+    if (command?.type?.startsWith('layer-state:')) {
+      this.#document.releaseLayerState(command.before);
+      this.#document.releaseLayerState(command.after);
+    }
+  }
+
   #trimHistory() {
     while (this.#undo.length > this.#maxCommands ||
-      this.#undo.reduce((sum, item) => sum + item.bytes, 0) > this.#maxBytes) this.#undo.shift();
+      this.#undo.reduce((sum, item) => sum + item.bytes, 0) > this.#maxBytes) {
+      this.#releaseCommand(this.#undo.shift());
+    }
   }
 
   beginStroke(layerId, settings = {}) {
@@ -163,6 +193,12 @@ export class TiledRasterStrokeHistory {
     if (this.#active) throw new Error('Commit or cancel the active stroke before undo.');
     const command = this.#undo.pop();
     if (!command) return false;
+    if (command.type?.startsWith('layer-state:')) {
+      try { this.#document.restoreLayerState(command.before); }
+      catch (error) { this.#undo.push(command); throw error; }
+      this.#redo.push(command);
+      return true;
+    }
     if (command.entries[0]?.region) {
       for (let index = command.entries.length - 1; index >= 0; index--) {
         const entry = command.entries[index];
@@ -180,6 +216,12 @@ export class TiledRasterStrokeHistory {
     if (this.#active) throw new Error('Commit or cancel the active stroke before redo.');
     const command = this.#redo.pop();
     if (!command) return false;
+    if (command.type?.startsWith('layer-state:')) {
+      try { this.#document.restoreLayerState(command.after); }
+      catch (error) { this.#redo.push(command); throw error; }
+      this.#undo.push(command);
+      return true;
+    }
     if (command.entries[0]?.region) {
       for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after);
     } else {
@@ -192,11 +234,13 @@ export class TiledRasterStrokeHistory {
   clear() {
     this.#assertLive();
     if (this.#active) throw new Error('Cancel the active stroke before clearing history.');
+    for (const command of [...this.#undo, ...this.#redo]) this.#releaseCommand(command);
     this.#undo = [];
     this.#redo = [];
   }
 
   dispose() {
+    for (const command of [...this.#undo, ...this.#redo]) this.#releaseCommand(command);
     this.#undo = [];
     this.#redo = [];
     this.#active = null;

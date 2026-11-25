@@ -256,3 +256,62 @@ test('tiled gradient validates endpoints and respects layer locking', async () =
   await assert.rejects(() => fillTiledGradient(doc, layerId, 0, 0, 7, 7), /locked/);
   doc.dispose();
 });
+
+
+test('tiled layer metadata operations are undoable and preserve shared cel resources', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 64, height: 64, tileSize: 32 });
+  const baseId = doc.activeLayerId;
+  await doc.writeRegion(baseId, { x: 4, y: 5, width: 1, height: 1 }, new Uint8Array([12, 34, 56, 255]));
+  const originalPixel = doc.readRegion(baseId, { x: 4, y: 5, width: 1, height: 1 });
+  const duplicate = doc.runLayerOperation('duplicate', () => doc.duplicateLayer(baseId));
+  assert.equal(doc.layers.length, 2);
+  assert.equal(doc.stats.resourceReferences, 2);
+  assert.equal(await doc.undo(), true);
+  assert.equal(doc.layers.length, 1);
+  assert.deepEqual(doc.readRegion(baseId, { x: 4, y: 5, width: 1, height: 1 }), originalPixel);
+  assert.equal(doc.stats.resourceReferences, 1);
+  assert.equal(await doc.redo(), true);
+  assert.equal(doc.layers.length, 2);
+  assert.equal(doc.layers[1].id, duplicate.id);
+  assert.equal(doc.stats.resourceReferences, 2);
+
+  doc.runLayerOperation('metadata', () => {
+    doc.renameLayer(duplicate.id, 'Ink');
+    doc.setLayerOpacity(duplicate.id, 0.35);
+    doc.setLayerVisibility(duplicate.id, false);
+    doc.setLayerLocked(duplicate.id, true);
+    doc.moveLayer(duplicate.id, 0);
+  });
+  assert.equal(doc.layers[0].name, 'Ink');
+  assert.equal(doc.layers[0].opacity, 0.35);
+  assert.equal(doc.layers[0].visible, false);
+  assert.equal(doc.layers[0].locked, true);
+  assert.equal(await doc.undo(), true);
+  assert.equal(doc.layers[1].name, duplicate.name);
+  assert.equal(doc.layers[1].opacity, 1);
+  assert.equal(doc.layers[1].visible, true);
+  assert.equal(doc.layers[1].locked, false);
+  assert.equal(await doc.redo(), true);
+  assert.equal(doc.layers[0].name, 'Ink');
+
+  doc.runLayerOperation('delete', () => doc.deleteLayer(duplicate.id));
+  assert.equal(doc.layers.length, 1);
+  assert.equal(await doc.undo(), true);
+  assert.equal(doc.layers.length, 2);
+  assert.equal(doc.layers[0].id, duplicate.id);
+  assert.equal(doc.layers[0].name, 'Ink');
+  doc.dispose();
+  assert.equal(doc.stats.celCount, 0);
+  assert.equal(doc.stats.resourceCount, 0);
+});
+
+test('tiled layer history rejects over-budget metadata snapshots without leaking cel references', () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 32 });
+  const constrained = new TiledRasterStrokeHistory(doc, { maxBytes: 8 });
+  const before = doc.captureLayerState();
+  const after = doc.captureLayerState();
+  assert.throws(() => constrained.recordLayerState('rename', before, after), /byte budget/);
+  assert.equal(doc.stats.celCount, 1);
+  constrained.dispose();
+  doc.dispose();
+});

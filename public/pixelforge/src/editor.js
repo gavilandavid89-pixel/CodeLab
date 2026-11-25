@@ -2432,8 +2432,7 @@ const viewportCenter = () => ({ x: canvas.clientWidth / 2, y: canvas.clientHeigh
 $('#zoom-in').addEventListener('click', () => zoomAt(viewportCenter(), zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => zoomAt(viewportCenter(), zoom / 1.25));
 $('#add-layer').addEventListener('click', () => {
-  if (doc.isTiled) { status('Adding layers is temporarily disabled for sparse projects until layer-history support is complete.', 'warning'); return; }
-  try { if (!canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const layer = doc.addLayer(); layer.authoringMode = drawingConfiguration.activeMode; changed(); renderLayers(); status('Layer added', 'success'); }
+  try { if (!doc.isTiled && !canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const layer = runLayerMutation('add', () => doc.addLayer()); layer.authoringMode = drawingConfiguration.activeMode; changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#animation-add-frame').addEventListener('click', () => {
@@ -2880,6 +2879,9 @@ $('#import-file').addEventListener('change', async event => {
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 });
+function runLayerMutation(type, operation) {
+  return doc.isTiled ? doc.runLayerOperation(type, operation) : operation();
+}
 function renderLayers() {
   const list = $('#layers'); list.replaceChildren();
   [...doc.layers].reverse().forEach(layer => {
@@ -2898,31 +2900,31 @@ function renderLayers() {
     visibility.className = 'layer-visibility'; visibility.textContent = layer.visible ? '◉' : '○';
     visibility.setAttribute('aria-label', layer.visible ? 'Hide layer' : 'Show layer');
     visibility.setAttribute('aria-pressed', String(layer.visible));
-    visibility.disabled = doc.isTiled;
-    visibility.addEventListener('click', () => { doc.setLayerVisibility(layer.id, !layer.visible); changed(); renderLayers(); });
+    visibility.disabled = false;
+    visibility.addEventListener('click', () => { runLayerMutation('visibility', () => doc.setLayerVisibility(layer.id, !layer.visible)); changed(); renderLayers(); });
     const lock = document.createElement('button');
     lock.className = 'layer-visibility layer-lock'; lock.textContent = layer.locked ? '🔒' : '♧';
     lock.setAttribute('aria-label', layer.locked ? 'Unlock layer' : 'Lock layer');
     lock.setAttribute('aria-pressed', String(layer.locked));
     lock.title = layer.locked ? 'Unlock layer for editing' : 'Lock layer against edits';
-    lock.disabled = doc.isTiled;
+    lock.disabled = false;
     lock.addEventListener('click', () => {
-      doc.setLayerLocked(layer.id, !layer.locked);
+      runLayerMutation('lock', () => doc.setLayerLocked(layer.id, !layer.locked));
       changed(); renderLayers();
       status(layer.locked ? 'Layer locked' : 'Layer unlocked', 'success');
     });
     const order = document.createElement('div'); order.className = 'layer-order-controls';
     const raise = document.createElement('button');
     raise.className = 'layer-order'; raise.textContent = '↑'; raise.title = 'Raise layer';
-    raise.setAttribute('aria-label', 'Raise layer'); raise.disabled = doc.isTiled || layerIndex === doc.layers.length - 1;
+    raise.setAttribute('aria-label', 'Raise layer'); raise.disabled = layerIndex === doc.layers.length - 1;
     raise.addEventListener('click', () => {
-      if (doc.moveLayer(layer.id, layerIndex + 1)) { changed(); renderLayers(); status('Layer moved up', 'success'); }
+      if (runLayerMutation('reorder', () => doc.moveLayer(layer.id, layerIndex + 1))) { changed(); renderLayers(); status('Layer moved up', 'success'); }
     });
     const lower = document.createElement('button');
     lower.className = 'layer-order'; lower.textContent = '↓'; lower.title = 'Lower layer';
-    lower.setAttribute('aria-label', 'Lower layer'); lower.disabled = doc.isTiled || layerIndex === 0;
+    lower.setAttribute('aria-label', 'Lower layer'); lower.disabled = layerIndex === 0;
     lower.addEventListener('click', () => {
-      if (doc.moveLayer(layer.id, layerIndex - 1)) { changed(); renderLayers(); status('Layer moved down', 'success'); }
+      if (runLayerMutation('reorder', () => doc.moveLayer(layer.id, layerIndex - 1))) { changed(); renderLayers(); status('Layer moved down', 'success'); }
     });
     order.append(raise, lower);
     row.append(visibility, select, lock, order); list.append(row);
@@ -2931,11 +2933,11 @@ function renderLayers() {
   if (opacityInput) {
     opacityInput.value = String(Math.round((doc.activeLayer?.opacity ?? 1) * 100));
     $('#layer-opacity-value').textContent = `${opacityInput.value}%`;
-    opacityInput.disabled = !doc.activeLayer || doc.isTiled;
-    $('#rename-layer').disabled = !doc.activeLayer || doc.isTiled;
-    $('#duplicate-layer').disabled = !doc.activeLayer || doc.layers.length >= 64 || doc.isTiled;
-    $('#delete-layer').disabled = !doc.activeLayer || doc.layers.length <= 1 || doc.isTiled;
-    $('#add-layer').disabled = doc.isTiled;
+    opacityInput.disabled = !doc.activeLayer;
+    $('#rename-layer').disabled = !doc.activeLayer;
+    $('#duplicate-layer').disabled = !doc.activeLayer || doc.layers.length >= 64;
+    $('#delete-layer').disabled = !doc.activeLayer || doc.layers.length <= 1;
+    $('#add-layer').disabled = doc.layers.length >= 64;
   }
   updateDrawHoldUI();
   renderAnimationTimeline();
@@ -2945,31 +2947,28 @@ $('#layer-opacity')?.addEventListener('input', event => {
 });
 $('#layer-opacity')?.addEventListener('change', event => {
   try {
-    if (doc.setLayerOpacity(doc.activeLayer.id, Number(event.target.value) / 100)) {
+    if (runLayerMutation('opacity', () => doc.setLayerOpacity(doc.activeLayer.id, Number(event.target.value) / 100))) {
       changed(); renderLayers(); status('Layer opacity updated', 'success');
     }
   } catch (error) { status(error.message, 'error'); renderLayers(); }
 });
 $('#rename-layer')?.addEventListener('click', () => {
-  if (doc.isTiled) return;
   const layer = doc.activeLayer;
   if (!layer) return;
   const name = window.prompt('Layer name', layer.name);
   if (name === null) return;
   try {
-    if (doc.renameLayer(layer.id, name)) { changed(); renderLayers(); status('Layer renamed', 'success'); }
+    if (runLayerMutation('rename', () => doc.renameLayer(layer.id, name))) { changed(); renderLayers(); status('Layer renamed', 'success'); }
   } catch (error) { status(error.message, 'error'); }
 });
 $('#duplicate-layer')?.addEventListener('click', () => {
-  if (doc.isTiled) return;
-  try { if (!canGrowAnimationLayer()) throw new RangeError('Duplicating this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const sourceId = doc.activeLayer.id; const duplicate = doc.duplicateLayer(sourceId); changed(new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
+  try { if (!doc.isTiled && !canGrowAnimationLayer()) throw new RangeError('Duplicating this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const sourceId = doc.activeLayer.id; const duplicate = runLayerMutation('duplicate', () => doc.duplicateLayer(sourceId)); changed(doc.isTiled ? undefined : new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#delete-layer')?.addEventListener('click', () => {
-  if (doc.isTiled) return;
   const layer = doc.activeLayer;
   if (!layer || doc.layers.length <= 1 || !window.confirm(`Delete layer "${layer.name}"? This can be undone.`)) return;
-  try { doc.deleteLayer(layer.id); changed(); renderLayers(); status('Layer deleted', 'success'); }
+  try { runLayerMutation('delete', () => doc.deleteLayer(layer.id)); changed(); renderLayers(); status('Layer deleted', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 function safeName(value) { return (value || 'pixelforge-artwork').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'pixelforge-artwork'; }

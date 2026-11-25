@@ -431,6 +431,83 @@ export class TiledRasterProjectDocument {
     return layerId;
   }
 
+  captureLayerState() {
+    const layers = [];
+    try {
+      for (const layer of this.#layers) {
+        const { celId, ...metadata } = layer;
+        layers.push({ ...structuredClone(metadata), celId: this.#store.cloneCel(celId) });
+      }
+      return { activeLayerId: this.#activeLayerId, layers };
+    } catch (error) {
+      for (const layer of layers) this.#store.releaseCel(layer.celId);
+      throw error;
+    }
+  }
+
+  releaseLayerState(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.layers)) return;
+    for (const layer of snapshot.layers) this.#store.releaseCel(layer.celId);
+    snapshot.layers.length = 0;
+  }
+
+  restoreLayerState(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.layers) || !snapshot.layers.length ||
+        snapshot.layers.length > MAX_LAYERS ||
+        !snapshot.layers.some(layer => layer.id === snapshot.activeLayerId)) {
+      throw new TypeError('Tiled layer history snapshot is invalid.');
+    }
+    const restored = [];
+    try {
+      for (const layer of snapshot.layers) {
+        const { celId, ...metadata } = layer;
+        restored.push({ ...structuredClone(metadata), celId: this.#store.cloneCel(celId) });
+      }
+    } catch (error) {
+      for (const layer of restored) this.#store.releaseCel(layer.celId);
+      throw error;
+    }
+    for (const layer of this.#layers) this.#store.releaseCel(layer.celId);
+    this.#layers = restored;
+    this.#activeLayerId = snapshot.activeLayerId;
+    this.#markChanged();
+    return true;
+  }
+
+  runLayerOperation(type, operation) {
+    if (typeof type !== 'string' || !type.trim() || typeof operation !== 'function') {
+      throw new TypeError('A layer operation type and callback are required.');
+    }
+    if (this.#strokeHistory.isStrokeActive) throw new Error('Finish the active tiled stroke before changing layers.');
+    const before = this.captureLayerState();
+    let result;
+    try {
+      result = operation();
+    } catch (error) {
+      this.releaseLayerState(before);
+      throw error;
+    }
+    let after;
+    try {
+      after = this.captureLayerState();
+      const signature = state => JSON.stringify({
+        activeLayerId: state.activeLayerId,
+        layers: state.layers.map(({ celId, ...metadata }) => metadata),
+      });
+      if (signature(before) === signature(after)) {
+        this.releaseLayerState(before);
+        this.releaseLayerState(after);
+      } else {
+        this.#strokeHistory.recordLayerState(type, before, after);
+      }
+      return result;
+    } catch (error) {
+      this.releaseLayerState(before);
+      if (after) this.releaseLayerState(after);
+      throw error;
+    }
+  }
+
   addLayer(name = 'Layer ' + (this.#layers.length + 1)) {
     if (this.#layers.length >= MAX_LAYERS) throw new RangeError('Tiled project supports up to 64 layers.');
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
