@@ -113,7 +113,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       return {
         x: rect.left + (work.width - width * zoom) / 2 + (point.x + 0.5) * zoom,
         y: rect.top + (work.height - height * zoom) / 2 + (point.y + 0.5) * zoom,
-        zoom,
+        zoom, width, height,
       };
     }, { x, y });
     // Calibrate against the editor's own live coordinate readout. This avoids
@@ -122,7 +122,14 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       await page.mouse.move(screen.x, screen.y);
       const readout = await page.locator('#coordinate-readout').textContent();
       const match = readout.match(/x: (-?\d+) · y: (-?\d+)/);
-      if (!match) break;
+      if (!match) {
+        if (readout === 'outside canvas') {
+          screen.x += (x < screen.width / 2 ? 3 : -3) * screen.zoom;
+          screen.y += (y < screen.height / 2 ? 3 : -3) * screen.zoom;
+          continue;
+        }
+        break;
+      }
       const dx = x - Number(match[1]), dy = y - Number(match[2]);
       if (dx === 0 && dy === 0) return screen;
       screen.x += dx * screen.zoom;
