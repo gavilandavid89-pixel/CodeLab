@@ -1345,6 +1345,7 @@ function startAnimationPlayback() {
   status('Playing animation', 'success');
 }
 function changed(copyFromByNewId = new Map()) {
+  stampActiveDrawingMode();
   clearTransformPreview(); clearCropPreview();
   if (doc.isTiled) { render(); updateTitle(); scheduleAutosave(); return; }
   if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
