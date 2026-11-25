@@ -56,7 +56,9 @@ function createEditorDocument(width, height, name, config = drawingConfiguration
       projectMetadata: { drawingModel: {}, vectorModel: null },
     });
   }
-  return new RasterDocument(width, height, name);
+  const document = new RasterDocument(width, height, name);
+  for (const layer of document.layers) layer.authoringMode = config.activeMode;
+  return document;
 }
 
 async function restoreProjectDocument(snapshot, { newIdentity = false } = {}) {
@@ -2380,7 +2382,7 @@ $('#zoom-in').addEventListener('click', () => zoomAt(viewportCenter(), zoom * 1.
 $('#zoom-out').addEventListener('click', () => zoomAt(viewportCenter(), zoom / 1.25));
 $('#add-layer').addEventListener('click', () => {
   if (doc.isTiled) { status('Adding layers is temporarily disabled for sparse projects until layer-history support is complete.', 'warning'); return; }
-  try { if (!canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
+  try { if (!canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const layer = doc.addLayer(); layer.authoringMode = drawingConfiguration.activeMode; changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#animation-add-frame').addEventListener('click', () => {
@@ -2394,6 +2396,7 @@ $('#animation-add-frame').addEventListener('click', () => {
     const currentId = animationFrameId(animation.activeFrameIndex);
     captureAnimationFrame(); saveAnimationFrameHistory(currentId);
     animation.addFrame({ duplicate: false });
+    if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(animation.activeFrameIndex, drawingConfiguration.activeMode);
     animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
     applyAnimationFramePixels(animation.activeFrameIndex);
     scheduleAutosave();
