@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
 import { TiledRasterStrokeHistory } from '../public/pixelforge/src/raster-tiled-history.mjs';
 import { drawTiledShape } from '../public/pixelforge/src/raster-tiled-shapes.mjs';
+import { fillTiledGradient } from '../public/pixelforge/src/raster-tiled-gradient.mjs';
 
 const whole = (doc, layerId) => doc.readRegion(layerId, { x: 0, y: 0, width: doc.width, height: doc.height });
 
@@ -197,5 +198,61 @@ test('tiled shape dab cap rejects before drawing and history budget rolls back t
   assert.deepEqual(whole(doc, layerId), before);
   assert.equal(constrainedHistory.canUndo, false);
   constrainedHistory.dispose();
+  doc.dispose();
+});
+
+
+test('tiled linear gradient stages changed tiles and is one undoable operation', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 40, height: 12, tileSize: 16 });
+  const layerId = doc.activeLayerId;
+  const before = whole(doc, layerId);
+  const changed = await fillTiledGradient(doc, layerId, 0, 0, 39, 0, {
+    startColor: '#ff0000', endColor: '#0000ff', opacity: 1,
+  });
+  assert.equal(changed, 40 * 12);
+  const painted = whole(doc, layerId);
+  assert.deepEqual([...painted.slice(0, 4)], [255, 0, 0, 255]);
+  assert.deepEqual([...painted.slice((11 * 40 + 39) * 4, (11 * 40 + 39) * 4 + 4)], [0, 0, 255, 255]);
+  assert.equal(doc.history.length, 1);
+  assert.equal(doc.history.at(-1).type, 'gradient');
+  assert.equal(await doc.undo(), true);
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(await doc.redo(), true);
+  assert.deepEqual(whole(doc, layerId), painted);
+  doc.dispose();
+});
+
+test('tiled gradient respects selection, rejects budget overflow atomically and skips no-op work', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 24, height: 12, tileSize: 8 });
+  const layerId = doc.activeLayerId;
+  const mask = new Uint8Array(doc.width * doc.height);
+  for (let y = 2; y < 6; y++) mask.fill(1, y * doc.width + 3, y * doc.width + 9);
+  doc.setSelectionMask(mask);
+  const before = whole(doc, layerId);
+  await assert.rejects(() => fillTiledGradient(doc, layerId, 0, 0, 23, 0, {
+    startColor: '#ff0000', endColor: '#0000ff', maxBytes: 8,
+  }), /byte budget/);
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(doc.history.length, 0);
+  const changed = await fillTiledGradient(doc, layerId, 0, 0, 23, 0, {
+    startColor: '#ff0000', endColor: '#0000ff',
+  });
+  assert.equal(changed, 24);
+  const pixels = whole(doc, layerId);
+  assert.deepEqual([...pixels.slice((3 * 24 + 4) * 4, (3 * 24 + 4) * 4 + 4)].slice(3), [255]);
+  assert.deepEqual([...pixels.slice((3 * 24 + 12) * 4, (3 * 24 + 12) * 4 + 4)], [0, 0, 0, 0]);
+  assert.equal(await fillTiledGradient(doc, layerId, 0, 0, 23, 0, {
+    startColor: '#ff0000', endColor: '#0000ff',
+  }), 0);
+  assert.equal(doc.history.length, 1);
+  doc.dispose();
+});
+
+test('tiled gradient validates endpoints and respects layer locking', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 8, height: 8, tileSize: 8 });
+  const layerId = doc.activeLayerId;
+  await assert.rejects(() => fillTiledGradient(doc, layerId, -1, 0, 7, 7), /endpoints/);
+  doc.setLayerLocked(layerId, true);
+  await assert.rejects(() => fillTiledGradient(doc, layerId, 0, 0, 7, 7), /locked/);
   doc.dispose();
 });
