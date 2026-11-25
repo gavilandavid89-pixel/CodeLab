@@ -52,10 +52,12 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
     height: Math.min(document.height - 1, y - offset + brush.size - 1) - Math.max(0, y - offset) + 1,
   };
   const pixels = document.readRegion(layerId, region);
+  const selectionMask = document.selectionMask;
   let changedPixels = 0;
   for (let py = 0; py < region.height; py++) {
     for (let px = 0; px < region.width; px++) {
       const documentX = region.x + px, documentY = region.y + py;
+      if (selectionMask && !selectionMask[documentY * document.width + documentX]) continue;
       let coverage = 1;
       if (brush.shape === 'circle') {
         const centerOffset = brush.size % 2 === 0 ? 0.5 : 0;
