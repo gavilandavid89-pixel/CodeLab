@@ -581,6 +581,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
   if (isTiled) {
     const validationDocument = await TiledRasterProjectDocument.fromManifest(project);
     validationDocument.dispose();
+    const tiledFrameCount = await validateTiledAnimation(project, project.animation);
     const resources = [];
     const resourcePaths = new Set();
     let resourceBytes = 0;
