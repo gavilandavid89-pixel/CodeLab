@@ -104,16 +104,33 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     await page.waitForTimeout(40);
   };
   const setSymmetry = mode => page.locator('#symmetry-mode').selectOption(String(mode));
-  const screenPoint = async ({ x, y }) => page.locator('#canvas').evaluate((canvas, point) => {
-    const work = document.querySelector('#work-area').getBoundingClientRect();
-    const rect = canvas.getBoundingClientRect();
-    const [width, height] = document.querySelector('#document-size').textContent.split('×').map(v => Number(v.trim()));
-    const zoom = Number.parseFloat(document.querySelector('#zoom-label').textContent) / 100;
-    return {
-      x: rect.left + (work.width - width * zoom) / 2 + (point.x + 0.5) * zoom,
-      y: rect.top + (work.height - height * zoom) / 2 + (point.y + 0.5) * zoom,
-    };
-  }, { x, y });
+  const screenPoint = async ({ x, y }) => {
+    const screen = await page.locator('#canvas').evaluate((canvas, point) => {
+      const work = document.querySelector('#work-area').getBoundingClientRect();
+      const rect = canvas.getBoundingClientRect();
+      const [width, height] = document.querySelector('#document-size').textContent.split('×').map(v => Number(v.trim()));
+      const zoom = Number.parseFloat(document.querySelector('#zoom-label').textContent) / 100;
+      return {
+        x: rect.left + (work.width - width * zoom) / 2 + (point.x + 0.5) * zoom,
+        y: rect.top + (work.height - height * zoom) / 2 + (point.y + 0.5) * zoom,
+        zoom,
+      };
+    }, { x, y });
+    // Calibrate against the editor's own live coordinate readout. This avoids
+    // treating CSS box/border rounding as a brush or symmetry defect.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await page.mouse.move(screen.x, screen.y);
+      const readout = await page.locator('#coordinate-readout').textContent();
+      const match = readout.match(/x: (-?\\d+) · y: (-?\\d+)/);
+      if (!match) break;
+      const dx = x - Number(match[1]), dy = y - Number(match[2]);
+      if (dx === 0 && dy === 0) return screen;
+      screen.x += dx * screen.zoom;
+      screen.y += dy * screen.zoom;
+    }
+    const finalReadout = await page.locator('#coordinate-readout').textContent();
+    throw new Error('Could not position pointer at document pixel ' + x + ',' + y + '; editor reports ' + finalReadout);
+  };
   const drawAt = async point => {
     const screen = await screenPoint(point);
     await page.mouse.move(screen.x, screen.y);
@@ -133,8 +150,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   };
   const expectedRgb = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
   const assertVisibleColor = async (point, hex, label) => {
-    const screen = await screenPoint(point);
-    await page.mouse.move(screen.x, screen.y);
+    await screenPoint(point);
     const readout = await page.locator('#coordinate-readout').textContent();
     assert.equal(readout, 'x: ' + point.x + ' · y: ' + point.y,
       'screen-to-document mapping must identify the same pixel being visually sampled for ' + label);
