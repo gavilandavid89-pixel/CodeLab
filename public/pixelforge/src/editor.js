@@ -1033,7 +1033,8 @@ function syncTiledAnimationLayerStack(copyFromByNewId = new Map()) {
     const sourceId = copyFromByNewId.get(layer.id) || null;
     const activeCelId = doc.cloneLayerCelReference(layer.id);
     const orphanFrames = tiledAnimationOrphanCels.get(layer.id);
-    animation.addLayer(layer.id, { activeCelId, copyFromLayerId: sourceId, metadata: layer,
+    const layerMetadata = { ...layer }; delete layerMetadata.celId;
+    animation.addLayer(layer.id, { activeCelId, copyFromLayerId: sourceId, metadata: layerMetadata,
       orphanFrames: orphanFrames ? new Map(orphanFrames.map(item => [item.frameId, item])) : null });
     if (orphanFrames) tiledAnimationOrphanCels.delete(layer.id);
   }
@@ -1386,7 +1387,8 @@ function drawOnionSkinOverlay() {
     const surface = document.createElement('canvas'); surface.width = region.width; surface.height = region.height;
     const surfaceContext = surface.getContext('2d'); if (!surfaceContext) return;
     for (const neighbor of neighbors) {
-      const pixels = animation.compositeRegion(neighbor.index, region, layerSettings).pixels;
+      const neighborSettings = animation.layerIds.map(id => { const metadata = animation.getLayerMetadata(neighbor.index, id); return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 }; });
+      const pixels = animation.compositeRegion(neighbor.index, region, neighborSettings).pixels;
       surfaceContext.clearRect(0, 0, region.width, region.height);
       surfaceContext.putImageData(new ImageData(pixels, region.width, region.height), 0, 0);
       surfaceContext.globalCompositeOperation = 'source-atop';
