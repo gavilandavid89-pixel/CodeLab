@@ -112,3 +112,17 @@ test('tiled fill rejects its working/history budget before changing any cel', as
   assert.equal(doc.history.length, 0);
   doc.dispose();
 });
+
+test('tile operation history can undo and redo after the target layer is locked', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const before = whole(doc, layerId);
+  await fillTiledLayer(doc, layerId, 4, 4, { color: '#abcdef' });
+  const after = whole(doc, layerId);
+  doc.activeLayer.locked = true;
+  assert.equal(await doc.undo(), true);
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(await doc.redo(), true);
+  assert.deepEqual(whole(doc, layerId), after);
+  doc.dispose();
+});
