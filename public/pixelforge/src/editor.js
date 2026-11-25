@@ -843,14 +843,14 @@ function scheduleAutosave() {
     });
   }, 800);
 }
-function settleActiveInput() {
-  if (activeStroke) finishActiveStroke(true);
+async function settleActiveInput() {
+  if (activeStroke || (doc.isTiled && tiledPointerController?.active)) await finishActiveStroke(true);
   drawHeld = false; drawHoldPointerId = null; updateDrawHoldUI();
 }
 async function flushAutosave({ force = false } = {}) {
   if (flushPromise) return flushPromise;
   flushPromise = (async () => {
-    settleActiveInput();
+    await settleActiveInput();
     const pending = autosaveTimer !== null;
     if (pending) { clearTimeout(autosaveTimer); autosaveTimer = null; }
     const savingDoc = doc;
@@ -984,7 +984,7 @@ function applyAnimationFramePixels(index) {
 }
 function switchAnimationFrame(index, { autosave = true } = {}) {
   if (!animation || index === animation.activeFrameIndex) return false;
-  settleActiveInput();
+  void settleActiveInput();
   const previousId = animationFrameId(animation.activeFrameIndex);
   captureAnimationFrame();
   saveAnimationFrameHistory(previousId);
@@ -1291,7 +1291,7 @@ function stopAnimationPlayback({ save = true } = {}) {
 function startAnimationPlayback() {
   if (!ensureAnimation() || animationPlayback.playing) return;
   if (animation.frameCount < 2) { status('Add at least two frames to play an animation', 'neutral'); return; }
-  settleActiveInput(); captureAnimationFrame();
+  void settleActiveInput(); captureAnimationFrame();
   animationPlayback.playing = true; animationPlayback.startedAt = performance.now(); animationPlayback.lastIndex = animation.activeFrameIndex;
   $('#animation-play').disabled = true; $('#animation-stop').disabled = false;
   const tick = now => {
@@ -2393,7 +2393,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
   button.textContent = 'Preparing…';
   let vectorOverlay = null;
   try {
-    settleActiveInput();
+    await settleActiveInput();
     stopAnimationPlayback();
     const snapshot = await buildProjectSnapshot();
     vectorOverlay = await createVectorOverlayImage();
@@ -2623,7 +2623,7 @@ $('#export-project').addEventListener('click', async () => {
 $('#export-sprite-sheet').addEventListener('click', async () => {
   if (doc.isTiled) { status('Sprite-sheet export is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
-    settleActiveInput();
+    await settleActiveInput();
     const layout = createSpriteSheetLayout(doc.layers.length, doc.width, doc.height, { columns: Math.ceil(Math.sqrt(doc.layers.length)), padding: 1 });
     const sheet = document.createElement('canvas'); sheet.width = layout.width; sheet.height = layout.height;
     const context = sheet.getContext('2d', { alpha: true });
@@ -2647,7 +2647,7 @@ $('#export-sprite-sheet').addEventListener('click', async () => {
 $('#export-png').addEventListener('click', async () => {
   let vectorOverlay = null;
   try {
-    settleActiveInput();
+    await settleActiveInput();
     vectorOverlay = await createVectorOverlayImage();
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = doc.width; exportCanvas.height = doc.height;
