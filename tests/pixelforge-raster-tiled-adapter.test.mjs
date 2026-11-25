@@ -22,6 +22,8 @@ test('migrates all raster layers and project drawing configuration into a tiled 
   assert.equal(manifest.layers[0].cel.tiles.length, 1);
   assert.equal(manifest.layers[1].cel.tiles.length, 1);
   assert.deepEqual(manifest.drawingConfiguration, config);
+  assert.equal(manifest.layers[0].authoringMode, 'illustration', 'layers without an override inherit the project active mode');
+  assert.equal(manifest.layers[1].authoringMode, 'illustration');
   assert.deepEqual(manifest.projectMetadata.drawingModel, { projectNote: 'preserve-me' });
 
   const restored = await TiledRasterProjectDocument.fromManifest(manifest);
