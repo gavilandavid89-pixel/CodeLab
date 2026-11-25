@@ -114,7 +114,7 @@ export class TiledAnimationDocument {
     }
   }
 
-  static async fromManifest(manifest, { maxDecodedCacheBytes = 8 * 1024 * 1024 } = {}) {
+  static async fromManifest(manifest, { maxDecodedCacheBytes = 8 * 1024 * 1024, store: sharedStore = null } = {}) {
     if (!manifest || manifest.format !== PIXELFORGE_TILED_ANIMATION_FORMAT ||
         manifest.version !== PIXELFORGE_TILED_ANIMATION_VERSION ||
         !Array.isArray(manifest.layerIds) || !Array.isArray(manifest.frames)) {
@@ -132,7 +132,8 @@ export class TiledAnimationDocument {
       throw new TypeError('Tiled animation layer IDs must be valid and unique.');
     }
     const frameIds = new Set();
-    const store = new SparseTileCelStore({ maxDecodedCacheBytes });
+    const store = sharedStore || new SparseTileCelStore({ maxDecodedCacheBytes });
+    if (!(store instanceof SparseTileCelStore)) throw new TypeError('A SparseTileCelStore is required.');
     const frames = [];
     try {
       for (const frame of manifest.frames) {
@@ -169,6 +170,16 @@ export class TiledAnimationDocument {
     }
   }
 
+  static fromTiledProjectDocument(document, { fps = 12 } = {}) {
+    if (!document?.isTiled || typeof document.createAnimationBridgeSeed !== 'function') {
+      throw new TypeError('A tiled raster project document is required.');
+    }
+    const seed = document.createAnimationBridgeSeed();
+    const frame = seed.frames[0];
+    frame.durationMs = Math.max(1, Math.min(10000, 1000 / fps));
+    return new TiledAnimationDocument({ ...seed, fps, activeFrameIndex: 0 });
+  }
+
   get width() { return this.#width; }
   get height() { return this.#height; }
   get fps() { return this.#fps; }
@@ -176,6 +187,8 @@ export class TiledAnimationDocument {
   get activeFrameIndex() { return this.#activeFrameIndex; }
   get layerIds() { return [...this.#layerIds]; }
   get stats() { return this.#store.stats; }
+  get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
+  get store() { return this.#store; }
 
   getFrame(index) {
     assertFrameIndex(index, this.#frames.length);
@@ -212,6 +225,106 @@ export class TiledAnimationDocument {
     return this.getLayerMetadata(frameIndex, layerId);
   }
 
+  getFrameCelReference(frameIndex, layerId) {
+    const frame = this.#frame(frameIndex);
+    return this.#store.cloneCel(this.#cel(frame, layerId));
+  }
+
+  replaceFrameCelReference(frameIndex, layerId, celId, { takeOwnership = false } = {}) {
+    const frame = this.#frame(frameIndex);
+    const previous = this.#cel(frame, layerId);
+    const next = takeOwnership ? celId : this.#store.cloneCel(celId);
+    if (typeof next !== 'string' || next === previous) {
+      if (takeOwnership && next === previous) return false;
+      throw new TypeError('A distinct sparse cel reference is required.');
+    }
+    this.#store.getCelTileSize(next);
+    frame.cels.set(layerId, next);
+    this.#store.releaseCel(previous);
+    return true;
+  }
+
+  getOnionSkinFrames({ previous = 1, next = 0 } = {}) {
+    if (!Number.isInteger(previous) || previous < 0 || previous > 3 || !Number.isInteger(next) || next < 0 || next > 3) {
+      throw new RangeError('Onion skin range must be from 0 to 3 frames in each direction.');
+    }
+    const result = [];
+    for (let offset = previous; offset >= 1; offset--) {
+      const index = this.#activeFrameIndex - offset;
+      if (index >= 0) result.push(Object.freeze({ index, direction: 'previous', opacity: 1 / (offset + 1) }));
+    }
+    for (let offset = 1; offset <= next; offset++) {
+      const index = this.#activeFrameIndex + offset;
+      if (index < this.#frames.length) result.push(Object.freeze({ index, direction: 'next', opacity: 1 / (offset + 1) }));
+    }
+    return result;
+  }
+
+  frameIndexAtTime(elapsedMs, { loop = true } = {}) {
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0 || typeof loop !== 'boolean') throw new RangeError('Playback time must be non-negative.');
+    const total = this.totalDurationMs;
+    const time = loop ? elapsedMs % total : Math.min(elapsedMs, Math.max(0, total - 1));
+    let cursor = 0;
+    for (let index = 0; index < this.#frames.length; index++) {
+      cursor += this.#frames[index].durationMs;
+      if (time < cursor) return index;
+    }
+    return this.#frames.length - 1;
+  }
+
+  compositeRegion(frameIndex, region, layerSettings = null) {
+    const frame = this.#frame(frameIndex);
+    const settings = new Map();
+    if (layerSettings !== null) {
+      if (!Array.isArray(layerSettings) || layerSettings.length !== this.#layerIds.length) throw new TypeError('Composite layer settings must match the animation layer stack.');
+      for (const layer of layerSettings) {
+        if (!layer || !this.#layerIds.includes(layer.id) || settings.has(layer.id) ||
+            (layer.visible !== undefined && typeof layer.visible !== 'boolean') ||
+            (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1))) {
+          throw new TypeError('Composite layer settings contain invalid metadata.');
+        }
+        settings.set(layer.id, { visible: layer.visible !== false, opacity: layer.opacity ?? 1 });
+      }
+      if (settings.size !== this.#layerIds.length) throw new TypeError('Composite settings are missing a raster layer.');
+    }
+    const base = this.#store.readRegion(this.#cel(frame, this.#layerIds[0]), region);
+    const output = new Uint8ClampedArray(base.length);
+    for (const layerId of this.#layerIds) {
+      const layer = settings.get(layerId) ?? { visible: true, opacity: 1 };
+      if (!layer.visible || layer.opacity <= 0) continue;
+      const source = this.#store.readRegion(this.#cel(frame, layerId), region);
+      for (let i = 0; i < source.length; i += 4) {
+        const alpha = source[i + 3] / 255 * layer.opacity;
+        if (alpha <= 0) continue;
+        const dstAlpha = output[i + 3] / 255, outAlpha = alpha + dstAlpha * (1 - alpha);
+        const dstWeight = dstAlpha * (1 - alpha);
+        output[i] = Math.round((source[i] * alpha + output[i] * dstWeight) / outAlpha);
+        output[i + 1] = Math.round((source[i + 1] * alpha + output[i + 1] * dstWeight) / outAlpha);
+        output[i + 2] = Math.round((source[i + 2] * alpha + output[i + 2] * dstWeight) / outAlpha);
+        output[i + 3] = Math.round(outAlpha * 255);
+      }
+    }
+    return { ...region, pixels: output };
+  }
+
+  async compositeThumbnail(frameIndex, layerSettings = null, size = 48) {
+    if (!Number.isInteger(size) || size < 1 || size > 256) throw new RangeError('Thumbnail size must be 1–256 pixels.');
+    const scale = Math.min(size / this.#width, size / this.#height);
+    const width = Math.max(1, Math.round(this.#width * scale));
+    const height = Math.max(1, Math.round(this.#height * scale));
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    const xs = Array.from({ length: width }, (_, x) => Math.min(this.#width - 1, Math.floor((x + .5) * this.#width / width)));
+    for (let y = 0; y < height; y++) {
+      const sourceY = Math.min(this.#height - 1, Math.floor((y + .5) * this.#height / height));
+      const row = this.compositeRegion(frameIndex, { x: 0, y: sourceY, width: this.#width, height: 1 }, layerSettings).pixels;
+      for (let x = 0; x < width; x++) {
+        const source = xs[x] * 4, target = (y * width + x) * 4;
+        pixels.set(row.subarray(source, source + 4), target);
+      }
+    }
+    return { width, height, pixels };
+  }
+
   readRegion(frameIndex, layerId, region) {
     const frame = this.#frame(frameIndex);
     return this.#store.readRegion(this.#cel(frame, layerId), region);
@@ -221,7 +334,7 @@ export class TiledAnimationDocument {
     const frame = this.#frame(frameIndex);
     const previousCelId = this.#cel(frame, layerId);
     const result = await this.#store.writeRegion(previousCelId, region, pixels);
-    if (result.changed) frame.cels.set(layerId, result.celId);
+    if (result.changed) { frame.cels.set(layerId, result.celId); this.#store.releaseCel(previousCelId); }
     return { changed: result.changed, celId: result.celId, changedTiles: result.changedTiles, removedTiles: result.removedTiles };
   }
 
@@ -272,6 +385,8 @@ export class TiledAnimationDocument {
       throw new RangeError('Animation FPS must be an integer between 1 and 60.');
     }
     this.#fps = fps;
+    const durationMs = Math.max(1, Math.min(10000, 1000 / fps));
+    for (const frame of this.#frames) frame.durationMs = durationMs;
     return fps;
   }
 
@@ -280,6 +395,7 @@ export class TiledAnimationDocument {
     if (!Number.isInteger(afterIndex) || afterIndex < -1 || afterIndex >= this.#frames.length) {
       throw new RangeError('Frame insertion index is outside the timeline.');
     }
+    if (this.#frames.length >= 240) throw new RangeError('A tiled animation cannot exceed 240 frames.');
     const source = this.#frames[index];
     const frame = {
       id: crypto.randomUUID(),
