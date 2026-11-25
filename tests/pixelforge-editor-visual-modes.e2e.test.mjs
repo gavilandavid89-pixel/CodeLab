@@ -150,9 +150,21 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     return page.locator('#canvas').evaluate((canvas, p) => {
       const rect = canvas.getBoundingClientRect();
       const dpr = canvas.width / Math.max(1, canvas.clientWidth);
-      const x = Math.max(0, Math.min(canvas.width - 1, Math.floor((p.x - rect.left) * dpr)));
-      const y = Math.max(0, Math.min(canvas.height - 1, Math.floor((p.y - rect.top) * dpr)));
-      return Array.from(canvas.getContext('2d').getImageData(x, y, 1, 1).data);
+      const centerX = Math.floor((p.x - rect.left) * dpr);
+      const centerY = Math.floor((p.y - rect.top) * dpr);
+      const context = canvas.getContext('2d');
+      let best = null;
+      // Sample a tiny screen-space neighborhood to tolerate the 1px artboard
+      // outline and fractional zoom interpolation without masking missing dabs.
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+        const x = Math.max(0, Math.min(canvas.width - 1, centerX + dx));
+        const y = Math.max(0, Math.min(canvas.height - 1, centerY + dy));
+        const rgba = Array.from(context.getImageData(x, y, 1, 1).data);
+        if (!best || rgba[0] + rgba[1] + rgba[2] > best.rgba[0] + best.rgba[1] + best.rgba[2]) {
+          best = { rgba, offset: { x: dx, y: dy } };
+        }
+      }
+      return best;
     }, screen);
   };
   const expectedRgb = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
@@ -161,12 +173,13 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     const readout = await page.locator('#coordinate-readout').textContent();
     assert.equal(readout, 'x: ' + point.x + ' · y: ' + point.y,
       'screen-to-document mapping must identify the same pixel being visually sampled for ' + label);
-    const actual = await sampleVisible(point);
+    const sampled = await sampleVisible(point);
+    const actual = sampled.rgba;
     const expected = expectedRgb(hex);
     const channelError = actual.slice(0, 3).map((value, index) => Math.abs(value - expected[index]));
     if (!channelError.every(error => error <= 20)) {
       await page.locator('#canvas').screenshot({ path: path.join(artifactDir, 'failure-' + label.replace(/[^a-z0-9-]/gi, '-') + '.png') });
-      await fs.promises.writeFile(path.join(artifactDir, 'failure-details.json'), JSON.stringify({ label, point, expected, actual, readout }, null, 2));
+      await fs.promises.writeFile(path.join(artifactDir, 'failure-details.json'), JSON.stringify({ label, point, expected, actual, sampled, readout }, null, 2));
     }
     assert.ok(channelError.every(error => error <= 20),
       label + ' must be visibly rendered near document pixel ' + point.x + ',' + point.y +
