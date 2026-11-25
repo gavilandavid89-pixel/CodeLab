@@ -1390,7 +1390,10 @@ function renderAnimationTimeline() {
     button.title = `Select frame ${index + 1}`;
     const thumb = document.createElement('canvas'); thumb.width = 48; thumb.height = 48;
     const tctx = thumb.getContext('2d');
-    const preview = animation.compositeThumbnail(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })), 48);
+    const layerSettings = animation instanceof TiledAnimationDocument
+      ? animation.layerIds.map(id => { const metadata = animation.getLayerMetadata(index, id); return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 }; })
+      : doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+    const preview = animation.compositeThumbnail(index, layerSettings, 48);
     const thumbPixels = document.createElement('canvas'); thumbPixels.width = preview.width; thumbPixels.height = preview.height;
     thumbPixels.getContext('2d').putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
     const thumbScale = Math.min(48 / preview.width, 48 / preview.height);
@@ -1443,7 +1446,10 @@ function startAnimationPlayback() {
 function changed(copyFromByNewId = new Map()) {
   stampActiveDrawingMode();
   clearTransformPreview(); clearCropPreview();
-  if (doc.isTiled) { render(); updateTitle(); scheduleAutosave(); return; }
+  if (doc.isTiled) {
+    if (animation instanceof TiledAnimationDocument) { syncTiledAnimationLayerStack(copyFromByNewId); syncTiledAnimationFrame(); renderAnimationTimeline(); }
+    render(); updateTitle(); scheduleAutosave(); return;
+  }
   if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
   syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave();
 }
@@ -2529,7 +2535,8 @@ $('#animation-add-frame').addEventListener('click', () => {
     }
     const currentId = animationFrameId(animation.activeFrameIndex);
     captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    animation.addFrame({ duplicate: false });
+    if (animation instanceof TiledAnimationDocument) animation.createBlankFrame({ durationMs: Math.max(1, Math.round(1000 / animation.fps)), authoringMode: drawingConfiguration.activeMode });
+    else animation.addFrame({ duplicate: false });
     if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(animation.activeFrameIndex, drawingConfiguration.activeMode);
     animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
     applyAnimationFramePixels(animation.activeFrameIndex);
@@ -2542,7 +2549,8 @@ $('#animation-duplicate-frame').addEventListener('click', () => {
     ensureAnimation();
     const currentId = animationFrameId(animation.activeFrameIndex);
     captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    animation.duplicateFrame();
+    if (animation instanceof TiledAnimationDocument) animation.cloneFrame(animation.activeFrameIndex);
+    else animation.duplicateFrame();
     animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
     doc.history = []; doc.future = []; doc.historyBytes = 0;
     doc.revision++; doc.saveVersion++; doc.dirty = true;
@@ -2557,6 +2565,7 @@ $('#animation-delete-frame').addEventListener('click', () => {
     captureAnimationFrame(); saveAnimationFrameHistory(currentId);
     animation.deleteFrame(animation.activeFrameIndex);
     animationFrameHistory.delete(currentId);
+    tiledAnimationHistory.get(currentId)?.dispose(); tiledAnimationHistory.delete(currentId);
     applyAnimationFramePixels(animation.activeFrameIndex);
     scheduleAutosave();
     status('Animation frame deleted', 'success');
