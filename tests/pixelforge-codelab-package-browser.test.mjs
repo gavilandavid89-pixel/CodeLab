@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createOrbitalShowcase } from '../public/pixelforge/src/showcase-animation.mjs';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
+import { TiledAnimationDocument } from '../public/pixelforge/src/animation-tiled-adapter.mjs';
+import { PixelForgeAnimation } from '../public/pixelforge/src/animation.mjs';
 import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '../public/pixelforge/src/codelab-package.js';
 import { readSceneWorkspaceState } from '../public/pixelforge/src/scene-workspaces.js';
 
@@ -273,3 +275,60 @@ test('browser CodeLab tiled package importer rejects tampered project manifests'
   await assert.rejects(() => importPixelForgeCodeLabPackage(archive), /Integrity verification failed/);
   tiled.dispose();
 });
+
+test('browser CodeLab package round-trips tiled animation cels and per-cel drawing modes', async () => {
+  const tiled = TiledRasterProjectDocument.createBlank({
+    width: 128, height: 96, name: 'Mixed illustration and pixel animation', tileSize: 32,
+  });
+  const layerId = tiled.activeLayerId;
+  const project = await tiled.toManifest();
+  const denseAnimation = new PixelForgeAnimation({
+    width: project.width, height: project.height, layerIds: [layerId], fps: 12,
+  });
+  const initialPixels = new Uint8ClampedArray(project.width * project.height * 4);
+  initialPixels.set([220, 90, 40, 255], (12 * project.width + 14) * 4);
+  denseAnimation.setLayerPixels(0, layerId, initialPixels);
+  denseAnimation.setFrameDuration(0, 83);
+  const tiledAnimation = await TiledAnimationDocument.fromAnimation(denseAnimation, { tileSize: 32 });
+  tiledAnimation.setLayerMetadata(0, layerId, {
+    authoringMode: 'illustration',
+    modeOverrides: { illustration: { brushSize: 9 }, 'pixel-art': { brushSize: 1 } },
+  });
+  tiledAnimation.cloneFrame(0);
+  tiledAnimation.setFrameDuration(1, 125);
+  const pixelCel = new Uint8ClampedArray([12, 180, 240, 255]);
+  await tiledAnimation.writeRegion(1, layerId, { x: 96, y: 64, width: 1, height: 1 }, pixelCel);
+  tiledAnimation.setLayerMetadata(1, layerId, {
+    authoringMode: 'pixel-art',
+    modeOverrides: { illustration: { brushSize: 9 }, 'pixel-art': { brushSize: 1 } },
+  });
+  project.animation = await tiledAnimation.toManifest();
+
+  const exported = await exportPixelForgeCodeLabPackage(project);
+  assert.equal(exported.metadata.frameCount, 2);
+  const entries = await (await import('../public/pixelforge/src/video-composer-core.mjs'))
+    .readStoredZip(exported.blob);
+  assert.equal(entries.has('Frames/frames.tscn'), false,
+    'tiled animation must stay sparse and must not be exported as dense frame cels');
+  const packed = JSON.parse(await entries.get('project.json').blob.text());
+  assert.equal(packed.animation.format, 'pixelforge-tiled-animation');
+
+  const imported = await importPixelForgeCodeLabPackage(exported.blob);
+  const restored = await TiledAnimationDocument.fromManifest(imported.project.animation);
+  assert.equal(restored.frameCount, 2);
+  assert.equal(restored.fps, 12);
+  assert.equal(restored.getFrame(0).durationMs, 83);
+  assert.equal(restored.getFrame(1).durationMs, 125);
+  assert.deepEqual(restored.readRegion(0, layerId, { x: 14, y: 12, width: 1, height: 1 }),
+    new Uint8ClampedArray([220, 90, 40, 255]));
+  assert.deepEqual(restored.readRegion(1, layerId, { x: 96, y: 64, width: 1, height: 1 }), pixelCel);
+  assert.equal(restored.getLayerMetadata(0, layerId).authoringMode, 'illustration');
+  assert.equal(restored.getLayerMetadata(1, layerId).authoringMode, 'pixel-art');
+  assert.deepEqual(restored.getLayerMetadata(0, layerId).modeOverrides, {
+    illustration: { brushSize: 9 }, 'pixel-art': { brushSize: 1 },
+  });
+  restored.dispose();
+  tiledAnimation.dispose();
+  tiled.dispose();
+});
+
