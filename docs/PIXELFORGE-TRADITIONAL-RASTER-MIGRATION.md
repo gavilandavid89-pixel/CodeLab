@@ -209,3 +209,10 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - A browser package regression covers two frames with different authoring modes, distinct durations, tile-backed pixel edits and import/export restoration.
 
 **Boundary:** this completes the package-format boundary only. The editor still rejects `ensureAnimation()` for tiled raster projects and does not yet expose a live tiled timeline, onion skin, frame editing, playback, or autosave of `TiledAnimationDocument`. Do not describe mixed-mode high-resolution animation as fully available in the UI until that editor integration and persistence path are implemented and tested end-to-end.
+
+### Structured package and agent-mode propagation
+
+- Structured CodeLab v2 .codelab-pixelforge packages now carry authoringMode on every exported frame and on each frame-layer cel declaration, plus sparse modeOverrides. Import restores those fields into the native animation frame and layer-metadata records.
+- Dense animation metadata normalization now retains modeOverrides through clone, duplicate, JSON save and restore; resolveDrawingMode() reads the canonical frame.layerMetadata[] record for the requested cel before falling back to frame, layer or project mode.
+- Headless agent raster edits stamp the project's active drawing mode onto the edited layer and active animation cel. This keeps agent-produced content tagged consistently with the editor's current project mode.
+- These additions close the structured-package and headless raster-edit propagation gaps; they do not yet provide independent interpolation per layer when a single composite video frame contains both pixel-art and illustration layers. Video Composer's scaling selector remains an export-wide choice until that rendering path is upgraded.
