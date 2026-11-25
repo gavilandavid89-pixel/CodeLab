@@ -865,6 +865,7 @@ export class RasterDocument {
     const changedLayers = [];
     let changedPixels = 0;
     for (const { layer, pixels } of prepared) {
+      const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
       const tiles = [];
       for (let tileY = 0; tileY < Math.ceil(this.height / TILE_SIZE); tileY++) {
         for (let tileX = 0; tileX < Math.ceil(this.width / TILE_SIZE); tileX++) {
@@ -874,7 +875,9 @@ export class RasterDocument {
           for (let row = 0; row < tileHeight; row++) {
             const start = ((startY + row) * this.width + startX) * 4;
             for (let col = 0; col < tileWidth; col++) {
-              const offset = start + col * 4;
+              const offset = start + col * 4, x = startX + col, y = startY + row;
+              const owner = this.#ownerAt(layer, x, y);
+              if (owner !== 0 && owner !== styleOwner) continue;
               if (layer.pixels[offset] !== pixels[offset] || layer.pixels[offset + 1] !== pixels[offset + 1] ||
                   layer.pixels[offset + 2] !== pixels[offset + 2] || layer.pixels[offset + 3] !== pixels[offset + 3]) tileChangedPixels++;
             }
@@ -883,7 +886,13 @@ export class RasterDocument {
           const before = this.#captureTile(layer, tileX, tileY);
           for (let row = 0; row < tileHeight; row++) {
             const start = ((startY + row) * this.width + startX) * 4;
-            layer.pixels.set(pixels.subarray(start, start + tileWidth * 4), start);
+            for (let col = 0; col < tileWidth; col++) {
+              const offset = start + col * 4, x = startX + col, y = startY + row;
+              const owner = this.#ownerAt(layer, x, y);
+              if (owner !== 0 && owner !== styleOwner) continue;
+              layer.pixels.set(pixels.subarray(offset, offset + 4), offset);
+              this.#setOwner(layer, x, y, pixels[offset + 3] === 0 ? 0 : (owner || styleOwner));
+            }
           }
           const after = this.#captureTile(layer, tileX, tileY);
           tiles.push({ tileX, tileY, before, after });
