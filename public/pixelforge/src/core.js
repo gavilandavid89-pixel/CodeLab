@@ -462,6 +462,7 @@ export class RasterDocument {
     if (!Number.isInteger(tolerance) || tolerance < 0 || tolerance > 255) throw new RangeError('Fill tolerance must be an integer from 0 to 255.');
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     const replacement = [...parseHexColor(color), 255], secondary = [...parseHexColor(secondaryColor), 255];
     const seedPixel = y * this.width + x;
     // A fill must start inside the active selection. Treat the selection as a
@@ -484,11 +485,14 @@ export class RasterDocument {
       if (this.selectionMask && !this.selectionMask[pixel]) return false;
       if (!matches(index)) return false;
       const px = pixel % this.width, py = Math.floor(pixel / this.width);
+      const owner = this.#ownerAt(layer, px, py);
+      if (owner !== 0 && owner !== styleOwner) return false;
       const pixelReplacement = pattern === 'checker' && (Math.floor(px / scale) + Math.floor(py / scale)) % 2 === 1 ? secondary : replacement;
       if (pixelReplacement.every((value, channel) => layer.pixels[index + channel] === value)) return false;
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       for (let channel = 0; channel < 4; channel++) layer.pixels[index + channel] = pixelReplacement[channel];
+      this.#setOwner(layer, px, py, pixelReplacement[3] === 0 ? 0 : (owner || styleOwner));
       this.compositeDirtyTiles.add(key);
       return true;
     };
