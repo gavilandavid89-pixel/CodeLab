@@ -257,6 +257,13 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
 
   // Verify the actual rendered sampling behavior at a fractional zoom: smooth
   // illustration scaling must blend edge pixels; pixel-art must remain crisp.
+  const emptyScreen = await screenPoint({ x: 110, y: 110 });
+  const backgroundColor = await page.locator('#canvas').evaluate((canvas, p) => {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = canvas.width / Math.max(1, canvas.clientWidth);
+    const x = Math.floor((p.x - rect.left) * dpr), y = Math.floor((p.y - rect.top) * dpr);
+    return Array.from(canvas.getContext('2d').getImageData(x, y, 1, 1).data).slice(0, 3).join(',');
+  }, emptyScreen);
   const interpolationEvidence = {};
   for (const mode of ['illustration', 'pixel-art']) {
     await setMode(mode);
@@ -267,21 +274,20 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     await page.locator('#brush-shape').selectOption('square');
     const target = mode === 'illustration' ? { x: 60, y: 60 } : { x: 84, y: 84 };
     await drawAt(target);
+    const targetScreen = await screenPoint(target);
     interpolationEvidence[mode] = await page.locator('#canvas').evaluate((canvas, p) => {
       const rect = canvas.getBoundingClientRect();
       const dpr = canvas.width / Math.max(1, canvas.clientWidth);
       const zoom = Number.parseFloat(document.querySelector('#zoom-label').textContent) / 100;
       const radius = Math.max(5, Math.ceil(zoom) + 2);
-      const sx = rect.left + (canvas.clientWidth - 128 * zoom) / 2 + p.x * zoom;
-      const sy = rect.top + (canvas.clientHeight - 128 * zoom) / 2 + p.y * zoom;
-      const x0 = Math.max(0, Math.floor((sx - rect.left) * dpr));
-      const y0 = Math.max(0, Math.floor((sy - rect.top) * dpr));
-      const image = canvas.getContext('2d').getImageData(x0, y0, Math.min(canvas.width - x0, radius * 2), Math.min(canvas.height - y0, radius * 2));
+      const x0 = Math.max(0, Math.floor((p.x - rect.left) * dpr) - radius);
+      const y0 = Math.max(0, Math.floor((p.y - rect.top) * dpr) - radius);
+      const image = canvas.getContext('2d').getImageData(x0, y0, Math.min(canvas.width - x0, radius * 2 + 1), Math.min(canvas.height - y0, radius * 2 + 1));
       const colors = new Set();
       for (let i = 0; i < image.data.length; i += 4) colors.add(image.data[i] + ',' + image.data[i + 1] + ',' + image.data[i + 2]);
-      const bg = '23,25,34', white = '255,255,255';
-      return { colors: [...colors], hasBlendedEdge: [...colors].some(value => value !== bg && value !== white), zoom };
-    }, target);
+      const white = '255,255,255';
+      return { colors: [...colors], hasBlendedEdge: [...colors].some(value => value !== p.backgroundColor && value !== white), zoom };
+    }, { ...targetScreen, backgroundColor });
   }
   assert.ok(interpolationEvidence.illustration.hasBlendedEdge,
     'illustration mode must visibly smooth a one-pixel edge at non-integer zoom');
