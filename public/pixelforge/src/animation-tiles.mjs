@@ -188,6 +188,37 @@ export function diffSparseTiles(previous, next) {
 }
 
 
+/**
+ * Return only changed ownership tiles between two compatible sparse cels.
+ * Ownership is a first-class synchronization plane: RGBA can remain unchanged
+ * while style ownership changes, so it must have its own diff and patch ops.
+ */
+export function diffSparseOwnershipTiles(previous, next) {
+  for (const cel of [previous, next]) {
+    if (!cel || cel.format !== PIXELFORGE_TILED_CEL_FORMAT ||
+        cel.version !== PIXELFORGE_TILED_CEL_VERSION || !Array.isArray(cel.ownershipTiles || [])) {
+      throw new TypeError('Ownership tile diff requires two valid v2 tiled cels.');
+    }
+  }
+  if (previous.width !== next.width || previous.height !== next.height ||
+      previous.tileSize !== next.tileSize) {
+    throw new RangeError('Ownership tile diff requires matching canvas dimensions and tile size.');
+  }
+  const before = new Map((previous.ownershipTiles || []).map(tile => [tileKey(tile.x, tile.y), tile]));
+  const after = new Map((next.ownershipTiles || []).map(tile => [tileKey(tile.x, tile.y), tile]));
+  const added = [], changed = [], removed = [];
+  for (const [key, tile] of after) {
+    const old = before.get(key);
+    if (!old) added.push(tile);
+    else if (old.sha256 !== tile.sha256) changed.push(tile);
+  }
+  for (const [key, tile] of before) {
+    if (!after.has(key)) removed.push({ x: tile.x, y: tile.y });
+  }
+  return { added, changed, removed };
+}
+
+
 function assertCacheBudget(value) {
   if (!Number.isSafeInteger(value) || value < 0 || value > 64 * 1024 * 1024) {
     throw new RangeError('Decoded tile cache budget must be from 0 to 64 MiB.');
@@ -672,6 +703,7 @@ export class SparseTileCelStore {
       throw new RangeError('Sparse cel patch requires matching canvas dimensions and tile size.');
     }
     const diff = diffSparseTiles(previous, next);
+    const ownershipDiff = diffSparseOwnershipTiles(previous, next);
     const put = [...diff.added, ...diff.changed]
       .sort((a, b) => a.y - b.y || a.x - b.x)
       .map(tile => ({
@@ -682,13 +714,27 @@ export class SparseTileCelStore {
     const remove = [...diff.removed]
       .sort((a, b) => a.y - b.y || a.x - b.x)
       .map(tile => ({ type: 'tile.remove', x: tile.x, y: tile.y }));
+    const ownershipPut = [...ownershipDiff.added, ...ownershipDiff.changed]
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map(tile => ({
+        type: 'ownership.put',
+        x: tile.x, y: tile.y, width: tile.width, height: tile.height,
+        sha256: tile.sha256, owners: tile.owners,
+      }));
+    const ownershipRemove = [...ownershipDiff.removed]
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map(tile => ({ type: 'ownership.remove', x: tile.x, y: tile.y }));
     return {
       format: 'pixelforge-cel-patch',
       version: 1,
       projectId, baseRevision, operationId, frameId, layerId,
       canvas: { width: next.width, height: next.height, tileSize: next.tileSize },
-      operations: [...put, ...remove],
-      summary: { added: diff.added.length, changed: diff.changed.length, removed: diff.removed.length },
+      operations: [...put, ...remove, ...ownershipPut, ...ownershipRemove],
+      summary: {
+        added: diff.added.length, changed: diff.changed.length, removed: diff.removed.length,
+        ownershipAdded: ownershipDiff.added.length, ownershipChanged: ownershipDiff.changed.length,
+        ownershipRemoved: ownershipDiff.removed.length,
+      },
     };
   }
 
