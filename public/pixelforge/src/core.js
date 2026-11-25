@@ -1252,6 +1252,27 @@ export class RasterDocument {
     this.saveVersion++;
     this.dirty = true;
   }
+  #ownerAt(layer, x, y) {
+    const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE);
+    const owners = layer.ownershipTiles?.get(`${tileX}:${tileY}`);
+    if (!owners) return 0;
+    const width = Math.min(TILE_SIZE, this.width - tileX * TILE_SIZE);
+    return owners[(y - tileY * TILE_SIZE) * width + (x - tileX * TILE_SIZE)] || 0;
+  }
+  #setOwner(layer, x, y, owner) {
+    const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
+    const width = Math.min(TILE_SIZE, this.width - tileX * TILE_SIZE), height = Math.min(TILE_SIZE, this.height - tileY * TILE_SIZE);
+    let owners = layer.ownershipTiles.get(key);
+    if (!owners && owner === 0) return;
+    if (!owners) { owners = new Uint8Array(width * height); layer.ownershipTiles.set(key, owners); }
+    owners[(y - tileY * TILE_SIZE) * width + (x - tileX * TILE_SIZE)] = owner;
+    if (owner === 0 && !owners.some(value => value !== 0)) layer.ownershipTiles.delete(key);
+  }
+  #writeOwnershipTile(layer, tileX, tileY, owners) {
+    const key = `${tileX}:${tileY}`;
+    if (!owners || !owners.some(value => value !== 0)) layer.ownershipTiles.delete(key);
+    else layer.ownershipTiles.set(key, new Uint8Array(owners));
+  }
   #captureTile(layer, tileX, tileY) {
     const tile = new Uint8ClampedArray(TILE_SIZE * TILE_SIZE * 4);
     const startX = tileX * TILE_SIZE, startY = tileY * TILE_SIZE;
@@ -1260,6 +1281,8 @@ export class RasterDocument {
       const sourceStart = ((startY + row) * this.width + startX) * 4;
       tile.set(layer.pixels.subarray(sourceStart, sourceStart + width * 4), row * TILE_SIZE * 4);
     }
+    const key = `${tileX}:${tileY}`;
+    tile.owners = layer.ownershipTiles?.has(key) ? new Uint8Array(layer.ownershipTiles.get(key)) : null;
     return tile;
   }
   #markAllCompositeDirty() {
@@ -1272,6 +1295,7 @@ export class RasterDocument {
     }
   }
   #writeTile(layer, tileX, tileY, tile) {
+    if (Object.prototype.hasOwnProperty.call(tile, 'owners')) this.#writeOwnershipTile(layer, tileX, tileY, tile.owners);
     this.compositeDirtyTiles.add(`${tileX}:${tileY}`);
     const startX = tileX * TILE_SIZE, startY = tileY * TILE_SIZE;
     const width = Math.min(TILE_SIZE, this.width - startX), height = Math.min(TILE_SIZE, this.height - startY);
