@@ -44,11 +44,17 @@ test('drawing modes change presentation defaults, not source geometry', () => {
   assert.equal(illustration.brushShape, 'circle');
   assert.equal(illustration.brushHardness, 55);
   assert.equal(illustration.interpolation, 'bilinear');
+  assert.equal(illustration.fillTolerance, 24);
+  assert.equal(illustration.magicTolerance, 12);
+  assert.equal(illustration.fillContiguous, true);
   assert.equal(pixelArt.imageSmoothingEnabled, false);
   assert.equal(pixelArt.brushSize, 1);
   assert.equal(pixelArt.brushShape, 'square');
   assert.equal(pixelArt.brushHardness, 100);
   assert.equal(pixelArt.interpolation, 'nearest');
+  assert.equal(pixelArt.fillTolerance, 0);
+  assert.equal(pixelArt.magicTolerance, 0);
+  assert.equal(pixelArt.fillContiguous, true);
 });
 
 test('Video Composer inherits the source project drawing mode by default', () => {
@@ -61,15 +67,18 @@ test('per-layer mode profiles store only non-default exceptions and restore them
   let overrides = updateDrawingModeOverrides({}, 'illustration', illustrationDefaults);
   assert.deepEqual(overrides, {});
   overrides = updateDrawingModeOverrides(overrides, 'illustration', {
-    ...illustrationDefaults, brushSize: 9, brushHardness: 72, brushOpacity: 63,
+    ...illustrationDefaults, brushSize: 9, brushHardness: 72, brushOpacity: 63, fillTolerance: 37, magicTolerance: 18,
   });
   overrides = updateDrawingModeOverrides(overrides, 'pixel-art', {
-    ...getDrawingModePresentation('pixel-art'), brushSize: 3,
+    ...getDrawingModePresentation('pixel-art'), brushSize: 3, fillTolerance: 4,
   });
   assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushSize, 9);
   assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushHardness, 72);
   assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushOpacity, 63);
+  assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).fillTolerance, 37);
+  assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).magicTolerance, 18);
   assert.equal(normalizeDrawingModeProfile('pixel-art', overrides['pixel-art']).brushSize, 3);
+  assert.equal(normalizeDrawingModeProfile('pixel-art', overrides['pixel-art']).fillTolerance, 4);
   assert.equal(normalizeDrawingModeProfile('illustration', {}).brushSize, 5);
   overrides = updateDrawingModeOverrides(overrides, 'illustration', illustrationDefaults);
   assert.equal('illustration' in overrides, false);
