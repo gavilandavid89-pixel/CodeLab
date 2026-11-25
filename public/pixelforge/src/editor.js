@@ -1441,7 +1441,7 @@ function moveStroke(event) {
       const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
       void tiledPointerController.pointerMove({ pointerId: event.pointerId, points })
         .then(() => render())
-        .catch(error => status(error.message, 'error'));
+        .catch(error => { pointerId = null; status(error.message, 'error'); });
     }
     return;
   }
@@ -2164,6 +2164,7 @@ document.addEventListener('keydown', event => {
   }
 });
 $('#create-outline').addEventListener('click', () => {
+  if (doc.isTiled) { status('Outline generation is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     const count = doc.createOutline(color);
     if (count) { changed(); status(`Added ${count.toLocaleString()} outline pixels`, 'success'); }
@@ -2171,6 +2172,7 @@ $('#create-outline').addEventListener('click', () => {
   } catch (error) { status(error.message, 'error'); }
 });
 function flipPixels(axis) {
+  if (doc.isTiled) { status('Flip operations are not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     const rect = selection ?? { x: 0, y: 0, width: doc.width, height: doc.height };
     const count = doc.flipRect(rect.x, rect.y, rect.width, rect.height, axis);
@@ -2181,6 +2183,7 @@ function flipPixels(axis) {
 $('#flip-horizontal').addEventListener('click', () => flipPixels('horizontal'));
 $('#flip-vertical').addEventListener('click', () => flipPixels('vertical'));
 $('#replace-color').addEventListener('click', () => {
+  if (doc.isTiled) { status('Color replacement is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     const count = doc.replaceColor($('#replace-source').value, color, 0);
     if (count) { changed(); status(`Replaced ${count.toLocaleString()} pixels with foreground color`, 'success'); }
@@ -2892,6 +2895,7 @@ window.addEventListener('keydown', event => {
   }
   if ((event.ctrlKey || event.metaKey) && ['c', 'x', 'v'].includes(event.key.toLowerCase())) {
     event.preventDefault();
+    if (doc.isTiled) { status('Selection clipboard operations are not yet available for sparse tiled projects.', 'warning'); return; }
     try {
       const command = event.key.toLowerCase();
       if (command === 'c' || command === 'x') {
