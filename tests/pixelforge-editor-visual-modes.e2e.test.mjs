@@ -153,7 +153,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       const centerX = Math.floor((p.x - rect.left) * dpr);
       const centerY = Math.floor((p.y - rect.top) * dpr);
       const context = canvas.getContext('2d');
-      const target = [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
+      const target = [1, 3, 5].map(offset => Number.parseInt(p.hex.slice(offset, offset + 2), 16));
       let best = null;
       // Sample a tiny screen-space neighborhood to tolerate the 1px artboard
       // outline and fractional zoom interpolation without masking missing dabs.
