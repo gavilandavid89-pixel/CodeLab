@@ -164,7 +164,7 @@ export async function encodeWebMFrames(frames, options = {}) {
       worker.postMessage({
         frames: transferableFrames, width:options.width, height:options.height, codec:options.codec,
         fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor,
-        scalingMode:options.scalingMode
+        scalingMode:options.scalingMode, fitMode:options.fitMode
       });
     });
   }
