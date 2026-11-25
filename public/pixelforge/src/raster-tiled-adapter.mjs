@@ -475,6 +475,20 @@ export class TiledRasterProjectDocument {
     const layer = this.#cel(layerId);
     if (layer.locked && !allowLocked) throw new Error('The target layer is locked.');
     if (!Array.isArray(patches) || !patches.length) throw new TypeError('Tile batch must contain at least one patch.');
+    const tileSize = this.#store.getCelTileSize(layer.celId), seen = new Set();
+    const maxBytes = options.maxBytes ?? 16 * 1024 * 1024;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RangeError('Tile batch byte budget must be positive.');
+    let batchBytes = 0;
+    for (const patch of patches) {
+      if (!patch || !Number.isInteger(patch.x) || !Number.isInteger(patch.y) || patch.x < 0 || patch.y < 0 || patch.x % tileSize || patch.y % tileSize || patch.x >= this.#width || patch.y >= this.#height) throw new RangeError('Tile batch contains an invalid tile coordinate.');
+      const key = patch.x + ':' + patch.y;
+      if (seen.has(key)) throw new TypeError('Tile batch cannot contain duplicate coordinates.');
+      seen.add(key);
+      const width = Math.min(tileSize, this.#width - patch.x), height = Math.min(tileSize, this.#height - patch.y);
+      if (!(patch.pixels instanceof Uint8Array || patch.pixels instanceof Uint8ClampedArray) || patch.pixels.byteLength !== width * height * 4) throw new TypeError('Tile batch pixel buffer does not match its tile dimensions.');
+      batchBytes += patch.pixels.byteLength;
+      if (batchBytes > maxBytes) throw new RangeError('Tile batch exceeded its byte budget.');
+    }
     if (restore) {
       const previousCelId = layer.celId;
       if (!patches.some(patch => patch.owners instanceof Uint8Array)) {
