@@ -21,6 +21,42 @@ export function containRect(sourceWidth, sourceHeight, x, y, width, height) {
   };
 }
 
+export function coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  if (![sourceWidth, sourceHeight, targetWidth, targetHeight].every(value => Number.isFinite(value) && value > 0)) {
+    throw new RangeError('Source and target dimensions must be positive finite numbers.');
+  }
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  if (sourceRatio > targetRatio) {
+    const width = sourceHeight * targetRatio;
+    return { x: (sourceWidth - width) / 2, y: 0, width, height: sourceHeight };
+  }
+  const height = sourceWidth / targetRatio;
+  return { x: 0, y: (sourceHeight - height) / 2, width: sourceWidth, height };
+}
+
+export function getCompositionGuide(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  const safeArea = coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHeight);
+  return {
+    type: 'aspect-ratio-guide',
+    aspectRatio: targetWidth + ':' + targetHeight,
+    source: { width: sourceWidth, height: sourceHeight },
+    target: { width: targetWidth, height: targetHeight },
+    safeArea: {
+      x: Math.round(safeArea.x),
+      y: Math.round(safeArea.y),
+      width: Math.round(safeArea.width),
+      height: Math.round(safeArea.height),
+    },
+    normalizedSafeArea: {
+      x: safeArea.x / sourceWidth,
+      y: safeArea.y / sourceHeight,
+      width: safeArea.width / sourceWidth,
+      height: safeArea.height / sourceHeight,
+    },
+  };
+}
+
 export function getSourceQualityAssessment(sourceWidth, sourceHeight, outputWidth, outputHeight) {
   if (![sourceWidth, sourceHeight, outputWidth, outputHeight].every(value => Number.isFinite(value) && value > 0)) {
     throw new RangeError('Source and output dimensions must be positive finite numbers.');
@@ -42,7 +78,10 @@ export function drawFrameToCanvas(context, bitmap, width, height, options = {}) 
   if (!context || !bitmap || !Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
     throw new TypeError('A canvas context, bitmap and valid output dimensions are required.');
   }
-  const rect = containRect(bitmap.width, bitmap.height, 0, 0, width, height);
+  const fitMode = options.fitMode === 'cover' ? 'cover' : 'contain';
+  const rect = fitMode === 'cover'
+    ? coverSourceRect(bitmap.width, bitmap.height, width, height)
+    : containRect(bitmap.width, bitmap.height, 0, 0, width, height);
   const scalingMode = options.scalingMode === 'pixelated' ? 'pixelated' : 'smooth';
   context.save();
   context.clearRect(0, 0, width, height);
@@ -52,7 +91,11 @@ export function drawFrameToCanvas(context, bitmap, width, height, options = {}) 
   }
   context.imageSmoothingEnabled = scalingMode !== 'pixelated';
   if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
-  context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+  if (fitMode === 'cover') {
+    context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height, 0, 0, width, height);
+  } else {
+    context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+  }
   context.restore();
   return rect;
 }
