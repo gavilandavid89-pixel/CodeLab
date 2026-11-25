@@ -6,7 +6,7 @@ import { TiledRasterStrokeHistory } from '../public/pixelforge/src/raster-tiled-
 const whole = (doc, layerId) => doc.readRegion(layerId, { x: 0, y: 0, width: doc.width, height: doc.height });
 
 test('tiled stroke history commits atomically and supports undo/redo over overlapping dabs', async () => {
-  const doc = TiledRasterProjectDocument.createBlank({ width: 96, height: 64, tileSize: 16 });
+  const doc = TiledRasterProjectDocument.createBlank({ width: 96, height: 64, tileSize: 32 });
   const layerId = doc.activeLayerId;
   const history = new TiledRasterStrokeHistory(doc);
   const blank = whole(doc, layerId);
@@ -28,7 +28,7 @@ test('tiled stroke history commits atomically and supports undo/redo over overla
 });
 
 test('cancel restores a partially drawn stroke and never adds it to history', async () => {
-  const doc = TiledRasterProjectDocument.createBlank({ width: 40, height: 40, tileSize: 16 });
+  const doc = TiledRasterProjectDocument.createBlank({ width: 40, height: 40, tileSize: 32 });
   const layerId = doc.activeLayerId;
   const history = new TiledRasterStrokeHistory(doc);
   const blank = whole(doc, layerId);
@@ -43,7 +43,7 @@ test('cancel restores a partially drawn stroke and never adds it to history', as
 });
 
 test('stroke exceeding history byte budget rolls back all prior dabs', async () => {
-  const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 16 });
+  const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 32 });
   const layerId = doc.activeLayerId;
   const history = new TiledRasterStrokeHistory(doc, { maxBytes: 8 });
   const blank = whole(doc, layerId);
