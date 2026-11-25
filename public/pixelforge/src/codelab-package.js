@@ -1,5 +1,6 @@
 import { createZipBlob } from './zip-export.js';
 import { readStoredZip } from './video-composer-core.mjs';
+import { TiledRasterProjectDocument } from './raster-tiled-adapter.mjs';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -408,41 +409,48 @@ function addResources(project, files, resources) {
 }
 
 export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resources = [] } = {}) {
-  if (!projectSnapshot || projectSnapshot.format !== 'pixelforge-project' ||
+  const isTiled = projectSnapshot?.format === 'pixelforge-tiled-project';
+  if (!projectSnapshot || !['pixelforge-project', 'pixelforge-tiled-project'].includes(projectSnapshot.format) ||
       !projectSnapshot.id || !projectSnapshot.name ||
       !Number.isInteger(projectSnapshot.width) || !Number.isInteger(projectSnapshot.height) ||
       projectSnapshot.width < 1 || projectSnapshot.height < 1 ||
       projectSnapshot.width > MAX_CANVAS || projectSnapshot.height > MAX_CANVAS) {
     throw new TypeError('A valid native PixelForge project snapshot is required.');
   }
+  if (isTiled) {
+    const validationDocument = await TiledRasterProjectDocument.fromManifest(projectSnapshot);
+    validationDocument.dispose();
+  }
   const project = structuredClone(projectSnapshot);
   const files = new Map();
-  const frames = addFrames(project, files);
-  const scenes = buildSceneSections(project, files);
-  const referenceCenter = addReferenceCenter(project, files);
+  const frames = isTiled ? null : addFrames(project, files);
+  const scenes = isTiled ? null : buildSceneSections(project, files);
+  const referenceCenter = isTiled ? null : addReferenceCenter(project, files);
   const resourceDeclarations = addResources(project, files, resources);
 
-  for (const section of SCENE_SECTIONS) {
-    if (project.drawingModel?.sceneSections?.[section.key]) {
-      delete project.drawingModel.sceneSections[section.key].workspace;
+  if (!isTiled) {
+    for (const section of SCENE_SECTIONS) {
+      if (project.drawingModel?.sceneSections?.[section.key]) {
+        delete project.drawingModel.sceneSections[section.key].workspace;
+      }
+    }
+    if (project.drawingModel?.sceneWorkspaceState) {
+      const state = project.drawingModel.sceneWorkspaceState;
+      project.drawingModel.sceneWorkspaceState = {
+        version: 1,
+        activeSection: state.activeSection === 'main' ? 'main' : state.activeSection,
+        parentWorkspace: state.activeSection === 'main' ? null : (state.parentWorkspace || null),
+      };
+    }
+    delete project.animation;
+    if (project.drawingModel?.referenceCenter) {
+      project.drawingModel.referenceCenter.entries = project.drawingModel.referenceCenter.entries
+        .filter(entry => !Array.isArray(entry?.parts) || entry.parts.length === 0);
     }
   }
-  if (project.drawingModel?.sceneWorkspaceState) {
-    const state = project.drawingModel.sceneWorkspaceState;
-    project.drawingModel.sceneWorkspaceState = {
-      version: 1,
-      activeSection: state.activeSection === 'main' ? 'main' : state.activeSection,
-      parentWorkspace: state.activeSection === 'main' ? null : (state.parentWorkspace || null),
-    };
-  }
-  delete project.animation;
   delete project.packageResourceFiles;
-  if (project.drawingModel?.referenceCenter) {
-    project.drawingModel.referenceCenter.entries = project.drawingModel.referenceCenter.entries
-      .filter(entry => !Array.isArray(entry?.parts) || entry.parts.length === 0);
-  }
   files.set('project.json', jsonBytes(project));
-  files.set('reference.center/reference.center', jsonBytes(referenceCenter));
+  if (!isTiled) files.set('reference.center/reference.center', jsonBytes(referenceCenter));
 
   const manifest = {
     format: 'codelab',
@@ -453,16 +461,21 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
     projectType: 'pixelforge',
     entry: 'project.json',
     integrityPath: 'integrity.json',
-    frames: { manifestPath: 'Frames/frames.tscn' },
-    scenes,
-    referenceCenter: { manifestPath: 'reference.center/reference.center' },
+    ...(isTiled
+      ? { storage: { format: 'pixelforge-tiled-project', version: 1 } }
+      : {
+          frames: { manifestPath: 'Frames/frames.tscn' },
+          scenes,
+          referenceCenter: { manifestPath: 'reference.center/reference.center' },
+        }),
     resources: resourceDeclarations,
   };
   files.set('manifest.json', jsonBytes(manifest));
   files.set('project.codelab-pixelforge', new Uint8Array());
   const integrity = { format: 'codelab-integrity', version: 1, files: {} };
   for (const [path, bytes] of files) {
-    if (['manifest.json', 'project.json', 'project.codelab-pixelforge'].includes(path)) continue;
+    if (['manifest.json', 'project.codelab-pixelforge'].includes(path) ||
+        (!isTiled && path === 'project.json')) continue;
     integrity.files[path] = { sha256: await sha256(bytes), byteSize: bytes.byteLength };
   }
   files.set('integrity.json', jsonBytes(integrity));
@@ -477,9 +490,9 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
       format: 'codelab', version: 2, editor: 'pixelforge',
       projectId: project.id, projectName: project.name,
       width: project.width, height: project.height,
-      layerCount: project.layers.length, frameCount: frames.frames.length,
-      referenceCount: referenceCenter.categories.reduce((sum, item) => sum + item.references.length, 0),
-      resourceCount: resourceDeclarations.length, sceneSectionCount: Object.keys(scenes.sections).length,
+      layerCount: project.layers.length, frameCount: frames?.frames.length ?? 0,
+      referenceCount: referenceCenter?.categories.reduce((sum, item) => sum + item.references.length, 0) ?? 0,
+      resourceCount: resourceDeclarations.length, sceneSectionCount: scenes ? Object.keys(scenes.sections).length : 0,
       entryCount: entries.length,
     },
   };
@@ -514,7 +527,12 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
     throw new TypeError('ZIP is not a structured CodeLab v2 PixelForge project.');
   }
   const project = await readJson(entries, manifest.entry || 'project.json', 'project.json');
-  if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
+  const isTiled = project.format === 'pixelforge-tiled-project';
+  if (isTiled) {
+    if (manifest.storage?.format !== 'pixelforge-tiled-project' || Number(manifest.storage.version) !== 1) {
+      throw new TypeError('Tiled PixelForge package storage declaration is missing or unsupported.');
+    }
+  } else if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
       project.layers.length < 1 || project.layers.length > MAX_LAYERS ||
       !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
       project.width < 1 || project.height < 1 || project.width > MAX_CANVAS || project.height > MAX_CANVAS) {
@@ -532,6 +550,46 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
     if (declaration.sha256 !== await sha256(bytes) || Number(declaration.byteSize) !== bytes.byteLength) {
       throw new Error('Integrity verification failed for ' + path + '.');
     }
+  }
+
+  if (isTiled) {
+    const validationDocument = await TiledRasterProjectDocument.fromManifest(project);
+    validationDocument.dispose();
+    const resources = [];
+    const resourcePaths = new Set();
+    let resourceBytes = 0;
+    for (const declaration of manifest.resources || []) {
+      if (!declaration || !safePath(declaration.path) || resourcePaths.has(declaration.path)) {
+        throw new TypeError('manifest.resources contains an unsafe or duplicate path.');
+      }
+      resourcePaths.add(declaration.path);
+      const bytes = await readBytes(entries, declaration.path, 'declared resource');
+      resourceBytes += bytes.length;
+      if (resourceBytes > MAX_RESOURCE_BYTES) throw new RangeError('Package resources exceed the 32 MiB aggregate limit.');
+      resources.push({
+        path: declaration.path,
+        destination: String(declaration.destination || 'project-files'),
+        contentType: String(declaration.contentType || 'application/octet-stream'),
+        base64: base64FromBytes(bytes),
+      });
+    }
+    project.packageResourceFiles = resources;
+    project.packageResources = resources.map(item => ({
+      path: item.path, destination: item.destination, destinationPath: item.path,
+      contentType: item.contentType, byteSize: bytesFromBase64(item.base64).length,
+    }));
+    project.drawingModel ||= {};
+    project.drawingModel.packageResources = structuredClone(project.packageResources);
+    project.codelabSchema = {
+      version: 2, layout: 'structured', editor: 'pixelforge',
+      storageFormat: 'pixelforge-tiled-project', integrityPath,
+    };
+    return {
+      project, manifest, metadata: {
+        frameCount: 0, referenceCount: 0, resourceCount: resources.length,
+        sceneSectionCount: 0, scenes: {},
+      },
+    };
   }
 
   const framesPath = manifest.frames?.manifestPath;
