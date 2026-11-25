@@ -6,7 +6,6 @@
  * full layer. Undo/history and editor pointer integration remain separate gates.
  */
 import { parseHexColor } from './core.js';
-import { guardStyleOwnedPixels } from './raster-style-ownership.mjs';
 
 function validateSettings(settings = {}) {
   const {
@@ -32,7 +31,7 @@ function validateSettings(settings = {}) {
  * RasterDocument.#dab, but read/write only the dab's clipped document region.
  */
 export async function applyTiledBrushDab(document, layerId, x, y, settings = {}) {
-  if (!document || typeof document.readRegion !== 'function' || typeof document.writeRegionWithOwnership !== 'function' || typeof document.readOwnershipRegion !== 'function' ||
+  if (!document || typeof document.readRegion !== 'function' || typeof document.writeRegionWithOwnership !== 'function' ||
       !Number.isInteger(document.width) || !Number.isInteger(document.height)) {
     throw new TypeError('A tile-aware raster project document is required.');
   }
@@ -56,7 +55,6 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
   };
   const before = document.readRegion(layerId, region);
   const pixels = new Uint8ClampedArray(before);
-  const owners = document.readOwnershipRegion(layerId, region);
   const selectionMask = document.selectionMask;
   let changedPixels = 0;
   for (let py = 0; py < region.height; py++) {
@@ -99,10 +97,8 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
     }
   }
   if (!changedPixels) return { changed: false, changedTiles: 0, changedPixels: 0, blockedPixels: 0 };
-  const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode, operation: brush.mode === 'erase' ? 'erase' : 'draw' });
-  if (!guarded.changedPixels) return { changed: false, changedTiles: 0, changedPixels: 0, blockedPixels: guarded.blockedPixels };
-  const result = await document.writeRegionWithOwnership(layerId, region, guarded.pixels, guarded.owners);
-  return { ...result, changedPixels: guarded.changedPixels, blockedPixels: guarded.blockedPixels };
+  const result = await document.writeRegionWithOwnership(layerId, region, pixels, { authoringMode, operation: brush.mode === 'erase' ? 'erase' : 'draw' });
+  return { ...result, changedPixels: result.changed ? changedPixels : 0, blockedPixels: result.blockedPixels || 0 };
 }
 
 /**
