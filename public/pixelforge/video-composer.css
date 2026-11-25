@@ -21,3 +21,11 @@
 
 .vc-preview-stage canvas[data-scaling-mode="smooth"]{image-rendering:auto}
 .vc-preview-stage canvas[data-scaling-mode="pixelated"]{image-rendering:pixelated}
+
+
+.vc-composition-guide{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid rgba(167,154,255,.32);border-radius:10px;background:rgba(167,154,255,.07)}
+.vc-composition-guide>div{display:flex;flex-direction:column;gap:6px}
+.vc-composition-guide strong{font-size:10px;color:#e7e2ff}
+.vc-composition-guide small{font-size:9px;line-height:1.55;color:var(--muted)}
+.vc-composition-guide .vc-export-button{width:100%;margin:0;font-size:10px}
+.vc-preview-stage canvas[data-composition-guide="true"]{outline:1px solid rgba(167,154,255,.25)}
