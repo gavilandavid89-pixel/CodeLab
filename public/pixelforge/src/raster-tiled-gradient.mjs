@@ -87,6 +87,6 @@ export async function fillTiledGradient(document, layerId, x0, y0, x1, y1, optio
   const entries = [...staged.values()].map(tile => ({
     x: tile.x, y: tile.y, before: tile.before, after: tile.after,
   }));
-  const committed = await document.strokeHistory.applyTileOperation(layerId, entries, { type: 'gradient' });
+  const committed = await document.strokeHistory.applyTileOperation(layerId, entries, { type: 'gradient', authoringMode: options.authoringMode ?? document.drawingConfiguration?.activeMode });
   return committed ? changedPixels : 0;
 }
