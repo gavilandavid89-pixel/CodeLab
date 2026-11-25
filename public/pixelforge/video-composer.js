@@ -355,6 +355,9 @@ async function composeNativeFrame(project, frame) {
     const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
     const rotation = Number(meta.rotation ?? 0);
     context.save();
+    const authoringMode = meta.authoringMode === 'pixel-art' ? 'pixel-art' : meta.authoringMode === 'illustration' ? 'illustration' : null;
+    context.imageSmoothingEnabled = authoringMode !== 'pixel-art';
+    if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
     context.globalAlpha = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
     const blend = String(meta.blendMode || layer.blendMode || 'normal');
     if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blend)) context.globalCompositeOperation = blend;
