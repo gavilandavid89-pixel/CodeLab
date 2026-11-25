@@ -521,9 +521,38 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     })),
     frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({
       index, frameId: frame.id, durationMs: frame.durationMs,
-      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null })),
+      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null, ownershipTiles: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId)?.ownershipTiles || []) })),
     })) : [],
   };
+}
+
+export function compositeReferenceFrameOwnership(entry, frameIndex, width, height) {
+  if (!entry || !Array.isArray(entry.frames)) throw new TypeError('A reference animation is required.');
+  const frame = entry.frames.find(item => Number(item.index) === Number(frameIndex));
+  if (!frame) throw new Error('Reference frame was not found.');
+  const owners = new Uint8Array(width * height);
+  for (const source of frame.layers || []) {
+    if (typeof source.pixels !== 'string') continue;
+    const pixels = deserializePixels(source.pixels);
+    if (pixels.length !== width * height * 4) throw new RangeError('Reference frame layer pixels have invalid dimensions.');
+    const sourceOwners = new Uint8Array(width * height);
+    for (const tile of source.ownershipTiles || []) {
+      const tileOwners = deserializePixels(tile.owners);
+      if (tileOwners.length !== tile.width * tile.height) throw new RangeError('Reference frame ownership tile has invalid dimensions.');
+      for (let row = 0; row < tile.height; row++) {
+        const target = (tile.y + row) * width + tile.x;
+        sourceOwners.set(tileOwners.subarray(row * tile.width, (row + 1) * tile.width), target);
+      }
+    }
+    for (let pixel = 0; pixel < owners.length; pixel++) if (pixels[pixel * 4 + 3] > 0) owners[pixel] = sourceOwners[pixel];
+  }
+  const tiles = [];
+  for (let y = 0; y < height; y += 64) for (let x = 0; x < width; x += 64) {
+    const tileWidth = Math.min(64, width - x), tileHeight = Math.min(64, height - y), bytes = new Uint8Array(tileWidth * tileHeight);
+    for (let row = 0; row < tileHeight; row++) bytes.set(owners.subarray((y + row) * width + x, (y + row) * width + x + tileWidth), row * tileWidth);
+    if (bytes.some(value => value !== 0)) tiles.push({ x, y, width: tileWidth, height: tileHeight, owners: serializePixels(bytes) });
+  }
+  return tiles;
 }
 
 export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation = null, pixels, ownershipTiles = [] } = {}) {
