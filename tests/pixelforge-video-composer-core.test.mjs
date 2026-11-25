@@ -112,6 +112,7 @@ test('content capture includes a frame strip and keeps pixel-art rendering unsmo
   assert.match(html, /id="vc-record-studio"/);
   assert.match(js, /drawContentComposition/);
   assert.match(layout, /scalingMode !== 'pixelated'/);
+  assert.match(layout, /options\.fitMode === 'cover'/);
   assert.match(js, /getDisplayMedia/);
   assert.match(html, /id="vc-source-quality"/);
   assert.match(html, /id="vc-motion-quality"/);
