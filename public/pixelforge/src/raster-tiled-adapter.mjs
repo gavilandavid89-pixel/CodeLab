@@ -6,6 +6,7 @@
 import { SparseTileCelStore, DEFAULT_CEL_TILE_SIZE } from './animation-tiles.mjs';
 import { TiledRasterStrokeHistory } from './raster-tiled-history.mjs';
 import { normalizeDrawingConfiguration, switchDrawingMode as switchProjectDrawingMode, PIXELFORGE_DRAWING_MODES } from './drawing-mode-config.mjs';
+import { guardStyleOwnedPixels } from './raster-style-ownership.mjs';
 
 export const PIXELFORGE_TILED_PROJECT_FORMAT = 'pixelforge-tiled-project';
 export const PIXELFORGE_TILED_PROJECT_VERSION = 1;
@@ -468,38 +469,55 @@ export class TiledRasterProjectDocument {
   get tileSize() { return this.getLayerTileSize(this.#activeLayerId); }
   getLayerTileSize(layerId) { return this.#store.getCelTileSize(this.#cel(layerId).celId); }
 
-  async writeTileBatch(layerId, patches, { allowLocked = false, ...options } = {}) {
+  async writeTileBatch(layerId, patches, { allowLocked = false, restore = false, authoringMode = this.#drawingConfiguration.activeMode, ...options } = {}) {
     const layer = this.#cel(layerId);
     if (layer.locked && !allowLocked) throw new Error('The target layer is locked.');
-    const previousCelId = layer.celId;
-    const result = await this.#store.writeTileBatch(previousCelId, patches, options);
-    if (result.changed) {
-      layer.celId = result.celId;
-      this.#markChanged();
-      this.#store.releaseCel(previousCelId);
+    if (!Array.isArray(patches) || !patches.length) throw new TypeError('Tile batch must contain at least one patch.');
+    if (restore) {
+      const previousCelId = layer.celId;
+      const result = await this.#store.writeTileBatch(previousCelId, patches, options);
+      if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
+      return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
     }
-    return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId };
+    const ownerMode = authoringMode;
+    const previousCelId = layer.celId;
+    let workingCelId = previousCelId, changedTiles = 0, blockedPixels = 0;
+    try {
+      for (const patch of patches) {
+        const width = Math.min(this.#store.getCelTileSize(workingCelId), this.#width - patch.x);
+        const height = Math.min(this.#store.getCelTileSize(workingCelId), this.#height - patch.y);
+        const region = { x: patch.x, y: patch.y, width, height };
+        const before = this.#store.readRegion(workingCelId, region);
+        const owners = this.#store.readOwnershipRegion(workingCelId, region);
+        const guarded = guardStyleOwnedPixels({ before, after: patch.pixels, owners, authoringMode: ownerMode, operation: 'draw' });
+        blockedPixels += guarded.blockedPixels;
+        if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) continue;
+        const result = await this.#store.writeRegionWithOwnership(workingCelId, region, guarded.pixels, guarded.owners);
+        if (result.changed) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); workingCelId = result.celId; changedTiles += result.changedTiles; }
+      }
+      if (workingCelId === previousCelId) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels };
+      layer.celId = workingCelId; this.#markChanged(); this.#store.releaseCel(previousCelId);
+      return { changed: true, changedTiles, removedTiles: 0, celId: workingCelId, blockedPixels };
+    } catch (error) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); throw error; }
   }
 
-  async writeRegion(layerId, region, pixels) {
+  async writeRegion(layerId, region, pixels, { authoringMode = this.#drawingConfiguration.activeMode, operation = 'draw', restore = false } = {}) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
     const previousCelId = layer.celId;
-    const result = await this.#store.writeRegion(previousCelId, region, pixels);
-    if (result.changed) {
-      layer.celId = result.celId;
-      this.#markChanged();
-      // writeRegion creates a copy-on-write cel. Once the layer points at the
-      // replacement, release its old ownership reference; duplicated layers
-      // retain their own references to that immutable cel.
-      this.#store.releaseCel(previousCelId);
+    if (restore) {
+      const result = await this.#store.writeRegion(previousCelId, region, pixels);
+      if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
+      return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
     }
-    return {
-      changed: result.changed, changedTiles: result.changedTiles,
-      removedTiles: result.removedTiles, celId: result.celId,
-    };
+    const before = this.#store.readRegion(previousCelId, region);
+    const owners = this.#store.readOwnershipRegion(previousCelId, region);
+    const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode, operation });
+    if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels: guarded.blockedPixels };
+    const result = await this.#store.writeRegionWithOwnership(previousCelId, region, guarded.pixels, guarded.owners);
+    if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
+    return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: 0, celId: result.celId, blockedPixels: guarded.blockedPixels };
   }
-
   setActiveLayer(layerId) {
     this.#cel(layerId);
     if (this.#activeLayerId !== layerId) {
