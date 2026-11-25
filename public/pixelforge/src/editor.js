@@ -752,7 +752,10 @@ function render() {
     if (virtualCursorVisible && virtualCursorScreen && (cursorMode || virtualCursorPointerId !== null)) {
       const radius = Math.max(2, Math.min(48, brushSize * zoom / 2));
       ctx.save(); ctx.strokeStyle = cursorMode ? '#69dfbb' : drawHeld ? '#69dfbb' : '#e8eaf2'; ctx.lineWidth = 1.25;
-      if (['draw', 'erase'].includes(tool)) { ctx.beginPath(); ctx.arc(virtualCursorScreen.x, virtualCursorScreen.y, radius, 0, Math.PI * 2); ctx.stroke(); }
+      if (['draw', 'erase'].includes(tool)) {
+        if ($('#brush-shape').value === 'square') ctx.strokeRect(virtualCursorScreen.x - radius, virtualCursorScreen.y - radius, radius * 2, radius * 2);
+        else { ctx.beginPath(); ctx.arc(virtualCursorScreen.x, virtualCursorScreen.y, radius, 0, Math.PI * 2); ctx.stroke(); }
+      }
       // Small arrow/pencil marker for the independent on-screen cursor.
       ctx.beginPath(); ctx.moveTo(virtualCursorScreen.x + 1, virtualCursorScreen.y + 1);
       ctx.lineTo(virtualCursorScreen.x + 1, virtualCursorScreen.y + 17); ctx.lineTo(virtualCursorScreen.x + 5, virtualCursorScreen.y + 13);
@@ -1190,7 +1193,11 @@ function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
     brushSize,
     brushShape: $('#brush-shape')?.value || defaults.brushShape,
     brushHardness: Number($('#brush-hardness')?.value ?? defaults.brushHardness),
-    brushOpacity: Number($('#brush-opacity')?.value ?? 100),
+    brushOpacity: Number($('#brush-opacity')?.value ?? defaults.brushOpacity),
+    fillTolerance,
+    magicTolerance: Number($('#magic-tolerance')?.value ?? defaults.magicTolerance),
+    fillContiguous,
+    magicContiguous: $('#magic-mode')?.value === 'contiguous',
     interpolation: $('#transform-interpolation')?.value || defaults.interpolation,
   };
   const nextOverrides = updateDrawingModeOverrides(layer.modeOverrides, mode, profile);
@@ -1210,6 +1217,14 @@ function applyActiveLayerModeProfile(mode) {
   $('#brush-hardness').value = String(saved.brushHardness);
   $('#brush-hardness-value').textContent = saved.brushHardness + '%';
   $('#brush-opacity').value = String(saved.brushOpacity);
+  $('#brush-opacity-value').textContent = saved.brushOpacity + '%';
+  fillTolerance = saved.fillTolerance;
+  $('#fill-tolerance').value = String(fillTolerance);
+  $('#fill-tolerance-value').textContent = String(fillTolerance);
+  $('#fill-mode').value = saved.fillContiguous ? 'contiguous' : 'global';
+  $('#magic-tolerance').value = String(saved.magicTolerance);
+  $('#magic-tolerance-value').textContent = String(saved.magicTolerance);
+  $('#magic-mode').value = saved.magicContiguous ? 'contiguous' : 'global';
   const interpolation = $('#transform-interpolation').querySelector(`option[value="${saved.interpolation}"]`)
     ? saved.interpolation : defaults.interpolation;
   $('#transform-interpolation').value = interpolation;
@@ -1223,6 +1238,8 @@ function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWIN
     for (const option of control.options) option.disabled = !drawingConfiguration.availableModes.includes(option.value);
   }
   const presentation = getDrawingModePresentation(drawingConfiguration.activeMode);
+  document.documentElement.dataset.drawingMode = drawingConfiguration.activeMode;
+  document.body.dataset.drawingMode = drawingConfiguration.activeMode;
   ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
   if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
   const hardness = $('#brush-hardness');
@@ -1245,6 +1262,8 @@ function setDrawingMode(mode, { persist = true } = {}) {
   const control = $('#drawing-mode');
   if (control) control.value = mode;
   const presentation = getDrawingModePresentation(mode);
+  document.documentElement.dataset.drawingMode = mode;
+  document.body.dataset.drawingMode = mode;
   ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
   if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
   const hardness = $('#brush-hardness');
@@ -2203,8 +2222,10 @@ $('#symmetry-mode').addEventListener('change', event => {
   render();
 });
 $('#sample-source').addEventListener('change', event => { sampleMerged = event.target.value === 'merged'; });
-$('#fill-tolerance').addEventListener('input', event => { fillTolerance = Number(event.target.value); $('#fill-tolerance-value').textContent = `${fillTolerance}`; });
-$('#fill-mode').addEventListener('change', event => { fillContiguous = event.target.value === 'contiguous'; });
+$('#fill-tolerance').addEventListener('input', event => { fillTolerance = Number(event.target.value); $('#fill-tolerance-value').textContent = `${fillTolerance}`; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#fill-mode').addEventListener('change', event => { fillContiguous = event.target.value === 'contiguous'; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#magic-tolerance').addEventListener('input', event => { $('#magic-tolerance-value').textContent = event.target.value; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#magic-mode').addEventListener('change', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
 const mobileInspector = window.matchMedia('(max-width: 760px)');
 function setInspectorPanel(panel) {
   const inspector = document.querySelector('.inspector');
