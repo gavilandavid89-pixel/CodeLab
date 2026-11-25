@@ -63,8 +63,8 @@ export function switchDrawingMode(configuration, mode) {
 
 export function getDrawingModePresentation(mode) {
   return mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
-    ? { imageSmoothingEnabled: true, imageSmoothingQuality: 'high', brushProfile: 'soft', brushSize: 5, brushShape: 'circle', brushHardness: 55, interpolation: 'bilinear' }
-    : { imageSmoothingEnabled: false, imageSmoothingQuality: 'low', brushProfile: 'hard', brushSize: 1, brushShape: 'square', brushHardness: 100, interpolation: 'nearest' };
+    ? { imageSmoothingEnabled: true, imageSmoothingQuality: 'high', brushProfile: 'soft', brushSize: 5, brushShape: 'circle', brushHardness: 55, brushOpacity: 100, fillTolerance: 24, magicTolerance: 12, fillContiguous: true, magicContiguous: true, interpolation: 'bilinear' }
+    : { imageSmoothingEnabled: false, imageSmoothingQuality: 'low', brushProfile: 'hard', brushSize: 1, brushShape: 'square', brushHardness: 100, brushOpacity: 100, fillTolerance: 0, magicTolerance: 0, fillContiguous: true, magicContiguous: true, interpolation: 'nearest' };
 }
 
 
@@ -89,7 +89,11 @@ export function normalizeDrawingModeProfile(mode, value) {
     brushSize: number('brushSize', defaults.brushSize, 1, 32, true),
     brushShape: ['square', 'circle'].includes(source.brushShape) ? source.brushShape : defaults.brushShape,
     brushHardness: number('brushHardness', defaults.brushHardness, 0, 100),
-    brushOpacity: number('brushOpacity', 100, 0, 100),
+    brushOpacity: number('brushOpacity', defaults.brushOpacity, 1, 100),
+    fillTolerance: number('fillTolerance', defaults.fillTolerance, 0, 128, true),
+    magicTolerance: number('magicTolerance', defaults.magicTolerance, 0, 255, true),
+    fillContiguous: typeof source.fillContiguous === 'boolean' ? source.fillContiguous : defaults.fillContiguous,
+    magicContiguous: typeof source.magicContiguous === 'boolean' ? source.magicContiguous : defaults.magicContiguous,
     interpolation: ['nearest', 'bilinear'].includes(source.interpolation) ? source.interpolation : defaults.interpolation,
   };
 }
