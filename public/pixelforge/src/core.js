@@ -861,7 +861,7 @@ export class RasterDocument {
     this.#record({ type: 'document-state', before, after });
     return { changedPixels, changedLayers, structuralChanges };
   }
-  replaceLayerPixelsBatch(replacements) {
+  replaceLayerPixelsBatch(replacements, { restore = false, ownershipByLayer = null } = {}) {
     if (!Array.isArray(replacements) || replacements.length < 1 || replacements.length > 64) {
       throw new TypeError('Pixel replacement must contain between 1 and 64 layers.');
     }
@@ -893,7 +893,7 @@ export class RasterDocument {
             for (let col = 0; col < tileWidth; col++) {
               const offset = start + col * 4, x = startX + col, y = startY + row;
               const owner = this.#ownerAt(layer, x, y);
-              if (owner !== 0 && owner !== styleOwner) continue;
+              if (!restore && owner !== 0 && owner !== styleOwner) continue;
               if (layer.pixels[offset] !== pixels[offset] || layer.pixels[offset + 1] !== pixels[offset + 1] ||
                   layer.pixels[offset + 2] !== pixels[offset + 2] || layer.pixels[offset + 3] !== pixels[offset + 3]) tileChangedPixels++;
             }
@@ -905,9 +905,9 @@ export class RasterDocument {
             for (let col = 0; col < tileWidth; col++) {
               const offset = start + col * 4, x = startX + col, y = startY + row;
               const owner = this.#ownerAt(layer, x, y);
-              if (owner !== 0 && owner !== styleOwner) continue;
+              if (!restore && owner !== 0 && owner !== styleOwner) continue;
               layer.pixels.set(pixels.subarray(offset, offset + 4), offset);
-              this.#setOwner(layer, x, y, pixels[offset + 3] === 0 ? 0 : (owner || styleOwner));
+              if (!restore) this.#setOwner(layer, x, y, pixels[offset + 3] === 0 ? 0 : (owner || styleOwner));
             }
           }
           const after = this.#captureTile(layer, tileX, tileY);
@@ -915,6 +915,10 @@ export class RasterDocument {
           this.compositeDirtyTiles.add(`${tileX}:${tileY}`);
           changedPixels += tileChangedPixels;
         }
+      }
+      if (restore && ownershipByLayer instanceof Map && ownershipByLayer.has(layer.id)) {
+        layer.ownershipTiles = cloneOwnershipTiles(ownershipByLayer.get(layer.id));
+        for (const tile of tiles) tile.after.owners = this.#captureTile(layer, tile.tileX, tile.tileY).owners;
       }
       if (tiles.length) changedLayers.push({ layerId: layer.id, tiles });
     }
