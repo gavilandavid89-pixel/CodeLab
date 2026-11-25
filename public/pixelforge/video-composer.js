@@ -1,6 +1,6 @@
 import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
-import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition } from './src/video-capture-layout.mjs';
+import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition, drawLayeredFrameToCanvas } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 import { getVideoScalingMode, resolveDrawingMode } from './src/drawing-mode-config.mjs';
 
@@ -185,7 +185,11 @@ async function captureContentPng() {
   canvas.width = dimensions.width; canvas.height = dimensions.height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('No se pudo crear la captura.');
-  const bitmap = await createImageBitmap(packageData.frames[currentIndex].blob);
+  const frame = packageData.frames[currentIndex];
+  const bitmap = await createImageBitmap(frame.blob);
+  const layerBitmaps = await Promise.all((frame.layers || []).map(async layer => ({
+    ...layer, bitmap: await createImageBitmap(layer.blob),
+  })));
   const thumbnails = await makeTimelineThumbnails();
   try {
     drawContentComposition(context, bitmap, currentIndex, dimensions, thumbnails, {
@@ -193,14 +197,17 @@ async function captureContentPng() {
       frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
       background: $('#vc-solid-bg').checked ? '#101116' : '#20232d',
       scalingMode: $('#vc-scaling-mode').value,
-      fitMode: $('#vc-fit-mode').value
+      fitMode: $('#vc-fit-mode').value,
+      layers: layerBitmaps,
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('El navegador no pudo generar el PNG.');
     downloadBlob(blob, safeName($('#vc-project-name').textContent) + '-contenido.png');
     setStatus('Captura de contenido PNG generada en ' + dimensions.width + ' × ' + dimensions.height + '.', 'success');
   } finally {
-    bitmap.close?.(); closeTimelineThumbnails(thumbnails);
+    bitmap.close?.();
+    for (const layer of layerBitmaps) layer.bitmap.close?.();
+    closeTimelineThumbnails(thumbnails);
   }
 }
 async function captureStudioPng() {
@@ -445,10 +452,10 @@ async function composeNativeFrame(project, frame) {
     const layerBlob = await new Promise((resolve, reject) => source.toBlob(value =>
       value ? resolve(value) : reject(new Error('No se pudo preparar el cel de la capa ' + layer.name + '.')), 'image/png'));
     const authoringMode = resolveDrawingMode({ cel, frame, layer, project });
-    const x = Number(meta.x ?? meta.position?.x ?? 0);
-    const y = Number(meta.y ?? meta.position?.y ?? 0);
-    const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
-    const rotation = Number(meta.rotation ?? 0);
+    const x = Number(meta.x ?? meta.position?.x ?? layer.x ?? 0);
+    const y = Number(meta.y ?? meta.position?.y ?? layer.y ?? 0);
+    const sx = Number(meta.scaleX ?? layer.scaleX ?? 1), sy = Number(meta.scaleY ?? layer.scaleY ?? 1);
+    const rotation = Number(meta.rotation ?? layer.rotation ?? 0);
     const opacity = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
     const blendMode = String(meta.blendMode || layer.blendMode || 'normal');
     renderLayers.push({
