@@ -373,6 +373,17 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   [width, height] = (await page.locator('#document-size').textContent()).split('×').map(value => Number(value.trim()));
   assert.equal(await page.locator('#canvas').getAttribute('data-storage-mode'), 'tiled',
     'a 1024×1024 project must activate the sparse tiled editor path');
+  // Baseline edge gesture immediately after creating a tiled document,
+  // before the high-volume combination matrix below.
+  await setMode('illustration');
+  await setSymmetry(0);
+  await setColor('#fa527d');
+  await setValue('#brush-size', 5);
+  await setValue('#brush-hardness', 100);
+  await page.locator('#brush-shape').selectOption('square');
+  await drawAt({ x: 0, y: 0 });
+  await assertVisibleColor({ x: 0, y: 0 }, '#fa527d', 'tiled/initial-top-left-edge');
+
   const tiledMatrix = [];
   for (const mode of ['illustration', 'pixel-art']) {
     await setMode(mode);
