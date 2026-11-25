@@ -356,7 +356,8 @@ export class TiledRasterProjectDocument {
     try {
       for (const layer of this.#layers) {
         const sourceCelId = references.get(layer.id);
-        this.#store.getCelTileSize(sourceCelId);
+        const geometry = this.#store.getCelDimensions(sourceCelId);
+        if (geometry.width !== this.#width || geometry.height !== this.#height) throw new RangeError('Animation cel geometry does not match the tiled project.');
         replacements.push({ layer, nextCelId: takeOwnership ? sourceCelId : this.#store.cloneCel(sourceCelId) });
       }
     } catch (error) {
