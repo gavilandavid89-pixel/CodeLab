@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
+import { PixelForgeAnimation } from '../public/pixelforge/src/animation.mjs';
 
 test('dense brush and eraser enforce both directions of per-pixel style ownership', () => {
   const doc = new RasterDocument(8, 8);
@@ -48,4 +49,31 @@ test('dense ownership survives undo, redo, and native JSON round-trip; legacy JS
   const legacy = structuredClone(manifest); delete legacy.layers[0].ownershipTiles;
   const legacyRestored = RasterDocument.fromJSON(legacy);
   assert.equal(legacyRestored.activeLayer.ownershipTiles.size, 0);
+});
+
+test('dense bucket fill, gradient and AI batch replacement respect foreign style ownership', () => {
+  const doc = new RasterDocument(8, 8);
+  const layer = doc.activeLayer; layer.authoringMode = 'pixel-art';
+  assert.equal(doc.fillAt(0, 0, { color: '#ff0000' }), 64);
+  assert.ok([...layer.ownershipTiles.get('0:0')].every(owner => owner === 2));
+  layer.authoringMode = 'illustration';
+  assert.equal(doc.fillAt(0, 0, { color: '#00ff00' }), 0);
+  assert.equal(doc.fillGradient(0, 0, 7, 7, { startColor: '#0000ff', endColor: '#ffffff' }), 0);
+  const replacement = new Uint8ClampedArray(8 * 8 * 4);
+  for (let i = 0; i < replacement.length; i += 4) replacement.set([0, 255, 0, 255], i);
+  doc.replaceLayerPixelsBatch([{ layerId: layer.id, pixels: replacement }]);
+  assert.deepEqual([...layer.pixels.slice(0, 4)], [255, 0, 0, 255]);
+  assert.ok([...layer.ownershipTiles.get('0:0')].every(owner => owner === 2));
+});
+
+test('dense animation frame cloning and JSON retain each layer pixel ownership plane', () => {
+  const doc = new RasterDocument(8, 8);
+  const layer = doc.activeLayer; layer.authoringMode = 'illustration';
+  const stroke = doc.beginStroke({ color: '#123456', size: 1 });
+  doc.strokeTo(stroke, 1, 1); doc.endStroke(stroke);
+  const animation = PixelForgeAnimation.fromDocument(doc);
+  animation.addFrame({ duplicate: true });
+  assert.equal(animation.getLayerOwnershipTiles(1, layer.id).get('0:0')[9], 1);
+  const restored = PixelForgeAnimation.fromJSON(animation.toJSON());
+  assert.equal(restored.getLayerOwnershipTiles(1, layer.id).get('0:0')[9], 1);
 });
