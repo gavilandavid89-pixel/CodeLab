@@ -14,6 +14,9 @@ on:
       - "tests/pixelforge-raster-tiled-history.test.mjs"
       - "tests/pixelforge-raster-tiled-pointer-controller.test.mjs"
       - "tests/pixelforge-editor-visual-modes.e2e.test.mjs"
+      - "pixelforge-tiled-project-validation.js"
+      - "tests/pixelforge-tiled-server-validation.test.mjs"
+      - "server.js"
       - "tests/pixelforge-raster-tiled-adapter.test.mjs"
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
       - "public/pixelforge/src/drawing-mode-config.mjs"
@@ -89,6 +92,8 @@ jobs:
           node --check pixelforge-upload-store.js
           node --check server.js
           node --check tests/pixelforge-integration.test.js
+      - name: Test sparse tiled project server validation
+        run: node --test tests/pixelforge-tiled-server-validation.test.mjs
       - name: Test frame timeline model
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test tile-backed animation migration adapter
