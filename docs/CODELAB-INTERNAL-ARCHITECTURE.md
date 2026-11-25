@@ -204,6 +204,6 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 
 
 ### Tiled geometric selection boundary
-- `TiledRasterProjectDocument.setSelectionMask()` accepts a dimension-matched Uint8Array and owns a copy. Current mask storage is deliberately a bounded compatibility representation (one byte per pixel, up to 16 MiB under current canvas-area limits), not yet a packed sparse-mask resource format.
+- `TiledRasterProjectDocument.setSelectionMask()` accepts a dimension-matched Uint8Array as a transient editor-owned reference (callers replace masks rather than mutating them). This avoids copying up to 16 MiB on every selection pointer update. Current mask storage is deliberately a bounded compatibility representation (one byte per pixel, up to 16 MiB under current canvas-area limits), not yet a packed sparse-mask resource format.
 - Editor rectangular, elliptical and lasso selections can now be used on tiled projects. Brush/eraser dabs and transactional flood fill respect the active mask. Flood fill cannot cross an unselected pixel.
 - Magic-wand selection remains blocked because its existing implementation requires a dense full-layer RGBA buffer. Do not enable it until a tile/region-aware color selection implementation exists.
