@@ -285,7 +285,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   }
   assert.ok(interpolationEvidence.illustration.hasBlendedEdge,
     'illustration mode must visibly smooth a one-pixel edge at non-integer zoom');
-  assert.equal(interpolationEvidence.pixelArt.hasBlendedEdge, false,
+  assert.equal(interpolationEvidence['pixel-art'].hasBlendedEdge, false,
     'pixel-art mode must not introduce blended edge colors at the same viewport scale');
 
   await page.waitForTimeout(900);
