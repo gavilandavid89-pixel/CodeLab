@@ -477,9 +477,24 @@ export class TiledRasterProjectDocument {
     if (!Array.isArray(patches) || !patches.length) throw new TypeError('Tile batch must contain at least one patch.');
     if (restore) {
       const previousCelId = layer.celId;
-      const result = await this.#store.writeTileBatch(previousCelId, patches, options);
-      if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
-      return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
+      if (!patches.some(patch => patch.owners instanceof Uint8Array)) {
+        const result = await this.#store.writeTileBatch(previousCelId, patches, options);
+        if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
+        return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
+      }
+      let workingCelId = previousCelId, changedTiles = 0;
+      try {
+        for (const patch of patches) {
+          if (!(patch.owners instanceof Uint8Array)) throw new TypeError('Restoring a mixed-style tile batch requires owner snapshots for every tile.');
+          const width = Math.min(this.#store.getCelTileSize(workingCelId), this.#width - patch.x);
+          const height = Math.min(this.#store.getCelTileSize(workingCelId), this.#height - patch.y);
+          const result = await this.#store.writeRegionWithOwnership(workingCelId, { x: patch.x, y: patch.y, width, height }, patch.pixels, patch.owners);
+          if (result.changed) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); workingCelId = result.celId; changedTiles += result.changedTiles; }
+        }
+        if (workingCelId === previousCelId) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels: 0 };
+        layer.celId = workingCelId; this.#markChanged(); this.#store.releaseCel(previousCelId);
+        return { changed: true, changedTiles, removedTiles: 0, celId: workingCelId, blockedPixels: 0 };
+      } catch (error) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); throw error; }
     }
     const ownerMode = authoringMode;
     const previousCelId = layer.celId;
@@ -503,12 +518,14 @@ export class TiledRasterProjectDocument {
     } catch (error) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); throw error; }
   }
 
-  async writeRegion(layerId, region, pixels, { authoringMode = this.#drawingConfiguration.activeMode, operation = 'draw', restore = false } = {}) {
+  async writeRegion(layerId, region, pixels, { authoringMode = this.#drawingConfiguration.activeMode, operation = 'draw', restore = false, owners = null } = {}) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
     const previousCelId = layer.celId;
     if (restore) {
-      const result = await this.#store.writeRegion(previousCelId, region, pixels);
+      const result = owners instanceof Uint8Array
+        ? await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, owners)
+        : await this.#store.writeRegion(previousCelId, region, pixels);
       if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
       return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
     }
