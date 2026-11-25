@@ -214,3 +214,19 @@ test('rejects bounded composite regions outside the canvas', () => {
   assert.throws(() => tiled.readCompositeRegion({ x: -1, y: 0, width: 1, height: 1 }), /outside canvas bounds/);
   tiled.dispose();
 });
+
+
+test('bounded sparse compositing handles viewport edges and mixed layer opacity without reading outside the canvas', async () => {
+  const tiled = TiledRasterProjectDocument.createBlank({ width: 65, height: 65, tileSize: 32, maxDecodedCacheBytes: 64 * 1024 });
+  const baseId = tiled.activeLayerId;
+  await tiled.writeRegion(baseId, { x: 64, y: 64, width: 1, height: 1 }, new Uint8Array([20, 40, 60, 255]));
+  const overlay = tiled.duplicateLayer(baseId, 'Overlay');
+  await tiled.writeRegion(overlay.id, { x: 64, y: 64, width: 1, height: 1 }, new Uint8Array([220, 120, 20, 255]));
+  tiled.updateLayer(overlay.id, { opacity: 0.5 });
+  const edge = tiled.readCompositeRegion({ x: 63, y: 63, width: 2, height: 2 });
+  const pixel = edge.pixels.slice(4, 8);
+  assert.deepEqual(Array.from(pixel), [120, 80, 40, 255]);
+  assert.throws(() => tiled.readCompositeRegion({ x: 64, y: 64, width: 2, height: 1 }), /outside canvas bounds/);
+  assert.throws(() => tiled.readCompositeRegion({ x: 64, y: 64, width: 1, height: 2 }), /outside canvas bounds/);
+  tiled.dispose();
+});
