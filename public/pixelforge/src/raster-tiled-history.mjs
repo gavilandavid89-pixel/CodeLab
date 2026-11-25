@@ -169,7 +169,7 @@ export class TiledRasterStrokeHistory {
         await this.#document.writeRegion(command.layerId, entry.region, entry.before);
       }
     } else {
-      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before }) => ({ x, y, pixels: before })), { maxBytes: this.#maxBytes });
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before }) => ({ x, y, pixels: before })), { maxBytes: this.#maxBytes, allowLocked: true });
     }
     this.#redo.push(command);
     return true;
@@ -183,7 +183,7 @@ export class TiledRasterStrokeHistory {
     if (command.entries[0]?.region) {
       for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after);
     } else {
-      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes, allowLocked: true });
     }
     this.#undo.push(command);
     return true;
