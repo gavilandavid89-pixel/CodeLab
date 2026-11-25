@@ -38,7 +38,10 @@ self.onmessage = async (event) => {
       const bitmap = await createImageBitmap(frame.blob);
       try {
         const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
-        drawFrameToCanvas(context, bitmap, width, height, { backgroundColor, scalingMode });
+        drawFrameToCanvas(context, bitmap, width, height, {
+          backgroundColor,
+          scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : scalingMode
+        });
         const vf = new VideoFrame(canvas, { timestamp: timestampUs, duration: durationUs });
         encoder.encode(vf, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
         vf.close();
