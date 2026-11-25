@@ -471,6 +471,8 @@ export class RasterDocument {
     const seedOffset = seedPixel * 4;
     const seed = Array.from(layer.pixels.subarray(seedOffset, seedOffset + 4));
     const matches = index => {
+      const pixel = index / 4, owner = this.#ownerAt(layer, pixel % this.width, Math.floor(pixel / this.width));
+      if (owner !== 0 && owner !== styleOwner) return false;
       // RGB values under zero alpha are invisible and must not split a transparent fill region.
       if (seed[3] === 0 && layer.pixels[index + 3] === 0) return true;
       for (let channel = 0; channel < 4; channel++) {
