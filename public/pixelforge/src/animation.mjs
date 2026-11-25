@@ -126,6 +126,7 @@ function normalizeLayerMetadata(metadata = {}, layerId, index = 0) {
     references: Array.isArray(value.references) ? structuredClone(value.references) : [],
     assets: Array.isArray(value.assets) ? structuredClone(value.assets) : [],
     metadata: value.metadata && typeof value.metadata === 'object' ? structuredClone(value.metadata) : {},
+    authoringMode: ['illustration', 'pixel-art'].includes(value.authoringMode) ? value.authoringMode : 'pixel-art',
   };
 }
 
@@ -137,6 +138,7 @@ function cloneFrame(frame, layerIds, byteLength, { id = crypto.randomUUID(), dur
   return {
     id,
     durationMs,
+    authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
     cels: new Map(layerIds.map(layerId => {
       const pixels = frame.cels.get(layerId);
       if (!pixels) throw new Error('Animation frame is missing a required layer cel.');
@@ -176,6 +178,7 @@ export class PixelForgeAnimation {
       this.#frames = [{
         id: crypto.randomUUID(),
         durationMs: Math.round(1000 / fps),
+        authoringMode: 'pixel-art',
         cels: makeBlankCels(this.#layerIds, byteLength),
       }];
     } else {
@@ -194,6 +197,7 @@ export class PixelForgeAnimation {
         return {
           id: frame.id,
           durationMs: frame.durationMs,
+          authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
           cels: new Map(this.#layerIds.map(id => [id, clonePixels(sourceCels.get(id), byteLength)])),
           layerMetadata: new Map(this.#layerIds.map((id, index) => [id, cloneLayerMetadata(frame.layerMetadata?.get?.(id) ?? frame.layerMetadata?.find?.(item => item?.id === id), id, index)])),
         };
@@ -245,7 +249,14 @@ export class PixelForgeAnimation {
 
   getFrame(index) {
     const frame = this.#frameAt(index);
-    return Object.freeze({ id: frame.id, durationMs: frame.durationMs, index });
+    return Object.freeze({ id: frame.id, durationMs: frame.durationMs, authoringMode: frame.authoringMode || 'pixel-art', index });
+  }
+
+  setFrameAuthoringMode(frameIndex, mode) {
+    if (!['illustration', 'pixel-art'].includes(mode)) throw new RangeError('Unsupported frame authoring mode.');
+    const frame = this.#frameAt(frameIndex);
+    frame.authoringMode = mode;
+    return this.getFrame(frameIndex);
   }
 
   getLayerPixels(frameIndex, layerId) {
@@ -574,6 +585,7 @@ export class PixelForgeAnimation {
       frames: this.#frames.map((frame, frameIndex) => ({
         id: frame.id,
         durationMs: frame.durationMs,
+        authoringMode: frame.authoringMode || 'pixel-art',
         cels: this.#layerIds.map((layerId, layerIndex) => ({
           layerId,
           pixels: encodeBase64(frame.cels.get(layerId)),
