@@ -56,9 +56,18 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ project: { ...project, serverRevision: 1 } }));
       } else {
+        const latest = savedProjectSnapshots.at(-1);
+        const projects = latest ? [{ id: latest.id, name: latest.name, width: latest.width, height: latest.height, updatedAt: '2026-11-25T00:00:00.000Z' }] : [];
         response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ projects: [] }));
+        response.end(JSON.stringify({ projects }));
       }
+      return;
+    }
+    if (url.pathname.startsWith('/api/pixelforge/projects/')) {
+      const id = decodeURIComponent(url.pathname.slice('/api/pixelforge/projects/'.length));
+      const project = [...savedProjectSnapshots].reverse().find(item => item.id === id) || null;
+      response.writeHead(project ? 200 : 404, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(project ? { project: { ...project, serverRevision: 1 } } : { error: 'project_not_found' }));
       return;
     }
     const pathname = decodeURIComponent(url.pathname);
@@ -554,6 +563,21 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.equal(savedTiled.animation?.frames.length, 2, 'saved timeline must preserve the final frame count');
   assert.ok(!Object.hasOwn(savedTiled.animation.frames[0].cels[0].cel, 'pixels'),
     'tiled animation cels must not serialize full-frame RGBA buffers');
+
+  // Reopen the project through the same account persistence endpoints. The
+  // editor must reconstruct the active tiled timeline from the manifest and
+  // restore the exact cel contents without a dense animation migration.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.dataset.pixelforgeReady === 'true', null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('.animation-frame').length === 2, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('#document-size')?.textContent.includes('1024'), null, { timeout: 20000 });
+  await page.locator('.animation-frame').nth(1).click();
+  await page.waitForTimeout(60);
+  assert.deepEqual(await sampleVisibleExact(frame0Point), frame0Baseline,
+    'reloaded blank frame must remain independent from the painted first frame');
+  await page.locator('.animation-frame').nth(0).click();
+  await page.waitForTimeout(60);
+  await assertVisibleColor(frame0Point, '#e84a5f', 'tiled/timeline/restored-frame-0');
 
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-visual-matrix.json'), JSON.stringify(tiledMatrix, null, 2));
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence, tiledMatrix }, null, 2));
