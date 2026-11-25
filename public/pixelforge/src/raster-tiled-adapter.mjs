@@ -190,6 +190,7 @@ export class TiledRasterProjectDocument {
     }
     validateGeometry(document.width, document.height);
     const sourceSnapshot = document.toJSON();
+    const sourceDrawingConfiguration = normalizeDrawingConfiguration(drawingConfiguration ?? sourceSnapshot.drawingConfiguration);
     const { layers: _sourceLayers, ...projectMetadata } = sourceSnapshot;
     const store = new SparseTileCelStore({ maxDecodedCacheBytes });
     const layers = [];
@@ -198,12 +199,12 @@ export class TiledRasterProjectDocument {
         const celId = await store.createCelFromPixels(layer.pixels, {
           width: document.width, height: document.height, tileSize,
         });
-        layers.push({ ...normalizeLayer(layer), celId });
+        layers.push({ ...normalizeLayer(layer, sourceDrawingConfiguration.activeMode), celId });
       }
       return new TiledRasterProjectDocument({
         store, id: document.id, name: document.name, width: document.width, height: document.height,
         layers, activeLayerId: document.activeLayerId,
-        drawingConfiguration: drawingConfiguration ?? sourceSnapshot.drawingConfiguration,
+        drawingConfiguration: sourceDrawingConfiguration,
         projectMetadata,
         revision: document.revision, saveVersion: document.saveVersion,
         serverRevision: document.serverRevision, dirty: document.dirty,
