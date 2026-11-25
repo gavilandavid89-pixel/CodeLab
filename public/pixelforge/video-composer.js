@@ -271,7 +271,9 @@ async function renderFrame(index) {
   const context = ui.canvas.getContext('2d', { alpha: true });
   const scalingMode = $('#vc-scaling-mode').value;
   ui.canvas.dataset.scalingMode = scalingMode;
-  context.imageSmoothingEnabled = scalingMode !== 'pixelated';
+  const frameScalingMode = ['smooth', 'pixelated'].includes(frame.authoringMode === 'pixel-art' ? 'pixelated' : frame.authoringMode === 'illustration' ? 'smooth' : scalingMode)
+    ? (frame.authoringMode === 'pixel-art' ? 'pixelated' : frame.authoringMode === 'illustration' ? 'smooth' : scalingMode) : 'smooth';
+  context.imageSmoothingEnabled = frameScalingMode !== 'pixelated';
   if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
   context.clearRect(0, 0, width, height);
   context.drawImage(currentBitmap, 0, 0);
