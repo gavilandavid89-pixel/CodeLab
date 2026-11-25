@@ -127,6 +127,14 @@ function initVectorStudio() {
   });
   return vectorStudio;
 }
+function refreshReferenceCenterUI() {
+  if (!referenceCenterUI) return;
+  if (typeof referenceCenterUI.setEnabled === 'function') {
+    referenceCenterUI.setEnabled(!doc.isTiled);
+  } else if (!doc.isTiled) {
+    referenceCenterUI.refresh();
+  }
+}
 function initReferenceCenterUI() {
   if (referenceCenterUI) return referenceCenterUI;
   referenceCenterUI = createReferenceCenterUI({
@@ -1206,7 +1214,7 @@ async function switchSceneWorkspace(nextSection) {
     updateTitle();
     renderLayers();
     renderAnimationTimeline();
-    referenceCenterUI?.refresh();
+    refreshReferenceCenterUI();
     updateSceneWorkspaceUI();
     status(nextSection === 'main' ? 'Returned to the main project workspace' : 'Opened independent ' + sceneWorkspaceSections().find(item => item.key === nextSection).label + ' workspace', 'success');
   } catch (error) {
