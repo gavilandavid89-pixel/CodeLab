@@ -198,7 +198,7 @@ export class TiledRasterProjectDocument {
     try {
       for (const layer of document.layers) {
         const celId = await store.createCelFromPixels(layer.pixels, {
-          width: document.width, height: document.height, tileSize,
+          width: document.width, height: document.height, tileSize, ownershipTiles: layer.ownershipTiles,
         });
         layers.push({ ...normalizeLayer(layer, sourceDrawingConfiguration.activeMode), celId });
       }
