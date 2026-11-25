@@ -1,4 +1,6 @@
 import { RasterDocument, screenToDocument, validateDimensions, rasterLinePoints, createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
+import { TiledRasterProjectDocument, PIXELFORGE_TILED_PROJECT_FORMAT } from './raster-tiled-adapter.mjs';
+import { TiledRasterPointerStrokeController } from './raster-tiled-pointer-controller.mjs';
 import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
 
 import { preflightImageFile } from './image-import.js';
@@ -18,6 +20,45 @@ import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
 import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation, getVideoScalingMode, normalizeDrawingModeProfile, updateDrawingModeOverrides } from './drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
+
+function installDocument(nextDocument) {
+  if (tiledPointerController) {
+    const previousController = tiledPointerController;
+    tiledPointerController = null;
+    tiledPointerDocument = null;
+    void previousController.dispose().catch(error => console.warn('Could not settle previous tiled pointer controller:', error));
+  }
+  doc = nextDocument;
+  return doc;
+}
+
+function createEditorDocument(width, height, name, config = drawingConfiguration) {
+  if (width * height >= TILED_DOCUMENT_THRESHOLD_PIXELS) {
+    return TiledRasterProjectDocument.createBlank({
+      width, height, name,
+      drawingConfiguration: config,
+      projectMetadata: { drawingModel: {}, vectorModel: null },
+    });
+  }
+  return new RasterDocument(width, height, name);
+}
+
+async function restoreProjectDocument(snapshot, { newIdentity = false } = {}) {
+  if (snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT) {
+    return TiledRasterProjectDocument.fromManifest(snapshot, { newIdentity });
+  }
+  return RasterDocument.fromJSON(snapshot, { newIdentity });
+}
+
+function getTiledPointerController() {
+  if (!doc?.isTiled) return null;
+  if (!tiledPointerController || tiledPointerDocument !== doc) {
+    if (tiledPointerController) void tiledPointerController.dispose();
+    tiledPointerController = new TiledRasterPointerStrokeController(doc);
+    tiledPointerDocument = doc;
+  }
+  return tiledPointerController;
+}
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
 const workArea = $('#work-area');
 const previewCanvas = document.createElement('canvas'), previewCtx = previewCanvas.getContext('2d', { alpha: true });
@@ -27,6 +68,8 @@ const previewCanvas = document.createElement('canvas'), previewCtx = previewCanv
 const tiledViewportCanvas = document.createElement('canvas'), tiledViewportCtx = tiledViewportCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
+let tiledPointerController = null, tiledPointerDocument = null;
+const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
@@ -765,7 +808,7 @@ function scheduleAutosave() {
     // successful save when two edits happen close together.
     const operation = autosaveInFlight.catch(() => {}).then(async () => {
       if (doc !== savingDoc) return;
-      const version = savingDoc.saveVersion, snapshot = buildProjectSnapshot(savingDoc);
+      const version = savingDoc.saveVersion, snapshot = await buildProjectSnapshot(savingDoc);
       const saved = await saveProject(snapshot);
       if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
       savingDoc.dirty = savingDoc.saveVersion !== version;
@@ -795,7 +838,7 @@ async function flushAutosave({ force = false } = {}) {
       await autosaveInFlight;
       if (!savingDoc.dirty && !pending && !force) return;
       while (doc === savingDoc) {
-        const version = savingDoc.saveVersion, snapshot = buildProjectSnapshot(savingDoc);
+        const version = savingDoc.saveVersion, snapshot = await buildProjectSnapshot(savingDoc);
         const saved = await saveProject(snapshot);
         if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
         if (savingDoc.saveVersion === version) { savingDoc.dirty = false; break; }
@@ -1022,10 +1065,10 @@ function setDrawingMode(mode, { persist = true } = {}) {
     ? 'Illustration mode · smooth brush and high-quality preview'
     : 'Pixel-art mode · hard edges and pixel-perfect preview', 'success');
 }
-function buildProjectSnapshot(targetDoc = doc) {
+async function buildProjectSnapshot(targetDoc = doc) {
   if (targetDoc === doc) captureActiveLayerModeProfile();
   if (targetDoc === doc && animation) captureAnimationFrame();
-  const snapshot = targetDoc.toJSON();
+  const snapshot = targetDoc.isTiled ? await targetDoc.toManifest() : targetDoc.toJSON();
   if (targetDoc === doc) snapshot.drawingConfiguration = structuredClone(drawingConfiguration);
   if (targetDoc === doc) {
     const state = readSceneWorkspaceState(targetDoc.drawingModel);
@@ -1082,7 +1125,7 @@ async function switchSceneWorkspace(nextSection) {
   try {
     stopAnimationPlayback();
     await flushAutosave({ force: true });
-    const currentSnapshot = buildProjectSnapshot();
+    const currentSnapshot = await buildProjectSnapshot();
     const state = readSceneWorkspaceState(currentSnapshot.drawingModel);
     const currentWorkspace = stripSceneWorkspaceState(currentSnapshot);
     if (activeSceneWorkspace === 'main') state.parentWorkspace = currentWorkspace;
@@ -2267,7 +2310,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
   try {
     settleActiveInput();
     stopAnimationPlayback();
-    const snapshot = buildProjectSnapshot();
+    const snapshot = await buildProjectSnapshot();
     vectorOverlay = await createVectorOverlayImage();
     const baseName = safeName(doc.name);
     const entries = [
@@ -2410,7 +2453,7 @@ async function renderProjects() {
         const saved = await loadProjectById(project.id);
         if (!saved) throw new Error('That saved project no longer exists.');
         stopAnimationPlayback({ save: false });
-        doc = RasterDocument.fromJSON(saved); applyDrawingConfiguration(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
+        installDocument(await restoreProjectDocument(saved)); applyDrawingConfiguration(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
         $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
@@ -2464,7 +2507,7 @@ $('#create-new').addEventListener('click', async () => {
     validateDimensions(width, height); await flushAutosave();
     const template = assetTemplates[$('#new-template').value] ?? assetTemplates.custom;
     stopAnimationPlayback({ save: false });
-    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); drawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION }); applyDrawingConfiguration({ drawingConfiguration }); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
+    installDocument(createEditorDocument(width, height, $('#new-name').value.trim() || template.name, drawingConfiguration)); drawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION }); applyDrawingConfiguration({ drawingConfiguration }); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
     const firstLayer = doc.activeLayerId;
     if (template.layers[0] && template.layers[0] !== doc.activeLayer.name) doc.renameLayer(firstLayer, template.layers[0]);
     for (const layerName of template.layers.slice(1)) doc.addLayer(layerName);
@@ -2484,7 +2527,7 @@ $('#export-project').addEventListener('click', async () => {
   try {
     settleActiveInput();
     stopAnimationPlayback();
-    const snapshot = buildProjectSnapshot();
+    const snapshot = await buildProjectSnapshot();
     const exported = await exportPixelForgeCodeLabPackage(snapshot);
     downloadBlob(exported.blob, exported.filename);
     status('CodeLab PixelForge project exported · ' + exported.metadata.frameCount + ' frames · ' +
@@ -2879,7 +2922,7 @@ async function boot() {
       const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 60 frames');
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
-        doc = RasterDocument.fromJSON(existingSnapshot);
+        installDocument(await restoreProjectDocument(existingSnapshot));
         applyDrawingConfiguration(existingSnapshot);
         animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
@@ -2930,7 +2973,7 @@ async function boot() {
     } else {
       const saved = await loadMostRecentProject();
       if (saved) {
-        doc = RasterDocument.fromJSON(saved);
+        installDocument(await restoreProjectDocument(saved));
         applyDrawingConfiguration(saved);
         animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
         animationLoop = saved.animation?.loop !== false;
