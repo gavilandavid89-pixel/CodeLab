@@ -110,6 +110,58 @@ export function drawFrameToCanvas(context, bitmap, width, height, options = {}) 
   return rect;
 }
 
+export function drawLayeredFrameToCanvas(context, layers, sourceWidth, sourceHeight, width, height, options = {}) {
+  if (!context || !Array.isArray(layers) || !layers.length ||
+      ![sourceWidth, sourceHeight, width, height].every(value => Number.isFinite(value) && value > 0)) {
+    throw new TypeError('A canvas context, source layers and valid source/output dimensions are required.');
+  }
+  const fitMode = options.fitMode === 'cover' ? 'cover' : 'contain';
+  let scale, cropX = 0, cropY = 0, offsetX = 0, offsetY = 0;
+  if (fitMode === 'cover') {
+    const crop = coverSourceRect(sourceWidth, sourceHeight, width, height);
+    cropX = crop.x; cropY = crop.y;
+    scale = width / crop.width;
+  } else {
+    scale = Math.min(width / sourceWidth, height / sourceHeight);
+    offsetX = (width - sourceWidth * scale) / 2;
+    offsetY = (height - sourceHeight * scale) / 2;
+  }
+  const destinationX = Number(options.destinationX) || 0;
+  const destinationY = Number(options.destinationY) || 0;
+  if (options.clearCanvas !== false) {
+    context.clearRect(destinationX, destinationY, width, height);
+    if (options.backgroundColor) {
+      context.fillStyle = options.backgroundColor;
+      context.fillRect(destinationX, destinationY, width, height);
+    }
+  }
+  context.save();
+  context.translate(destinationX + offsetX - cropX * scale, destinationY + offsetY - cropY * scale);
+  context.scale(scale, scale);
+  for (const layer of layers) {
+    const bitmap = layer.bitmap || layer.image;
+    if (!bitmap) throw new TypeError('Every composed layer must provide a decoded bitmap.');
+    const mode = layer.authoringMode === 'pixel-art' ? 'pixel-art' : 'illustration';
+    context.save();
+    context.imageSmoothingEnabled = mode !== 'pixel-art';
+    if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
+    context.globalAlpha = Math.max(0, Math.min(1, Number(layer.opacity ?? 1)));
+    const blend = String(layer.blendMode || 'source-over');
+    context.globalCompositeOperation = ['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blend)
+      ? blend : 'source-over';
+    const x = Number(layer.x ?? 0), y = Number(layer.y ?? 0);
+    const scaleX = Number(layer.scaleX ?? 1), scaleY = Number(layer.scaleY ?? 1);
+    const rotation = Number(layer.rotation ?? 0);
+    context.translate(sourceWidth / 2 + x, sourceHeight / 2 + y);
+    context.rotate(rotation * Math.PI / 180);
+    context.scale(Number.isFinite(scaleX) ? scaleX : 1, Number.isFinite(scaleY) ? scaleY : 1);
+    context.drawImage(bitmap, -sourceWidth / 2, -sourceHeight / 2, sourceWidth, sourceHeight);
+    context.restore();
+  }
+  context.restore();
+  return { scale, cropX, cropY, offsetX, offsetY, fitMode };
+}
+
 export function drawContentComposition(context, bitmap, frameIndex, dimensions, thumbnails, options = {}) {
   const { width, height } = dimensions;
   const sourceWidth = options.sourceWidth || bitmap.width;
@@ -140,7 +192,11 @@ export function drawContentComposition(context, bitmap, frameIndex, dimensions, 
   const inset = Math.round(Math.min(width, height) * 0.045);
   const targetX = artX + inset, targetY = artY + inset;
   const targetWidth = artWidth - inset * 2, targetHeight = artHeight - inset * 2;
-  if (options.fitMode === 'cover') {
+  if (Array.isArray(options.layers) && options.layers.length) {
+    drawLayeredFrameToCanvas(context, options.layers, sourceWidth, sourceHeight, targetWidth, targetHeight, {
+      fitMode: options.fitMode, clearCanvas: false, destinationX: targetX, destinationY: targetY,
+    });
+  } else if (options.fitMode === 'cover') {
     const crop = coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHeight);
     context.drawImage(bitmap, crop.x, crop.y, crop.width, crop.height, targetX, targetY, targetWidth, targetHeight);
   } else {
