@@ -518,13 +518,13 @@ export class TiledRasterProjectDocument {
     } catch (error) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); throw error; }
   }
 
-  async writeRegion(layerId, region, pixels, { authoringMode = this.#drawingConfiguration.activeMode, operation = 'draw', restore = false, owners = null } = {}) {
+  async writeRegion(layerId, region, pixels, { authoringMode = this.#drawingConfiguration.activeMode, operation = 'draw', restore = false, owners: ownerSnapshot = null } = {}) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
     const previousCelId = layer.celId;
     if (restore) {
-      const result = owners instanceof Uint8Array
-        ? await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, owners)
+      const result = ownerSnapshot instanceof Uint8Array
+        ? await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, ownerSnapshot)
         : await this.#store.writeRegion(previousCelId, region, pixels);
       if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
       return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
