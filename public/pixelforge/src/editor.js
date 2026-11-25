@@ -776,6 +776,7 @@ function shapePoints(gesture) {
   return path.filter((point, index, points) => index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y);
 }
 function commitShapeGesture(gesture) {
+  if (doc.isTiled) { status('Shape tools are not yet available for sparse tiled projects.', 'warning'); return; }
   if (!gesture) return;
   try {
     const points = shapePoints(gesture);
@@ -1289,11 +1290,34 @@ function startAnimationPlayback() {
 }
 function changed(copyFromByNewId = new Map()) {
   clearTransformPreview(); clearCropPreview();
+  if (doc.isTiled) { render(); updateTitle(); scheduleAutosave(); return; }
   if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
   syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave();
 }
 function startStrokeAt(point, id) {
-  if (!point?.inside || activeStroke) return;
+  if (!point?.inside) return;
+  if (doc.isTiled) {
+    const controller = getTiledPointerController();
+    if (doc.activeLayer?.locked) { status('This layer is locked', 'warning'); return; }
+    pointerId = id;
+    const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
+    void controller.pointerDown({
+      pointerId: id,
+      layerId: doc.activeLayerId,
+      points,
+      settings: {
+        color, size: brushSize, mode: tool,
+        opacity: Number($('#brush-opacity').value) / 100,
+        shape: $('#brush-shape').value,
+        hardness: Number($('#brush-hardness').value) / 100,
+      },
+    }).then(() => render()).catch(error => {
+      pointerId = null;
+      status(error.message, 'error');
+    });
+    return;
+  }
+  if (activeStroke) return;
   try {
     activeStroke = doc.beginStroke({ color, size: brushSize, mode: tool, opacity: Number($('#brush-opacity').value) / 100, shape: $('#brush-shape').value, hardness: Number($('#brush-hardness').value) / 100 });
     activeStroke.symmetryMode = symmetryMode;
@@ -1358,6 +1382,7 @@ function performColorSelection(point) {
   } catch (error) { status(error.message, 'error'); }
 }
 function performFill(point) {
+  if (doc.isTiled) { status('Bucket fill is not yet available for sparse tiled projects.', 'warning'); return; }
   if (!point?.inside || flushInProgress) return;
   try {
     const count = doc.fillAt(point.x, point.y, { color, tolerance: fillTolerance, contiguous: fillContiguous, pattern: $('#fill-pattern').value, secondaryColor: backgroundColor, scale: Number($('#fill-scale').value) });
@@ -1373,6 +1398,16 @@ function beginStroke(event) {
   startStrokeAt(point, event.pointerId);
 }
 function moveStroke(event) {
+  if (doc.isTiled && tiledPointerController?.active && event.pointerId === pointerId) {
+    const point = docPoint(event);
+    if (point.inside) {
+      const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
+      void tiledPointerController.pointerMove({ pointerId: event.pointerId, points })
+        .then(() => render())
+        .catch(error => status(error.message, 'error'));
+    }
+    return;
+  }
   if (selectionStart && event.pointerId === selectionPointerId) {
     const point = docPoint(event);
     const x = Math.max(0, Math.min(doc.width - 1, point.x)), y = Math.max(0, Math.min(doc.height - 1, point.y));
@@ -1407,11 +1442,32 @@ function moveStroke(event) {
   render();
 }
 function finishActiveStroke(commit = true) {
-  if (!activeStroke) return;
+  if (doc.isTiled && tiledPointerController?.active) {
+    const id = pointerId;
+    const operation = commit
+      ? tiledPointerController.pointerUp({ pointerId: id })
+      : tiledPointerController.pointerCancel({ pointerId: id });
+    return operation.then(() => {
+      pointerId = null;
+      changed();
+      return true;
+    }).catch(error => {
+      pointerId = null;
+      status(error.message, 'error');
+      return false;
+    });
+  }
+  if (!activeStroke) return false;
   doc.endStroke(activeStroke, { commit }); activeStroke = null; pointerId = null;
   if (commit) changed(); else render();
+  return true;
 }
 function endStroke(event, commit = true) {
+  if (doc.isTiled && tiledPointerController?.active) {
+    if (event?.pointerId !== undefined && event.pointerId !== pointerId) return;
+    void finishActiveStroke(commit);
+    return;
+  }
   if (!activeStroke || (event?.pointerId !== undefined && event.pointerId !== pointerId)) return;
   finishActiveStroke(commit);
 }
@@ -2024,8 +2080,12 @@ $('#ai-accept-proposal').addEventListener('click', () => {
 mobileInspector.addEventListener('change', () => setInspectorPanel('properties'));
 setInspectorPanel('properties');
 function setTool(next) {
+  if (doc.isTiled && !['draw', 'erase', 'pan', 'eyedropper'].includes(next)) {
+    status('Sparse tiled projects currently support brush, eraser, eyedropper and pan. Other raster tools are being migrated.', 'warning');
+    return;
+  }
   if (cursorMode && !['draw', 'erase'].includes(next)) setCursorMode(false);
-  if (activeStroke) finishActiveStroke(false);
+  if (activeStroke || (doc.isTiled && tiledPointerController?.active)) void finishActiveStroke(false);
   shapeGesture = null; gradientGesture = null;
   if (next === 'eyedropper' && tool !== 'eyedropper') returnTool = ['draw', 'erase'].includes(tool) ? tool : 'draw';
   drawHeld = false; drawHoldPointerId = null;
@@ -2159,23 +2219,23 @@ brushScrub.addEventListener('keydown', event => {
   else if (event.key === 'End') { syncBrushSize(32); event.preventDefault(); }
 });
 
-function undoDocument() {
+async function undoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
   if (animation && doc.history.at(-1)?.type === 'layer-delete' && !canGrowAnimationLayer()) {
     status('Cannot restore that layer: it would exceed the active animation memory budget.', 'warning'); return false;
   }
-  if (!doc.undo()) return false;
+  if (!await doc.undo()) return false;
   vectorStudio?.syncFromDocument();
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
   return true;
 }
-function redoDocument() {
+async function redoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
   if (animation && doc.future.at(-1)?.type === 'layer-add' && !canGrowAnimationLayer()) {
     status('Cannot redo that layer: it would exceed the active animation memory budget.', 'warning'); return false;
   }
-  if (!doc.redo()) return false;
+  if (!await doc.redo()) return false;
   vectorStudio?.syncFromDocument();
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
