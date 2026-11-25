@@ -1340,10 +1340,34 @@ function drawOnionSkinOverlay() {
   if (!animation || !$('#animation-onion')?.checked) return;
   const neighbors = animation.getOnionSkinFrames({ previous: 1, next: 1 });
   if (!neighbors.length) return;
-  const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  const layerSettings = animation instanceof TiledAnimationDocument
+    ? animation.layerIds.map(id => { const metadata = animation.getLayerMetadata(animation.activeFrameIndex, id); return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 }; })
+    : doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  if (doc.isTiled && animation instanceof TiledAnimationDocument) {
+    const viewportWidth = Math.max(1, canvas.clientWidth), viewportHeight = Math.max(1, canvas.clientHeight);
+    const left = Math.max(0, Math.floor((-panX) / zoom)), top = Math.max(0, Math.floor((-panY) / zoom));
+    const right = Math.min(doc.width, Math.ceil((viewportWidth - panX) / zoom));
+    const bottom = Math.min(doc.height, Math.ceil((viewportHeight - panY) / zoom));
+    if (right <= left || bottom <= top) return;
+    const region = { x: left, y: top, width: right - left, height: bottom - top };
+    const surface = document.createElement('canvas'); surface.width = region.width; surface.height = region.height;
+    const surfaceContext = surface.getContext('2d'); if (!surfaceContext) return;
+    for (const neighbor of neighbors) {
+      const pixels = animation.compositeRegion(neighbor.index, region, layerSettings).pixels;
+      surfaceContext.clearRect(0, 0, region.width, region.height);
+      surfaceContext.putImageData(new ImageData(pixels, region.width, region.height), 0, 0);
+      surfaceContext.globalCompositeOperation = 'source-atop';
+      surfaceContext.fillStyle = neighbor.direction === 'previous' ? 'rgba(90,150,255,.58)' : 'rgba(255,100,150,.58)';
+      surfaceContext.fillRect(0, 0, region.width, region.height);
+      surfaceContext.globalCompositeOperation = 'source-over';
+      ctx.save(); ctx.globalAlpha = neighbor.opacity * .55;
+      ctx.drawImage(surface, panX + region.x * zoom, panY + region.y * zoom, region.width * zoom, region.height * zoom);
+      ctx.restore();
+    }
+    return;
+  }
   const surface = document.createElement('canvas'); surface.width = doc.width; surface.height = doc.height;
-  const surfaceContext = surface.getContext('2d');
-  if (!surfaceContext) return;
+  const surfaceContext = surface.getContext('2d'); if (!surfaceContext) return;
   for (const neighbor of neighbors) {
     const pixels = animation.compositeFrame(neighbor.index, layerSettings);
     surfaceContext.clearRect(0, 0, doc.width, doc.height);
@@ -1352,9 +1376,7 @@ function drawOnionSkinOverlay() {
     surfaceContext.fillStyle = neighbor.direction === 'previous' ? 'rgba(90,150,255,.58)' : 'rgba(255,100,150,.58)';
     surfaceContext.fillRect(0, 0, doc.width, doc.height);
     surfaceContext.globalCompositeOperation = 'source-over';
-    ctx.save(); ctx.globalAlpha = neighbor.opacity * .55;
-    ctx.drawImage(surface, panX, panY, doc.width * zoom, doc.height * zoom);
-    ctx.restore();
+    ctx.save(); ctx.globalAlpha = neighbor.opacity * .55; ctx.drawImage(surface, panX, panY, doc.width * zoom, doc.height * zoom); ctx.restore();
   }
 }
 function renderAnimationTimeline() {
