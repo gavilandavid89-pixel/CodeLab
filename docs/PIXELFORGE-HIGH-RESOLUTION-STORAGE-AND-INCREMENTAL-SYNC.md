@@ -194,4 +194,6 @@ The native sparse-edit CI test exposed a cel ownership leak: the adapter replace
 
 The tiled document now exposes `readCompositeRegion(region)`, which composites only a requested viewport-sized RGBA region across visible layers. This is the next bridge needed by the editor renderer: a 4096×4096 project does not need a 4096×4096 composite just to display a small zoomed viewport. A regression test confirms a 16×16 read from a 4096×4096 sparse project returns only 1024 RGBA pixels and preserves the edited pixel exactly.
 
+**Validation follow-up:** the bounded-region API now validates viewport coordinates against canvas geometry before reading or compositing. This prevents an invalid editor viewport from silently requesting out-of-range tile data. A regression test covers both right/bottom overflow and negative coordinates. The editor renderer has not yet switched to this API; that remains the next integration boundary.
+
 This still does not replace the editor's legacy full-canvas `doc.composite()` calls. The next integration step is to route viewport rendering through this bounded API and keep full-canvas materialization only for operations that genuinely require it.
