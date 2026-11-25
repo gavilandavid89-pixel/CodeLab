@@ -521,7 +521,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     })),
     frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({
       index, frameId: frame.id, durationMs: frame.durationMs,
-      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null, ownershipTiles: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId)?.ownershipTiles || []), metadata: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId) || {}) })),
+      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null, ownershipTiles: structuredClone(frame.layerMetadata?.find(item => item.id === cel.layerId || item.layerId === cel.layerId)?.ownershipTiles || []), metadata: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId) || {}) })),
     })) : [],
   };
 }
