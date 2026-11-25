@@ -21,6 +21,10 @@ const $ = selector => document.querySelector(selector);
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
 const workArea = $('#work-area');
 const previewCanvas = document.createElement('canvas'), previewCtx = previewCanvas.getContext('2d', { alpha: true });
+// Tiled documents use a bounded viewport surface instead of allocating a full
+// width × height preview canvas. Dense RasterDocument rendering remains on the
+// legacy preview path until the rest of the editor has native tile parity.
+const tiledViewportCanvas = document.createElement('canvas'), tiledViewportCtx = tiledViewportCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
@@ -446,25 +450,49 @@ function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#171922'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (previewCanvas.width !== doc.width || previewCanvas.height !== doc.height) {
-      previewCanvas.width = doc.width; previewCanvas.height = doc.height; previewReady = false;
-    }
-    const dirtyTiles = doc.getCompositeDirtyTiles();
-    const composite = doc.composite();
-    if (!previewReady) {
-      previewCtx.putImageData(new ImageData(new Uint8ClampedArray(composite), doc.width, doc.height), 0, 0);
-      previewReady = true;
-      doc.clearCompositeDirtyTiles();
-    } else if (dirtyTiles.length) {
-      for (const tile of dirtyTiles) {
-        const tilePixels = new Uint8ClampedArray(tile.width * tile.height * 4);
-        for (let row = 0; row < tile.height; row++) {
-          const sourceStart = ((tile.tileY * 64 + row) * doc.width + tile.tileX * 64) * 4;
-          tilePixels.set(composite.subarray(sourceStart, sourceStart + tile.width * 4), row * tile.width * 4);
+    const isTiledViewportDocument = typeof doc.readCompositeRegion === 'function';
+    let viewportRegion = null;
+    if (isTiledViewportDocument) {
+      // Derive the source rectangle from the actual CSS viewport. This keeps
+      // panning/zooming bounded and avoids width × height RGBA allocation for
+      // sparse/tiled projects. Clamp before calling the adapter because its
+      // region API intentionally rejects out-of-bounds rectangles.
+      const viewportWidth = Math.max(1, canvas.clientWidth);
+      const viewportHeight = Math.max(1, canvas.clientHeight);
+      const left = Math.max(0, Math.floor((-panX) / zoom));
+      const top = Math.max(0, Math.floor((-panY) / zoom));
+      const right = Math.min(doc.width, Math.ceil((viewportWidth - panX) / zoom));
+      const bottom = Math.min(doc.height, Math.ceil((viewportHeight - panY) / zoom));
+      if (right > left && bottom > top) {
+        viewportRegion = { x: left, y: top, width: right - left, height: bottom - top };
+        const bounded = doc.readCompositeRegion(viewportRegion);
+        if (tiledViewportCanvas.width !== bounded.width || tiledViewportCanvas.height !== bounded.height) {
+          tiledViewportCanvas.width = bounded.width;
+          tiledViewportCanvas.height = bounded.height;
         }
-        previewCtx.putImageData(new ImageData(tilePixels, tile.width, tile.height), tile.tileX * 64, tile.tileY * 64);
+        tiledViewportCtx.putImageData(new ImageData(new Uint8ClampedArray(bounded.pixels), bounded.width, bounded.height), 0, 0);
       }
-      doc.clearCompositeDirtyTiles();
+    } else {
+      if (previewCanvas.width !== doc.width || previewCanvas.height !== doc.height) {
+        previewCanvas.width = doc.width; previewCanvas.height = doc.height; previewReady = false;
+      }
+      const dirtyTiles = doc.getCompositeDirtyTiles();
+      const composite = doc.composite();
+      if (!previewReady) {
+        previewCtx.putImageData(new ImageData(new Uint8ClampedArray(composite), doc.width, doc.height), 0, 0);
+        previewReady = true;
+        doc.clearCompositeDirtyTiles();
+      } else if (dirtyTiles.length) {
+        for (const tile of dirtyTiles) {
+          const tilePixels = new Uint8ClampedArray(tile.width * tile.height * 4);
+          for (let row = 0; row < tile.height; row++) {
+            const sourceStart = ((tile.tileY * 64 + row) * doc.width + tile.tileX * 64) * 4;
+            tilePixels.set(composite.subarray(sourceStart, sourceStart + tile.width * 4), row * tile.width * 4);
+          }
+          previewCtx.putImageData(new ImageData(tilePixels, tile.width, tile.height), tile.tileX * 64, tile.tileY * 64);
+        }
+        doc.clearCompositeDirtyTiles();
+      }
     }
     // Animation playback is a presentation view: keep editable raster data intact,
     // but use browser interpolation while playing so the walking person reads as a
@@ -475,7 +503,13 @@ function render() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#20232d';
     ctx.fillRect(panX - 1, panY - 1, doc.width * zoom + 2, doc.height * zoom + 2);
-    ctx.drawImage(previewCanvas, panX, panY, doc.width * zoom, doc.height * zoom);
+    if (viewportRegion) {
+      ctx.drawImage(tiledViewportCanvas, 0, 0, tiledViewportCanvas.width, tiledViewportCanvas.height,
+        panX + viewportRegion.x * zoom, panY + viewportRegion.y * zoom,
+        viewportRegion.width * zoom, viewportRegion.height * zoom);
+    } else if (!isTiledViewportDocument) {
+      ctx.drawImage(previewCanvas, panX, panY, doc.width * zoom, doc.height * zoom);
+    }
     drawOnionSkinOverlay();
     if (transformPreview && transformPreview.docWidth === doc.width && transformPreview.docHeight === doc.height) {
       ctx.save(); ctx.globalAlpha = .78; ctx.imageSmoothingEnabled = false;
