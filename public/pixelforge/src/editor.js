@@ -1273,7 +1273,7 @@ function restoreActiveSceneWorkspace() {
     };
     doc = RasterDocument.fromJSON(restoredSnapshot);
     applyDrawingConfiguration(restoredSnapshot);
-    animation = restoredSnapshot.animation ? await restoreProjectAnimation(restoredSnapshot.animation) : null;
+    animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
     animationLoop = restoredSnapshot.animation?.loop !== false;
     animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
   }
