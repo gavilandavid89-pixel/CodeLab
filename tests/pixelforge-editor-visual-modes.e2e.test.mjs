@@ -89,7 +89,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.locator('#canvas').waitFor({ state: 'visible' });
 
   const dimensions = await page.locator('#document-size').textContent();
-  const [width, height] = dimensions.split('×').map(value => Number(value.trim()));
+  let [width, height] = dimensions.split('×').map(value => Number(value.trim()));
   assert.equal(width, 128);
   assert.equal(height, 128);
 
@@ -296,6 +296,33 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
 
   await page.waitForTimeout(900);
   assert.deepEqual(pageErrors, [], 'visible editor must not throw browser runtime errors');
+
+  // Exercise odd, non-square geometry: symmetry axes must use independent
+  // document centers and safely discard mirrored points outside the bounds.
+  await page.locator('#new-document').click();
+  await page.locator('#new-width').fill('127');
+  await page.locator('#new-height').fill('91');
+  await page.locator('#create-new').click();
+  await page.waitForFunction(() => document.querySelector('#document-size').textContent.includes('127 × 91'));
+  [width, height] = (await page.locator('#document-size').textContent()).split('×').map(value => Number(value.trim()));
+  assert.equal(width, 127);
+  assert.equal(height, 91);
+  await setMode('pixel-art');
+  await setColor('#f0c674');
+  await setValue('#brush-size', 1);
+  await setValue('#brush-hardness', 100);
+  await setValue('#brush-opacity', 100);
+  await page.locator('#brush-shape').selectOption('square');
+  for (const symmetry of [2, 4, 8]) {
+    await setSymmetry(symmetry);
+    const origin = { x: 13, y: 17 };
+    await drawAt(origin);
+    const points = expectedSymmetryPoints(origin, width, height, symmetry);
+    assert.ok(points.length > 0);
+    for (const point of points) await assertVisibleColor(point, '#f0c674', '127x91/pixel-art/symmetry-' + symmetry);
+  }
+  await page.locator('#canvas').screenshot({ path: path.join(artifactDir, 'editor-odd-127x91.png') });
+
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence }, null, 2));
   await page.close();
 });
