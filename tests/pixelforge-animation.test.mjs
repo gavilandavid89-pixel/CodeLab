@@ -441,3 +441,20 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
   assert.ok(server.includes('validatePixelForgeAnimation(project)'));
   assert.ok(fs.readFileSync(path.join(process.cwd(), 'pixelforge-upload-store.js'), 'utf8').includes('CHUNK_BYTES = 6 * 1024 * 1024'));
 });
+
+
+test('drawing mode is persisted independently on each dense animation frame and cel', () => {
+  const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 12 });
+  timeline.setFrameAuthoringMode(0, 'illustration');
+  timeline.setLayerMetadata(0, 'ink', { ...timeline.getLayerMetadata(0, 'ink'), authoringMode: 'illustration' });
+  timeline.setLayerMetadata(0, 'color', { ...timeline.getLayerMetadata(0, 'color'), authoringMode: 'pixel-art' });
+  timeline.addFrame({ duplicate: true });
+  assert.equal(timeline.getFrame(1).authoringMode, 'illustration');
+  assert.equal(timeline.getLayerMetadata(1, 'ink').authoringMode, 'illustration');
+  assert.equal(timeline.getLayerMetadata(1, 'color').authoringMode, 'pixel-art');
+  const restored = PixelForgeAnimation.fromJSON(timeline.toJSON());
+  assert.equal(restored.getFrame(0).authoringMode, 'illustration');
+  assert.equal(restored.getLayerMetadata(0, 'ink').authoringMode, 'illustration');
+  assert.equal(restored.getLayerMetadata(0, 'color').authoringMode, 'pixel-art');
+  assert.equal(restored.getFrame(1).authoringMode, 'illustration');
+});
