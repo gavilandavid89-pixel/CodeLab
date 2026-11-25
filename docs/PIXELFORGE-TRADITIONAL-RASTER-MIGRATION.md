@@ -97,6 +97,10 @@ A project-level active mode is only the editor's current default; it is not suff
 
 The resolved mode and per-mode tool overrides travel with the layer/cel through duplicate, reorder, edit, undo/redo, native save/load, ZIP import/export, Headless operations and Video Composer. Copying a frame copies its frame mode and each cel's mode independently. Changing the active editor mode never rewrites existing layer/frame/cel mode metadata or pixel/tile bytes. Legacy records with missing metadata receive a deterministic migration default (`pixel-art`) at import; they must never be interpreted from whichever mode happens to be active when opened.
 
+The editor now stamps the selected mode at the moment a raster brush/eraser stroke, shape gesture, or gradient gesture begins. It writes the mode to the active dense/tiled layer and, when a dense animation is open, to the active frame and the specific frame/layer cel metadata. New dense layers and blank animation frames inherit the currently selected mode. On animation frame restore, cel mode metadata is restored onto the corresponding editor layer, falling back to the frame mode for older cel metadata. The dense animation model serializes `frames[].authoringMode` and per-cel `metadata.authoringMode` as well as preserving these values when duplicating frames.
+
+This is the first editor-level integration slice, not completion of every drawing operation or every application surface. Fill, text, transform, AI-generated edits, imported assets, native save/load of all metadata paths, Headless runtime, and Video Composer still require dedicated mode propagation and regression coverage. Do not claim end-to-end Illustration integration until those paths are tested.
+
 The tiled animation manifest therefore records `frames[].authoringMode` and `frames[].cels[].metadata.authoringMode`; tiled project manifests record `layers[].authoringMode`. Readers validate known mode values and normalize missing legacy fields at the compatibility boundary.
 
 ## Current implementation status (truthful boundary)
