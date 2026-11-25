@@ -49,10 +49,10 @@ Do not enable mixed-style editing as a supported feature until every test in the
 
 - [x] Sparse cel-local owner tiles in dense and tiled projects, bounded owner-region read/write, clone and native project JSON/manifest round-trip.
 - [x] Dense and tiled raster write guards; foreign-style pixels are filtered before dense writes or tiled copy-on-write commits.
-- [x] Dense/tiled brush, eraser, bucket fill, gradient, shape, transform, selection paste, color replacement and batch layer replacement routed through ownership checks.
+- [x] Dense/tiled brush, eraser, bucket fill, gradient, shape, transform, selection paste, color replacement, batch layer replacement and reference package copy/restore routed through ownership checks.
 - [x] RGBA + owner snapshots captured/restored by dense and tiled stroke/tile-operation undo/redo.
 - [x] Dense and tiled animation frame clone/switch/JSON or manifest paths preserve owner tiles; tiled animation region writes are guarded.
-- [ ] Audit direct tile-store writers and all remaining AI/headless/scripted write entry points; dense batch replacement is guarded but the full agent surface is not yet audited.
+- [ ] Audit direct tile-store writers and remaining headless animation-cel/scripted write entry points; isolated dense AI clones and accepted batch commits are guarded, but the complete agent surface is not yet audited.
 - [ ] Extend remote cel patch protocol to include owner tile put/remove operations.
 - [ ] Verify all autosave/recovery/ZIP flows use ownership-bearing tiled manifests; document legacy RGBA export limitation.
 - [ ] Run and pass the complete CI suite on the final implementation commit.
