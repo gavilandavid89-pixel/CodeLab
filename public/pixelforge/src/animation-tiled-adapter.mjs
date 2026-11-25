@@ -185,6 +185,7 @@ export class TiledAnimationDocument {
   get fps() { return this.#fps; }
   get frameCount() { return this.#frames.length; }
   get activeFrameIndex() { return this.#activeFrameIndex; }
+  get activeFrame() { return this.getFrame(this.#activeFrameIndex); }
   get layerIds() { return [...this.#layerIds]; }
   get stats() { return this.#store.stats; }
   get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
